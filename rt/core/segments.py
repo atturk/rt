@@ -9,7 +9,7 @@ import os
 import json
 import re
 from rt.core.models import Segment, SegmentsData
-from rt.core.timestamp import parse_timestamp, format_timestamp, parse_interval, validate_interval
+from rt.core.timestamp import parse_timestamp, format_timestamp, parse_interval
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 
 MD_TIMESTAMP_PATTERN = re.compile(r"^\*(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[-–—]\s*\d{1,2}:\d{2}(?::\d{2})?)?)\*$")

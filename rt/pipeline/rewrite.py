@@ -12,8 +12,8 @@ Salva draft.json garantendo l'integrità della provenance (source_segment_ids).
 
 import os
 import json
-from typing import Dict, Any, List, Optional
-from rt.core.models import Draft, DraftUnit, Outline, SegmentsData, Segment
+from typing import Dict, Any, List, Optional, Tuple
+from rt.core.models import Draft, DraftUnit, Segment
 from rt.core.segments import load_segments_json
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import init_or_update_manifest
@@ -42,8 +42,8 @@ def get_draft_path(lesson_dir: str) -> str:
 
 def load_draft(lesson_dir: str) -> Draft:
     path = get_draft_path(lesson_dir)
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"draft.json non trovato in '{lesson_dir}'")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"draft.json non trovato in {lesson_dir}")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     cleaned_data = sanitize_object_encoding(data)
@@ -57,6 +57,40 @@ def save_draft(draft: Draft, lesson_dir: str) -> None:
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, path)
+
+
+def extract_context_window(
+    all_segments: List[Segment],
+    start_seg: Segment,
+    end_seg: Segment,
+    window_seconds: float = 90.0,
+    max_segments: int = 20
+) -> Tuple[List[Segment], List[Segment]]:
+    """
+    Estrae deterministicamente i segmenti di contesto precedente e successivo
+    basandosi sulla durata temporale (~90 secondi), con un tetto massimo di segmenti (20)
+    per prevenire finestre sproporzionate in caso di segmenti ASR molto brevi.
+    """
+    prev_segs: List[Segment] = []
+    cur_prev_idx = start_seg.index - 2  # 0-indexed per il segmento precedente
+    while cur_prev_idx >= 0 and len(prev_segs) < max_segments:
+        cand = all_segments[cur_prev_idx]
+        if (start_seg.start_seconds - cand.start_seconds) > window_seconds:
+            break
+        prev_segs.append(cand)
+        cur_prev_idx -= 1
+    prev_segs.reverse()
+
+    next_segs: List[Segment] = []
+    cur_next_idx = end_seg.index  # 0-indexed per il segmento successivo
+    while cur_next_idx < len(all_segments) and len(next_segs) < max_segments:
+        cand = all_segments[cur_next_idx]
+        if (cand.end_seconds - end_seg.end_seconds) > window_seconds:
+            break
+        next_segs.append(cand)
+        cur_next_idx += 1
+
+    return prev_segs, next_segs
 
 
 def run_rewrite(
@@ -170,14 +204,15 @@ def run_rewrite(
         main_seg_ids = [s.id for s in main_segs]
         main_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {s.text_raw}" for s in main_segs)
         
-        # Contesto precedente (fino a 10 segmenti o 90 secondi prima)
-        prev_idx_start = max(0, start_seg.index - 1 - 8)
-        prev_segs = all_segments[prev_idx_start : start_seg.index - 1]
+        # Contesto temporale basato su ~90s (precedente e successivo, max 20 segmenti)
+        prev_segs, next_segs = extract_context_window(
+            all_segments=all_segments,
+            start_seg=start_seg,
+            end_seg=end_seg,
+            window_seconds=90.0,
+            max_segments=20
+        )
         prev_text = "\n".join(s.text_raw for s in prev_segs)
-        
-        # Contesto successivo (fino a 8 segmenti dopo)
-        next_idx_end = min(len(all_segments), end_seg.index + 8)
-        next_segs = all_segments[end_seg.index : next_idx_end]
         next_text = "\n".join(s.text_raw for s in next_segs)
         
         prompt = build_rewrite_user_prompt(

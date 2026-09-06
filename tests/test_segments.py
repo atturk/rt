@@ -151,3 +151,76 @@ def test_export_normalized_transcript_md(tmp_path):
     assert "[seg_000001]" in content
     assert "00:02 - 00:12" in content
     assert "Testo di prova" in content
+
+
+def test_extract_context_window_90s():
+    """Verifica che extract_context_window accumuli correttamente ~90 secondi di contesto e rispetti il cap di 20 segmenti."""
+    from rt.core.models import Segment
+    from rt.pipeline.rewrite import extract_context_window
+
+    # 1. Creiamo 30 segmenti di 10s ciascuno (da 0s a 300s)
+    segments_10s = [
+        Segment(
+            id=f"seg_{i:06d}",
+            index=i,
+            start_seconds=(i - 1) * 10.0,
+            end_seconds=i * 10.0,
+            start_formatted=f"00:{(i-1)*10}",
+            end_formatted=f"00:{i*10}",
+            text_raw=f"Segmento {i}"
+        )
+        for i in range(1, 31)
+    ]
+
+    # Target: unità dal segmento 15 al segmento 16 (140.0s - 160.0s)
+    target_start = segments_10s[14]  # seg_000015, start=140.0s
+    target_end = segments_10s[15]    # seg_000016, end=160.0s
+
+    prev_segs, next_segs = extract_context_window(
+        all_segments=segments_10s,
+        start_seg=target_start,
+        end_seg=target_end,
+        window_seconds=90.0,
+        max_segments=20
+    )
+
+    # 90s prima di 140s = fino a 50s -> segmenti 6, 7, 8, 9, 10, 11, 12, 13, 14 (9 segmenti da 10s)
+    # seg_000006 ha start_seconds = 50.0 (140 - 50 = 90.0 <= 90.0)
+    # seg_000005 ha start_seconds = 40.0 (140 - 40 = 100.0 > 90.0, escluso)
+    assert len(prev_segs) == 9
+    assert prev_segs[0].id == "seg_000006"
+    assert prev_segs[-1].id == "seg_000014"
+
+    # 90s dopo 160s = fino a 250s -> segmenti 17, 18, 19, 20, 21, 22, 23, 24, 25 (9 segmenti da 10s)
+    assert len(next_segs) == 9
+    assert next_segs[0].id == "seg_000017"
+    assert next_segs[-1].id == "seg_000025"
+
+    # 2. Test cap su segmenti brevissimi (1s ciascuno)
+    segments_1s = [
+        Segment(
+            id=f"seg_{i:06d}",
+            index=i,
+            start_seconds=float(i - 1),
+            end_seconds=float(i),
+            start_formatted="00:00",
+            end_formatted="00:00",
+            text_raw=f"Micro {i}"
+        )
+        for i in range(1, 101)
+    ]
+    prev_micro, next_micro = extract_context_window(
+        all_segments=segments_1s,
+        start_seg=segments_1s[50],  # index 51
+        end_seg=segments_1s[50],
+        window_seconds=90.0,
+        max_segments=20
+    )
+    # Anche se 90s coprirebbero 90 segmenti, il cap massimo di 20 interviene
+    assert len(prev_micro) == 20
+    assert len(next_micro) == 20
+
+    # 3. Test ai bordi estremi (inizio e fine)
+    prev_edge, _ = extract_context_window(segments_10s, segments_10s[0], segments_10s[1], 90.0, 20)
+    assert len(prev_edge) == 0  # nessun segmento prima di index 1
+

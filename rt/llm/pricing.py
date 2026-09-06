@@ -27,6 +27,7 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         "deepseek-v4-pro": ModelPricing(input_per_million=0.55, output_per_million=2.19),
     },
     "openrouter": {
+        "openrouter/free": ModelPricing(input_per_million=0.0, output_per_million=0.0),
         "~deepseek/deepseek-v4-flash-latest": ModelPricing(input_per_million=0.05, output_per_million=0.10),
         "deepseek/deepseek-v4-flash-latest": ModelPricing(input_per_million=0.05, output_per_million=0.10),
         "deepseek/deepseek-v4-flash-0731": ModelPricing(input_per_million=0.14, output_per_million=0.28),
@@ -86,21 +87,28 @@ def calculate_cost(
     # 2. Verifica in DEFAULT_PRICING
     if pricing is None and prov_clean in DEFAULT_PRICING:
         prov_models = DEFAULT_PRICING[prov_clean]
+        # (a) Match esatto sulla chiave
         if mod_clean in prov_models:
             pricing = prov_models[mod_clean]
         else:
-            # Match flessibile per prefissi di modello (es. "deepseek/deepseek-chat:free" o varianti)
-            for k, v in prov_models.items():
-                if k in mod_clean or mod_clean in k:
-                    pricing = v
-                    break
+            # (b) Match esatto dopo normalizzazione prefisso provider (es. "google/gemini-2.0-flash")
+            prefix = f"{prov_clean}/"
+            norm_mod = mod_clean[len(prefix):] if mod_clean.startswith(prefix) else mod_clean
+            if norm_mod in prov_models:
+                pricing = prov_models[norm_mod]
+            else:
+                # (c) Match deterministico per segmenti interi separati da '-' o '/'
+                query_tokens = [s for s in mod_clean.replace("/", "-").split("-") if s]
+                for k, v in sorted(prov_models.items(), key=lambda item: len(item[0]), reverse=True):
+                    k_tokens = [s for s in k.replace("/", "-").split("-") if s]
+                    if k_tokens == query_tokens:
+                        pricing = v
+                        break
 
     # Se non trovato ma il provider è deepseek/openrouter con modello deepseek generico, usa fallback conservativo
     if pricing is None:
         if "deepseek" in mod_clean:
             pricing = ModelPricing(input_per_million=0.14, output_per_million=0.28)
-        elif "gemini" in mod_clean:
-            pricing = ModelPricing(input_per_million=0.075, output_per_million=0.30)
         else:
             return None
 

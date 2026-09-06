@@ -7,8 +7,8 @@ ai soli segment_id esistenti, e ne valida la coerenza e la copertura didattica.
 
 import os
 import json
-from typing import Dict, Any, Optional
-from rt.core.models import Outline, SegmentsData
+from typing import Dict, Any
+from rt.core.models import Outline
 from rt.core.segments import load_segments_json
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import init_or_update_manifest

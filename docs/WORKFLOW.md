@@ -35,6 +35,7 @@ stateDiagram-v2
 - `in_attesa_revisione_umana`: presenza di decisioni in attesa di risposta utente.
 - `pronto_per_build`: tutte le anomalie risolte o esplicitate nel ledger.
 - `completato`: file definitivi generati e cartella finalizzata.
+- `fallito`: stato di errore bloccante nella pipeline, ripristinabile al rieseguimento.
 
 ---
 
@@ -133,8 +134,8 @@ Ogni fase registra nel manifest (`phase_records`):
 ### 3.3 Matrice di Dipendenza e Invalidazione Downstream
 Quando una fase produce un nuovo artefatto (per modifiche ai sorgenti o tramite flag `--force`), solo le fasi downstream dipendenti vengono marcate come `STALE`:
 - Modifica a `prepare` (`segments.json`) $\rightarrow$ invalida `outline`, `rewrite`, `review-asr`, `review-science`, `build`.
-- Modifica a `outline` (`outline.json`) $\rightarrow$ invalida `rewrite`, `review-asr`, `review-science`, `build`.
-- Modifica a `rewrite` (`draft.json`) $\rightarrow$ invalida `review-asr`, `review-science`, `build`.
+- Modifica a `outline` (`outline.json`) $\rightarrow$ invalida `rewrite`, `review-science`, `build`.
+- Modifica a `rewrite` (`draft.json`) $\rightarrow$ invalida `review-science`, `build`.
 - Modifica a `review-asr` (`asr_issues.json`) o `review-science` (`science_issues.json`) $\rightarrow$ invalida `build`.
 - I file sorgente grezzi (`trascritto grezzo.*`, `audio.*`) e le decisioni umane registrate (`review_decisions.json`) **non vengono mai sovrascritti o cancellati**.
 

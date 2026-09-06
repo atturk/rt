@@ -4,7 +4,7 @@ Validatore deterministico per Outline, Draft, Copertura didattica e Provenance.
 Nessun output LLM viene accettato se non supera questa validazione.
 """
 
-from typing import Dict, Any, List, Set, Tuple
+from typing import Dict, Any, List, Set
 from rt.core.models import Outline, SegmentsData, Draft, Segment
 
 

@@ -491,3 +491,138 @@ def test_max_thinking_tokens_config_and_client_integration(monkeypatch):
         assert captured_payloads[0]["reasoning"] == {"max_tokens": 2500}
         assert "effort" not in captured_payloads[0]["reasoning"]
 
+
+def test_telemetry_summary_breakdown_and_export(tmp_path):
+    """Verifica che get_summary includa breakdown per job e provider, e che export_to_file scriva su disco."""
+    store = TelemetryStore()
+    store.clear()
+
+    rec1 = LLMTelemetryRecord(
+        request_id="req_001",
+        job="outline",
+        provider="openrouter",
+        model="deepseek/deepseek-chat",
+        input_tokens=100,
+        output_tokens=50,
+        total_tokens=150,
+        estimated_cost=0.0001
+    )
+    rec2 = LLMTelemetryRecord(
+        request_id="req_002",
+        job="rewrite",
+        provider="google",
+        model="gemini-2.0-flash",
+        input_tokens=200,
+        output_tokens=100,
+        total_tokens=300,
+        estimated_cost=0.0002
+    )
+    store.add(rec1)
+    store.add(rec2)
+
+    summary = store.get_summary()
+    assert summary["total_requests"] == 2
+    assert summary["total_tokens"] == 450
+    assert summary["total_estimated_cost_usd"] == 0.0003
+
+    # Breakdown per job
+    assert "outline" in summary["by_job"]
+    assert summary["by_job"]["outline"]["requests"] == 1
+    assert summary["by_job"]["outline"]["total_tokens"] == 150
+    assert "rewrite" in summary["by_job"]
+    assert summary["by_job"]["rewrite"]["requests"] == 1
+    assert summary["by_job"]["rewrite"]["total_tokens"] == 300
+
+    # Breakdown per provider
+    assert "openrouter" in summary["by_provider"]
+    assert summary["by_provider"]["openrouter"]["total_tokens"] == 150
+    assert "google" in summary["by_provider"]
+    assert summary["by_provider"]["google"]["total_tokens"] == 300
+
+    # Test export_to_file atomico
+    out_file = tmp_path / "telemetry_summary.json"
+    store.export_to_file(str(out_file))
+
+    assert out_file.exists()
+    with open(out_file, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded["total_requests"] == 2
+    assert loaded["total_tokens"] == 450
+    assert "by_job" in loaded
+    assert "by_provider" in loaded
+
+
+def test_build_writes_telemetry_summary_file(tmp_path):
+    """Verifica che run_build scriva telemetry_summary.json nella directory della lezione."""
+    from rt.pipeline.build import run_build
+    from rt.core.models import Outline, OutlineMacro, OutlineUnit, Draft, DraftUnit, SegmentsData, Segment
+    from rt.core.manifest import init_or_update_manifest
+    from rt.core.state import update_info_yaml
+
+    lesson_dir = tmp_path / "lesson_test"
+    lesson_dir.mkdir()
+
+    # Setup file minimi necessari per run_build
+    info_path = lesson_dir / "info.yaml"
+    with open(info_path, "w", encoding="utf-8") as f:
+        f.write("data: '2026-09-06'\nmateria: 'TEST'\nargomenti: 'Arg'\nstato: 'in_attesa_build'\nfase_corrente: 'build'\n")
+
+    # segments.json
+    seg = Segment(
+        id="seg_000001",
+        index=1,
+        start_seconds=0.0,
+        end_seconds=10.0,
+        start_formatted="00:00",
+        end_formatted="00:10",
+        text_raw="Test segment."
+    )
+    seg_data = SegmentsData(lesson_id="test", audio_duration_seconds=10.0, segments=[seg])
+    with open(lesson_dir / "segments.json", "w", encoding="utf-8") as f:
+        f.write(seg_data.model_dump_json())
+
+    # outline.json
+    unit = OutlineUnit(id="1.1", title="Unit 1", start_segment_id="seg_000001", end_segment_id="seg_000001")
+    macro = OutlineMacro(id="1", title="Macro 1", units=[unit])
+    outline = Outline(lesson_title="Lezione Test", macro_sections=[macro])
+    with open(lesson_dir / "outline.json", "w", encoding="utf-8") as f:
+        f.write(outline.model_dump_json())
+
+    # draft.json
+    d_unit = DraftUnit(unit_id="1.1", title="Unit 1", content="Contenuto unità.", source_segment_ids=["seg_000001"], start_segment_id="seg_000001", end_segment_id="seg_000001")
+    draft = Draft(units=[d_unit])
+    with open(lesson_dir / "draft.json", "w", encoding="utf-8") as f:
+        f.write(draft.model_dump_json())
+
+    # asr_issues.json, science_issues.json, review_decisions.json
+    with open(lesson_dir / "asr_issues.json", "w", encoding="utf-8") as f:
+        f.write("[]")
+    with open(lesson_dir / "science_issues.json", "w", encoding="utf-8") as f:
+        f.write("[]")
+    with open(lesson_dir / "review_decisions.json", "w", encoding="utf-8") as f:
+        f.write('{"schema_version": "1.0", "decisions": []}')
+
+    init_or_update_manifest(str(lesson_dir), "lesson_test", "2026-09-06", "TEST", "Arg", "build")
+
+    # Assicuriamo almeno un record in GLOBAL_TELEMETRY
+    GLOBAL_TELEMETRY.add(LLMTelemetryRecord(
+        request_id="bld_test_req",
+        job="build",
+        provider="mock",
+        model="mock",
+        total_tokens=123,
+        estimated_cost=0.0001
+    ))
+
+    res = run_build(str(lesson_dir), force=True, rename_folder=False)
+    assert res["status"] == "completed"
+
+    summary_file = lesson_dir / "telemetry_summary.json"
+    assert summary_file.exists(), "telemetry_summary.json non è stato creato!"
+    with open(summary_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert data["total_requests"] >= 1
+    assert "by_job" in data
+    assert "by_provider" in data
+
+

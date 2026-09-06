@@ -6,6 +6,7 @@ Adapter per DeepSeek API ufficiale (Chat Completions con Thinking Mode).
 import json
 from typing import Optional, Dict, Any, List
 from rt.llm.providers.base import BaseLLMProvider, NormalizedResponse, StreamChunk
+from rt.llm.capabilities import get_capabilities
 
 
 class DeepSeekProvider(BaseLLMProvider):
@@ -56,17 +57,16 @@ class DeepSeekProvider(BaseLLMProvider):
         if response_format:
             payload["response_format"] = response_format
 
-        # Configurazione nativa DeepSeek Thinking Mode
-        # Nota: per DeepSeek platform, max_thinking_tokens non è supportato dall'API ed è ignorato.
-        # DeepSeek platform riceve 'reasoning_effort' a livello root del payload e 'thinking: {type: enabled}'.
+        # Configurazione nativa DeepSeek Thinking Mode e verifica capabilities formali
+        caps = get_capabilities(self.name, thinking_mode=thinking)
         if thinking:
             payload["thinking"] = {"type": "enabled"}
             payload["reasoning_effort"] = str(reasoning_effort or "low").lower().strip()
-            # In thinking mode temperature non è supportata da DeepSeek
         else:
             payload["thinking"] = {"type": "disabled"}
-            if temperature is not None:
-                payload["temperature"] = temperature
+
+        if temperature is not None and caps.supports_temperature:
+            payload["temperature"] = temperature
 
         return payload
 

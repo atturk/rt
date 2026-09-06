@@ -11,9 +11,9 @@ Salva science_issues.json.
 import os
 import json
 from typing import Dict, Any, List
-from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, SegmentsData
+from rt.core.models import ScienceIssue, ScienceType
 from rt.core.segments import load_segments_json
-from rt.core.state import read_info_yaml, transition_to, WorkflowState
+from rt.core.state import transition_to, WorkflowState
 from rt.llm.client import LLMClient
 from rt.llm.prompts import (
     SCIENCE_REVIEW_SYSTEM_PROMPT,

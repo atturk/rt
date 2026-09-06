@@ -19,60 +19,83 @@ python3 -m rt.cli --help
 
 ## 2. Esecuzione della Test Suite
 
-La suite di test è collocata nella cartella `tests/` ed è suddivisa per moduli:
+La suite di test è collocata nella cartella `tests/` ed è suddivisa in 25 file di test mirati:
 
-- `test_timestamp.py`: conversioni tra stringhe timecode e float seconds, parsing intervalli.
-- `test_segments.py`: parser per JSON MacWhisper e Markdown grezzo, calcolo durate, validazione.
-- `test_validation.py`: controlli di ordinamento, coerenza e calcolo della copertura didattica dell'outline.
+- `test_audio_run.py`: pipeline audio ingest, split e normalizzazione.
+- `test_checkpointing.py`: recovery e checkpointing transazionale per-unità.
+- `test_cli_review.py`: comandi interattivi human-in-the-loop della CLI.
+- `test_dag_freshness.py`: invalidazione transitiva del DAG e freschezza artefatti.
+- `test_encoding.py`: bonifica mojibake e sanitizzazione codifica UTF-8.
+- `test_idempotency.py`: suite di idempotenza, economia token (0 chiamate LLM al rerun) e crash-safety.
+- `test_integration.py`: esecuzione end-to-end completa su fixture sintetica.
+- `test_issue_accounting.py`: contabilità deterministica delle issue ASR e Science.
+- `test_ledger.py`: funzionamento del decision ledger e applicazione atomica idempotente delle decisioni.
+- `test_llm_config.py`: validazione configurazione YAML, routing dei job e gestione sicura dei secret.
+- `test_llm_google_provider.py`: adapter Google Gemini nativo e configurazione Dual-Key.
+- `test_llm_router.py`: routing deterministico, failover a cascata e policy di fallback.
+- `test_llm_timeout_retry.py`: timeout wall-clock reale, deadline attempt e retry bounded.
+- `test_pricing.py`: pricing listini ufficiali, formalizzazione openrouter/free e matching deterministico.
+- `test_regression_biochem.py`: test di regressione sui 499 segmenti della lezione reale di biochimica.
 - `test_renderer.py`: **test vincolo timestamp** (verifica che il timestamp derivi dal segmento e fallisca se manomesso).
 - `test_science.py`: classificazione nei 4 scenari scientifici (`ERR_DOCENTE`, `ERR_RECONSTRUCTION`, `SCIENCE_CHECK`).
-- `test_ledger.py`: funzionamento del decision ledger e applicazione atomica idempotente delle decisioni.
-- `test_idempotency.py`: **test suite di idempotenza ed economia token** (verifica chiamate LLM = 0 e delta costo = 0 al rerun, rielaborazione forzata con `--force`, rerun parziale `--unit`, recupero da corruzione `INVALID`, crash safety atomica e diagnostica `rt status`).
-- `test_integration.py`: esecuzione end-to-end completa su fixture sintetica.
-- `test_regression_biochem.py`: test di regressione sui 499 segmenti della lezione reale di biochimica.
+- `test_science_grounding.py`: ancoraggio epistemico al trascritto ASR e mitigazione allucinazioni.
+- `test_segments.py`: parser MacWhisper, intervalli temporali e finestra di contesto scorrevole ~90s.
+- `test_setup.py`: setup cartella, mock deterministico ASR e inizializzazione info.yaml.
+- `test_source_truth_json.py`: integrità e immutabilità del trascritto grezzo sorgente.
+- `test_telemetry.py`: telemetria unificata, aggregazione breakdown per job/provider e persistenza disco.
+- `test_timestamp.py`: conversioni tra stringhe timecode e float seconds, parsing intervalli.
+- `test_validation.py`: controlli di ordinamento, coerenza e calcolo della copertura didattica dell'outline.
 
 Per eseguire l'intera suite:
 ```bash
-python3 -m pytest tests/ -v
+python3 -m pytest tests/ -q
 ```
 
 ---
 
 ## 3. Configurazione Provider LLM e Micro Smoke Test
 
-RT supporta sia **DeepSeek direct** sia **OpenRouter** tramite provider adapter dedicati in `rt/llm/providers/`.
+RT supporta **OpenRouter**, **DeepSeek direct** e **Google Gemini** tramite provider adapter dedicati in `rt/llm/providers/`.
 
 ### Configurazione in `rt.config.yaml`:
+Lo schema di configurazione mappa ciascun job cognitivo con route `primary` e fallback dedicati:
 ```yaml
-llm:
+jobs:
   outline:
-    provider: "deepseek"               # oppure "openrouter"
-    model: "deepseek-v4-flash"        # oppure "deepseek/deepseek-v4-pro"
-    thinking: true
-    reasoning_effort: "low"
-    max_tokens: 16384
+    max_output_chars: 60000
+    primary:
+      provider: "openrouter"            # Provider di default per outline
+      credential: "openrouter"
+      model: "deepseek/deepseek-chat"
+      thinking: true
+      reasoning_effort: "low"
+      max_tokens: 16384
+      timeout_seconds: 180
 ```
 
 ### Variabili d'Ambiente:
-- Per DeepSeek: `export DEEPSEEK_API_KEY="sk-..."`
 - Per OpenRouter: `export OPENROUTER_API_KEY="sk-or-..."`
+- Per DeepSeek: `export DEEPSEEK_API_KEY="sk-..."`
 - Per Google Gemini: `export GOOGLE_API_KEY_1="AIzaSy..."` e `export GOOGLE_API_KEY_2="AIzaSy..."` (Dual-Key) oppure `export GEMINI_API_KEY="AIzaSy..."`
 (oppure inserite in `.env` locale non versionato).
 
 ### Esecuzione Micro Smoke Test:
 Un comando leggero per validare connettività, streaming e telemetria con una singola richiesta minima (`{"ok": true}`):
 ```bash
-# Smoke test verso DeepSeek (default)
-./bin/rt test-llm --provider deepseek
+# Smoke test verso il provider di default del job outline (OpenRouter)
+./bin/rt test-llm
 
-# Smoke test verso OpenRouter
+# Smoke test verso OpenRouter con modello esplicito
 ./bin/rt test-llm --provider openrouter --model deepseek/deepseek-chat
 
+# Smoke test verso DeepSeek
+./bin/rt test-llm --provider deepseek --model deepseek-chat
+
 # Smoke test verso Google Gemini (default: google_1)
-./bin/rt test-llm --provider google --model gemini-2.5-flash
+./bin/rt test-llm --provider google --model gemini-2.0-flash
 
 # Smoke test verso Google Gemini con credenziale specifica (google_2)
-./bin/rt test-llm --provider google --credential google_2 --model gemini-2.5-flash
+./bin/rt test-llm --provider google --credential google_2 --model gemini-2.0-flash
 
 # Esecuzione senza streaming
 ./bin/rt test-llm --provider google --no-stream

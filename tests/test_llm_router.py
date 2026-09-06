@@ -227,7 +227,7 @@ def test_scenario_a_safety_google1_to_google2(monkeypatch):
     assert res.title == "Successo Google 2"
     assert call_count == 2
 
-    records = GLOBAL_TELEMETRY.get_records()
+    records = GLOBAL_TELEMETRY.get_all()
     safe_rec = [r for r in records if r.unit_id == "unit_scenario_a"]
     assert len(safe_rec) == 2
 
@@ -306,7 +306,7 @@ def test_scenario_b_rate_limit_google1_to_openrouter(monkeypatch):
     assert res.title == "Successo OpenRouter"
     assert call_count == 2
 
-    records = [r for r in GLOBAL_TELEMETRY.get_records() if r.unit_id == "unit_scenario_b"]
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_scenario_b"]
     assert len(records) == 2
     att1, att2 = records[0], records[1]
     assert att1.failure_class == "rate_limit"
@@ -375,7 +375,7 @@ def test_scenario_c_timeout_google1_to_deepseek(monkeypatch):
     assert res.title == "Successo DeepSeek"
     assert call_count == 2
 
-    records = [r for r in GLOBAL_TELEMETRY.get_records() if r.unit_id == "unit_scenario_c"]
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_scenario_c"]
     assert len(records) == 2
     att1, att2 = records[0], records[1]
     assert att1.failure_class == "timeout"
@@ -439,7 +439,7 @@ def test_scenario_d_auth_error_google1_to_google2(monkeypatch):
     assert res.title == "Successo Auth Fallback"
     assert call_count == 2
 
-    records = [r for r in GLOBAL_TELEMETRY.get_records() if r.unit_id == "unit_scenario_d"]
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_scenario_d"]
     assert len(records) == 2
     att1, att2 = records[0], records[1]
     assert att1.failure_class == "auth_error"
@@ -491,10 +491,62 @@ def test_output_explosion_guard_streaming_abort(monkeypatch):
 
     assert "Output explosion guard attivata" in str(exc_info.value)
     # Verifica telemetria per output_limit
-    records = [r for r in GLOBAL_TELEMETRY.get_records() if r.unit_id == "unit_runaway"]
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_runaway"]
     assert len(records) == 1
     assert records[0].failure_class == "output_limit"
     assert records[0].output_chars > 300
+
+
+def test_output_explosion_guard_streaming_ignores_reasoning(monkeypatch):
+    """
+    Verifica che l'Output Explosion Guard in streaming calcoli solo content_parts,
+    ignorando reasoning_parts: se reasoning_delta supera ampiamente max_output_chars
+    ma content_delta finale è contenuto, non viene sollevata OutputLimitFailure
+    e la chiamata completa con successo.
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "key-deepseek")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    # Limite custom rigido di 300 caratteri
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=1,
+        max_output_chars=300,
+        primary_routes=[
+            RouteConfig(route_id="r_deepseek", provider="deepseek", credential="deepseek", model="deepseek-reasoner")
+        ]
+    )
+
+    def reasoning_heavy_generator():
+        # Genera 1000 caratteri di reasoning (ben oltre la soglia di 300)
+        for _ in range(10):
+            yield f'data: {{"id": "reasoning_heavy", "choices": [{{"delta": {{"reasoning_content": "{"R" * 100}"}}}}]}}\n\n'.encode("utf-8")
+        # Genera un content JSON finale valido e ben al di sotto dei 300 caratteri
+        valid_json = json.dumps({"title": "Outline Valida", "summary": "Reasoning ignorato con successo"})
+        yield f'data: {{"id": "reasoning_heavy", "choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}], "usage": {{"total_tokens": 150}}}}\n\n'.encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.encoding = "utf-8"
+    mock_resp.iter_lines.side_effect = lambda decode_unicode=False: reasoning_heavy_generator()
+
+    with patch("requests.post", return_value=mock_resp):
+        res = client.call_structured(
+            prompt="Test prompt",
+            system_prompt="Test system",
+            response_model=DummyItem,
+            job_name="outline",
+            unit_id="unit_reasoning_ok"
+        )
+
+    assert res.title == "Outline Valida"
+    assert res.summary == "Reasoning ignorato con successo"
+
+    # Verifica telemetria: successo e output_chars riflette solo il contenuto
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_reasoning_ok"]
+    assert len(records) == 1
+    assert records[0].status == "success"
+    assert records[0].output_chars < 300
 
 
 # ======================================================================
@@ -618,7 +670,7 @@ def test_same_route_timeout_retry_distinct_from_routing_failover(monkeypatch):
     assert call_count == 3
     assert route_called == ["google_1", "google_1", "deepseek"]
 
-    records = [r for r in GLOBAL_TELEMETRY.get_records() if r.unit_id == "unit_decoupled_test"]
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_decoupled_test"]
     assert len(records) == 3
 
     # Attempt 1: Route 1, timeout, retry_count=0
