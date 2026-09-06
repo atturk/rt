@@ -9,11 +9,16 @@ Test di regressione obbligatori per RT 2.0 Hardening LLM:
 - Test F: Telemetria strutturata ricca con metriche streaming
 - Test G: No secret leakage (API key e Bearer token sempre redatti)
 - Test H: Compatibilità con l'idempotenza di pipeline
+- Test I: Idle read timeout SSE scatta prima del deadline totale e attiva il retry
+- Test J: Verifica diretta del valore di stream_req_timeout passato a requests.post
+- Test K: Non-regressione sul ramo non-streaming (timeout pieno su rem_sec)
+- Test L: Non-regressione quando rem_sec è minore di idle_read_timeout_seconds
 """
 
 import time
 import json
 import pytest
+import requests
 from unittest.mock import patch, MagicMock
 from pydantic import BaseModel
 
@@ -472,4 +477,225 @@ La via metabolica prosegue con l'idrolisi enzimatica.
     assert res2["skipped"] is True
     # Nessun nuovo record di telemetria aggiunto (ancora esattamente 1)
     assert len(GLOBAL_TELEMETRY.get_all(job="outline")) == 1
+
+
+# ======================================================================
+# TEST I: IDLE READ TIMEOUT SSE E RETRY SULLO STESSO PROVIDER
+# ======================================================================
+
+def test_i_idle_read_timeout_triggers_read_timeout_and_retries(monkeypatch):
+    """
+    Test I: Simula un modello che risponde con un chunk parziale e poi va in stallo silenzioso
+    sul socket, sollevando requests.exceptions.ReadTimeout durante iter_lines.
+    Verifica che l'errore venga classificato come TimeoutFailure, che attivi il retry
+    same-route esistente e che requests.post usi il timeout ridotto (<= 45.0s) anziché 300s.
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-idle-timeout-test")
+    client = LLMClient(force_mock=False)
+    client.config.llm["review_science"].timeout_seconds = 300
+    client.config.llm["review_science"].provider = "deepseek"
+    client.config.retry.max_timeout_retries = 1
+    client.config.retry.timeout_backoff_seconds = 0.01
+
+    captured_timeouts = []
+    call_count = 0
+
+    def mock_post(url, headers=None, json=None, timeout=None, stream=None):
+        nonlocal call_count
+        call_count += 1
+        captured_timeouts.append(timeout)
+
+        if call_count == 1:
+            # Primo tentativo: produce chunk parziale non JSON e poi stalla sollevando ReadTimeout
+            def idle_disconnect_generator():
+                yield b'data: {"choices": [{"delta": {"content": "User Safety: safe"}}]}'
+                raise requests.exceptions.ReadTimeout("HTTPSConnectionPool: Read timed out. (read timeout=45.0)")
+
+            resp1 = MagicMock()
+            resp1.status_code = 200
+            resp1.iter_lines.side_effect = lambda decode_unicode=False: idle_disconnect_generator()
+            return resp1
+        else:
+            # Secondo tentativo: retry same-route completato con successo
+            resp2 = MagicMock()
+            resp2.status_code = 200
+            resp2.iter_lines.return_value = [
+                b'data: {"choices": [{"delta": {"content": "{\\"title\\": \\"Recovered\\", \\"count\\": 1}"}, "finish_reason": "stop"}]}',
+                b'data: [DONE]'
+            ]
+            return resp2
+
+    GLOBAL_TELEMETRY.clear()
+
+    with patch("requests.post", side_effect=mock_post):
+        res = client.call_structured(
+            prompt="Test prompt",
+            system_prompt="Test system",
+            response_model=MockItem,
+            job_name="review_science",
+            show_monitor=False
+        )
+
+    assert res.title == "Recovered"
+    assert call_count == 2
+    assert len(captured_timeouts) == 2
+    for t in captured_timeouts:
+        assert t is not None
+        assert t <= 45.0
+        assert t >= 44.0
+
+    records = GLOBAL_TELEMETRY.get_all(job="review_science")
+    assert len(records) == 2
+    assert records[0].status == "timeout"
+    assert records[0].error_class == "timeout"
+    assert records[1].status == "success"
+
+
+# ======================================================================
+# TEST J: VERIFICA DIRETTA DEL VALORE DI stream_req_timeout A requests.post
+# ======================================================================
+
+def test_j_direct_stream_req_timeout_value_passed_to_requests(monkeypatch):
+    """
+    Test J: Con timeout_seconds=300 sul job e streaming attivo:
+    - Default (45.0s): timeout passato <= 45.0s e non vicino a 300s;
+    - Override via parametro call_structured(idle_read_timeout_seconds=12.0): timeout <= 12.0s;
+    - Override via config YAML/oggetto client.config.retry.idle_read_timeout_seconds=25.0: timeout <= 25.0s.
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-stream-timeout-val")
+    client = LLMClient(force_mock=False)
+    client.config.llm["outline"].timeout_seconds = 300
+    client.config.llm["outline"].provider = "deepseek"
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_lines.return_value = [
+        b'data: {"choices": [{"delta": {"content": "{\\"title\\": \\"OK\\", \\"count\\": 1}"}, "finish_reason": "stop"}]}',
+        b'data: [DONE]'
+    ]
+
+    # 1. Valore di default (45.0s)
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        client.call_structured(
+            prompt="test",
+            system_prompt="test",
+            response_model=MockItem,
+            job_name="outline",
+            show_monitor=False
+        )
+        _, kwargs1 = mock_post.call_args
+        t1 = kwargs1.get("timeout")
+        assert t1 is not None
+        assert 44.0 <= t1 <= 45.0, f"Atteso timeout ~45.0s, ottenuto: {t1}"
+
+    # 2. Override esplicito tramite argomento call_structured (12.0s)
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        client.call_structured(
+            prompt="test",
+            system_prompt="test",
+            response_model=MockItem,
+            job_name="outline",
+            idle_read_timeout_seconds=12.0,
+            show_monitor=False
+        )
+        _, kwargs2 = mock_post.call_args
+        t2 = kwargs2.get("timeout")
+        assert t2 is not None
+        assert 11.0 <= t2 <= 12.0, f"Atteso timeout ~12.0s, ottenuto: {t2}"
+
+    # 3. Override da configurazione retry (25.0s)
+    client.config.retry.idle_read_timeout_seconds = 25.0
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        client.call_structured(
+            prompt="test",
+            system_prompt="test",
+            response_model=MockItem,
+            job_name="outline",
+            show_monitor=False
+        )
+        _, kwargs3 = mock_post.call_args
+        t3 = kwargs3.get("timeout")
+        assert t3 is not None
+        assert 24.0 <= t3 <= 25.0, f"Atteso timeout ~25.0s, ottenuto: {t3}"
+
+
+# ======================================================================
+# TEST K: NON-REGRESSIONE RAMO NON-STREAMING (TIMEOUT PIENO SU rem_sec)
+# ======================================================================
+
+def test_k_non_streaming_branch_preserves_full_rem_sec_timeout(monkeypatch):
+    """
+    Test K: Verifica che con stream=False il timeout passato a requests.post NON sia
+    ridotto a idle_read_timeout_seconds (45.0s), ma rifletta ancora il pieno budget rem_sec (~300s).
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-non-stream-timeout")
+    client = LLMClient(force_mock=False)
+    client.config.llm["rewrite"].timeout_seconds = 300
+    client.config.llm["rewrite"].provider = "deepseek"
+    client.config.retry.idle_read_timeout_seconds = 45.0
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = b'{"choices": [{"message": {"content": "{\\"title\\": \\"NonStream\\", \\"count\\": 99}"}}]}'
+    mock_resp.text = '{"choices": [{"message": {"content": "{\\"title\\": \\"NonStream\\", \\"count\\": 99}"}}]}'
+    mock_resp.json.return_value = {
+        "choices": [{"message": {"content": '{"title": "NonStream", "count": 99}'}}]
+    }
+
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        res = client.call_structured(
+            prompt="test",
+            system_prompt="test",
+            response_model=MockItem,
+            job_name="rewrite",
+            stream=False,
+            show_monitor=False
+        )
+
+    assert res.title == "NonStream"
+    _, kwargs = mock_post.call_args
+    assert "stream" not in kwargs or not kwargs["stream"]
+    t = kwargs.get("timeout")
+    assert t is not None
+    assert t > 290.0, f"Il ramo non-streaming ha ricevuto timeout={t}, atteso > 290.0s (non ridotto a 45s)"
+
+
+# ======================================================================
+# TEST L: NON-REGRESSIONE QUANDO rem_sec E MINORE DI idle_read_timeout
+# ======================================================================
+
+def test_l_stream_req_timeout_clamped_to_small_rem_sec_when_near_deadline(monkeypatch):
+    """
+    Test L: Verifica che quando rem_sec e già inferiore a idle_read_timeout_seconds (es. fine budget
+    o job con timeout breve), min(rem_sec, idle_read_timeout) restituisca rem_sec e non 45.0s.
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-small-rem-sec")
+    client = LLMClient(force_mock=False)
+    # Job configurato con timeout_seconds=5 e idle_read_timeout=45.0
+    client.config.llm["review_asr"].timeout_seconds = 5
+    client.config.llm["review_asr"].provider = "deepseek"
+    client.config.retry.idle_read_timeout_seconds = 45.0
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_lines.return_value = [
+        b'data: {"choices": [{"delta": {"content": "{\\"title\\": \\"NearEnd\\", \\"count\\": 5}"}, "finish_reason": "stop"}]}',
+        b'data: [DONE]'
+    ]
+
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        res = client.call_structured(
+            prompt="test",
+            system_prompt="test",
+            response_model=MockItem,
+            job_name="review_asr",
+            show_monitor=False
+        )
+
+    assert res.title == "NearEnd"
+    _, kwargs = mock_post.call_args
+    t = kwargs.get("timeout")
+    assert t is not None
+    assert 4.0 <= t <= 5.0, f"Atteso timeout compreso tra 4.0s e 5.0s, ottenuto: {t}"
+
 

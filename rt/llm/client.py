@@ -93,6 +93,7 @@ class LLMClient:
         show_monitor: Optional[bool] = None,
         max_timeout_retries: Optional[int] = None,
         timeout_backoff_seconds: Optional[float] = None,
+        idle_read_timeout_seconds: Optional[float] = None,
         min_elapsed_seconds: Optional[float] = None
     ) -> T:
         """
@@ -210,8 +211,10 @@ class LLMClient:
         cfg_retry = getattr(self.config, "retry", None)
         default_max_timeout_retries = getattr(cfg_retry, "max_timeout_retries", 1) if cfg_retry else 1
         default_backoff_sec = getattr(cfg_retry, "timeout_backoff_seconds", 2.0) if cfg_retry else 2.0
+        default_idle_read_timeout = getattr(cfg_retry, "idle_read_timeout_seconds", 45.0) if cfg_retry else 45.0
         route_max_timeout_retries = max_timeout_retries if max_timeout_retries is not None else default_max_timeout_retries
         effective_backoff_sec = timeout_backoff_seconds if timeout_backoff_seconds is not None else default_backoff_sec
+        effective_idle_read_timeout = idle_read_timeout_seconds if idle_read_timeout_seconds is not None else default_idle_read_timeout
 
         # --------------------------------------------------------------------------
         # LOOP PRINCIPALE DI ROUTING (TRANSIZIONE TRA ROUTES E FAILOVER)
@@ -352,15 +355,17 @@ class LLMClient:
                             )
                             break
                         req_timeout = max(0.1, rem_sec)
+                        stream_req_timeout = max(0.1, min(rem_sec, effective_idle_read_timeout))
                     else:
                         req_timeout = None
+                        stream_req_timeout = None
 
                     try:
                         if use_stream:
                             post_kwargs = {
                                 "headers": headers,
                                 "json": payload,
-                                "timeout": req_timeout,
+                                "timeout": stream_req_timeout,
                                 "stream": True,
                             }
                             try:

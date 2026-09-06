@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field, AliasChoices, model_validator
 class LLMRetryConfig(BaseModel):
     max_timeout_retries: int = Field(default=1, description="Numero massimo di retry dopo timeout sullo stesso provider")
     timeout_backoff_seconds: float = Field(default=2.0, description="Secondi di attesa (backoff) tra un tentativo e il successivo")
+    idle_read_timeout_seconds: float = Field(default=45.0, description="Timeout massimo (in secondi) di inattività sul socket durante lo streaming SSE: se nessun byte arriva entro questa soglia, la lettura fallisce con TimeoutFailure indipendentemente dal deadline wall-clock complessivo del job")
+
 
 
 KNOWN_PROVIDER_DEFAULT_BASE_URLS: Dict[str, str] = {
