@@ -17,6 +17,7 @@ from rt.core.manifest import load_manifest, save_manifest
 
 class PhaseStatus(str, Enum):
     VALID = "VALID"
+    PARTIAL = "PARTIAL"
     STALE = "STALE"
     MISSING = "MISSING"
     INVALID = "INVALID"
@@ -283,9 +284,14 @@ def check_phase_status(
             draft = load_draft(lesson_dir)
             outline = load_outline(lesson_dir)
             seg_data = load_segments_json(seg_path)
-            validate_draft(draft, outline, seg_data)
+            val_report = validate_draft(draft, outline, seg_data)
         except Exception as e:
             return PhaseStatus.INVALID, f"draft.json non valido: {e}"
+
+        current_fp = compute_source_fingerprint(lesson_dir, "rewrite")
+        recorded_fp = current_rec.get("source_fingerprint")
+        if recorded_fp and recorded_fp != current_fp:
+            return PhaseStatus.STALE, "outline.json o segments.json modificati dopo la generazione del draft"
 
         # Se richiesta specifica unità
         if target_unit_id:
@@ -299,11 +305,25 @@ def check_phase_status(
                 return PhaseStatus.STALE, f"Segmenti o contesto per unità {target_unit_id} modificati"
             return PhaseStatus.VALID, f"Unità {target_unit_id} nel draft valida e aggiornata"
 
-        current_fp = compute_source_fingerprint(lesson_dir, "rewrite")
-        recorded_fp = current_rec.get("source_fingerprint")
-        if recorded_fp and recorded_fp != current_fp:
-            return PhaseStatus.STALE, "outline.json o segments.json modificati dopo la generazione del draft"
-        return PhaseStatus.VALID, f"draft.json valido ({len(draft.units)} unità verificate)"
+        # Controllo completezza globale
+        all_units_count = val_report.get("expected_units_count", len(outline.macro_sections))
+        draft_units_count = val_report.get("draft_units_count", len(draft.units))
+        is_complete = val_report.get("all_units_covered", False)
+
+        # Verifica coerenza hash se registrato come parziale
+        if current_rec.get("status") == PhaseStatus.PARTIAL.value:
+            art_fps = current_rec.get("artifact_fingerprints", {})
+            if "draft.json" in art_fps:
+                actual_h = compute_file_sha256(draft_path)
+                if actual_h != art_fps["draft.json"]:
+                    return PhaseStatus.INVALID, "draft.json modificato esternamente rispetto al checkpoint registrato"
+
+        if not is_complete or current_rec.get("status") != PhaseStatus.VALID.value:
+            if draft_units_count > 0:
+                return PhaseStatus.PARTIAL, f"draft.json parziale ({draft_units_count}/{all_units_count} unità completate)"
+            return PhaseStatus.MISSING, "draft.json non contiene unità valide"
+
+        return PhaseStatus.VALID, f"draft.json valido ({draft_units_count} unità verificate)"
 
     elif phase_name == "review_asr":
         asr_path = os.path.join(lesson_dir, "asr_issues.json")
@@ -320,6 +340,22 @@ def check_phase_status(
         recorded_fp = current_rec.get("source_fingerprint")
         if recorded_fp and recorded_fp != current_fp:
             return PhaseStatus.STALE, "segments.json o soglie configurazione modificate"
+
+        # Controllo hash artefatto se parziale
+        if current_rec.get("status") == PhaseStatus.PARTIAL.value:
+            art_fps = current_rec.get("artifact_fingerprints", {})
+            if "asr_issues.json" in art_fps:
+                actual_h = compute_file_sha256(asr_path)
+                if actual_h != art_fps["asr_issues.json"]:
+                    return PhaseStatus.INVALID, "asr_issues.json modificato esternamente rispetto al checkpoint"
+
+        if current_rec.get("status") == PhaseStatus.PARTIAL.value:
+            completed_batches = current_rec.get("completed_items", [])
+            return PhaseStatus.PARTIAL, f"asr_issues.json parziale ({len(completed_batches)} batch completati)"
+
+        if current_rec.get("status") != PhaseStatus.VALID.value:
+            return PhaseStatus.PARTIAL, f"asr_issues.json parziale ({len(issues)} issue registrate)"
+
         return PhaseStatus.VALID, f"asr_issues.json valido ({len(issues)} issue registrate)"
 
     elif phase_name == "review_science":
@@ -337,6 +373,27 @@ def check_phase_status(
         recorded_fp = current_rec.get("source_fingerprint")
         if recorded_fp and recorded_fp != current_fp:
             return PhaseStatus.STALE, "draft.json o segments.json modificati dopo la revisione scientifica"
+
+        # Controllo hash artefatto se parziale
+        if current_rec.get("status") == PhaseStatus.PARTIAL.value:
+            art_fps = current_rec.get("artifact_fingerprints", {})
+            if "science_issues.json" in art_fps:
+                actual_h = compute_file_sha256(sci_path)
+                if actual_h != art_fps["science_issues.json"]:
+                    return PhaseStatus.INVALID, "science_issues.json modificato esternamente rispetto al checkpoint"
+
+        # Controllo completezza rispetto a draft.json
+        try:
+            from rt.pipeline.rewrite import load_draft
+            draft = load_draft(lesson_dir)
+            total_draft_units = len(draft.units)
+        except Exception:
+            total_draft_units = 0
+
+        reviewed_units = current_rec.get("completed_items", [])
+        if current_rec.get("status") == PhaseStatus.PARTIAL.value or len(reviewed_units) < total_draft_units or current_rec.get("status") != PhaseStatus.VALID.value:
+            return PhaseStatus.PARTIAL, f"science_issues.json parziale ({len(reviewed_units)}/{total_draft_units} unità verificate)"
+
         return PhaseStatus.VALID, f"science_issues.json valido ({len(issues)} issue registrate)"
 
     elif phase_name == "build":
@@ -370,7 +427,7 @@ def record_phase_fingerprint(
     metadata: Optional[Dict[str, Any]] = None
 ) -> None:
     """
-    Registra in modo atomico nel manifest.json l'impronta e lo stato VALID per la fase.
+    Registra in modo atomico nel manifest.json l'impronta e lo stato VALID per la fase (o aggiorna una singola unità).
     """
     manifest = load_manifest(lesson_dir)
     if not manifest:
@@ -379,18 +436,45 @@ def record_phase_fingerprint(
     phase_records = getattr(manifest, "phase_records", {}) or {}
     record = phase_records.get(phase_name, {})
 
-    record["status"] = PhaseStatus.VALID.value
     record["stale_reason"] = None
     if unit_id:
         unit_fps = record.get("unit_fingerprints", {})
         unit_fps[unit_id] = source_fingerprint
         record["unit_fingerprints"] = unit_fps
-        # Se viene aggiornata una singola unità, l'impronta complessiva della fase
-        # deve essere calcolata a livello globale (senza target_unit_id), non sovrascritta con quella dell'unità
+        # Se viene aggiornata una singola unità, calcola l'impronta globale
         global_fp = compute_source_fingerprint(lesson_dir, phase_name)
         record["source_fingerprint"] = global_fp
+
+        completed = record.get("completed_items") or []
+        if unit_id not in completed:
+            completed.append(unit_id)
+        record["completed_items"] = completed
+
+        # Non impostare ciecamente VALID se mancano altre unità
+        is_fully_complete = False
+        if phase_name == "rewrite":
+            out_path = os.path.join(lesson_dir, "outline.json")
+            draft_path = os.path.join(lesson_dir, "draft.json")
+            if os.path.isfile(out_path) and os.path.isfile(draft_path):
+                try:
+                    from rt.pipeline.outline import load_outline
+                    from rt.pipeline.rewrite import load_draft
+                    out = load_outline(lesson_dir)
+                    d = load_draft(lesson_dir)
+                    all_out_units = [u.id for m in out.macro_sections for u in m.units]
+                    draft_unit_ids = {u.unit_id for u in d.units}
+                    is_fully_complete = all(uid in draft_unit_ids for uid in all_out_units)
+                except Exception:
+                    is_fully_complete = False
+
+        if is_fully_complete:
+            record["status"] = PhaseStatus.VALID.value
+        else:
+            record["status"] = PhaseStatus.PARTIAL.value
     else:
+        record["status"] = PhaseStatus.VALID.value
         record["source_fingerprint"] = source_fingerprint
+
     record["processor_version"] = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
     record["updated_at"] = datetime.now().isoformat()
 
@@ -405,6 +489,87 @@ def record_phase_fingerprint(
     phase_records[phase_name] = record
     manifest.phase_records = phase_records
     save_manifest(manifest)
+
+
+def record_phase_checkpoint(
+    lesson_dir: str,
+    phase_name: str,
+    source_fingerprint: str,
+    artifact_fingerprints: Optional[Dict[str, str]] = None,
+    completed_items: Optional[List[Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    Registra in modo atomico nel manifest.json un checkpoint parziale (PARTIAL)
+    per una fase iterativa (rewrite, review_science, review_asr).
+    """
+    manifest = load_manifest(lesson_dir)
+    if not manifest:
+        return
+
+    phase_records = getattr(manifest, "phase_records", {}) or {}
+    record = phase_records.get(phase_name, {})
+
+    record["status"] = PhaseStatus.PARTIAL.value
+    record["stale_reason"] = None
+    record["source_fingerprint"] = source_fingerprint
+    record["processor_version"] = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
+    record["updated_at"] = datetime.now().isoformat()
+
+    if artifact_fingerprints:
+        rec_art = record.get("artifact_fingerprints", {})
+        rec_art.update(artifact_fingerprints)
+        record["artifact_fingerprints"] = rec_art
+
+    if completed_items is not None:
+        record["completed_items"] = completed_items
+
+    if metadata:
+        record.update(metadata)
+
+    phase_records[phase_name] = record
+    manifest.phase_records = phase_records
+    save_manifest(manifest)
+
+
+def get_phase_checkpoint(
+    lesson_dir: str,
+    phase_name: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[PhaseStatus], str]:
+    """
+    Recupera e valida la coerenza del checkpoint per la fase specificata.
+    Ritorna (checkpoint_dict, status, reason).
+    """
+    manifest = load_manifest(lesson_dir)
+    if not manifest:
+        return None, PhaseStatus.MISSING, "manifest.json non trovato"
+
+    phase_records = getattr(manifest, "phase_records", {}) or {}
+    record = phase_records.get(phase_name)
+    if not record:
+        return None, PhaseStatus.MISSING, f"Nessun checkpoint per fase {phase_name}"
+
+    current_fp = compute_source_fingerprint(lesson_dir, phase_name)
+    recorded_fp = record.get("source_fingerprint")
+    if not recorded_fp or recorded_fp != current_fp:
+        return record, PhaseStatus.STALE, "Input a monte o configurazione modificati rispetto al checkpoint"
+
+    art_fps = record.get("artifact_fingerprints", {})
+    for fname, expected_hash in art_fps.items():
+        fpath = os.path.join(lesson_dir, fname)
+        if not os.path.isfile(fpath):
+            return record, PhaseStatus.MISSING, f"Artefatto {fname} del checkpoint non trovato su disco"
+        actual_hash = compute_file_sha256(fpath)
+        if actual_hash != expected_hash:
+            return record, PhaseStatus.INVALID, f"Hash di {fname} ({actual_hash[:8]}...) difforme dal checkpoint ({expected_hash[:8]}...)"
+
+    status_str = record.get("status", PhaseStatus.PARTIAL.value)
+    try:
+        p_status = PhaseStatus(status_str)
+    except ValueError:
+        p_status = PhaseStatus.PARTIAL
+
+    return record, p_status, "Checkpoint valido"
 
 
 def mark_downstream_stale(

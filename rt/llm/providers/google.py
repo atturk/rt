@@ -54,6 +54,9 @@ class GoogleProvider(BaseLLMProvider):
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
+        if stream:
+            payload["stream_options"] = {"include_usage": True}
+
         if temperature is not None:
             payload["temperature"] = temperature
 

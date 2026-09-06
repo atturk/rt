@@ -36,6 +36,19 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         "deepseek/deepseek-v4-pro": ModelPricing(input_per_million=0.55, output_per_million=2.19),
         "anthropic/claude-3.5-sonnet": ModelPricing(input_per_million=3.00, output_per_million=15.00),
         "openai/gpt-4o-mini": ModelPricing(input_per_million=0.15, output_per_million=0.60),
+    },
+    "google": {
+        "gemini-flash-latest": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-flash-lite-latest": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-pro-latest": ModelPricing(input_per_million=1.25, output_per_million=5.00),
+        "gemini-3.6-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-3.5-flash-lite": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-2.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-2.0-flash": ModelPricing(input_per_million=0.10, output_per_million=0.40),
+        "gemini-2.0-flash-lite": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-2.5-pro": ModelPricing(input_per_million=1.25, output_per_million=5.00),
+        "gemini-1.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-1.5-pro": ModelPricing(input_per_million=1.25, output_per_million=5.00),
     }
 }
 
@@ -86,6 +99,8 @@ def calculate_cost(
     if pricing is None:
         if "deepseek" in mod_clean:
             pricing = ModelPricing(input_per_million=0.14, output_per_million=0.28)
+        elif "gemini" in mod_clean:
+            pricing = ModelPricing(input_per_million=0.075, output_per_million=0.30)
         else:
             return None
 

@@ -86,6 +86,7 @@ class LLMClient:
         override_provider: Optional[str] = None,
         override_model: Optional[str] = None,
         override_base_url: Optional[str] = None,
+        override_credential: Optional[str] = None,
         stream: Optional[bool] = None,
         show_monitor: Optional[bool] = None,
         max_timeout_retries: Optional[int] = None,
@@ -94,11 +95,10 @@ class LLMClient:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
         - Supporto Multi-Provider (DeepSeek, OpenRouter, Google Gemini Dual-Key, Mock);
-        - Scheduling Policy: Primary vs Round-Robin tra Primary e Secondary;
-        - Failure Policy: Error-aware Failover (timeout, 429, safety, auth, generic);
-        - Output Explosion Guard (hard cap per-job durante streaming);
-        - Loop Protection con tracking rigoroso di visited_routes;
-        - Telemetria ricca collegata da un execution_id condiviso per l'intera catena.
+        - Failover su classi di errore mirate (auth, rate_limit, timeout, safety, generic);
+        - Retry bounded configurabili per timeout di rete sulla stessa route;
+        - Monitor a terminale con streaming live, costi stimati e redazione automatica dei secret;
+        - Validazione Pydantic con meccanismo di auto-repair.
         """
         job_routing_cfg = self._get_job_routing_config(job_name)
         primary_cfg = job_routing_cfg.primary
@@ -140,16 +140,30 @@ class LLMClient:
             return self._generate_mock_response(job_name, prompt, response_model)
 
         # Risoluzione route iniziale (con supporto a eventuali override manuali)
-        if override_provider or override_model:
+        if override_provider or override_model or override_credential:
             prov = (override_provider or primary_cfg.provider).lower().strip()
-            mod = override_model or primary_cfg.model
-            b_url = override_base_url or primary_cfg.base_url
+            mod = override_model or (primary_cfg.model if prov == primary_cfg.provider else ("gemini-2.5-flash" if prov == "google" else "deepseek-v4-flash"))
+            b_url = override_base_url
+            if not b_url:
+                if prov == primary_cfg.provider:
+                    b_url = primary_cfg.base_url
+                elif prov == "google":
+                    b_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+                elif prov == "openrouter":
+                    b_url = "https://openrouter.ai/api/v1"
+                elif prov == "deepseek":
+                    b_url = "https://api.deepseek.com"
+                else:
+                    b_url = None
             if prov == "openrouter" and (not b_url or b_url == "https://api.deepseek.com"):
                 b_url = "https://openrouter.ai/api/v1"
+
+            cred = override_credential or (primary_cfg.credential if prov == primary_cfg.provider else None)
             try:
                 override_route = RouteConfig(
                     provider=prov,
                     model=mod,
+                    credential=cred,
                     base_url=b_url,
                     thinking=primary_cfg.thinking,
                     reasoning_effort=primary_cfg.reasoning_effort,
@@ -167,7 +181,7 @@ class LLMClient:
 
         # Parametri globali di catena
         visited_route_ids: Set[str] = set()
-        max_global_attempts = 1 if override_provider else job_routing_cfg.max_attempts
+        max_global_attempts = 1 if (override_provider or override_credential) else job_routing_cfg.max_attempts
         max_output_chars = job_routing_cfg.max_output_chars or 45000
 
         route_attempt = 1

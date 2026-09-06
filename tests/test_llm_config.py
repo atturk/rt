@@ -258,6 +258,26 @@ def test_smoke_test_execution_with_mocked_network(monkeypatch):
         assert result_or["schema_validation"] == "OK"
         assert result_or["test_id"] == 42
 
+        # Test Google Gemini (google_1 di default)
+        monkeypatch.setenv("GOOGLE_API_KEY_1", "AIzaSyFakeGoogleKey1")
+        result_google = run_smoke_test(provider="google", model="gemini-2.5-flash", verbose=False)
+        assert result_google["connection"] == "OK"
+        assert result_google["provider"] == "google"
+        assert result_google["credential"] == "google_1"
+        assert result_google["model"] == "gemini-2.5-flash"
+        assert result_google["schema_validation"] == "OK"
+        assert result_google["test_id"] == 42
+
+        # Test Google Gemini con credenziale esplicita google_2
+        monkeypatch.setenv("GOOGLE_API_KEY_2", "AIzaSyFakeGoogleKey2")
+        result_google2 = run_smoke_test(provider="google", credential="google_2", model="gemini-2.5-flash", verbose=False)
+        assert result_google2["connection"] == "OK"
+        assert result_google2["provider"] == "google"
+        assert result_google2["credential"] == "google_2"
+        assert result_google2["model"] == "gemini-2.5-flash"
+        assert result_google2["schema_validation"] == "OK"
+        assert result_google2["test_id"] == 42
+
 
 # ======================================================================
 # SPECIFIC BUG SCENARIOS (Casi A, B, C, D, E richiesti da specifica)

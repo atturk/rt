@@ -32,6 +32,8 @@ from rt.core.idempotency import (
     compute_source_fingerprint,
     compute_file_sha256,
     record_phase_fingerprint,
+    record_phase_checkpoint,
+    get_phase_checkpoint,
     mark_downstream_stale,
 )
 
@@ -86,7 +88,7 @@ def check_text_grounding_score(query: str, source_text: str) -> float:
     return matched / len(words)
 
 
-def disambiguate_science_issue(iss: Union[ScienceIssue, Dict[str, Any]], source_text: str) -> Union[ScienceIssue, Dict[str, Any]]:
+def disambiguate_science_issue(iss: Any, source_text: str) -> Any:
     """
     Applica una classificazione conservativa e basata su prove (grounding)
     per distinguere oggettivamente tra:
@@ -148,7 +150,7 @@ def disambiguate_science_issue(iss: Union[ScienceIssue, Dict[str, Any]], source_
 
 
 def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
-    """Esegue la critica scientifica indipendente sul draft confrontato con l'ASR."""
+    """Esegue la critica scientifica indipendente sul draft confrontato con l'ASR con checkpointing continuo."""
     yaml_path = os.path.join(lesson_dir, "info.yaml")
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
@@ -177,12 +179,38 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     draft = load_draft(lesson_dir)
     segments_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
+
+    # Riconciliazione all'avvio:
+    if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
+        reviewed_unit_ids = []
+        all_science_issues: List[ScienceIssue] = []
+        save_science_issues(all_science_issues, lesson_dir)
+    else:
+        ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review_science")
+        existing_issues = load_science_issues(lesson_dir)
+        if ckpt and ckpt.get("completed_items"):
+            reviewed_unit_ids = list(ckpt["completed_items"])
+            reviewed_set = set(reviewed_unit_ids)
+            # Riconciliazione: conserva solo le issue di unità committate nel manifest
+            cleaned_issues = [iss for iss in existing_issues if iss.unit_id in reviewed_set]
+            all_science_issues = cleaned_issues
+            if len(cleaned_issues) != len(existing_issues):
+                save_science_issues(all_science_issues, lesson_dir)
+            if reviewed_unit_ids:
+                print(f"🔄 [CHECKPOINT RESUME] {len(reviewed_unit_ids)}/{len(draft.units)} unità didattiche già revisionate per science critic.")
+        else:
+            reviewed_unit_ids = []
+            all_science_issues = []
+            save_science_issues(all_science_issues, lesson_dir)
     
     client = LLMClient(force_mock=force_mock)
-    all_science_issues: List[ScienceIssue] = []
-    
+    reviewed_set = set(reviewed_unit_ids)
     total_units = len(draft.units)
+    
     for idx, unit in enumerate(draft.units, start=1):
+        if not force and unit.unit_id in reviewed_set:
+            continue
+
         # Recupera trascrizione sorgente corrispondente
         source_texts = []
         for s_id in unit.source_segment_ids:
@@ -217,34 +245,61 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             iss = disambiguate_science_issue(iss, source_context)
             all_science_issues.append(iss)
             
-    # Assegna ID progressivi univoci
-    for idx, iss in enumerate(all_science_issues, start=1):
-        iss.id = f"sci_{idx:06d}"
-        
-    save_science_issues(all_science_issues, lesson_dir)
+        # Numerazione deterministica progressiva
+        for s_idx, iss in enumerate(all_science_issues, start=1):
+            iss.id = f"sci_{s_idx:06d}"
+            
+        # Salvataggio atomico dell'artefatto su disco
+        save_science_issues(all_science_issues, lesson_dir)
 
-    # Registrazione fingerprint e invalidazione downstream
-    source_fp = compute_source_fingerprint(lesson_dir, "review_science")
-    sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
-    record_phase_fingerprint(lesson_dir, "review_science", source_fp, {"science_issues.json": sci_hash})
-    if force or phase_status == PhaseStatus.STALE:
-        mark_downstream_stale(lesson_dir, "review_science")
-    
-    # Verifica se ci sono decisioni umane richieste (tra ASR YELLOW/RED e Science Issues)
-    asr_issues = load_asr_issues(lesson_dir)
-    pending_asr = [a for a in asr_issues if a.level in (ASRLevel.YELLOW, ASRLevel.RED) and a.status == "pending"]
-    pending_sci = [s for s in all_science_issues if s.status == "pending"]
-    
-    allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID))
-    if pending_asr or pending_sci:
-        transition_to(yaml_path, WorkflowState.HUMAN_REVIEW_REQUIRED, allow_force=allow_t)
-        next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value
-    else:
-        transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=allow_t)
-        next_state = WorkflowState.READY_TO_BUILD.value
+        # Commit atomico nel checkpoint
+        if unit.unit_id not in reviewed_set:
+            reviewed_unit_ids.append(unit.unit_id)
+            reviewed_set.add(unit.unit_id)
+
+        source_fp = compute_source_fingerprint(lesson_dir, "review_science")
+        sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
+        record_phase_checkpoint(
+            lesson_dir=lesson_dir,
+            phase_name="review_science",
+            source_fingerprint=source_fp,
+            artifact_fingerprints={"science_issues.json": sci_hash},
+            completed_items=reviewed_unit_ids
+        )
+
+    # Finalizzazione se tutte le unità del draft sono state esaminate
+    all_draft_unit_ids = [u.unit_id for u in draft.units]
+    is_fully_reviewed = all(uid in reviewed_set for uid in all_draft_unit_ids)
+
+    if is_fully_reviewed:
+        for s_idx, iss in enumerate(all_science_issues, start=1):
+            iss.id = f"sci_{s_idx:06d}"
+        save_science_issues(all_science_issues, lesson_dir)
+
+        source_fp = compute_source_fingerprint(lesson_dir, "review_science")
+        sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
+        record_phase_fingerprint(lesson_dir, "review_science", source_fp, {"science_issues.json": sci_hash})
+        if force or phase_status == PhaseStatus.STALE:
+            mark_downstream_stale(lesson_dir, "review_science")
         
+        asr_issues = load_asr_issues(lesson_dir)
+        pending_asr = [a for a in asr_issues if a.level in (ASRLevel.YELLOW, ASRLevel.RED) and a.status == "pending"]
+        pending_sci = [s for s in all_science_issues if s.status == "pending"]
+        
+        allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL))
+        if pending_asr or pending_sci:
+            transition_to(yaml_path, WorkflowState.HUMAN_REVIEW_REQUIRED, allow_force=allow_t)
+            next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value
+        else:
+            transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=allow_t)
+            next_state = WorkflowState.READY_TO_BUILD.value
+        status_msg = "science_review_completed"
+    else:
+        next_state = "partial"
+        status_msg = "science_review_partial"
+
     return {
-        "status": "science_review_completed",
+        "status": status_msg,
         "action": action,
         "skipped": False,
         "reason": "explicit user-requested rerun" if force else reason,

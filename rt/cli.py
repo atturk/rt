@@ -12,7 +12,7 @@ Comandi disponibili:
   rt review             <cartella> (revisione interattiva casi YELLOW/RED)
   rt build              <cartella> [--rename]
   rt status             <cartella>
-  rt test-llm           [--config <path>] (smoke test rapido DeepSeek ufficiale)
+  rt test-llm           [--config <path>] (smoke test rapido DeepSeek/OpenRouter/Google)
   rt run                <cartella> [--mock]
 """
 
@@ -569,13 +569,14 @@ def cmd_status(args):
 
 
 def cmd_test_llm(args):
-    """Smoke test rapido per verificare la connessione e i parametri con DeepSeek o OpenRouter."""
+    """Smoke test rapido per verificare la connessione e i parametri con DeepSeek, OpenRouter o Google."""
     from rt.pipeline.smoke_test import run_smoke_test
     try:
         run_smoke_test(
             config_path=args.config,
             provider=args.provider,
             model=args.model,
+            credential=getattr(args, "credential", None),
             stream=not args.no_stream if hasattr(args, "no_stream") and args.no_stream else None,
             show_monitor=not args.no_monitor if hasattr(args, "no_monitor") and args.no_monitor else None,
             verbose=True
@@ -816,10 +817,11 @@ def main():
     p_stat.set_defaults(func=cmd_status)
 
     # test-llm
-    p_tllm = subparsers.add_parser("test-llm", help="Smoke test rapido per verificare DeepSeek o OpenRouter")
+    p_tllm = subparsers.add_parser("test-llm", help="Smoke test rapido per verificare DeepSeek, OpenRouter o Google")
     p_tllm.add_argument("--config", help="Percorso alternativo del file di configurazione", default=None)
-    p_tllm.add_argument("--provider", help="Provider da testare (deepseek | openrouter)", choices=["deepseek", "openrouter"], default=None)
-    p_tllm.add_argument("--model", help="Modello specifico da testare (es. deepseek-v4-flash, deepseek/deepseek-v4-pro)", default=None)
+    p_tllm.add_argument("--provider", help="Provider da testare (deepseek | openrouter | google)", choices=["deepseek", "openrouter", "google"], default=None)
+    p_tllm.add_argument("--credential", help="Credenziale specifica da testare (es. google_1, google_2, openrouter, deepseek)", default=None)
+    p_tllm.add_argument("--model", help="Modello specifico da testare (es. gemini-2.5-flash, deepseek-v4-flash, deepseek/deepseek-v4-pro)", default=None)
     p_tllm.add_argument("--no-stream", action="store_true", help="Disabilita lo streaming SSE")
     p_tllm.add_argument("--no-monitor", action="store_true", help="Disabilita il monitor progressivo da terminale")
     p_tllm.set_defaults(func=cmd_test_llm)

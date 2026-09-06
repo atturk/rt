@@ -56,6 +56,7 @@ llm:
 ### Variabili d'Ambiente:
 - Per DeepSeek: `export DEEPSEEK_API_KEY="sk-..."`
 - Per OpenRouter: `export OPENROUTER_API_KEY="sk-or-..."`
+- Per Google Gemini: `export GOOGLE_API_KEY_1="AIzaSy..."` e `export GOOGLE_API_KEY_2="AIzaSy..."` (Dual-Key) oppure `export GEMINI_API_KEY="AIzaSy..."`
 (oppure inserite in `.env` locale non versionato).
 
 ### Esecuzione Micro Smoke Test:
@@ -67,8 +68,14 @@ Un comando leggero per validare connettività, streaming e telemetria con una si
 # Smoke test verso OpenRouter
 ./bin/rt test-llm --provider openrouter --model deepseek/deepseek-chat
 
+# Smoke test verso Google Gemini (default: google_1)
+./bin/rt test-llm --provider google --model gemini-2.5-flash
+
+# Smoke test verso Google Gemini con credenziale specifica (google_2)
+./bin/rt test-llm --provider google --credential google_2 --model gemini-2.5-flash
+
 # Esecuzione senza streaming
-./bin/rt test-llm --provider deepseek --no-stream
+./bin/rt test-llm --provider google --no-stream
 ```
 
 ### Aggiungere un Nuovo Provider:

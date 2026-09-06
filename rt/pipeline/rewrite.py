@@ -30,6 +30,8 @@ from rt.core.idempotency import (
     compute_source_fingerprint,
     compute_file_sha256,
     record_phase_fingerprint,
+    record_phase_checkpoint,
+    get_phase_checkpoint,
     mark_downstream_stale,
 )
 
@@ -63,7 +65,7 @@ def run_rewrite(
     force: bool = False,
     force_mock: bool = False
 ) -> Dict[str, Any]:
-    """Esegue la rielaborazione delle unità didattiche a finestre scorrevoli."""
+    """Esegue la rielaborazione delle unità didattiche a finestre scorrevoli con checkpointing continuo."""
     yaml_path = os.path.join(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path)
     
@@ -72,11 +74,16 @@ def run_rewrite(
     
     seg_by_id: Dict[str, Segment] = {s.id: s for s in segments_data.segments}
     all_segments = segments_data.segments
-    
+    all_outline_units = [u for m in outline.macro_sections for u in m.units]
+    outline_units_map = {u.id: u for u in all_outline_units}
+
     # Carica o inizializza draft
     draft_path = get_draft_path(lesson_dir)
     if os.path.isfile(draft_path):
-        draft = load_draft(lesson_dir)
+        try:
+            draft = load_draft(lesson_dir)
+        except Exception:
+            draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
     else:
         draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
         
@@ -95,6 +102,34 @@ def run_rewrite(
             "total_units": len(draft.units),
             "validation_report": validation_report
         }
+
+    # Riconciliazione all'avvio:
+    # Se force=True (globale) o se gli input sono STALE o INVALID, non riutilizzare il vecchio draft.json
+    if (force and not target_unit_id) or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID) and not target_unit_id):
+        draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
+        draft_units_map = {}
+    else:
+        # Se PARTIAL o recupero checkpoint: verifichiamo la coerenza di ciò che è committato
+        ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "rewrite")
+        if ckpt and ckpt.get("completed_items"):
+            committed_ids = set(ckpt["completed_items"])
+            filtered_map = {}
+            for u in draft.units:
+                if u.unit_id in committed_ids and u.content.strip() and u.source_segment_ids:
+                    # Verifica che appartenga all'outline corrente con coordinate coerenti
+                    if u.unit_id in outline_units_map:
+                        filtered_map[u.unit_id] = u
+            draft_units_map = filtered_map
+            # Ricostruisce ordinamento e ripulisce draft se necessario
+            ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
+            draft.units = ordered_units
+            if len(draft.units) != len(draft_units_map) or (os.path.isfile(draft_path) and compute_file_sha256(draft_path) != ckpt.get("artifact_fingerprints", {}).get("draft.json")):
+                save_draft(draft, lesson_dir)
+            if draft_units_map:
+                print(f"🔄 [CHECKPOINT RESUME] {len(draft_units_map)}/{len(all_outline_units)} unità didattiche già completate e verificate.")
+        else:
+            draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
+            draft_units_map = {}
 
     action = "FORCE" if force else "RUN"
     
@@ -168,7 +203,7 @@ def run_rewrite(
             unit_id=unit_label
         )
 
-        # Forziamo comunque la rispondenza della provenance ai segmenti assegnati
+        # Forziamo rigorosamente la rispondenza della provenance prima del commit
         unit_draft.start_segment_id = u.start_segment_id
         unit_draft.end_segment_id = u.end_segment_id
         unit_draft.unit_id = u.id
@@ -194,49 +229,86 @@ def run_rewrite(
             
         draft_units_map[u.id] = unit_draft
         processed_count += 1
+
+        # Ordinamento canonico e checkpoint atomico su disco
+        ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
+        draft.units = ordered_units
+        save_draft(draft, lesson_dir)
+
+        source_fp = compute_source_fingerprint(lesson_dir, "rewrite")
+        draft_hash = compute_file_sha256(draft_path)
+        record_phase_checkpoint(
+            lesson_dir=lesson_dir,
+            phase_name="rewrite",
+            source_fingerprint=source_fp,
+            artifact_fingerprints={"draft.json": draft_hash},
+            completed_items=[ou.unit_id for ou in draft.units]
+        )
         
-    # Ordina le unità secondo l'ordine dell'outline
-    ordered_units = []
-    for macro in outline.macro_sections:
-        for u in macro.units:
-            if u.id in draft_units_map:
-                ordered_units.append(draft_units_map[u.id])
-                
+    # Verifica stato finale
+    ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
     draft.units = ordered_units
-    
-    # Validazione deterministica
-    validation_report = validate_draft(draft, outline, segments_data)
 
-    # Salvataggio atomico
-    save_draft(draft, lesson_dir)
+    all_outline_uids = [ou.id for ou in all_outline_units]
+    is_fully_covered = all(uid in draft_units_map for uid in all_outline_uids)
 
-    # Registrazione fingerprint e invalidazione mirata downstream
-    source_fp = compute_source_fingerprint(lesson_dir, "rewrite", target_unit_id=target_unit_id)
-    draft_hash = compute_file_sha256(draft_path)
-    record_phase_fingerprint(
-        lesson_dir=lesson_dir,
-        phase_name="rewrite",
-        source_fingerprint=source_fp,
-        artifact_fingerprints={"draft.json": draft_hash},
-        unit_id=target_unit_id
-    )
-    # Invalida solo ciò che dipende da questo draft (o questa unità)
-    if force or phase_status == PhaseStatus.STALE or processed_count > 0:
-        mark_downstream_stale(lesson_dir, "rewrite", target_unit_id=target_unit_id)
-    
-    # Aggiornamento stato
-    init_or_update_manifest(
-        lesson_dir=lesson_dir,
-        lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
-        date=info.get("data", "0000-00-00"),
-        subject=info.get("materia", "MATERIA"),
-        topics=info.get("argomenti", "Argomenti"),
-        current_state=WorkflowState.DRAFT_VALIDATED.value
-    )
-    transition_to(yaml_path, WorkflowState.DRAFT_VALIDATED, allow_force=(force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID)))
+    if target_unit_id:
+        source_fp = compute_source_fingerprint(lesson_dir, "rewrite", target_unit_id=target_unit_id)
+        draft_hash = compute_file_sha256(draft_path)
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir,
+            phase_name="rewrite",
+            source_fingerprint=source_fp,
+            artifact_fingerprints={"draft.json": draft_hash},
+            unit_id=target_unit_id
+        )
+        if force or processed_count > 0:
+            mark_downstream_stale(lesson_dir, "rewrite", target_unit_id=target_unit_id)
+
+        if is_fully_covered:
+            validation_report = validate_draft(draft, outline, segments_data)
+            init_or_update_manifest(
+                lesson_dir=lesson_dir,
+                lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
+                date=info.get("data", "0000-00-00"),
+                subject=info.get("materia", "MATERIA"),
+                topics=info.get("argomenti", "Argomenti"),
+                current_state=WorkflowState.DRAFT_VALIDATED.value
+            )
+            transition_to(yaml_path, WorkflowState.DRAFT_VALIDATED, allow_force=True)
+            status_msg = "draft_validated"
+        else:
+            validation_report = {"valid": True, "note": f"Unità {target_unit_id} rigenerata, draft complessivo parziale"}
+            status_msg = "unit_regenerated"
+    elif is_fully_covered:
+        validation_report = validate_draft(draft, outline, segments_data)
+        source_fp = compute_source_fingerprint(lesson_dir, "rewrite")
+        draft_hash = compute_file_sha256(draft_path)
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir,
+            phase_name="rewrite",
+            source_fingerprint=source_fp,
+            artifact_fingerprints={"draft.json": draft_hash}
+        )
+        if force or phase_status == PhaseStatus.STALE or processed_count > 0:
+            mark_downstream_stale(lesson_dir, "rewrite")
+        
+        init_or_update_manifest(
+            lesson_dir=lesson_dir,
+            lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
+            date=info.get("data", "0000-00-00"),
+            subject=info.get("materia", "MATERIA"),
+            topics=info.get("argomenti", "Argomenti"),
+            current_state=WorkflowState.DRAFT_VALIDATED.value
+        )
+        transition_to(yaml_path, WorkflowState.DRAFT_VALIDATED, allow_force=(force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID)))
+        status_msg = "draft_validated"
+    else:
+        validation_report = {"valid": False, "reason": "Draft parziale"}
+        status_msg = "draft_partial"
     
     return {
-        "status": "draft_validated",
+        "status": status_msg,
         "action": action,
         "skipped": False,
         "reason": "explicit user-requested rerun" if force else f"processed {processed_count} unit(s)",
@@ -244,3 +316,4 @@ def run_rewrite(
         "total_units": len(draft.units),
         "validation_report": validation_report
     }
+
