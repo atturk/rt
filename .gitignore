@@ -1,0 +1,45 @@
+# Environments & secrets
+.env
+.env.*
+!.env.example
+*.env
+*.key
+*.pem
+*.cert
+*.secret
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Scratch & temporary test artifacts
+scratch/
+test_demo_setup/
+test_real_lecture/
+
+# OS & IDE metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

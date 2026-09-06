@@ -1,0 +1,206 @@
+# ==============================================================================
+# rt.config.yaml - Configurazione Deterministica & LLM Routing Engine (RT 2.0)
+# ==============================================================================
+# Controlla l'orchestrazione dei 4 job cognitivi (Outline, Rewrite, Review ASR,
+# Science Critic), il routing multi-provider, round-robin, failover mirato
+# (timeout, 429, safety, auth, generic) e il Confidence Gating.
+# ==============================================================================
+
+version: "2.0.0"
+
+# Impostare su true per eseguire la pipeline offline senza chiamate API (usa risposte mock deterministiche)
+mock_llm: false
+
+# Abilita lo streaming SSE delle risposte (mostra l'emissione token in tempo reale)
+streaming: true
+
+# Abilita il monitor interattivo con barra di avanzamento e metriche a terminale
+show_monitor: true
+
+# Configurazione globale retry bounded per timeout di rete sulla stessa route
+retry:
+  max_timeout_retries: 1
+  timeout_backoff_seconds: 2.0
+
+# ------------------------------------------------------------------------------
+# ROUTING ENGINE MULTI-PROVIDER & MULTI-MODEL
+# ------------------------------------------------------------------------------
+jobs:
+  # 1. OUTLINE: Generazione della scaletta didattica (Macro-sezioni e Unità)
+  outline:
+    round_robin: false
+    max_attempts: 4
+    max_output_chars: 45000
+    primary:
+      provider: "openrouter"
+      credential: "openrouter"
+      model: "openrouter/free"
+      base_url: "https://openrouter.ai/api/v1"
+      thinking: true
+      reasoning_effort: "low"
+      max_thinking_tokens: 4098
+      max_tokens: null
+      timeout_seconds: 300
+    fallback:
+      rate_limit:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "low"
+        timeout_seconds: 240
+      timeout:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "low"
+        timeout_seconds: 240
+      generic:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "low"
+        timeout_seconds: 240
+
+  # 2. REWRITE: Google Dual-Key (Round-Robin) + Fallback dedicati (Safety non-Gemini)
+  rewrite:
+    round_robin: true
+    max_attempts: 5
+    max_output_chars: 45000
+    primary:
+      provider: "google"
+      credential: "google_1"
+      model: "gemini-2.5-flash"
+      thinking: true
+      reasoning_effort: "high"
+      timeout_seconds: 180
+    secondary:
+      provider: "google"
+      credential: "google_2"
+      model: "gemini-2.5-flash"
+      thinking: true
+      reasoning_effort: "high"
+      timeout_seconds: 180
+    fallback:
+      # Modello non-Gemini per garantire vero bypass dei filtri di contenuto condivisi di Google
+      safety:
+        provider: "openrouter"
+        credential: "openrouter"
+        model: "deepseek/deepseek-chat"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 180
+      rate_limit:
+        provider: "openrouter"
+        credential: "openrouter"
+        model: "deepseek/deepseek-chat"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 180
+      timeout:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 180
+      auth:
+        provider: "google"
+        credential: "google_2"
+        model: "gemini-2.5-flash"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 180
+      generic:
+        provider: "openrouter"
+        credential: "openrouter"
+        model: "deepseek/deepseek-chat"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 180
+
+  # 3. REVIEW_ASR: Rilevamento errori fonetici e confidence gating
+  review_asr:
+    round_robin: false
+    max_attempts: 3
+    max_output_chars: 45000
+    primary:
+      provider: "openrouter"
+      credential: "openrouter"
+      model: "openrouter/free"
+      base_url: "https://openrouter.ai/api/v1"
+      thinking: false
+      reasoning_effort: "low"
+      max_thinking_tokens: null
+      max_tokens: null
+      timeout_seconds: 300
+    fallback:
+      rate_limit:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: false
+        reasoning_effort: "low"
+        timeout_seconds: 180
+      timeout:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: false
+        reasoning_effort: "low"
+        timeout_seconds: 180
+      generic:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: false
+        reasoning_effort: "low"
+        timeout_seconds: 180
+
+  # 4. REVIEW_SCIENCE: Critic indipendente per lapsus docente e allucinazioni
+  review_science:
+    round_robin: false
+    max_attempts: 3
+    max_output_chars: 45000
+    primary:
+      provider: "openrouter"
+      credential: "openrouter"
+      model: "openrouter/free"
+      base_url: "https://openrouter.ai/api/v1"
+      thinking: true
+      reasoning_effort: "high"
+      max_thinking_tokens: 16392
+      max_tokens: null
+      timeout_seconds: 300
+    fallback:
+      rate_limit:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 240
+      timeout:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 240
+      generic:
+        provider: "deepseek"
+        credential: "deepseek"
+        model: "deepseek-v4-flash"
+        thinking: true
+        reasoning_effort: "high"
+        timeout_seconds: 240
+
+# ------------------------------------------------------------------------------
+# SOGLIE DETERMINISTICHE PER CONFIDENCE GATING ASR
+# ------------------------------------------------------------------------------
+thresholds:
+  green: 0.95   # >= 0.95 -> Correzione fonetica certa, auto-approvata nel ledger
+  yellow: 0.75  # 0.75 - 0.94 -> Ambiguità plausibile, inserita nella coda di revisione
+  # < 0.75      -> RED: Rischio elevato / dubbio, richiede verifica d'ascolto umana

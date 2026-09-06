@@ -1,0 +1,161 @@
+"""
+Unit e integration test per rt_setup.py e la corretta comparsa progressiva degli artefatti.
+Verifica che rt_setup crei ESCLUSIVAMENTE i file sorgente e non artefatti di revisione/elaborazione.
+"""
+
+import os
+import json
+import subprocess
+import pytest
+from rt.pipeline.prepare import run_prepare
+from rt.pipeline.outline import run_outline
+from rt.pipeline.rewrite import run_rewrite
+from rt.pipeline.review_asr import run_review_asr
+from rt.pipeline.review_science import run_review_science
+from rt.pipeline.build import run_build
+
+
+def test_rt_setup_clean_initialization(tmp_path):
+    dest_dir = str(tmp_path)
+    
+    # 1. Creiamo un file audio fittizio
+    audio_file = os.path.join(dest_dir, "test_audio.m4a")
+    with open(audio_file, "wb") as f:
+        f.write(b"fake audio stream content")
+        
+    # 2. Eseguiamo rt_setup.py via subprocess con --skip-transcribe
+    cmd = [
+        "python3",
+        "rt_setup.py",
+        audio_file,
+        "-d", "2026-09-05",
+        "-m", "IMMUNOLOGIA",
+        "-a", "Risposta innata e complemento",
+        "-o", dest_dir,
+        "--skip-transcribe"
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"rt_setup.py fallito: {res.stderr}"
+    
+    folder_name = "[2026-09-05] IMMUNOLOGIA - Risposta innata e complemento"
+    lecture_dir = os.path.join(dest_dir, folder_name)
+    assert os.path.isdir(lecture_dir)
+    
+    # Per il test inseriamo anche trascritto grezzo.json (come prodotto da MacWhisper)
+    json_path = os.path.join(lecture_dir, "trascritto grezzo.json")
+    raw_mw_json = {
+        "segments": [
+            {"id": "s1", "start": 0, "end": 10000, "text": "Introduzione alla risposta innata."},
+            {"id": "s2", "start": 10000, "end": 25000, "text": "Le vie di attivazione del complemento."}
+        ]
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(raw_mw_json, f)
+        
+    # --- VERIFICA RIGOROSA DELLO STATO DOPO RT_SETUP ---
+    # FILE CHE DEVONO ESSERE PRESENTI
+    assert os.path.isfile(os.path.join(lecture_dir, "info.yaml")), "info.yaml deve essere presente"
+    assert os.path.isfile(os.path.join(lecture_dir, "trascritto grezzo.md")), "trascritto grezzo.md deve essere presente"
+    assert os.path.isfile(os.path.join(lecture_dir, "trascritto grezzo.json")), "trascritto grezzo.json deve essere presente"
+    assert os.path.isfile(os.path.join(lecture_dir, "test_audio.m4a")), "L'audio deve essere presente nella cartella"
+    
+    # FILE CHE DEVONO ESSERE TASSATIVAMENTE ASSENTI DOPO SETUP
+    forbidden_after_setup = [
+        "Errori concettuali.md",
+        "Revisioni ASR.md",
+        "pre-elaborato.md",
+        "rielaborato.md",
+        "segments.json",
+        "outline.json",
+        "draft.json",
+        "manifest.json",
+        "asr_issues.json",
+        "science_issues.json",
+        "review_decisions.json"
+    ]
+    for filename in forbidden_after_setup:
+        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} NON deve essere presente dopo rt_setup!"
+        
+    # --- PASSO 2: RT PREPARE ---
+    prep_res = run_prepare(lecture_dir)
+    assert prep_res["status"] == "prepared"
+    assert os.path.isfile(os.path.join(lecture_dir, "segments.json")), "segments.json deve essere creato solo da prepare"
+    assert os.path.isfile(os.path.join(lecture_dir, "transcript_normalized.md"))
+    assert os.path.isfile(os.path.join(lecture_dir, "manifest.json"))
+    
+    # Ancora assenti
+    for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md", "outline.json", "draft.json"]:
+        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} non deve esistere dopo prepare!"
+        
+    # --- PASSO 3: RT OUTLINE ---
+    out_res = run_outline(lecture_dir, force_mock=True)
+    assert out_res["status"] == "outline_validated"
+    assert os.path.isfile(os.path.join(lecture_dir, "outline.json")), "outline.json creato da outline"
+    
+    # Ancora assenti i file finali
+    for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md", "draft.json"]:
+        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} non deve esistere dopo outline!"
+        
+    # --- PASSO 4: RT REWRITE ---
+    rew_res = run_rewrite(lecture_dir, force_mock=True)
+    assert rew_res["status"] == "draft_validated"
+    assert os.path.isfile(os.path.join(lecture_dir, "draft.json")), "draft.json creato da rewrite"
+    for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md"]:
+        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} non deve esistere dopo rewrite!"
+        
+    # --- PASSO 5 & 6: REVIEWS ---
+    run_review_asr(lecture_dir, force_mock=True)
+    assert os.path.isfile(os.path.join(lecture_dir, "asr_issues.json"))
+    
+    run_review_science(lecture_dir, force_mock=True)
+    assert os.path.isfile(os.path.join(lecture_dir, "science_issues.json"))
+    
+    # I file Markdown finali sono ANCORA assenti prima del build
+    for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md"]:
+        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} deve comparire SOLO con rt build!"
+        
+    # --- PASSO 7: RT BUILD ---
+    bld_res = run_build(lecture_dir, rename_folder=False)
+    assert bld_res["status"] == "completed"
+    
+    # ORA e solo ora i file Markdown finali devono esistere
+    assert os.path.isfile(os.path.join(lecture_dir, "pre-elaborato.md"))
+    assert os.path.isfile(os.path.join(lecture_dir, "rielaborato.md"))
+    assert os.path.isfile(os.path.join(lecture_dir, "Revisioni ASR.md"))
+    assert os.path.isfile(os.path.join(lecture_dir, "Errori concettuali.md"))
+    assert os.path.isfile(os.path.join(lecture_dir, "Problemi scientifici.md"))
+
+
+def test_macwhisper_failure_hard_fails(tmp_path):
+    """
+    Verifica che un fallimento irreversibile di MacWhisper provochi l'arresto immediato (hard-fail)
+    sollevando SetupError, senza contrassegnare la lezione come completata o funzionante.
+    """
+    from unittest.mock import patch
+    from rt.pipeline.setup import run_setup, SetupError
+
+    dest_dir = str(tmp_path)
+    audio_file = os.path.join(dest_dir, "test_audio.wav")
+    with open(audio_file, "wb") as f:
+        f.write(b"RIFF audio fake")
+
+    # Mock per simulare fallimento MacWhisper CLI
+    failed_proc = subprocess.CompletedProcess(
+        args=["mw", "transcribe"],
+        returncode=1,
+        stdout="",
+        stderr="Error: Model weights corrupted or MacWhisper crash"
+    )
+
+    with patch("shutil.which", return_value="/usr/local/bin/mw"):
+        with patch("subprocess.run", return_value=failed_proc):
+            with pytest.raises(SetupError, match="Trascrizione MacWhisper JSON fallita"):
+                run_setup(
+                    audio=audio_file,
+                    date="2026-09-05",
+                    materia="PATOLOGIA",
+                    argomenti="Infiammazione",
+                    dest_dir=dest_dir,
+                    interactive=False
+                )
+
