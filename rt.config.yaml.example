@@ -1,6 +1,10 @@
 # ==============================================================================
-# rt.config.yaml - Configurazione Deterministica & LLM Routing Engine (RT 2.0)
+# rt.config.yaml.example - Template di Configurazione & LLM Routing Engine (RT 2.0)
 # ==============================================================================
+# Copiare questo file in 'rt.config.yaml' e personalizzare i parametri in base
+# alle proprie esigenze. Il file 'rt.config.yaml' è ignorato da git per proteggere
+# le impostazioni e le route locali.
+#
 # Controlla l'orchestrazione dei 4 job cognitivi (Outline, Rewrite, Review ASR,
 # Science Critic), il routing multi-provider, round-robin, failover mirato
 # (timeout, 429, safety, auth, generic) e il Confidence Gating.
@@ -72,14 +76,14 @@ jobs:
     primary:
       provider: "google"
       credential: "google_1"
-      model: "gemini-2.5-flash"
+      model: "gemini-3.5-flash-lite"
       thinking: true
       reasoning_effort: "high"
       timeout_seconds: 180
     secondary:
       provider: "google"
       credential: "google_2"
-      model: "gemini-2.5-flash"
+      model: "gemini-3.5-flash-lite"
       thinking: true
       reasoning_effort: "high"
       timeout_seconds: 180
@@ -88,17 +92,17 @@ jobs:
       safety:
         provider: "openrouter"
         credential: "openrouter"
-        model: "deepseek/deepseek-chat"
+        model: "deepseek/deepseek-v4-flash"
         thinking: true
         reasoning_effort: "high"
-        timeout_seconds: 180
+        timeout_seconds: 300
       rate_limit:
         provider: "openrouter"
         credential: "openrouter"
-        model: "deepseek/deepseek-chat"
+        model: "deepseek/deepseek-v4-flash"
         thinking: true
         reasoning_effort: "high"
-        timeout_seconds: 180
+        timeout_seconds: 300
       timeout:
         provider: "deepseek"
         credential: "deepseek"
@@ -109,17 +113,17 @@ jobs:
       auth:
         provider: "google"
         credential: "google_2"
-        model: "gemini-2.5-flash"
+        model: "gemini-3.5-flash-lite"
         thinking: true
         reasoning_effort: "high"
         timeout_seconds: 180
       generic:
         provider: "openrouter"
         credential: "openrouter"
-        model: "deepseek/deepseek-chat"
+        model: "deepseek/deepseek-v4-flash"
         thinking: true
         reasoning_effort: "high"
-        timeout_seconds: 180
+        timeout_seconds: 300
 
   # 3. REVIEW_ASR: Rilevamento errori fonetici e confidence gating
   review_asr:
@@ -163,12 +167,11 @@ jobs:
   review_science:
     round_robin: false
     max_attempts: 3
-    max_output_chars: 45000
+    max_output_chars: 80000
     primary:
-      provider: "openrouter"
-      credential: "openrouter"
-      model: "openrouter/free"
-      base_url: "https://openrouter.ai/api/v1"
+      provider: "google"
+      credential: "google_1"
+      model: "gemini-3.6-flash"
       thinking: true
       reasoning_effort: "high"
       max_thinking_tokens: 16392
@@ -176,9 +179,9 @@ jobs:
       timeout_seconds: 300
     fallback:
       rate_limit:
-        provider: "deepseek"
-        credential: "deepseek"
-        model: "deepseek-v4-flash"
+        provider: "google"
+        credential: "google_2"
+        model: "gemini-3.5-flash"
         thinking: true
         reasoning_effort: "high"
         timeout_seconds: 240

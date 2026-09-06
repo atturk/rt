@@ -1,4 +1,6 @@
-# Environments & secrets
+# Configuration & secrets
+rt.config.yaml
+!rt.config.yaml.example
 .env
 .env.*
 !.env.example
