@@ -17,6 +17,7 @@ class NormalizedResponse(BaseModel):
     finish_reason: Optional[str] = Field(default=None, description="Motivo di fine generazione (stop, length, ecc.)")
     provider: str = Field(description="Nome normalizzato del provider")
     model: str = Field(description="ID o nome del modello")
+    resolved_model: Optional[str] = Field(default=None, description="ID del modello realmente utilizzato dal provider (può differire dal modello richiesto, es. per router aggregatori come 'openrouter/free')")
     request_id: Optional[str] = Field(default=None, description="ID della richiesta fornito dal provider")
 
 
@@ -27,6 +28,7 @@ class StreamChunk(BaseModel):
     usage: Optional[Dict[str, Any]] = None
     finish_reason: Optional[str] = None
     request_id: Optional[str] = None
+    resolved_model: Optional[str] = None
 
 
 class BaseLLMProvider(ABC):

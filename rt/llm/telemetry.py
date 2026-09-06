@@ -17,6 +17,7 @@ class LLMTelemetryRecord(BaseModel):
     unit_id: Optional[str] = Field(default=None, description="Identificativo dell'unità didattica (se applicabile)")
     provider: str = Field(description="Nome del provider (deepseek, openrouter, google, mock)")
     model: str = Field(description="Nome o ID del modello utilizzato")
+    resolved_model: Optional[str] = Field(default=None, description="ID del modello realmente utilizzato dal provider (può differire dal modello richiesto, es. per router aggregatori come 'openrouter/free')")
 
     # Routing e Credenziali
     route_id: Optional[str] = Field(default=None, description="Identificatore deterministico provider|model|credential")

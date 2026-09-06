@@ -114,7 +114,8 @@ class OpenRouterProvider(BaseLLMProvider):
             reasoning_delta=reasoning_delta,
             usage=usage,
             finish_reason=finish_reason,
-            request_id=req_id
+            request_id=req_id,
+            resolved_model=chunk_dict.get("model")
         )
 
     def normalize_response(
@@ -142,5 +143,6 @@ class OpenRouterProvider(BaseLLMProvider):
             finish_reason=finish_reason,
             provider=self.name,
             model=model_name,
+            resolved_model=raw_json.get("model"),
             request_id=request_id or raw_json.get("id")
         )

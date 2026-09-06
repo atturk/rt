@@ -34,6 +34,8 @@ from rt.llm.errors import (
     ProviderServerFailure,
     SchemaFailure,
     OutputLimitFailure,
+    ReasoningRequiredFailure,
+    SuspiciousFastResponseFailure,
     classify_failure,
     LLMError,
     LLMTimeoutError,
@@ -41,6 +43,12 @@ from rt.llm.errors import (
 from rt.llm.router import RoutingEngine, ExecutionRoute
 
 T = TypeVar("T", bound=BaseModel)
+
+
+def _is_openrouter_free_tier(provider: str, model: str) -> bool:
+    p = (provider or "").lower().strip()
+    m = (model or "").strip()
+    return p == "openrouter" and (m == "openrouter/free" or m.endswith(":free"))
 
 
 class LLMClient:
@@ -84,7 +92,8 @@ class LLMClient:
         stream: Optional[bool] = None,
         show_monitor: Optional[bool] = None,
         max_timeout_retries: Optional[int] = None,
-        timeout_backoff_seconds: Optional[float] = None
+        timeout_backoff_seconds: Optional[float] = None,
+        min_elapsed_seconds: Optional[float] = None
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -279,12 +288,19 @@ class LLMClient:
                 timeout_seconds=timeout_seconds,
             )
 
-            # Sub-loop per same-route retry (unificata esclusivamente per timeout di rete sulla stessa route)
+            # Sub-loop per same-route retry (timeout di rete, low-effort reasoning/fast response, output-limit)
             route_timeout_attempt = 0
             total_route_timeout_attempts = 1 + max(0, route_max_timeout_retries)
+            route_timeout_retries = 0
+            low_effort_strikes = 0
+            MAX_LOW_EFFORT_RETRIES = 2  # 1 retry a config invariata + 1 tentativo di escalation con thinking forzato
+            output_limit_retries = 0
+            MAX_OUTPUT_LIMIT_RETRIES = 2  # fino a 2 retry aggiuntivi sulla stessa route, nessuna modifica ai parametri della richiesta
+            force_thinking_override = False
 
-            while route_timeout_attempt < total_route_timeout_attempts:
+            while route_timeout_attempt < (total_route_timeout_attempts + MAX_LOW_EFFORT_RETRIES + MAX_OUTPUT_LIMIT_RETRIES):
                 route_timeout_attempt += 1
+                resolved_model = None
                 t_attempt_start = time.time()
                 t_attempt_monotonic = time.monotonic()
                 deadline = (t_attempt_monotonic + timeout_seconds) if (timeout_seconds and timeout_seconds > 0) else None
@@ -296,7 +312,7 @@ class LLMClient:
                     model=model_name,
                     messages=list(messages),
                     max_tokens=route.max_tokens,
-                    thinking=route.thinking,
+                    thinking=(route.thinking or force_thinking_override),
                     reasoning_effort=route.reasoning_effort,
                     temperature=route.temperature,
                     response_format={"type": "json_object"},
@@ -416,6 +432,9 @@ class LLMClient:
                                     streamed_any_chunk = True
                                     if chunk.request_id and not req_id:
                                         req_id = chunk.request_id
+                                    if chunk.resolved_model:
+                                        resolved_model = chunk.resolved_model
+                                        monitor.set_resolved_model(resolved_model)
                                     if chunk.content_delta:
                                         content_parts.append(chunk.content_delta)
                                     if chunk.reasoning_delta:
@@ -495,6 +514,9 @@ class LLMClient:
                                         final_usage = norm.usage
                                         finish_reason = norm.finish_reason
                                         req_id = norm.request_id
+                                        if norm.resolved_model:
+                                            resolved_model = norm.resolved_model
+                                            monitor.set_resolved_model(resolved_model)
                                 except Exception:
                                     pass
 
@@ -542,6 +564,9 @@ class LLMClient:
                             final_usage = norm.usage
                             finish_reason = norm.finish_reason
                             req_id = norm.request_id
+                            if norm.resolved_model:
+                                resolved_model = norm.resolved_model
+                                monitor.set_resolved_model(resolved_model)
 
                         # Output explosion check per risposta intera
                         if max_output_chars and len(raw_content) > max_output_chars:
@@ -644,6 +669,20 @@ class LLMClient:
                                 model=model_name
                             )
 
+                        elapsed_att = time.time() - t_attempt_start
+                        if (
+                            min_elapsed_seconds is not None
+                            and elapsed_att < min_elapsed_seconds
+                            and _is_openrouter_free_tier(provider_name, model_name)
+                        ):
+                            raise SuspiciousFastResponseFailure(
+                                f"Risposta ricevuta in soli {elapsed_att:.2f}s da un modello free-tier ('{model_name}') "
+                                f"per il job '{job_name}' (soglia minima: {min_elapsed_seconds}s). "
+                                f"Probabile risposta a basso sforzo senza reasoning effettivo, scartata precauzionalmente.",
+                                provider=provider_name,
+                                model=model_name
+                            )
+
                         if deadline is not None and time.monotonic() >= deadline:
                             elapsed_att = time.time() - t_attempt_start
                             raise TimeoutFailure(
@@ -685,6 +724,7 @@ class LLMClient:
                             unit_id=unit_id,
                             provider=provider_name,
                             model=model_name,
+                            resolved_model=resolved_model,
                             route_id=route_id,
                             route_role=current_exec_route.route_role,
                             credential_ref=credential_ref,
@@ -734,6 +774,8 @@ class LLMClient:
                             OutputLimitFailure,
                             ProviderServerFailure,
                             NetworkFailure,
+                            ReasoningRequiredFailure,
+                            SuspiciousFastResponseFailure,
                             requests.exceptions.RequestException
                         )) or "timeout" in type(e).__name__.lower()
 
@@ -779,6 +821,7 @@ class LLMClient:
                     unit_id=unit_id,
                     provider=provider_name,
                     model=model_name,
+                    resolved_model=resolved_model,
                     route_id=route_id,
                     route_role=current_exec_route.route_role,
                     credential_ref=credential_ref,
@@ -802,12 +845,37 @@ class LLMClient:
                 )
                 GLOBAL_TELEMETRY.add(err_rec)
 
-                # Controllo Same-Route Retry (esclusivo per Timeout se configurato e bounded)
-                if isinstance(classified_failure, TimeoutFailure) and route_timeout_attempt < total_route_timeout_attempts:
+                # Controllo Same-Route Retry (Timeout, Low-Effort, Output-Limit totalmente indipendenti)
+                if isinstance(classified_failure, TimeoutFailure) and route_timeout_retries < max(0, route_max_timeout_retries):
+                    route_timeout_retries += 1
                     call_attempt += 1
                     monitor.log_timeout(elapsed_att, next_attempt=call_attempt)
-                    backoff = min(30.0, effective_backoff_sec * (2 ** (route_timeout_attempt - 1)))
+                    backoff = min(30.0, effective_backoff_sec * (2 ** (route_timeout_retries - 1)))
                     time.sleep(backoff)
+                    continue
+                elif (
+                    isinstance(classified_failure, (ReasoningRequiredFailure, SuspiciousFastResponseFailure))
+                    and low_effort_strikes < MAX_LOW_EFFORT_RETRIES
+                ):
+                    low_effort_strikes += 1
+                    escalate_now = low_effort_strikes >= MAX_LOW_EFFORT_RETRIES and not force_thinking_override
+                    if escalate_now:
+                        force_thinking_override = True
+                    call_attempt += 1
+                    fail_label = "suspicious_fast_response" if isinstance(classified_failure, SuspiciousFastResponseFailure) else "reasoning_required"
+                    reason_label = f"{fail_label}_escalation" if force_thinking_override else fail_label
+                    monitor.log_retry(
+                        reason=reason_label,
+                        elapsed=elapsed_att,
+                        next_attempt=call_attempt
+                    )
+                    time.sleep(1.5)
+                    continue
+                elif isinstance(classified_failure, OutputLimitFailure) and output_limit_retries < MAX_OUTPUT_LIMIT_RETRIES:
+                    output_limit_retries += 1
+                    call_attempt += 1
+                    monitor.log_retry(reason="output_limit_retry", elapsed=elapsed_att, next_attempt=call_attempt)
+                    time.sleep(1.5)
                     continue
                 else:
                     # Same-route retries esauriti o errore non soggetto a same-route retry

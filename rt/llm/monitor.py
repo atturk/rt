@@ -61,6 +61,11 @@ class LiveTerminalMonitor:
 
         self.is_tty = sys.stdout.isatty() if hasattr(sys.stdout, "isatty") else False
         self._rendered_lines = 0
+        self.resolved_model: Optional[str] = None
+
+    def set_resolved_model(self, resolved_model: Optional[str]) -> None:
+        """Imposta il modello risolto dal provider (se noto)."""
+        self.resolved_model = resolved_model
 
 
     def set_step(self, step: int, name: str, status: Optional[str] = None) -> None:
@@ -194,8 +199,10 @@ class LiveTerminalMonitor:
         lines.extend([
             f"Provider: {self.provider}",
             f"Model:    {self.model}",
-            f"Attempt:  {self.attempt}/{self.max_attempts}",
         ])
+        if self.resolved_model and self.resolved_model != self.model:
+            lines.append(f"Resolved: {self.resolved_model}")
+        lines.append(f"Attempt:  {self.attempt}/{self.max_attempts}")
         if self.timeout_seconds:
             lines.append(f"Timeout:  {self.timeout_seconds}s")
         lines.extend([
@@ -256,9 +263,22 @@ class LiveTerminalMonitor:
             print(f"Max attempts ({self.max_attempts}) reached. Operation failed.\n")
         sys.stdout.flush()
 
+    def log_retry(self, reason: str, elapsed: float, next_attempt: Optional[int] = None) -> None:
+        """Emette log visibile per un retry non-timeout sulla stessa route (es. reasoning_required)."""
+        if self.is_tty and self._rendered_lines > 0:
+            sys.stdout.write(f"\033[{self._rendered_lines}F\033[J")
+            self._rendered_lines = 0
+        print(f"\nRETRY ({reason}) after {elapsed:.1f}s")
+        if next_attempt is not None and next_attempt <= self.max_attempts:
+            print(f"Retrying same provider (attempt {next_attempt}/{self.max_attempts})...\n")
+        else:
+            print(f"Max attempts ({self.max_attempts}) reached. Operation failed.\n")
+        sys.stdout.flush()
+
     def reset_for_attempt(self, attempt: int) -> None:
         """Reimposta lo stato per un nuovo tentativo."""
         self.attempt = attempt
+        self.resolved_model = None
         self.start_time = time.time()
         self.step_num = 1
         self.step_name = "Preparing request"

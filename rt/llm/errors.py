@@ -94,6 +94,24 @@ class OutputLimitFailure(LLMFailure):
         self.failure_class = "output_limit"
 
 
+class ReasoningRequiredFailure(LLMFailure):
+    """Sollevata quando il provider richiede reasoning obbligatorio non configurato
+    (tipico di alcuni modelli specifici dietro router aggregatori come 'openrouter/free')."""
+    def __init__(self, message: str, **kwargs):
+        super().__init__(message, **kwargs)
+        self.failure_class = "reasoning_required"
+
+
+class SuspiciousFastResponseFailure(LLMFailure):
+    """Sollevata quando un modello free-tier (tipicamente dietro 'openrouter/free') restituisce
+    un risultato sintatticamente valido ma sospettosamente veloce, probabile segno di una
+    risposta 'lazy' senza reasoning effettivo (rilevante per job di analisi come review_asr/review_science,
+    dove un output minimale/vuoto è indistinguibile da un'analisi vera che non ha trovato nulla)."""
+    def __init__(self, message: str, **kwargs):
+        super().__init__(message, **kwargs)
+        self.failure_class = "suspicious_fast_response"
+
+
 class UnknownProviderFailure(LLMFailure):
     """Sollevata per errori imprevisti non mappabili in altre categorie."""
     def __init__(self, message: str, **kwargs):
@@ -234,6 +252,21 @@ def classify_failure(
     ):
         return SchemaFailure(
             err_str or "Errore conformità schema strutturato",
+            provider=provider,
+            model=model,
+            http_status=http_status
+        )
+
+    # 8.5 Reasoning obbligatorio non configurato (tipico di alcuni modelli dietro router 'xxx/free')
+    if (
+        http_status == 400 and (
+            "reasoning is mandatory" in err_str.lower() or
+            "reasoning is required" in err_str.lower() or
+            ("reasoning" in err_str.lower() and "cannot be disabled" in err_str.lower())
+        )
+    ):
+        return ReasoningRequiredFailure(
+            err_str or "Il modello selezionato richiede reasoning obbligatorio non configurato",
             provider=provider,
             model=model,
             http_status=http_status

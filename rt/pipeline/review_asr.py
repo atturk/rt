@@ -170,7 +170,8 @@ def run_review_asr(
             system_prompt=ASR_REVIEW_SYSTEM_PROMPT,
             response_model=ASRIssueList,
             job_name="review_asr",
-            unit_id=batch_label
+            unit_id=batch_label,
+            min_elapsed_seconds=5.0
         )
         
         # Applicazione deterministica dei livelli di confidenza da configurazione
