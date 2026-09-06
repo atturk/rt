@@ -12,7 +12,7 @@ import re
 from typing import Dict, List, Optional, Any
 from rt.core.models import (
     Outline, Draft, SegmentsData, Segment,
-    ASRIssue, ScienceIssue, ReviewDecision, DecisionLedger
+    ASRIssue, ScienceIssue, DecisionLedger
 )
 from rt.core.timestamp import format_timestamp
 from rt.core.encoding import fix_mojibake
@@ -368,7 +368,8 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
             "named_file": named_filepath,
             "revisioni_asr": os.path.join(lesson_dir, "Revisioni ASR.md"),
             "errori_concettuali": os.path.join(lesson_dir, "Errori concettuali.md"),
-            "problemi_scientifici": os.path.join(lesson_dir, "Problemi scientifici.md")
+            "problemi_scientifici": os.path.join(lesson_dir, "Problemi scientifici.md"),
+            "telemetry_summary": os.path.join(lesson_dir, "telemetry_summary.json")
         }
 
     action = "FORCE" if force else "RUN"
@@ -462,6 +463,11 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         current_state=WorkflowState.COMPLETED.value
     )
     
+    # 10. Persistenza atomica della telemetria su disco
+    from rt.llm.telemetry import GLOBAL_TELEMETRY
+    telemetry_file = os.path.join(current_dir, "telemetry_summary.json")
+    GLOBAL_TELEMETRY.export_to_file(telemetry_file)
+
     return {
         "status": "completed",
         "action": action,
@@ -473,5 +479,6 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         "named_file": named_filepath,
         "revisioni_asr": os.path.join(current_dir, "Revisioni ASR.md"),
         "errori_concettuali": os.path.join(current_dir, "Errori concettuali.md"),
-        "problemi_scientifici": os.path.join(current_dir, "Problemi scientifici.md")
+        "problemi_scientifici": os.path.join(current_dir, "Problemi scientifici.md"),
+        "telemetry_summary": telemetry_file
     }

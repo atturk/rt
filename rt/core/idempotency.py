@@ -5,13 +5,11 @@ freschezza degli artefatti e invalidazione a cascata nel workflow RT 2.0.
 """
 
 import os
-import json
 import hashlib
 from enum import Enum
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple, List
 
-from rt.core.models import Manifest
 from rt.core.manifest import load_manifest, save_manifest
 
 

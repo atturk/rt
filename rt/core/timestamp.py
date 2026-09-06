@@ -7,7 +7,6 @@ Normalizza internamente tutti i riferimenti temporali in secondi (float).
 from typing import Tuple
 import re
 
-TIMECODE_PATTERN = re.compile(r"^(?:(?:(\d{1,2}):)?(\d{1,2}):)?(\d{1,2})(?:\.(\d+))?$")
 INTERVAL_PATTERN = re.compile(r"^((?:\d{1,2}:)?\d{1,2}:\d{2})\s*[-–—]\s*((?:\d{1,2}:)?\d{1,2}:\d{2})$")
 
 

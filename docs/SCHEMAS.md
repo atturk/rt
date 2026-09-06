@@ -186,6 +186,73 @@ Registro di riproducibilità tecnica della lezione.
   "coverage_stats": {
     "total_segments": 499,
     "coverage_percentage": 100.0
+  },
+  "phase_records": {
+    "outline": {
+      "source_fingerprint": "a1b2c3d4e5f6...",
+      "processor_version": "2.0.0",
+      "artifact_fingerprints": {
+        "outline.json": "f6e5d4c3b2a1..."
+      },
+      "completed_items": [],
+      "status": "valid",
+      "stale_reason": null,
+      "unit_fingerprints": {},
+      "updated_at": "2026-09-05T18:00:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+## 8. `telemetry_summary.json`
+
+Riepilogo aggregato dei consumi token, costi stimati e ripartizione per job e provider, scritto atomicamente a conclusione del workflow nella cartella della lezione (`lesson_dir`).
+
+```json
+{
+  "total_requests": 5,
+  "total_input_tokens": 4500,
+  "total_output_tokens": 1800,
+  "total_reasoning_tokens": 1200,
+  "total_tokens": 6300,
+  "total_estimated_cost_usd": 0.00142,
+  "by_job": {
+    "outline": {
+      "requests": 1,
+      "input_tokens": 1500,
+      "output_tokens": 400,
+      "reasoning_tokens": 200,
+      "total_tokens": 1900,
+      "estimated_cost_usd": 0.00035
+    },
+    "rewrite": {
+      "requests": 4,
+      "input_tokens": 3000,
+      "output_tokens": 1400,
+      "reasoning_tokens": 1000,
+      "total_tokens": 4400,
+      "estimated_cost_usd": 0.00107
+    }
+  },
+  "by_provider": {
+    "openrouter": {
+      "requests": 1,
+      "input_tokens": 1500,
+      "output_tokens": 400,
+      "reasoning_tokens": 200,
+      "total_tokens": 1900,
+      "estimated_cost_usd": 0.00035
+    },
+    "google": {
+      "requests": 4,
+      "input_tokens": 3000,
+      "output_tokens": 1400,
+      "reasoning_tokens": 1000,
+      "total_tokens": 4400,
+      "estimated_cost_usd": 0.00107
+    }
   }
 }
 ```

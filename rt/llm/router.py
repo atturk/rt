@@ -11,7 +11,7 @@ Responsabilità:
 """
 
 import threading
-from typing import Dict, Optional, Set, Any
+from typing import Dict, Optional, Set
 from pydantic import BaseModel
 
 from rt.core.config import RTConfig, JobRoutingConfig, RouteConfig

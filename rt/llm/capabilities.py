@@ -22,7 +22,7 @@ _DEFAULT_CAPABILITIES: Dict[str, ProviderCapabilities] = {
         structured_output=True,
         reasoning=True,
         max_output_tokens=True,
-        supports_temperature=False  # DeepSeek official: in thinking mode temperature is ignored or prohibited
+        supports_temperature=True  # In standard chat mode temperature is supported; disabled in thinking mode
     ),
     "openrouter": ProviderCapabilities(
         streaming=True,
@@ -38,16 +38,16 @@ _DEFAULT_CAPABILITIES: Dict[str, ProviderCapabilities] = {
         max_output_tokens=True,
         supports_temperature=True
     ),
-    "mock": ProviderCapabilities(
-        streaming=True,
-        structured_output=True,
-        reasoning=True,
-        max_output_tokens=True,
-        supports_temperature=True
-    ),
 }
 
 
-def get_capabilities(provider_name: str) -> ProviderCapabilities:
+def get_capabilities(provider_name: str, thinking_mode: bool = False) -> ProviderCapabilities:
+    """
+    Restituisce le capacità formali del provider, tenendo conto dell'eventuale modalità operativa.
+    Per DeepSeek, supports_temperature è disabilitato in modalità reasoning (thinking_mode=True).
+    """
     clean = provider_name.lower().strip()
-    return _DEFAULT_CAPABILITIES.get(clean, ProviderCapabilities())
+    caps = _DEFAULT_CAPABILITIES.get(clean, ProviderCapabilities()).model_copy()
+    if clean == "deepseek" and thinking_mode:
+        caps.supports_temperature = False
+    return caps

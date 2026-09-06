@@ -11,10 +11,10 @@ Salva asr_issues.json.
 import os
 import json
 from typing import Dict, Any, List
-from rt.core.models import ASRIssue, ASRLevel, SegmentsData
+from rt.core.models import ASRIssue, ASRLevel
 from rt.core.segments import load_segments_json
 from rt.core.config import load_config
-from rt.core.state import read_info_yaml, transition_to, WorkflowState
+from rt.core.state import transition_to, WorkflowState
 from rt.llm.client import LLMClient
 from rt.llm.prompts import ASR_REVIEW_SYSTEM_PROMPT, build_asr_review_user_prompt, ASRIssueList
 from rt.pipeline.ledger import record_decision

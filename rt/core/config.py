@@ -17,6 +17,13 @@ class LLMRetryConfig(BaseModel):
     timeout_backoff_seconds: float = Field(default=2.0, description="Secondi di attesa (backoff) tra un tentativo e il successivo")
 
 
+KNOWN_PROVIDER_DEFAULT_BASE_URLS: Dict[str, str] = {
+    "deepseek": "https://api.deepseek.com",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+}
+
+
 class RouteConfig(BaseModel):
     """Configurazione atomica di una singola route di esecuzione (provider, model, credenziale)."""
     route_id: Optional[str] = Field(default=None, description="Identificativo univoco della route")
@@ -39,11 +46,26 @@ class RouteConfig(BaseModel):
         """Validazione config-time delle route."""
         from rt.llm.credentials import GLOBAL_CREDENTIALS
         clean_p = self.provider.lower().strip()
-        allowed_providers = {"deepseek", "openrouter", "google", "mock"}
+        allowed_providers = {"deepseek", "openrouter", "google"}
         if clean_p not in allowed_providers:
             raise ValueError(f"Provider LLM non supportato: '{self.provider}'. Provider ammessi: {sorted(allowed_providers)}")
         if not self.model or not str(self.model).strip():
             raise ValueError(f"Il modello per il provider '{self.provider}' non può essere vuoto.")
+
+        # Validazione difensiva anti-mismatch/copia-incolla per base_url
+        if self.base_url:
+            clean_url = str(self.base_url).strip().rstrip("/")
+            for other_prov, default_url in KNOWN_PROVIDER_DEFAULT_BASE_URLS.items():
+                if clean_url == default_url.rstrip("/"):
+                    if other_prov != clean_p:
+                        raise ValueError(
+                            f"base_url '{self.base_url}' corrisponde all'endpoint di default del provider '{other_prov}', "
+                            f"ma la route dichiara provider='{self.provider}'. Probabile errore di copia-incolla: "
+                            f"rimuovi base_url per usare l'endpoint corretto di '{self.provider}', "
+                            f"oppure impostane uno realmente specifico per questo provider."
+                        )
+                    break
+
         if self.credential:
             clean_c = self.credential.lower().strip()
             if not GLOBAL_CREDENTIALS.validate_credential(clean_p, clean_c):

@@ -61,9 +61,6 @@ class CredentialRegistry:
         if set_default_for_provider or clean_provider not in self._provider_defaults:
             self._provider_defaults[clean_provider] = clean_name
 
-    def get_credential_ref(self, credential_name: str) -> Optional[CredentialRef]:
-        return self._credentials.get(credential_name.lower().strip())
-
     def get_default_credential_for_provider(self, provider: str) -> Optional[str]:
         return self._provider_defaults.get(provider.lower().strip())
 

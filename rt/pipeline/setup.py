@@ -560,11 +560,8 @@ stato: {current_status}
     }
 
 
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Workflow accademico RT: Setup cartella, trascrizione MacWhisper e metadati YAML."
-    )
+def configure_setup_parser(parser: Any) -> Any:
+    """Configura la definizione unificata degli argomenti CLI per il comando setup."""
     parser.add_argument("audio", nargs="*", help="Uno o più percorsi di file audio da trascrivere")
     parser.add_argument("-d", "--date", help="Data della lezione (es. '2026-09-05', '26 sett 2025', '3 marzo 2024')")
     parser.add_argument("-m", "--materia", help="Nome della materia (es. BIOCHIMICA, BIOINFORMATICA)")
@@ -574,7 +571,15 @@ def main():
     parser.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
     parser.add_argument("--force", action="store_true", help="Forza la riscrittura della cartella se già esistente")
     parser.add_argument("--mock", action="store_true", help="Usa mock deterministico ASR per test offline")
+    return parser
 
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Workflow accademico RT: Setup cartella, trascrizione MacWhisper e metadati YAML."
+    )
+    configure_setup_parser(parser)
     args = parser.parse_args()
 
     try:

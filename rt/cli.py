@@ -717,22 +717,14 @@ def cmd_run(args):
 
 def main():
     load_env_file(override=True)
-    from rt.pipeline.setup import DEFAULT_MODEL
+    from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
     parser = argparse.ArgumentParser(prog="rt", description="Academic Lecture Transcription & Reconstruction Workflow")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # setup
     p_set = subparsers.add_parser("setup", help="Esegue l'ingest di file audio, trascrizione MacWhisper e metadati")
-    p_set.add_argument("audio", nargs="*", help="File audio da trascrivere")
-    p_set.add_argument("-d", "--date", help="Data della lezione (es. '2026-09-05', '26 sett 2025')")
-    p_set.add_argument("-m", "--materia", help="Nome della materia (es. BIOCHIMICA)")
-    p_set.add_argument("-a", "--argomenti", help="Argomenti trattati")
-    p_set.add_argument("-o", "--dest-dir", help="Directory base di destinazione")
-    p_set.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello MacWhisper (default: {DEFAULT_MODEL})")
-    p_set.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
-    p_set.add_argument("--force", action="store_true", help="Forza la riscrittura della cartella se già esistente")
-    p_set.add_argument("--mock", action="store_true", help="Usa mock deterministico ASR per test offline")
+    configure_setup_parser(p_set)
     p_set.set_defaults(func=cmd_setup)
 
     # prepare

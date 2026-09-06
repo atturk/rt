@@ -22,14 +22,15 @@ class SampleModel(BaseModel):
 
 def test_config_defaults_and_yaml_parsing():
     """Verifica che la configurazione imposti correttamente tutti i 4 job."""
-    cfg = load_config()
+    cfg_file = "rt.config.yaml.example" if os.path.exists("rt.config.yaml.example") else None
+    cfg = load_config(cfg_file)
     assert cfg.version == "2.0.0"
     assert cfg.mock_llm is False
 
     for job_name in ["outline", "rewrite", "review_asr", "review_science"]:
         job_cfg = cfg.llm.get(job_name)
         assert job_cfg is not None, f"Job {job_name} non configurato!"
-        assert job_cfg.provider in ("deepseek", "openrouter", "google", "mock")
+        assert job_cfg.provider in ("deepseek", "openrouter", "google")
         assert isinstance(job_cfg.model, str) and len(job_cfg.model) > 0
         expected_effort = "high" if job_name in ("rewrite", "review_science") else "low"
 
@@ -137,6 +138,7 @@ def test_client_request_construction_openrouter_flash_0731(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", test_key)
 
     client = LLMClient(force_mock=False)
+    client.config.llm["outline"].reasoning_effort = "low"
 
     captured_url = None
     captured_headers = None
@@ -475,4 +477,86 @@ def test_bug_case_e_schema_invalid_content_triggers_repair(monkeypatch):
     assert call_count == 2, "Il client doveva effettuare il retry di repair!"
     assert res.summary == "Riparato con successo"
     assert res.item_count == 10
+
+
+def test_deepseek_build_payload_respects_capabilities():
+    """
+    Verifica che DeepSeekProvider.build_payload consulti get_capabilities()
+    in base alla modalità thinking:
+    - con thinking=False e temperature=0.7: supports_temperature=True, payload contiene 'temperature': 0.7
+    - con thinking=True e temperature=0.7: supports_temperature=False, 'temperature' è assente
+    """
+    from rt.llm.providers.deepseek import DeepSeekProvider
+    from rt.llm.capabilities import get_capabilities
+
+    provider = DeepSeekProvider()
+    caps_chat = get_capabilities("deepseek", thinking_mode=False)
+    assert caps_chat.supports_temperature is True
+
+    caps_thinking = get_capabilities("deepseek", thinking_mode=True)
+    assert caps_thinking.supports_temperature is False
+
+    # Con thinking=False e temperature=0.7, il payload DEVE contenere "temperature": 0.7
+    payload_chat = provider.build_payload(
+        model="deepseek-chat",
+        messages=[{"role": "user", "content": "hello"}],
+        thinking=False,
+        temperature=0.7
+    )
+    assert payload_chat.get("temperature") == 0.7
+    assert payload_chat.get("thinking") == {"type": "disabled"}
+
+    # Con thinking=True e temperature=0.7, temperature DEVE restare assente indipendentemente dal valore
+    payload_thinking = provider.build_payload(
+        model="deepseek-reasoner",
+        messages=[{"role": "user", "content": "hello"}],
+        thinking=True,
+        temperature=0.7
+    )
+    assert "temperature" not in payload_thinking, "temperature deve restare assente in thinking mode"
+    assert payload_thinking.get("thinking") == {"type": "enabled"}
+
+
+def test_base_url_validation_cross_provider_mismatch():
+    """
+    Verifica che RouteConfig impedisca configurazioni errate dovute a copia-incolla
+    di base_url tra provider diversi, consentendo endpoint corretti, None o custom.
+    """
+    from rt.core.config import RouteConfig
+    from rt.llm.providers import get_provider
+
+    # 1. Route openrouter senza base_url: continua a funzionare e risolve l'endpoint corretto
+    rc_or = RouteConfig(provider="openrouter", model="openrouter/free")
+    assert rc_or.base_url is None
+    p_or = get_provider(rc_or.provider)
+    assert p_or.get_endpoint(rc_or.base_url) == "https://openrouter.ai/api/v1/chat/completions"
+
+    # 2. Route google con base_url deepseek: solleva ValueError alla costruzione di RouteConfig
+    with pytest.raises(ValueError) as exc_info_google:
+        RouteConfig(provider="google", model="gemini-2.5-flash", base_url="https://api.deepseek.com")
+    assert "corrisponde all'endpoint di default del provider 'deepseek'" in str(exc_info_google.value)
+    assert "provider='google'" in str(exc_info_google.value)
+
+    # 3. Route deepseek con base_url openrouter: solleva ValueError allo stesso modo
+    with pytest.raises(ValueError) as exc_info_ds:
+        RouteConfig(provider="deepseek", model="deepseek-chat", base_url="https://openrouter.ai/api/v1")
+    assert "corrisponde all'endpoint di default del provider 'openrouter'" in str(exc_info_ds.value)
+    assert "provider='deepseek'" in str(exc_info_ds.value)
+
+    # 4. Route con base_url custom non riconducibile a provider noti: accettata senza errori
+    rc_proxy_google = RouteConfig(
+        provider="google",
+        model="gemini-2.5-flash",
+        base_url="https://my-internal-proxy.example.com/v1"
+    )
+    assert rc_proxy_google.base_url == "https://my-internal-proxy.example.com/v1"
+
+    rc_proxy_ds = RouteConfig(
+        provider="deepseek",
+        model="deepseek-chat",
+        base_url="https://my-internal-proxy.example.com/v1"
+    )
+    assert rc_proxy_ds.base_url == "https://my-internal-proxy.example.com/v1"
+
+
 

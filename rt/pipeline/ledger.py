@@ -9,7 +9,7 @@ import re
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
-from rt.core.models import DecisionLedger, ReviewDecision, ASRIssue, ScienceIssue, Draft, SegmentsData
+from rt.core.models import DecisionLedger, ReviewDecision, ASRIssue, ScienceIssue, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 
 

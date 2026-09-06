@@ -13,11 +13,11 @@ import json
 import re
 import time
 import datetime
-from typing import Type, TypeVar, Optional, Dict, Any, List, Set
+from typing import Type, TypeVar, Optional, List, Set
 import requests
 from pydantic import BaseModel
 
-from rt.core.config import load_config, get_api_key, LLMModelConfig, RouteConfig, JobRoutingConfig
+from rt.core.config import load_config, RouteConfig, JobRoutingConfig
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.llm.providers import get_provider
 from rt.llm.pricing import calculate_cost
@@ -34,7 +34,6 @@ from rt.llm.errors import (
     ProviderServerFailure,
     SchemaFailure,
     OutputLimitFailure,
-    UnknownProviderFailure,
     classify_failure,
     LLMError,
     LLMTimeoutError,
@@ -69,11 +68,6 @@ class LLMClient:
                 timeout_seconds=180
             )
         )
-
-    def _get_model_config(self, job_name: str) -> RouteConfig:
-        """Restituisce la configurazione della route primaria (retrocompatibilità con test e codice esistente)."""
-        job_cfg = self._get_job_routing_config(job_name)
-        return job_cfg.primary
 
     def call_structured(
         self,
@@ -155,8 +149,6 @@ class LLMClient:
                     b_url = "https://api.deepseek.com"
                 else:
                     b_url = None
-            if prov == "openrouter" and (not b_url or b_url == "https://api.deepseek.com"):
-                b_url = "https://openrouter.ai/api/v1"
 
             cred = override_credential or (primary_cfg.credential if prov == primary_cfg.provider else None)
             try:
@@ -224,9 +216,6 @@ class LLMClient:
             model_name = route.model.strip()
             credential_ref = route.credential or GLOBAL_CREDENTIALS.get_default_credential_for_provider(provider_name) or provider_name
             base_url = route.base_url
-
-            if provider_name == "openrouter" and (not base_url or base_url == "https://api.deepseek.com"):
-                base_url = "https://openrouter.ai/api/v1"
 
             # Risoluzione provider adapter
             try:
@@ -437,14 +426,14 @@ class LLMClient:
                                     # ------------------------------------------------------------------
                                     # OUTPUT EXPLOSION GUARD (Sezione 23 & Revisione Specifica)
                                     # ------------------------------------------------------------------
-                                    accumulated_chars = sum(len(p) for p in content_parts) + sum(len(r) for r in reasoning_parts)
-                                    if max_output_chars and accumulated_chars > max_output_chars:
+                                    accumulated_content_chars = sum(len(p) for p in content_parts)
+                                    if max_output_chars and accumulated_content_chars > max_output_chars:
                                         try:
                                             response.close()
                                         except Exception:
                                             pass
                                         raise OutputLimitFailure(
-                                            f"Output explosion guard attivata: ricevuti {accumulated_chars} caratteri, "
+                                            f"Output explosion guard attivata: ricevuti {accumulated_content_chars} caratteri, "
                                             f"superando il limite rigido di {max_output_chars} caratteri configurato per '{job_name}'.",
                                             provider=provider_name,
                                             model=model_name
@@ -865,7 +854,7 @@ class LLMClient:
             Outline, OutlineMacro, OutlineUnit,
             Draft, DraftUnit,
             ASRIssue, ASRLevel,
-            ScienceIssue, ScienceType, ScienceSeverity
+            ScienceIssue
         )
 
         model_name = response_model.__name__

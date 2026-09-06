@@ -4,7 +4,6 @@ Modello e gestione normalizzata della telemetria delle chiamate LLM.
 Ogni richiesta produce un record strutturato con latenza, token, costo stimato e stato.
 """
 
-import time
 import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
@@ -91,10 +90,6 @@ class TelemetryStore:
             return [r for r in self._records if r.job == job]
         return list(self._records)
 
-    def get_records(self, job: Optional[str] = None) -> List[LLMTelemetryRecord]:
-        """Alias per get_all."""
-        return self.get_all(job=job)
-
     def clear(self) -> None:
         self._records.clear()
 
@@ -105,6 +100,46 @@ class TelemetryStore:
         total_tok = sum(r.total_tokens or 0 for r in self._records)
         total_cost = sum(r.estimated_cost or 0.0 for r in self._records)
 
+        by_job: Dict[str, Dict[str, Any]] = {}
+        by_provider: Dict[str, Dict[str, Any]] = {}
+
+        for r in self._records:
+            # Raggruppamento per job
+            j = r.job
+            if j not in by_job:
+                by_job[j] = {
+                    "requests": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                }
+            by_job[j]["requests"] += 1
+            by_job[j]["input_tokens"] += r.input_tokens or 0
+            by_job[j]["output_tokens"] += r.output_tokens or 0
+            by_job[j]["reasoning_tokens"] += r.reasoning_tokens or 0
+            by_job[j]["total_tokens"] += r.total_tokens or 0
+            by_job[j]["estimated_cost_usd"] = round(by_job[j]["estimated_cost_usd"] + (r.estimated_cost or 0.0), 6)
+
+            # Raggruppamento per provider
+            p = r.provider
+            if p not in by_provider:
+                by_provider[p] = {
+                    "requests": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                }
+            by_provider[p]["requests"] += 1
+            by_provider[p]["input_tokens"] += r.input_tokens or 0
+            by_provider[p]["output_tokens"] += r.output_tokens or 0
+            by_provider[p]["reasoning_tokens"] += r.reasoning_tokens or 0
+            by_provider[p]["total_tokens"] += r.total_tokens or 0
+            by_provider[p]["estimated_cost_usd"] = round(by_provider[p]["estimated_cost_usd"] + (r.estimated_cost or 0.0), 6)
+
         return {
             "total_requests": len(self._records),
             "total_input_tokens": total_in,
@@ -112,7 +147,22 @@ class TelemetryStore:
             "total_reasoning_tokens": total_reas,
             "total_tokens": total_tok,
             "total_estimated_cost_usd": round(total_cost, 6),
+            "by_job": by_job,
+            "by_provider": by_provider,
         }
+
+    def export_to_file(self, target_path: str) -> None:
+        """Salva il riepilogo della telemetria su disco in modo atomico (file temporaneo + os.replace)."""
+        import json
+        import os
+        summary_data = self.get_summary()
+        target_dir = os.path.dirname(os.path.abspath(target_path))
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir, exist_ok=True)
+        tmp_path = target_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, target_path)
 
 
 # Istanza singleton di telemetria globale per la sessione

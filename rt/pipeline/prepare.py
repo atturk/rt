@@ -11,16 +11,14 @@ Fase A: PREPARE (Completamente deterministica).
 """
 
 import os
-import json
-from typing import Dict, Any, Tuple
-from rt.core.models import SegmentsData, Segment
+from typing import Dict, Any
 from rt.core.segments import (
     parse_segments_from_json,
     parse_segments_from_markdown,
     save_segments_json,
     export_normalized_transcript_md
 )
-from rt.core.state import read_info_yaml, update_info_yaml, transition_to, WorkflowState
+from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import init_or_update_manifest
 from rt.core.idempotency import (
     PhaseStatus,

@@ -6,7 +6,7 @@ come ISO-8859-1 / Windows-1252 da endpoint HTTP o proxy come OpenRouter).
 """
 
 import re
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 
 # Sequenze UTF-8 tipiche a 2 byte (U+00C2-U+00DF seguito da continuation byte U+0080-U+00BF)

@@ -14,9 +14,7 @@ class WorkflowState(str, Enum):
     METADATA_ONLY = "metadata_only"
     SETUP_COMPLETED = "setup_completato"
     PREPARED = "preparato"
-    OUTLINE_READY = "outline_generata"
     OUTLINE_VALIDATED = "outline_validata"
-    DRAFT_READY = "draft_generato"
     DRAFT_VALIDATED = "draft_validato"
     ASR_REVIEW_READY = "revisione_asr_completata"
     SCIENCE_REVIEW_READY = "revisione_scientifica_completata"
@@ -30,10 +28,8 @@ class WorkflowState(str, Enum):
 VALID_TRANSITIONS = {
     WorkflowState.METADATA_ONLY: {WorkflowState.SETUP_COMPLETED, WorkflowState.PREPARED, WorkflowState.FAILED},
     WorkflowState.SETUP_COMPLETED: {WorkflowState.PREPARED, WorkflowState.FAILED},
-    WorkflowState.PREPARED: {WorkflowState.OUTLINE_READY, WorkflowState.OUTLINE_VALIDATED, WorkflowState.PREPARED, WorkflowState.FAILED},
-    WorkflowState.OUTLINE_READY: {WorkflowState.OUTLINE_VALIDATED, WorkflowState.OUTLINE_READY, WorkflowState.FAILED},
-    WorkflowState.OUTLINE_VALIDATED: {WorkflowState.DRAFT_READY, WorkflowState.DRAFT_VALIDATED, WorkflowState.OUTLINE_READY, WorkflowState.FAILED},
-    WorkflowState.DRAFT_READY: {WorkflowState.DRAFT_VALIDATED, WorkflowState.DRAFT_READY, WorkflowState.FAILED},
+    WorkflowState.PREPARED: {WorkflowState.OUTLINE_VALIDATED, WorkflowState.PREPARED, WorkflowState.FAILED},
+    WorkflowState.OUTLINE_VALIDATED: {WorkflowState.DRAFT_VALIDATED, WorkflowState.OUTLINE_VALIDATED, WorkflowState.FAILED},
     WorkflowState.DRAFT_VALIDATED: {WorkflowState.ASR_REVIEW_READY, WorkflowState.FAILED},
     WorkflowState.ASR_REVIEW_READY: {WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
     WorkflowState.SCIENCE_REVIEW_READY: {WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
