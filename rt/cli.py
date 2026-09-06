@@ -835,7 +835,32 @@ def main():
 
     normalized_argv = normalize_review_cli_args(sys.argv[1:])
     args = parser.parse_args(normalized_argv)
-    args.func(args)
+    from rt.llm.errors import LLMFailure
+    try:
+        args.func(args)
+    except LLMFailure as e:
+        print("\n" + "=" * 60, file=sys.stderr)
+        print("❌ ESECUZIONE INTERROTTA: errore LLM non recuperabile", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        print(f"\n{e}\n", file=sys.stderr)
+        failure_class = getattr(e, "failure_class", None)
+        if failure_class:
+            print(f"Classe di errore: {failure_class}", file=sys.stderr)
+        provider = getattr(e, "provider", None)
+        model = getattr(e, "model", None)
+        if provider or model:
+            print(f"Provider/modello: {provider or '?'} / {model or '?'}", file=sys.stderr)
+        print(
+            "\nLa pipeline non ha trovato (o non ha configurato) una route alternativa per "
+            "questo errore. Puoi:\n"
+            "  - Rilanciare lo stesso comando: la pipeline riprende dal checkpoint salvato e, "
+            "trattandosi spesso di provider stocastici (es. 'openrouter/free'), un nuovo tentativo "
+            "può avere esito diverso;\n"
+            "  - Modificare 'rt.config.yaml' per il job coinvolto (es. aumentare 'max_output_chars', "
+            "cambiare modello, o aggiungere un blocco 'fallback' se disponibile un'alternativa).\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

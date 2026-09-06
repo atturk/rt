@@ -490,11 +490,11 @@ def test_output_explosion_guard_streaming_abort(monkeypatch):
             )
 
     assert "Output explosion guard attivata" in str(exc_info.value)
-    # Verifica telemetria per output_limit
+    # Verifica telemetria per output_limit (1 primario + 2 same-route retries)
     records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_runaway"]
-    assert len(records) == 1
-    assert records[0].failure_class == "output_limit"
-    assert records[0].output_chars > 300
+    assert len(records) == 3
+    assert all(r.failure_class == "output_limit" for r in records)
+    assert all(r.output_chars > 300 for r in records)
 
 
 def test_output_explosion_guard_streaming_ignores_reasoning(monkeypatch):
