@@ -349,3 +349,112 @@ def test_empty_config_dir_fallback(tmp_path, monkeypatch):
 
     assert cfg.version == "2.0.0"
     assert "outline" in cfg.jobs
+
+
+def test_load_config_no_fallback_without_config_dir(tmp_path, monkeypatch):
+    """
+    9. Verificare che load_config() (senza path, con monkeypatch.chdir su una tmp_path
+    che contiene rt.config.yaml con un valore distintivo ma NESSUNA cartella config/)
+    restituisca i default di RTConfig(), NON i valori di quel file (fallback rimosso).
+    """
+    single_file = tmp_path / "rt.config.yaml"
+    single_file.write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config()
+
+    # Deve restituire il default (7) e non 99
+    assert cfg.pricing_staleness_warning_days == 7
+
+
+def test_load_config_explicit_path_still_works(tmp_path):
+    """
+    10. Verificare che load_config(path_esplicito) continui a funzionare esattamente
+    come prima anche se punta a un file chiamato rt.config.yaml.
+    """
+    single_file = tmp_path / "rt.config.yaml"
+    single_file.write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+
+    cfg = load_config(str(single_file))
+    assert cfg.pricing_staleness_warning_days == 99
+
+
+def test_cli_commands_exit_when_no_config_dir_and_not_mock(tmp_path, monkeypatch, capsys):
+    """
+    11. Per ciascuno dei 5 comandi CLI (cmd_outline, cmd_rewrite, cmd_review_asr,
+    cmd_review_science, cmd_run): verificare SystemExit(1) e messaggio su stderr se config/ manca.
+    """
+    import argparse
+    from rt.cli import cmd_outline, cmd_rewrite, cmd_review_asr, cmd_review_science, cmd_run
+
+    monkeypatch.chdir(tmp_path)
+
+    cli_commands = [
+        (cmd_outline, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
+        (cmd_rewrite, argparse.Namespace(lesson_dir=str(tmp_path), unit=None, force=False, mock=False)),
+        (cmd_review_asr, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
+        (cmd_review_science, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
+        (cmd_run, argparse.Namespace(input=str(tmp_path), force=False, mock=False, date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False)),
+    ]
+
+    for cmd_func, args in cli_commands:
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_func(args)
+        assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "❌ Nessuna configurazione trovata (cartella 'config/' mancante)." in captured.err
+        assert "cp -r config.example config" in captured.err
+
+
+def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch):
+    """
+    12. Verificare che con --mock i 5 comandi procedano oltre il controllo di config mancante.
+    """
+    import argparse
+    from rt.cli import cmd_outline, cmd_rewrite, cmd_review_asr, cmd_review_science, cmd_run
+
+    monkeypatch.chdir(tmp_path)
+
+    dummy_res = {
+        "action": "RUN",
+        "reason": "test",
+        "segment_count": 1,
+        "duration_seconds": 1.0,
+        "validation_report": {"units_count": 1, "coverage_percentage": 100},
+        "total_units": 1,
+        "processed_units": 1,
+        "total_issues": 0,
+        "green_auto_applied": 0,
+        "yellow_review_queue": 0,
+        "red_human_required": 0,
+        "findings_count": 0,
+        "critical_issues": 0,
+        "pedagogical_notes": 0,
+        "total_science_issues": 0,
+        "docente_issues": 0,
+        "reconstruction_issues": 0,
+        "science_checks": 0,
+    }
+
+    with patch("rt.cli.run_prepare", return_value=dummy_res), \
+         patch("rt.cli.run_outline", return_value=dummy_res), \
+         patch("rt.cli.run_rewrite", return_value=dummy_res), \
+         patch("rt.cli.run_review_asr", return_value=dummy_res), \
+         patch("rt.cli.run_review_science", return_value=dummy_res), \
+         patch("rt.pipeline.setup.run_setup", return_value={"lesson_dir": str(tmp_path)}), \
+         patch("rt.pipeline.setup.is_audio_file", return_value=False), \
+         patch("rt.cli.run_build", return_value={"status": "OK", "skipped": True}), \
+         patch("rt.cli.cmd_review", return_value=None):
+
+        # None of these should raise SystemExit(1) due to missing config
+        cmd_outline(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
+        cmd_rewrite(argparse.Namespace(lesson_dir=str(tmp_path), unit=None, force=False, mock=True))
+        cmd_review_asr(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
+        cmd_review_science(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
+        cmd_run(argparse.Namespace(
+            input=str(tmp_path), force=False, mock=True, auto_accept=True, rename=False,
+            date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False
+        ))
+
+

@@ -21,9 +21,9 @@ class SampleModel(BaseModel):
 
 
 def test_config_defaults_and_yaml_parsing():
-    """Verifica che la configurazione imposti correttamente tutti i 4 job."""
-    cfg_file = "rt.config.yaml.example" if os.path.exists("rt.config.yaml.example") else None
-    cfg = load_config(cfg_file)
+    """Verifica che la configurazione del template config.example/ imposti correttamente tutti i 4 job."""
+    from rt.core.config import _load_config_dir
+    cfg = _load_config_dir("config.example") if os.path.isdir("config.example") else load_config()
     assert cfg.version == "2.0.0"
     assert cfg.mock_llm is False
 

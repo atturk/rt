@@ -42,6 +42,13 @@ from rt.pipeline.build import run_build
 from rt.core.models import ASRLevel, ASRIssue, ScienceIssue
 
 
+def _has_real_config_source() -> bool:
+    """Vero se esiste una sorgente di configurazione reale (cartella config/) nella
+    working directory corrente. Usata dai comandi CLI che eseguono lavoro LLM reale
+    per evitare di procedere silenziosamente con i default hardcoded."""
+    return os.path.isdir(os.path.join(os.getcwd(), "config"))
+
+
 def _print_phase_action(phase_name: str, res: Dict[str, Any]):
     action = res.get("action", "RUN")
     reason = res.get("reason", "")
@@ -61,6 +68,14 @@ def cmd_prepare(args):
 
 
 def cmd_outline(args):
+    if not getattr(args, "mock", False) and not _has_real_config_source():
+        print(
+            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+            "   cp -r config.example config",
+            file=sys.stderr
+        )
+        sys.exit(1)
     force = getattr(args, "force", False)
     res = run_outline(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("outline", res)
@@ -75,6 +90,14 @@ def cmd_validate_outline(args):
 
 
 def cmd_rewrite(args):
+    if not getattr(args, "mock", False) and not _has_real_config_source():
+        print(
+            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+            "   cp -r config.example config",
+            file=sys.stderr
+        )
+        sys.exit(1)
     force = getattr(args, "force", False)
     res = run_rewrite(args.lesson_dir, target_unit_id=args.unit, force=force, force_mock=args.mock)
     label = f"rewrite unit {args.unit}" if args.unit else "rewrite"
@@ -91,6 +114,14 @@ def cmd_validate_draft(args):
 
 
 def cmd_review_asr(args):
+    if not getattr(args, "mock", False) and not _has_real_config_source():
+        print(
+            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+            "   cp -r config.example config",
+            file=sys.stderr
+        )
+        sys.exit(1)
     force = getattr(args, "force", False)
     res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-asr", res)
@@ -98,6 +129,14 @@ def cmd_review_asr(args):
 
 
 def cmd_review_science(args):
+    if not getattr(args, "mock", False) and not _has_real_config_source():
+        print(
+            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+            "   cp -r config.example config",
+            file=sys.stderr
+        )
+        sys.exit(1)
     force = getattr(args, "force", False)
     res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-science", res)
@@ -607,7 +646,7 @@ def cmd_prices_check(args):
             print("  Nessun match trovato nel catalogo live per questo modello.")
     print("\n" + "=" * 70)
     print("Nota: nessuna modifica è stata applicata automaticamente. Se un prezzo risulta")
-    print("invecchiato, aggiornalo manualmente nella sezione 'pricing:' di rt.config.yaml.")
+    print("invecchiato, aggiornalo manualmente nella sezione 'pricing:' della configurazione in 'config/'.")
 
 
 def cmd_prices_lookup(args):
@@ -629,6 +668,15 @@ def cmd_run(args):
     first_input = raw_inputs[0] if raw_inputs else ""
     force = getattr(args, "force", False)
     mock_mode = getattr(args, "mock", False)
+
+    if not mock_mode and not _has_real_config_source():
+        print(
+            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+            "   cp -r config.example config",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
     is_audio_input = any(is_audio_file(x) for x in raw_inputs)
 
@@ -936,7 +984,7 @@ def main():
             "  - Rilanciare lo stesso comando: la pipeline riprende dal checkpoint salvato e, "
             "trattandosi spesso di provider stocastici (es. 'openrouter/free'), un nuovo tentativo "
             "può avere esito diverso;\n"
-            "  - Modificare 'rt.config.yaml' per il job coinvolto (es. aumentare 'max_output_chars', "
+            "  - Modificare i file in 'config/' per il job coinvolto (es. aumentare 'max_output_chars', "
             "cambiare modello, o aggiungere un blocco 'fallback' se disponibile un'alternativa).\n",
             file=sys.stderr
         )
