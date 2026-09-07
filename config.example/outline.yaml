@@ -1,0 +1,46 @@
+# ==============================================================================
+# config.example/outline.yaml - Job Cognitivo: Outline
+# Generazione della scaletta didattica (Macro-sezioni e Unità)
+# ==============================================================================
+
+round_robin: false
+max_attempts: 4
+max_output_chars: 45000
+
+primary:
+  provider: "openrouter"
+  # 'credential' identifica una chiave API specifica sotto un provider (utile quando hai più chiavi
+  # per lo stesso provider, es. per distribuire il carico su più quote indipendenti — è il caso di
+  # google_1/google_2). Se hai una sola chiave per provider, 'credential' può essere omesso:
+  # verrà usata automaticamente quella di default per quel provider.
+  credential: "openrouter"
+  model: "openrouter/free"
+  base_url: "https://openrouter.ai/api/v1"
+  thinking: true
+  reasoning_effort: "low"
+  max_thinking_tokens: 4098
+  max_tokens: null
+  timeout_seconds: 300
+
+fallback:
+  rate_limit:
+    provider: "deepseek"
+    credential: "deepseek"
+    model: "deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "low"
+    timeout_seconds: 240
+  timeout:
+    provider: "deepseek"
+    credential: "deepseek"
+    model: "deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "low"
+    timeout_seconds: 240
+  generic:
+    provider: "deepseek"
+    credential: "deepseek"
+    model: "deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "low"
+    timeout_seconds: 240

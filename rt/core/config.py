@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional, List
 import yaml
 from pydantic import BaseModel, Field, AliasChoices, model_validator
 
+from rt.llm.pricing import ModelPricing
+
 
 class LLMRetryConfig(BaseModel):
     max_timeout_retries: int = Field(default=1, description="Numero massimo di retry dopo timeout sullo stesso provider")
@@ -44,6 +46,7 @@ class RouteConfig(BaseModel):
     temperature: Optional[float] = Field(default=None)
     max_tokens: Optional[int] = Field(default=None)
     timeout_seconds: int = Field(default=180)
+    pricing: Optional[ModelPricing] = Field(default=None, description="Prezzo specifico per questa route (priorità massima: sovrascrive sia il pricing custom globale sia DEFAULT_PRICING)")
 
     def model_post_init(self, __context: Any) -> None:
         """Validazione config-time delle route."""
@@ -319,22 +322,64 @@ def get_api_key(provider_or_credential: str) -> Optional[str]:
 
 
 
-def load_config(config_path: Optional[str] = None) -> RTConfig:
-    """Carica rt.config.yaml o restituisce la configurazione predefinita."""
-    if config_path is None:
-        config_path = os.path.join(os.getcwd(), "rt.config.yaml")
-    
-    if not os.path.exists(config_path):
+def _load_rtconfig_from_file(path: str) -> RTConfig:
+    """Carica un singolo file YAML e lo valida come RTConfig. Comportamento invariato
+    rispetto alla load_config() precedente per un path esplicito."""
+    if not os.path.exists(path):
         return RTConfig()
-    
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             raw_text = f.read()
         data = yaml.safe_load(raw_text)
-            
         if isinstance(data, dict):
             return RTConfig.model_validate(data)
     except Exception:
         pass
     return RTConfig()
+
+
+def _load_config_dir(config_dir: str) -> RTConfig:
+    """Carica la configurazione divisa: config/general.yaml (impostazioni globali) +
+    un file config/<job>.yaml per ciascun job (il nome del file, senza estensione,
+    diventa la chiave in 'jobs'). Il file 'general.yaml' non è un job."""
+    merged_data: Dict[str, Any] = {}
+
+    general_path = os.path.join(config_dir, "general.yaml")
+    if os.path.isfile(general_path):
+        with open(general_path, "r", encoding="utf-8") as f:
+            general_data = yaml.safe_load(f.read())
+        if isinstance(general_data, dict):
+            merged_data.update(general_data)
+
+    jobs_data: Dict[str, Any] = {}
+    for fname in sorted(os.listdir(config_dir)):
+        if not fname.endswith(".yaml") or fname == "general.yaml":
+            continue
+        job_name = fname[:-len(".yaml")]
+        with open(os.path.join(config_dir, fname), "r", encoding="utf-8") as f:
+            job_data = yaml.safe_load(f.read())
+        if isinstance(job_data, dict):
+            jobs_data[job_name] = job_data
+    if jobs_data:
+        merged_data["jobs"] = jobs_data
+
+    return RTConfig.model_validate(merged_data)
+
+
+def load_config(config_path: Optional[str] = None) -> RTConfig:
+    """Carica la configurazione. Se config_path è esplicito, comportamento invariato
+    (singolo file). Se None: usa la cartella 'config/' se presente (modalità divisa),
+    altrimenti ricade su 'rt.config.yaml' singolo (comportamento storico)."""
+    if config_path is not None:
+        return _load_rtconfig_from_file(config_path)
+
+    config_dir = os.path.join(os.getcwd(), "config")
+    if os.path.isdir(config_dir):
+        try:
+            return _load_config_dir(config_dir)
+        except Exception:
+            pass
+        return RTConfig()
+
+    return _load_rtconfig_from_file(os.path.join(os.getcwd(), "rt.config.yaml"))
 

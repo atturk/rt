@@ -57,20 +57,29 @@ python3 -m pytest tests/ -q
 
 RT supporta **OpenRouter**, **DeepSeek direct** e **Google Gemini** tramite provider adapter dedicati in `rt/llm/providers/`.
 
-### Configurazione in `rt.config.yaml`:
-Lo schema di configurazione mappa ciascun job cognitivo con route `primary` e fallback dedicati:
+### Configurazione (`config/` o `rt.config.yaml`):
+Il sistema supporta due modalità equivalenti:
+1. **Modalità divisa (`config/`)**: cartella contenente `general.yaml` per le impostazioni globali e un file `<job>.yaml` per ciascun job (es. `outline.yaml`, `rewrite.yaml`).
+2. **Modalità file singolo (`rt.config.yaml`)**: singolo file contenente l'intero albero di configurazione.
+
+Se sono presenti entrambi, la cartella `config/` ha sempre la precedenza.
+
+Lo schema di configurazione mappa ciascun job cognitivo con route `primary`, fallback dedicati ed eventuale `pricing:` per-route:
 ```yaml
-jobs:
-  outline:
-    max_output_chars: 60000
-    primary:
-      provider: "openrouter"            # Provider di default per outline
-      credential: "openrouter"
-      model: "deepseek/deepseek-chat"
-      thinking: true
-      reasoning_effort: "low"
-      max_tokens: 16384
-      timeout_seconds: 180
+# In config/outline.yaml (o sotto jobs.outline in rt.config.yaml):
+max_output_chars: 60000
+primary:
+  provider: "openrouter"            # Provider di default per outline
+  credential: "openrouter"
+  model: "deepseek/deepseek-chat"
+  thinking: true
+  reasoning_effort: "low"
+  max_tokens: 16384
+  timeout_seconds: 180
+  # Pricing per-route opzionale (priorità massima: sovrascrive pricing globale e DEFAULT_PRICING):
+  # pricing:
+  #   input_per_million: 0.14
+  #   output_per_million: 0.28
 ```
 
 ### Variabili d'Ambiente:
