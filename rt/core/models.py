@@ -7,7 +7,8 @@ Tutti i contratti tra codice deterministico, LLM e ledger umano sono definiti qu
 from typing import List, Optional, Dict, Any
 from enum import Enum
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from rt.core.timestamp import format_timestamp
 
 
 class Segment(BaseModel):
@@ -30,6 +31,28 @@ class Segment(BaseModel):
         if start is not None and v <= start:
             raise ValueError(f"end_seconds ({v}) deve essere strettamente maggiore di start_seconds ({start})")
         return v
+
+    @model_validator(mode="after")
+    def validate_cross_field_consistency(self) -> "Segment":
+        expected_id = f"seg_{self.index:06d}"
+        if self.id != expected_id:
+            raise ValueError(
+                f"Segment incoerente: id='{self.id}' non corrisponde all'index={self.index} "
+                f"(atteso '{expected_id}')"
+            )
+        expected_start_fmt = format_timestamp(self.start_seconds)
+        if self.start_formatted != expected_start_fmt:
+            raise ValueError(
+                f"Segment incoerente: start_formatted='{self.start_formatted}' non corrisponde a "
+                f"start_seconds={self.start_seconds} (atteso '{expected_start_fmt}')"
+            )
+        expected_end_fmt = format_timestamp(self.end_seconds)
+        if self.end_formatted != expected_end_fmt:
+            raise ValueError(
+                f"Segment incoerente: end_formatted='{self.end_formatted}' non corrisponde a "
+                f"end_seconds={self.end_seconds} (atteso '{expected_end_fmt}')"
+            )
+        return self
 
 
 class SegmentsData(BaseModel):
