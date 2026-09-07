@@ -84,7 +84,7 @@ OBIETTIVI DI SCRITTURA:
 2. Pulizia totale del parlato: elimina intercalari ("diciamo", "cioè", "insomma"), convenevoli, esitazioni e ripetizioni inutili.
 3. Integrità informativa: preserva ogni concetto, definizione, via metabolica, molecola, cofattore ed esempio rilevante trattato.
 4. "Tenere il filo": mantieni la continuità concettuale della lezione senza salti logici.
-5. VINCOLO DI FEDELTÀ: NON allucinare dettagli non presenti nella lezione (valori numerici inventati, spiegazioni esterne non dette).
+5. VINCOLO DI FEDELTÀ: NON allucinare dettagli non presenti nella lezione (valori numerici inventati, spiegazioni esterne non dette). "Approfondita" significa esposizione completa e ben argomentata di ciò che il docente ha detto — non aggiunta di conoscenza enciclopedica esterna. Distingui sempre tra: (a) FATTO SORGENTE — ciò che il docente ha detto esplicitamente; (b) INFERENZA DIRETTA — collegamenti logici impliciti ma evidenti nel discorso del docente; ED EVITA (c) CONOSCENZA ESTERNA — nozioni non dette dal docente, anche se vere e pertinenti, che non vanno mai aggiunte.
 6. PROVENANCE: Nell'output JSON devi includere in "source_segment_ids" la lista degli ID dei segmenti principali utilizzati per redigere l'unità.
 7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi)."""
 
@@ -132,7 +132,7 @@ Genera l'oggetto JSON conforme allo schema DraftUnit con:
 # 3. ASR REVIEW JOB
 # ----------------------------------------------------------------------
 
-ASR_REVIEW_SYSTEM_PROMPT = """Sei un esperto di trascrizioni biomediche e fonetica ASR applicata a lezioni universitarie.
+ASR_REVIEW_SYSTEM_PROMPT = """Sei un esperto di terminologia biomedica incaricato di individuare correzioni testuali plausibili in trascrizioni ASR di lezioni universitarie, basandoti sul contesto linguistico e scientifico del testo (non hai accesso all'audio originale).
 Il tuo compito è individuare e correggere ESCLUSIVAMENTE i termini tecnici, scientifici, biochimici, medici o enzimatici alterati o stravolti foneticamente dall'ASR (es. enzimi, metaboliti, molecole, vie metaboliche, cofattori, strutture biologiche).
 
 REGOLE CATEGORICHE DI FILTRO (COSA IGNORARE):

@@ -559,4 +559,34 @@ def test_base_url_validation_cross_provider_mismatch():
     assert rc_proxy_ds.base_url == "https://my-internal-proxy.example.com/v1"
 
 
+def test_load_config_with_primary_routes_list_yaml(tmp_path):
+    """Verifica che un file YAML con sintassi di lista per primary_routes venga caricato correttamente tramite PyYAML."""
+    yaml_content = """version: "2.0.0"
+jobs:
+  outline:
+    primary_routes:
+      - provider: "google"
+        credential: "google_1"
+        model: "gemini-2.5-flash"
+      - provider: "google"
+        credential: "google_2"
+        model: "gemini-2.5-flash"
+    round_robin: true
+"""
+    cfg_file = tmp_path / "rt.config.yaml"
+    cfg_file.write_text(yaml_content, encoding="utf-8")
+
+    cfg = load_config(str(cfg_file))
+    assert cfg.version == "2.0.0"
+    outline_job = cfg.jobs["outline"]
+    assert outline_job.primary_routes is not None
+    assert len(outline_job.primary_routes) == 2
+    assert outline_job.primary_routes[0].credential == "google_1"
+    assert outline_job.primary_routes[1].credential == "google_2"
+    assert outline_job.primary.credential == "google_1"
+    assert outline_job.secondary.credential == "google_2"
+    assert outline_job.round_robin is True
+
+
+
 

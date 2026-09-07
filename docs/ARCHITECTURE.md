@@ -91,7 +91,9 @@ Nel nostro sistema:
    rendered_timestamp = format_timestamp(start_sec)
    ```
 4. Se il segmento non esiste nei metadati sorgente, la pipeline si blocca con un errore esplicito.
-5. In questo modo è matematicamente impossibile che compaia un timestamp disallineato dalla registrazione ASR.
+5. In questo modo si garantisce in modo deterministico che nessun timestamp nel documento finale sia disallineato rispetto a `segments.json`.
+
+> **Nota di precisione**: Questa garanzia copre la coerenza deterministica tra il documento finale e `segments.json`; l'accuratezza di `segments.json` rispetto alla registrazione reale dipende a sua volta dalla correttezza del parsing iniziale della trascrizione grezza.
 
 ---
 
@@ -193,6 +195,8 @@ graph TD
 ---
 
 ## 6. Grounding Conservativo nel Science Critic
+
+Il Science Critic è un **LLM-based scientific plausibility critic**: analizza la plausibilità concettuale del testo tramite un modello linguistico, non un sistema di verifica bibliografica/RAG contro fonti esterne.
 
 Per evitare allucinazioni in cui il modello attribuisce ingiustamente al docente errori generati in realtà dal modello durante il rewrite:
 1. **`ERR_DOCENTE`** richiede forte riscontro testuale o lessicale nella trascrizione sorgente del docente (punteggio di grounding $\ge 0.65$). Viene corredato di domanda diplomatica per chiarimenti.

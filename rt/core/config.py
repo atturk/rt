@@ -9,6 +9,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 
 import os
 from typing import Dict, Any, Optional, List
+import yaml
 from pydantic import BaseModel, Field, AliasChoices, model_validator
 
 
@@ -247,8 +248,8 @@ class RTConfig(BaseModel):
                 if job_name in ("retry", "default"):
                     continue
                 if isinstance(job_val, dict):
-                    # Se ha già la chiave 'primary', è già nel nuovo formato
-                    if "primary" in job_val:
+                    # Se ha già la chiave 'primary' o 'primary_routes', è già nel nuovo formato
+                    if "primary" in job_val or "primary_routes" in job_val:
                         normalized_jobs[job_name] = job_val
                     else:
                         # Formato legacy: l'intero dizionario è la route primaria
@@ -277,24 +278,10 @@ def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> 
     Carica variabili d'ambiente da un file .env locale (se presente).
     Non solleva errori se il file non esiste.
     """
+    from dotenv import load_dotenv
     if dotenv_path is None:
         dotenv_path = os.path.join(os.getcwd(), ".env")
-    
-    if os.path.isfile(dotenv_path):
-        try:
-            with open(dotenv_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    stripped = line.strip()
-                    if not stripped or stripped.startswith("#"):
-                        continue
-                    if "=" in stripped:
-                        k, v = stripped.split("=", 1)
-                        k = k.strip()
-                        v = v.strip().strip("\"'")
-                        if override or k not in os.environ:
-                            os.environ[k] = v
-        except Exception:
-            pass
+    load_dotenv(dotenv_path=dotenv_path, override=override)
 
 
 
@@ -310,74 +297,6 @@ def get_api_key(provider_or_credential: str) -> Optional[str]:
 
 
 
-def _parse_yaml_value(val_str: str) -> Any:
-    val = val_str.strip()
-    if not val:
-        return None
-    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-        return val[1:-1]
-    lower = val.lower()
-    if lower in ("true", "yes", "on"):
-        return True
-    if lower in ("false", "no", "off"):
-        return False
-    if lower in ("null", "none", "~"):
-        return None
-    try:
-        return int(val)
-    except ValueError:
-        pass
-    try:
-        return float(val)
-    except ValueError:
-        pass
-    return val
-
-
-def _simple_yaml_parse(text: str) -> Dict[str, Any]:
-    """Parser deterministico per YAML strutturato a indentazione (senza dipendenze esterne)."""
-    valid_lines: list[tuple[int, str]] = []
-    for raw_line in text.splitlines():
-        stripped = raw_line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip())
-        valid_lines.append((indent, stripped))
-
-    root: Dict[str, Any] = {}
-    stack: list[tuple[int, dict]] = [(-1, root)]
-    
-    for i, (indent, line) in enumerate(valid_lines):
-        if ":" not in line:
-            continue
-            
-        k, v = line.split(":", 1)
-        k = k.strip()
-        v = v.strip()
-        
-        # Rimuove commenti inline non protetti da virgolette
-        if "#" in v and not ((v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'"))):
-            v = v.split("#", 1)[0].strip()
-            
-        while len(stack) > 1 and stack[-1][0] >= indent:
-            stack.pop()
-            
-        parent_dict = stack[-1][1]
-        
-        # Lookahead per verificare se la riga successiva è un sotto-blocco indentato
-        has_children = (i + 1 < len(valid_lines) and valid_lines[i + 1][0] > indent)
-        if not v:
-            if has_children:
-                new_dict: Dict[str, Any] = {}
-                parent_dict[k] = new_dict
-                stack.append((indent, new_dict))
-            else:
-                parent_dict[k] = None
-        else:
-            parent_dict[k] = _parse_yaml_value(v)
-            
-    return root
-
 
 def load_config(config_path: Optional[str] = None) -> RTConfig:
     """Carica rt.config.yaml o restituisce la configurazione predefinita."""
@@ -390,11 +309,7 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             raw_text = f.read()
-        try:
-            import yaml
-            data = yaml.safe_load(raw_text)
-        except ImportError:
-            data = _simple_yaml_parse(raw_text)
+        data = yaml.safe_load(raw_text)
             
         if isinstance(data, dict):
             return RTConfig.model_validate(data)
