@@ -4,6 +4,7 @@ Live terminal monitor per le chiamate LLM in streaming.
 Mostra l'avanzamento dei 4 passaggi ([1/4] .. [4/4]), token (o stima live), latenza, costo stimato per blocco e cumulativo di sessione.
 """
 
+import shutil
 import sys
 import time
 from typing import Optional, Dict, Any
@@ -204,6 +205,9 @@ class LiveTerminalMonitor:
                 f"{cost_str} · {self.provider}/{self.model}{retry_tag}{slow_tag} · {int(elapsed)}s"
             )
             if self.is_tty:
+                term_width = shutil.get_terminal_size(fallback=(120, 24)).columns
+                if len(compact_line) >= term_width:
+                    compact_line = compact_line[:max(0, term_width - 2)] + "…"
                 sys.stdout.write(f"\r\033[K{compact_line}")
                 if final:
                     sys.stdout.write("\n")
