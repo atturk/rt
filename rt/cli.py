@@ -13,6 +13,8 @@ Comandi disponibili:
   rt build              <cartella> [--rename]
   rt status             <cartella>
   rt test-llm           [--config <path>] (smoke test rapido DeepSeek/OpenRouter/Google)
+  rt prices-check       (confronta i prezzi configurati con il catalogo live LiteLLM)
+  rt prices-lookup      <query> [--provider <p>] (cerca il prezzo live nel catalogo LiteLLM)
   rt run                <cartella> [--mock]
 """
 
@@ -586,6 +588,39 @@ def cmd_test_llm(args):
         sys.exit(1)
 
 
+def cmd_prices_check(args):
+    from rt.core.config import load_config
+    from rt.llm.pricing_sync import check_configured_pricing
+    cfg = load_config()
+    report = check_configured_pricing(cfg)
+    print("\n💵 VERIFICA PREZZI CONFIGURATI vs CATALOGO LIVE (LiteLLM)\n" + "=" * 70)
+    for entry in report:
+        flag = "⚠ DA VERIFICARE" if entry.get("stale") else "✔"
+        print(f"\n[{entry['job']}] {entry['provider']}/{entry['model']}  {flag}")
+        print(f"  In uso oggi:  in=${entry['used_input_per_million']}/M  out=${entry['used_output_per_million']}/M")
+        if entry["live_match"]:
+            lm = entry["live_match"]
+            print(f"  Live (LiteLLM, '{lm['key']}'): in=${lm['input_per_million']}/M  out=${lm['output_per_million']}/M")
+            if "input_diff_pct" in entry:
+                print(f"  Differenza input: {entry['input_diff_pct']}%")
+        else:
+            print("  Nessun match trovato nel catalogo live per questo modello.")
+    print("\n" + "=" * 70)
+    print("Nota: nessuna modifica è stata applicata automaticamente. Se un prezzo risulta")
+    print("invecchiato, aggiornalo manualmente nella sezione 'pricing:' di rt.config.yaml.")
+
+
+def cmd_prices_lookup(args):
+    from rt.llm.pricing_sync import lookup_live_price
+    results = lookup_live_price(args.query, provider_hint=getattr(args, "provider", None))
+    if not results:
+        print(f"Nessun modello trovato per '{args.query}'.")
+        return
+    print(f"\nRisultati per '{args.query}':\n" + "=" * 70)
+    for r in results[:20]:
+        print(f"  {r['key']:<55} in=${r['input_per_million']}/M  out=${r['output_per_million']}/M  ({r['provider']})")
+
+
 def cmd_run(args):
     """Pipeline end-to-end completa con idempotenza, cost protection e supporto audio/cartella."""
     from rt.pipeline.setup import is_audio_file, run_setup, SetupError, DEFAULT_MODEL
@@ -602,6 +637,16 @@ def cmd_run(args):
         print("🎙️  RT 2.0 — PIPELINE END-TO-END DA SORGENTE AUDIO")
         print("=" * 60)
         print(f"File audio in ingresso: {', '.join(os.path.basename(x) for x in raw_inputs)}")
+
+        from rt.core.config import load_config as _load_cfg_for_staleness
+        from rt.llm.pricing_sync import get_cache_age_days
+        _cfg_staleness = _load_cfg_for_staleness()
+        _staleness_days = getattr(_cfg_staleness, "pricing_staleness_warning_days", 7)
+        if _staleness_days > 0:
+            _cache_age = get_cache_age_days()
+            if _cache_age is None or _cache_age > _staleness_days:
+                print(f"ℹ️  I prezzi configurati non sono stati verificati con 'rt prices-check' da oltre {_staleness_days} giorni "
+                      f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
 
         print("\n[1/9] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...")
         try:
@@ -641,6 +686,17 @@ def cmd_run(args):
         print("\n" + "=" * 60)
         print(f"🚀 RT 2.0 — PIPELINE END-TO-END PER: {lesson_dir}")
         print("=" * 60)
+
+        from rt.core.config import load_config as _load_cfg_for_staleness
+        from rt.llm.pricing_sync import get_cache_age_days
+        _cfg_staleness = _load_cfg_for_staleness()
+        _staleness_days = getattr(_cfg_staleness, "pricing_staleness_warning_days", 7)
+        if _staleness_days > 0:
+            _cache_age = get_cache_age_days()
+            if _cache_age is None or _cache_age > _staleness_days:
+                print(f"ℹ️  I prezzi configurati non sono stati verificati con 'rt prices-check' da oltre {_staleness_days} giorni "
+                      f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
+
         step_offset = 0
         total_steps = 7
 
@@ -831,6 +887,16 @@ def main():
     p_tllm.add_argument("--no-stream", action="store_true", help="Disabilita lo streaming SSE")
     p_tllm.add_argument("--no-monitor", action="store_true", help="Disabilita il monitor progressivo da terminale")
     p_tllm.set_defaults(func=cmd_test_llm)
+
+    # prices-check
+    p_pc = subparsers.add_parser("prices-check", help="Confronta i prezzi configurati con il catalogo live LiteLLM")
+    p_pc.set_defaults(func=cmd_prices_check)
+
+    # prices-lookup
+    p_pl = subparsers.add_parser("prices-lookup", help="Cerca il prezzo live di un modello nel catalogo LiteLLM")
+    p_pl.add_argument("query", help="Stringa di ricerca (es. 'gemini-3.5-flash', 'deepseek-v4')")
+    p_pl.add_argument("--provider", help="Filtra per provider LiteLLM (es. 'deepseek', 'gemini')", default=None)
+    p_pl.set_defaults(func=cmd_prices_lookup)
 
     # run
     p_run = subparsers.add_parser("run", help="Esegue l'intera pipeline end-to-end (accetta file audio o cartella lezione)")
