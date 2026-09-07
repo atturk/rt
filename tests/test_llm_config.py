@@ -21,7 +21,7 @@ class SampleModel(BaseModel):
 
 
 def test_config_defaults_and_yaml_parsing():
-    """Verifica che la configurazione del template config.example/ imposti correttamente tutti i 4 job."""
+    """Verifica che la configurazione del template config.example/ sia un guscio vuoto (provider/model a None) con parametri di tuning corretti."""
     from rt.core.config import _load_config_dir
     cfg = _load_config_dir("config.example") if os.path.isdir("config.example") else load_config()
     assert cfg.version == "2.0.0"
@@ -30,8 +30,9 @@ def test_config_defaults_and_yaml_parsing():
     for job_name in ["outline", "rewrite", "review_asr", "review_science"]:
         job_cfg = cfg.llm.get(job_name)
         assert job_cfg is not None, f"Job {job_name} non configurato!"
-        assert job_cfg.provider in ("deepseek", "openrouter", "google")
-        assert isinstance(job_cfg.model, str) and len(job_cfg.model) > 0
+        assert job_cfg.primary.provider is None
+        assert job_cfg.primary.model is None
+        assert job_cfg.primary.is_configured is False
         expected_effort = "high" if job_name in ("rewrite", "review_science") else "low"
 
         assert job_cfg.reasoning_effort == expected_effort

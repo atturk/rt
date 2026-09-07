@@ -18,6 +18,7 @@ from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 
 from rt.core.config import RTConfig, RouteConfig, JobRoutingConfig, JobFallbackConfig
+from rt.llm.pricing import ModelPricing
 from rt.llm.pricing_sync import (
     load_litellm_catalog,
     lookup_live_price,
@@ -139,6 +140,28 @@ def test_collect_configured_routes_deduplication():
     assert ("deepseek", "deepseek-v4-flash") in keys
 
 
+def test_collect_configured_routes_skips_unconfigured_routes():
+    """Verifica che job con route non configurate (provider=None o model=None) vengano saltati senza eccezioni."""
+    cfg = RTConfig(
+        jobs={
+            "job_empty": JobRoutingConfig(
+                primary=RouteConfig(provider=None, model=None),
+            ),
+            "job_valid": JobRoutingConfig(
+                primary=RouteConfig(provider="google", model="gemini-3.5-flash-lite"),
+            ),
+        }
+    )
+    routes = collect_configured_routes(cfg)
+    assert len(routes) == 1
+    assert routes[0]["provider"] == "google"
+    assert routes[0]["model"] == "gemini-3.5-flash-lite"
+
+    report = check_configured_pricing(cfg)
+    assert len(report) == 1
+    assert report[0]["job"] == "job_valid"
+
+
 def test_check_configured_pricing_diff_and_stale(monkeypatch):
     """5. check_configured_pricing calcola input_diff_pct e flag stale (soglia 15%)."""
     monkeypatch.setattr("rt.llm.pricing_sync.load_litellm_catalog", lambda force_refresh=False: FAKE_LITELLM_CATALOG)
@@ -172,6 +195,32 @@ def test_check_configured_pricing_diff_and_stale(monkeypatch):
     assert deepseek_report["live_match"]["input_per_million"] == 0.14
     assert deepseek_report["input_diff_pct"] == 0.0
     assert deepseek_report.get("stale") is False or deepseek_report.get("stale") is None
+
+
+def test_check_configured_pricing_uses_per_route_pricing_override(monkeypatch):
+    """check_configured_pricing deve usare il pricing per-route (route.pricing), non solo il
+    listino globale cfg.pricing o DEFAULT_PRICING: se l'utente ha impostato esplicitamente un
+    prezzo custom sulla singola route (es. 0.0/0.0 per un modello che vuole tenere gratuito),
+    'in uso oggi' deve riflettere quel valore, non quello hardcoded per lo stesso modello."""
+    monkeypatch.setattr("rt.llm.pricing_sync.load_litellm_catalog", lambda force_refresh=False: FAKE_LITELLM_CATALOG)
+
+    cfg = RTConfig(
+        jobs={
+            "rewrite": JobRoutingConfig(
+                primary=RouteConfig(
+                    provider="google",
+                    model="gemini-3.5-flash-lite",
+                    pricing=ModelPricing(input_per_million=0.0, output_per_million=0.0),
+                )
+            ),
+        }
+    )
+    report = check_configured_pricing(cfg)
+    assert len(report) == 1
+    assert report[0]["used_input_per_million"] == 0.0
+    assert report[0]["used_output_per_million"] == 0.0
+    # Il live_match resta comunque disponibile per un'eventuale applicazione interattiva.
+    assert report[0]["live_match"]["input_per_million"] == 0.3
 
 
 def test_cmd_prices_lookup_and_check_output(capsys, monkeypatch):

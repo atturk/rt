@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from rt.core.config import RTConfig, RouteConfig, JobRoutingConfig, JobFallbackConfig
 from rt.llm.client import LLMClient, LLMError, LLMTimeoutError
-from rt.llm.credentials import GLOBAL_CREDENTIALS, CredentialRegistry
+from rt.llm.credentials import GLOBAL_CREDENTIALS, CredentialRegistry, CredentialRef
 from rt.llm.errors import (
     SafetyFailure, RateLimitFailure, TimeoutFailure,
     AuthenticationFailure, OutputLimitFailure
@@ -39,8 +39,12 @@ class DummyItem(BaseModel):
 # ======================================================================
 
 def test_credential_registry_resolution(monkeypatch):
-    """Verifica risoluzione corretta di google_1 e google_2 e fallback legacy GEMINI_API_KEY."""
+    """Verifica risoluzione corretta di credenziali registrate esplicitamente."""
     reg = CredentialRegistry()
+    reg.register(CredentialRef(name="google_1", provider="google", env_var="GOOGLE_API_KEY_1"))
+    reg.register(CredentialRef(name="google_2", provider="google", env_var="GOOGLE_API_KEY_2"))
+    reg.register(CredentialRef(name="openrouter", provider="openrouter", env_var="OPENROUTER_API_KEY"))
+    reg.register(CredentialRef(name="deepseek", provider="deepseek", env_var="DEEPSEEK_API_KEY"))
 
     monkeypatch.setattr("rt.core.config.load_env_file", lambda *args, **kwargs: None)
     monkeypatch.setenv("GOOGLE_API_KEY_1", "key-google-1-secret")
@@ -55,16 +59,12 @@ def test_credential_registry_resolution(monkeypatch):
     assert reg.get_api_key("openrouter") == "key-openrouter-secret"
     assert reg.get_api_key("deepseek") == "key-deepseek-secret"
 
-    # Test fallback su GEMINI_API_KEY se GOOGLE_API_KEY_1 non è settata
-    monkeypatch.delenv("GOOGLE_API_KEY_1", raising=False)
-    monkeypatch.setenv("GEMINI_API_KEY", "key-gemini-fallback")
-    reg.reload_from_env()
-    assert reg.get_api_key("google_1") == "key-gemini-fallback"
-
 
 def test_secret_redaction_in_messages_and_errors(monkeypatch):
     """Verifica che nessun segreto appaia in chiaro nei messaggi sanitizzati."""
     reg = CredentialRegistry()
+    reg.register(CredentialRef(name="google_1", provider="google", env_var="GOOGLE_API_KEY_1"))
+    reg.register(CredentialRef(name="deepseek", provider="deepseek", env_var="DEEPSEEK_API_KEY"))
     monkeypatch.setenv("GOOGLE_API_KEY_1", "AIzaSySecretGoogleKey123")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-secret-deepseek-456")
     reg.reload_from_env()

@@ -35,21 +35,11 @@ class CredentialRegistry:
         self._register_default_credentials()
 
     def _register_default_credentials(self) -> None:
-        """Registra i riferimenti standard supportati da RT 2.0."""
-        defaults = [
-            CredentialRef(name="openrouter", provider="openrouter", env_var="OPENROUTER_API_KEY"),
-            CredentialRef(name="deepseek", provider="deepseek", env_var="DEEPSEEK_API_KEY"),
-            CredentialRef(name="google_1", provider="google", env_var="GOOGLE_API_KEY_1"),
-            CredentialRef(name="google_2", provider="google", env_var="GOOGLE_API_KEY_2"),
-            CredentialRef(name="mock", provider="mock", env_var=None),
-        ]
-        for ref in defaults:
-            self.register(ref)
-
-        # Assegnazione credential di default per provider
-        self._provider_defaults["openrouter"] = "openrouter"
-        self._provider_defaults["deepseek"] = "deepseek"
-        self._provider_defaults["google"] = "google_1"
+        """Registra solo il riferimento 'mock' (scaffolding interno per force_mock/mock_llm).
+        Nessuna credenziale per provider reali (openrouter/deepseek/google) è registrata di
+        default: ogni provider reale richiede una dichiarazione esplicita 'credentials:' in
+        config/general.yaml, anche per i provider nativi. Zero magie implicite."""
+        self.register(CredentialRef(name="mock", provider="mock", env_var=None))
         self._provider_defaults["mock"] = "mock"
 
     def register(self, ref: CredentialRef, set_default_for_provider: bool = False) -> None:
@@ -98,8 +88,6 @@ class CredentialRegistry:
             # Fallback retrocompatibile: se clean_c è un provider registrato, prova la default
             if clean_c in self._provider_defaults:
                 ref = self._credentials.get(self._provider_defaults[clean_c])
-            elif f"{clean_c.upper()}_API_KEY" in os.environ:
-                return os.environ.get(f"{clean_c.upper()}_API_KEY")
 
         if not ref or not ref.env_var:
             return None
@@ -107,13 +95,6 @@ class CredentialRegistry:
         val = os.environ.get(ref.env_var)
         if val:
             return val.strip()
-
-        # Compatibilità speciale Google: fallback su GEMINI_API_KEY o GOOGLE_API_KEY per google_1
-        if ref.name == "google_1":
-            if "GEMINI_API_KEY" in os.environ:
-                return os.environ["GEMINI_API_KEY"].strip()
-            if "GOOGLE_API_KEY" in os.environ:
-                return os.environ["GOOGLE_API_KEY"].strip()
 
         return None
 

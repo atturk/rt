@@ -192,34 +192,35 @@ class LLMClient:
 
         # Risoluzione route iniziale (con supporto a eventuali override manuali)
         if override_provider or override_model or override_credential:
-            prov = (override_provider or primary_cfg.provider).lower().strip()
-            mod = override_model or (primary_cfg.model if prov == primary_cfg.provider else ("gemini-2.5-flash" if prov == "google" else "deepseek-v4-flash"))
+            prov = (override_provider or (primary_cfg.provider if primary_cfg else None))
+            clean_prov = prov.lower().strip() if prov else None
+            mod = override_model or (primary_cfg.model if primary_cfg and clean_prov == (primary_cfg.provider or "").lower().strip() else ("gemini-2.5-flash" if clean_prov == "google" else "deepseek-v4-flash"))
             b_url = override_base_url
-            if not b_url:
-                if prov == primary_cfg.provider:
+            if not b_url and clean_prov:
+                if primary_cfg and clean_prov == (primary_cfg.provider or "").lower().strip():
                     b_url = primary_cfg.base_url
-                elif prov == "google":
+                elif clean_prov == "google":
                     b_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-                elif prov == "openrouter":
+                elif clean_prov == "openrouter":
                     b_url = "https://openrouter.ai/api/v1"
-                elif prov == "deepseek":
+                elif clean_prov == "deepseek":
                     b_url = "https://api.deepseek.com"
                 else:
                     b_url = None
 
-            cred = override_credential or (primary_cfg.credential if prov == primary_cfg.provider else None)
+            cred = override_credential or (primary_cfg.credential if primary_cfg and clean_prov == (primary_cfg.provider or "").lower().strip() else None)
             try:
                 override_route = RouteConfig(
-                    provider=prov,
+                    provider=clean_prov,
                     model=mod,
                     credential=cred,
                     base_url=b_url,
-                    thinking=primary_cfg.thinking,
-                    reasoning_effort=primary_cfg.reasoning_effort,
-                    max_thinking_tokens=primary_cfg.max_thinking_tokens,
-                    temperature=primary_cfg.temperature,
-                    max_tokens=primary_cfg.max_tokens,
-                    timeout_seconds=primary_cfg.timeout_seconds
+                    thinking=primary_cfg.thinking if primary_cfg else True,
+                    reasoning_effort=primary_cfg.reasoning_effort if primary_cfg else "low",
+                    max_thinking_tokens=primary_cfg.max_thinking_tokens if primary_cfg else None,
+                    temperature=primary_cfg.temperature if primary_cfg else None,
+                    max_tokens=primary_cfg.max_tokens if primary_cfg else None,
+                    timeout_seconds=primary_cfg.timeout_seconds if primary_cfg else 180
                 )
             except Exception as ve:
                 raise LLMError(f"Provider LLM non configurato o non supportato: {ve}") from ve
@@ -268,6 +269,8 @@ class LLMClient:
         # --------------------------------------------------------------------------
         while route_attempt <= max_global_attempts:
             route = current_exec_route.route
+            if not route or not route.is_configured or not route.provider:
+                raise LLMError(f"La route per il job '{job_name}' non è configurata (provider o model mancante).")
             route_id = route.route_id
             visited_route_ids.add(route_id)
 

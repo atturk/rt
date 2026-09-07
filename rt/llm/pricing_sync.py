@@ -103,26 +103,42 @@ def collect_configured_routes(cfg: "RTConfig") -> List[Dict[str, Any]]:
             if fb_route:
                 candidates.append((fb_route, ("fallback", fb_field)))
         for route, path in candidates:
+            if route.provider is None or route.model is None:
+                continue
             key = (route.provider.lower().strip(), route.model.lower().strip().lstrip("~"))
             if key in seen:
                 continue
             seen.add(key)
-            routes.append({"job": job_name, "provider": key[0], "model": key[1], "path": path})
+            routes.append({"job": job_name, "provider": key[0], "model": key[1], "path": path, "route": route})
     return routes
+
+
+def _resolve_custom_pricing_for_check(cfg: "RTConfig", route: "RouteConfig", provider: str, model: str) -> Optional[Dict[str, Any]]:
+    """Stessa logica di priorità di LLMClient._resolve_custom_pricing (route-level > pricing
+    globale in cfg.pricing > stime hardcoded in DEFAULT_PRICING), riusata qui per calcolare
+    il prezzo davvero 'in uso oggi' anche quando è definito solo a livello di singola route."""
+    base = dict(cfg.pricing or {})
+    if getattr(route, "pricing", None) is not None:
+        prov_dict = dict(base.get(provider, {}))
+        prov_dict[model] = route.pricing.model_dump()
+        base[provider] = prov_dict
+    return base or None
 
 
 def check_configured_pricing(cfg: "RTConfig") -> List[Dict[str, Any]]:
     """Per ogni route configurata, confronta il prezzo attualmente USATO dalla pipeline
-    (rt.config.yaml 'pricing:' se presente, altrimenti DEFAULT_PRICING hardcoded) contro
-    il prezzo live trovato nel catalogo LiteLLM per lo stesso provider/modello, quando
-    trovabile con un match esatto o quasi-esatto. NON modifica nulla, solo report."""
+    (pricing per-route se presente, altrimenti il listino custom globale di general.yaml,
+    altrimenti DEFAULT_PRICING hardcoded) contro il prezzo live trovato nel catalogo LiteLLM
+    per lo stesso provider/modello, quando trovabile con un match esatto o quasi-esatto.
+    NON modifica nulla, solo report."""
     from rt.llm.pricing import calculate_cost
 
     report = []
     for route in collect_configured_routes(cfg):
         provider, model = route["provider"], route["model"]
-        used_input = calculate_cost(provider, model, input_tokens=1_000_000, output_tokens=0, custom_pricing=cfg.pricing)
-        used_output = calculate_cost(provider, model, input_tokens=0, output_tokens=1_000_000, custom_pricing=cfg.pricing)
+        custom_pricing = _resolve_custom_pricing_for_check(cfg, route["route"], provider, model)
+        used_input = calculate_cost(provider, model, input_tokens=1_000_000, output_tokens=0, custom_pricing=custom_pricing)
+        used_output = calculate_cost(provider, model, input_tokens=0, output_tokens=1_000_000, custom_pricing=custom_pricing)
 
         live_matches = lookup_live_price(model, provider_hint=provider if provider != "openrouter" else None)
         exact_match = next((m for m in live_matches if m["key"].lower().endswith(model.lower())), None)

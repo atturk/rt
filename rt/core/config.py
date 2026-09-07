@@ -32,8 +32,8 @@ KNOWN_PROVIDER_DEFAULT_BASE_URLS: Dict[str, str] = {
 class RouteConfig(BaseModel):
     """Configurazione atomica di una singola route di esecuzione (provider, model, credenziale)."""
     route_id: Optional[str] = Field(default=None, description="Identificativo univoco della route")
-    provider: str = Field(default="deepseek", description="deepseek | openrouter | google | mock")
-    model: str = Field(default="deepseek-v4-flash", description="Identificativo del modello per il provider")
+    provider: Optional[str] = Field(default=None, description="deepseek | openrouter | google | openai_compatible (None = route non ancora configurata)")
+    model: Optional[str] = Field(default=None, description="Identificativo del modello per il provider (None = route non ancora configurata)")
     credential: Optional[str] = Field(default=None, description="Nome simbolico della credenziale (es. google_1, google_2)")
     base_url: Optional[str] = Field(default=None)
     thinking: bool = Field(default=True, description="Abilita il thinking mode (DeepSeek reasoning o equivalenti)")
@@ -48,8 +48,17 @@ class RouteConfig(BaseModel):
     timeout_seconds: int = Field(default=180)
     pricing: Optional[ModelPricing] = Field(default=None, description="Prezzo specifico per questa route (priorità massima: sovrascrive sia il pricing custom globale sia DEFAULT_PRICING)")
 
+    @property
+    def is_configured(self) -> bool:
+        return self.provider is not None and self.model is not None
+
     def model_post_init(self, __context: Any) -> None:
-        """Validazione config-time delle route."""
+        """Validazione config-time delle route. Una route con provider=None è uno slot
+        intenzionalmente non configurato (placeholder in config.example/): non viene validata
+        qui. Sta al chiamante (rt/cli.py, _job_has_configured_route) verificare che una route
+        configurata esista prima di eseguire lavoro reale, con un messaggio chiaro."""
+        if self.provider is None:
+            return
         from rt.llm.credentials import GLOBAL_CREDENTIALS
         clean_p = self.provider.lower().strip()
         allowed_providers = {"deepseek", "openrouter", "google", "openai_compatible"}
@@ -170,48 +179,16 @@ class ConfidenceThresholds(BaseModel):
 def _build_default_jobs() -> Dict[str, JobRoutingConfig]:
     return {
         "outline": JobRoutingConfig(
-            primary=RouteConfig(
-                provider="deepseek",
-                model="deepseek-v4-flash",
-                base_url="https://api.deepseek.com",
-                thinking=True,
-                reasoning_effort="low",
-                max_tokens=16384,
-                timeout_seconds=240,
-            )
+            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=16384, timeout_seconds=240)
         ),
         "rewrite": JobRoutingConfig(
-            primary=RouteConfig(
-                provider="deepseek",
-                model="deepseek-v4-flash",
-                base_url="https://api.deepseek.com",
-                thinking=True,
-                reasoning_effort="low",
-                max_tokens=8192,
-                timeout_seconds=180,
-            )
+            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=8192, timeout_seconds=180)
         ),
         "review_asr": JobRoutingConfig(
-            primary=RouteConfig(
-                provider="deepseek",
-                model="deepseek-v4-flash",
-                base_url="https://api.deepseek.com",
-                thinking=True,
-                reasoning_effort="low",
-                max_tokens=8192,
-                timeout_seconds=120,
-            )
+            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=8192, timeout_seconds=120)
         ),
         "review_science": JobRoutingConfig(
-            primary=RouteConfig(
-                provider="deepseek",
-                model="deepseek-v4-flash",
-                base_url="https://api.deepseek.com",
-                thinking=True,
-                reasoning_effort="low",
-                max_tokens=8192,
-                timeout_seconds=180,
-            )
+            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=8192, timeout_seconds=180)
         ),
     }
 
@@ -377,11 +354,7 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
 
     config_dir = os.path.join(os.getcwd(), "config")
     if os.path.isdir(config_dir):
-        try:
-            return _load_config_dir(config_dir)
-        except Exception:
-            pass
-        return RTConfig()
+        return _load_config_dir(config_dir)
 
     return RTConfig()
 
