@@ -648,6 +648,94 @@ def cmd_prices_check(args):
     print("Nota: nessuna modifica è stata applicata automaticamente. Se un prezzo risulta")
     print("invecchiato, aggiornalo manualmente nella sezione 'pricing:' della configurazione in 'config/'.")
 
+    if getattr(args, "interactive", False):
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Impossibile applicare prezzi interattivamente senza file in 'config/'.",
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+        applicable_entries = [e for e in report if e.get("live_match")]
+        if not applicable_entries:
+            print("Nessun prezzo live disponibile da applicare.")
+            return
+
+        import questionary
+        from ruamel.yaml import YAML
+
+        choices = []
+        for entry in applicable_entries:
+            lm = entry["live_match"]
+            label = (
+                f"[{entry['job']}] {entry['provider']}/{entry['model']}  "
+                f"in uso: in=${entry['used_input_per_million']}/M out=${entry['used_output_per_million']}/M  →  "
+                f"live: in=${lm['input_per_million']}/M out=${lm['output_per_million']}/M"
+            )
+            choices.append(questionary.Choice(title=label, value=entry, checked=bool(entry.get("stale"))))
+
+        selected = questionary.checkbox(
+            "Seleziona i prezzi da applicare ai file di configurazione (barra spazio per selezionare, invio per confermare):",
+            choices=choices
+        ).ask()
+
+        if selected is None:
+            print("Annullato, nessuna modifica applicata.")
+            return
+
+        if not selected:
+            print("Nessuna voce selezionata, nessuna modifica applicata.")
+            return
+
+        by_job: Dict[str, List[Dict[str, Any]]] = {}
+        for entry in selected:
+            by_job.setdefault(entry["job"], []).append(entry)
+
+        config_dir = os.path.join(os.getcwd(), "config")
+        for job_name, entries in by_job.items():
+            job_file = os.path.join(config_dir, f"{job_name}.yaml")
+            if not os.path.isfile(job_file):
+                print(f"⚠️  File non trovato: config/{job_name}.yaml (saltato)", file=sys.stderr)
+                continue
+
+            yaml = YAML()
+            with open(job_file, "r", encoding="utf-8") as f:
+                data = yaml.load(f)
+
+            if data is None:
+                data = {}
+
+            updated_models = []
+            for entry in entries:
+                path = entry.get("path")
+                if not path:
+                    continue
+                node = data
+                for step in path:
+                    if isinstance(node, dict) and step in node:
+                        node = node[step]
+                    elif isinstance(node, list) and isinstance(step, int) and 0 <= step < len(node):
+                        node = node[step]
+                    else:
+                        node = None
+                        break
+
+                if node is not None and isinstance(node, dict):
+                    node["pricing"] = {
+                        "input_per_million": entry["live_match"]["input_per_million"],
+                        "output_per_million": entry["live_match"]["output_per_million"],
+                    }
+                    updated_models.append(f"{entry['provider']}/{entry['model']}")
+
+            with open(job_file, "w", encoding="utf-8") as f:
+                yaml.dump(data, f)
+
+            cnt = len(updated_models)
+            s = "prezzo aggiornato" if cnt == 1 else "prezzi aggiornati"
+            models_str = ", ".join(updated_models)
+            print(f"✔ config/{job_name}.yaml: {cnt} {s} ({models_str})")
+
 
 def cmd_prices_lookup(args):
     from rt.llm.pricing_sync import lookup_live_price
@@ -938,6 +1026,7 @@ def main():
 
     # prices-check
     p_pc = subparsers.add_parser("prices-check", help="Confronta i prezzi configurati con il catalogo live LiteLLM")
+    p_pc.add_argument("--interactive", action="store_true", help="Seleziona interattivamente quali prezzi live applicare ai file config/<job>.yaml")
     p_pc.set_defaults(func=cmd_prices_check)
 
     # prices-lookup

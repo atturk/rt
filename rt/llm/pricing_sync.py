@@ -84,7 +84,7 @@ def lookup_live_price(model_query: str, provider_hint: Optional[str] = None) -> 
     return results
 
 
-def collect_configured_routes(cfg: "RTConfig") -> List[Dict[str, Optional[str]]]:
+def collect_configured_routes(cfg: "RTConfig") -> List[Dict[str, Any]]:
     """Enumera tutte le route effettivamente configurate in tutti i job (primary, secondary,
     primary_routes, e ogni voce di fallback), deduplicate per (provider, model)."""
     seen = set()
@@ -92,21 +92,22 @@ def collect_configured_routes(cfg: "RTConfig") -> List[Dict[str, Optional[str]]]
     for job_name, job_cfg in cfg.jobs.items():
         candidates = []
         if job_cfg.primary:
-            candidates.append(job_cfg.primary)
+            candidates.append((job_cfg.primary, ("primary",)))
         if job_cfg.secondary:
-            candidates.append(job_cfg.secondary)
+            candidates.append((job_cfg.secondary, ("secondary",)))
         if job_cfg.primary_routes:
-            candidates.extend(job_cfg.primary_routes)
+            for i, r in enumerate(job_cfg.primary_routes):
+                candidates.append((r, ("primary_routes", i)))
         for fb_field in ("timeout", "rate_limit", "safety", "auth", "generic"):
             fb_route = getattr(job_cfg.fallback, fb_field, None)
             if fb_route:
-                candidates.append(fb_route)
-        for route in candidates:
+                candidates.append((fb_route, ("fallback", fb_field)))
+        for route, path in candidates:
             key = (route.provider.lower().strip(), route.model.lower().strip().lstrip("~"))
             if key in seen:
                 continue
             seen.add(key)
-            routes.append({"job": job_name, "provider": key[0], "model": key[1]})
+            routes.append({"job": job_name, "provider": key[0], "model": key[1], "path": path})
     return routes
 
 
@@ -130,6 +131,7 @@ def check_configured_pricing(cfg: "RTConfig") -> List[Dict[str, Any]]:
             "job": route["job"],
             "provider": provider,
             "model": model,
+            "path": route.get("path"),
             "used_input_per_million": used_input,
             "used_output_per_million": used_output,
             "live_match": exact_match,
