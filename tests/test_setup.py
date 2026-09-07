@@ -148,7 +148,7 @@ def test_macwhisper_failure_hard_fails(tmp_path):
     )
 
     with patch("shutil.which", return_value="/usr/local/bin/mw"):
-        with patch("subprocess.run", return_value=failed_proc):
+        with patch("rt.pipeline.setup._run_mw_with_spinner", return_value=failed_proc):
             with pytest.raises(SetupError, match="Trascrizione MacWhisper JSON fallita"):
                 run_setup(
                     audio=audio_file,
@@ -158,4 +158,131 @@ def test_macwhisper_failure_hard_fails(tmp_path):
                     dest_dir=dest_dir,
                     interactive=False
                 )
+
+
+def test_run_setup_on_progress_callback(tmp_path):
+    """
+    Verifica che la callback on_progress riceva i messaggi corretti nell'ordine atteso
+    sia con mock_asr che con trascrizione reale.
+    """
+    from unittest.mock import patch
+    from rt.pipeline.setup import run_setup
+
+    dest_dir = str(tmp_path)
+    audio_file = os.path.join(dest_dir, "test_audio.wav")
+    with open(audio_file, "wb") as f:
+        f.write(b"RIFF audio fake")
+
+    # 1. Con mock_asr=True: riceve SOLO la notifica di creazione cartella
+    messages_mock = []
+    run_setup(
+        audio=audio_file,
+        date="2026-09-05",
+        materia="FARMACOLOGIA",
+        argomenti="Farmacocinetica",
+        dest_dir=dest_dir,
+        mock_asr=True,
+        interactive=False,
+        on_progress=messages_mock.append
+    )
+    assert len(messages_mock) == 1
+    assert "✔ Cartella lezione:" in messages_mock[0]
+    assert "FARMACOLOGIA" in messages_mock[0]
+
+    # 2. Con trascrizione reale (mockando _run_mw_with_spinner per simulare successo e scrittura file):
+    messages_real = []
+
+    def fake_mw_run(cmd, label):
+        # Scrive il file di output fittizio atteso
+        out_idx = cmd.index("-o") + 1
+        out_file = cmd[out_idx]
+        if out_file.endswith(".json"):
+            with open(out_file, "w", encoding="utf-8") as f:
+                json.dump({"segments": [{"id": "s1", "start": 0, "end": 1000, "text": "Test"}], "text": "Test"}, f)
+        elif out_file.endswith(".md"):
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write("Test markdown")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch("shutil.which", return_value="/usr/local/bin/mw"):
+        with patch("rt.pipeline.setup._run_mw_with_spinner", side_effect=fake_mw_run):
+            run_setup(
+                audio=audio_file,
+                date="2026-09-06",
+                materia="ANATOMIA",
+                argomenti="Apparato cardiovascolare",
+                dest_dir=dest_dir,
+                interactive=False,
+                on_progress=messages_real.append
+            )
+
+    assert len(messages_real) == 2
+    assert "✔ Cartella lezione:" in messages_real[0]
+    assert "ANATOMIA" in messages_real[0]
+    assert "[2/9] MACWHISPER TRANSCRIPTION" in messages_real[1]
+
+
+def test_run_mw_with_spinner_polling():
+    """
+    Verifica che _run_mw_with_spinner esegua correttamente subprocess.Popen e ritorni CompletedProcess.
+    """
+    from unittest.mock import patch, MagicMock
+    from rt.pipeline.setup import _run_mw_with_spinner
+
+    mock_proc = MagicMock()
+    # poll() restituisce None (running) la prima volta, poi 0 (terminato)
+    mock_proc.poll.side_effect = [None, 0]
+    mock_proc.communicate.return_value = ("fake stdout", "fake stderr")
+    mock_proc.returncode = 0
+
+    with patch("subprocess.Popen", return_value=mock_proc):
+        with patch("time.sleep"):  # velocizza il test
+            res = _run_mw_with_spinner(["echo", "hello"], "Test label")
+
+    assert res.returncode == 0
+    assert res.stdout == "fake stdout"
+    assert res.stderr == "fake stderr"
+    assert res.args == ["echo", "hello"]
+
+
+def test_macwhisper_markdown_failure_is_soft(tmp_path, capsys):
+    """
+    Verifica che il fallimento dell'export Markdown di MacWhisper non sia bloccante (soft-fail)
+    e stampi l'avviso chiaro con spiegazione che non ha impatto sulla pipeline.
+    """
+    from unittest.mock import patch
+    from rt.pipeline.setup import run_setup
+
+    dest_dir = str(tmp_path)
+    audio_file = os.path.join(dest_dir, "test_soft.wav")
+    with open(audio_file, "wb") as f:
+        f.write(b"RIFF audio fake")
+
+    def fake_mw_run(cmd, label):
+        out_idx = cmd.index("-o") + 1
+        out_file = cmd[out_idx]
+        if out_file.endswith(".json"):
+            with open(out_file, "w", encoding="utf-8") as f:
+                json.dump({"segments": [{"id": "s1", "start": 0, "end": 1000, "text": "Test"}], "text": "Test"}, f)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        elif out_file.endswith(".md"):
+            # Fallimento dell'export markdown
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Error exporting markdown")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch("shutil.which", return_value="/usr/local/bin/mw"):
+        with patch("rt.pipeline.setup._run_mw_with_spinner", side_effect=fake_mw_run):
+            res = run_setup(
+                audio=audio_file,
+                date="2026-09-07",
+                materia="FISIOLOGIA",
+                argomenti="Potenziale d'azione",
+                dest_dir=dest_dir,
+                interactive=False
+            )
+
+    assert res["status"] == "setup_completato"
+    captured = capsys.readouterr()
+    assert "Export Markdown di MacWhisper non riuscito (codice 1) — nessun impatto" in captured.out
+
 

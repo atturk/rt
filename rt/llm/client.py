@@ -397,6 +397,7 @@ class LLMClient:
                             content_parts: List[str] = []
                             reasoning_parts: List[str] = []
                             streamed_any_chunk = False
+                            t_last_progress = time.monotonic()
 
                             if hasattr(response, "iter_lines") and callable(response.iter_lines):
                                 for line_raw in response.iter_lines(decode_unicode=False):
@@ -410,6 +411,19 @@ class LLMClient:
                                         raise TimeoutFailure(
                                             f"Deadline wall-clock superata durante lo streaming "
                                             f"({elapsed_att:.2f}s > {timeout_seconds}s)",
+                                            provider=provider_name,
+                                            model=model_name
+                                        )
+
+                                    if now_mono - t_last_progress > effective_idle_read_timeout:
+                                        try:
+                                            response.close()
+                                        except Exception:
+                                            pass
+                                        raise TimeoutFailure(
+                                            f"Nessun contenuto o reasoning reale ricevuto da oltre {effective_idle_read_timeout:.0f}s, "
+                                            f"nonostante il socket resti attivo (probabili keep-alive silenziosi del provider). "
+                                            f"Streaming interrotto precauzionalmente.",
                                             provider=provider_name,
                                             model=model_name
                                         )
@@ -440,6 +454,8 @@ class LLMClient:
                                         content_parts.append(chunk.content_delta)
                                     if chunk.reasoning_delta:
                                         reasoning_parts.append(chunk.reasoning_delta)
+                                    if chunk.content_delta or chunk.reasoning_delta:
+                                        t_last_progress = now_mono
                                     if chunk.finish_reason:
                                         finish_reason = chunk.finish_reason
 
