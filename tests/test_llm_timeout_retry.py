@@ -699,3 +699,116 @@ def test_l_stream_req_timeout_clamped_to_small_rem_sec_when_near_deadline(monkey
     assert 4.0 <= t <= 5.0, f"Atteso timeout compreso tra 4.0s e 5.0s, ottenuto: {t}"
 
 
+# ======================================================================
+# TEST M: KEEP-ALIVE SILENZIOSI ATTIVANO IL TIMEOUT REALE DI INATTIVITÀ
+# ======================================================================
+
+def test_m_silent_keepalive_triggers_real_inactivity_timeout(monkeypatch):
+    """
+    Test M: Verifica che uno stream che riceve un chunk di contenuto iniziale e poi solo
+    righe SSE di keep-alive/commento (non 'data:', scartate da parse_stream_line)
+    venga interrotto per inattività (TimeoutFailure con messaggio specifico)
+    ben prima che la deadline totale del job (300s) venga raggiunta.
+    """
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-idle-inactivity")
+    client = LLMClient(force_mock=False)
+    client.config.llm["outline"].timeout_seconds = 300
+    client.config.llm["outline"].provider = "openrouter"
+    client.config.llm["outline"].max_attempts = 1
+    client.config.retry.max_timeout_retries = 0
+    client.config.retry.idle_read_timeout_seconds = 45.0
+
+    # Simulazione stream: 1 chunk iniziale, poi keep-alive a intervalli che superano 45s
+    # avanziamo il clock simulato
+    sim_time = [1000.0]
+
+    def advancing_time():
+        t = sim_time[0]
+        sim_time[0] += 1.0
+        return t
+
+    def keepalive_stream_generator():
+        # Riga 1: contenuto reale
+        yield b'data: {"choices": [{"delta": {"content": "Inizio..."}}]}'
+        # Avanziamo il tempo simulato di 50s durante i keep-alive
+        sim_time[0] += 50.0
+        yield b': keep-alive'
+        yield b': OPENROUTER PROCESSING'
+        yield b': ping'
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_lines.side_effect = lambda decode_unicode=False: keepalive_stream_generator()
+
+    with patch("time.monotonic", side_effect=advancing_time):
+        with patch("requests.post", return_value=mock_resp):
+            with pytest.raises(LLMTimeoutError) as exc_info:
+                client.call_structured(
+                    prompt="Test prompt",
+                    system_prompt="Test system",
+                    response_model=MockItem,
+                    job_name="outline",
+                    show_monitor=False
+                )
+
+    err_msg = str(exc_info.value)
+    assert "Nessun contenuto o reasoning reale ricevuto da oltre 45s" in err_msg
+    assert "Streaming interrotto precauzionalmente" in err_msg
+
+
+# ======================================================================
+# TEST N: PROGRESSO REGOLARE (CONTENT + REASONING) NON SCATTA IL TIMEOUT
+# ======================================================================
+
+def test_n_regular_content_and_reasoning_does_not_trigger_inactivity_timeout(monkeypatch):
+    """
+    Test N: Verifica che uno stream che emette sia reasoning delta che content delta
+    con keep-alive intermedi (ciascuno sotto la soglia di idle di 45s)
+    completi regolarmente con successo senza attivare l'inactivity timeout.
+    """
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-regular-progress")
+    client = LLMClient(force_mock=False)
+    client.config.llm["outline"].timeout_seconds = 300
+    client.config.llm["outline"].provider = "openrouter"
+    client.config.retry.idle_read_timeout_seconds = 45.0
+
+    sim_time = [2000.0]
+
+    def advancing_time():
+        t = sim_time[0]
+        sim_time[0] += 1.0
+        return t
+
+    def active_stream_generator():
+        # 1. Reasoning chunk
+        yield b'data: {"choices": [{"delta": {"reasoning": "Sto ragionando sulla struttura..."}}]}'
+        sim_time[0] += 10.0
+        # 2. Keepalive
+        yield b': keepalive'
+        sim_time[0] += 10.0
+        # 3. Altro reasoning chunk (reset timer)
+        yield b'data: {"choices": [{"delta": {"reasoning": "Elaborazione completata."}}]}'
+        sim_time[0] += 10.0
+        # 4. Content chunk (JSON valido)
+        yield b'data: {"choices": [{"delta": {"content": "{\\"title\\": \\"Success\\", \\"count\\": 100}"}, "finish_reason": "stop"}]}'
+        yield b'data: [DONE]'
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_lines.side_effect = lambda decode_unicode=False: active_stream_generator()
+
+    with patch("time.monotonic", side_effect=advancing_time):
+        with patch("requests.post", return_value=mock_resp):
+            res = client.call_structured(
+                prompt="Test prompt",
+                system_prompt="Test system",
+                response_model=MockItem,
+                job_name="outline",
+                show_monitor=False
+            )
+
+    assert res.title == "Success"
+    assert res.count == 100
+
+
+

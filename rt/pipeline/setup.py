@@ -11,7 +11,9 @@ import shutil
 import json
 import subprocess
 import datetime
-from typing import Dict, Any, List, Optional, Tuple, Union
+import time
+from typing import Dict, Any, List, Optional, Tuple, Union, Callable
+from rich.console import Console
 
 # Colori per il terminale
 CYAN = "\033[1;36m"
@@ -252,6 +254,19 @@ def generate_deterministic_mock_asr(
     return json_path, md_path
 
 
+def _run_mw_with_spinner(cmd: List[str], label: str) -> subprocess.CompletedProcess:
+    console = Console()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    start = time.monotonic()
+    with console.status(f"[cyan]{label}...", spinner="dots") as status:
+        while proc.poll() is None:
+            elapsed = int(time.monotonic() - start)
+            status.update(f"[cyan]{label}... ({elapsed}s)")
+            time.sleep(0.5)
+    stdout, stderr = proc.communicate()
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout=stdout, stderr=stderr)
+
+
 def run_setup(
     audio: Union[str, List[str]],
     date: Optional[str] = None,
@@ -262,7 +277,8 @@ def run_setup(
     skip_transcribe: bool = False,
     force: bool = False,
     mock_asr: bool = False,
-    interactive: bool = True
+    interactive: bool = True,
+    on_progress: Optional[Callable[[str], None]] = None
 ) -> Dict[str, Any]:
     """
     Esegue l'ingest audio e il setup strutturato della lezione.
@@ -379,6 +395,8 @@ def run_setup(
             )
 
     os.makedirs(target_folder_path, exist_ok=True)
+    if on_progress:
+        on_progress(f"✔ Cartella lezione: {target_folder_path}")
     now_iso = datetime.datetime.now().isoformat()
 
     # 5. ESECUZIONE TRASCRIZIONE ASR
@@ -403,6 +421,9 @@ def run_setup(
             raise SetupError(
                 "MacWhisper CLI ('mw') non trovato. Assicurati che MacWhisper sia installato in /Applications/MacWhisper.app."
             )
+
+        if on_progress:
+            on_progress("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
 
         # Se sono presenti file audio multipli, gestiamo la concatenazione deterministica con offset cumulativo
         all_segments_combined = []
@@ -433,7 +454,7 @@ def run_setup(
             ]
 
             # HARD-FAIL CHECK (Parte O): se MacWhisper fallisce, il setup si interrompe immediatamente
-            res_json = subprocess.run(cmd_json, capture_output=True, text=True)
+            res_json = _run_mw_with_spinner(cmd_json, "Trascrizione MacWhisper (JSON)")
             if res_json.returncode != 0 or not os.path.isfile(tmp_json) or os.path.getsize(tmp_json) == 0:
                 # Pulizia parziale di emergenza
                 if os.path.isfile(tmp_json):
@@ -443,9 +464,10 @@ def run_setup(
                     f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip()}"
                 )
 
-            res_md = subprocess.run(cmd_md, capture_output=True, text=True)
+            res_md = _run_mw_with_spinner(cmd_md, "Trascrizione MacWhisper (Markdown)")
             if res_md.returncode != 0:
-                print(f"{YELLOW}⚠ Avviso: export Markdown di mw ha restituito codice {res_md.returncode}. Verrà derivato dal JSON.{RESET}")
+                print(f"{YELLOW}⚠ Export Markdown di MacWhisper non riuscito (codice {res_md.returncode}) — nessun impatto: "
+                      f"il Markdown verrà comunque rigenerato da 'rt prepare' a partire dal JSON validato.{RESET}")
 
             # Parsing segmenti parziali per calcolo offset cumulativo deterministico (Parte L)
             with open(tmp_json, "r", encoding="utf-8") as f:

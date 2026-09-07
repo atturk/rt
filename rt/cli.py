@@ -614,18 +614,19 @@ def cmd_run(args):
                 skip_transcribe=getattr(args, "skip_transcribe", False),
                 force=force,
                 mock_asr=mock_mode,
-                interactive=True
+                interactive=True,
+                on_progress=print
             )
             lesson_dir = setup_res["lesson_dir"]
-            print(f"✔ Cartella lezione: {lesson_dir}")
         except SetupError as se:
             print(f"❌ Errore durante l'ingest audio: {se}", file=sys.stderr)
             sys.exit(1)
 
-        print("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
         if mock_mode:
+            print("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
             print("⏩ [MOCK ASR] Trascrizione deterministica generata offline a costo zero.")
         elif getattr(args, "skip_transcribe", False):
+            print("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
             print("⚠️  [SKIP] Trascrizione saltata (--skip-transcribe). Stato impostato su METADATA_ONLY.")
             print("La pipeline si arresta qui. Esegui la trascrizione per procedere con 'rt prepare'.")
             return
