@@ -207,3 +207,24 @@ thresholds:
   green: 0.95   # >= 0.95 -> Correzione fonetica certa, auto-approvata nel ledger
   yellow: 0.75  # 0.75 - 0.94 -> Ambiguità plausibile, inserita nella coda di revisione
   # < 0.75      -> RED: Rischio elevato / dubbio, richiede verifica d'ascolto umana
+
+# ------------------------------------------------------------------------------
+# ESEMPIO: PROVIDER GENERICO OPENAI-COMPATIBLE & CREDENTIALS CUSTOM
+# ------------------------------------------------------------------------------
+# Esempio: aggiungere un provider generico OpenAI-compatible (es. Mistral AI ufficiale).
+# Decommentare e adattare per usarlo in un job (provider: "openai_compatible").
+# credentials:
+#   - name: "mistral_official"
+#     provider: "openai_compatible"
+#     env_var: "MISTRAL_API_KEY"
+#
+# jobs:
+#   outline:
+#     primary:
+#       provider: "openai_compatible"
+#       credential: "mistral_official"
+#       model: "mistral-large-latest"
+#       base_url: "https://api.mistral.ai/v1"
+#       thinking: false
+#       timeout_seconds: 180
+

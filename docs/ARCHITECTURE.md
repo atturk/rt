@@ -161,6 +161,11 @@ RT Cognitive Jobs (outline, rewrite, review_asr, review_science)
    - `route_id`, `route_role`, `credential_ref`, `failure_class`, `fallback_reason`.
    - Redazione assoluta dei secret: nessun token o API key è presente nei record o messaggi di errore.
 
+7. **Estendibilità & Provider Generico `openai_compatible`**:
+   - Supporto nativo per qualsiasi endpoint compatibile con OpenAI Chat Completions API (es. Mistral AI ufficiale, OpenAI ufficiale, Groq, Together.ai, endpoint locali vLLM/Ollama).
+   - Registrazione dichiarativa di credenziali custom direttamente via la chiave `credentials:` in `rt.config.yaml` senza necessità di modificare il codice sorgente.
+
+
 ---
 
 ## 5. Grafo delle Dipendenze (DAG) e Semantica di Staleness

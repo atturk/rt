@@ -64,6 +64,12 @@ class CredentialRegistry:
     def get_default_credential_for_provider(self, provider: str) -> Optional[str]:
         return self._provider_defaults.get(provider.lower().strip())
 
+    def get_env_var_name(self, credential_name: str) -> Optional[str]:
+        """Restituisce il nome della variabile d'ambiente associata a una credenziale registrata, se esiste."""
+        ref = self._credentials.get(credential_name.lower().strip())
+        return ref.env_var if ref else None
+
+
     def validate_credential(self, provider: str, credential_name: str) -> bool:
         """Valida a livello di configurazione che la credenziale esista e appartenga al provider specificato."""
         clean_p = provider.lower().strip()

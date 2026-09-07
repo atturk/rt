@@ -49,11 +49,16 @@ class RouteConfig(BaseModel):
         """Validazione config-time delle route."""
         from rt.llm.credentials import GLOBAL_CREDENTIALS
         clean_p = self.provider.lower().strip()
-        allowed_providers = {"deepseek", "openrouter", "google"}
+        allowed_providers = {"deepseek", "openrouter", "google", "openai_compatible"}
         if clean_p not in allowed_providers:
             raise ValueError(f"Provider LLM non supportato: '{self.provider}'. Provider ammessi: {sorted(allowed_providers)}")
         if not self.model or not str(self.model).strip():
             raise ValueError(f"Il modello per il provider '{self.provider}' non può essere vuoto.")
+        if clean_p == "openai_compatible" and not self.base_url:
+            raise ValueError(
+                "Il provider 'openai_compatible' richiede 'base_url' esplicito nella route "
+                "(non esiste un endpoint di default per questo tipo di provider)."
+            )
 
         # Validazione difensiva anti-mismatch/copia-incolla per base_url
         if self.base_url:
@@ -232,6 +237,20 @@ class RTConfig(BaseModel):
     def normalize_llm_and_jobs_config(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
+
+        # 0. Registrazione delle credenziali custom dichiarate in YAML (es. per 'openai_compatible'),
+        #    PRIMA che le RouteConfig vengano validate più sotto (altrimenti la validazione fallirebbe
+        #    perché il nome della credenziale non sarebbe ancora noto al registry).
+        raw_credentials = data.get("credentials")
+        if isinstance(raw_credentials, list):
+            from rt.llm.credentials import GLOBAL_CREDENTIALS, CredentialRef
+            for entry in raw_credentials:
+                if isinstance(entry, dict):
+                    cred_name = entry.get("name")
+                    cred_provider = entry.get("provider")
+                    cred_env_var = entry.get("env_var")
+                    if cred_name and cred_provider and cred_env_var:
+                        GLOBAL_CREDENTIALS.register(CredentialRef(name=cred_name, provider=cred_provider, env_var=cred_env_var))
 
         # 1. Estrazione retry da llm.retry se collocato lì in configurazioni legacy
         llm_section = data.get("llm")

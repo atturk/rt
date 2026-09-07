@@ -239,11 +239,7 @@ class LLMClient:
             api_key = GLOBAL_CREDENTIALS.get_api_key(credential_ref)
             if not api_key and provider_name != "mock":
 
-                env_var = "OPENROUTER_API_KEY" if provider_name == "openrouter" else (
-                    "GOOGLE_API_KEY_1" if credential_ref == "google_1" else (
-                        "GOOGLE_API_KEY_2" if credential_ref == "google_2" else f"{provider_name.upper()}_API_KEY"
-                    )
-                )
+                env_var = GLOBAL_CREDENTIALS.get_env_var_name(credential_ref) or f"{provider_name.upper()}_API_KEY"
                 auth_fail = AuthenticationFailure(
                     f"API key mancante per il provider '{provider_name}'. "
                     f"Imposta la variabile d'ambiente {env_var} (oppure definiscila nel file .env locale). "

@@ -8,12 +8,15 @@ from rt.llm.providers.base import BaseLLMProvider
 from rt.llm.providers.deepseek import DeepSeekProvider
 from rt.llm.providers.openrouter import OpenRouterProvider
 from rt.llm.providers.google import GoogleProvider
+from rt.llm.providers.openai_compatible import OpenAICompatibleProvider
 
 _PROVIDERS: Dict[str, Type[BaseLLMProvider]] = {
     "deepseek": DeepSeekProvider,
     "openrouter": OpenRouterProvider,
     "google": GoogleProvider,
+    "openai_compatible": OpenAICompatibleProvider,
 }
+
 
 
 def get_provider(name: str) -> BaseLLMProvider:

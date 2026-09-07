@@ -79,6 +79,8 @@ Per testare offline senza consumare crediti API:
 - [Workflow e Ciclo di Vita (WORKFLOW.md)](docs/WORKFLOW.md)
 - [Modelli Dati e Contratti JSON (SCHEMAS.md)](docs/SCHEMAS.md)
 - [Guida allo Sviluppo e Test Suite (DEVELOPMENT.md)](docs/DEVELOPMENT.md)
+- [Motori di Trascrizione Alternativi (ALTERNATIVE_TRANSCRIPTION.md)](docs/ALTERNATIVE_TRANSCRIPTION.md)
+
 
 ---
 
