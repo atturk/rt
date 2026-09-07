@@ -62,7 +62,8 @@ class BaseLLMProvider(ABC):
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
         max_thinking_tokens: Optional[int] = None,
-        provider_routing: Optional[Dict[str, Any]] = None
+        provider_routing: Optional[Dict[str, Any]] = None,
+        response_json_schema: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Costruisce il payload JSON specifico per il provider."""
         pass

@@ -37,9 +37,11 @@ class DeepSeekProvider(BaseLLMProvider):
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
         max_thinking_tokens: Optional[int] = None,
-        provider_routing: Optional[Dict[str, Any]] = None
+        provider_routing: Optional[Dict[str, Any]] = None,
+        response_json_schema: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        # 'provider_routing' è specifico di OpenRouter, non ha equivalente per questo provider
+        # 'provider_routing'/'response_json_schema' sono specifici di altri provider, non ha
+        # equivalente/necessità per DeepSeek: 'response_format' generico (json_object) già funziona.
         clean_model = model.lstrip("~").strip()
         if clean_model.startswith("deepseek/"):
             clean_model = clean_model[len("deepseek/"):]

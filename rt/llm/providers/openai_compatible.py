@@ -43,7 +43,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
         max_thinking_tokens: Optional[int] = None,
-        provider_routing: Optional[Dict[str, Any]] = None
+        provider_routing: Optional[Dict[str, Any]] = None,
+        response_json_schema: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         # 'thinking'/'reasoning_effort'/'max_thinking_tokens'/'provider_routing' sono ignorati volutamente:
         # non fanno parte della Chat Completions API standard OpenAI (provider_routing è specifico di OpenRouter).
@@ -56,7 +57,21 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             payload["max_tokens"] = max_tokens
         if stream:
             payload["stream_options"] = {"include_usage": True}
-        if response_format:
+        # Molti server OpenAI-compatible locali (LM Studio/llama.cpp) non accettano
+        # response_format.type == 'json_object' ("must be 'json_schema' or 'text'"):
+        # se disponibile lo schema della risposta attesa, usiamo la modalità
+        # 'json_schema' (generazione vincolata allo schema), altrimenti il response_format
+        # generico passato dal chiamante.
+        if response_json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "structured_response",
+                    "schema": response_json_schema,
+                    "strict": True
+                }
+            }
+        elif response_format:
             payload["response_format"] = response_format
         if temperature is not None:
             payload["temperature"] = temperature

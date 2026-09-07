@@ -132,6 +132,39 @@ def test_monitor_compact_line_truncated_to_terminal_width():
     assert visible_line.endswith("…")
 
 
+def test_monitor_compact_line_strips_unit_title_and_streaming_tags():
+    """La riga compatta deve mostrare solo l'indice dell'unità (es. 'unit 1/24'), senza il
+    titolo tra parentesi (che arriva già incluso in unit_id da rewrite.py/review_science.py
+    per il box verbose e per i log), e senza alcuna occorrenza di '(streaming)' — troppo
+    rumore per una riga pensata per essere letta a colpo d'occhio durante l'esecuzione."""
+    output_buffer = []
+
+    monitor = LiveTerminalMonitor(
+        job="review_science",
+        provider="openrouter",
+        model="deepseek/deepseek-v4-flash",
+        unit_id="unit 1/24 (1.1: Struttura generale dell'endocrino...)",
+        enabled=True,
+        verbose=False,
+        timeout_seconds=180,
+    )
+    monitor.is_tty = True
+    monitor.step_num = 3
+    monitor.approx_input_tokens = 2001
+    monitor.reasoning_char_count = 31876
+
+    with patch("shutil.get_terminal_size", return_value=os.terminal_size((200, 24))):
+        with patch("sys.stdout.write", side_effect=output_buffer.append):
+            with patch("sys.stdout.flush"):
+                monitor.render(final=False)
+
+    rendered_text = "".join(output_buffer).replace("\r\033[K", "")
+    assert "unit 1/24" in rendered_text
+    assert "(1.1" not in rendered_text
+    assert "Struttura generale" not in rendered_text
+    assert "(streaming)" not in rendered_text
+
+
 def test_monitor_retry_reason_tag():
     """Verifica che set_retry_reason mostri il tag nella riga compatta."""
     output_buffer = []

@@ -42,7 +42,11 @@ def test_config_defaults_and_yaml_parsing():
 def test_secret_management_and_no_desktop_leak(tmp_path, monkeypatch):
     """Verifica che le chiavi provengano dalle env vars dedicate o .env e mai da file Desktop."""
     monkeypatch.setattr("rt.core.config.load_env_file", lambda *args: None)
-    
+    # Isola load_config() da un'eventuale config/ reale nella working directory di sviluppo:
+    # questo file importa load_config con un proprio riferimento diretto (from rt.core.config
+    # import load_config), immune al patch della fixture di isolamento in tests/conftest.py.
+    monkeypatch.chdir(tmp_path)
+
     for provider_name, env_var in [("deepseek", "DEEPSEEK_API_KEY"), ("openrouter", "OPENROUTER_API_KEY")]:
         monkeypatch.delenv(env_var, raising=False)
         assert get_api_key(provider_name) is None
