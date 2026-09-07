@@ -112,6 +112,13 @@ class SuspiciousFastResponseFailure(LLMFailure):
         self.failure_class = "suspicious_fast_response"
 
 
+class UserAbortedFailure(LLMFailure):
+    """Sollevata quando l'utente interrompe manualmente (Ctrl+C) un tentativo di streaming in corso."""
+    def __init__(self, message: str, **kwargs):
+        super().__init__(message, **kwargs)
+        self.failure_class = "user_aborted"
+
+
 class UnknownProviderFailure(LLMFailure):
     """Sollevata per errori imprevisti non mappabili in altre categorie."""
     def __init__(self, message: str, **kwargs):

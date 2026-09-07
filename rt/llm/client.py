@@ -10,10 +10,11 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 """
 
 import json
+import os
 import re
 import time
 import datetime
-from typing import Type, TypeVar, Optional, List, Set
+from typing import Type, TypeVar, Optional, List, Set, Dict, Any
 import requests
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ from rt.llm.monitor import LiveTerminalMonitor
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.errors import (
     LLMFailure,
+    UserAbortedFailure,
     TimeoutFailure,
     RateLimitFailure,
     SafetyFailure,
@@ -43,6 +45,18 @@ from rt.llm.errors import (
 from rt.llm.router import RoutingEngine, ExecutionRoute
 
 T = TypeVar("T", bound=BaseModel)
+
+
+def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
+    """Scrive una riga di telemetria e contesto in formato JSON Lines su llm_debug.log."""
+    if not lesson_dir:
+        return
+    log_path = os.path.join(lesson_dir, "llm_debug.log")
+    try:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # Il log di debug non deve mai far fallire la pipeline
 
 
 def _is_openrouter_free_tier(provider: str, model: str) -> bool:
@@ -94,7 +108,8 @@ class LLMClient:
         max_timeout_retries: Optional[int] = None,
         timeout_backoff_seconds: Optional[float] = None,
         idle_read_timeout_seconds: Optional[float] = None,
-        min_elapsed_seconds: Optional[float] = None
+        min_elapsed_seconds: Optional[float] = None,
+        lesson_dir: Optional[str] = None
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -141,7 +156,28 @@ class LLMClient:
                 timeout_seconds_configured=primary_cfg.timeout_seconds
             )
             GLOBAL_TELEMETRY.add(mock_rec)
-            return self._generate_mock_response(job_name, prompt, response_model)
+            mock_resp = self._generate_mock_response(job_name, prompt, response_model)
+            if lesson_dir:
+                _append_debug_log(lesson_dir, {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "execution_id": execution_id,
+                    "job": job_name,
+                    "unit_id": unit_id,
+                    "provider": "mock",
+                    "model": "mock-deterministic",
+                    "resolved_model": "mock-deterministic",
+                    "attempt": 1,
+                    "route_role": "primary",
+                    "status": "success",
+                    "elapsed_seconds": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "estimated_cost": 0.0,
+                    "finish_reason": "stop",
+                    "content_text": getattr(mock_resp, "model_dump_json", lambda: str(mock_resp))()
+                })
+            return mock_resp
 
         # Risoluzione route iniziale (con supporto a eventuali override manuali)
         if override_provider or override_model or override_credential:
@@ -285,6 +321,7 @@ class LLMClient:
                 attempt=call_attempt,
                 max_attempts=max_global_attempts,
                 timeout_seconds=timeout_seconds,
+                verbose=getattr(self.config, "show_monitor_verbose", False),
             )
 
             # Sub-loop per same-route retry (timeout di rete, low-effort reasoning/fast response, output-limit)
@@ -771,12 +808,49 @@ class LLMClient:
                         )
                         GLOBAL_TELEMETRY.add(telemetry_rec)
 
+                        if lesson_dir:
+                            reas_full_text = "".join(reasoning_parts) if ('reasoning_parts' in locals() and reasoning_parts) else (reasoning_content if ('reasoning_content' in locals() and reasoning_content) else None)
+                            debug_entry = {
+                                "timestamp": datetime.datetime.fromtimestamp(t_attempt_end).isoformat(),
+                                "execution_id": execution_id,
+                                "job": job_name,
+                                "unit_id": unit_id,
+                                "provider": provider_name,
+                                "model": model_name,
+                                "resolved_model": resolved_model,
+                                "attempt": call_attempt,
+                                "route_role": current_exec_route.route_role,
+                                "status": "success",
+                                "elapsed_seconds": round(elapsed_att, 4),
+                                "input_tokens": in_t,
+                                "output_tokens": out_t,
+                                "reasoning_tokens": reas_t,
+                                "estimated_cost": cost_est,
+                                "finish_reason": finish_reason,
+                                "reasoning_text": reas_full_text,
+                                "content_text": raw_content
+                            }
+                            _append_debug_log(lesson_dir, debug_entry)
+
                         if final_usage:
                             monitor.on_usage(final_usage, cost_est)
                         monitor.finish(success=True)
 
                         return validated_obj
 
+                    except KeyboardInterrupt:
+                        if 'response' in locals() and hasattr(response, "close"):
+                            try:
+                                response.close()
+                            except Exception:
+                                pass
+                        print("\n⚠ Interrotto dall'utente durante lo streaming — passo alla route di fallback (se disponibile)...")
+                        attempt_exception = UserAbortedFailure(
+                            "Tentativo interrotto manualmente dall'utente (Ctrl+C) durante lo streaming.",
+                            provider=provider_name,
+                            model=model_name
+                        )
+                        break
                     except Exception as e:
                         attempt_exception = e
                         if 'content_parts' in locals() and content_parts and not raw_content:
@@ -862,10 +936,35 @@ class LLMClient:
                 )
                 GLOBAL_TELEMETRY.add(err_rec)
 
+                if lesson_dir:
+                    reas_full_text = "".join(reasoning_parts) if ('reasoning_parts' in locals() and reasoning_parts) else (reasoning_content if ('reasoning_content' in locals() and reasoning_content) else None)
+                    err_debug_entry = {
+                        "timestamp": datetime.datetime.fromtimestamp(t_attempt_end).isoformat(),
+                        "execution_id": execution_id,
+                        "job": job_name,
+                        "unit_id": unit_id,
+                        "provider": provider_name,
+                        "model": model_name,
+                        "resolved_model": resolved_model,
+                        "attempt": call_attempt,
+                        "route_role": current_exec_route.route_role,
+                        "status": err_status,
+                        "elapsed_seconds": round(elapsed_att, 4),
+                        "input_tokens": in_t if ('in_t' in locals()) else None,
+                        "output_tokens": out_t if ('out_t' in locals()) else None,
+                        "reasoning_tokens": reas_t if ('reas_t' in locals()) else None,
+                        "estimated_cost": cost_est if ('cost_est' in locals()) else None,
+                        "finish_reason": finish_reason,
+                        "error_message": classified_failure.message,
+                        "reasoning_text": reas_full_text
+                    }
+                    _append_debug_log(lesson_dir, err_debug_entry)
+
                 # Controllo Same-Route Retry (Timeout, Low-Effort, Output-Limit totalmente indipendenti)
                 if isinstance(classified_failure, TimeoutFailure) and route_timeout_retries < max(0, route_max_timeout_retries):
                     route_timeout_retries += 1
                     call_attempt += 1
+                    monitor.set_retry_reason("timeout")
                     monitor.log_timeout(elapsed_att, next_attempt=call_attempt)
                     backoff = min(30.0, effective_backoff_sec * (2 ** (route_timeout_retries - 1)))
                     time.sleep(backoff)
@@ -881,6 +980,7 @@ class LLMClient:
                     call_attempt += 1
                     fail_label = "suspicious_fast_response" if isinstance(classified_failure, SuspiciousFastResponseFailure) else "reasoning_required"
                     reason_label = f"{fail_label}_escalation" if force_thinking_override else fail_label
+                    monitor.set_retry_reason(fail_label)
                     monitor.log_retry(
                         reason=reason_label,
                         elapsed=elapsed_att,
@@ -891,6 +991,7 @@ class LLMClient:
                 elif isinstance(classified_failure, OutputLimitFailure) and output_limit_retries < MAX_OUTPUT_LIMIT_RETRIES:
                     output_limit_retries += 1
                     call_attempt += 1
+                    monitor.set_retry_reason("output_limit")
                     monitor.log_retry(reason="output_limit_retry", elapsed=elapsed_att, next_attempt=call_attempt)
                     time.sleep(1.5)
                     continue

@@ -716,6 +716,17 @@ def cmd_run(args):
         print(f"  - Problemi scientifici: {bld_res['problemi_scientifici']}")
     print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
 
+    from rt.llm.telemetry import GLOBAL_TELEMETRY
+    summary = GLOBAL_TELEMETRY.get_summary()
+    if summary["total_requests"] > 0:
+        print("\n" + "=" * 60)
+        print("💰 RIEPILOGO COSTI SESSIONE")
+        print("=" * 60)
+        for job_name, job_stats in summary["by_job"].items():
+            print(f"  {job_name:<16} {job_stats['requests']:>3} richieste  ${job_stats['estimated_cost_usd']:.6f}")
+        print(f"  {'TOTALE':<16}     ${summary['total_estimated_cost_usd']:.6f}")
+        print("=" * 60)
+
 
 def main():
     load_env_file(override=True)

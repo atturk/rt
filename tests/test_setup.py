@@ -245,33 +245,32 @@ def test_run_mw_with_spinner_polling():
     assert res.args == ["echo", "hello"]
 
 
-def test_macwhisper_markdown_failure_is_soft(tmp_path, capsys):
+def test_macwhisper_single_run_per_audio(tmp_path):
     """
-    Verifica che il fallimento dell'export Markdown di MacWhisper non sia bloccante (soft-fail)
-    e stampi l'avviso chiaro con spiegazione che non ha impatto sulla pipeline.
+    Verifica che MacWhisper (_run_mw_with_spinner) venga chiamato esattamente UNA volta
+    per file audio (solo export JSON, senza export Markdown duplicato).
     """
-    from unittest.mock import patch
+    from unittest.mock import patch, MagicMock
     from rt.pipeline.setup import run_setup
 
     dest_dir = str(tmp_path)
-    audio_file = os.path.join(dest_dir, "test_soft.wav")
+    audio_file = os.path.join(dest_dir, "test_single_call.wav")
     with open(audio_file, "wb") as f:
         f.write(b"RIFF audio fake")
 
+    calls = []
+
     def fake_mw_run(cmd, label):
+        calls.append(cmd)
         out_idx = cmd.index("-o") + 1
         out_file = cmd[out_idx]
         if out_file.endswith(".json"):
             with open(out_file, "w", encoding="utf-8") as f:
                 json.dump({"segments": [{"id": "s1", "start": 0, "end": 1000, "text": "Test"}], "text": "Test"}, f)
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-        elif out_file.endswith(".md"):
-            # Fallimento dell'export markdown
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Error exporting markdown")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     with patch("shutil.which", return_value="/usr/local/bin/mw"):
-        with patch("rt.pipeline.setup._run_mw_with_spinner", side_effect=fake_mw_run):
+        with patch("rt.pipeline.setup._run_mw_with_spinner", side_effect=fake_mw_run) as mock_mw:
             res = run_setup(
                 audio=audio_file,
                 date="2026-09-07",
@@ -282,8 +281,13 @@ def test_macwhisper_markdown_failure_is_soft(tmp_path, capsys):
             )
 
     assert res["status"] == "setup_completato"
-    captured = capsys.readouterr()
-    assert "Export Markdown di MacWhisper non riuscito (codice 1) — nessun impatto" in captured.out
+    assert len(calls) == 1
+    assert "--format" in calls[0]
+    fmt_idx = calls[0].index("--format") + 1
+    assert calls[0][fmt_idx] == "json"
+    # Il file markdown finale deve comunque esistere ed essere generato da all_segments_combined
+    raw_md_path = os.path.join(res["lesson_dir"], "trascritto grezzo.md")
+    assert os.path.isfile(raw_md_path)
 
 
 def test_setup_optional_argomenti_empty(tmp_path):
