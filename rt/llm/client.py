@@ -91,6 +91,17 @@ class LLMClient:
             )
         )
 
+    def _resolve_custom_pricing(self, route: RouteConfig, provider_name: str, model_name: str) -> Optional[Dict[str, Any]]:
+        """Se la route ha un pricing specifico, lo inietta come override esatto per
+        (provider_name, model_name) sopra il pricing custom globale — priorità massima,
+        nessuna ambiguità di matching perché la chiave è esattamente quella usata."""
+        base = dict(self.config.pricing or {})
+        if getattr(route, "pricing", None) is not None:
+            prov_dict = dict(base.get(provider_name, {}))
+            prov_dict[model_name] = route.pricing.model_dump()
+            base[provider_name] = prov_dict
+        return base or None
+
     def call_structured(
         self,
         prompt: str,
@@ -537,7 +548,7 @@ class LLMClient:
                                             input_tokens=in_t,
                                             output_tokens=out_t,
                                             reasoning_tokens=reas_t,
-                                            custom_pricing=self.config.pricing
+                                            custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
                                         )
                                         monitor.on_usage(final_usage, cost_est)
 
@@ -764,7 +775,7 @@ class LLMClient:
                             input_tokens=in_t,
                             output_tokens=out_t,
                             reasoning_tokens=reas_t,
-                            custom_pricing=self.config.pricing
+                            custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
                         )
 
                         ttft = round(t_first_chunk - t_attempt_start, 4) if t_first_chunk else None

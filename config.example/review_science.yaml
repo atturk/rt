@@ -1,0 +1,41 @@
+# ==============================================================================
+# config.example/review_science.yaml - Job Cognitivo: Review Science
+# Critic indipendente per lapsus docente e allucinazioni
+# ==============================================================================
+
+round_robin: false
+max_attempts: 3
+max_output_chars: 80000
+
+primary:
+  provider: "google"
+  credential: "google_1"
+  model: "gemini-3.6-flash"
+  thinking: true
+  reasoning_effort: "high"
+  max_thinking_tokens: 16392
+  max_tokens: null
+  timeout_seconds: 300
+
+fallback:
+  rate_limit:
+    provider: "google"
+    credential: "google_2"
+    model: "gemini-3.5-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 240
+  timeout:
+    provider: "deepseek"
+    credential: "deepseek"
+    model: "deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 240
+  generic:
+    provider: "deepseek"
+    credential: "deepseek"
+    model: "deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 240

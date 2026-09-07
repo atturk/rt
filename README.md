@@ -45,6 +45,19 @@ cp .env.example .env
 # Inserisci le tue API key in .env (OPENROUTER_API_KEY o DEEPSEEK_API_KEY)
 ```
 
+Configurazione dei job e dei modelli (due modalità equivalenti):
+- **Cartella divisa `config/`** (consigliata):
+  ```bash
+  cp -r config.example config
+  # Modifica config/general.yaml e i singoli file per-job config/<job>.yaml
+  ```
+- **File singolo `rt.config.yaml`**:
+  ```bash
+  cp rt.config.yaml.example rt.config.yaml
+  ```
+> **Nota sulla precedenza**: se sono presenti sia `config/` che `rt.config.yaml`, la cartella `config/` ha sempre la precedenza. È inoltre possibile specificare un listino `pricing:` direttamente sotto ogni singola route.
+
+
 ### 2. Esecuzione End-to-End di una Lezione
 
 ```bash

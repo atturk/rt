@@ -1,0 +1,67 @@
+# ==============================================================================
+# config.example/rewrite.yaml - Job Cognitivo: Rewrite
+# Google Dual-Key (Round-Robin) + Fallback dedicati (Safety non-Gemini)
+# ==============================================================================
+
+round_robin: true
+max_attempts: 5
+max_output_chars: 45000
+
+primary:
+  provider: "google"
+  credential: "google_1"
+  model: "gemini-3.5-flash-lite"
+  thinking: true
+  reasoning_effort: "high"
+  timeout_seconds: 180
+  # Esempio pricing per-route: sovrascrive sia il pricing custom globale sia DEFAULT_PRICING.
+  # Utile per modelli a costo zero (es. free tier) o con tariffe personalizzate.
+  # pricing:
+  #   input_per_million: 0.0
+  #   output_per_million: 0.0
+
+secondary:
+  provider: "google"
+  credential: "google_2"
+  model: "gemini-3.5-flash-lite"
+  thinking: true
+  reasoning_effort: "high"
+  timeout_seconds: 180
+
+fallback:
+  # Modello non-Gemini per garantire vero bypass dei filtri di contenuto condivisi di Google
+  safety:
+    provider: "openrouter"
+    credential: "openrouter"
+    model: "deepseek/deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 300
+  rate_limit:
+    provider: "openrouter"
+    credential: "openrouter"
+    model: "deepseek/deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 300
+  timeout:
+    provider: "deepseek"
+    credential: "deepseek"
+    model: "deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 180
+  auth:
+    provider: "google"
+    credential: "google_2"
+    model: "gemini-3.5-flash-lite"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 180
+  generic:
+    provider: "openrouter"
+    credential: "openrouter"
+    model: "deepseek/deepseek-v4-flash"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 300
