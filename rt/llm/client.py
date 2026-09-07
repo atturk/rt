@@ -377,7 +377,8 @@ class LLMClient:
                     response_format={"type": "json_object"},
                     stream=use_stream,
                     max_thinking_tokens=route.max_thinking_tokens,
-                    provider_routing=self._resolve_provider_routing(route, provider_name)
+                    provider_routing=self._resolve_provider_routing(route, provider_name),
+                    response_json_schema=response_model.model_json_schema()
                 )
 
                 raw_content = ""

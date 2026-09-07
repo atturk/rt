@@ -38,8 +38,11 @@ class OpenRouterProvider(BaseLLMProvider):
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
         max_thinking_tokens: Optional[int] = None,
-        provider_routing: Optional[Dict[str, Any]] = None
+        provider_routing: Optional[Dict[str, Any]] = None,
+        response_json_schema: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        # 'response_json_schema' non è usato qui: OpenRouter normalizza 'response_format' di tipo
+        # 'json_object' verso i vari modelli sottostanti, comportamento già verificato funzionante.
         # OpenRouter supporta alias di modelli con tilde (es. '~deepseek/deepseek-v4-flash-latest')
         clean_model = model.strip()
         if "/" not in clean_model and not clean_model.startswith("~") and clean_model.startswith("deepseek"):

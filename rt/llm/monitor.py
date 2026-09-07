@@ -4,6 +4,7 @@ Live terminal monitor per le chiamate LLM in streaming.
 Mostra l'avanzamento dei 4 passaggi ([1/4] .. [4/4]), token (o stima live), latenza, costo stimato per blocco e cumulativo di sessione.
 """
 
+import re
 import shutil
 import sys
 import time
@@ -193,16 +194,18 @@ class LiveTerminalMonitor:
         if not self.verbose:
             spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
             frame = spinner_frames[int(elapsed * 10) % len(spinner_frames)] if not final else ("✔" if self.status == "completed" else "✗")
-            unit_part = f" · {self.unit_id}" if self.unit_id else f" · {self.attempt}/{self.max_attempts}"
+            compact_unit_id = re.sub(r"\s*\([^)]*\)\s*$", "", self.unit_id).strip() if self.unit_id else None
+            unit_part = f" · {compact_unit_id}" if compact_unit_id else f" · {self.attempt}/{self.max_attempts}"
             slow_tag = ""
             if self.timeout_seconds and not final:
                 elapsed_now = time.time() - self.start_time
                 if elapsed_now > 0.5 * self.timeout_seconds:
                     slow_tag = " ⚠lento"
             retry_tag = f" · retry:{self._last_retry_reason}" if getattr(self, "_last_retry_reason", None) and not final else ""
+            compact_cost_str = cost_str.replace(" (streaming)", "")
             compact_line = (
-                f"{frame} {self.job}{unit_part} · ↑{in_est}{suffix} ↓{out_est}{suffix} R{reas_est}{suffix} "
-                f"{cost_str} · {self.provider}/{self.model}{retry_tag}{slow_tag} · {int(elapsed)}s"
+                f"{frame} {self.job}{unit_part} · ↑{in_est} ↓{out_est} R{reas_est} "
+                f"{compact_cost_str} · {self.provider}/{self.model}{retry_tag}{slow_tag} · {int(elapsed)}s"
             )
             if self.is_tty:
                 term_width = shutil.get_terminal_size(fallback=(120, 24)).columns

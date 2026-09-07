@@ -51,6 +51,38 @@ def test_openai_compatible_build_payload():
     assert payload["stream_options"] == {"include_usage": True}
 
 
+def test_openai_compatible_uses_json_schema_when_available():
+    """Molti server OpenAI-compatible locali (LM Studio/llama.cpp) rifiutano
+    response_format.type == 'json_object' con l'errore "must be 'json_schema' or 'text'".
+    Se è disponibile lo schema del modello di risposta atteso, build_payload deve costruire
+    un response_format di tipo 'json_schema' invece del generico 'json_object'."""
+    provider = OpenAICompatibleProvider()
+
+    class DummyResponseModel(BaseModel):
+        summary: str
+        items: list
+
+    payload = provider.build_payload(
+        model="google/gemma-4-26b-a4b-qat",
+        messages=[{"role": "user", "content": "Analizza il testo"}],
+        response_format={"type": "json_object"},
+        response_json_schema=DummyResponseModel.model_json_schema(),
+    )
+
+    assert payload["response_format"]["type"] == "json_schema"
+    assert payload["response_format"]["json_schema"]["schema"] == DummyResponseModel.model_json_schema()
+    assert "properties" in payload["response_format"]["json_schema"]["schema"]
+
+    # Senza response_json_schema, comportamento invariato (json_object generico passato dal chiamante)
+    payload_fallback = provider.build_payload(
+        model="google/gemma-4-26b-a4b-qat",
+        messages=[{"role": "user", "content": "Analizza il testo"}],
+        response_format={"type": "json_object"},
+        response_json_schema=None,
+    )
+    assert payload_fallback["response_format"] == {"type": "json_object"}
+
+
 def test_openai_compatible_endpoint_and_headers():
     """Verifica endpoint validation, stripping trailing slash e gestione /chat/completions."""
     provider = OpenAICompatibleProvider()
