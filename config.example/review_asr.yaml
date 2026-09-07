@@ -1,42 +1,14 @@
-# ==============================================================================
-# config.example/review_asr.yaml - Job Cognitivo: Review ASR
-# Rilevamento errori fonetici e confidence gating
-# ==============================================================================
-
 round_robin: false
 max_attempts: 3
 max_output_chars: 45000
 
 primary:
-  provider: "openrouter"
-  credential: "openrouter"
-  model: "openrouter/free"
-  base_url: "https://openrouter.ai/api/v1"
+  provider: null
+  credential: null
+  model: null
+  base_url: null
   thinking: false
   reasoning_effort: "low"
   max_thinking_tokens: null
   max_tokens: null
   timeout_seconds: 300
-
-fallback:
-  rate_limit:
-    provider: "deepseek"
-    credential: "deepseek"
-    model: "deepseek-v4-flash"
-    thinking: false
-    reasoning_effort: "low"
-    timeout_seconds: 180
-  timeout:
-    provider: "deepseek"
-    credential: "deepseek"
-    model: "deepseek-v4-flash"
-    thinking: false
-    reasoning_effort: "low"
-    timeout_seconds: 180
-  generic:
-    provider: "deepseek"
-    credential: "deepseek"
-    model: "deepseek-v4-flash"
-    thinking: false
-    reasoning_effort: "low"
-    timeout_seconds: 180

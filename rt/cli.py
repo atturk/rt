@@ -49,6 +49,11 @@ def _has_real_config_source() -> bool:
     return os.path.isdir(os.path.join(os.getcwd(), "config"))
 
 
+def _job_has_configured_route(job_cfg) -> bool:
+    """Vero se il job ha almeno una route primaria con provider/model impostati."""
+    return bool(job_cfg and job_cfg.primary and job_cfg.primary.is_configured)
+
+
 def _print_phase_action(phase_name: str, res: Dict[str, Any]):
     action = res.get("action", "RUN")
     reason = res.get("reason", "")
@@ -68,14 +73,27 @@ def cmd_prepare(args):
 
 
 def cmd_outline(args):
-    if not getattr(args, "mock", False) and not _has_real_config_source():
-        print(
-            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-            "   cp -r config.example config",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    if not getattr(args, "mock", False):
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+                "   cp -r config.example config",
+                file=sys.stderr
+            )
+            sys.exit(1)
+        from rt.core.config import load_config
+        cfg = load_config()
+        job_cfg = cfg.jobs.get("outline")
+        if not _job_has_configured_route(job_cfg):
+            print(
+                "❌ Il job 'outline' non ha alcun provider configurato in config/outline.yaml.\n"
+                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                "   in config/outline.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+            sys.exit(1)
     force = getattr(args, "force", False)
     res = run_outline(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("outline", res)
@@ -90,14 +108,27 @@ def cmd_validate_outline(args):
 
 
 def cmd_rewrite(args):
-    if not getattr(args, "mock", False) and not _has_real_config_source():
-        print(
-            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-            "   cp -r config.example config",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    if not getattr(args, "mock", False):
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+                "   cp -r config.example config",
+                file=sys.stderr
+            )
+            sys.exit(1)
+        from rt.core.config import load_config
+        cfg = load_config()
+        job_cfg = cfg.jobs.get("rewrite")
+        if not _job_has_configured_route(job_cfg):
+            print(
+                "❌ Il job 'rewrite' non ha alcun provider configurato in config/rewrite.yaml.\n"
+                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                "   in config/rewrite.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+            sys.exit(1)
     force = getattr(args, "force", False)
     res = run_rewrite(args.lesson_dir, target_unit_id=args.unit, force=force, force_mock=args.mock)
     label = f"rewrite unit {args.unit}" if args.unit else "rewrite"
@@ -114,14 +145,27 @@ def cmd_validate_draft(args):
 
 
 def cmd_review_asr(args):
-    if not getattr(args, "mock", False) and not _has_real_config_source():
-        print(
-            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-            "   cp -r config.example config",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    if not getattr(args, "mock", False):
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+                "   cp -r config.example config",
+                file=sys.stderr
+            )
+            sys.exit(1)
+        from rt.core.config import load_config
+        cfg = load_config()
+        job_cfg = cfg.jobs.get("review_asr")
+        if not _job_has_configured_route(job_cfg):
+            print(
+                "❌ Il job 'review_asr' non ha alcun provider configurato in config/review_asr.yaml.\n"
+                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                "   in config/review_asr.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+            sys.exit(1)
     force = getattr(args, "force", False)
     res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-asr", res)
@@ -129,14 +173,27 @@ def cmd_review_asr(args):
 
 
 def cmd_review_science(args):
-    if not getattr(args, "mock", False) and not _has_real_config_source():
-        print(
-            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-            "   cp -r config.example config",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    if not getattr(args, "mock", False):
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+                "   cp -r config.example config",
+                file=sys.stderr
+            )
+            sys.exit(1)
+        from rt.core.config import load_config
+        cfg = load_config()
+        job_cfg = cfg.jobs.get("review_science")
+        if not _job_has_configured_route(job_cfg):
+            print(
+                "❌ Il job 'review_science' non ha alcun provider configurato in config/review_science.yaml.\n"
+                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                "   in config/review_science.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+            sys.exit(1)
     force = getattr(args, "force", False)
     res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-science", res)
@@ -676,7 +733,9 @@ def cmd_prices_check(args):
             choices.append(questionary.Choice(title=label, value=entry, checked=bool(entry.get("stale"))))
 
         selected = questionary.checkbox(
-            "Seleziona i prezzi da applicare ai file di configurazione (barra spazio per selezionare, invio per confermare):",
+            "Seleziona i prezzi da applicare (SPAZIO per selezionare/deselezionare la voce evidenziata, "
+            "INVIO per confermare la selezione — le voci con ⚠ sono pre-selezionate, spostare il cursore "
+            "da solo NON seleziona nulla):",
             choices=choices
         ).ask()
 
@@ -686,6 +745,15 @@ def cmd_prices_check(args):
 
         if not selected:
             print("Nessuna voce selezionata, nessuna modifica applicata.")
+            return
+
+        print("\nStai per applicare questi prezzi:")
+        for entry in selected:
+            lm = entry["live_match"]
+            print(f"  [{entry['job']}] {entry['provider']}/{entry['model']}  ->  in=${lm['input_per_million']}/M out=${lm['output_per_million']}/M")
+        confirm = questionary.confirm(f"Confermi la scrittura in {len(set(e['job'] for e in selected))} file di config/?", default=False).ask()
+        if not confirm:
+            print("Annullato, nessuna modifica applicata.")
             return
 
         by_job: Dict[str, List[Dict[str, Any]]] = {}
@@ -757,14 +825,28 @@ def cmd_run(args):
     force = getattr(args, "force", False)
     mock_mode = getattr(args, "mock", False)
 
-    if not mock_mode and not _has_real_config_source():
-        print(
-            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-            "   cp -r config.example config",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    if not mock_mode:
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+                "   cp -r config.example config",
+                file=sys.stderr
+            )
+            sys.exit(1)
+        from rt.core.config import load_config
+        cfg = load_config()
+        missing = [j for j in ("outline", "rewrite", "review_asr", "review_science")
+                   if not _job_has_configured_route(cfg.jobs.get(j))]
+        if missing:
+            print(
+                f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing)}.\n"
+                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                "   nei rispettivi file config/<job>.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+            sys.exit(1)
 
     is_audio_input = any(is_audio_file(x) for x in raw_inputs)
 
@@ -1053,8 +1135,20 @@ def main():
     normalized_argv = normalize_review_cli_args(sys.argv[1:])
     args = parser.parse_args(normalized_argv)
     from rt.llm.errors import LLMFailure
+    from pydantic import ValidationError
     try:
         args.func(args)
+    except ValidationError as e:
+        print("\n" + "=" * 60, file=sys.stderr)
+        print("❌ Errore nella configurazione in 'config/'", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        print(f"\n{e}\n", file=sys.stderr)
+        print(
+            "Correggi il file YAML indicato in 'config/' e riprova. "
+            "Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi corretta.",
+            file=sys.stderr
+        )
+        sys.exit(1)
     except LLMFailure as e:
         print("\n" + "=" * 60, file=sys.stderr)
         print("❌ ESECUZIONE INTERROTTA: errore LLM non recuperabile", file=sys.stderr)

@@ -85,9 +85,12 @@ primary:
 
     mock_checkbox = MagicMock()
     mock_checkbox.ask.return_value = [fake_report[0]]
+    mock_confirm = MagicMock()
+    mock_confirm.ask.return_value = True
 
     with patch("rt.llm.pricing_sync.check_configured_pricing", return_value=fake_report), \
-         patch("questionary.checkbox", return_value=mock_checkbox) as patched_questionary:
+         patch("questionary.checkbox", return_value=mock_checkbox) as patched_questionary, \
+         patch("questionary.confirm", return_value=mock_confirm):
 
         args = argparse.Namespace(interactive=True)
         cmd_prices_check(args)
@@ -140,9 +143,12 @@ primary:
 
     mock_checkbox = MagicMock()
     mock_checkbox.ask.return_value = [fake_report[0]]
+    mock_confirm = MagicMock()
+    mock_confirm.ask.return_value = True
 
     with patch("rt.llm.pricing_sync.check_configured_pricing", return_value=fake_report), \
-         patch("questionary.checkbox", return_value=mock_checkbox):
+         patch("questionary.checkbox", return_value=mock_checkbox), \
+         patch("questionary.confirm", return_value=mock_confirm):
 
         args = argparse.Namespace(interactive=True)
         cmd_prices_check(args)
@@ -265,6 +271,50 @@ def test_prices_interactive_user_selects_empty(tmp_path, monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "Nessuna voce selezionata, nessuna modifica applicata." in captured.out
+    assert (config_dir / "outline.yaml").read_text(encoding="utf-8") == orig_content
+
+
+def test_prices_interactive_user_declines_final_confirmation(tmp_path, monkeypatch, capsys):
+    """Selezionate delle voci nel checkbox, se l'utente rifiuta la conferma finale non scrive nulla."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "general.yaml").write_text("version: '2.0.0'\n", encoding="utf-8")
+    orig_content = "max_attempts: 4\nprimary:\n  provider: 'deepseek'\n  model: 'deepseek-v4-flash'\n"
+    (config_dir / "outline.yaml").write_text(orig_content, encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    fake_report = [
+        {
+            "job": "outline",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "path": ("primary",),
+            "used_input_per_million": 0.14,
+            "used_output_per_million": 0.28,
+            "live_match": {
+                "key": "deepseek/deepseek-v4-flash",
+                "input_per_million": 0.25,
+                "output_per_million": 0.50,
+            },
+            "stale": True,
+        }
+    ]
+
+    mock_checkbox = MagicMock()
+    mock_checkbox.ask.return_value = [fake_report[0]]
+    mock_confirm = MagicMock()
+    mock_confirm.ask.return_value = False
+
+    with patch("rt.llm.pricing_sync.check_configured_pricing", return_value=fake_report), \
+         patch("questionary.checkbox", return_value=mock_checkbox), \
+         patch("questionary.confirm", return_value=mock_confirm):
+
+        args = argparse.Namespace(interactive=True)
+        cmd_prices_check(args)
+
+    captured = capsys.readouterr()
+    assert "Annullato, nessuna modifica applicata." in captured.out
     assert (config_dir / "outline.yaml").read_text(encoding="utf-8") == orig_content
 
 

@@ -42,7 +42,8 @@ pip install -r requirements-dev.txt
 Copia il template per le variabili d'ambiente (opzionale se si usano chiamate LLM reali):
 ```bash
 cp .env.example .env
-# Inserisci le tue API key in .env (OPENROUTER_API_KEY o DEEPSEEK_API_KEY)
+# Le chiavi che inserirai qui devono corrispondere ai nomi 'env_var' che dichiari
+# in config/general.yaml sotto 'credentials:' (vedi docs/CONFIGURATION_REFERENCE.md)
 ```
 
 Configurazione dei job e dei modelli:
@@ -50,7 +51,7 @@ Configurazione dei job e dei modelli:
 cp -r config.example config
 # Modifica config/general.yaml e i singoli file per-job config/<job>.yaml
 ```
-> È possibile specificare un listino `pricing:` direttamente sotto ogni singola route.
+> I file YAML in `config.example/` sono volutamente senza commenti: il significato di ogni campo e le funzionalità opzionali (credenziali custom, pricing globale/per-route) sono documentati in [Guida alla Configurazione (CONFIGURATION_REFERENCE.md)](docs/CONFIGURATION_REFERENCE.md).
 
 
 ### 2. Esecuzione End-to-End di una Lezione
@@ -83,6 +84,7 @@ Per testare offline senza consumare crediti API:
 
 ## 📚 Documentazione Dettagliata
 
+- [Guida alla Configurazione (CONFIGURATION_REFERENCE.md)](docs/CONFIGURATION_REFERENCE.md)
 - [Architettura del Sistema (ARCHITECTURE.md)](docs/ARCHITECTURE.md)
 - [Workflow e Ciclo di Vita (WORKFLOW.md)](docs/WORKFLOW.md)
 - [Modelli Dati e Contratti JSON (SCHEMAS.md)](docs/SCHEMAS.md)
