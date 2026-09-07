@@ -181,6 +181,7 @@ def test_export_normalized_transcript_md(tmp_path):
 def test_extract_context_window_90s():
     """Verifica che extract_context_window accumuli correttamente ~90 secondi di contesto e rispetti il cap di 20 segmenti."""
     from rt.core.models import Segment
+    from rt.core.timestamp import format_timestamp
     from rt.pipeline.rewrite import extract_context_window
 
     # 1. Creiamo 30 segmenti di 10s ciascuno (da 0s a 300s)
@@ -190,8 +191,8 @@ def test_extract_context_window_90s():
             index=i,
             start_seconds=(i - 1) * 10.0,
             end_seconds=i * 10.0,
-            start_formatted=f"00:{(i-1)*10}",
-            end_formatted=f"00:{i*10}",
+            start_formatted=format_timestamp((i - 1) * 10.0),
+            end_formatted=format_timestamp(i * 10.0),
             text_raw=f"Segmento {i}"
         )
         for i in range(1, 31)
@@ -228,8 +229,8 @@ def test_extract_context_window_90s():
             index=i,
             start_seconds=float(i - 1),
             end_seconds=float(i),
-            start_formatted="00:00",
-            end_formatted="00:00",
+            start_formatted=format_timestamp(float(i - 1)),
+            end_formatted=format_timestamp(float(i)),
             text_raw=f"Micro {i}"
         )
         for i in range(1, 101)
@@ -248,4 +249,65 @@ def test_extract_context_window_90s():
     # 3. Test ai bordi estremi (inizio e fine)
     prev_edge, _ = extract_context_window(segments_10s, segments_10s[0], segments_10s[1], 90.0, 20)
     assert len(prev_edge) == 0  # nessun segmento prima di index 1
+
+
+def test_segment_cross_field_consistency():
+    """Verifica le invarianti cross-field del modello Segment."""
+    from rt.core.models import Segment
+    from rt.core.timestamp import format_timestamp
+
+    # 1. Incoerenza id/index -> solleva ValueError
+    with pytest.raises(ValueError, match="non corrisponde all'index"):
+        Segment(
+            id="seg_000001",
+            index=5,
+            start_seconds=0.0,
+            end_seconds=5.0,
+            start_formatted="00:00",
+            end_formatted="00:05",
+            text_raw="Test id incoerente"
+        )
+
+    # 2. Incoerenza start_formatted -> solleva ValueError
+    with pytest.raises(ValueError, match="start_formatted.*non corrisponde a start_seconds"):
+        Segment(
+            id="seg_000001",
+            index=1,
+            start_seconds=120.0,  # atteso "02:00"
+            end_seconds=130.0,
+            start_formatted="00:00",
+            end_formatted="02:10",
+            text_raw="Test start_formatted incoerente"
+        )
+
+    # 3. Incoerenza end_formatted -> solleva ValueError
+    with pytest.raises(ValueError, match="end_formatted.*non corrisponde a end_seconds"):
+        Segment(
+            id="seg_000001",
+            index=1,
+            start_seconds=0.0,
+            end_seconds=120.0,  # atteso "02:00"
+            start_formatted="00:00",
+            end_formatted="00:10",
+            text_raw="Test end_formatted incoerente"
+        )
+
+    # 4. Costruzione coerente -> successo
+    idx = 42
+    start_sec = 125.0
+    end_sec = 145.0
+    seg_valid = Segment(
+        id=make_segment_id(idx),
+        index=idx,
+        start_seconds=start_sec,
+        end_seconds=end_sec,
+        start_formatted=format_timestamp(start_sec),
+        end_formatted=format_timestamp(end_sec),
+        text_raw="Test valido e coerente"
+    )
+    assert seg_valid.id == "seg_000042"
+    assert seg_valid.index == 42
+    assert seg_valid.start_formatted == "02:05"
+    assert seg_valid.end_formatted == "02:25"
+
 
