@@ -49,18 +49,11 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
         
         # Caso 1: MacWhisper (start ed end in millisecondi)
         if "start" in item and "end" in item and isinstance(item["start"], (int, float)):
-            # Se start è > 10000 per i primi secondi o intero grande, è in ms
-            # MacWhisper esporta interi ms (es. 2720 per 2.72s)
+            # MacWhisper esporta sempre start/end in millisecondi (es. 2720 per 2.72s)
             start_val = float(item["start"])
             end_val = float(item["end"])
-            
-            # Se i numeri sono nell'ordine dei millisecondi
-            if start_val > 500 or end_val > 500:
-                start_sec = round(start_val / 1000.0, 3)
-                end_sec = round(end_val / 1000.0, 3)
-            else:
-                start_sec = round(start_val, 3)
-                end_sec = round(end_val, 3)
+            start_sec = round(start_val / 1000.0, 3)
+            end_sec = round(end_val / 1000.0, 3)
             
             if end_sec <= start_sec:
                 end_sec = start_sec + 1.0 # Fallback minimo

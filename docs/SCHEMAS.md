@@ -140,7 +140,7 @@ Critica scientifica avversaria per distinguere errori del docente da errori dell
 
 ## 6. `ReviewDecision` e `review_decisions.json`
 
-Decision Ledger persistito e immutabile.
+Decision Ledger persistito in modo incrementale (append/aggiornamento delle decisioni) — non è un file a sola lettura a livello di filesystem, ma le decisioni già prese non vengono perse tra le esecuzioni.
 
 ```json
 {

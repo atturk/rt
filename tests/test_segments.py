@@ -56,6 +56,31 @@ def test_parse_segments_from_macwhisper_json(tmp_path):
     assert segments[1].start_formatted == "00:09"
 
 
+def test_parse_segments_from_macwhisper_json_sub_500ms(tmp_path):
+    """Verifica che segmenti che iniziano/finiscono sotto i 500ms vengano convertiti correttamente da ms a secondi."""
+    mw_data = {
+        "segments": [
+            {
+                "id": "uuid-sub500",
+                "start": 200,
+                "end": 480,
+                "text": "Avvio brevissimo."
+            }
+        ]
+    }
+    json_file = str(tmp_path / "mw_sub500.json")
+    with open(json_file, "w", encoding="utf-8") as f:
+        json.dump(mw_data, f)
+
+    segments = parse_segments_from_json(json_file)
+    assert len(segments) == 1
+    assert segments[0].id == "seg_000001"
+    assert segments[0].start_seconds == 0.2
+    assert segments[0].end_seconds == 0.48
+    assert segments[0].start_formatted == "00:00"
+    assert segments[0].text_raw == "Avvio brevissimo."
+
+
 def test_parse_segments_from_timestamp_list_json(tmp_path):
     list_data = [
         {"text": "Frase 1", "timestamp": "00:02-00:12"},

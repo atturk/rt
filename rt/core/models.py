@@ -98,7 +98,7 @@ class ASRIssue(BaseModel):
     segment_id: str = Field(..., description="ID del segmento ASR correlato")
     source_text: str = Field(..., description="Frammento ASR originale")
     candidate: str = Field(..., description="Ipotesi o correzione proposta")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Punteggio di confidenza 0.0-1.0")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Stima di plausibilità della correzione da parte del modello linguistico (non una probabilità fonetica calibrata sull'audio originale)")
     level: ASRLevel = Field(..., description="Livello di gating: GREEN, YELLOW, RED")
     reason: str = Field(..., description="Motivazione fonetica o semantica")
     status: str = Field(default="pending", description="pending | accepted | rejected | edited")

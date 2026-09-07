@@ -2,13 +2,13 @@
 
 Sistema ibrido industriale per la trascrizione e rielaborazione accademica delle lezioni universitarie.
 
-Combina **codice deterministico** (parsing ASR, normalizzazione temporale in secondi, segmenti immutabili, validazione strutturale, decision ledger e assemblaggio Markdown) con **job cognitivi LLM specializzati** (Outline gerarchico vincolato a segmenti, Rielaborazione a finestre con memoria di contesto e provenance, ASR Review con Confidence Gating e Science Critic indipendente).
+Combina **codice deterministico** (parsing ASR, normalizzazione temporale in secondi, segmenti strutturati, validazione, decision ledger e assemblaggio Markdown) con **job cognitivi LLM specializzati** (Outline gerarchico vincolato a segmenti, Rielaborazione a finestre con memoria di contesto e provenance, ASR Review con Confidence Gating e Science Critic indipendente — un **LLM-based scientific plausibility critic**: analizza la plausibilità concettuale del testo tramite un modello linguistico, non un sistema di verifica bibliografica/RAG contro fonti esterne).
 
 ---
 
 ## ⚡ Caratteristiche Principali
 
-- **Garanzia Matematica sui Timestamp**: Nessun timestamp arbitrario generato dall'LLM. Tutti i timecode nel Markdown derivano rigorosamente dai segmenti audio ASR (`seg_ID → start_seconds → MM:SS`).
+- **Timestamp Deterministici e Tracciabili**: Nessun timestamp arbitrario generato dall'LLM. Tutti i timecode nel Markdown derivano rigorosamente dai segmenti audio ASR (`seg_ID → start_seconds → MM:SS`).
 - **Provenienza Completa**: Ogni paragrafo rielaborato è collegato in modo bidirezionale ai segmenti sorgente (`source_segment_ids`).
 - **Routing Engine Multi-Provider & Dual-Key**:
   - Supporto per DeepSeek, OpenRouter, Google Gemini Dual-Key (`google_1`, `google_2`) e Mock deterministico.
@@ -30,7 +30,14 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 ### 1. Requisiti e Configurazione
 
-Python 3.10+ con `pydantic` installato.
+Python 3.10+ con dipendenze installate:
+```bash
+pip install -r requirements.txt
+```
+Per lo sviluppo e l'esecuzione dei test:
+```bash
+pip install -r requirements-dev.txt
+```
 
 Copia il template per le variabili d'ambiente (opzionale se si usano chiamate LLM reali):
 ```bash
