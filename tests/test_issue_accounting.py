@@ -104,3 +104,48 @@ stato: completed
     assert "Totale issue rilevate:      22" in captured
     assert "Decisioni archiviate:       11" in captured
     assert "Anomalie pendenti:          11 (ASR: 5, Science: 6)" in captured
+    assert "phase_statuses" not in captured
+
+
+def test_cmd_status_json_flag(tmp_path, capsys):
+    """Verifica il comportamento del flag --json in cmd_status."""
+    from types import SimpleNamespace
+    lesson_dir = str(tmp_path / "[2026-09-05] TEST - StatusJSON")
+    os.makedirs(lesson_dir, exist_ok=True)
+
+    info_content = """data: '2026-09-05'
+materia: BIOCHIMICA
+argomenti: Lipidi
+cartella: '[2026-09-05] TEST - StatusJSON'
+file_audio: test_audio.m4a
+fase_corrente: completed
+stato: completed
+"""
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write(info_content)
+
+    # 1. Senza --json: human text presente, blocco JSON assente
+    args_no_json = SimpleNamespace(lesson_dir=lesson_dir, issues=False, json=False)
+    cmd_status(args_no_json)
+    out_no_json = capsys.readouterr().out
+    assert "Freschezza Fasi / Artefatti:" in out_no_json
+    assert "STATO WORKFLOW RT 2.0:" in out_no_json
+    assert "phase_statuses" not in out_no_json
+    assert '"fase_corrente":' not in out_no_json
+
+    # 2. Con --json: human text presente, blocco JSON presente
+    args_with_json = SimpleNamespace(lesson_dir=lesson_dir, issues=False, json=True)
+    cmd_status(args_with_json)
+    out_with_json = capsys.readouterr().out
+    assert "Freschezza Fasi / Artefatti:" in out_with_json
+    assert "STATO WORKFLOW RT 2.0:" in out_with_json
+    assert '"phase_statuses":' in out_with_json
+    assert '"fase_corrente": "completed"' in out_with_json
+
+    # 3. Con --issues e --json: sia breakdown diagnostico che breakdown nel JSON
+    args_issues_json = SimpleNamespace(lesson_dir=lesson_dir, issues=True, json=True)
+    cmd_status(args_issues_json)
+    out_issues_json = capsys.readouterr().out
+    assert "REPORT DIAGNOSTICO DETTAGLIATO ISSUE & DECISION LEDGER" in out_issues_json
+    assert '"issues_breakdown":' in out_issues_json
+    assert '"phase_statuses":' in out_issues_json

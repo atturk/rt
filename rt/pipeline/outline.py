@@ -57,7 +57,7 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
     info = read_info_yaml(yaml_path)
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
-    topics_val = info.get("argomenti", "Argomenti")
+    topics_val = info.get("argomenti") or None
     
     segments_path = os.path.join(lesson_dir, "segments.json")
     if not os.path.isfile(segments_path):

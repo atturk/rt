@@ -565,7 +565,8 @@ def cmd_status(args):
             "decisions": {"total": len(decisions), "accepted": dec_accepted, "rejected": dec_rejected, "edited": dec_edited, "auto_applied": dec_auto, "user": dec_user},
             "pending": {"total": total_pending, "asr": len(pending_asr), "science": len(pending_sci)}
         }
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
 def cmd_test_llm(args):
@@ -807,6 +808,7 @@ def main():
     p_stat = subparsers.add_parser("status", help="Mostra lo stato della lezione")
     p_stat.add_argument("lesson_dir", help="Directory della lezione")
     p_stat.add_argument("--issues", action="store_true", help="Mostra report diagnostico dettagliato delle issue e del ledger")
+    p_stat.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo dello stato")
     p_stat.set_defaults(func=cmd_status)
 
     # test-llm
