@@ -286,3 +286,144 @@ def test_macwhisper_markdown_failure_is_soft(tmp_path, capsys):
     assert "Export Markdown di MacWhisper non riuscito (codice 1) — nessun impatto" in captured.out
 
 
+def test_setup_optional_argomenti_empty(tmp_path):
+    """Verifica che senza argomenti la cartella non abbia trattino finale e info.yaml abbia stringa vuota."""
+    from rt.pipeline.setup import run_setup
+    from rt.core.state import read_info_yaml
+
+    dest_dir = str(tmp_path)
+    audio_file = os.path.join(dest_dir, "test_empty_args.wav")
+    with open(audio_file, "wb") as f:
+        f.write(b"fake wav")
+
+    res = run_setup(
+        audio=audio_file,
+        date="2026-09-07",
+        materia="NEUROLOGIA",
+        argomenti="",
+        dest_dir=dest_dir,
+        skip_transcribe=True,
+        interactive=False
+    )
+    lesson_dir = res["lesson_dir"]
+    folder_name = os.path.basename(lesson_dir)
+    assert folder_name == "[2026-09-07] NEUROLOGIA"
+    assert not folder_name.endswith(" - ")
+
+    info = read_info_yaml(os.path.join(lesson_dir, "info.yaml"))
+    assert info.get("argomenti") == ""
+    assert info.get("materia") == "NEUROLOGIA"
+
+
+def test_setup_argomenti_provided(tmp_path):
+    """Verifica che con argomenti forniti la cartella mantenga il suffisso."""
+    from rt.pipeline.setup import run_setup
+    from rt.core.state import read_info_yaml
+
+    dest_dir = str(tmp_path)
+    audio_file = os.path.join(dest_dir, "test_provided_args.wav")
+    with open(audio_file, "wb") as f:
+        f.write(b"fake wav")
+
+    res = run_setup(
+        audio=audio_file,
+        date="2026-09-07",
+        materia="NEUROLOGIA",
+        argomenti="Sinapsi chimiche",
+        dest_dir=dest_dir,
+        skip_transcribe=True,
+        interactive=False
+    )
+    lesson_dir = res["lesson_dir"]
+    folder_name = os.path.basename(lesson_dir)
+    assert folder_name == "[2026-09-07] NEUROLOGIA - Sinapsi chimiche"
+
+    info = read_info_yaml(os.path.join(lesson_dir, "info.yaml"))
+    assert info.get("argomenti") == "Sinapsi chimiche"
+
+
+def test_outline_prompt_and_manifest_with_empty_argomenti(tmp_path):
+    """Verifica prompt LLM di outline e validazione manifest con topics=None."""
+    from rt.llm.prompts import build_outline_user_prompt
+    from rt.core.manifest import init_or_update_manifest
+    from rt.core.models import Manifest
+
+    # 1. Prompt con topics=None
+    prompt_empty = build_outline_user_prompt("2026-09-07", "NEUROLOGIA", None, "[1] 00:00 - 01:00: Intro")
+    first_line_empty = prompt_empty.strip().splitlines()[0]
+    assert first_line_empty == "Lezione: [2026-09-07] NEUROLOGIA"
+    assert " - " not in first_line_empty
+
+    # 2. Prompt con topics stringa reale
+    prompt_topics = build_outline_user_prompt("2026-09-07", "NEUROLOGIA", "Sinapsi", "[1] 00:00 - 01:00: Intro")
+    first_line_topics = prompt_topics.strip().splitlines()[0]
+    assert first_line_topics == "Lezione: [2026-09-07] NEUROLOGIA - Sinapsi"
+
+    # 3. Manifest creation con topics=None non solleva ValidationError
+    lesson_dir = str(tmp_path / "[2026-09-07] NEUROLOGIA")
+    os.makedirs(lesson_dir, exist_ok=True)
+    manifest = init_or_update_manifest(
+        lesson_dir=lesson_dir,
+        lesson_id="test_lesson",
+        date="2026-09-07",
+        subject="NEUROLOGIA",
+        topics=None,
+        current_state="preparato"
+    )
+    assert isinstance(manifest, Manifest)
+    assert manifest.topics is None
+
+
+def test_full_pipeline_with_empty_argomenti_e2e_mock(tmp_path):
+    """Verifica che l'intera pipeline funzioni correttamente da capo a fondo senza argomenti."""
+    from rt.pipeline.setup import run_setup
+    from rt.pipeline.prepare import run_prepare
+    from rt.pipeline.outline import run_outline
+    from rt.pipeline.rewrite import run_rewrite
+    from rt.pipeline.review_asr import run_review_asr
+    from rt.pipeline.review_science import run_review_science
+    from rt.pipeline.build import run_build
+
+    dest_dir = str(tmp_path)
+    audio_file = os.path.join(dest_dir, "test_e2e.wav")
+    with open(audio_file, "wb") as f:
+        f.write(b"fake wav e2e")
+
+    setup_res = run_setup(
+        audio=audio_file,
+        date="2026-09-07",
+        materia="FISIOLOGIA",
+        argomenti="",
+        dest_dir=dest_dir,
+        mock_asr=True,
+        interactive=False
+    )
+    lesson_dir = setup_res["lesson_dir"]
+    assert os.path.basename(lesson_dir) == "[2026-09-07] FISIOLOGIA"
+
+    # Prepare
+    prep_res = run_prepare(lesson_dir)
+    assert prep_res["status"] == "prepared"
+
+    # Outline
+    out_res = run_outline(lesson_dir, force_mock=True)
+    assert out_res["status"] == "outline_validated"
+
+    # Rewrite
+    rew_res = run_rewrite(lesson_dir, force_mock=True)
+    assert rew_res["status"] == "draft_validated"
+
+    # Review ASR
+    asr_res = run_review_asr(lesson_dir, force_mock=True)
+    assert asr_res["status"] == "asr_review_completed"
+
+    # Review Science
+    sci_res = run_review_science(lesson_dir, force_mock=True)
+    assert sci_res["status"] == "science_review_completed"
+
+    # Build
+    bld_res = run_build(lesson_dir)
+    assert bld_res["status"] == "completed"
+    assert os.path.isfile(os.path.join(lesson_dir, "rielaborato.md"))
+
+

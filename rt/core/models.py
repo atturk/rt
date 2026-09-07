@@ -186,7 +186,7 @@ class Manifest(BaseModel):
     lesson_dir: str
     date: str
     subject: str
-    topics: str
+    topics: Optional[str] = None
     audio_file: Optional[str] = None
     audio_duration_seconds: Optional[float] = None
     segment_count: int = 0

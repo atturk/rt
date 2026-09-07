@@ -7,7 +7,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i 4 job cognitivi LL
 4. Science Review (critic indipendente per docente, ricostruzione e plausibilità)
 """
 
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from rt.core.models import ASRIssue, ScienceIssue
 
@@ -61,8 +61,9 @@ ESEMPIO STRUTTURA JSON OUTPUT RICHIESTA:
 }"""
 
 
-def build_outline_user_prompt(date: str, subject: str, topics: str, segments_summary: str) -> str:
-    return f"""Lezione: [{date}] {subject.upper()} - {topics}
+def build_outline_user_prompt(date: str, subject: str, topics: Optional[str], segments_summary: str) -> str:
+    topic_suffix = f" - {topics}" if topics else ""
+    return f"""Lezione: [{date}] {subject.upper()}{topic_suffix}
 
 Ecco il sommario dei segmenti ASR della lezione con i rispettivi ID temporali:
 {segments_summary}

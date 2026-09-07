@@ -183,6 +183,8 @@ def generate_deterministic_mock_asr(
     json_path = os.path.join(target_folder, "trascritto grezzo.json")
     md_path = os.path.join(target_folder, "trascritto grezzo.md")
 
+    argomenti_text_mock = argomenti_val if argomenti_val else "argomenti da definire"
+
     # Creiamo 4 segmenti realistici coerenti con la materia e gli argomenti
     mock_segments = [
         {
@@ -190,7 +192,7 @@ def generate_deterministic_mock_asr(
             "seek": 0,
             "start": 0,
             "end": 8500,
-            "text": f"Buongiorno a tutti. Oggi iniziamo la lezione di {materia_val.lower()} trattando {argomenti_val.lower()}."
+            "text": f"Buongiorno a tutti. Oggi iniziamo la lezione di {materia_val.lower()} trattando {argomenti_text_mock.lower()}."
         },
         {
             "id": 2,
@@ -341,14 +343,11 @@ def run_setup(
             materia_val = guess_subject if guess_subject else "LEZIONE"
     materia_val = sanitize_filename_part(materia_val.upper())
 
-    # Argomenti
+    # Argomenti (opzionale: se lasciato vuoto, nessun argomento viene registrato né mostrato all'LLM)
     argomenti_val = argomenti.strip() if argomenti else ""
-    while not argomenti_val:
-        if interactive and sys.stdin.isatty():
-            argomenti_val = prompt_clean("Argomenti trattati (es. 'Sinapsi e neurotrasmettitori')")
-        else:
-            argomenti_val = "Argomenti generali"
-    argomenti_val = sanitize_filename_part(argomenti_val)
+    if not argomenti_val and interactive and sys.stdin.isatty():
+        argomenti_val = prompt_clean("Argomenti trattati (opzionale, invio per lasciare vuoto, es. 'Sinapsi e neurotrasmettitori')")
+    argomenti_val = sanitize_filename_part(argomenti_val) if argomenti_val else ""
 
     # 3. Risoluzione cartella di destinazione
     if dest_dir:
@@ -370,7 +369,7 @@ def run_setup(
     else:
         default_base = audio_dir if (audio_dir and os.path.isdir(audio_dir)) else os.getcwd()
 
-    folder_name = f"[{date_val}] {materia_val} - {argomenti_val}"
+    folder_name = f"[{date_val}] {materia_val}" + (f" - {argomenti_val}" if argomenti_val else "")
     target_folder_path = os.path.join(default_base, folder_name)
 
     # 4. CONTROLLO DI SICUREZZA CARTELLA ESISTENTE (Parte Q)
