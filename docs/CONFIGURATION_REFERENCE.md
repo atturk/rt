@@ -107,6 +107,8 @@ Ogni file corrisponde a uno dei 4 job cognitivi. Nei file di template (`config.e
 | `max_thinking_tokens` | Limite di token dedicati al reasoning. |
 | `max_tokens` | Limite di token sull'output totale (`null` = nessun limite esplicito). |
 | `timeout_seconds` | Timeout di rete per la singola chiamata su questa route. |
+| `pricing` | Override opzionale del pricing (`input_per_million`, `output_per_million`) per questa route specifica. |
+| `provider_routing` | Oggetto `provider` di OpenRouter (`only`, `quantizations`, `sort`, `allow_fallbacks`, ...) per questa route (pass-through non validato, vedi Sezione 5). |
 
 ### Route opzionali aggiuntive
 
@@ -226,6 +228,59 @@ Punto importante, fonte comune di confusione: **il cursore (`»`) e la selezione
 - Le voci marcate `⚠ DA VERIFICARE` (scarto di prezzo oltre il 15%) sono **pre-selezionate automaticamente** (`●`) fin dall'apertura del prompt — se vuoi applicare *solo* un'altra voce, devi prima deselezionare esplicitamente quelle pre-selezionate che non vuoi (cursore sopra + spazio) e selezionare quelle che vuoi, **prima** di premere Invio.
 - **Invio** conferma l'insieme delle voci attualmente selezionate (marcate `●`) — non la voce su cui si trova il cursore.
 
-Dopo Invio, prima di scrivere qualunque file viene mostrato un riepilogo esplicito di cosa sta per essere applicato e a quali job, con una conferma finale (`Confermi la scrittura? (y/N)`) — un'occasione per accorgersi ed annullare se la selezione non era quella voluta.
-
 I prezzi selezionati vengono scritti nel campo `pricing:` della route esatta nel corrispondente `config/<job>.yaml`, preservando commenti e formattazione del file (round-trip `ruamel.yaml`). `rt.config.yaml` (deprecato) non viene mai toccato.
+
+---
+
+## 5. Routing dei backend OpenRouter (`provider_routing:`)
+
+OpenRouter espone nel payload della richiesta un oggetto [`provider: { ... }`](https://openrouter.ai/docs/guides/routing/provider-selection) che consente di controllare a quali backend/hoster viene instradata la chiamata: `only`/`ignore` (whitelist/blacklist per slug provider), `quantizations` (filtro qualità quantizzazione, es. `["fp8", "bf16", "fp16"]`), `sort` (`"price"` | `"throughput"` | `"latency"`), `allow_fallbacks`, `require_parameters`, `max_price`, `data_collection`, `zdr`.
+
+### Perché è solo per-route e non esiste un default globale
+
+Quali provider siano affidabili (in termini di token per secondo, stabilità e quantizzazione) **dipende dal modello specifico**: un hoster eccellente per servire `deepseek/deepseek-v4-flash` potrebbe non servire affatto o servire male `z-ai/glm-5.3`.
+
+Per questa ragione **non esiste alcun default globale** e il campo non va mai inserito in `general.yaml`: va configurato **esclusivamente per singola route** tramite il campo `provider_routing:` all'interno del file del job (`config/<job>.yaml`), accanto a `provider: "openrouter"` e `model:`. Il campo è un **pass-through non validato** inoltrato direttamente a OpenRouter (ed è ignorato per provider diversi da `openrouter`).
+
+### Esempi di configurazione
+
+#### Singola route primaria con whitelist, filtro quantizzazioni e sort throughput
+```yaml
+primary:
+  provider: "openrouter"
+  model: "deepseek/deepseek-v4-flash"
+  thinking: true
+  reasoning_effort: "low"
+  timeout_seconds: 240
+  provider_routing:
+    only: ["nome-provider-buono-per-deepseek-1", "nome-provider-buono-per-deepseek-2"]
+    quantizations: ["fp8", "bf16", "fp16"]
+    sort: "throughput"
+    allow_fallbacks: true
+```
+
+#### Whitelist differenziata per modelli diversi nello stesso job
+```yaml
+primary:
+  provider: "openrouter"
+  model: "deepseek/deepseek-v4-flash"
+  provider_routing:
+    only: ["nome-provider-buono-per-deepseek-1", "nome-provider-buono-per-deepseek-2"]
+    quantizations: ["fp8", "bf16", "fp16"]
+    sort: "throughput"
+
+fallback:
+  generic:
+    provider: "openrouter"
+    model: "z-ai/glm-5.3"
+    provider_routing:
+      only: ["nome-provider-buono-per-glm-1"]
+      sort: "throughput"
+```
+
+### Note e buone pratiche
+
+1. **Tradeoff della whitelist (`only`)**: se nessun provider presente nella whitelist `only` è disponibile o online in quel momento per il modello richiesto, la richiesta fallirà con errore HTTP di OpenRouter anziché degradare silenziosamente su provider non desiderati. Questo garantisce che non vengano utilizzate quantizzazioni scadenti o backend lenti, ma richiede di scegliere provider affidabili o abilitare `allow_fallbacks: true` se consentito.
+2. **Criterio di ordinamento (`sort`)**: OpenRouter supporta **un solo criterio alla volta** (`"price"` | `"throughput"` | `"latency"`), senza concatenazione. L'effetto di selezionare "il più veloce tra i provider affidabili ad alta qualità" si ottiene combinando i filtri `only` / `quantizations` con l'ordinamento `sort: "throughput"`.
+3. **Come trovare gli slug dei provider**: sulla pagina del singolo modello su [openrouter.ai](https://openrouter.ai/models) (es. `openrouter.ai/<vendor>/<modello>`), è presente la lista dei provider attivi con l'apposito pulsante per copiare lo slug esatto (es. `deepinfra`, `together`, `hyperbolic`, ecc.). Poiché la copertura varia da modello a modello, la lista va verificata specificamente per ciascun modello configurato.
+

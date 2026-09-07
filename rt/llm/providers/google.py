@@ -39,8 +39,10 @@ class GoogleProvider(BaseLLMProvider):
         temperature: Optional[float] = None,
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
-        max_thinking_tokens: Optional[int] = None
+        max_thinking_tokens: Optional[int] = None,
+        provider_routing: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        # 'provider_routing' è specifico di OpenRouter, non ha equivalente per questo provider
         clean_model = model.strip()
         if clean_model.startswith("google/"):
             clean_model = clean_model[len("google/"):]

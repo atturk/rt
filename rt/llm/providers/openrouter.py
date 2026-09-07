@@ -37,7 +37,8 @@ class OpenRouterProvider(BaseLLMProvider):
         temperature: Optional[float] = None,
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
-        max_thinking_tokens: Optional[int] = None
+        max_thinking_tokens: Optional[int] = None,
+        provider_routing: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         # OpenRouter supporta alias di modelli con tilde (es. '~deepseek/deepseek-v4-flash-latest')
         clean_model = model.strip()
@@ -77,6 +78,9 @@ class OpenRouterProvider(BaseLLMProvider):
             payload["reasoning"] = {
                 "enabled": False
             }
+
+        if provider_routing:
+            payload["provider"] = provider_routing
 
         return payload
 

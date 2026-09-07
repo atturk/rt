@@ -42,10 +42,11 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         temperature: Optional[float] = None,
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
-        max_thinking_tokens: Optional[int] = None
+        max_thinking_tokens: Optional[int] = None,
+        provider_routing: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        # 'thinking'/'reasoning_effort'/'max_thinking_tokens' sono ignorati volutamente:
-        # non fanno parte della Chat Completions API standard OpenAI.
+        # 'thinking'/'reasoning_effort'/'max_thinking_tokens'/'provider_routing' sono ignorati volutamente:
+        # non fanno parte della Chat Completions API standard OpenAI (provider_routing è specifico di OpenRouter).
         payload: Dict[str, Any] = {
             "model": model.strip(),
             "messages": messages,
