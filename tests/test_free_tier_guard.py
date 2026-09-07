@@ -355,8 +355,12 @@ def test_fast_response_accepted_for_non_free_tier(monkeypatch):
     assert res.summary == "Non-free ok"
 
 
-def test_default_min_elapsed_seconds_is_none():
+def test_default_min_elapsed_seconds_is_none(monkeypatch):
     """Verifica che senza min_elapsed_seconds (None), risposte veloci siano accettate normalmente."""
+    monkeypatch.setattr("rt.core.config.load_env_file", lambda *args, **kwargs: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-12345")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
     client = LLMClient(force_mock=False)
     client.config.jobs["outline"] = JobRoutingConfig(
         max_attempts=1,
