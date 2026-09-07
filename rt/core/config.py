@@ -47,6 +47,14 @@ class RouteConfig(BaseModel):
     max_tokens: Optional[int] = Field(default=None)
     timeout_seconds: int = Field(default=180)
     pricing: Optional[ModelPricing] = Field(default=None, description="Prezzo specifico per questa route (priorità massima: sovrascrive sia il pricing custom globale sia DEFAULT_PRICING)")
+    provider_routing: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Oggetto 'provider' di OpenRouter (only/ignore/quantizations/sort/allow_fallbacks/...) "
+                    "per questa specifica route, impostato insieme a provider/model perché la scelta dei "
+                    "backend affidabili dipende dal modello richiesto, non è una preferenza globale. "
+                    "Pass-through non validato: rispecchia esattamente lo schema documentato da OpenRouter "
+                    "(https://openrouter.ai/docs/guides/routing/provider-selection). Ignorato per provider diversi da 'openrouter'."
+    )
 
     @property
     def is_configured(self) -> bool:

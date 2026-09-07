@@ -61,7 +61,8 @@ class BaseLLMProvider(ABC):
         temperature: Optional[float] = None,
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
-        max_thinking_tokens: Optional[int] = None
+        max_thinking_tokens: Optional[int] = None,
+        provider_routing: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Costruisce il payload JSON specifico per il provider."""
         pass

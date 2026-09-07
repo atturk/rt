@@ -102,6 +102,15 @@ class LLMClient:
             base[provider_name] = prov_dict
         return base or None
 
+    def _resolve_provider_routing(self, route: RouteConfig, provider_name: str) -> Optional[Dict[str, Any]]:
+        """Restituisce l'oggetto 'provider' da inviare a OpenRouter per questa route, se impostato.
+        Non esiste un default globale: la scelta dei backend affidabili dipende dal modello specifico,
+        quindi vive esclusivamente sulla singola route, insieme a provider/model. Si applica solo per
+        provider_name == 'openrouter'; per qualunque altro provider restituisce sempre None."""
+        if provider_name != "openrouter":
+            return None
+        return route.provider_routing
+
     def call_structured(
         self,
         prompt: str,
@@ -367,7 +376,8 @@ class LLMClient:
                     temperature=route.temperature,
                     response_format={"type": "json_object"},
                     stream=use_stream,
-                    max_thinking_tokens=route.max_thinking_tokens
+                    max_thinking_tokens=route.max_thinking_tokens,
+                    provider_routing=self._resolve_provider_routing(route, provider_name)
                 )
 
                 raw_content = ""
