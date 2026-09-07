@@ -236,7 +236,8 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             response_model=ScienceIssueList,
             job_name="review_science",
             unit_id=unit_label,
-            min_elapsed_seconds=5.0
+            min_elapsed_seconds=5.0,
+            lesson_dir=lesson_dir
         )
         
         for iss in res.issues:

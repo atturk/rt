@@ -432,7 +432,6 @@ def run_setup(
         for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
             aud_abs = os.path.abspath(aud_file)
             tmp_json = os.path.join(target_folder_path, f".tmp_mw_{audio_idx}.json")
-            tmp_md = os.path.join(target_folder_path, f".tmp_mw_{audio_idx}.md")
 
             cmd_json = [
                 mw_bin, "transcribe",
@@ -440,15 +439,6 @@ def run_setup(
                 "--format", "json",
                 "--overwrite",
                 "-o", tmp_json,
-                aud_abs
-            ]
-            cmd_md = [
-                mw_bin, "transcribe",
-                "--model", model,
-                "--format", "md",
-                "--style", "segments",
-                "--overwrite",
-                "-o", tmp_md,
                 aud_abs
             ]
 
@@ -462,11 +452,6 @@ def run_setup(
                     f"Trascrizione MacWhisper JSON fallita per '{os.path.basename(aud_file)}' "
                     f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip()}"
                 )
-
-            res_md = _run_mw_with_spinner(cmd_md, "Trascrizione MacWhisper (Markdown)")
-            if res_md.returncode != 0:
-                print(f"{YELLOW}⚠ Export Markdown di MacWhisper non riuscito (codice {res_md.returncode}) — nessun impatto: "
-                      f"il Markdown verrà comunque rigenerato da 'rt prepare' a partire dal JSON validato.{RESET}")
 
             # Parsing segmenti parziali per calcolo offset cumulativo deterministico (Parte L)
             with open(tmp_json, "r", encoding="utf-8") as f:
@@ -488,8 +473,6 @@ def run_setup(
             cumulative_offset_ms = max_seg_end
             if os.path.isfile(tmp_json):
                 os.remove(tmp_json)
-            if os.path.isfile(tmp_md):
-                os.remove(tmp_md)
 
         # Salvataggio deterministico unificato del JSON primario
         final_mw_payload = {

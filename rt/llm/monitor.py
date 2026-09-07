@@ -25,6 +25,7 @@ class LiveTerminalMonitor:
         attempt: int = 1,
         max_attempts: int = 1,
         timeout_seconds: Optional[int] = None,
+        verbose: bool = False,
     ):
         self.job = job
         self.provider = provider
@@ -37,7 +38,9 @@ class LiveTerminalMonitor:
         self.attempt = attempt
         self.max_attempts = max_attempts
         self.timeout_seconds = timeout_seconds
+        self.verbose = verbose
 
+        self._last_retry_reason: Optional[str] = None
         self.start_time = time.time()
         self.step_num = 1
         self.step_name = "Preparing request"
@@ -67,13 +70,16 @@ class LiveTerminalMonitor:
         """Imposta il modello risolto dal provider (se noto)."""
         self.resolved_model = resolved_model
 
+    def set_retry_reason(self, reason: Optional[str]) -> None:
+        """Imposta la causale dell'ultimo retry per visualizzazione nella riga compatta."""
+        self._last_retry_reason = reason
 
     def set_step(self, step: int, name: str, status: Optional[str] = None) -> None:
         self.step_num = step
         self.step_name = name
         if status:
             self.status = status
-        if not self.is_tty and self.enabled:
+        if not self.is_tty and self.enabled and self.verbose:
             unit_info = f" [{self.unit_id}]" if self.unit_id else ""
             print(f"[{self.step_num}/4]{unit_info} {self.step_name} ({self.status})")
             sys.stdout.flush()
@@ -183,6 +189,31 @@ class LiveTerminalMonitor:
         else:
             step_badge = f"[{self.step_num}/4] {self.step_name}"
 
+        if not self.verbose:
+            spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            frame = spinner_frames[int(elapsed * 10) % len(spinner_frames)] if not final else ("✔" if self.status == "completed" else "✗")
+            unit_part = f" · {self.unit_id}" if self.unit_id else f" · {self.attempt}/{self.max_attempts}"
+            slow_tag = ""
+            if self.timeout_seconds and not final:
+                elapsed_now = time.time() - self.start_time
+                if elapsed_now > 0.5 * self.timeout_seconds:
+                    slow_tag = " ⚠lento"
+            retry_tag = f" · retry:{self._last_retry_reason}" if getattr(self, "_last_retry_reason", None) and not final else ""
+            compact_line = (
+                f"{frame} {self.job}{unit_part} · ↑{in_est}{suffix} ↓{out_est}{suffix} R{reas_est}{suffix} "
+                f"{cost_str} · {self.provider}/{self.model}{retry_tag}{slow_tag} · {int(elapsed)}s"
+            )
+            if self.is_tty:
+                sys.stdout.write(f"\r\033[K{compact_line}")
+                if final:
+                    sys.stdout.write("\n")
+                sys.stdout.flush()
+            else:
+                if final:
+                    print(compact_line)
+                    sys.stdout.flush()
+            return
+
         lines = [
             "RT LLM",
             "────────────────────────────────────",
@@ -252,6 +283,8 @@ class LiveTerminalMonitor:
 
     def log_timeout(self, elapsed: float, next_attempt: Optional[int] = None) -> None:
         """Emette log visibile di timeout e dell'eventuale retry."""
+        if not self.verbose:
+            return
         if self.is_tty and self._rendered_lines > 0:
             sys.stdout.write(f"\033[{self._rendered_lines}F\033[J")
             self._rendered_lines = 0
@@ -265,6 +298,8 @@ class LiveTerminalMonitor:
 
     def log_retry(self, reason: str, elapsed: float, next_attempt: Optional[int] = None) -> None:
         """Emette log visibile per un retry non-timeout sulla stessa route (es. reasoning_required)."""
+        if not self.verbose:
+            return
         if self.is_tty and self._rendered_lines > 0:
             sys.stdout.write(f"\033[{self._rendered_lines}F\033[J")
             self._rendered_lines = 0

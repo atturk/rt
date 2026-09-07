@@ -235,7 +235,8 @@ def run_rewrite(
             system_prompt=REWRITE_SYSTEM_PROMPT,
             response_model=DraftUnit,
             job_name="rewrite",
-            unit_id=unit_label
+            unit_id=unit_label,
+            lesson_dir=lesson_dir
         )
 
         # Forziamo rigorosamente la rispondenza della provenance prima del commit

@@ -129,7 +129,8 @@ def test_feature1_monitor_display_resolved_model(monkeypatch):
         provider="openrouter",
         model="openrouter/free",
         unit_id="unit_mon_test",
-        enabled=True
+        enabled=True,
+        verbose=True
     )
     monitor.set_resolved_model("meta-llama/llama-3.3-70b-instruct:free")
     buf = io.StringIO()
@@ -145,7 +146,8 @@ def test_feature1_monitor_display_resolved_model(monkeypatch):
         provider="deepseek",
         model="deepseek-chat",
         unit_id="unit_mon_same",
-        enabled=True
+        enabled=True,
+        verbose=True
     )
     monitor_same.set_resolved_model("deepseek-chat")
     buf_same = io.StringIO()

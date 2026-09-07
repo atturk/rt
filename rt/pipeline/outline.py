@@ -96,7 +96,8 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
         prompt=prompt,
         system_prompt=OUTLINE_SYSTEM_PROMPT,
         response_model=Outline,
-        job_name="outline"
+        job_name="outline",
+        lesson_dir=lesson_dir
     )
     
     # Validazione deterministica
