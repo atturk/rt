@@ -99,6 +99,7 @@ def build_rewrite_user_prompt(
     outline_summary: str,
     glossary_text: str = ""
 ) -> str:
+    glossary_block = f"GLOSSARIO / TERMINI CHIAVE:\n{glossary_text}\n" if glossary_text else ""
     return f"""Devi rielaborare l'unità didattica:
 ID: {unit_id}
 Titolo: {unit_title}
@@ -106,7 +107,7 @@ Titolo: {unit_title}
 CONTESTO GLOBALE DELLA LEZIONE:
 {outline_summary}
 
-{f"GLOSSARIO / TERMINI CHIAVE:\n{glossary_text}\n" if glossary_text else ""}
+{glossary_block}
 ---
 CONTESTO PRECEDENTE (ultimi 1-2 minuti, solo per mantenere il filo, non riscrivere):
 {prev_context if prev_context else "_Inizio lezione_"}
