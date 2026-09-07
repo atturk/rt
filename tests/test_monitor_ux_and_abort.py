@@ -101,6 +101,37 @@ def test_monitor_compact_slow_tag():
     assert "⚠lento" in rendered_text
 
 
+def test_monitor_compact_line_truncated_to_terminal_width():
+    """La riga compatta non deve mai superare la larghezza del terminale: altrimenti il
+    terminale la manda a capo su più righe fisiche e il ridisegno successivo (\\r + clear-
+    to-end-of-line) pulisce solo l'ultima riga fisica, causando la duplicazione/scroll
+    della riga ad ogni aggiornamento invece di un redraw pulito in-place."""
+    output_buffer = []
+
+    monitor = LiveTerminalMonitor(
+        job="rewrite",
+        provider="google",
+        model="gemini-3.5-flash-lite",
+        unit_id="7/41 (2.3: Asse ipotalamo-ipofisi-tiroideo con feedback negativo multilivello)",
+        enabled=True,
+        verbose=False,
+        timeout_seconds=180,
+    )
+    monitor.is_tty = True
+    monitor.step_num = 3
+
+    with patch("shutil.get_terminal_size", return_value=os.terminal_size((40, 24))):
+        with patch("sys.stdout.write", side_effect=output_buffer.append):
+            with patch("sys.stdout.flush"):
+                monitor.render(final=False)
+
+    rendered_text = "".join(output_buffer)
+    # Rimuove il prefisso di redraw (\r + clear-to-end-of-line) per isolare la riga vera e propria
+    visible_line = rendered_text.replace("\r\033[K", "")
+    assert len(visible_line) < 40
+    assert visible_line.endswith("…")
+
+
 def test_monitor_retry_reason_tag():
     """Verifica che set_retry_reason mostri il tag nella riga compatta."""
     output_buffer = []
@@ -117,9 +148,10 @@ def test_monitor_retry_reason_tag():
     monitor.step_num = 3
     monitor.set_retry_reason("reasoning_required")
 
-    with patch("sys.stdout.write", side_effect=output_buffer.append):
-        with patch("sys.stdout.flush"):
-            monitor.render(final=False)
+    with patch("shutil.get_terminal_size", return_value=os.terminal_size((200, 24))):
+        with patch("sys.stdout.write", side_effect=output_buffer.append):
+            with patch("sys.stdout.flush"):
+                monitor.render(final=False)
 
     rendered_text = "".join(output_buffer)
     assert "retry:reasoning_required" in rendered_text
