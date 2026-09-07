@@ -368,8 +368,10 @@ def _load_config_dir(config_dir: str) -> RTConfig:
 
 def load_config(config_path: Optional[str] = None) -> RTConfig:
     """Carica la configurazione. Se config_path è esplicito, comportamento invariato
-    (singolo file). Se None: usa la cartella 'config/' se presente (modalità divisa),
-    altrimenti ricade su 'rt.config.yaml' singolo (comportamento storico)."""
+    (singolo file, usato da test/codice che lo richiede esplicitamente). Se None: usa
+    la cartella 'config/' se presente; altrimenti nessuna sorgente trovata, restituisce
+    i default (il chiamante a livello CLI deve verificare esplicitamente l'esistenza di
+    una sorgente reale prima di eseguire lavoro — vedi rt/cli.py, _has_real_config_source)."""
     if config_path is not None:
         return _load_rtconfig_from_file(config_path)
 
@@ -381,5 +383,6 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
             pass
         return RTConfig()
 
-    return _load_rtconfig_from_file(os.path.join(os.getcwd(), "rt.config.yaml"))
+    return RTConfig()
+
 

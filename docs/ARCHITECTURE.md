@@ -163,10 +163,10 @@ RT Cognitive Jobs (outline, rewrite, review_asr, review_science)
 
 7. **Estendibilità & Provider Generico `openai_compatible`**:
    - Supporto nativo per qualsiasi endpoint compatibile con OpenAI Chat Completions API (es. Mistral AI ufficiale, OpenAI ufficiale, Groq, Together.ai, endpoint locali vLLM/Ollama).
-   - Registrazione dichiarativa di credenziali custom direttamente via la chiave `credentials:` in `rt.config.yaml` senza necessità di modificare il codice sorgente.
+   - Registrazione dichiarativa di credenziali custom direttamente via la chiave `credentials:` in `config/general.yaml` senza necessità di modificare il codice sorgente.
 
 8. **Prezzi Custom Dichiarativi (`pricing:`)**:
-   - Possibilità di sovrascrivere o definire tariffe USD esatte per token di input, output e reasoning nella configurazione `pricing:` (con priorità assoluta sulle stime hardcoded in `rt/llm/pricing.py`), con esempi dettagliati in [rt.config.yaml.example](file:///Users/attilioturco/Desktop/trt/rt.config.yaml.example).
+   - Possibilità di sovrascrivere o definire tariffe USD esatte per token di input, output e reasoning nella configurazione `pricing:` (con priorità assoluta sulle stime hardcoded in `rt/llm/pricing.py`), con esempi dettagliati in `config.example/`.
 
 
 ---
