@@ -517,3 +517,40 @@ def test_state_machine_strictness_and_force():
         # Con allow_force=True è consentito (ad es. per rollback o reset di sviluppo)
         transition_to(yaml_path, WorkflowState.COMPLETED, allow_force=True)
         assert get_current_state(yaml_path) == WorkflowState.COMPLETED
+
+
+def test_manifest_self_heals_after_folder_moved(tmp_path):
+    """Regressione trovata in test manuale: se la cartella della lezione viene spostata
+    a mano (mv, Finder) dopo che manifest.json è stato scritto la prima volta, ogni
+    scrittura successiva (record_phase_fingerprint/checkpoint, mark_downstream_stale)
+    crashava con FileNotFoundError perché save_manifest() scriveva sempre nel vecchio
+    percorso memorizzato in manifest.lesson_dir, mai in quello reale corrente."""
+    import shutil
+    old_dir = str(tmp_path / "lesson_old")
+    os.makedirs(old_dir, exist_ok=True)
+    with open(os.path.join(old_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            "data: '2026-09-08'\nmateria: BIOCHIMICA\nargomenti: Lipidi\n"
+            "cartella: lesson_old\nfile_audio: test.m4a\n"
+            "fase_corrente: setup_completato\nstato: setup_completato\n"
+        )
+    with open(os.path.join(old_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
+        f.write(
+            "---\ndata: '2026-09-08'\nmateria: BIOCHIMICA\n---\n\n"
+            "*00:02*\nIntroduzione alla lezione.\n\n*00:20*\nSeconda frase.\n"
+        )
+
+    run_prepare(old_dir)
+    run_outline(old_dir, force_mock=True)
+
+    new_dir = str(tmp_path / "sottocartella" / "lesson_new")
+    os.makedirs(str(tmp_path / "sottocartella"), exist_ok=True)
+    shutil.move(old_dir, new_dir)
+
+    # Prima del fix: FileNotFoundError su manifest.json.tmp nel vecchio percorso.
+    run_rewrite(new_dir, force_mock=True)
+    build_res = run_build(new_dir)
+    assert build_res.get("skipped") is False
+
+    manifest = load_manifest(new_dir)
+    assert manifest.lesson_dir == os.path.abspath(new_dir)
