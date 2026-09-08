@@ -26,8 +26,18 @@ def load_manifest(lesson_dir: str) -> Optional[Manifest]:
         return None
 
 
-def save_manifest(manifest: Manifest) -> None:
-    path = get_manifest_path(manifest.lesson_dir)
+def save_manifest(manifest: Manifest, lesson_dir: Optional[str] = None) -> None:
+    """Scrive manifest.json in modo atomico. Passare `lesson_dir` (la posizione
+    fisica reale, viva, della lezione) è fortemente consigliato: corregge
+    automaticamente `manifest.lesson_dir` se la cartella è stata spostata a mano
+    (mv, Finder) dopo l'ultima scrittura — altrimenti si scriverebbe nel vecchio
+    percorso, ormai inesistente, facendo fallire il salvataggio."""
+    target_dir = lesson_dir if lesson_dir is not None else manifest.lesson_dir
+    if lesson_dir is not None:
+        abs_dir = os.path.abspath(lesson_dir)
+        if abs_dir != manifest.lesson_dir:
+            manifest.lesson_dir = abs_dir
+    path = get_manifest_path(target_dir)
     data = manifest.model_dump(mode="json")
     # Scrittura atomica
     tmp_path = path + ".tmp"
@@ -73,7 +83,7 @@ def init_or_update_manifest(
         if phase_records:
             existing.phase_records.update(phase_records)
         existing.updated_at = now_iso
-        save_manifest(existing)
+        save_manifest(existing, lesson_dir)
         return existing
     else:
         new_manifest = Manifest(
@@ -94,5 +104,5 @@ def init_or_update_manifest(
             coverage_stats=coverage_stats or {},
             phase_records=phase_records or {}
         )
-        save_manifest(new_manifest)
+        save_manifest(new_manifest, lesson_dir)
         return new_manifest

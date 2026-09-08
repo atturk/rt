@@ -494,7 +494,7 @@ def record_phase_fingerprint(
 
     phase_records[phase_name] = record
     manifest.phase_records = phase_records
-    save_manifest(manifest)
+    save_manifest(manifest, lesson_dir)
 
 
 def record_phase_checkpoint(
@@ -535,7 +535,7 @@ def record_phase_checkpoint(
 
     phase_records[phase_name] = record
     manifest.phase_records = phase_records
-    save_manifest(manifest)
+    save_manifest(manifest, lesson_dir)
 
 
 def get_phase_checkpoint(
@@ -627,5 +627,5 @@ def mark_downstream_stale(
         invalidated.append(ph)
 
     manifest.phase_records = phase_records
-    save_manifest(manifest)
+    save_manifest(manifest, lesson_dir)
     return invalidated
