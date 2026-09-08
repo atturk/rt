@@ -38,9 +38,11 @@ from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review_asr import run_review_asr, load_asr_issues
 from rt.pipeline.review_science import run_review_science, load_science_issues
+from rt.pipeline.issue_review import run_interactive_review, should_auto_accept_asr, should_auto_accept_science
 from rt.pipeline.ledger import load_ledger, record_decision, sanitize_suggested_fix
 from rt.pipeline.build import run_build
 from rt.core.models import ASRLevel, ASRIssue, ScienceIssue
+
 
 
 def _has_real_config_source() -> bool:
@@ -196,8 +198,11 @@ def cmd_review_asr(args):
     if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "asr", res.get("total_issues", 0))
-    elif not res.get("skipped") and res.get("total_issues", 0) > 0:
-        print(f"\nEsegui 'rt review \"{args.lesson_dir}\"' per rivedere le issue trovate.")
+
+    from rt.pipeline.issue_review import run_interactive_review
+    auto_accept = getattr(args, "auto_accept", None)
+    history = getattr(args, "history", False)
+    run_interactive_review(args.lesson_dir, "asr", channel=channel, auto_accept=auto_accept, history=history)
 
 
 def cmd_review_science(args):
@@ -235,74 +240,18 @@ def cmd_review_science(args):
     if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "science", res.get("total_science_issues", 0))
-    elif not res.get("skipped") and res.get("total_science_issues", 0) > 0:
-        print(f"\nEsegui 'rt review \"{args.lesson_dir}\"' per rivedere le issue trovate.")
+
+    from rt.pipeline.issue_review import run_interactive_review
+    auto_accept = getattr(args, "auto_accept", None)
+    history = getattr(args, "history", False)
+    run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
 
 
 
 from rt.pipeline.ledger import extract_context_sentence
+from rt.pipeline.issue_review import should_auto_accept_asr, should_auto_accept_science
 
 
-
-def should_auto_accept_asr(
-    iss: ASRIssue,
-    auto_accept: Optional[str],
-    auto_accept_asr: Optional[str],
-    auto_accept_science: Optional[str]
-) -> bool:
-    """Valuta se auto-accettare una anomalia ASR in base ai flag CLI."""
-    if auto_accept:
-        mode = str(auto_accept).lower()
-        if mode in ("all", "true"):
-            return True
-        if mode == "yellow":
-            # auto-accetta le gialle -> rimangono solo le rosse da controllare
-            return iss.level == ASRLevel.YELLOW
-        if mode == "red":
-            # auto-accetta le rosse -> rimangono solo le gialle da controllare
-            return iss.level == ASRLevel.RED
-
-    if auto_accept_asr:
-        mode = str(auto_accept_asr).lower()
-        if mode in ("all", "true"):
-            return True
-        if mode == "yellow":
-            return iss.level == ASRLevel.YELLOW
-        if mode == "red":
-            return iss.level == ASRLevel.RED
-
-    if auto_accept_science:
-        mode = str(auto_accept_science).lower()
-        if mode == "red":
-            # "approva tutto tranne le review science e rosse" -> approva YELLOW
-            return iss.level == ASRLevel.YELLOW
-
-    return False
-
-
-def should_auto_accept_science(
-    iss: ScienceIssue,
-    auto_accept: Optional[str],
-    auto_accept_asr: Optional[str],
-    auto_accept_science: Optional[str]
-) -> bool:
-    """Valuta se auto-accettare una critica scientifica in base ai flag CLI."""
-    if auto_accept:
-        mode = str(auto_accept).lower()
-        if mode in ("all", "true"):
-            return True
-        if mode in ("yellow", "red"):
-            return True
-
-    if auto_accept_science:
-        mode = str(auto_accept_science).lower()
-        if mode in ("all", "true"):
-            return True
-        if mode == "red":
-            # "approva tutto tranne le review science e rosse" -> non auto-accetta science
-            return False
-
-    return False
 
 
 def normalize_review_cli_args(argv: List[str]) -> List[str]:
@@ -310,14 +259,13 @@ def normalize_review_cli_args(argv: List[str]) -> List[str]:
     Normalizza gli argomenti della CLI per supportare sintassi flessibili come:
       --auto-accept
       --auto-accept yellow
-      --auto-accept-science red
-      --auto-accept-asr
     anche quando specificati prima o dopo il parametro posizionale lesson_dir.
     """
-    if "review" not in argv:
+    known_commands = {"review-asr", "review-science"}
+    if not any(cmd in argv for cmd in known_commands):
         return argv
     known_levels = {"yellow", "red", "all", "green"}
-    flags = {"--auto-accept", "--auto-accept-asr", "--auto-accept-science"}
+    flags = {"--auto-accept"}
     new_argv = []
     i = 0
     while i < len(argv):
@@ -335,220 +283,6 @@ def normalize_review_cli_args(argv: List[str]) -> List[str]:
         new_argv.append(arg)
         i += 1
     return new_argv
-
-
-def cmd_review(args) -> bool:
-    """Interfaccia Human-in-the-Loop per casi dubbi: terminale interattivo o coda Telegram.
-
-    Ritorna True se non resta nulla in sospeso prima di un eventuale build (nessuna
-    issue pendente, oppure revisione terminale conclusa in questa stessa chiamata),
-    False se la revisione è stata delegata in modo asincrono (Telegram, o richiesta
-    ma impossibile da svolgere ora perché non interattivo) — in tal caso il chiamante
-    NON deve procedere automaticamente al build."""
-    from rt.pipeline.ledger import get_pending_issues
-    lesson_dir = args.lesson_dir
-
-    seg_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
-    seg_by_id = {s.id: s for s in seg_data.segments}
-
-    # Carica draft se presente per estrazione contesto e unità didattica
-    draft_path = get_draft_path(lesson_dir)
-    draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
-    
-    seg_to_unit: Dict[str, Any] = {}
-    unit_by_id: Dict[str, Any] = {}
-    if draft:
-        for u in draft.units:
-            unit_by_id[u.unit_id] = u
-            for sid in u.source_segment_ids:
-                seg_to_unit[sid] = u
-    
-    asr_issues, sci_issues = get_pending_issues(lesson_dir)
-
-    auto_accept = getattr(args, "auto_accept", None)
-    auto_accept_asr = getattr(args, "auto_accept_asr", None)
-    auto_accept_science = getattr(args, "auto_accept_science", None)
-
-    # 1. Filtro auto-accept
-    asr_to_review = []
-    asr_auto_accepted = []
-    for iss in asr_issues:
-        if should_auto_accept_asr(iss, auto_accept, auto_accept_asr, auto_accept_science):
-            asr_auto_accepted.append(iss)
-        else:
-            asr_to_review.append(iss)
-
-    sci_to_review = []
-    sci_auto_accepted = []
-    for iss in sci_issues:
-        if should_auto_accept_science(iss, auto_accept, auto_accept_asr, auto_accept_science):
-            sci_auto_accepted.append(iss)
-        else:
-            sci_to_review.append(iss)
-
-    # Salva decisioni per le issue auto-accettate
-    for iss in asr_auto_accepted:
-        record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate, resolved_by="cli_auto")
-    for iss in sci_auto_accepted:
-        clean_fix = sanitize_suggested_fix(iss.suggested_fix)
-        record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix, resolved_by="cli_auto")
-
-    total_auto = len(asr_auto_accepted) + len(sci_auto_accepted)
-    if total_auto > 0:
-        print(f"\n⚡ Auto-approvati {total_auto} casi (ASR: {len(asr_auto_accepted)}, Science: {len(sci_auto_accepted)}) in base ai filtri CLI.")
-
-    total_pending = len(asr_to_review) + len(sci_to_review)
-    if total_pending == 0:
-        yaml_path = os.path.join(lesson_dir, "info.yaml")
-        if os.path.isfile(yaml_path):
-            try:
-                transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
-            except Exception:
-                pass
-        print("\n✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).")
-        return True
-
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
-
-    if channel == "telegram":
-        from rt.pipeline.issue_review import start_review_via_telegram
-        start_review_via_telegram(lesson_dir, asr_to_review, sci_to_review)
-        return False
-
-    if not sys.stdin.isatty():
-        print(f"\n⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(asr_to_review)} issue ASR e {len(sci_to_review)} issue scientifiche che richiedono revisione umana.")
-        print(f"Esegui './bin/rt review \"{lesson_dir}\"' per completare la revisione (da un terminale interattivo, o con --channel telegram).")
-        return False
-
-    print(f"\n🔍 REVISIONE INTERATTIVA ({total_pending} casi pendenti)")
-    print("=" * 60)
-
-    
-    interrupted = False
-
-    # 1. Revisione ASR
-    for idx, iss in enumerate(asr_to_review, start=1):
-        if interrupted:
-            break
-
-        seg = seg_by_id.get(iss.segment_id)
-        tc = seg.start_formatted if seg else "N/D"
-        listen = f"{seg.start_formatted} - {seg.end_formatted}" if seg else "N/D"
-        
-        # Recupero unità e frase di contesto dal draft
-        target_unit = seg_to_unit.get(iss.segment_id)
-        unit_info = f"{target_unit.unit_id} - {target_unit.title}" if target_unit else "N/D"
-        
-        sentence = ""
-        if target_unit:
-            sentence = extract_context_sentence(target_unit.content, iss.candidate, iss.source_text)
-        if not sentence and draft:
-            # Fallback nelle altre unità se presente
-            for u in draft.units:
-                if target_unit and u.unit_id == target_unit.unit_id:
-                    continue
-                s_found = extract_context_sentence(u.content, iss.candidate, iss.source_text)
-                if s_found:
-                    sentence = s_found
-                    unit_info = f"{u.unit_id} - {u.title}"
-                    break
-
-        print(f"\n[{idx}/{total_pending}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}")
-        if unit_info != "N/D":
-            print(f"  📚 Unità:         {fix_mojibake(unit_info)}")
-        print(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
-        print(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
-        print(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
-        print(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
-        if sentence:
-            print(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
-            
-        choice = input("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / S=Salta / Q=Esci]: ").strip().lower()
-        if choice in ("a", "accetta", ""):
-            record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
-            print("  ✔ Approvato.")
-        elif choice in ("r", "rifiuta"):
-            record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
-            print("  ❌ Rifiutato (mantenuto testo originale).")
-        elif choice in ("m", "modifica"):
-            custom = input("  Inserisci correzione personalizzata: ").strip()
-            if custom:
-                record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
-                print(f"  ✏ Modificato in: \"{custom}\"")
-        elif choice in ("q", "esci", "quit"):
-            print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
-            interrupted = True
-            break
-        else:
-            print("  ⏭ Saltato.")
-            
-    # 2. Revisione Scientifica
-    for idx, iss in enumerate(sci_to_review, start=len(asr_to_review) + 1):
-        if interrupted:
-            break
-
-        seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
-        tc = seg.start_formatted if seg else "N/D"
-        
-        # Recupero unità e contenuto completo dal draft
-        sci_unit = None
-        if iss.unit_id and iss.unit_id in unit_by_id:
-            sci_unit = unit_by_id[iss.unit_id]
-        elif iss.segment_id and iss.segment_id in seg_to_unit:
-            sci_unit = seg_to_unit[iss.segment_id]
-            
-        sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
-
-        print(f"\n[{idx}/{total_pending}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}")
-        if sci_unit_info != "N/D":
-            print(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
-        print(f"  ⏱ Timecode:     {tc}")
-        print(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
-        print(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
-        if iss.suggested_fix:
-            print(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
-        if iss.diplomatic_question:
-            print(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
-        if sci_unit and sci_unit.content:
-            print(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
-            print("  " + "-" * 56)
-            for line in fix_mojibake(sci_unit.content).strip().split("\n"):
-                print(f"  {line}")
-            print("  " + "-" * 56)
-            
-        choice = input("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / S=Salta / Q=Esci]: ").strip().lower()
-        if choice in ("a", "accetta", ""):
-            clean_fix = sanitize_suggested_fix(iss.suggested_fix)
-            record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
-            print("  ✔ Correzione scientifica applicata.")
-        elif choice in ("m", "mantieni"):
-            record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
-            print("  ✔ Formulazione originale mantenuta.")
-        elif choice in ("e", "modifica"):
-            custom = input("  Inserisci testo corretto: ").strip()
-            if custom:
-                record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
-                print(f"  ✏ Modificato in: \"{custom}\"")
-        elif choice in ("q", "esci", "quit"):
-            print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
-            interrupted = True
-            break
-        else:
-            print("  ⏭ Saltato.")
-            
-    if not interrupted:
-        yaml_path = os.path.join(lesson_dir, "info.yaml")
-        if os.path.isfile(yaml_path):
-            try:
-                transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
-            except Exception:
-                pass
-        print("\n✨ Revisione completata. Esegui 'rt build <cartella>' per finalizzare.")
-
-    return True
 
 
 def cmd_build(args):
@@ -899,7 +633,7 @@ def cmd_run(args):
                       f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
 
         step_offset = 2
-        total_steps = 9 if with_review else 6
+        total_steps = 8 if with_review else 6
 
         print(f"\n[1/{total_steps}] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...")
         try:
@@ -948,7 +682,7 @@ def cmd_run(args):
                       f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
 
         step_offset = 0
-        total_steps = 7 if with_review else 4
+        total_steps = 6 if with_review else 4
 
     print(f"\n[{step_offset + 1}/{total_steps}] PREPARE (Parsing deterministico segmenti)...")
     prep_res = run_prepare(lesson_dir, force=force)
@@ -985,6 +719,13 @@ def cmd_run(args):
         else:
             print(f"✔ Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})")
 
+        auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
+        asr_ok = run_interactive_review(lesson_dir, "asr", channel=channel, auto_accept=auto_accept_val)
+        if not asr_ok:
+            print(f"\n⏸  In attesa che la revisione ASR venga completata (Telegram, oppure esegui 'rt review-asr \"{lesson_dir}\"' da terminale). "
+                  f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
+            return
+
         print(f"\n[{step_offset + 5}/{total_steps}] SCIENCE REVIEW (Critic indipendente su docente e allucinazioni)...")
         sci_res = run_review_science(lesson_dir, force=force, force_mock=mock_mode)
         if sci_res.get("skipped"):
@@ -992,14 +733,13 @@ def cmd_run(args):
         else:
             print(f"✔ Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})")
 
-        print(f"\n[{step_offset + 6}/{total_steps}] HUMAN REVIEW (Valutazione anomalie YELLOW/RED e Science)...")
-        args.lesson_dir = lesson_dir
-        review_ready_for_build = cmd_review(args)
-        if not review_ready_for_build:
-            print(f"\n⏸  In attesa che la revisione venga completata (Telegram, oppure esegui 'rt review \"{lesson_dir}\"' da terminale). "
+        sci_ok = run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val)
+        if not sci_ok:
+            print(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review-science \"{lesson_dir}\"' da terminale). "
                   f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
             return
-        build_step_num = step_offset + 7
+
+        build_step_num = step_offset + 6
     else:
         build_step_num = step_offset + 4
 
@@ -1085,10 +825,21 @@ def main():
     p_vdr.set_defaults(func=cmd_validate_draft)
 
     # review-asr
-    p_rasr = subparsers.add_parser("review-asr", help="Analisi ambiguità ASR e confidence gating")
+    p_rasr = subparsers.add_parser("review-asr", help="Analisi ambiguità ASR, confidence gating e revisione")
     p_rasr.add_argument("lesson_dir", help="Directory della lezione")
     p_rasr.add_argument("--force", action="store_true", help="Forza la riesecuzione della revisione ASR")
     p_rasr.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_rasr.add_argument(
+        "--auto-accept",
+        dest="auto_accept",
+        default=None,
+        help="Auto-accetta le proposte: senza argomenti o 'all' accetta tutto. Con 'yellow' auto-accetta le gialle, con 'red' auto-accetta le rosse."
+    )
+    p_rasr.add_argument(
+        "--history",
+        action="store_true",
+        help="Mostra anche le issue già decise per una eventuale rivalutazione (solo terminale)"
+    )
     p_rasr.add_argument(
         "--channel",
         choices=["terminal", "telegram"],
@@ -1098,10 +849,21 @@ def main():
     p_rasr.set_defaults(func=cmd_review_asr)
 
     # review-science
-    p_rsci = subparsers.add_parser("review-science", help="Science critic indipendente")
+    p_rsci = subparsers.add_parser("review-science", help="Science critic indipendente e revisione")
     p_rsci.add_argument("lesson_dir", help="Directory della lezione")
     p_rsci.add_argument("--force", action="store_true", help="Forza la riesecuzione della critica scientifica")
     p_rsci.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_rsci.add_argument(
+        "--auto-accept",
+        dest="auto_accept",
+        default=None,
+        help="Auto-accetta le proposte scientifiche ('all' per accettare tutto)."
+    )
+    p_rsci.add_argument(
+        "--history",
+        action="store_true",
+        help="Mostra anche le issue già decise per una eventuale rivalutazione (solo terminale)"
+    )
     p_rsci.add_argument(
         "--channel",
         choices=["terminal", "telegram"],
@@ -1109,35 +871,6 @@ def main():
         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
     )
     p_rsci.set_defaults(func=cmd_review_science)
-
-    # review
-    p_rev = subparsers.add_parser("review", help="Revisione interattiva casi dubbi")
-    p_rev.add_argument("lesson_dir", help="Directory della lezione")
-    p_rev.add_argument(
-        "--auto-accept",
-        dest="auto_accept",
-        default=None,
-        help="Auto-accetta le proposte: senza argomenti accetta tutto. Con 'yellow' auto-accetta le gialle (rimangono le rosse da controllare)."
-    )
-    p_rev.add_argument(
-        "--auto-accept-asr",
-        dest="auto_accept_asr",
-        default=None,
-        help="Accetta solo tutte le review ASR e lascia le review scientifiche. Può specificare un livello opzionale (es. yellow, red)."
-    )
-    p_rev.add_argument(
-        "--auto-accept-science",
-        dest="auto_accept_science",
-        default=None,
-        help="Accetta tutte le review scientifiche e lascia le review ASR. Con 'red' approva tutto tranne science e red."
-    )
-    p_rev.add_argument(
-        "--channel",
-        choices=["terminal", "telegram"],
-        default=None,
-        help="Canale di review per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
-    )
-    p_rev.set_defaults(func=cmd_review)
 
     # build
     p_bld = subparsers.add_parser("build", help="Finalizzazione deterministica dei Markdown")

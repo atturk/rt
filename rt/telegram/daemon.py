@@ -12,11 +12,11 @@ import asyncio
 from datetime import datetime
 
 from telegram import Update
-from telegram.ext import Application, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CallbackQueryHandler, MessageHandler, CommandHandler, ContextTypes, filters
 
 from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
-from rt.telegram import registry, pending as tg_pending, conversation_state as convo
+from rt.telegram import registry, pending as tg_pending, conversation_state as convo, session as tg_session
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq"}
 
@@ -32,6 +32,70 @@ async def _write_heartbeat(context: ContextTypes.DEFAULT_TYPE) -> None:
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump({"last_seen": datetime.now().isoformat()}, f)
     os.replace(tmp_path, _heartbeat_path(state_dir))
+
+
+async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state_dir = context.bot_data["state_dir"]
+    chat_id = update.effective_chat.id
+    thread_id = update.effective_message.message_thread_id if update.effective_message else None
+
+    active = tg_session.get_active_session(state_dir, chat_id, thread_id)
+    if active is None:
+        await update.effective_message.reply_text(
+            "Nessuna attività in corso in questo topic.",
+            message_thread_id=thread_id,
+        )
+        return
+
+    kind = active.get("kind")
+    lesson_dir = active.get("lesson_dir")
+
+    convo.clear_awaiting_feedback(state_dir, chat_id)
+    tg_session.end_session(state_dir, chat_id, thread_id)
+
+    if kind == "issue_review":
+        await update.effective_message.reply_text(
+            "⏹ Revisione interrotta. I progressi finora sono stati salvati.",
+            message_thread_id=thread_id,
+        )
+    elif kind == "outline_confirmation":
+        if lesson_dir and os.path.exists(lesson_dir):
+            try:
+                tg_pending.mark_responded(lesson_dir, status="cancelled", responded_via="telegram")
+            except Exception:
+                pass
+        await update.effective_message.reply_text(
+            "⏹ Conferma outline annullata.",
+            message_thread_id=thread_id,
+        )
+    else:
+        await update.effective_message.reply_text(
+            "⏹ Attività interrotta.",
+            message_thread_id=thread_id,
+        )
+
+
+async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state_dir = context.bot_data["state_dir"]
+    chat_id = update.effective_chat.id
+    thread_id = update.effective_message.message_thread_id if update.effective_message else None
+
+    active = tg_session.get_active_session(state_dir, chat_id, thread_id)
+    if active is None:
+        await update.effective_message.reply_text(
+            "Nessuna attività in corso in questo topic.",
+            message_thread_id=thread_id,
+        )
+        return
+
+    kind = active.get("kind", "sconosciuto")
+    lesson_dir = active.get("lesson_dir", "")
+    folder_name = os.path.basename(os.path.normpath(lesson_dir)) if lesson_dir else "N/D"
+
+    await update.effective_message.reply_text(
+        f"Attività in corso: {kind} ({folder_name})",
+        message_thread_id=thread_id,
+    )
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -105,6 +169,33 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
             text="⏹ Revisione interrotta. I progressi finora sono stati salvati.",
             message_thread_id=update.effective_message.message_thread_id,
         )
+        tg_session.end_session(state_dir, update.effective_chat.id, update.effective_message.message_thread_id)
+        return
+
+    if action == "ib":
+        from rt.telegram import issue_queue as tg_queue
+        from rt.pipeline.ledger import revert_last_decision
+        from rt.pipeline.issue_review import send_current_issue
+
+        queue = tg_queue.load_queue(lesson_dir)
+        if queue is None or queue.current_index <= 0:
+            await update.callback_query.answer("Sei già alla prima issue.", show_alert=True)
+            return
+
+        queue.current_index -= 1
+        tg_queue._save(queue, lesson_dir)
+
+        prev_issue_id = queue.issue_ids[queue.current_index]
+        revert_last_decision(lesson_dir, prev_issue_id)
+
+        await update.callback_query.answer("◀️ Tornato alla issue precedente.")
+        try:
+            await update.callback_query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, send_current_issue, lesson_dir)
         return
 
     if action == "ie":
@@ -160,6 +251,9 @@ async def _handle_start_review_callback(update: Update, context: ContextTypes.DE
         await update.callback_query.edit_message_reply_markup(reply_markup=None)
     except Exception:
         pass
+
+    tg_session.start_session(state_dir, update.effective_chat.id, update.effective_message.message_thread_id, "issue_review", lesson_dir)
+
     from rt.pipeline.ledger import get_pending_issues
     from rt.pipeline.issue_review import start_review_via_telegram
     asr_to_review, sci_to_review = get_pending_issues(lesson_dir)
@@ -208,7 +302,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
-
 def run_daemon(state_dir: str = None) -> None:
     cfg = load_telegram_config()
     runtime_cfg = load_config().telegram
@@ -217,6 +310,8 @@ def run_daemon(state_dir: str = None) -> None:
     application = Application.builder().token(cfg.bot_token).build()
     application.bot_data["state_dir"] = resolved_state_dir
 
+    application.add_handler(CommandHandler("quit", handle_quit))
+    application.add_handler(CommandHandler("status", handle_status))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.job_queue.run_repeating(_write_heartbeat, interval=15, first=0)

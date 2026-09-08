@@ -448,7 +448,7 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
          patch("rt.pipeline.setup.run_setup", return_value={"lesson_dir": str(tmp_path)}), \
          patch("rt.pipeline.setup.is_audio_file", return_value=False), \
          patch("rt.cli.run_build", return_value={"status": "OK", "skipped": True}), \
-         patch("rt.cli.cmd_review", return_value=None):
+         patch("rt.cli.run_interactive_review", return_value=True):
 
         # None of these should raise SystemExit(1) due to missing config
         cmd_outline(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))

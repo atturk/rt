@@ -79,13 +79,14 @@ def _setup_test_lesson(lesson_dir: str):
 def test_issue_keyboard_includes_quit_button():
     kb_asr = build_issue_keyboard("test_id", "asr")
     all_buttons = [b for row in kb_asr["inline_keyboard"] for b in row]
-    assert len(all_buttons) == 5
+    assert len(all_buttons) == 6
     assert any(b["text"] == "🛑 Esci" and b["callback_data"] == "iq:test_id" for b in all_buttons)
 
     kb_sci = build_issue_keyboard("test_id", "science")
     all_buttons_sci = [b for row in kb_sci["inline_keyboard"] for b in row]
-    assert len(all_buttons_sci) == 5
+    assert len(all_buttons_sci) == 6
     assert any(b["text"] == "🛑 Esci" and b["callback_data"] == "iq:test_id" for b in all_buttons_sci)
+
 
 
 def test_telegram_review_quit_callback(tmp_path):

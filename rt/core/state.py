@@ -34,8 +34,9 @@ VALID_TRANSITIONS = {
     WorkflowState.ASR_REVIEW_READY: {WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
     WorkflowState.SCIENCE_REVIEW_READY: {WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
     WorkflowState.HUMAN_REVIEW_REQUIRED: {WorkflowState.READY_TO_BUILD, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.COMPLETED, WorkflowState.FAILED},
-    WorkflowState.READY_TO_BUILD: {WorkflowState.COMPLETED, WorkflowState.FAILED},
+    WorkflowState.READY_TO_BUILD: {WorkflowState.COMPLETED, WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
     WorkflowState.COMPLETED: {WorkflowState.COMPLETED, WorkflowState.PREPARED, WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD}, # Ribilanciamento / review incrementale / re-build consentito
+
 
     WorkflowState.FAILED: set(WorkflowState), # Da fallito è possibile ripartire da qualsiasi stato valido dopo fix
 }

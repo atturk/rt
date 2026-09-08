@@ -203,3 +203,30 @@ def test_telegram_outline_review_topic_routing(synthetic_outline_lesson, monkeyp
             _, kwargs = mock_send.call_args
             assert kwargs.get("message_thread_id") == 5
 
+
+def test_telegram_polling_cancelled(synthetic_outline_lesson, monkeypatch, tmp_path, capsys):
+    lesson_dir = synthetic_outline_lesson
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
+
+    state_dir = str(tmp_path / ".rt_telegram")
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.poll_interval_seconds = 0.01
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
+
+        with patch("rt.telegram.client.send_message", return_value={"message_id": 1}):
+            def mock_sleep(sec):
+                mark_responded(lesson_dir, status="cancelled", responded_via="telegram")
+
+            with patch("time.sleep", side_effect=mock_sleep):
+                confirm_or_revise_outline(lesson_dir, channel="telegram", force_mock=True)
+
+            state = load_pending(lesson_dir)
+            assert state.status == "cancelled"
+            out = capsys.readouterr().out
+            assert "Conferma annullata da Telegram" in out
+
+

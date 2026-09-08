@@ -30,7 +30,7 @@ def test_record_and_update_decision(tmp_path):
     assert ledger.decisions[0].issue_id == "asr_000001"
     assert ledger.decisions[0].resolved_text == "glicerolo chinasi"
     
-    # Aggiorna la stessa decisione (deve modificare sul posto, non duplicare)
+    # Aggiorna la stessa decisione (append-only ledger: aggiunge nuova decisione, l'ultima è quella attiva)
     dec2 = record_decision(
         lesson_dir=lesson_dir,
         issue_id="asr_000001",
@@ -40,9 +40,10 @@ def test_record_and_update_decision(tmp_path):
     assert dec2.decision == "edited"
     
     ledger_updated = load_ledger(lesson_dir)
-    assert len(ledger_updated.decisions) == 1
-    assert ledger_updated.decisions[0].decision == "edited"
-    assert ledger_updated.decisions[0].resolved_text == "glicerolo-chinasi mitocondriale"
+    assert len(ledger_updated.decisions) == 2
+    assert ledger_updated.decisions[-1].decision == "edited"
+    assert ledger_updated.decisions[-1].resolved_text == "glicerolo-chinasi mitocondriale"
+
 
 
 def test_apply_decisions_to_draft(tmp_path):

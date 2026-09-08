@@ -101,7 +101,7 @@ def record_decision(
     resolved_by: str = "user",
     notes: Optional[str] = None
 ) -> ReviewDecision:
-    """Registra o aggiorna una decisione nel ledger atomico con sanitizzazione UTF-8."""
+    """Registra una decisione nel ledger atomico append-only con sanitizzazione UTF-8."""
     ledger = load_ledger(lesson_dir)
     clean_resolved = fix_mojibake(resolved_text) if resolved_text else None
     clean_notes = fix_mojibake(notes) if notes else None
@@ -112,13 +112,6 @@ def record_decision(
         if sanitized is not None:
             clean_resolved = sanitized
     
-    # Se la decisione esiste già per questa issue, aggiornala
-    existing_idx = None
-    for idx, d in enumerate(ledger.decisions):
-        if d.issue_id == issue_id:
-            existing_idx = idx
-            break
-            
     dec_obj = ReviewDecision(
         issue_id=issue_id,
         decision=decision.lower().strip(),
@@ -128,13 +121,61 @@ def record_decision(
         notes=clean_notes
     )
     
-    if existing_idx is not None:
-        ledger.decisions[existing_idx] = dec_obj
-    else:
-        ledger.decisions.append(dec_obj)
-        
+    ledger.decisions.append(dec_obj)
     save_ledger(ledger, lesson_dir)
+
     return dec_obj
+
+
+
+def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
+    """Rimuove l'ultima voce per issue_id dal ledger (append-only). Ritorna False se non trovata."""
+    ledger = load_ledger(lesson_dir)
+    target_idx = None
+    for idx in range(len(ledger.decisions) - 1, -1, -1):
+        if ledger.decisions[idx].issue_id == issue_id:
+            target_idx = idx
+            break
+    if target_idx is None:
+        return False
+    ledger.decisions.pop(target_idx)
+    save_ledger(ledger, lesson_dir)
+    return True
+
+
+def apply_asr_decisions_to_text(
+    content: str,
+    asr_issues: List[ASRIssue],
+    decisions_map: Dict[str, ReviewDecision],
+    target_segment_ids: Optional[List[str]] = None,
+) -> str:
+    """
+    Applica al testo le correzioni ASR decise nel ledger per i segmenti specificati
+    (o per tutti i segmenti se target_segment_ids è None).
+    """
+    asr_by_id = {iss.id: iss for iss in asr_issues}
+    content = fix_mojibake(content)
+    
+    for iss_id, dec in decisions_map.items():
+        if iss_id in asr_by_id:
+            iss = asr_by_id[iss_id]
+            if target_segment_ids is not None and iss.segment_id not in target_segment_ids:
+                continue
+            resolved = fix_mojibake(dec.resolved_text) if dec.resolved_text else None
+            if dec.decision in ("accepted", "edited") and resolved:
+                candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
+                source = fix_mojibake(iss.source_text) if iss.source_text else ""
+                if candidate and candidate in content:
+                    content = content.replace(candidate, resolved, 1)
+                elif source and source in content:
+                    content = content.replace(source, resolved, 1)
+            elif dec.decision == "rejected":
+                candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
+                source = fix_mojibake(iss.source_text) if iss.source_text else ""
+                if candidate and candidate in content:
+                    content = content.replace(candidate, source, 1)
+                    
+    return content
 
 
 def apply_decisions_to_draft(
@@ -148,7 +189,6 @@ def apply_decisions_to_draft(
     Ogni sostituzione viene applicata una sola volta garantendo idempotenza e conformità UTF-8.
     """
     decisions_map: Dict[str, ReviewDecision] = {d.issue_id: d for d in ledger.decisions}
-    asr_by_id = {iss.id: iss for iss in asr_issues}
     sci_by_id = {iss.id: iss for iss in science_issues}
     
     updated_units = []
@@ -156,24 +196,7 @@ def apply_decisions_to_draft(
         content = fix_mojibake(unit.content)
         
         # 1. Applica decisioni su ASR Issues
-        for iss_id, dec in decisions_map.items():
-            if iss_id in asr_by_id:
-                iss = asr_by_id[iss_id]
-                # Se l'issue appartiene a un segmento di questa unità
-                if iss.segment_id in unit.source_segment_ids:
-                    resolved = fix_mojibake(dec.resolved_text) if dec.resolved_text else None
-                    if dec.decision in ("accepted", "edited") and resolved:
-                        candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
-                        source = fix_mojibake(iss.source_text) if iss.source_text else ""
-                        if candidate and candidate in content:
-                            content = content.replace(candidate, resolved, 1)
-                        elif source and source in content:
-                            content = content.replace(source, resolved, 1)
-                    elif dec.decision == "rejected":
-                        candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
-                        source = fix_mojibake(iss.source_text) if iss.source_text else ""
-                        if candidate and candidate in content:
-                            content = content.replace(candidate, source, 1)
+        content = apply_asr_decisions_to_text(content, asr_issues, decisions_map, unit.source_segment_ids)
                             
         # 2. Applica decisioni su Science Issues
         for iss_id, dec in decisions_map.items():
@@ -252,8 +275,7 @@ def extract_context_sentence(content: str, target: str, fallback_target: str = "
 
 
 def get_pending_issues(lesson_dir: str):
-    """Issue ASR (YELLOW/RED) e scientifiche non ancora decise nel ledger — stesso
-    filtro e stesso ordine usati da cmd_review(). Ritorna (asr_issues, science_issues)."""
+    """Issue ASR (YELLOW/RED) e scientifiche non ancora decise nel ledger. Ritorna (asr_issues, science_issues)."""
     from rt.core.models import ASRLevel
     from rt.pipeline.review_asr import load_asr_issues
     from rt.pipeline.review_science import load_science_issues
