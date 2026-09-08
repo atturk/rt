@@ -12,6 +12,18 @@ from rt.telegram import issue_queue as tg_queue
 
 
 def start_review_via_telegram(lesson_dir: str, asr_to_review: List[ASRIssue], sci_to_review: List[ScienceIssue]) -> None:
+    try:
+        from rt.telegram.config import load_telegram_config, resolve_topic_id
+        from rt.core.config import load_config
+        from rt.telegram import session as tg_session
+
+        tg_cfg = load_telegram_config()
+        runtime_cfg = load_config().telegram
+        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+        tg_session.start_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, "issue_review", lesson_dir)
+    except Exception:
+        pass
+
     issue_ids = [iss.id for iss in asr_to_review] + [iss.id for iss in sci_to_review]
     issue_types = {iss.id: "asr" for iss in asr_to_review}
     issue_types.update({iss.id: "science" for iss in sci_to_review})
