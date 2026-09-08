@@ -86,6 +86,7 @@ def start_session(
     thread_id: Optional[Union[int, str]],
     kind: str,
     lesson_dir: str,
+    message_id: Optional[Union[int, str]] = None,
 ) -> None:
     """Registra la sessione attiva per il topic specificato.
     Il chiamante è responsabile di aver verificato con get_active_session che il topic
@@ -104,6 +105,7 @@ def start_session(
             if existing and existing.get("kind") == kind and existing.get("lesson_dir") == abs_lesson
             else datetime.now().isoformat()
         )
+        current_msg_id = message_id if message_id is not None else (existing.get("message_id") if existing else None)
 
         sessions[key] = {
             "kind": kind,
@@ -111,8 +113,28 @@ def start_session(
             "started_at": started_at,
             "chat_id": str(chat_id),
             "thread_id": None if thread_id is None else str(thread_id),
+            "message_id": current_msg_id,
         }
         _save_sessions(state_dir, data)
+    finally:
+        _release_lock(state_dir)
+
+
+def update_session_message(
+    state_dir: str,
+    chat_id: Union[int, str],
+    thread_id: Optional[Union[int, str]],
+    message_id: Union[int, str],
+) -> None:
+    """Aggiorna il message_id dell'ultimo messaggio inviato con bottoni per la sessione attiva."""
+    _acquire_lock(state_dir)
+    try:
+        data = _load_sessions(state_dir)
+        sessions = data.setdefault("sessions", {})
+        key = _session_key(chat_id, thread_id)
+        if key in sessions:
+            sessions[key]["message_id"] = message_id
+            _save_sessions(state_dir, data)
     finally:
         _release_lock(state_dir)
 

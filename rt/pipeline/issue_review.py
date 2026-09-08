@@ -133,7 +133,11 @@ def send_current_issue(lesson_dir: str) -> None:
     )
     keyboard = tg_fmt.build_issue_keyboard(short_id, issue_type)
     try:
-        tg_client.send_message(tg_cfg, text=text, reply_markup=keyboard, message_thread_id=thread_id)
+        res = tg_client.send_message(tg_cfg, text=text, reply_markup=keyboard, message_thread_id=thread_id)
+        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+        if msg_id is not None:
+            from rt.telegram import session as tg_session
+            tg_session.update_session_message(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, msg_id)
     except tg_client.TelegramAPIError as e:
         print(f"⚠️  Invio issue a Telegram fallito: {e}")
 

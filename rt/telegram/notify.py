@@ -67,12 +67,15 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
             lesson_dir, round_=1, kind="start_issue_review", state_dir=runtime_cfg.state_dir, message_thread_id=thread_id
         )
         keyboard = tg_fmt.build_start_review_keyboard(short_id)
-        tg_client.send_message(
+        res = tg_client.send_message(
             cfg,
             text=f"🔎 {count} issue {label} pronte per la review.",
             reply_markup=keyboard,
             message_thread_id=thread_id
         )
+        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+        if msg_id is not None:
+            tg_session.update_session_message(runtime_cfg.state_dir, cfg.chat_id, thread_id, msg_id)
     except Exception as e:
         print(f"⚠️  Notifica Telegram issue pronte non inviata: {e}", file=sys.stderr)
 
