@@ -295,9 +295,9 @@ def test_suspicious_fast_response_escalates_thinking_after_two_consecutive_failu
 
     assert call_count == 3
     assert len(captured_payloads) == 3
-    # Payload 1 e 2 senza thinking
-    assert captured_payloads[0]["reasoning"] == {"enabled": False}
-    assert captured_payloads[1]["reasoning"] == {"enabled": False}
+    # Payload 1 e 2 senza thinking (chiave reasoning omessa su OpenRouter)
+    assert "reasoning" not in captured_payloads[0]
+    assert "reasoning" not in captured_payloads[1]
     # Payload 3 con thinking forzato a True via escalation locale
     assert captured_payloads[2]["reasoning"] == {"enabled": True, "effort": "low"}
     assert res.summary == "Scienza ok"
@@ -486,7 +486,7 @@ def test_feature2b_output_limit_same_route_retry_recovers(monkeypatch):
     assert len(captured_payloads) == 3
     # INVARIANTE: tutti e 3 i payload devono essere rigorosamente identici su thinking/reasoning_effort
     for p in captured_payloads:
-        assert p["reasoning"] == {"enabled": False}
+        assert "reasoning" not in p
     assert res.summary == "Science recovered"
 
 

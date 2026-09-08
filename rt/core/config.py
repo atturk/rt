@@ -36,8 +36,8 @@ class RouteConfig(BaseModel):
     model: Optional[str] = Field(default=None, description="Identificativo del modello per il provider (None = route non ancora configurata)")
     credential: Optional[str] = Field(default=None, description="Nome simbolico della credenziale (es. google_1, google_2)")
     base_url: Optional[str] = Field(default=None)
-    thinking: bool = Field(default=True, description="Abilita il thinking mode (DeepSeek reasoning o equivalenti)")
-    reasoning_effort: str = Field(default="low", description="low | high | max (default: low)")
+    thinking: Optional[bool] = Field(default=None, description="True = forza il reasoning acceso, False = tenta di disattivarlo (su OpenRouter, per sicurezza, produce comunque l'omissione del campo — vedi rt/llm/providers/openrouter.py), None = non specificato, il provider/modello decide da sé")
+    reasoning_effort: Optional[str] = Field(default=None, description="low | high | max (None = non specificato/lascia decidere al provider)")
     max_thinking_tokens: Optional[int] = Field(
         default=None,
         validation_alias=AliasChoices("max_thinking_tokens", "max_reasoning_tokens"),

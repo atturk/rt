@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from pydantic import BaseModel
 
-from rt.core.config import load_config, get_api_key, load_env_file, RTConfig, LLMModelConfig
+from rt.core.config import load_config, get_api_key, load_env_file, RTConfig, LLMModelConfig, RouteConfig
 from rt.llm.client import LLMClient, LLMError
 from rt.pipeline.smoke_test import run_smoke_test, SmokeTestResponse
 
@@ -591,6 +591,229 @@ jobs:
     assert outline_job.primary.credential == "google_1"
     assert outline_job.secondary.credential == "google_2"
     assert outline_job.round_robin is True
+
+
+def test_optional_reasoning_effort_and_payloads(tmp_path):
+    """Verifica che reasoning_effort possa essere null/None/omesso e non venga inviato nel payload se assente."""
+    from rt.llm.providers.openrouter import OpenRouterProvider
+    from rt.llm.providers.deepseek import DeepSeekProvider
+
+    # 1. RouteConfig con reasoning_effort=None o omesso
+    rc_none = RouteConfig(provider="openrouter", model="tencent/hy3", thinking=True, reasoning_effort=None)
+    assert rc_none.reasoning_effort is None
+
+    # 2. Parsing da YAML con reasoning_effort: null e reasoning_effort: vuoto
+    yaml_content = """version: "2.0.0"
+jobs:
+  review_asr:
+    primary:
+      provider: "openrouter"
+      model: "tencent/hy3"
+      thinking: true
+      reasoning_effort: null
+  rewrite:
+    primary:
+      provider: "deepseek"
+      model: "deepseek-v4-flash"
+      thinking: true
+      reasoning_effort:
+"""
+    cfg_file = tmp_path / "rt.config.yaml"
+    cfg_file.write_text(yaml_content, encoding="utf-8")
+    cfg = load_config(str(cfg_file))
+    assert cfg.jobs["review_asr"].primary.reasoning_effort is None
+    assert cfg.jobs["rewrite"].primary.reasoning_effort is None
+
+    # 3. OpenRouter payload: quando reasoning_effort è None, invia {"enabled": True} senza "effort"
+    or_p = OpenRouterProvider()
+    messages = [{"role": "user", "content": "hello"}]
+    payload_or_none = or_p.build_payload(
+        model="tencent/hy3",
+        messages=messages,
+        thinking=True,
+        reasoning_effort=None
+    )
+    assert payload_or_none["reasoning"] == {"enabled": True}
+    assert "effort" not in payload_or_none["reasoning"]
+
+    # 4. OpenRouter payload: quando reasoning_effort è specificato, include "effort"
+    payload_or_effort = or_p.build_payload(
+        model="tencent/hy3",
+        messages=messages,
+        thinking=True,
+        reasoning_effort="low"
+    )
+    assert payload_or_effort["reasoning"] == {"enabled": True, "effort": "low"}
+
+    # 5. DeepSeek payload: quando reasoning_effort è None, non aggiunge reasoning_effort a root
+    ds_p = DeepSeekProvider()
+    payload_ds_none = ds_p.build_payload(
+        model="deepseek-v4-flash",
+        messages=messages,
+        thinking=True,
+        reasoning_effort=None
+    )
+    assert payload_ds_none["thinking"] == {"type": "enabled"}
+    assert "reasoning_effort" not in payload_ds_none
+
+    # 6. DeepSeek payload: quando reasoning_effort è specificato, include reasoning_effort
+    payload_ds_effort = ds_p.build_payload(
+        model="deepseek-v4-flash",
+        messages=messages,
+        thinking=True,
+        reasoning_effort="high"
+    )
+    assert payload_ds_effort["thinking"] == {"type": "enabled"}
+    assert payload_ds_effort["reasoning_effort"] == "high"
+
+
+def test_three_state_thinking_defaults_and_provider_payloads():
+    """Verifica il comportamento a 3 stati di thinking (None, True, False) su RouteConfig e provider adapters."""
+    from rt.llm.providers.openrouter import OpenRouterProvider
+    from rt.llm.providers.deepseek import DeepSeekProvider
+
+    # 1. Default su RouteConfig: thinking è None se non specificato
+    rc_default = RouteConfig(provider="openrouter", model="deepseek/deepseek-r1")
+    assert rc_default.thinking is None
+
+    rc_true = RouteConfig(provider="openrouter", model="deepseek/deepseek-r1", thinking=True)
+    assert rc_true.thinking is True
+
+    rc_false = RouteConfig(provider="openrouter", model="deepseek/deepseek-r1", thinking=False)
+    assert rc_false.thinking is False
+
+    messages = [{"role": "user", "content": "test prompt"}]
+
+    # 2. OpenRouterProvider:
+    # thinking=None o False -> nessuna chiave 'reasoning' (mai 'enabled: false')
+    # thinking=True -> 'reasoning' configurato
+    or_provider = OpenRouterProvider()
+
+    payload_or_none = or_provider.build_payload(model="deepseek/deepseek-r1", messages=messages, thinking=None)
+    assert "reasoning" not in payload_or_none
+
+    payload_or_false = or_provider.build_payload(model="deepseek/deepseek-r1", messages=messages, thinking=False)
+    assert "reasoning" not in payload_or_false
+
+    payload_or_true = or_provider.build_payload(model="deepseek/deepseek-r1", messages=messages, thinking=True)
+    assert payload_or_true["reasoning"] == {"enabled": True}
+
+    # 3. DeepSeekProvider:
+    # thinking=None -> nessuna chiave 'thinking' né 'reasoning_effort'
+    # thinking=True -> 'thinking': {'type': 'enabled'}
+    # thinking=False -> 'thinking': {'type': 'disabled'}
+    ds_provider = DeepSeekProvider()
+
+    payload_ds_none = ds_provider.build_payload(model="deepseek-chat", messages=messages, thinking=None)
+    assert "thinking" not in payload_ds_none
+    assert "reasoning_effort" not in payload_ds_none
+
+    payload_ds_false = ds_provider.build_payload(model="deepseek-chat", messages=messages, thinking=False)
+    assert payload_ds_false["thinking"] == {"type": "disabled"}
+
+    payload_ds_true = ds_provider.build_payload(model="deepseek-reasoner", messages=messages, thinking=True, reasoning_effort="low")
+    assert payload_ds_true["thinking"] == {"type": "enabled"}
+    assert payload_ds_true["reasoning_effort"] == "low"
+
+
+def test_client_three_state_thinking_integration(monkeypatch):
+    """Verifica che LLMClient preservi i 3 stati di thinking nelle chiamate reali e che force_thinking_override vinca."""
+    from rt.core.config import JobRoutingConfig
+    from rt.llm.credentials import GLOBAL_CREDENTIALS
+
+    monkeypatch.setattr("rt.core.config.load_env_file", lambda *args, **kwargs: None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-12345")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-test-67890")
+    monkeypatch.setattr("time.sleep", lambda *a, **kw: None)
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.retry.max_timeout_retries = 0
+
+    captured_payloads = []
+
+    def mock_post(url, headers=None, json=None, timeout=None, stream=None, **kwargs):
+        captured_payloads.append(dict(json) if json else {})
+        resp = MagicMock()
+        resp.encoding = "utf-8"
+        resp.status_code = 200
+        resp.json.return_value = {"choices": [{"message": {"content": '{"summary": "ok", "item_count": 1}'}}]}
+        resp.iter_lines.return_value = []
+        return resp
+
+    with patch("requests.post", side_effect=mock_post):
+        # Caso A: OpenRouter con route.thinking = None -> nessun campo 'reasoning'
+        client.config.jobs["review_science"] = JobRoutingConfig(
+            primary=RouteConfig(route_id="r_or_none", provider="openrouter", credential="openrouter", model="openrouter/free", thinking=None)
+        )
+        captured_payloads.clear()
+        client.call_structured(prompt="p", system_prompt="s", response_model=SampleModel, job_name="review_science", show_monitor=False)
+        assert len(captured_payloads) == 1
+        assert "reasoning" not in captured_payloads[0]
+
+        # Caso B: OpenRouter con route.thinking = False -> nessun campo 'reasoning' (mai {"enabled": False})
+        client.config.jobs["review_science"] = JobRoutingConfig(
+            primary=RouteConfig(route_id="r_or_false", provider="openrouter", credential="openrouter", model="openrouter/free", thinking=False)
+        )
+        captured_payloads.clear()
+        client.call_structured(prompt="p", system_prompt="s", response_model=SampleModel, job_name="review_science", show_monitor=False)
+        assert len(captured_payloads) == 1
+        assert "reasoning" not in captured_payloads[0]
+
+        # Caso C: DeepSeek con route.thinking = None -> nessun campo 'thinking'
+        client.config.jobs["review_science"] = JobRoutingConfig(
+            primary=RouteConfig(route_id="r_ds_none", provider="deepseek", credential="deepseek", model="deepseek-chat", thinking=None)
+        )
+        captured_payloads.clear()
+        client.call_structured(prompt="p", system_prompt="s", response_model=SampleModel, job_name="review_science", show_monitor=False)
+        assert len(captured_payloads) == 1
+        assert "thinking" not in captured_payloads[0]
+
+        # Caso D: DeepSeek con route.thinking = False -> thinking disabled
+        client.config.jobs["review_science"] = JobRoutingConfig(
+            primary=RouteConfig(route_id="r_ds_false", provider="deepseek", credential="deepseek", model="deepseek-chat", thinking=False)
+        )
+        captured_payloads.clear()
+        client.call_structured(prompt="p", system_prompt="s", response_model=SampleModel, job_name="review_science", show_monitor=False)
+        assert len(captured_payloads) == 1
+        assert captured_payloads[0]["thinking"] == {"type": "disabled"}
+
+        # Caso E: route.thinking = False con escalation attiva (force_thinking_override=True)
+        # Simuliamo escalation locale: escalation DEVE forzare thinking=True sia su OpenRouter che su DeepSeek
+        client.config.jobs["review_science"] = JobRoutingConfig(
+            max_attempts=3,
+            primary=RouteConfig(route_id="r_or_esc", provider="openrouter", credential="openrouter", model="openrouter/free", thinking=False, reasoning_effort="low")
+        )
+        captured_payloads.clear()
+
+        # Inneschiamo l'escalation simulando due 400 'Reasoning is mandatory' prima del successo
+        attempt = 0
+        def mock_post_escalating(url, headers=None, json=None, timeout=None, stream=None, **kwargs):
+            nonlocal attempt
+            attempt += 1
+            captured_payloads.append(dict(json) if json else {})
+            resp = MagicMock()
+            resp.encoding = "utf-8"
+            if attempt in (1, 2):
+                resp.status_code = 400
+                err_msg = '{"error":{"message":"Reasoning is mandatory for this endpoint and cannot be disabled.","code":400}}'
+                resp.content = err_msg.encode("utf-8")
+                resp.text = err_msg
+            else:
+                resp.status_code = 200
+                resp.json.return_value = {"choices": [{"message": {"content": '{"summary": "escalated", "item_count": 2}'}}]}
+                resp.iter_lines.return_value = []
+            return resp
+
+        with patch("requests.post", side_effect=mock_post_escalating):
+            client.call_structured(prompt="p", system_prompt="s", response_model=SampleModel, job_name="review_science", show_monitor=False)
+            assert len(captured_payloads) == 3
+            # Tentativi 1 e 2 hanno route.thinking=False (reasoning omesso)
+            assert "reasoning" not in captured_payloads[0]
+            assert "reasoning" not in captured_payloads[1]
+            # Tentativo 3 ha subito escalation: reasoning è forzato a True con effort="low"
+            assert captured_payloads[2]["reasoning"] == {"enabled": True, "effort": "low"}
+
 
 
 

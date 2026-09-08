@@ -149,9 +149,9 @@ def test_reasoning_required_retry_recovers_on_second_attempt(monkeypatch):
 
     assert call_count == 2
     assert len(captured_payloads) == 2
-    # Entrambi i tentativi devono avere reasoning disabled (nessuna escalation necessaria dopo 1 fallimento)
-    assert captured_payloads[0]["reasoning"] == {"enabled": False}
-    assert captured_payloads[1]["reasoning"] == {"enabled": False}
+    # Entrambi i tentativi devono avere reasoning omesso (nessuna escalation necessaria dopo 1 fallimento)
+    assert "reasoning" not in captured_payloads[0]
+    assert "reasoning" not in captured_payloads[1]
     assert res.summary == "ASR ok"
     assert res.item_count == 5
 
@@ -226,9 +226,9 @@ def test_reasoning_required_escalates_thinking_after_two_consecutive_failures(mo
 
     assert call_count == 3
     assert len(captured_payloads) == 3
-    # Payload 1 e 2 con thinking=False
-    assert captured_payloads[0]["reasoning"] == {"enabled": False}
-    assert captured_payloads[1]["reasoning"] == {"enabled": False}
+    # Payload 1 e 2 con thinking=False (reasoning omesso su OpenRouter)
+    assert "reasoning" not in captured_payloads[0]
+    assert "reasoning" not in captured_payloads[1]
     # Payload 3 con thinking forzato a True via escalation locale
     assert captured_payloads[2]["reasoning"] == {"enabled": True, "effort": "low"}
     assert res.summary == "ASR escalated ok"
@@ -324,9 +324,9 @@ def test_reasoning_required_exhausts_to_normal_failover(monkeypatch):
     # La 4ª chiamata è andata all'endpoint DeepSeek di fallback
     assert captured_urls[3] == "https://api.deepseek.com/chat/completions"
 
-    # Verifiche payload: 1 e 2 senza thinking, 3 con escalation
-    assert captured_payloads[0]["reasoning"] == {"enabled": False}
-    assert captured_payloads[1]["reasoning"] == {"enabled": False}
+    # Verifiche payload: 1 e 2 senza thinking (reasoning omesso), 3 con escalation
+    assert "reasoning" not in captured_payloads[0]
+    assert "reasoning" not in captured_payloads[1]
     assert captured_payloads[2]["reasoning"] == {"enabled": True, "effort": "low"}
 
     assert res.summary == "Fallback DeepSeek ok"
