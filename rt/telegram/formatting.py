@@ -71,7 +71,8 @@ def build_issue_keyboard(short_id: str, issue_type: str) -> dict:
     else:
         row1 = [{"text": "✅ Applica", "callback_data": f"ia:{short_id}"}, {"text": "🚫 Mantieni", "callback_data": f"ir:{short_id}"}]
     row2 = [{"text": "✏️ Modifica", "callback_data": f"ie:{short_id}"}, {"text": "⏭️ Salta", "callback_data": f"is:{short_id}"}]
-    return {"inline_keyboard": [row1, row2]}
+    row3 = [{"text": "🛑 Esci", "callback_data": f"iq:{short_id}"}]
+    return {"inline_keyboard": [row1, row2, row3]}
 
 
 def build_start_review_keyboard(short_id: str) -> dict:

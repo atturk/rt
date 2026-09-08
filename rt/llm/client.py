@@ -70,6 +70,12 @@ class LLMClient:
         self.config = load_config(config_path)
         self.force_mock = force_mock or self.config.mock_llm
         self.router = RoutingEngine(self.config)
+        # review_science chiama l'LLM una volta per unità didattica, review_asr una
+        # volta per batch di segmenti: senza questo contatore, il mock inietterebbe
+        # lo stesso set di ~10 issue di test ad OGNI chiamata, moltiplicandosi per il
+        # numero di unità/batch (es. 24 unità -> 240 issue mock). Le issue di test
+        # vanno iniettate solo alla prima chiamata per job_name in questa istanza.
+        self._mock_issue_calls: Dict[str, int] = {}
 
     def _get_job_routing_config(self, job_name: str) -> JobRoutingConfig:
         clean = job_name.lower().strip()
@@ -1137,24 +1143,102 @@ class LLMClient:
         elif model_name == "ASRIssueList" or "ASRIssue" in model_name:
             class ASRIssueList(BaseModel):
                 issues: list[ASRIssue] = []
+            self._mock_issue_calls["review_asr"] = self._mock_issue_calls.get("review_asr", 0) + 1
+            if self._mock_issue_calls["review_asr"] > 1:
+                return ASRIssueList(issues=[])  # type: ignore
+
             seg_matches = re.findall(r"seg_\d{6}", prompt)
-            first_seg = seg_matches[0] if seg_matches else "seg_000001"
-            mock_iss = ASRIssue(
-                id="asr_000001",
-                segment_id=first_seg,
-                source_text="introduzione",
-                candidate="Introduzione",
-                confidence=0.98,
-                level=ASRLevel.GREEN,
-                reason="Correzione maiuscola iniziale fonetica",
-                status="accepted"
-            )
-            return ASRIssueList(issues=[mock_iss])  # type: ignore
+            if not seg_matches:
+                seg_matches = ["seg_000001"]
+
+            # Mix di GREEN (auto-applicate), YELLOW e RED (10 issue totali, solo alla prima chiamata)
+            asr_specs = [
+                (ASRLevel.GREEN, 0.98, "accepted"),
+                (ASRLevel.YELLOW, 0.85, "pending"),
+                (ASRLevel.RED, 0.65, "pending"),
+                (ASRLevel.GREEN, 0.95, "accepted"),
+                (ASRLevel.YELLOW, 0.82, "pending"),
+                (ASRLevel.RED, 0.60, "pending"),
+                (ASRLevel.GREEN, 0.92, "accepted"),
+                (ASRLevel.YELLOW, 0.78, "pending"),
+                (ASRLevel.RED, 0.55, "pending"),
+                (ASRLevel.YELLOW, 0.80, "pending"),
+            ]
+            mock_issues = []
+            for i, (lvl, conf, st) in enumerate(asr_specs, start=1):
+                seg_id = seg_matches[(i - 1) % len(seg_matches)]
+                mock_issues.append(
+                    ASRIssue(
+                        id=f"asr_{i:06d}",
+                        segment_id=seg_id,
+                        source_text=f"[MOCK] trascrizione_errata_{i}",
+                        candidate=f"[MOCK] Correzione Trascrizione {i}",
+                        confidence=conf,
+                        level=lvl,
+                        reason=f"[MOCK] Motivazione fonetica per anomalia ASR #{i} ({lvl.value})",
+                        status=st
+                    )
+                )
+            return ASRIssueList(issues=mock_issues)  # type: ignore
 
         elif model_name == "ScienceIssueList" or "ScienceIssue" in model_name:
+            from rt.core.models import ScienceType, ScienceSeverity
             class ScienceIssueList(BaseModel):
                 issues: list[ScienceIssue] = []
-            return ScienceIssueList(issues=[])  # type: ignore
+
+            self._mock_issue_calls["review_science"] = self._mock_issue_calls.get("review_science", 0) + 1
+            if self._mock_issue_calls["review_science"] > 1:
+                return ScienceIssueList(issues=[])  # type: ignore
+
+            u_match = re.search(r"UNITÀ:\s*([0-9.]+)", prompt)
+            unit_id = u_match.group(1) if u_match else "1.1"
+
+            seg_matches = re.findall(r"seg_\d{6}", prompt)
+            if not seg_matches:
+                seg_matches = ["seg_000001"]
+
+            src_match = re.search(r"TRASCRIZIONE SORGENTE.*:\s*\n(.*)", prompt, re.DOTALL)
+            src_snippet = ""
+            if src_match:
+                clean_lines = [re.sub(r"^\[seg_\d+\]\s*", "", l).strip() for l in src_match.group(1).split("\n") if l.strip()]
+                if clean_lines:
+                    src_snippet = clean_lines[0]
+            if not src_snippet:
+                src_snippet = "[MOCK] Citazione sorgente docente"
+
+            # Mix dei 3 tipi: ERR_DOCENTE, ERR_RECONSTRUCTION, SCIENCE_CHECK (10 issue totali)
+            sci_specs = [
+                (ScienceType.ERR_DOCENTE, ScienceSeverity.HIGH, src_snippet, "Professore, intendeva confermare questo passaggio?"),
+                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.MEDIUM, None, None),
+                (ScienceType.SCIENCE_CHECK, ScienceSeverity.LOW, None, None),
+                (ScienceType.ERR_DOCENTE, ScienceSeverity.MEDIUM, src_snippet, "Professore, nel passaggio si riferiva al cofattore indicato?"),
+                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.HIGH, None, None),
+                (ScienceType.SCIENCE_CHECK, ScienceSeverity.MEDIUM, None, None),
+                (ScienceType.ERR_DOCENTE, ScienceSeverity.LOW, src_snippet, "Professore, si intendeva il valore di riferimento citato?"),
+                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.LOW, None, None),
+                (ScienceType.SCIENCE_CHECK, ScienceSeverity.HIGH, None, None),
+                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.MEDIUM, None, None),
+            ]
+
+            mock_issues = []
+            for i, (sci_type, sev, quote, dq) in enumerate(sci_specs, start=1):
+                seg_id = seg_matches[(i - 1) % len(seg_matches)]
+                mock_issues.append(
+                    ScienceIssue(
+                        id=f"sci_{i:06d}",
+                        type=sci_type,
+                        severity=sev,
+                        unit_id=unit_id,
+                        segment_id=seg_id,
+                        claim=f"[MOCK] Affermazione scientifica analizzata #{i}",
+                        source_quote=quote,
+                        reason=f"[MOCK] Critica scientifica #{i} di tipo {sci_type.value}",
+                        suggested_fix=f"[MOCK] Correzione scientifica proposta #{i}",
+                        diplomatic_question=dq,
+                        status="pending"
+                    )
+                )
+            return ScienceIssueList(issues=mock_issues)  # type: ignore
 
         # Fallback generico per qualsiasi altro modello
         try:

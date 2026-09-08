@@ -18,7 +18,7 @@ from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
 from rt.telegram import registry, pending as tg_pending, conversation_state as convo
 
-ISSUE_ACTIONS = {"ia", "ir", "ie", "is"}
+ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq"}
 
 
 def _heartbeat_path(state_dir: str) -> str:
@@ -93,6 +93,19 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
     lesson_dir = entry["lesson_dir"]
     issue_id = entry["issue_id"]
     issue_type = entry["issue_type"]
+
+    if action == "iq":
+        await update.callback_query.answer("Revisione interrotta.")
+        try:
+            await update.callback_query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⏹ Revisione interrotta. I progressi finora sono stati salvati.",
+            message_thread_id=update.effective_message.message_thread_id,
+        )
+        return
 
     if action == "ie":
         convo.set_awaiting_feedback(
