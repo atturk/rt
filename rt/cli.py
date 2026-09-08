@@ -190,6 +190,8 @@ def cmd_review_asr(args):
     if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "asr", res.get("total_issues", 0))
+    elif not res.get("skipped") and res.get("total_issues", 0) > 0:
+        print(f"\nEsegui 'rt review \"{args.lesson_dir}\"' per rivedere le issue trovate.")
 
 
 def cmd_review_science(args):
@@ -227,6 +229,8 @@ def cmd_review_science(args):
     if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "science", res.get("total_science_issues", 0))
+    elif not res.get("skipped") and res.get("total_science_issues", 0) > 0:
+        print(f"\nEsegui 'rt review \"{args.lesson_dir}\"' per rivedere le issue trovate.")
 
 
 
