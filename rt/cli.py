@@ -147,6 +147,14 @@ def cmd_validate_draft(args):
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
+def _get_lesson_title_for_notify(lesson_dir: str) -> str:
+    try:
+        from rt.pipeline.outline import load_outline
+        return load_outline(lesson_dir).lesson_title
+    except Exception:
+        return os.path.basename(os.path.abspath(lesson_dir))
+
+
 def cmd_review_asr(args):
     if not getattr(args, "mock", False):
         if not _has_real_config_source():
@@ -173,7 +181,13 @@ def cmd_review_asr(args):
     res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-asr", res)
     print(json.dumps(res, ensure_ascii=False, indent=2))
-    if not res.get("skipped"):
+    
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+
+    if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "asr", res.get("total_issues", 0))
 
@@ -204,7 +218,13 @@ def cmd_review_science(args):
     res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-science", res)
     print(json.dumps(res, ensure_ascii=False, indent=2))
-    if not res.get("skipped"):
+    
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+
+    if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "science", res.get("total_science_issues", 0))
 
@@ -526,6 +546,15 @@ def cmd_build(args):
     res = run_build(args.lesson_dir, force=force, rename_folder=args.rename)
     _print_phase_action("build", res)
     print(json.dumps(res, ensure_ascii=False, indent=2))
+
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+    if channel == "telegram":
+        final_dir = res.get("lesson_dir") or args.lesson_dir
+        from rt.telegram.notify import notify_build_completed
+        notify_build_completed(final_dir, res, lesson_title=_get_lesson_title_for_notify(final_dir))
 
 
 def cmd_setup(args):
@@ -980,8 +1009,8 @@ def cmd_run(args):
 
     if channel == "telegram":
         from rt.telegram.notify import notify_build_completed
-        from rt.pipeline.outline import load_outline as _load_outline_for_notify
-        notify_build_completed(lesson_dir, bld_res, lesson_title=_load_outline_for_notify(lesson_dir).lesson_title)
+        final_dir = bld_res.get("lesson_dir") or lesson_dir
+        notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
 
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     summary = GLOBAL_TELEMETRY.get_summary()
@@ -1048,6 +1077,12 @@ def main():
     p_rasr.add_argument("lesson_dir", help="Directory della lezione")
     p_rasr.add_argument("--force", action="store_true", help="Forza la riesecuzione della revisione ASR")
     p_rasr.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_rasr.add_argument(
+        "--channel",
+        choices=["terminal", "telegram"],
+        default=None,
+        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
+    )
     p_rasr.set_defaults(func=cmd_review_asr)
 
     # review-science
@@ -1055,6 +1090,12 @@ def main():
     p_rsci.add_argument("lesson_dir", help="Directory della lezione")
     p_rsci.add_argument("--force", action="store_true", help="Forza la riesecuzione della critica scientifica")
     p_rsci.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_rsci.add_argument(
+        "--channel",
+        choices=["terminal", "telegram"],
+        default=None,
+        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
+    )
     p_rsci.set_defaults(func=cmd_review_science)
 
     # review
@@ -1091,6 +1132,12 @@ def main():
     p_bld.add_argument("lesson_dir", help="Directory della lezione")
     p_bld.add_argument("--force", action="store_true", help="Forza la rigenerazione di tutti i Markdown")
     p_bld.add_argument("--rename", action="store_true", help="Rinomina la cartella con il titolo formale")
+    p_bld.add_argument(
+        "--channel",
+        choices=["terminal", "telegram"],
+        default=None,
+        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
+    )
     p_bld.set_defaults(func=cmd_build)
 
     # status

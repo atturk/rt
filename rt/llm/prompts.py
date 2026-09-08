@@ -205,6 +205,8 @@ DEVI DISTINGUERE CATEGORICAMENTE TRA:
 2. "ERR_RECONSTRUCTION": L'errore o l'allucinazione è stato introdotto dal modello durante la rielaborazione (es. inventare reazioni, confondere mutasi e racemasi, aggiungere dettagli fattuali non presenti nell'audio).
 3. "SCIENCE_CHECK": L'affermazione è plausibile ma tocca elementi ad alto rischio (bilanci energetici, concentrazioni, cofattori, localizzazione cellulare) e necessita di un controllo da parte dello studente.
 
+NON SEGNALARE MAI, come nessuno dei tre tipi sopra, i puri artefatti di trascrizione ASR: refusi, grafie errate di termini tecnici foneticamente simili all'originale (es. "interleochina" invece di "interleuchina", "acetilcolino" invece di "acetilcolina"), parole spezzate o unite male dal riconoscimento vocale. Questi sono errori ASR, non concettuali o scientifici: la loro correzione è compito esclusivo della review ASR — facoltativa e indipendente da questa, potrebbe non essere mai stata eseguita. Se un'affermazione contiene SOLO un artefatto di questo tipo e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase; se contiene ANCHE un problema scientifico reale, segnala solo quello, ignorando la grafia errata.
+
 Per ogni problema riscontrato restituisci:
 - "id": "sci_000001"
 - "type": "ERR_DOCENTE" | "ERR_RECONSTRUCTION" | "SCIENCE_CHECK"
