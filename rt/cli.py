@@ -33,6 +33,7 @@ from rt.core.manifest import load_manifest
 from rt.core.segments import load_segments_json
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
+from rt.pipeline.outline_review import confirm_or_revise_outline
 from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review_asr import run_review_asr, load_asr_issues
@@ -932,6 +933,12 @@ def cmd_run(args):
     else:
         print(f"✔ Outline validata: {out_res['validation_report']['units_count']} unità didattiche ({out_res['validation_report']['coverage_percentage']}% copertura)")
 
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+    confirm_or_revise_outline(lesson_dir, channel=channel, force=force, force_mock=mock_mode)
+
     print(f"\n[{step_offset + 3}/{total_steps}] REWRITE (Rielaborazione fluida a finestre con provenance)...")
     rew_res = run_rewrite(lesson_dir, force=force, force_mock=mock_mode)
     if rew_res.get("skipped"):
@@ -990,6 +997,11 @@ def cmd_run(args):
         print(f"  - Problemi scientifici: {bld_res['problemi_scientifici']}")
     print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
 
+    if channel == "telegram":
+        from rt.telegram.notify import notify_build_completed
+        from rt.pipeline.outline import load_outline as _load_outline_for_notify
+        notify_build_completed(lesson_dir, bld_res, lesson_title=_load_outline_for_notify(lesson_dir).lesson_title)
+
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     summary = GLOBAL_TELEMETRY.get_summary()
     if summary["total_requests"] > 0:
@@ -1000,6 +1012,11 @@ def cmd_run(args):
             print(f"  {job_name:<16} {job_stats['requests']:>3} richieste  ${job_stats['estimated_cost_usd']:.6f}")
         print(f"  {'TOTALE':<16}     ${summary['total_estimated_cost_usd']:.6f}")
         print("=" * 60)
+
+
+def cmd_telegram_daemon(args):
+    from rt.telegram.daemon import run_daemon
+    run_daemon(state_dir=getattr(args, "state_dir", None))
 
 
 def main():
@@ -1130,7 +1147,14 @@ def main():
     p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action="store_true", help="Rinomina la cartella con il titolo formale")
+    p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
+                        help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_run.set_defaults(func=cmd_run)
+
+    # telegram-daemon
+    p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
+    p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
+    p_tgd.set_defaults(func=cmd_telegram_daemon)
 
     normalized_argv = normalize_review_cli_args(sys.argv[1:])
     args = parser.parse_args(normalized_argv)

@@ -5,3 +5,4 @@ python-dotenv>=1.0
 rich>=13.0
 questionary>=2.0
 ruamel.yaml>=0.18
+python-telegram-bot[job-queue]>=21.0

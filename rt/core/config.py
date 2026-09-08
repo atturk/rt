@@ -201,11 +201,19 @@ def _build_default_jobs() -> Dict[str, JobRoutingConfig]:
     }
 
 
+class TelegramRuntimeConfig(BaseModel):
+    default_channel: str = Field(default="terminal", description="'terminal' | 'telegram', usato quando --channel non è passato a 'rt run'")
+    poll_interval_seconds: float = Field(default=3.0, description="Intervallo di polling locale di telegram_pending.json")
+    wait_timeout_seconds: int = Field(default=0, description="0 = nessun timeout, attende indefinitamente (Ctrl+C per uscire)")
+    state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram, relativa alla cwd da cui gira 'rt'")
+
+
 class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
     thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
+    telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)
     mock_llm: bool = Field(default=False, description="Usa mock deterministico per test e CI")
     streaming: bool = Field(default=True, description="Abilita streaming SSE se supportato dal provider")
     show_monitor: bool = Field(default=True, description="Mostra il live terminal monitor durante le chiamate")
