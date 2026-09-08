@@ -123,7 +123,10 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
         short_id = tg_registry.register_pending(lesson_dir, round_=next_round, kind="outline_confirmation", state_dir=runtime_cfg.state_dir, message_thread_id=message_thread_id)
         keyboard = tg_fmt.build_outline_decision_keyboard(short_id)
         try:
-            tg_client.send_message(tg_cfg, text=summary_text, reply_markup=keyboard, message_thread_id=message_thread_id)
+            res = tg_client.send_message(tg_cfg, text=summary_text, reply_markup=keyboard, message_thread_id=message_thread_id)
+            msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+            if msg_id is not None:
+                tg_session.update_session_message(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id, msg_id)
         except tg_client.TelegramAPIError as e:
             print(f"⚠️  Invio a Telegram fallito ({e}). Passaggio a conferma da terminale.")
             tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id)

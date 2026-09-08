@@ -72,6 +72,17 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     kind = active.get("kind")
     lesson_dir = active.get("lesson_dir")
+    message_id = active.get("message_id")
+
+    if message_id is not None:
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=None,
+            )
+        except Exception:
+            pass
 
     convo.clear_awaiting_feedback(state_dir, chat_id)
     tg_session.end_session(state_dir, chat_id, thread_id)

@@ -230,3 +230,30 @@ def test_telegram_polling_cancelled(synthetic_outline_lesson, monkeypatch, tmp_p
             assert "Conferma annullata da Telegram" in out
 
 
+def test_telegram_outline_review_tracks_session_message_id(synthetic_outline_lesson, monkeypatch, tmp_path):
+    from rt.telegram import session as tg_session
+    lesson_dir = synthetic_outline_lesson
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
+
+    state_dir = str(tmp_path / ".rt_telegram")
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.poll_interval_seconds = 0.01
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
+
+        with patch("rt.telegram.client.send_message", return_value={"message_id": 7788}):
+            def mock_sleep(sec):
+                sess = tg_session.get_active_session(state_dir, 123456, None)
+                assert sess is not None
+                assert sess["message_id"] == 7788
+                mark_responded(lesson_dir, status="approved", responded_via="telegram")
+
+            with patch("time.sleep", side_effect=mock_sleep):
+                confirm_or_revise_outline(lesson_dir, channel="telegram", force_mock=True)
+
+            assert tg_session.get_active_session(state_dir, 123456, None) is None
+
+

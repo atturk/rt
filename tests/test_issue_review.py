@@ -148,11 +148,16 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     sent_messages = []
 
     def mock_send(cfg, text, reply_markup=None, message_thread_id=None):
-        sent_messages.append({"text": text, "reply_markup": reply_markup, "thread_id": message_thread_id})
-        return {"ok": True}
+        mid = 100 + len(sent_messages)
+        sent_messages.append({"text": text, "reply_markup": reply_markup, "thread_id": message_thread_id, "message_id": mid})
+        return {"ok": True, "message_id": mid}
 
     monkeypatch.setattr("rt.telegram.client.send_message", mock_send)
     monkeypatch.setattr("rt.telegram.config.load_telegram_config", lambda: TelegramConfig(bot_token="tok", chat_id=123))
+
+    from rt.telegram import session as tg_session
+    from rt.core.config import load_config
+    runtime_cfg = load_config().telegram
 
     start_review_via_telegram(lesson_dir, asr_issues, sci_issues)
 
@@ -163,10 +168,13 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     assert queue.issue_ids == ["asr_y", "asr_r", "sci_1"]
     assert queue.issue_types == {"asr_y": "asr", "asr_r": "asr", "sci_1": "science"}
 
-    # 2. Verifica che sia stato mandato il primo messaggio
+    # 2. Verifica che sia stato mandato il primo messaggio e tracciato il message_id
     assert len(sent_messages) == 1
     assert "Ambiguità ASR (YELLOW)" in sent_messages[0]["text"]
     assert sent_messages[0]["reply_markup"] is not None
+    sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
+    assert sess is not None
+    assert sess["message_id"] == 100
 
     # 3. Avanza e invia seconda issue
     record_decision(lesson_dir, "asr_y", "accepted", resolved_text="corr_y")
@@ -175,6 +183,8 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
 
     assert len(sent_messages) == 2
     assert "Ambiguità ASR (RED)" in sent_messages[1]["text"]
+    sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
+    assert sess["message_id"] == 101
 
     # 4. Avanza e invia terza issue (scienza)
     record_decision(lesson_dir, "asr_r", "rejected", resolved_text="err_r")
@@ -183,6 +193,8 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
 
     assert len(sent_messages) == 3
     assert "Science Critic (ERR_DOCENTE)" in sent_messages[2]["text"]
+    sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
+    assert sess["message_id"] == 102
 
     # 5. Avanza oltre la fine: review completata e transizione a READY_TO_BUILD
     record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix")
@@ -191,6 +203,7 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
 
     assert len(sent_messages) == 4
     assert "✨ Review completata" in sent_messages[3]["text"]
+    assert tg_session.get_active_session(runtime_cfg.state_dir, 123, None) is None
 
     from rt.core.state import get_current_state
     state = get_current_state(os.path.join(lesson_dir, "info.yaml"))

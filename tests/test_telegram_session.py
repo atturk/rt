@@ -26,6 +26,7 @@ def _make_mock_context(state_dir: str):
     context = MagicMock()
     context.bot_data = {"state_dir": state_dir}
     context.bot.send_message = AsyncMock()
+    context.bot.edit_message_reply_markup = AsyncMock()
     return context
 
 
@@ -38,15 +39,21 @@ def test_session_lifecycle_and_roundtrip(tmp_path):
     assert tg_session.get_active_session(state_dir, 12345, None) is None
     assert tg_session.get_active_session(state_dir, 12345, 101) is None
 
-    # 2. Start session on general topic
-    tg_session.start_session(state_dir, 12345, None, "outline_confirmation", lesson_dir)
+    # 2. Start session on general topic with message_id
+    tg_session.start_session(state_dir, 12345, None, "outline_confirmation", lesson_dir, message_id=555)
     sess = tg_session.get_active_session(state_dir, 12345, None)
     assert sess is not None
     assert sess["kind"] == "outline_confirmation"
     assert sess["lesson_dir"] == os.path.abspath(lesson_dir)
     assert sess["chat_id"] == "12345"
     assert sess["thread_id"] is None
+    assert sess["message_id"] == 555
     assert "started_at" in sess
+
+    # Update session message_id
+    tg_session.update_session_message(state_dir, 12345, None, 777)
+    sess = tg_session.get_active_session(state_dir, 12345, None)
+    assert sess["message_id"] == 777
 
     # Topic 101 is still free
     assert tg_session.get_active_session(state_dir, 12345, 101) is None
@@ -58,6 +65,7 @@ def test_session_lifecycle_and_roundtrip(tmp_path):
     assert sess_101 is not None
     assert sess_101["kind"] == "issue_review"
     assert sess_101["lesson_dir"] == os.path.abspath(lesson_dir_b)
+    assert sess_101["message_id"] is None
 
     # 4. End sessions
     tg_session.end_session(state_dir, 12345, None)
@@ -78,6 +86,7 @@ def test_notify_issues_ready_duplicate_suppression(tmp_path, monkeypatch):
 
     with patch("rt.core.config.load_config") as mock_cfg, \
          patch("rt.telegram.client.send_message") as mock_send:
+        mock_send.return_value = {"ok": True, "message_id": 9001}
         cfg_obj = MagicMock()
         cfg_obj.telegram.state_dir = state_dir
         cfg_obj.telegram.topics = {}
@@ -93,6 +102,7 @@ def test_notify_issues_ready_duplicate_suppression(tmp_path, monkeypatch):
         sess = tg_session.get_active_session(state_dir, 12345, None)
         assert sess is not None
         assert sess["kind"] == "issue_review"
+        assert sess["message_id"] == 9001
 
         # Seconda chiamata per la stessa lezione -> invia promemoria informativo senza bottoni
         notify_issues_ready(lesson_dir, "asr", 3)
@@ -146,6 +156,29 @@ def test_handle_quit_issue_review(tmp_path):
     asyncio.run(handle_quit(update, context))
 
     assert tg_session.get_active_session(state_dir, 12345, None) is None
+    context.bot.edit_message_reply_markup.assert_not_called()
+    update.effective_message.reply_text.assert_called_once()
+    reply = update.effective_message.reply_text.call_args[0][0]
+    assert "Revisione interrotta" in reply
+
+
+def test_handle_quit_issue_review_with_message_id(tmp_path):
+    lesson_dir = str(tmp_path / "lesson")
+    os.makedirs(lesson_dir, exist_ok=True)
+    state_dir = str(tmp_path / "state")
+
+    tg_session.start_session(state_dir, 12345, None, "issue_review", lesson_dir, message_id=4321)
+    assert tg_session.get_active_session(state_dir, 12345, None) is not None
+
+    update = _make_mock_message_update("/quit", chat_id=12345)
+    context = _make_mock_context(state_dir)
+
+    asyncio.run(handle_quit(update, context))
+
+    assert tg_session.get_active_session(state_dir, 12345, None) is None
+    context.bot.edit_message_reply_markup.assert_awaited_once_with(
+        chat_id=12345, message_id=4321, reply_markup=None
+    )
     update.effective_message.reply_text.assert_called_once()
     reply = update.effective_message.reply_text.call_args[0][0]
     assert "Revisione interrotta" in reply
@@ -165,10 +198,53 @@ def test_handle_quit_outline_confirmation(tmp_path):
     asyncio.run(handle_quit(update, context))
 
     assert tg_session.get_active_session(state_dir, 12345, None) is None
+    context.bot.edit_message_reply_markup.assert_not_called()
     p = tg_pending.load_pending(lesson_dir)
     assert p.status == "cancelled"
     reply = update.effective_message.reply_text.call_args[0][0]
     assert "Conferma outline annullata" in reply
+
+
+def test_handle_quit_outline_confirmation_with_message_id(tmp_path):
+    lesson_dir = str(tmp_path / "lesson")
+    os.makedirs(lesson_dir, exist_ok=True)
+    state_dir = str(tmp_path / "state")
+
+    tg_pending.create_pending(lesson_dir, round_=1, short_id="out123", outline_summary_text="test")
+    tg_session.start_session(state_dir, 12345, 42, "outline_confirmation", lesson_dir, message_id=8888)
+
+    update = _make_mock_message_update("/quit", chat_id=12345, thread_id=42)
+    context = _make_mock_context(state_dir)
+
+    asyncio.run(handle_quit(update, context))
+
+    assert tg_session.get_active_session(state_dir, 12345, 42) is None
+    context.bot.edit_message_reply_markup.assert_awaited_once_with(
+        chat_id=12345, message_id=8888, reply_markup=None
+    )
+    p = tg_pending.load_pending(lesson_dir)
+    assert p.status == "cancelled"
+    reply = update.effective_message.reply_text.call_args[0][0]
+    assert "Conferma outline annullata" in reply
+
+
+def test_handle_quit_edit_message_reply_markup_error_suppressed(tmp_path):
+    lesson_dir = str(tmp_path / "lesson")
+    os.makedirs(lesson_dir, exist_ok=True)
+    state_dir = str(tmp_path / "state")
+
+    tg_session.start_session(state_dir, 12345, None, "issue_review", lesson_dir, message_id=9999)
+
+    update = _make_mock_message_update("/quit", chat_id=12345)
+    context = _make_mock_context(state_dir)
+    context.bot.edit_message_reply_markup.side_effect = RuntimeError("Message not found or cannot be edited")
+
+    # Should not raise exception
+    asyncio.run(handle_quit(update, context))
+
+    assert tg_session.get_active_session(state_dir, 12345, None) is None
+    context.bot.edit_message_reply_markup.assert_awaited_once()
+    update.effective_message.reply_text.assert_called_once()
 
 
 def test_handle_status(tmp_path):
