@@ -91,15 +91,23 @@ def test_telegram_fallback_when_config_missing(synthetic_outline_lesson, monkeyp
         assert mock_input.call_count == 1
 
 
-def test_telegram_fallback_when_api_error(synthetic_outline_lesson, monkeypatch):
+def test_telegram_fallback_when_api_error(synthetic_outline_lesson, monkeypatch, tmp_path):
     lesson_dir = synthetic_outline_lesson
     monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
     monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
 
-    with patch("rt.telegram.client.send_message", side_effect=__import__("rt.telegram.client", fromlist=["TelegramAPIError"]).TelegramAPIError("Network error")):
-        with patch("builtins.input", side_effect=["A"]) as mock_input:
-            confirm_or_revise_outline(lesson_dir, channel="telegram", force_mock=True)
-            assert mock_input.call_count == 1
+    state_dir = str(tmp_path / ".rt_telegram")
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.poll_interval_seconds = 0.01
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
+
+        with patch("rt.telegram.client.send_message", side_effect=__import__("rt.telegram.client", fromlist=["TelegramAPIError"]).TelegramAPIError("Network error")):
+            with patch("builtins.input", side_effect=["A"]) as mock_input:
+                confirm_or_revise_outline(lesson_dir, channel="telegram", force_mock=True)
+                assert mock_input.call_count == 1
 
 
 def test_telegram_polling_approved(synthetic_outline_lesson, monkeypatch, tmp_path):

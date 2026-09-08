@@ -361,7 +361,8 @@ def test_load_config_no_fallback_without_config_dir(tmp_path, monkeypatch):
     single_file.write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
-    cfg = load_config()
+    with patch("rt.core.config._default_project_root", return_value=str(tmp_path)):
+        cfg = load_config()
 
     # Deve restituire il default (7) e non 99
     assert cfg.pricing_staleness_warning_days == 7
@@ -397,14 +398,15 @@ def test_cli_commands_exit_when_no_config_dir_and_not_mock(tmp_path, monkeypatch
         (cmd_run, argparse.Namespace(input=str(tmp_path), force=False, mock=False, date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False)),
     ]
 
-    for cmd_func, args in cli_commands:
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_func(args)
-        assert exc_info.value.code == 1
+    with patch("rt.cli._default_project_root", return_value=str(tmp_path)):
+        for cmd_func, args in cli_commands:
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_func(args)
+            assert exc_info.value.code == 1
 
-        captured = capsys.readouterr()
-        assert "❌ Nessuna configurazione trovata (cartella 'config/' mancante)." in captured.err
-        assert "cp -r config.example config" in captured.err
+            captured = capsys.readouterr()
+            assert "❌ Nessuna configurazione trovata (cartella 'config/' mancante)." in captured.err
+            assert "cp -r config.example config" in captured.err
 
 
 def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch):
@@ -457,5 +459,120 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
             input=str(tmp_path), force=False, mock=True, auto_accept=True, rename=False,
             date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False
         ))
+
+
+def test_fallback_to_project_root_when_not_in_cwd(tmp_path, monkeypatch):
+    """
+    E.1: Con monkeypatch.chdir(tmp_path) (cwd temporanea SENZA .env/config/),
+    verificare che load_env_file() e load_config() risolvano comunque correttamente
+    rispetto alla project root reale del repository sotto test.
+    """
+    from rt.core.config import _default_project_root, load_env_file
+
+    real_root = _default_project_root()
+    monkeypatch.chdir(tmp_path)
+
+    # 1. load_config() risolve la config reale del progetto
+    cfg = load_config()
+    assert cfg.version is not None
+    assert "outline" in cfg.jobs
+    # state_dir è risolto rispetto alla project root reale
+    assert os.path.isabs(cfg.telegram.state_dir)
+    assert cfg.telegram.state_dir == os.path.join(real_root, ".rt_telegram")
+
+    # 2. load_env_file() prova a caricare dalla project root reale
+    fake_project_root = tmp_path / "fake_project"
+    fake_project_root.mkdir()
+    (fake_project_root / ".env").write_text("FALLBACK_ENV_TEST_VAR=root_value\n", encoding="utf-8")
+
+    empty_cwd = tmp_path / "empty_cwd"
+    empty_cwd.mkdir()
+    monkeypatch.chdir(empty_cwd)
+
+    with patch("rt.core.config._default_project_root", return_value=str(fake_project_root)):
+        monkeypatch.delenv("FALLBACK_ENV_TEST_VAR", raising=False)
+        load_env_file()
+        assert os.environ.get("FALLBACK_ENV_TEST_VAR") == "root_value"
+
+
+def test_cwd_takes_precedence_over_project_root(tmp_path, monkeypatch):
+    """
+    E.2: Lanciando da una cwd con un proprio .env/config/ locale,
+    quello viene preferito rispetto alla project root (retrocompatibilità).
+    """
+    from rt.core.config import load_env_file
+
+    # Fake project root con determinati valori
+    fake_project_root = tmp_path / "fake_project"
+    fake_project_root.mkdir()
+    fake_root_config = fake_project_root / "config"
+    fake_root_config.mkdir()
+    (fake_root_config / "general.yaml").write_text("pricing_staleness_warning_days: 10\n", encoding="utf-8")
+    (fake_project_root / ".env").write_text("TEST_PRECEDENCE_VAR=from_project_root\n", encoding="utf-8")
+
+    # Fake cwd con valori differenti
+    fake_cwd = tmp_path / "fake_cwd"
+    fake_cwd.mkdir()
+    fake_cwd_config = fake_cwd / "config"
+    fake_cwd_config.mkdir()
+    (fake_cwd_config / "general.yaml").write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+    (fake_cwd / ".env").write_text("TEST_PRECEDENCE_VAR=from_cwd\n", encoding="utf-8")
+
+    monkeypatch.chdir(fake_cwd)
+    with patch("rt.core.config._default_project_root", return_value=str(fake_project_root)):
+        # Config carica da cwd
+        cfg = load_config()
+        assert cfg.pricing_staleness_warning_days == 99
+        assert cfg.telegram.state_dir == os.path.join(str(fake_cwd), ".rt_telegram")
+
+        # Env carica da cwd
+        monkeypatch.delenv("TEST_PRECEDENCE_VAR", raising=False)
+        load_env_file()
+        assert os.environ.get("TEST_PRECEDENCE_VAR") == "from_cwd"
+
+
+def test_resolve_telegram_state_dir_branches(tmp_path, monkeypatch):
+    """
+    E.3: Test per _resolve_telegram_state_dir(): con state_dir relativo nella config caricata,
+    verificare che diventi assoluto e ancorato correttamente sia nel branch cwd, sia nel branch project-root,
+    sia nel branch default, sia con config_path esplicito.
+    """
+    from rt.core.config import _resolve_telegram_state_dir
+
+    # 1. Branch esplicito: ancorato alla directory del file
+    explicit_dir = tmp_path / "explicit"
+    explicit_dir.mkdir()
+    explicit_file = explicit_dir / "custom.yaml"
+    explicit_file.write_text("telegram:\n  state_dir: '.custom_tg'\n", encoding="utf-8")
+    cfg_explicit = load_config(str(explicit_file))
+    assert cfg_explicit.telegram.state_dir == os.path.join(str(explicit_dir), ".custom_tg")
+
+    # 2. Branch cwd: ancorato a cwd
+    cwd_dir = tmp_path / "cwd_test"
+    cwd_dir.mkdir()
+    (cwd_dir / "config").mkdir()
+    (cwd_dir / "config" / "general.yaml").write_text("telegram:\n  state_dir: '.cwd_tg'\n", encoding="utf-8")
+    monkeypatch.chdir(cwd_dir)
+    cfg_cwd = load_config()
+    assert cfg_cwd.telegram.state_dir == os.path.join(str(cwd_dir), ".cwd_tg")
+
+    # 3. Branch project root: ancorato a project_root quando cwd non ha config
+    empty_cwd = tmp_path / "empty"
+    empty_cwd.mkdir()
+    monkeypatch.chdir(empty_cwd)
+    fake_project_root = tmp_path / "project_root_test"
+    fake_project_root.mkdir()
+    (fake_project_root / "config").mkdir()
+    (fake_project_root / "config" / "general.yaml").write_text("telegram:\n  state_dir: '.root_tg'\n", encoding="utf-8")
+    with patch("rt.core.config._default_project_root", return_value=str(fake_project_root)):
+        cfg_root = load_config()
+        assert cfg_root.telegram.state_dir == os.path.join(str(fake_project_root), ".root_tg")
+
+    # 4. Già assoluto: non viene modificato
+    cfg_abs = RTConfig()
+    cfg_abs.telegram.state_dir = "/absolute/path/to/state"
+    resolved = _resolve_telegram_state_dir(cfg_abs, "/some/other/anchor")
+    assert resolved.telegram.state_dir == "/absolute/path/to/state"
+
 
 

@@ -295,17 +295,34 @@ class RTConfig(BaseModel):
 
 
 
+def _default_project_root() -> str:
+    """Cartella reale del progetto, derivata dalla posizione del pacchetto 'rt'
+    stesso (rt/__init__.py sta in <project_root>/rt/), indipendente dalla cwd
+    della shell da cui è stato lanciato 'rt'."""
+    import rt
+    return os.path.dirname(os.path.dirname(os.path.abspath(rt.__file__)))
+
+
+def _resolve_telegram_state_dir(cfg: RTConfig, anchor_dir: str) -> RTConfig:
+    if not os.path.isabs(cfg.telegram.state_dir):
+        cfg.telegram.state_dir = os.path.join(anchor_dir, cfg.telegram.state_dir)
+    return cfg
+
+
 def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> None:
     """
     Carica variabili d'ambiente da un file .env locale (se presente).
-    Non solleva errori se il file non esiste.
+    Cerca prima nella cwd corrente (comportamento invariato per chi lancia 'rt'
+    da dentro la project root); se non lo trova lì, usa la project root reale
+    (posizione del pacchetto 'rt'), per funzionare anche lanciando 'rt' da
+    qualunque altra cartella. Non solleva errori se il file non esiste in nessuna
+    delle due posizioni.
     """
     from dotenv import load_dotenv
     if dotenv_path is None:
-        dotenv_path = os.path.join(os.getcwd(), ".env")
+        cwd_path = os.path.join(os.getcwd(), ".env")
+        dotenv_path = cwd_path if os.path.isfile(cwd_path) else os.path.join(_default_project_root(), ".env")
     load_dotenv(dotenv_path=dotenv_path, override=override)
-
-
 
 
 def get_api_key(provider_or_credential: str) -> Optional[str]:
@@ -365,18 +382,27 @@ def _load_config_dir(config_dir: str) -> RTConfig:
 
 
 def load_config(config_path: Optional[str] = None) -> RTConfig:
-    """Carica la configurazione. Se config_path è esplicito, comportamento invariato
-    (singolo file, usato da test/codice che lo richiede esplicitamente). Se None: usa
-    la cartella 'config/' se presente; altrimenti nessuna sorgente trovata, restituisce
-    i default (il chiamante a livello CLI deve verificare esplicitamente l'esistenza di
-    una sorgente reale prima di eseguire lavoro — vedi rt/cli.py, _has_real_config_source)."""
+    """Carica la configurazione. Se config_path è esplicito, comportamento invariato.
+    Altrimenti: usa 'config/' nella cwd se presente (comportamento invariato per chi
+    lancia 'rt' da dentro la project root); se non c'è, prova 'config/' nella project
+    root reale (posizione del pacchetto 'rt'), per funzionare anche lanciando 'rt' da
+    qualunque altra cartella; se non trovata in nessuna delle due, restituisce i
+    default (il chiamante a livello CLI verifica esplicitamente l'esistenza di una
+    sorgente reale prima di eseguire lavoro — vedi rt/cli.py, _has_real_config_source)."""
     if config_path is not None:
-        return _load_rtconfig_from_file(config_path)
+        cfg = _load_rtconfig_from_file(config_path)
+        return _resolve_telegram_state_dir(cfg, os.path.dirname(os.path.abspath(config_path)))
 
-    config_dir = os.path.join(os.getcwd(), "config")
-    if os.path.isdir(config_dir):
-        return _load_config_dir(config_dir)
+    cwd_config_dir = os.path.join(os.getcwd(), "config")
+    if os.path.isdir(cwd_config_dir):
+        return _resolve_telegram_state_dir(_load_config_dir(cwd_config_dir), os.getcwd())
 
-    return RTConfig()
+    project_root = _default_project_root()
+    root_config_dir = os.path.join(project_root, "config")
+    if os.path.isdir(root_config_dir):
+        return _resolve_telegram_state_dir(_load_config_dir(root_config_dir), project_root)
+
+    return _resolve_telegram_state_dir(RTConfig(), project_root)
+
 
 

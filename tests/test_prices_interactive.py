@@ -335,7 +335,8 @@ def test_prices_interactive_guard_no_config(tmp_path, monkeypatch):
         }
     ]
 
-    with patch("rt.llm.pricing_sync.check_configured_pricing", return_value=fake_report), \
+    with patch("rt.cli._default_project_root", return_value=str(tmp_path)), \
+         patch("rt.llm.pricing_sync.check_configured_pricing", return_value=fake_report), \
          patch("questionary.checkbox") as mock_q:
         args = argparse.Namespace(interactive=True)
         with pytest.raises(SystemExit) as exc_info:
