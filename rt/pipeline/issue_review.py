@@ -269,6 +269,7 @@ def run_interactive_review(
     idx = 0
     total_count = len(to_review)
     interrupted = False
+    decided_this_session = set()
 
     while idx < total_count:
         iss = to_review[idx]
@@ -312,16 +313,19 @@ def run_interactive_review(
             choice = input("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / B=Indietro / S=Salta / Q=Esci]: ").strip().lower()
             if choice in ("a", "accetta", ""):
                 record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
+                decided_this_session.add(iss.id)
                 print("  ✔ Approvato.")
                 idx += 1
             elif choice in ("r", "rifiuta"):
                 record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
+                decided_this_session.add(iss.id)
                 print("  ❌ Rifiutato (mantenuto testo originale).")
                 idx += 1
             elif choice in ("m", "modifica"):
                 custom = input("  Inserisci correzione personalizzata: ").strip()
                 if custom:
                     record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
+                    decided_this_session.add(iss.id)
                     print(f"  ✏ Modificato in: \"{custom}\"")
                     idx += 1
                 else:
@@ -332,7 +336,9 @@ def run_interactive_review(
                 else:
                     idx -= 1
                     prev_iss = to_review[idx]
-                    revert_last_decision(lesson_dir, prev_iss.id)
+                    if prev_iss.id in decided_this_session:
+                        revert_last_decision(lesson_dir, prev_iss.id)
+                        decided_this_session.discard(prev_iss.id)
                     print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
             elif choice in ("q", "esci", "quit"):
                 print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
@@ -378,16 +384,19 @@ def run_interactive_review(
             if choice in ("a", "accetta", "applica", ""):
                 clean_fix = sanitize_suggested_fix(iss.suggested_fix)
                 record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
+                decided_this_session.add(iss.id)
                 print("  ✔ Correzione scientifica applicata.")
                 idx += 1
             elif choice in ("m", "mantieni", "rifiuta", "r"):
                 record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
+                decided_this_session.add(iss.id)
                 print("  ✔ Formulazione originale mantenuta.")
                 idx += 1
             elif choice in ("e", "modifica"):
                 custom = input("  Inserisci testo corretto: ").strip()
                 if custom:
                     record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
+                    decided_this_session.add(iss.id)
                     print(f"  ✏ Modificato in: \"{custom}\"")
                     idx += 1
                 else:
@@ -398,7 +407,9 @@ def run_interactive_review(
                 else:
                     idx -= 1
                     prev_iss = to_review[idx]
-                    revert_last_decision(lesson_dir, prev_iss.id)
+                    if prev_iss.id in decided_this_session:
+                        revert_last_decision(lesson_dir, prev_iss.id)
+                        decided_this_session.discard(prev_iss.id)
                     print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
             elif choice in ("q", "esci", "quit"):
                 print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")

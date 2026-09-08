@@ -309,6 +309,77 @@ def test_history_mode_terminal_and_telegram(tmp_path, monkeypatch, capsys):
     assert ledger.decisions[1].decision == "rejected"
 
 
+def test_history_mode_backward_does_not_revert_untouched_historical_decision(tmp_path, monkeypatch):
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
+        ASRIssue(id="asr_2", segment_id="seg_000002", source_text="err2", candidate="corr2", confidence=0.5, level=ASRLevel.RED, reason="m2"),
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    # Decisione storica preesistente per asr_1
+    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="corr1")
+    ledger_before = load_ledger(lesson_dir)
+    assert len(ledger_before.decisions) == 1
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    # In sessione --history:
+    # 1. Su asr_1 -> 's' (salta senza toccare la decisione storica)
+    # 2. Su asr_2 -> 'b' (torna indietro a asr_1)
+    # 3. Su asr_1 ripresentata -> 's' (salta di nuovo)
+    # 4. Su asr_2 -> 'q' (esci)
+    inputs = iter(["s", "b", "s", "q"])
+    with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal", history=True)
+
+    assert res is False  # interrupted with 'q'
+    ledger_after = load_ledger(lesson_dir)
+    # La decisione storica per asr_1 deve restare intatta
+    assert len(ledger_after.decisions) == 1
+    assert ledger_after.decisions[0].issue_id == "asr_1"
+    assert ledger_after.decisions[0].decision == "accepted"
+    assert ledger_after.decisions[0].resolved_text == "corr1"
+
+
+def test_history_mode_backward_science_does_not_revert_untouched_historical_decision(tmp_path, monkeypatch):
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
+
+    # Decisione storica preesistente per sci_1
+    record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix 1")
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    # In sessione --history su science:
+    # 1. Su sci_1 -> 's' (salta)
+    # 2. Su sci_2 -> 'b' (indietro a sci_1)
+    # 3. Su sci_1 -> 'q' (esci)
+    inputs = iter(["s", "b", "q"])
+    with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+        res = run_interactive_review(lesson_dir, "science", channel="terminal", history=True)
+
+    assert res is False
+    ledger_after = load_ledger(lesson_dir)
+    assert len(ledger_after.decisions) == 1
+    assert ledger_after.decisions[0].issue_id == "sci_1"
+    assert ledger_after.decisions[0].decision == "accepted"
+
+
 def test_run_review_science_applies_decided_asr_to_prompt(tmp_path):
     from rt.pipeline.review_science import run_review_science
     lesson_dir = str(tmp_path)
