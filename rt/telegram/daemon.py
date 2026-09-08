@@ -12,6 +12,7 @@ import asyncio
 from datetime import datetime
 
 from telegram import Update
+from telegram.error import RetryAfter
 from telegram.ext import Application, CallbackQueryHandler, MessageHandler, CommandHandler, ContextTypes, filters
 
 from rt.core.config import load_config
@@ -19,6 +20,28 @@ from rt.telegram.config import load_telegram_config
 from rt.telegram import registry, pending as tg_pending, conversation_state as convo, session as tg_session
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
+
+
+async def _send_with_retry(coro_factory, max_retries: int = 1):
+    attempts = 0
+    while True:
+        try:
+            return await coro_factory()
+        except RetryAfter as e:
+            if attempts < max_retries:
+                attempts += 1
+                if isinstance(e.retry_after, (int, float)):
+                    retry_sec = float(e.retry_after)
+                elif hasattr(e.retry_after, "total_seconds"):
+                    retry_sec = float(e.retry_after.total_seconds())
+                else:
+                    try:
+                        retry_sec = float(e.retry_after)
+                    except (ValueError, TypeError):
+                        retry_sec = 1.0
+                await asyncio.sleep(retry_sec)
+                continue
+            raise
 
 
 def _heartbeat_path(state_dir: str) -> str:
@@ -41,10 +64,10 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     active = tg_session.get_active_session(state_dir, chat_id, thread_id)
     if active is None:
-        await update.effective_message.reply_text(
+        await _send_with_retry(lambda: update.effective_message.reply_text(
             "Nessuna attività in corso in questo topic.",
             message_thread_id=thread_id,
-        )
+        ))
         return
 
     kind = active.get("kind")
@@ -54,25 +77,25 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     tg_session.end_session(state_dir, chat_id, thread_id)
 
     if kind == "issue_review":
-        await update.effective_message.reply_text(
+        await _send_with_retry(lambda: update.effective_message.reply_text(
             "⏹ Revisione interrotta. I progressi finora sono stati salvati.",
             message_thread_id=thread_id,
-        )
+        ))
     elif kind == "outline_confirmation":
         if lesson_dir and os.path.exists(lesson_dir):
             try:
                 tg_pending.mark_responded(lesson_dir, status="cancelled", responded_via="telegram")
             except Exception:
                 pass
-        await update.effective_message.reply_text(
+        await _send_with_retry(lambda: update.effective_message.reply_text(
             "⏹ Conferma outline annullata.",
             message_thread_id=thread_id,
-        )
+        ))
     else:
-        await update.effective_message.reply_text(
+        await _send_with_retry(lambda: update.effective_message.reply_text(
             "⏹ Attività interrotta.",
             message_thread_id=thread_id,
-        )
+        ))
 
 
 async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -82,20 +105,20 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     active = tg_session.get_active_session(state_dir, chat_id, thread_id)
     if active is None:
-        await update.effective_message.reply_text(
+        await _send_with_retry(lambda: update.effective_message.reply_text(
             "Nessuna attività in corso in questo topic.",
             message_thread_id=thread_id,
-        )
+        ))
         return
 
     kind = active.get("kind", "sconosciuto")
     lesson_dir = active.get("lesson_dir", "")
     folder_name = os.path.basename(os.path.normpath(lesson_dir)) if lesson_dir else "N/D"
 
-    await update.effective_message.reply_text(
+    await _send_with_retry(lambda: update.effective_message.reply_text(
         f"Attività in corso: {kind} ({folder_name})",
         message_thread_id=thread_id,
-    )
+    ))
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -140,12 +163,15 @@ async def _handle_outline_callback(update: Update, context: ContextTypes.DEFAULT
         await query.answer("Outline approvata ✅")
     elif action == "edit":
         convo.set_awaiting_feedback(state_dir, chat_id=update.effective_chat.id, short_id=short_id, lesson_dir=lesson_dir)
-        await query.answer()
-        await context.bot.send_message(
+        try:
+            await query.answer()
+        except Exception:
+            pass
+        await _send_with_retry(lambda: context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="Scrivi il tuo feedback in un messaggio di testo per rigenerare l'outline.",
             message_thread_id=update.effective_message.message_thread_id,
-        )
+        ))
 
 
 async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
@@ -159,16 +185,19 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
     issue_type = entry["issue_type"]
 
     if action == "iq":
-        await update.callback_query.answer("Revisione interrotta.")
+        try:
+            await update.callback_query.answer("Revisione interrotta.")
+        except Exception:
+            pass
         try:
             await update.callback_query.edit_message_reply_markup(reply_markup=None)
         except Exception:
             pass
-        await context.bot.send_message(
+        await _send_with_retry(lambda: context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="⏹ Revisione interrotta. I progressi finora sono stati salvati.",
             message_thread_id=update.effective_message.message_thread_id,
-        )
+        ))
         tg_session.end_session(state_dir, update.effective_chat.id, update.effective_message.message_thread_id)
         return
 
@@ -203,11 +232,14 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
             state_dir, chat_id=update.effective_chat.id, short_id=short_id, lesson_dir=lesson_dir,
             kind="issue_edit", extra={"issue_id": issue_id, "issue_type": issue_type}
         )
-        await update.callback_query.answer()
-        await context.bot.send_message(
+        try:
+            await update.callback_query.answer()
+        except Exception:
+            pass
+        await _send_with_retry(lambda: context.bot.send_message(
             chat_id=update.effective_chat.id, text="Scrivi il testo corretto.",
             message_thread_id=update.effective_message.message_thread_id,
-        )
+        ))
         return
 
     if action == "is":
@@ -273,7 +305,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         from rt.pipeline.ledger import record_decision
         record_decision(lesson_dir, issue_id, "edited", resolved_text=update.message.text)
         convo.clear_awaiting_feedback(state_dir, chat_id)
-        await update.message.reply_text("✏️ Modifica registrata.", message_thread_id=update.effective_message.message_thread_id)
+        await _send_with_retry(lambda: update.message.reply_text(
+            "✏️ Modifica registrata.",
+            message_thread_id=update.effective_message.message_thread_id,
+        ))
         from rt.telegram import issue_queue as tg_queue
         from rt.pipeline.issue_review import send_current_issue
         tg_queue.advance(lesson_dir)
@@ -285,19 +320,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     short_id = awaiting["short_id"]
     state = tg_pending.load_pending(lesson_dir)
     if state is None or state.short_id != short_id or state.status != "pending":
-        await update.message.reply_text(
+        await _send_with_retry(lambda: update.message.reply_text(
             "Questa richiesta non è più valida.",
             message_thread_id=update.effective_message.message_thread_id,
-        )
+        ))
         convo.clear_awaiting_feedback(state_dir, chat_id)
         return
 
     tg_pending.mark_responded(lesson_dir, status="changes_requested", feedback_text=update.message.text, responded_via="telegram")
     convo.clear_awaiting_feedback(state_dir, chat_id)
-    await update.message.reply_text(
+    await _send_with_retry(lambda: update.message.reply_text(
         "Feedback ricevuto, l'outline verrà rigenerata a breve.",
         message_thread_id=update.effective_message.message_thread_id,
-    )
+    ))
 
 
 def run_daemon(state_dir: str = None) -> None:
