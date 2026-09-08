@@ -5,6 +5,7 @@ progetto). Deliberatamente NON usa python-telegram-bot: questo lato è invocato 
 processi effimeri (rt run) che devono solo mandare 1-2 messaggi, non gestire un
 intero Application asyncio.
 """
+import time
 from typing import Optional, Dict, Any
 import requests
 from rt.telegram.config import TelegramConfig
@@ -16,19 +17,31 @@ class TelegramAPIError(Exception):
     pass
 
 
-def _call(cfg: TelegramConfig, method: str, payload: Dict[str, Any], timeout: float = 15.0) -> Dict[str, Any]:
+def _call(cfg: TelegramConfig, method: str, payload: Dict[str, Any], timeout: float = 15.0, max_retries: int = 1) -> Dict[str, Any]:
     url = _API_BASE.format(token=cfg.bot_token, method=method)
-    try:
-        resp = requests.post(url, json=payload, timeout=timeout)
-    except requests.RequestException as e:
-        raise TelegramAPIError(f"Errore di rete verso Telegram ({method}): {e}") from e
-    try:
-        data = resp.json()
-    except ValueError as e:
-        raise TelegramAPIError(f"Risposta non JSON da Telegram ({method}): {resp.text[:200]}") from e
-    if not data.get("ok"):
-        raise TelegramAPIError(f"Telegram API error ({method}): {data.get('description', data)}")
-    return data["result"]
+    attempts = 0
+    while True:
+        try:
+            resp = requests.post(url, json=payload, timeout=timeout)
+        except requests.RequestException as e:
+            raise TelegramAPIError(f"Errore di rete verso Telegram ({method}): {e}") from e
+        try:
+            data = resp.json()
+        except ValueError as e:
+            raise TelegramAPIError(f"Risposta non JSON da Telegram ({method}): {resp.text[:200]}") from e
+        if not data.get("ok"):
+            error_code = data.get("error_code") or resp.status_code
+            if error_code == 429 and attempts < max_retries:
+                attempts += 1
+                retry_after = data.get("parameters", {}).get("retry_after", 1)
+                try:
+                    retry_sec = float(retry_after)
+                except (ValueError, TypeError):
+                    retry_sec = 1.0
+                time.sleep(retry_sec)
+                continue
+            raise TelegramAPIError(f"Telegram API error ({method}): {data.get('description', data)}")
+        return data["result"]
 
 
 def send_message(cfg: TelegramConfig, text: str, reply_markup: Optional[dict] = None, message_thread_id: Optional[int] = None) -> Dict[str, Any]:
