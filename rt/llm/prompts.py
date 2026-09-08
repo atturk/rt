@@ -73,6 +73,34 @@ Genera l'oggetto JSON conforme allo schema Outline con:
 - "macro_sections": lista di macro sezioni con unità didattiche (ciascuna con start_segment_id e end_segment_id)."""
 
 
+OUTLINE_REVISION_SYSTEM_PROMPT = OUTLINE_SYSTEM_PROMPT + """
+
+MODALITÀ REVISIONE: ti viene fornita un'outline già generata e il feedback libero dell'utente su di essa.
+Produci una NUOVA outline COMPLETA che incorpori il feedback, mantenendo tutti i vincoli sopra
+(fedeltà rigorosa a segment_id realmente esistenti, copertura completa, monotonicità cronologica).
+Non limitarti a modifiche cosmetiche se il feedback richiede una ristrutturazione sostanziale."""
+
+
+def build_outline_revision_user_prompt(
+    date: str, subject: str, topics: Optional[str], segments_summary: str,
+    previous_outline_json: str, feedback: str
+) -> str:
+    topic_suffix = f" - {topics}" if topics else ""
+    return f"""Lezione: [{date}] {subject.upper()}{topic_suffix}
+
+Ecco il sommario dei segmenti ASR della lezione con i rispettivi ID temporali:
+{segments_summary}
+
+OUTLINE PRECEDENTE (da rivedere):
+{previous_outline_json}
+
+FEEDBACK DELL'UTENTE SULL'OUTLINE PRECEDENTE:
+{feedback}
+
+Genera una NUOVA versione completa dell'oggetto JSON conforme allo schema Outline che incorpori il feedback,
+con "lesson_title" e "macro_sections" (ciascuna unità con start_segment_id e end_segment_id validi)."""
+
+
 # ----------------------------------------------------------------------
 # 2. REWRITE JOB
 # ----------------------------------------------------------------------

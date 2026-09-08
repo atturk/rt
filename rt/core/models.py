@@ -176,6 +176,29 @@ class DecisionLedger(BaseModel):
 
 
 # ---------------------------------------------------------
+# TELEGRAM PENDING CONFIRMATION (outline confirm/revise loop)
+# ---------------------------------------------------------
+
+class TelegramPendingStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    CHANGES_REQUESTED = "changes_requested"
+
+
+class TelegramPendingState(BaseModel):
+    schema_version: str = "1.0"
+    kind: str = "outline_confirmation"
+    round: int = Field(..., description="Incrementa ad ogni rigenerazione dell'outline")
+    short_id: str = Field(..., description="Chiave nel registry globale short_id -> lesson_dir")
+    created_at: str
+    status: TelegramPendingStatus = TelegramPendingStatus.PENDING
+    outline_summary_text: str = Field(..., description="Testo mandato all'utente, per audit/debug")
+    feedback_text: Optional[str] = None
+    responded_at: Optional[str] = None
+    responded_via: Optional[str] = Field(None, description="'telegram' | 'terminal'")
+
+
+# ---------------------------------------------------------
 # MANIFEST
 # ---------------------------------------------------------
 

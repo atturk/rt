@@ -285,6 +285,7 @@ def test_cmd_run_staleness_warning(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr("rt.pipeline.setup.is_audio_file", lambda x: False)
     monkeypatch.setattr("rt.cli.run_prepare", lambda *a, **kw: {"skipped": True, "segment_count": 0, "duration_seconds": 0})
     monkeypatch.setattr("rt.cli.run_outline", lambda *a, **kw: {"skipped": True, "validation_report": {"units_count": 0, "coverage_percentage": 100}})
+    monkeypatch.setattr("rt.cli.confirm_or_revise_outline", lambda *a, **kw: None)
     monkeypatch.setattr("rt.cli.run_rewrite", lambda *a, **kw: {"skipped": True, "total_units": 0, "reused_units": 0, "regenerated_units": 0})
     monkeypatch.setattr("rt.cli.run_review_asr", lambda *a, **kw: {"skipped": True, "total_issues": 0})
     monkeypatch.setattr("rt.cli.run_review_science", lambda *a, **kw: {"skipped": True, "total_science_issues": 0})

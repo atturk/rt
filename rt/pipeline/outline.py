@@ -13,7 +13,12 @@ from rt.core.segments import load_segments_json
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import init_or_update_manifest
 from rt.llm.client import LLMClient
-from rt.llm.prompts import OUTLINE_SYSTEM_PROMPT, build_outline_user_prompt
+from rt.llm.prompts import (
+    OUTLINE_SYSTEM_PROMPT,
+    build_outline_user_prompt,
+    OUTLINE_REVISION_SYSTEM_PROMPT,
+    build_outline_revision_user_prompt,
+)
 from rt.pipeline.validator import validate_outline
 
 
@@ -68,8 +73,8 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato senza invocare LLM
     phase_status, reason = check_phase_status(lesson_dir, "outline")
     if phase_status == PhaseStatus.VALID and not force:
-        outline = load_outline(lesson_dir)
-        validation_report = validate_outline(outline, segments_data)
+        cached_outline = load_outline(lesson_dir)
+        validation_report = validate_outline(cached_outline, segments_data)
         return {
             "status": "outline_validated",
             "action": "SKIP",
@@ -78,15 +83,14 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
             "outline_path": get_outline_path(lesson_dir),
             "validation_report": validation_report
         }
-
+        
     action = "FORCE" if force else "RUN"
     
-    # Costruisci sommario dei segmenti per il prompt (campionato o integrale a seconda delle dimensioni)
+    # Costruzione sommario segmenti per prompt
     summary_lines = []
     for s in segments_data.segments:
         text_preview = " ".join(s.text_raw.split()[:18])
         summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
-        
     segments_summary = "\n".join(summary_lines)
     
     prompt = build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary)
@@ -130,6 +134,68 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
         "action": action,
         "skipped": False,
         "reason": "explicit user-requested rerun" if force else reason,
+        "outline_path": get_outline_path(lesson_dir),
+        "validation_report": validation_report
+    }
+
+
+def run_outline_revision(lesson_dir: str, feedback: str, force_mock: bool = False) -> Dict[str, Any]:
+    """Rigenera l'outline incorporando un feedback testuale libero dell'utente.
+    A differenza di run_outline(), ignora sempre l'idempotenza: una revisione è
+    per definizione una richiesta esplicita dell'utente."""
+    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    info = read_info_yaml(yaml_path)
+    date_val = info.get("data", "0000-00-00")
+    subject_val = info.get("materia", "MATERIA")
+    topics_val = info.get("argomenti") or None
+
+    segments_path = os.path.join(lesson_dir, "segments.json")
+    segments_data = load_segments_json(segments_path)
+
+    summary_lines = []
+    for s in segments_data.segments:
+        text_preview = " ".join(s.text_raw.split()[:18])
+        summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
+    segments_summary = "\n".join(summary_lines)
+
+    previous_outline = load_outline(lesson_dir)
+    previous_outline_json = json.dumps(previous_outline.model_dump(mode="json"), ensure_ascii=False, indent=2)
+
+    prompt = build_outline_revision_user_prompt(
+        date_val, subject_val, topics_val, segments_summary, previous_outline_json, feedback
+    )
+    client = LLMClient(force_mock=force_mock)
+    outline = client.call_structured(
+        prompt=prompt,
+        system_prompt=OUTLINE_REVISION_SYSTEM_PROMPT,
+        response_model=Outline,
+        job_name="outline",  # riusa il routing/costo del job "outline" esistente; nessun job dedicato in questo MVP
+        lesson_dir=lesson_dir
+    )
+
+    validation_report = validate_outline(outline, segments_data)
+    save_outline(outline, lesson_dir)
+
+    source_fp = compute_source_fingerprint(lesson_dir, "outline")
+    out_hash = compute_file_sha256(get_outline_path(lesson_dir))
+    record_phase_fingerprint(lesson_dir, "outline", source_fp, {"outline.json": out_hash})
+    mark_downstream_stale(lesson_dir, "outline")
+
+    init_or_update_manifest(
+        lesson_dir=lesson_dir,
+        lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
+        date=date_val,
+        subject=subject_val,
+        topics=topics_val,
+        current_state=WorkflowState.OUTLINE_VALIDATED.value,
+        coverage_stats=validation_report
+    )
+    transition_to(yaml_path, WorkflowState.OUTLINE_VALIDATED, allow_force=True)
+
+    return {
+        "status": "outline_validated",
+        "action": "REVISION",
+        "skipped": False,
         "outline_path": get_outline_path(lesson_dir),
         "validation_report": validation_report
     }

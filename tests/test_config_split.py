@@ -439,6 +439,7 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
 
     with patch("rt.cli.run_prepare", return_value=dummy_res), \
          patch("rt.cli.run_outline", return_value=dummy_res), \
+         patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli.run_rewrite", return_value=dummy_res), \
          patch("rt.cli.run_review_asr", return_value=dummy_res), \
          patch("rt.cli.run_review_science", return_value=dummy_res), \

@@ -2,6 +2,10 @@
 rt.config.yaml
 config/
 !config.example/
+.rt_telegram/
+
+# Prompt di implementazione per Antigravity (locali, non versionati)
+.agent/
 .env
 .env.*
 !.env.example

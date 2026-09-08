@@ -29,7 +29,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.pipeline.prepare import run_prepare
-from rt.pipeline.outline import run_outline, load_outline, get_outline_path
+from rt.pipeline.outline import run_outline, run_outline_revision, load_outline, get_outline_path
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review_asr import run_review_asr, load_asr_issues, get_asr_issues_path
 from rt.pipeline.review_science import run_review_science, load_science_issues, get_science_issues_path
@@ -119,6 +119,26 @@ def test_economic_outline_phase(synthetic_lesson):
         assert res3["skipped"] is False
         assert spy_call.call_count == 1, "Il rerun forzato doveva effettuare una nuova chiamata LLM!"
         assert len(GLOBAL_TELEMETRY.get_all(job="outline")) == 2
+
+
+def test_outline_revision_updates_fingerprint_and_validates(synthetic_lesson):
+    """Verifica che run_outline_revision rigeneri l'outline, aggiorni fingerprint e passi la validazione."""
+    lesson_dir = synthetic_lesson
+    run_prepare(lesson_dir)
+    res_initial = run_outline(lesson_dir, force_mock=True)
+    assert res_initial["status"] == "outline_validated"
+
+    # Esegui la revisione con feedback
+    res_rev = run_outline_revision(lesson_dir, feedback="Raggruppa le prime due unità didattiche", force_mock=True)
+    assert res_rev["status"] == "outline_validated"
+    assert res_rev["action"] == "REVISION"
+    assert res_rev["validation_report"]["coverage_percentage"] > 0
+    assert res_rev["validation_report"]["units_count"] > 0
+
+    # Verifica persistenza dell'outline rivista
+    revised_outline = load_outline(lesson_dir)
+    assert revised_outline.lesson_title is not None
+    assert len(revised_outline.macro_sections) > 0
 
 
 def test_economic_rewrite_phase(synthetic_lesson):

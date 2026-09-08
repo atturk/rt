@@ -47,7 +47,8 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
         rename=False
     )
 
-    cmd_run(args)
+    with patch("builtins.input", return_value="A"):
+        cmd_run(args)
     captured = capsys.readouterr().out
 
     expected_folder_name = "[2026-09-05] IMMUNOLOGIA - Risposta Innata Demo"
@@ -208,7 +209,8 @@ def test_audio_run_with_custom_dest_dir(tmp_path, capsys):
         rename=False
     )
 
-    cmd_run(args)
+    with patch("builtins.input", return_value="A"):
+        cmd_run(args)
     captured = capsys.readouterr().out
     assert "PIPELINE COMPLETATA CON SUCCESSO" in captured
 
