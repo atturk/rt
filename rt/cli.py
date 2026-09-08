@@ -25,7 +25,7 @@ import json
 import re
 from typing import Dict, Any, List, Optional
 
-from rt.core.config import load_env_file
+from rt.core.config import load_env_file, _default_project_root
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.encoding import fix_mojibake
 
@@ -45,9 +45,11 @@ from rt.core.models import ASRLevel, ASRIssue, ScienceIssue
 
 def _has_real_config_source() -> bool:
     """Vero se esiste una sorgente di configurazione reale (cartella config/) nella
-    working directory corrente. Usata dai comandi CLI che eseguono lavoro LLM reale
-    per evitare di procedere silenziosamente con i default hardcoded."""
-    return os.path.isdir(os.path.join(os.getcwd(), "config"))
+    working directory corrente o nella project root reale. Usata dai comandi CLI che
+    eseguono lavoro LLM reale per evitare di procedere silenziosamente con i default hardcoded."""
+    if os.path.isdir(os.path.join(os.getcwd(), "config")):
+        return True
+    return os.path.isdir(os.path.join(_default_project_root(), "config"))
 
 
 def _job_has_configured_route(job_cfg) -> bool:
