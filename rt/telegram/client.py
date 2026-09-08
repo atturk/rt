@@ -31,7 +31,7 @@ def _call(cfg: TelegramConfig, method: str, payload: Dict[str, Any], timeout: fl
     return data["result"]
 
 
-def send_message(cfg: TelegramConfig, text: str, reply_markup: Optional[dict] = None) -> Dict[str, Any]:
+def send_message(cfg: TelegramConfig, text: str, reply_markup: Optional[dict] = None, message_thread_id: Optional[int] = None) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "chat_id": cfg.chat_id,
         "text": text,
@@ -40,6 +40,8 @@ def send_message(cfg: TelegramConfig, text: str, reply_markup: Optional[dict] = 
     }
     if reply_markup:
         payload["reply_markup"] = reply_markup
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
     return _call(cfg, "sendMessage", payload)
 
 

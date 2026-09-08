@@ -83,6 +83,8 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
         return _confirm_via_terminal(lesson_dir, force_mock)
 
     runtime_cfg = load_config().telegram
+    from rt.telegram.config import resolve_topic_id
+    message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
     existing = tg_pending.load_pending(lesson_dir)
 
     if existing and existing.status == "changes_requested":
@@ -105,10 +107,10 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
         outline = load_outline(lesson_dir)
         summary_text = tg_fmt.render_outline_summary_text(outline)
         next_round = (existing.round + 1) if existing else 1
-        short_id = tg_registry.register_pending(lesson_dir, round_=next_round, kind="outline_confirmation", state_dir=runtime_cfg.state_dir)
+        short_id = tg_registry.register_pending(lesson_dir, round_=next_round, kind="outline_confirmation", state_dir=runtime_cfg.state_dir, message_thread_id=message_thread_id)
         keyboard = tg_fmt.build_outline_decision_keyboard(short_id)
         try:
-            tg_client.send_message(tg_cfg, text=summary_text, reply_markup=keyboard)
+            tg_client.send_message(tg_cfg, text=summary_text, reply_markup=keyboard, message_thread_id=message_thread_id)
         except tg_client.TelegramAPIError as e:
             print(f"⚠️  Invio a Telegram fallito ({e}). Passaggio a conferma da terminale.")
             return _confirm_via_terminal(lesson_dir, force_mock)

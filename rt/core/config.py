@@ -206,6 +206,11 @@ class TelegramRuntimeConfig(BaseModel):
     poll_interval_seconds: float = Field(default=3.0, description="Intervallo di polling locale di telegram_pending.json")
     wait_timeout_seconds: int = Field(default=0, description="0 = nessun timeout, attende indefinitamente (Ctrl+C per uscire)")
     state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram, relativa alla cwd da cui gira 'rt'")
+    topics: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. "
+                    "Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato)."
+    )
 
 
 class RTConfig(BaseModel):
