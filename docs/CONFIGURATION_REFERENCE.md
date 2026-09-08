@@ -102,8 +102,8 @@ Ogni file corrisponde a uno dei 4 job cognitivi. Nei file di template (`config.e
 | `credential` | Nome simbolico della credenziale dichiarata in `general.yaml` (opzionale se esiste un solo default per il provider). |
 | `model` | Nome del modello presso il provider. |
 | `base_url` | URL dell'endpoint API (richiesto obbligatoriamente per `openai_compatible`). |
-| `thinking` | Se `true`, richiede al modello l'uso del reasoning/thinking esteso. |
-| `reasoning_effort` | Livello di sforzo del reasoning (es. `"low"`, `"high"`), quando supportato dal provider. |
+| `thinking` | `true` forza il reasoning acceso; `false` tenta di disattivarlo (su OpenRouter omette il campo per sicurezza); `null`/omesso lascia decidere al provider/modello nativo. |
+| `reasoning_effort` | Livello di sforzo del reasoning (es. `"low"`, `"medium"`, `"high"`, oppure `null`/omesso per lasciare la decisione al modello/provider). |
 | `max_thinking_tokens` | Limite di token dedicati al reasoning. |
 | `max_tokens` | Limite di token sull'output totale (`null` = nessun limite esplicito). |
 | `timeout_seconds` | Timeout di rete per la singola chiamata su questa route. |

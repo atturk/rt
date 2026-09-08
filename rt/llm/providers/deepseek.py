@@ -31,8 +31,8 @@ class DeepSeekProvider(BaseLLMProvider):
         model: str,
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
-        thinking: bool = True,
-        reasoning_effort: str = "low",
+        thinking: Optional[bool] = None,
+        reasoning_effort: Optional[str] = None,
         temperature: Optional[float] = None,
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
@@ -62,12 +62,18 @@ class DeepSeekProvider(BaseLLMProvider):
             payload["response_format"] = response_format
 
         # Configurazione nativa DeepSeek Thinking Mode e verifica capabilities formali
-        caps = get_capabilities(self.name, thinking_mode=thinking)
-        if thinking:
+        caps = get_capabilities(self.name, thinking_mode=bool(thinking))
+        if thinking is True:
             payload["thinking"] = {"type": "enabled"}
-            payload["reasoning_effort"] = str(reasoning_effort or "low").lower().strip()
-        else:
+            if reasoning_effort and str(reasoning_effort).strip():
+                payload["reasoning_effort"] = str(reasoning_effort).lower().strip()
+        elif thinking is False:
             payload["thinking"] = {"type": "disabled"}
+        # thinking is None: non includere affatto la chiave 'thinking' né 'reasoning_effort'. La
+        # documentazione ufficiale DeepSeek conferma che il thinking mode è comunque enabled di
+        # default lato loro, quindi omettere è coerente col comportamento nativo, non un downgrade.
+        # A differenza di OpenRouter, l'API diretta DeepSeek non risulta avere il problema del punto D
+        # con {"type": "disabled"} esplicito: per questo qui il ramo False resta invariato.
 
         if temperature is not None and caps.supports_temperature:
             payload["temperature"] = temperature

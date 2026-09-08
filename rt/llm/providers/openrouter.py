@@ -32,8 +32,8 @@ class OpenRouterProvider(BaseLLMProvider):
         model: str,
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
-        thinking: bool = True,
-        reasoning_effort: str = "low",
+        thinking: Optional[bool] = None,
+        reasoning_effort: Optional[str] = None,
         temperature: Optional[float] = None,
         response_format: Optional[Dict[str, str]] = None,
         stream: bool = True,
@@ -66,21 +66,26 @@ class OpenRouterProvider(BaseLLMProvider):
             payload["temperature"] = temperature
 
         # Configurazione unificata OpenRouter per modelli reasoning
-        if thinking:
+        if thinking is True:
             if max_thinking_tokens is not None and max_thinking_tokens > 0:
                 # Se è specificato max_thinking_tokens, ha priorità assoluta e reasoning_effort viene ignorato
                 payload["reasoning"] = {
                     "max_tokens": int(max_thinking_tokens)
                 }
-            else:
+            elif reasoning_effort and str(reasoning_effort).strip():
                 payload["reasoning"] = {
                     "enabled": True,
-                    "effort": str(reasoning_effort or "low").lower().strip()
+                    "effort": str(reasoning_effort).lower().strip()
                 }
-        else:
-            payload["reasoning"] = {
-                "enabled": False
-            }
+            else:
+                payload["reasoning"] = {
+                    "enabled": True
+                }
+        # thinking is False o None: non includere affatto la chiave 'reasoning'. Non mandare mai
+        # {"enabled": False} esplicito: alcuni modelli con reasoning obbligatorio (es. DeepSeek V3.1
+        # Terminus su OpenRouter, confermato) rispondono con HTTP 400 "Reasoning is mandatory for this
+        # endpoint and cannot be disabled". Omettere la chiave lascia decidere il comportamento nativo
+        # del modello, che è l'unico modo sicuro di "non forzare" il reasoning su OpenRouter.
 
         if provider_routing:
             payload["provider"] = provider_routing
