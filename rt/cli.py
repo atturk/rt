@@ -102,6 +102,12 @@ def cmd_outline(args):
     _print_phase_action("outline", res)
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+    confirm_or_revise_outline(args.lesson_dir, channel=channel, force=force, force_mock=args.mock)
+
 
 def cmd_validate_outline(args):
     outline = load_outline(args.lesson_dir)
@@ -1056,6 +1062,8 @@ def main():
     p_out.add_argument("lesson_dir", help="Directory della lezione")
     p_out.add_argument("--force", action="store_true", help="Forza la rigenerazione dell'outline")
     p_out.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_out.add_argument("--channel", choices=["terminal", "telegram"], default=None,
+                        help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_out.set_defaults(func=cmd_outline)
 
     # validate-outline
@@ -1237,6 +1245,13 @@ def main():
             file=sys.stderr
         )
         sys.exit(1)
+    except KeyboardInterrupt:
+        # Chi solleva volontariamente Ctrl+C (es. l'attesa di conferma outline via
+        # Telegram) stampa già un messaggio specifico prima di ri-sollevare: qui si
+        # esce solo in modo pulito, senza traceback, con il codice di uscita POSIX
+        # convenzionale per SIGINT.
+        print("\n⏹ Interrotto dall'utente.", file=sys.stderr)
+        sys.exit(130)
 
 
 if __name__ == "__main__":

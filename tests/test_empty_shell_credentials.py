@@ -214,6 +214,7 @@ def test_cli_commands_bypass_when_mock_flag(tmp_path, monkeypatch):
     args.unit = None
 
     with patch("rt.cli.run_outline", return_value={"status": "ok", "action": "RUN"}), \
+         patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli._print_phase_action"):
         cmd_outline(args)
 
