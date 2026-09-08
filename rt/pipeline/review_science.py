@@ -153,6 +153,14 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     """Esegue la critica scientifica indipendente sul draft confrontato con l'ASR con checkpointing continuo."""
     yaml_path = os.path.join(lesson_dir, "info.yaml")
 
+    # Controllo stato ASR review e warning non bloccante
+    asr_status, _ = check_phase_status(lesson_dir, "review_asr")
+    from rt.pipeline.ledger import get_pending_issues, load_ledger, apply_asr_decisions_to_text
+    pending_asr, _ = get_pending_issues(lesson_dir)
+    if asr_status == PhaseStatus.MISSING or len(pending_asr) > 0:
+        print("⚠️  Ci sono issue ASR non ancora generate/decise: la review scientifica potrebbe "
+              "confondere un artefatto di trascrizione con un errore concettuale. Consigliato completare prima 'rt review-asr'.")
+
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "review_science")
     if phase_status == PhaseStatus.VALID and not force:
@@ -179,6 +187,10 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     draft = load_draft(lesson_dir)
     segments_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
+
+    ledger = load_ledger(lesson_dir)
+    decisions_map = {d.issue_id: d for d in ledger.decisions}
+    asr_issues = load_asr_issues(lesson_dir)
 
     # Riconciliazione all'avvio:
     if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
@@ -219,9 +231,12 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
                 source_texts.append(f"[{s.id}] {s.text_raw}")
         source_context = "\n".join(source_texts)
         
+        unit_content_for_prompt = apply_asr_decisions_to_text(
+            unit.content, asr_issues, decisions_map, unit.source_segment_ids
+        )
         prompt = build_science_review_user_prompt(
             unit_id=unit.unit_id,
-            rewritten_content=unit.content,
+            rewritten_content=unit_content_for_prompt,
             source_segments_text=source_context
         )
         

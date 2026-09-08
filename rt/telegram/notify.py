@@ -30,8 +30,9 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
     """issue_type: 'asr' | 'science'. Fire-and-forget: non deve mai bloccare né
     far fallire il comando chiamante. Se count == 0 manda un messaggio di conferma senza bottoni."""
     try:
+        import os
         from rt.telegram.config import load_telegram_config, resolve_topic_id
-        from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt
+        from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt, session as tg_session
         from rt.core.config import load_config
 
         cfg = load_telegram_config()
@@ -47,6 +48,21 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
             )
             return
 
+        active = tg_session.get_active_session(runtime_cfg.state_dir, cfg.chat_id, thread_id)
+        if active is not None:
+            if active.get("kind") != "issue_review" or os.path.abspath(active.get("lesson_dir", "")) != os.path.abspath(lesson_dir):
+                busy_msg = f"C'è già un'attività in corso in questo topic ({active.get('kind')}). Usa /quit per chiuderla prima."
+                tg_client.send_message(cfg, text=busy_msg, message_thread_id=thread_id)
+                return
+            else:
+                tg_client.send_message(
+                    cfg,
+                    text="ℹ️ Review già pronta per questo topic. Clicca su 'Inizia review' nel messaggio precedente, oppure usa /quit per annullare.",
+                    message_thread_id=thread_id,
+                )
+                return
+
+        tg_session.start_session(runtime_cfg.state_dir, cfg.chat_id, thread_id, "issue_review", lesson_dir)
         short_id = tg_registry.register_pending(
             lesson_dir, round_=1, kind="start_issue_review", state_dir=runtime_cfg.state_dir, message_thread_id=thread_id
         )
@@ -59,4 +75,5 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
         )
     except Exception as e:
         print(f"⚠️  Notifica Telegram issue pronte non inviata: {e}", file=sys.stderr)
+
 

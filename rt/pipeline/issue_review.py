@@ -78,8 +78,12 @@ def send_current_issue(lesson_dir: str) -> None:
             tg_cfg = load_telegram_config()
             runtime_cfg = load_config().telegram
             thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+            from rt.telegram import session as tg_session
+            tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id)
             tg_client.send_message(tg_cfg, text="✨ Review completata. Esegui 'rt build' quando vuoi.", message_thread_id=thread_id)
         except TelegramConfigError:
+            pass
+        except Exception:
             pass
         yaml_path = os.path.join(lesson_dir, "info.yaml")
         if os.path.isfile(yaml_path):
@@ -88,6 +92,7 @@ def send_current_issue(lesson_dir: str) -> None:
             except Exception:
                 pass
         return
+
 
     issue_id = queue.issue_ids[queue.current_index]
     issue_type = queue.issue_types[issue_id]
@@ -105,7 +110,7 @@ def send_current_issue(lesson_dir: str) -> None:
     try:
         tg_cfg = load_telegram_config()
     except TelegramConfigError:
-        print("⚠️  Telegram non configurato: impossibile inviare l'issue. Usa 'rt review \"<cartella>\"' da terminale.")
+        print(f"⚠️  Telegram non configurato: impossibile inviare l'issue. Usa 'rt review-{issue_type} \"<cartella>\"' da terminale.")
         return
 
     runtime_cfg = load_config().telegram
@@ -119,3 +124,301 @@ def send_current_issue(lesson_dir: str) -> None:
         tg_client.send_message(tg_cfg, text=text, reply_markup=keyboard, message_thread_id=thread_id)
     except tg_client.TelegramAPIError as e:
         print(f"⚠️  Invio issue a Telegram fallito: {e}")
+
+
+def should_auto_accept_asr(iss: ASRIssue, auto_accept: Optional[str]) -> bool:
+    """Valuta se auto-accettare una anomalia ASR in base ai flag CLI."""
+    if not auto_accept:
+        return False
+    from rt.core.models import ASRLevel
+    mode = str(auto_accept).lower()
+    if mode in ("all", "true"):
+        return True
+    if mode == "yellow":
+        return iss.level == ASRLevel.YELLOW
+    if mode == "red":
+        return iss.level == ASRLevel.RED
+    return False
+
+
+def should_auto_accept_science(iss: ScienceIssue, auto_accept: Optional[str]) -> bool:
+    """Valuta se auto-accettare una critica scientifica in base ai flag CLI."""
+    if not auto_accept:
+        return False
+    mode = str(auto_accept).lower()
+    if mode in ("all", "true"):
+        return True
+    return False
+
+
+def run_interactive_review(
+    lesson_dir: str,
+    issue_type: str,
+    channel: Optional[str] = None,
+    auto_accept: Optional[str] = None,
+    history: bool = False
+) -> bool:
+    """
+    Esegue la revisione interattiva di un singolo tipo di issue ('asr' o 'science').
+    Supporta navigazione 'indietro' con indice mobile, cronologia (--history) e dispatch Telegram.
+    Ritorna True se la revisione di questo tipo è completa e pronta per il build, False altrimenti.
+    """
+    import sys
+    from rt.core.encoding import fix_mojibake
+    from rt.core.state import transition_to, WorkflowState
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.rewrite import load_draft, get_draft_path
+    from rt.pipeline.ledger import (
+        get_pending_issues,
+        load_ledger,
+        record_decision,
+        revert_last_decision,
+        sanitize_suggested_fix,
+        extract_context_sentence,
+    )
+    from rt.pipeline.review_asr import load_asr_issues
+    from rt.pipeline.review_science import load_science_issues
+    from rt.core.models import ASRLevel
+
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+
+    if channel == "telegram" and history:
+        print("⚠️  La modalità --history è disponibile solo da terminale. Procedo in modalità normale (solo pendenti).")
+        history = False
+
+    # 1. Carica le issue da revisionare
+    if history:
+        if issue_type == "asr":
+            to_review = [iss for iss in load_asr_issues(lesson_dir) if iss.level in (ASRLevel.YELLOW, ASRLevel.RED)]
+        else:
+            to_review = list(load_science_issues(lesson_dir))
+    else:
+        pending_asr, pending_sci = get_pending_issues(lesson_dir)
+        raw_issues = pending_asr if issue_type == "asr" else pending_sci
+
+        to_review = []
+        auto_accepted = []
+        if issue_type == "asr":
+            for iss in raw_issues:
+                if should_auto_accept_asr(iss, auto_accept):
+                    auto_accepted.append(iss)
+                else:
+                    to_review.append(iss)
+            for iss in auto_accepted:
+                record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate, resolved_by="cli_auto")
+        else:
+            for iss in raw_issues:
+                if should_auto_accept_science(iss, auto_accept):
+                    auto_accepted.append(iss)
+                else:
+                    to_review.append(iss)
+            for iss in auto_accepted:
+                clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+                record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix, resolved_by="cli_auto")
+
+        if auto_accepted:
+            print(f"\n⚡ Auto-approvati {len(auto_accepted)} casi ({issue_type.upper()}) in base ai filtri CLI.")
+
+    # 2. Se non resta nulla da rivedere
+    if len(to_review) == 0:
+        rem_asr, rem_sci = get_pending_issues(lesson_dir)
+        if not rem_asr and not rem_sci:
+            yaml_path = os.path.join(lesson_dir, "info.yaml")
+            if os.path.isfile(yaml_path):
+                try:
+                    transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
+                except Exception:
+                    pass
+        print(f"\n✨ Nessuna issue {issue_type.upper()} in attesa di revisione umana (tutte già risolte o auto-approvate).")
+        return True
+
+    # 3. Canale Telegram
+    if channel == "telegram":
+        if issue_type == "asr":
+            start_review_via_telegram(lesson_dir, asr_to_review=to_review, sci_to_review=[])
+        else:
+            start_review_via_telegram(lesson_dir, asr_to_review=[], sci_to_review=to_review)
+        return False
+
+    # 4. Controllo TTY
+    if not sys.stdin.isatty():
+        print(f"\n⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(to_review)} issue {issue_type.upper()} che richiedono revisione umana.")
+        print(f"Esegui 'rt review-{issue_type} \"{lesson_dir}\"' per completare la revisione (da un terminale interattivo, o con --channel telegram).")
+        return False
+
+    # 5. Sessione interattiva da terminale con indice mobile
+    print(f"\n🔍 REVISIONE INTERATTIVA {issue_type.upper()} ({len(to_review)} casi{' [modalità history]' if history else ' pendenti'})")
+    print("=" * 60)
+
+    seg_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    seg_by_id = {s.id: s for s in seg_data.segments}
+
+    draft_path = get_draft_path(lesson_dir)
+    draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
+
+    seg_to_unit = {}
+    unit_by_id = {}
+    if draft:
+        for u in draft.units:
+            unit_by_id[u.unit_id] = u
+            for sid in u.source_segment_ids:
+                seg_to_unit[sid] = u
+
+    idx = 0
+    total_count = len(to_review)
+    interrupted = False
+
+    while idx < total_count:
+        iss = to_review[idx]
+        ledger = load_ledger(lesson_dir)
+        decisions_map = {d.issue_id: d for d in ledger.decisions}
+
+        if issue_type == "asr":
+            seg = seg_by_id.get(iss.segment_id)
+            tc = seg.start_formatted if seg else "N/D"
+            listen = f"{seg.start_formatted} - {seg.end_formatted}" if seg else "N/D"
+
+            target_unit = seg_to_unit.get(iss.segment_id)
+            unit_info = f"{target_unit.unit_id} - {target_unit.title}" if target_unit else "N/D"
+
+            sentence = ""
+            if target_unit:
+                sentence = extract_context_sentence(target_unit.content, iss.candidate, iss.source_text)
+            if not sentence and draft:
+                for u in draft.units:
+                    if target_unit and u.unit_id == target_unit.unit_id:
+                        continue
+                    s_found = extract_context_sentence(u.content, iss.candidate, iss.source_text)
+                    if s_found:
+                        sentence = s_found
+                        unit_info = f"{u.unit_id} - {u.title}"
+                        break
+
+            print(f"\n[{idx + 1}/{total_count}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}")
+            if unit_info != "N/D":
+                print(f"  📚 Unità:         {fix_mojibake(unit_info)}")
+            print(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
+            print(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
+            print(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
+            print(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
+            if sentence:
+                print(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
+            if iss.id in decisions_map:
+                d = decisions_map[iss.id]
+                print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+
+            choice = input("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / B=Indietro / S=Salta / Q=Esci]: ").strip().lower()
+            if choice in ("a", "accetta", ""):
+                record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
+                print("  ✔ Approvato.")
+                idx += 1
+            elif choice in ("r", "rifiuta"):
+                record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
+                print("  ❌ Rifiutato (mantenuto testo originale).")
+                idx += 1
+            elif choice in ("m", "modifica"):
+                custom = input("  Inserisci correzione personalizzata: ").strip()
+                if custom:
+                    record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
+                    print(f"  ✏ Modificato in: \"{custom}\"")
+                    idx += 1
+                else:
+                    print("  ⚠️ Nessuna modifica inserita.")
+            elif choice in ("b", "indietro", "back"):
+                if idx == 0:
+                    print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                else:
+                    idx -= 1
+                    prev_iss = to_review[idx]
+                    revert_last_decision(lesson_dir, prev_iss.id)
+                    print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
+            elif choice in ("q", "esci", "quit"):
+                print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
+                interrupted = True
+                break
+            else:
+                print("  ⏭ Saltato.")
+                idx += 1
+
+        else:  # science
+            seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
+            tc = seg.start_formatted if seg else "N/D"
+
+            sci_unit = None
+            if iss.unit_id and iss.unit_id in unit_by_id:
+                sci_unit = unit_by_id[iss.unit_id]
+            elif iss.segment_id and iss.segment_id in seg_to_unit:
+                sci_unit = seg_to_unit[iss.segment_id]
+
+            sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
+
+            print(f"\n[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}")
+            if sci_unit_info != "N/D":
+                print(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
+            print(f"  ⏱ Timecode:     {tc}")
+            print(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
+            print(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
+            if iss.suggested_fix:
+                print(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
+            if iss.diplomatic_question:
+                print(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
+            if sci_unit and sci_unit.content:
+                print(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
+                print("  " + "-" * 56)
+                for line in fix_mojibake(sci_unit.content).strip().split("\n"):
+                    print(f"  {line}")
+                print("  " + "-" * 56)
+            if iss.id in decisions_map:
+                d = decisions_map[iss.id]
+                print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+
+            choice = input("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / B=Indietro / S=Salta / Q=Esci]: ").strip().lower()
+            if choice in ("a", "accetta", "applica", ""):
+                clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+                record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
+                print("  ✔ Correzione scientifica applicata.")
+                idx += 1
+            elif choice in ("m", "mantieni", "rifiuta", "r"):
+                record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
+                print("  ✔ Formulazione originale mantenuta.")
+                idx += 1
+            elif choice in ("e", "modifica"):
+                custom = input("  Inserisci testo corretto: ").strip()
+                if custom:
+                    record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
+                    print(f"  ✏ Modificato in: \"{custom}\"")
+                    idx += 1
+                else:
+                    print("  ⚠️ Nessuna modifica inserita.")
+            elif choice in ("b", "indietro", "back"):
+                if idx == 0:
+                    print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                else:
+                    idx -= 1
+                    prev_iss = to_review[idx]
+                    revert_last_decision(lesson_dir, prev_iss.id)
+                    print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
+            elif choice in ("q", "esci", "quit"):
+                print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
+                interrupted = True
+                break
+            else:
+                print("  ⏭ Saltato.")
+                idx += 1
+
+    if interrupted:
+        return False
+
+    rem_asr, rem_sci = get_pending_issues(lesson_dir)
+    if not rem_asr and not rem_sci:
+        yaml_path = os.path.join(lesson_dir, "info.yaml")
+        if os.path.isfile(yaml_path):
+            try:
+                transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
+            except Exception:
+                pass
+        print("\n✨ Revisione completata. Esegui 'rt build <cartella>' per finalizzare.")
+
+    return True

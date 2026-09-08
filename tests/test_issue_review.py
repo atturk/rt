@@ -10,15 +10,16 @@ from rt.core.models import (
 from rt.core.state import WorkflowState
 
 from rt.pipeline.ledger import (
-    get_pending_issues, record_decision, save_ledger, load_ledger,
+    get_pending_issues, record_decision, revert_last_decision, save_ledger, load_ledger,
+    apply_asr_decisions_to_text,
     find_asr_issue_by_id, find_science_issue_by_id,
     resolve_asr_accept_text, resolve_asr_reject_text,
     resolve_science_accept_text, resolve_science_reject_text
 )
 from rt.telegram import issue_queue as tg_queue
-from rt.pipeline.issue_review import start_review_via_telegram, send_current_issue
+from rt.pipeline.issue_review import start_review_via_telegram, send_current_issue, run_interactive_review
 from rt.telegram.config import TelegramConfig
-from rt.cli import cmd_review
+from rt.cli import cmd_review_asr, cmd_review_science
 
 
 def _create_sample_lesson(lesson_dir: str):
@@ -96,6 +97,38 @@ def test_get_pending_issues(tmp_path):
     assert [x.id for x in pending_sci2] == ["sci_2"]
 
 
+def test_ledger_append_only_and_revert(tmp_path):
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    # Registra prima decisione
+    d1 = record_decision(lesson_dir, "iss_1", "accepted", resolved_text="val1")
+    ledger1 = load_ledger(lesson_dir)
+    assert len(ledger1.decisions) == 1
+    assert ledger1.decisions[0].resolved_text == "val1"
+
+    # Registra seconda decisione per la stessa issue -> append-only, len diventa 2
+    d2 = record_decision(lesson_dir, "iss_1", "edited", resolved_text="val2")
+    ledger2 = load_ledger(lesson_dir)
+    assert len(ledger2.decisions) == 2
+    assert ledger2.decisions[0].resolved_text == "val1"
+    assert ledger2.decisions[1].resolved_text == "val2"
+
+    # Revert: rimuove l'ultima (val2)
+    assert revert_last_decision(lesson_dir, "iss_1") is True
+    ledger3 = load_ledger(lesson_dir)
+    assert len(ledger3.decisions) == 1
+    assert ledger3.decisions[0].resolved_text == "val1"
+
+    # Revert ancora: rimuove la prima (val1)
+    assert revert_last_decision(lesson_dir, "iss_1") is True
+    ledger4 = load_ledger(lesson_dir)
+    assert len(ledger4.decisions) == 0
+
+    # Revert su issue inesistente -> False
+    assert revert_last_decision(lesson_dir, "iss_1") is False
+
+
 def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
@@ -164,74 +197,154 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     assert state == WorkflowState.READY_TO_BUILD
 
 
-def test_cmd_review_channel_telegram(tmp_path, monkeypatch):
+def test_telegram_callback_indietro(tmp_path, monkeypatch):
+    from rt.telegram.daemon import _handle_issue_callback
+    from rt.telegram import registry
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
     asr_issues = [
-        ASRIssue(id="asr_y", segment_id="seg_000001", source_text="err_y", candidate="corr_y", confidence=0.8, level=ASRLevel.YELLOW, reason="mot_y"),
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
+        ASRIssue(id="asr_2", segment_id="seg_000002", source_text="err2", candidate="corr2", confidence=0.5, level=ASRLevel.RED, reason="m2"),
     ]
     with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([], f)
 
-    start_called = []
+    # Coda creata con index 1 (prima issue già decisa)
+    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="corr1")
+    q = tg_queue.create_queue(lesson_dir, ["asr_1", "asr_2"], {"asr_1": "asr", "asr_2": "asr"})
+    q.current_index = 1
+    tg_queue._save(q, lesson_dir)
 
-    def mock_start(ld, asr, sci):
-        start_called.append((ld, len(asr), len(sci)))
+    state_dir = str(tmp_path / "tg_state")
+    short_id = registry.register_pending(lesson_dir, round_=1, kind="issue_review", state_dir=state_dir, extra={"issue_id": "asr_2", "issue_type": "asr"})
 
-    monkeypatch.setattr("rt.pipeline.issue_review.start_review_via_telegram", mock_start)
+    query = MagicMock()
+    query.answer = MagicMock(return_value=None)
+    import asyncio
+    query.answer = MagicMock(side_effect=lambda *a, **kw: asyncio.sleep(0))
+    query.edit_message_reply_markup = MagicMock(side_effect=lambda *a, **kw: asyncio.sleep(0))
+    update = MagicMock()
+    update.callback_query = query
+    context = MagicMock()
+    context.bot_data = {"state_dir": state_dir}
 
-    from types import SimpleNamespace
-    args = SimpleNamespace(lesson_dir=lesson_dir, channel="telegram", auto_accept=None, auto_accept_asr=None, auto_accept_science=None)
+    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send:
+        asyncio.run(_handle_issue_callback(update, context, "ib", short_id))
 
-    # builtins.input non deve mai essere chiamato
-    with patch("builtins.input", side_effect=AssertionError("input() non deve essere invocato in modalità telegram")):
-        result = cmd_review(args)
+    # current_index decrements to 0
+    updated_q = tg_queue.load_queue(lesson_dir)
+    assert updated_q.current_index == 0
 
-    assert len(start_called) == 1
-    assert start_called[0] == (lesson_dir, 1, 0)
-    # Regressione: la revisione è stata delegata in modo asincrono a Telegram, non è
-    # ancora completa -> il chiamante (cmd_run) NON deve procedere automaticamente al build.
-    assert result is False
+    # Decision for asr_1 should have been reverted
+    ledger = load_ledger(lesson_dir)
+    assert len(ledger.decisions) == 0
 
 
-def test_cmd_review_non_tty_stops_with_message(tmp_path, capsys, monkeypatch):
+def test_interactive_terminal_backward_navigation(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
     asr_issues = [
-        ASRIssue(id="asr_y", segment_id="seg_000001", source_text="err_y", candidate="corr_y", confidence=0.8, level=ASRLevel.YELLOW, reason="mot_y"),
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
+        ASRIssue(id="asr_2", segment_id="seg_000002", source_text="err2", candidate="corr2", confidence=0.5, level=ASRLevel.RED, reason="m2"),
     ]
     with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    from types import SimpleNamespace
-    args = SimpleNamespace(lesson_dir=lesson_dir, channel="terminal", auto_accept=None, auto_accept_asr=None, auto_accept_science=None)
+    # Simula input utente:
+    # 1. Su asr_1 -> 'b' (prova indietro al primo elemento -> non regredisce)
+    # 2. Su asr_1 -> 'a' (accetta)
+    # 3. Su asr_2 -> 'b' (torna indietro -> revert asr_1 e ripropone asr_1)
+    # 4. Su asr_1 ripresentata -> 'r' (rifiuta invece di accettare)
+    # 5. Su asr_2 -> 'a' (accetta)
+    inputs = iter(["b", "a", "b", "r", "a"])
+    with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
 
-    with patch("builtins.input", side_effect=AssertionError("input() non deve essere chiamato se non-tty")):
-        result = cmd_review(args)
+    assert res is True
+    ledger = load_ledger(lesson_dir)
+    # Due decisioni finali registrate
+    decisions_map = {d.issue_id: d for d in ledger.decisions}
+    assert decisions_map["asr_1"].decision == "rejected"
+    assert decisions_map["asr_2"].decision == "accepted"
 
-    captured = capsys.readouterr().out
-    assert "[HUMAN REVIEW REQUIRED]" in captured
-    assert "Ci sono 1 issue ASR" in captured
-    # Regressione: nessuna decisione è stata presa -> il chiamante (cmd_run) NON deve
-    # procedere automaticamente al build (comportamento già garantito prima di questo
-    # task direttamente dentro cmd_run, ora spostato dentro cmd_review: deve restare vero).
-    assert result is False
+
+def test_history_mode_terminal_and_telegram(tmp_path, monkeypatch, capsys):
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    # Già decisa nel ledger
+    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="corr1")
+
+    # 1. Telegram con history -> avviso e fallback a pendenti (che sono 0 -> True immediato)
+    res_tg = run_interactive_review(lesson_dir, "asr", channel="telegram", history=True)
+    assert res_tg is True
+    out = capsys.readouterr().out
+    assert "⚠️  La modalità --history è disponibile solo da terminale" in out
+
+    # 2. Terminal con history -> mostra issue già decisa e ri-decisione aggiunge nuova voce
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    with patch("builtins.input", side_effect=["r"]):
+        res_term = run_interactive_review(lesson_dir, "asr", channel="terminal", history=True)
+
+    assert res_term is True
+    ledger = load_ledger(lesson_dir)
+    assert len(ledger.decisions) == 2
+    assert ledger.decisions[0].decision == "accepted"
+    assert ledger.decisions[1].decision == "rejected"
+
+
+def test_run_review_science_applies_decided_asr_to_prompt(tmp_path):
+    from rt.pipeline.review_science import run_review_science
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="target ASR", candidate="correzione ASR applicata", confidence=0.9, level=ASRLevel.YELLOW, reason="m1"),
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="correzione ASR applicata")
+
+    prompts_captured = []
+
+    def mock_call_structured(prompt, **kwargs):
+        prompts_captured.append(prompt)
+        from rt.llm.prompts import ScienceIssueList
+        return ScienceIssueList(issues=[])
+
+    with patch("rt.llm.client.LLMClient.call_structured", side_effect=mock_call_structured):
+        res = run_review_science(lesson_dir, force=True, force_mock=True)
+
+    assert len(prompts_captured) > 0
+    # La correzione ASR deve comparire nel prompt passato al critic
+    assert "correzione ASR applicata" in prompts_captured[0]
+
+    # Ma il draft su disco NON deve essere stato modificato
+    with open(os.path.join(lesson_dir, "draft.json"), "r", encoding="utf-8") as f:
+        draft_on_disk = json.load(f)
+    assert "target ASR" in draft_on_disk["units"][0]["content"]
 
 
 def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monkeypatch):
-    """Regressione trovata in revisione: cmd_run(with_review=True) chiamava cmd_review()
-    e procedeva SEMPRE al build subito dopo, a prescindere dal fatto che la revisione
-    fosse stata effettivamente completata. Con canale Telegram (o terminale non-tty),
-    cmd_review() delega/si ferma e ritorna False: cmd_run() deve fermarsi anche lui,
-    senza chiamare run_build(), finché l'utente non lancia 'rt build' a mano."""
     import argparse
     from rt.cli import cmd_run
 
@@ -256,10 +369,66 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli.run_rewrite", return_value={"skipped": True, "total_units": 1, "processed_units": 1}), \
          patch("rt.cli.run_review_asr", return_value={"skipped": True, "total_issues": 1, "green_auto_applied": 0, "yellow_review_queue": 1, "red_human_required": 0}), \
-         patch("rt.cli.run_review_science", return_value={"skipped": True, "total_science_issues": 0, "docente_issues": 0, "reconstruction_issues": 0, "science_checks": 0}), \
-         patch("rt.cli.cmd_review", return_value=False) as mock_cmd_review, \
+         patch("rt.cli.run_interactive_review", return_value=False) as mock_review, \
          patch("rt.cli.run_build", side_effect=fake_run_build):
         cmd_run(args)
 
-    mock_cmd_review.assert_called_once()
-    assert build_called == [], "run_build() non deve essere chiamato se cmd_review() segnala che la revisione non è ancora completa (return False)"
+    mock_review.assert_called_once()
+    assert build_called == [], "run_build() non deve essere chiamato se run_interactive_review() ritorna False"
+
+
+def test_run_review_science_warning_when_asr_pending(tmp_path, capsys):
+    from rt.pipeline.review_science import run_review_science
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    # 1. ASR review mai eseguita (asr_issues.json assente)
+    with patch("rt.llm.client.LLMClient.call_structured", return_value=MagicMock(issues=[])):
+        run_review_science(lesson_dir, force=True, force_mock=True)
+
+    out = capsys.readouterr().out
+    assert "⚠️  Ci sono issue ASR non ancora generate/decise" in out
+
+    # 2. ASR review con issue pendenti
+    asr_issues = [
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+
+    with patch("rt.llm.client.LLMClient.call_structured", return_value=MagicMock(issues=[])):
+        run_review_science(lesson_dir, force=True, force_mock=True)
+
+    out2 = capsys.readouterr().out
+    assert "⚠️  Ci sono issue ASR non ancora generate/decise" in out2
+
+
+def test_interactive_review_auto_accept(tmp_path):
+    lesson_dir = str(tmp_path)
+    _create_sample_lesson(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(id="asr_y", segment_id="seg_000001", source_text="err_y", candidate="corr_y", confidence=0.8, level=ASRLevel.YELLOW, reason="mot_y"),
+        ASRIssue(id="asr_r", segment_id="seg_000002", source_text="err_r", candidate="corr_r", confidence=0.5, level=ASRLevel.RED, reason="mot_r"),
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+
+    # auto-accept yellow -> auto-accetta asr_y, lascia asr_r da rivedere
+    # Con non-tty si ferma e ritorna False perché asr_r resta
+    with patch("sys.stdin.isatty", return_value=False):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal", auto_accept="yellow")
+    assert res is False
+
+    ledger = load_ledger(lesson_dir)
+    assert len(ledger.decisions) == 1
+    assert ledger.decisions[0].issue_id == "asr_y"
+    assert ledger.decisions[0].decision == "accepted"
+
+    # Ora auto-accept red -> auto-accetta asr_r -> non resta più nulla -> ritorna True
+    res2 = run_interactive_review(lesson_dir, "asr", channel="terminal", auto_accept="red")
+    assert res2 is True
+    ledger2 = load_ledger(lesson_dir)
+    assert len(ledger2.decisions) == 2
+
+

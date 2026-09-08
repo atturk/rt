@@ -183,6 +183,7 @@ class TelegramPendingStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     CHANGES_REQUESTED = "changes_requested"
+    CANCELLED = "cancelled"
 
 
 class TelegramPendingState(BaseModel):

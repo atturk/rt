@@ -5,6 +5,7 @@ Telegram a seconda del canale scelto per la sessione. Nessuna conferma per singo
 unità di rewrite: una volta approvata l'outline, il resto della pipeline procede
 automaticamente (comportamento invariato).
 """
+import os
 import time
 from rt.core.idempotency import check_phase_status, PhaseStatus
 from rt.pipeline.outline import load_outline, run_outline_revision
@@ -72,8 +73,8 @@ def _warn_if_daemon_inactive(runtime_cfg) -> None:
 
 
 def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
-    from rt.telegram.config import load_telegram_config, TelegramConfigError
-    from rt.telegram import client as tg_client, pending as tg_pending, registry as tg_registry
+    from rt.telegram.config import load_telegram_config, TelegramConfigError, resolve_topic_id
+    from rt.telegram import client as tg_client, pending as tg_pending, registry as tg_registry, session as tg_session
     from rt.core.config import load_config
 
     try:
@@ -83,8 +84,20 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
         return _confirm_via_terminal(lesson_dir, force_mock)
 
     runtime_cfg = load_config().telegram
-    from rt.telegram.config import resolve_topic_id
     message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+
+    active = tg_session.get_active_session(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id)
+    if active is not None:
+        if active.get("kind") != "outline_confirmation" or os.path.abspath(active.get("lesson_dir", "")) != os.path.abspath(lesson_dir):
+            busy_msg = f"C'è già un'attività in corso in questo topic ({active.get('kind')}). Usa /quit per chiuderla prima."
+            print(f"⚠️  {busy_msg}")
+            try:
+                tg_client.send_message(tg_cfg, text=busy_msg, message_thread_id=message_thread_id)
+            except Exception:
+                pass
+            return
+
+    tg_session.start_session(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id, "outline_confirmation", lesson_dir)
     existing = tg_pending.load_pending(lesson_dir)
 
     if existing and existing.status == "changes_requested":
@@ -113,6 +126,7 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
             tg_client.send_message(tg_cfg, text=summary_text, reply_markup=keyboard, message_thread_id=message_thread_id)
         except tg_client.TelegramAPIError as e:
             print(f"⚠️  Invio a Telegram fallito ({e}). Passaggio a conferma da terminale.")
+            tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id)
             return _confirm_via_terminal(lesson_dir, force_mock)
         tg_pending.create_pending(lesson_dir, round_=next_round, short_id=short_id, outline_summary_text=summary_text)
         _warn_if_daemon_inactive(runtime_cfg)
@@ -126,6 +140,11 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
                 continue
             if state.status == "approved":
                 print("✔ Outline approvata da Telegram.")
+                tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id)
+                return
+            if state.status == "cancelled":
+                print("Conferma annullata da Telegram. Rilancia lo stesso comando per ricominciare.")
+                tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, message_thread_id)
                 return
             if state.status == "changes_requested":
                 print(f"✏️  Feedback ricevuto: {state.feedback_text}")
@@ -135,3 +154,4 @@ def _confirm_via_telegram(lesson_dir: str, force_mock: bool) -> None:
     except KeyboardInterrupt:
         print("\n⏹ Interrotto. Rilancia lo stesso comando sulla stessa cartella per riprendere l'attesa.")
         raise
+
