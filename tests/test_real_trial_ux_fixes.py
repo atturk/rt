@@ -128,6 +128,42 @@ def test_telegram_review_quit_callback(tmp_path):
     assert queue.current_index == 0
 
 
+def test_telegram_review_back_callback_dispatched(tmp_path):
+    """Regressione: il callback 'ib:<short_id>' (bottone Indietro) deve raggiungere
+    _handle_issue_callback tramite il dispatcher reale handle_callback(), non essere
+    silenziosamente ignorato (mancava da ISSUE_ACTIONS, quindi cadeva nel ramo 'else'
+    senza alcun effetto visibile, come riscontrato in uso reale)."""
+    lesson_dir = str(tmp_path / "lesson")
+    state_dir = str(tmp_path / "state")
+    _setup_test_lesson(lesson_dir)
+
+    tg_queue.create_queue(lesson_dir, ["asr_000001", "asr_000002"], {"asr_000001": "asr", "asr_000002": "asr"})
+    tg_queue.advance(lesson_dir)  # current_index = 1, così "Indietro" ha senso (non è già alla prima)
+    short_id = registry.register_pending(
+        lesson_dir, round_=0, kind="issue_review", state_dir=state_dir,
+        extra={"issue_id": "asr_000002", "issue_type": "asr"}
+    )
+
+    update = MagicMock()
+    query = MagicMock()
+    query.data = f"ib:{short_id}"
+    query.answer = AsyncMock()
+    query.edit_message_reply_markup = AsyncMock()
+    update.callback_query = query
+    update.effective_chat.id = 12345
+    update.effective_message.message_thread_id = None
+
+    context = MagicMock()
+    context.bot_data = {"state_dir": state_dir}
+
+    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next:
+        asyncio.run(handle_callback(update, context))
+        assert mock_send_next.called, "'ib:' deve raggiungere _handle_issue_callback tramite il dispatcher, non essere ignorato"
+
+    queue = tg_queue.load_queue(lesson_dir)
+    assert queue.current_index == 0
+
+
 def test_notify_issues_ready_zero_count(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     with patch("rt.telegram.client.send_message") as mock_send, \

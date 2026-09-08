@@ -18,7 +18,7 @@ from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
 from rt.telegram import registry, pending as tg_pending, conversation_state as convo, session as tg_session
 
-ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq"}
+ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
 
 
 def _heartbeat_path(state_dir: str) -> str:
