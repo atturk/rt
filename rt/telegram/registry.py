@@ -63,24 +63,30 @@ def _save_registry(state_dir: str, data: Dict[str, Any]) -> None:
     os.replace(tmp_path, path)
 
 
-def register_pending(lesson_dir: str, round_: int, kind: str, state_dir: str, message_thread_id: Optional[int] = None) -> str:
+def register_pending(lesson_dir: str, round_: int, kind: str, state_dir: str,
+                      message_thread_id: Optional[int] = None,
+                      extra: Optional[Dict[str, Any]] = None) -> str:
     short_id = hashlib.sha256(
         f"{os.path.abspath(lesson_dir)}|{round_}|{datetime.now().isoformat()}".encode("utf-8")
     ).hexdigest()[:10]
     _acquire_lock(state_dir)
     try:
         data = _load_registry(state_dir)
-        data["entries"][short_id] = {
+        entry = {
             "lesson_dir": os.path.abspath(lesson_dir),
             "round": round_,
             "kind": kind,
             "created_at": datetime.now().isoformat(),
             "message_thread_id": message_thread_id,
         }
+        if extra:
+            entry.update(extra)
+        data["entries"][short_id] = entry
         _save_registry(state_dir, data)
     finally:
         _release_lock(state_dir)
     return short_id
+
 
 
 def resolve_pending(short_id: str, state_dir: str) -> Optional[Dict[str, Any]]:

@@ -210,3 +210,57 @@ def test_single_unit_rewrite_preserves_global_fingerprint(fully_built_lesson):
     # Verifichiamo che la fase rewrite NON risulti falsamente STALE rispetto al suo input outline
     st_rew, r_rew = check_phase_status(lesson_dir, "rewrite")
     assert st_rew == PhaseStatus.VALID, f"Rewrite globale non deve diventare STALE per singola unità: {r_rew}"
+
+
+def test_build_valid_and_completed_without_optional_reviews(tmp_path):
+    """
+    Regressione (disaccoppiamento ASR/scienza dalla run di default): una lezione che
+    passa da prepare -> outline -> rewrite -> build SENZA MAI eseguire review_asr/
+    review_science (fasi ora opzionali) deve risultare build VALID (non STALE) e
+    compute_effective_workflow_state() deve riportare COMPLETED, coerente con
+    'fase_corrente: completato' scritto da run_build(). Prima del fix, due meccanismi
+    condivisi assumevano che review_asr/review_science venissero SEMPRE eseguite:
+    1. mark_downstream_stale() marcava review_science/build come STALE dopo ogni
+       rewrite anche se non erano mai state generate (nulla da invalidare davvero);
+    2. check_phase_status('build') trattava review_asr/review_science MISSING come
+       una dipendenza a monte non valida, quindi 'build' restava STALE per sempre
+       anche a build riuscita, rompendo la sua stessa idempotenza (mai SKIP al 2° giro).
+    """
+    lesson_dir = str(tmp_path / "lesson")
+    os.makedirs(lesson_dir, exist_ok=True)
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write(
+            "data: '2026-09-08'\nmateria: BIOCHIMICA\nargomenti: Lipidi\n"
+            "cartella: lesson\nfile_audio: test.m4a\n"
+            "fase_corrente: setup_completato\nstato: setup_completato\n"
+        )
+    with open(os.path.join(lesson_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
+        f.write(
+            "---\ndata: '2026-09-08'\nmateria: BIOCHIMICA\n---\n\n"
+            "*00:02*\nIntroduzione alla lezione di biochimica sui lipidi.\n\n"
+            "*00:20*\nI lipidi sono depositati nel tessuto adiposo.\n"
+        )
+
+    run_prepare(lesson_dir)
+    run_outline(lesson_dir, force_mock=True)
+    run_rewrite(lesson_dir, force_mock=True)
+    # Nessuna run_review_asr()/run_review_science(): simula il flusso di default senza --with-review.
+    build_res = run_build(lesson_dir)
+    assert build_res.get("skipped") is False
+
+    st_bld, reason_bld = check_phase_status(lesson_dir, "build")
+    assert st_bld == PhaseStatus.VALID, f"build deve essere VALID anche senza review generate: {reason_bld}"
+
+    info = read_info_yaml(os.path.join(lesson_dir, "info.yaml"))
+    assert info.get("fase_corrente") == "completato"
+
+    effective = compute_effective_workflow_state(lesson_dir)
+    assert effective == WorkflowState.COMPLETED, (
+        f"Stato effettivo ({effective}) deve coincidere con 'completato', "
+        "non deve retrocedere solo perché review_asr/science non sono mai state generate."
+    )
+
+    # Idempotenza reale: una seconda esecuzione di build deve fare SKIP (non deve
+    # ricostruire ogni volta i Markdown perché build resta erroneamente STALE).
+    build_res2 = run_build(lesson_dir)
+    assert build_res2.get("skipped") is True

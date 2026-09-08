@@ -30,10 +30,15 @@ def _save(state_dir: str, data: Dict[str, Any]) -> None:
     os.replace(tmp_path, path)
 
 
-def set_awaiting_feedback(state_dir: str, chat_id: int, short_id: str, lesson_dir: str) -> None:
+def set_awaiting_feedback(state_dir: str, chat_id: int, short_id: str, lesson_dir: str,
+                           kind: str = "outline_feedback", extra: Optional[Dict[str, Any]] = None) -> None:
     data = _load(state_dir)
-    data[str(chat_id)] = {"short_id": short_id, "lesson_dir": lesson_dir, "since": datetime.now().isoformat()}
+    entry = {"short_id": short_id, "lesson_dir": lesson_dir, "kind": kind, "since": datetime.now().isoformat()}
+    if extra:
+        entry["extra"] = extra
+    data[str(chat_id)] = entry
     _save(state_dir, data)
+
 
 
 def get_awaiting_feedback(state_dir: str, chat_id: int) -> Optional[Dict[str, Any]]:

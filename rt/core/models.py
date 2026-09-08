@@ -198,7 +198,15 @@ class TelegramPendingState(BaseModel):
     responded_via: Optional[str] = Field(None, description="'telegram' | 'terminal'")
 
 
+class IssueReviewQueueState(BaseModel):
+    schema_version: str = "1.0"
+    issue_ids: List[str]
+    issue_types: Dict[str, str]  # issue_id -> "asr" | "science"
+    current_index: int = 0
+
+
 # ---------------------------------------------------------
+
 # MANIFEST
 # ---------------------------------------------------------
 

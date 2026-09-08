@@ -173,6 +173,9 @@ def cmd_review_asr(args):
     res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-asr", res)
     print(json.dumps(res, ensure_ascii=False, indent=2))
+    if not res.get("skipped"):
+        from rt.telegram.notify import notify_issues_ready
+        notify_issues_ready(args.lesson_dir, "asr", res.get("total_issues", 0))
 
 
 def cmd_review_science(args):
@@ -201,43 +204,14 @@ def cmd_review_science(args):
     res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-science", res)
     print(json.dumps(res, ensure_ascii=False, indent=2))
+    if not res.get("skipped"):
+        from rt.telegram.notify import notify_issues_ready
+        notify_issues_ready(args.lesson_dir, "science", res.get("total_science_issues", 0))
 
 
-def extract_context_sentence(content: str, target: str, fallback_target: str = "") -> str:
-    """
-    Estrae la singola frase dal testo del draft in cui compare il target (o il fallback),
-    evidenziando il termine tra parentesi quadre ([termine]), senza puntini di sospensione.
-    """
-    if not content:
-        return ""
-    paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
-    targets = [t.strip() for t in [target, fallback_target] if t and t.strip()]
-    
-    # 1. Ricerca frase esatta con match per target o fallback
-    for term in targets:
-        term_esc = re.escape(term)
-        pattern = re.compile(rf"({term_esc})", re.IGNORECASE)
-        for p in paragraphs:
-            sentences = re.split(r"(?<=[.!?])\s+", p)
-            for s in sentences:
-                s_clean = re.sub(r"^[#*\-\d\.\s]+", "", s).strip()
-                if pattern.search(s_clean):
-                    return pattern.sub(r"[\1]", s_clean, count=1)
-                    
-    # 2. Se non trovato come stringa intera, cerca per parole significative (>= 4 caratteri)
-    words = [w for t in targets for w in re.findall(r"\b[A-Za-z0-9_-]{4,}\b", t)]
-    words.sort(key=len, reverse=True)
-    for w in words:
-        w_esc = re.escape(w)
-        pattern = re.compile(rf"(\b{w_esc}\b)", re.IGNORECASE)
-        for p in paragraphs:
-            sentences = re.split(r"(?<=[.!?])\s+", p)
-            for s in sentences:
-                s_clean = re.sub(r"^[#*\-\d\.\s]+", "", s).strip()
-                if pattern.search(s_clean):
-                    return pattern.sub(r"[\1]", s_clean, count=1)
-                    
-    return ""
+
+from rt.pipeline.ledger import extract_context_sentence
+
 
 
 def should_auto_accept_asr(
@@ -333,12 +307,17 @@ def normalize_review_cli_args(argv: List[str]) -> List[str]:
     return new_argv
 
 
-def cmd_review(args):
-    """Interfaccia Human-in-the-Loop interattiva con contesto draft per casi dubbi."""
+def cmd_review(args) -> bool:
+    """Interfaccia Human-in-the-Loop per casi dubbi: terminale interattivo o coda Telegram.
+
+    Ritorna True se non resta nulla in sospeso prima di un eventuale build (nessuna
+    issue pendente, oppure revisione terminale conclusa in questa stessa chiamata),
+    False se la revisione è stata delegata in modo asincrono (Telegram, o richiesta
+    ma impossibile da svolgere ora perché non interattivo) — in tal caso il chiamante
+    NON deve procedere automaticamente al build."""
+    from rt.pipeline.ledger import get_pending_issues
     lesson_dir = args.lesson_dir
-    ledger = load_ledger(lesson_dir)
-    decided_ids = {d.issue_id for d in ledger.decisions}
-    
+
     seg_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in seg_data.segments}
 
@@ -354,15 +333,7 @@ def cmd_review(args):
             for sid in u.source_segment_ids:
                 seg_to_unit[sid] = u
     
-    asr_issues = [
-        iss for iss in load_asr_issues(lesson_dir)
-        if iss.level in (ASRLevel.YELLOW, ASRLevel.RED) and iss.id not in decided_ids
-    ]
-    
-    sci_issues = [
-        iss for iss in load_science_issues(lesson_dir)
-        if iss.id not in decided_ids
-    ]
+    asr_issues, sci_issues = get_pending_issues(lesson_dir)
 
     auto_accept = getattr(args, "auto_accept", None)
     auto_accept_asr = getattr(args, "auto_accept_asr", None)
@@ -405,10 +376,26 @@ def cmd_review(args):
             except Exception:
                 pass
         print("\n✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).")
-        return
-        
+        return True
+
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+
+    if channel == "telegram":
+        from rt.pipeline.issue_review import start_review_via_telegram
+        start_review_via_telegram(lesson_dir, asr_to_review, sci_to_review)
+        return False
+
+    if not sys.stdin.isatty():
+        print(f"\n⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(asr_to_review)} issue ASR e {len(sci_to_review)} issue scientifiche che richiedono revisione umana.")
+        print(f"Esegui './bin/rt review \"{lesson_dir}\"' per completare la revisione (da un terminale interattivo, o con --channel telegram).")
+        return False
+
     print(f"\n🔍 REVISIONE INTERATTIVA ({total_pending} casi pendenti)")
     print("=" * 60)
+
     
     interrupted = False
 
@@ -530,6 +517,8 @@ def cmd_review(args):
             except Exception:
                 pass
         print("\n✨ Revisione completata. Esegui 'rt build <cartella>' per finalizzare.")
+
+    return True
 
 
 def cmd_build(args):
@@ -827,6 +816,7 @@ def cmd_run(args):
     first_input = raw_inputs[0] if raw_inputs else ""
     force = getattr(args, "force", False)
     mock_mode = getattr(args, "mock", False)
+    with_review = getattr(args, "with_review", False)
 
     if not mock_mode:
         if not _has_real_config_source():
@@ -869,7 +859,10 @@ def cmd_run(args):
                 print(f"ℹ️  I prezzi configurati non sono stati verificati con 'rt prices-check' da oltre {_staleness_days} giorni "
                       f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
 
-        print("\n[1/9] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...")
+        step_offset = 2
+        total_steps = 9 if with_review else 6
+
+        print(f"\n[1/{total_steps}] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...")
         try:
             setup_res = run_setup(
                 audio=raw_inputs,
@@ -890,18 +883,15 @@ def cmd_run(args):
             sys.exit(1)
 
         if mock_mode:
-            print("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
+            print(f"\n[2/{total_steps}] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
             print("⏩ [MOCK ASR] Trascrizione deterministica generata offline a costo zero.")
         elif getattr(args, "skip_transcribe", False):
-            print("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
+            print(f"\n[2/{total_steps}] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
             print("⚠️  [SKIP] Trascrizione saltata (--skip-transcribe). Stato impostato su METADATA_ONLY.")
             print("La pipeline si arresta qui. Esegui la trascrizione per procedere con 'rt prepare'.")
             return
         else:
             print(f"✔ Trascrizione completata: {setup_res.get('trascritto_json')}")
-
-        step_offset = 2
-        total_steps = 9
     else:
         lesson_dir = first_input
         print("\n" + "=" * 60)
@@ -919,7 +909,7 @@ def cmd_run(args):
                       f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
 
         step_offset = 0
-        total_steps = 7
+        total_steps = 7 if with_review else 4
 
     print(f"\n[{step_offset + 1}/{total_steps}] PREPARE (Parsing deterministico segmenti)...")
     prep_res = run_prepare(lesson_dir, force=force)
@@ -948,45 +938,34 @@ def cmd_run(args):
     else:
         print(f"✔ Rielaborate {rew_res['processed_units']}/{rew_res['total_units']} unità. Provenance verificata.")
 
-    print(f"\n[{step_offset + 4}/{total_steps}] ASR REVIEW (Ambiguità fonetiche e Confidence Gating)...")
-    asr_res = run_review_asr(lesson_dir, force=force, force_mock=mock_mode)
-    if asr_res.get("skipped"):
-        print(f"⏩ [SKIP] Review ASR già completata ({asr_res['total_issues']} issue note, 0 chiamate LLM)")
-    else:
-        print(f"✔ Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})")
-
-    print(f"\n[{step_offset + 5}/{total_steps}] SCIENCE REVIEW (Critic indipendente su docente e allucinazioni)...")
-    sci_res = run_review_science(lesson_dir, force=force, force_mock=mock_mode)
-    if sci_res.get("skipped"):
-        print(f"⏩ [SKIP] Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)")
-    else:
-        print(f"✔ Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})")
-
-    print(f"\n[{step_offset + 6}/{total_steps}] HUMAN REVIEW (Valutazione anomalie YELLOW/RED e Science)...")
-    ledger = load_ledger(lesson_dir)
-    decided_ids = {d.issue_id for d in ledger.decisions}
-    asr_issues = load_asr_issues(lesson_dir)
-    sci_issues = load_science_issues(lesson_dir)
-    pending_asr = [iss for iss in asr_issues if iss.level in (ASRLevel.YELLOW, ASRLevel.RED) and iss.id not in decided_ids]
-    pending_sci = [iss for iss in sci_issues if iss.id not in decided_ids]
-
-    if pending_asr or pending_sci:
-        auto_accept = getattr(args, "auto_accept", False)
-        if auto_accept:
-            args.lesson_dir = lesson_dir
-            cmd_review(args)
-        elif sys.stdin.isatty():
-            print(f"Richiesta revisione per {len(pending_asr)} casi ASR e {len(pending_sci)} casi scientifici.")
-            args.lesson_dir = lesson_dir
-            cmd_review(args)
+    if with_review:
+        print(f"\n[{step_offset + 4}/{total_steps}] ASR REVIEW (Ambiguità fonetiche e Confidence Gating)...")
+        asr_res = run_review_asr(lesson_dir, force=force, force_mock=mock_mode)
+        if asr_res.get("skipped"):
+            print(f"⏩ [SKIP] Review ASR già completata ({asr_res['total_issues']} issue note, 0 chiamate LLM)")
         else:
-            print(f"\n⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(pending_asr)} issue ASR e {len(pending_sci)} issue scientifiche che richiedono revisione umana.")
-            print(f"Esegui './bin/rt review \"{lesson_dir}\"' per completare la revisione, oppure riesegui con '--auto-accept'.")
-            return
-    else:
-        print("✔ Nessuna revisione pendente richiesta (tutti i casi risolti o auto-approvati).")
+            print(f"✔ Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})")
 
-    print(f"\n[{step_offset + 7}/{total_steps}] BUILD (Finalizzazione deterministica Markdown)...")
+        print(f"\n[{step_offset + 5}/{total_steps}] SCIENCE REVIEW (Critic indipendente su docente e allucinazioni)...")
+        sci_res = run_review_science(lesson_dir, force=force, force_mock=mock_mode)
+        if sci_res.get("skipped"):
+            print(f"⏩ [SKIP] Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)")
+        else:
+            print(f"✔ Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})")
+
+        print(f"\n[{step_offset + 6}/{total_steps}] HUMAN REVIEW (Valutazione anomalie YELLOW/RED e Science)...")
+        args.lesson_dir = lesson_dir
+        review_ready_for_build = cmd_review(args)
+        if not review_ready_for_build:
+            print(f"\n⏸  In attesa che la revisione venga completata (Telegram, oppure esegui 'rt review \"{lesson_dir}\"' da terminale). "
+                  f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
+            return
+        build_step_num = step_offset + 7
+    else:
+        build_step_num = step_offset + 4
+
+    print(f"\n[{build_step_num}/{total_steps}] BUILD (Finalizzazione deterministica Markdown)...")
+
     bld_res = run_build(lesson_dir, force=force, rename_folder=args.rename)
     if bld_res.get("skipped"):
         print("⏩ [SKIP] Documenti finali già generati e aggiornati.")
@@ -1099,6 +1078,12 @@ def main():
         default=None,
         help="Accetta tutte le review scientifiche e lascia le review ASR. Con 'red' approva tutto tranne science e red."
     )
+    p_rev.add_argument(
+        "--channel",
+        choices=["terminal", "telegram"],
+        default=None,
+        help="Canale di review per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
+    )
     p_rev.set_defaults(func=cmd_review)
 
     # build
@@ -1147,11 +1132,14 @@ def main():
     p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
     p_run.add_argument("--force", action="store_true", help="Forza l'intera pipeline ignorando i risultati precedenti")
     p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
+    p_run.add_argument("--with-review", action="store_true", dest="with_review",
+                        help="Include anche generazione issue ASR/scientifiche e revisione umana nella run (comportamento monolitico precedente). Di default sono passi separati (rt review-asr / rt review-science / rt review).")
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action="store_true", help="Rinomina la cartella con il titolo formale")
     p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
                         help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_run.set_defaults(func=cmd_run)
+
 
     # telegram-daemon
     p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")

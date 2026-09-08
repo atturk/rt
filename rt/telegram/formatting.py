@@ -4,6 +4,7 @@ Rendering testuale dell'outline per la conferma (Telegram HTML e terminale
 condividono la stessa funzione di rendering in testo semplice).
 """
 import html
+from typing import Optional
 from rt.core.models import Outline
 
 MAX_MESSAGE_CHARS = 3800  # margine di sicurezza sotto il limite di 4096 di Telegram
@@ -35,3 +36,44 @@ def build_outline_decision_keyboard(short_id: str) -> dict:
             {"text": "✏️ Richiedi modifiche", "callback_data": f"rtedit:{short_id}"},
         ]]
     }
+
+
+def render_asr_issue_text(issue, unit_info: Optional[str], timecode: str, listen_range: str, sentence: str) -> str:
+    lines = [f"🎙 <b>Ambiguità ASR ({escape_html(issue.level.value)})</b>"]
+    if unit_info:
+        lines.append(f"📚 Unità: {escape_html(unit_info)}")
+    lines.append(f"⏱ Timecode: {escape_html(timecode)} (ascolto: {escape_html(listen_range)})")
+    lines.append(f"🎙 ASR originale: <i>{escape_html(issue.source_text)}</i>")
+    lines.append(f"💡 Proposta AI: <i>{escape_html(issue.candidate)}</i> (confidenza {issue.confidence:.2f})")
+    lines.append(f"📝 Motivazione: {escape_html(issue.reason)}")
+    if sentence:
+        lines.append(f"📖 Contesto: <i>{escape_html(sentence)}</i>")
+    return "\n".join(lines)
+
+
+def render_science_issue_text(issue, unit_info: Optional[str], timecode: str) -> str:
+    lines = [f"🔬 <b>Science Critic ({escape_html(issue.type.value)})</b>"]
+    if unit_info:
+        lines.append(f"📚 Unità: {escape_html(unit_info)}")
+    lines.append(f"⏱ Timecode: {escape_html(timecode)}")
+    lines.append(f"⚠️ Affermazione: <i>{escape_html(issue.claim)}</i>")
+    lines.append(f"🔬 Critica: {escape_html(issue.reason)}")
+    if issue.suggested_fix:
+        lines.append(f"💡 Correzione: <i>{escape_html(issue.suggested_fix)}</i>")
+    if issue.diplomatic_question:
+        lines.append(f"🤝 Domanda docente: <i>{escape_html(issue.diplomatic_question)}</i>")
+    return "\n".join(lines)
+
+
+def build_issue_keyboard(short_id: str, issue_type: str) -> dict:
+    if issue_type == "asr":
+        row1 = [{"text": "✅ Accetta", "callback_data": f"ia:{short_id}"}, {"text": "❌ Rifiuta", "callback_data": f"ir:{short_id}"}]
+    else:
+        row1 = [{"text": "✅ Applica", "callback_data": f"ia:{short_id}"}, {"text": "🚫 Mantieni", "callback_data": f"ir:{short_id}"}]
+    row2 = [{"text": "✏️ Modifica", "callback_data": f"ie:{short_id}"}, {"text": "⏭️ Salta", "callback_data": f"is:{short_id}"}]
+    return {"inline_keyboard": [row1, row2]}
+
+
+def build_start_review_keyboard(short_id: str) -> dict:
+    return {"inline_keyboard": [[{"text": "▶️ Inizia review", "callback_data": f"ivr:{short_id}"}]]}
+

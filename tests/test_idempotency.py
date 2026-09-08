@@ -433,9 +433,13 @@ def test_partial_rewrite_single_unit(synthetic_lesson):
     # L'unità 1.2 è rimasta TOTALMENTE INVARIATA
     assert draft_after.units[1].content == u2_init_content
 
-    # Verifichiamo che downstream (review_science e build) siano STALE a causa della modifica a 1.1
-    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.STALE
-    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.STALE
+    # review_science e build non sono mai stati eseguiti in questo test (nessuna chiamata a
+    # run_review_science()/run_build() sopra): non c'è nulla da invalidare, quindi restano
+    # MISSING (mai generati), non STALE — semantica corretta dal disaccoppiamento di
+    # review_asr/review_science dalla run di default (mark_downstream_stale() non marca più
+    # STALE una fase che non ha mai avuto un record nel manifest, vedi rt/core/idempotency.py).
+    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.MISSING
+    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.MISSING
 
 
 # ==============================================================================

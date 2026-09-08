@@ -448,6 +448,8 @@ def test_cmd_run_cost_summary(capsys, monkeypatch, tmp_path):
         auto_accept=True
     )
 
+
+
     with patch("rt.cli.run_prepare", return_value={"skipped": True, "segment_count": 10, "duration_seconds": 60.0}), \
          patch("rt.cli.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 2, "coverage_percentage": 100}}), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
