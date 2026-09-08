@@ -252,8 +252,6 @@ async def _handle_start_review_callback(update: Update, context: ContextTypes.DE
     except Exception:
         pass
 
-    tg_session.start_session(state_dir, update.effective_chat.id, update.effective_message.message_thread_id, "issue_review", lesson_dir)
-
     from rt.pipeline.ledger import get_pending_issues
     from rt.pipeline.issue_review import start_review_via_telegram
     asr_to_review, sci_to_review = get_pending_issues(lesson_dir)

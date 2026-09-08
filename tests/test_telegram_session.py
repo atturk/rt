@@ -192,3 +192,110 @@ def test_handle_status(tmp_path):
     reply2 = update.effective_message.reply_text.call_args[0][0]
     assert "outline_confirmation" in reply2
     assert "my_awesome_lesson" in reply2
+
+
+def _setup_review_lesson(lesson_dir: str):
+    from rt.core.models import SegmentsData, Segment
+    os.makedirs(lesson_dir, exist_ok=True)
+    seg_data = SegmentsData(
+        schema_version="1.0",
+        audio_file="test.wav",
+        total_duration=120.0,
+        segment_count=1,
+        segments=[
+            Segment(id="seg_000001", index=1, start_seconds=0.0, end_seconds=10.0, start_formatted="00:00", end_formatted="00:10", text_raw="err"),
+        ],
+    )
+    with open(os.path.join(lesson_dir, "segments.json"), "w", encoding="utf-8") as f:
+        json.dump(seg_data.model_dump(mode="json"), f)
+
+
+def test_start_review_via_telegram_registers_session(tmp_path, monkeypatch):
+    lesson_dir = str(tmp_path / "lesson_direct")
+    state_dir = str(tmp_path / "state")
+    _setup_review_lesson(lesson_dir)
+
+    from rt.core.models import ASRIssue, ASRLevel
+    from rt.pipeline.issue_review import start_review_via_telegram
+    from rt.telegram.config import TelegramConfig
+
+    asr_issues = [
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err", candidate="corr", confidence=0.8, level=ASRLevel.YELLOW, reason="reason")
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+
+    monkeypatch.setattr("rt.telegram.client.send_message", lambda *args, **kwargs: {"ok": True})
+    monkeypatch.setattr("rt.telegram.config.load_telegram_config", lambda: TelegramConfig(bot_token="tok", chat_id=12345))
+
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
+
+        # Verify no session before
+        assert tg_session.get_active_session(state_dir, 12345, None) is None
+
+        # Call start_review_via_telegram directly (as done by review-asr/review-science/run --with-review)
+        start_review_via_telegram(lesson_dir, asr_issues, [])
+
+        # Verify session is registered!
+        sess = tg_session.get_active_session(state_dir, 12345, None)
+        assert sess is not None
+        assert sess["kind"] == "issue_review"
+        assert sess["lesson_dir"] == os.path.abspath(lesson_dir)
+
+        # /status sees it
+        update = _make_mock_message_update("/status", chat_id=12345)
+        context = _make_mock_context(state_dir)
+        asyncio.run(handle_status(update, context))
+        reply = update.effective_message.reply_text.call_args[0][0]
+        assert "issue_review" in reply
+        assert "lesson_direct" in reply
+
+
+def test_start_review_callback_integration_registers_session(tmp_path, monkeypatch):
+    from rt.telegram.daemon import handle_callback
+    from rt.telegram.config import TelegramConfig
+    from rt.core.models import ASRIssue, ASRLevel
+
+    lesson_dir = str(tmp_path / "lesson_cb")
+    state_dir = str(tmp_path / "state")
+    _setup_review_lesson(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err", candidate="corr", confidence=0.8, level=ASRLevel.YELLOW, reason="reason")
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+
+    short_id = registry.register_pending(
+        lesson_dir, round_=1, kind="start_issue_review", state_dir=state_dir
+    )
+
+    update = MagicMock()
+    update.effective_chat.id = 12345
+    update.effective_message.message_thread_id = None
+    update.callback_query.data = f"ivr:{short_id}"
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_reply_markup = AsyncMock()
+
+    context = _make_mock_context(state_dir)
+
+    monkeypatch.setattr("rt.telegram.client.send_message", lambda *args, **kwargs: {"ok": True})
+    monkeypatch.setattr("rt.telegram.config.load_telegram_config", lambda: TelegramConfig(bot_token="tok", chat_id=12345))
+
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
+
+        asyncio.run(handle_callback(update, context))
+
+        sess = tg_session.get_active_session(state_dir, 12345, None)
+        assert sess is not None
+        assert sess["kind"] == "issue_review"
+        assert sess["lesson_dir"] == os.path.abspath(lesson_dir)
+
