@@ -456,9 +456,10 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
         cmd_review_asr(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
         cmd_review_science(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
         cmd_run(argparse.Namespace(
-            input=str(tmp_path), force=False, mock=True, auto_accept=True, rename=False,
+            input=str(tmp_path), force=False, mock=True, with_review=True, auto_accept=True, rename=False,
             date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False
         ))
+
 
 
 def test_fallback_to_project_root_when_not_in_cwd(tmp_path, monkeypatch):

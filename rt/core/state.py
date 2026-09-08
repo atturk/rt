@@ -30,14 +30,16 @@ VALID_TRANSITIONS = {
     WorkflowState.SETUP_COMPLETED: {WorkflowState.PREPARED, WorkflowState.FAILED},
     WorkflowState.PREPARED: {WorkflowState.OUTLINE_VALIDATED, WorkflowState.PREPARED, WorkflowState.FAILED},
     WorkflowState.OUTLINE_VALIDATED: {WorkflowState.DRAFT_VALIDATED, WorkflowState.OUTLINE_VALIDATED, WorkflowState.FAILED},
-    WorkflowState.DRAFT_VALIDATED: {WorkflowState.ASR_REVIEW_READY, WorkflowState.FAILED},
-    WorkflowState.ASR_REVIEW_READY: {WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
-    WorkflowState.SCIENCE_REVIEW_READY: {WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
+    WorkflowState.DRAFT_VALIDATED: {WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
+    WorkflowState.ASR_REVIEW_READY: {WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
+    WorkflowState.SCIENCE_REVIEW_READY: {WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
     WorkflowState.HUMAN_REVIEW_REQUIRED: {WorkflowState.READY_TO_BUILD, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.COMPLETED, WorkflowState.FAILED},
     WorkflowState.READY_TO_BUILD: {WorkflowState.COMPLETED, WorkflowState.FAILED},
-    WorkflowState.COMPLETED: {WorkflowState.COMPLETED, WorkflowState.PREPARED, WorkflowState.READY_TO_BUILD}, # Ribilanciamento / re-build consentito
+    WorkflowState.COMPLETED: {WorkflowState.COMPLETED, WorkflowState.PREPARED, WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.READY_TO_BUILD}, # Ribilanciamento / review incrementale / re-build consentito
+
     WorkflowState.FAILED: set(WorkflowState), # Da fallito è possibile ripartire da qualsiasi stato valido dopo fix
 }
+
 
 
 def read_info_yaml(yaml_path: str) -> Dict[str, str]:
@@ -163,8 +165,12 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     Invariante fondamentale:
     WorkflowState.COMPLETED è vero SOLO se:
     1. build è VALID
-    2. tutte le dipendenze (prepare, outline, rewrite, review_asr, review_science) sono VALID
-    3. tutte le review ASR (YELLOW/RED) e Science sono state decise (0 pendenti)
+    2. prepare, outline e rewrite sono VALID; review_asr e review_science sono VALID
+       oppure semplicemente MAI generate (MISSING: sono opzionali, disaccoppiate dalla
+       run di default) — solo se STALE/INVALID (generate ma superate da modifiche a
+       monte) fanno retrocedere lo stato
+    3. tutte le review ASR (YELLOW/RED) e Science EFFETTIVAMENTE generate sono state
+       decise (0 pendenti; se non generate affatto, non c'è nulla da decidere)
     
     Se una fase a monte è STALE o INVALID, lo stato retrocede coerentemente
     alla prima fase che richiede attenzione.
@@ -201,14 +207,16 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     if st_rew != PhaseStatus.VALID:
         return WorkflowState.OUTLINE_VALIDATED
 
-    # 4. Review ASR
+    # 4. Review ASR — opzionale dal disaccoppiamento dalla run di default: MISSING (mai
+    # generata, per scelta) non blocca il completamento; solo STALE/INVALID (era stata
+    # generata ma una modifica a monte l'ha resa superata) retrocede davvero lo stato.
     st_asr, _ = check_phase_status(lesson_dir, "review_asr")
-    if st_asr != PhaseStatus.VALID:
+    if st_asr not in (PhaseStatus.VALID, PhaseStatus.MISSING):
         return WorkflowState.DRAFT_VALIDATED
 
-    # 5. Review Science
+    # 5. Review Science — stessa logica del punto 4.
     st_sci, _ = check_phase_status(lesson_dir, "review_science")
-    if st_sci != PhaseStatus.VALID:
+    if st_sci not in (PhaseStatus.VALID, PhaseStatus.MISSING):
         return WorkflowState.ASR_REVIEW_READY
 
     # 6. Verifica Decisioni Umane (ASR YELLOW/RED e Science)

@@ -211,11 +211,19 @@ def check_phase_status(
         _visited = set()
     _visited.add(phase_name)
 
+    # review_asr/review_science sono fasi opzionali (disaccoppiate dalla run di default):
+    # se non sono mai state eseguite (MISSING), questo NON deve invalidare i discendenti
+    # (es. build) — solo se erano state generate e sono poi diventate STALE/INVALID per
+    # una modifica a monte deve continuare a propagarsi normalmente.
+    OPTIONAL_UPSTREAM_DEPS = {"review_asr", "review_science"}
+
     upstream_deps = UPSTREAM_DEPENDENCIES.get(phase_name, [])
     for dep in upstream_deps:
         if dep in _visited:
             continue
         dep_status, dep_reason = check_phase_status(lesson_dir, dep, _visited=set(_visited))
+        if dep_status == PhaseStatus.MISSING and dep in OPTIONAL_UPSTREAM_DEPS:
+            continue
         if dep_status != PhaseStatus.VALID:
             return PhaseStatus.STALE, f"Dipendenza a monte '{dep}' non valida ({dep_status.value}: {dep_reason})"
 
@@ -605,6 +613,14 @@ def mark_downstream_stale(
     invalidated: List[str] = []
     for ph in affected_phases:
         rec = phase_records.get(ph, {})
+        if not rec:
+            # Mai eseguita: non c'è nulla da invalidare. Marcarla STALE comunque la
+            # farebbe sembrare "generata ma superata" per sempre a chi legge lo stato
+            # (es. compute_effective_workflow_state), anche se in realtà non è mai
+            # stata generata affatto — rilevante ora che review_asr/review_science
+            # sono fasi opzionali che possono non essere mai eseguite. check_phase_status
+            # la valuterà comunque correttamente come MISSING finché non esiste il file.
+            continue
         rec["status"] = PhaseStatus.STALE.value
         rec["stale_reason"] = reason_text
         phase_records[ph] = rec

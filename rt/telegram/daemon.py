@@ -5,10 +5,10 @@ messaggi di feedback. Risolve short_id -> lesson_dir tramite rt.telegram.registr
 e scrive le risposte in telegram_pending.json tramite rt.telegram.pending.
 """
 import os
-import re
 import sys
 import json
 import time
+import asyncio
 from datetime import datetime
 
 from telegram import Update
@@ -18,7 +18,7 @@ from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
 from rt.telegram import registry, pending as tg_pending, conversation_state as convo
 
-CALLBACK_PATTERN = re.compile(r"^rt(appr|edit):(.+)$")
+ISSUE_ACTIONS = {"ia", "ir", "ie", "is"}
 
 
 def _heartbeat_path(state_dir: str) -> str:
@@ -36,12 +36,25 @@ async def _write_heartbeat(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    state_dir = context.bot_data["state_dir"]
-    m = CALLBACK_PATTERN.match(query.data or "")
-    if not m:
+    data = query.data or ""
+    if ":" not in data:
         await query.answer()
         return
-    action, short_id = m.group(1), m.group(2)
+    prefix, short_id = data.split(":", 1)
+    if prefix in ("rtappr", "rtedit"):
+        await _handle_outline_callback(update, context, prefix, short_id)
+    elif prefix in ISSUE_ACTIONS:
+        await _handle_issue_callback(update, context, prefix, short_id)
+    elif prefix == "ivr":
+        await _handle_start_review_callback(update, context, short_id)
+    else:
+        await query.answer()
+
+
+async def _handle_outline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, prefix: str, short_id: str) -> None:
+    query = update.callback_query
+    state_dir = context.bot_data["state_dir"]
+    action = prefix[2:]
 
     entry = registry.resolve_pending(short_id, state_dir)
     if entry is None:
@@ -71,14 +84,99 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
 
+async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
+    state_dir = context.bot_data["state_dir"]
+    entry = registry.resolve_pending(short_id, state_dir)
+    if entry is None or entry.get("kind") != "issue_review":
+        await update.callback_query.answer("Richiesta scaduta o non valida.", show_alert=True)
+        return
+    lesson_dir = entry["lesson_dir"]
+    issue_id = entry["issue_id"]
+    issue_type = entry["issue_type"]
+
+    if action == "ie":
+        convo.set_awaiting_feedback(
+            state_dir, chat_id=update.effective_chat.id, short_id=short_id, lesson_dir=lesson_dir,
+            kind="issue_edit", extra={"issue_id": issue_id, "issue_type": issue_type}
+        )
+        await update.callback_query.answer()
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text="Scrivi il testo corretto.",
+            message_thread_id=update.effective_message.message_thread_id,
+        )
+        return
+
+    if action == "is":
+        await update.callback_query.answer("Saltata.")
+    else:
+        from rt.pipeline.ledger import (
+            record_decision, find_asr_issue_by_id, find_science_issue_by_id,
+            resolve_asr_accept_text, resolve_asr_reject_text,
+            resolve_science_accept_text, resolve_science_reject_text,
+        )
+        if issue_type == "asr":
+            issue = find_asr_issue_by_id(lesson_dir, issue_id)
+            resolved = resolve_asr_accept_text(issue) if action == "ia" else resolve_asr_reject_text(issue)
+        else:
+            issue = find_science_issue_by_id(lesson_dir, issue_id)
+            resolved = resolve_science_accept_text(issue) if action == "ia" else resolve_science_reject_text(issue)
+        record_decision(lesson_dir, issue_id, "accepted" if action == "ia" else "rejected", resolved_text=resolved)
+        await update.callback_query.answer("✔ Registrato." if action == "ia" else "Registrato (mantenuto originale).")
+
+    try:
+        await update.callback_query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    from rt.telegram import issue_queue as tg_queue
+    from rt.pipeline.issue_review import send_current_issue
+    tg_queue.advance(lesson_dir)
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, send_current_issue, lesson_dir)
+
+
+async def _handle_start_review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, short_id: str) -> None:
+    state_dir = context.bot_data["state_dir"]
+    entry = registry.resolve_pending(short_id, state_dir)
+    if entry is None:
+        await update.callback_query.answer("Richiesta scaduta.", show_alert=True)
+        return
+    lesson_dir = entry["lesson_dir"]
+    await update.callback_query.answer("Avvio la review...")
+    try:
+        await update.callback_query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    from rt.pipeline.ledger import get_pending_issues
+    from rt.pipeline.issue_review import start_review_via_telegram
+    asr_to_review, sci_to_review = get_pending_issues(lesson_dir)
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, start_review_via_telegram, lesson_dir, asr_to_review, sci_to_review)
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state_dir = context.bot_data["state_dir"]
     chat_id = update.effective_chat.id
     awaiting = convo.get_awaiting_feedback(state_dir, chat_id)
     if awaiting is None:
-        return  # nessuna richiesta di feedback in sospeso per questa chat, ignora
-
+        return
+    kind = awaiting.get("kind", "outline_feedback")
     lesson_dir = awaiting["lesson_dir"]
+
+    if kind == "issue_edit":
+        issue_id = awaiting["extra"]["issue_id"]
+        from rt.pipeline.ledger import record_decision
+        record_decision(lesson_dir, issue_id, "edited", resolved_text=update.message.text)
+        convo.clear_awaiting_feedback(state_dir, chat_id)
+        await update.message.reply_text("✏️ Modifica registrata.", message_thread_id=update.effective_message.message_thread_id)
+        from rt.telegram import issue_queue as tg_queue
+        from rt.pipeline.issue_review import send_current_issue
+        tg_queue.advance(lesson_dir)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, send_current_issue, lesson_dir)
+        return
+
+    # kind == "outline_feedback": feedback per rigenerazione outline
     short_id = awaiting["short_id"]
     state = tg_pending.load_pending(lesson_dir)
     if state is None or state.short_id != short_id or state.status != "pending":
@@ -95,6 +193,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "Feedback ricevuto, l'outline verrà rigenerata a breve.",
         message_thread_id=update.effective_message.message_thread_id,
     )
+
 
 
 def run_daemon(state_dir: str = None) -> None:

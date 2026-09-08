@@ -212,3 +212,87 @@ def apply_decisions_to_draft(
         updated_units.append(unit_copy)
         
     return Draft(schema_version=draft.schema_version, lesson_id=draft.lesson_id, units=updated_units)
+
+
+def extract_context_sentence(content: str, target: str, fallback_target: str = "") -> str:
+    """
+    Estrae la singola frase dal testo del draft in cui compare il target (o il fallback),
+    evidenziando il termine tra parentesi quadre ([termine]), senza puntini di sospensione.
+    """
+    if not content:
+        return ""
+    paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
+    targets = [t.strip() for t in [target, fallback_target] if t and t.strip()]
+
+    # 1. Ricerca frase esatta con match per target o fallback
+    for term in targets:
+        term_esc = re.escape(term)
+        pattern = re.compile(rf"({term_esc})", re.IGNORECASE)
+        for p in paragraphs:
+            sentences = re.split(r"(?<=[.!?])\s+", p)
+            for s in sentences:
+                s_clean = re.sub(r"^[#*\-\d\.\s]+", "", s).strip()
+                if pattern.search(s_clean):
+                    return pattern.sub(r"[\1]", s_clean, count=1)
+
+    # 2. Se non trovato come stringa intera, cerca per parole significative (>= 4 caratteri)
+    words = [w for t in targets for w in re.findall(r"\b[A-Za-z0-9_-]{4,}\b", t)]
+    words.sort(key=len, reverse=True)
+    for w in words:
+        w_esc = re.escape(w)
+        pattern = re.compile(rf"(\b{w_esc}\b)", re.IGNORECASE)
+        for p in paragraphs:
+            sentences = re.split(r"(?<=[.!?])\s+", p)
+            for s in sentences:
+                s_clean = re.sub(r"^[#*\-\d\.\s]+", "", s).strip()
+                if pattern.search(s_clean):
+                    return pattern.sub(r"[\1]", s_clean, count=1)
+
+    return ""
+
+
+def get_pending_issues(lesson_dir: str):
+    """Issue ASR (YELLOW/RED) e scientifiche non ancora decise nel ledger — stesso
+    filtro e stesso ordine usati da cmd_review(). Ritorna (asr_issues, science_issues)."""
+    from rt.core.models import ASRLevel
+    from rt.pipeline.review_asr import load_asr_issues
+    from rt.pipeline.review_science import load_science_issues
+
+    ledger = load_ledger(lesson_dir)
+    decided_ids = {d.issue_id for d in ledger.decisions}
+    asr_issues = [
+        iss for iss in load_asr_issues(lesson_dir)
+        if iss.level in (ASRLevel.YELLOW, ASRLevel.RED) and iss.id not in decided_ids
+    ]
+    sci_issues = [
+        iss for iss in load_science_issues(lesson_dir)
+        if iss.id not in decided_ids
+    ]
+    return asr_issues, sci_issues
+
+
+def find_asr_issue_by_id(lesson_dir: str, issue_id: str):
+    from rt.pipeline.review_asr import load_asr_issues
+    return next((iss for iss in load_asr_issues(lesson_dir) if iss.id == issue_id), None)
+
+
+def find_science_issue_by_id(lesson_dir: str, issue_id: str):
+    from rt.pipeline.review_science import load_science_issues
+    return next((iss for iss in load_science_issues(lesson_dir) if iss.id == issue_id), None)
+
+
+def resolve_asr_accept_text(iss) -> str:
+    return iss.candidate
+
+
+def resolve_asr_reject_text(iss) -> str:
+    return iss.source_text
+
+
+def resolve_science_accept_text(iss) -> Optional[str]:
+    return sanitize_suggested_fix(iss.suggested_fix)
+
+
+def resolve_science_reject_text(iss) -> str:
+    return iss.claim
+
