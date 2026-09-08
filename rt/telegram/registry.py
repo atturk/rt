@@ -63,7 +63,7 @@ def _save_registry(state_dir: str, data: Dict[str, Any]) -> None:
     os.replace(tmp_path, path)
 
 
-def register_pending(lesson_dir: str, round_: int, kind: str, state_dir: str) -> str:
+def register_pending(lesson_dir: str, round_: int, kind: str, state_dir: str, message_thread_id: Optional[int] = None) -> str:
     short_id = hashlib.sha256(
         f"{os.path.abspath(lesson_dir)}|{round_}|{datetime.now().isoformat()}".encode("utf-8")
     ).hexdigest()[:10]
@@ -75,6 +75,7 @@ def register_pending(lesson_dir: str, round_: int, kind: str, state_dir: str) ->
             "round": round_,
             "kind": kind,
             "created_at": datetime.now().isoformat(),
+            "message_thread_id": message_thread_id,
         }
         _save_registry(state_dir, data)
     finally:

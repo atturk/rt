@@ -31,10 +31,29 @@ def test_registry_register_and_resolve(tmp_path):
     assert entry["lesson_dir"] == os.path.abspath(lesson_dir)
     assert entry["round"] == 1
     assert entry["kind"] == "outline_confirmation"
+    assert entry.get("message_thread_id") is None
     assert "created_at" in entry
 
     # Risoluzione id inesistente
     assert resolve_pending("nonexistent", state_dir=state_dir) is None
+
+
+def test_registry_register_with_message_thread_id(tmp_path):
+    state_dir = str(tmp_path / ".rt_telegram")
+    lesson_dir = str(tmp_path / "lesson_topics")
+    os.makedirs(lesson_dir, exist_ok=True)
+
+    short_id = register_pending(
+        lesson_dir=lesson_dir,
+        round_=1,
+        kind="outline_confirmation",
+        state_dir=state_dir,
+        message_thread_id=5,
+    )
+    entry = resolve_pending(short_id, state_dir=state_dir)
+    assert entry is not None
+    assert entry["message_thread_id"] == 5
+
 
 
 def test_registry_stale_lock_recovery(tmp_path):

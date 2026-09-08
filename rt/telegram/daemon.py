@@ -64,7 +64,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif action == "edit":
         convo.set_awaiting_feedback(state_dir, chat_id=update.effective_chat.id, short_id=short_id, lesson_dir=lesson_dir)
         await query.answer()
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Scrivi il tuo feedback in un messaggio di testo per rigenerare l'outline.")
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Scrivi il tuo feedback in un messaggio di testo per rigenerare l'outline.",
+            message_thread_id=update.effective_message.message_thread_id,
+        )
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -78,13 +82,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     short_id = awaiting["short_id"]
     state = tg_pending.load_pending(lesson_dir)
     if state is None or state.short_id != short_id or state.status != "pending":
-        await update.message.reply_text("Questa richiesta non è più valida.")
+        await update.message.reply_text(
+            "Questa richiesta non è più valida.",
+            message_thread_id=update.effective_message.message_thread_id,
+        )
         convo.clear_awaiting_feedback(state_dir, chat_id)
         return
 
     tg_pending.mark_responded(lesson_dir, status="changes_requested", feedback_text=update.message.text, responded_via="telegram")
     convo.clear_awaiting_feedback(state_dir, chat_id)
-    await update.message.reply_text("Feedback ricevuto, l'outline verrà rigenerata a breve.")
+    await update.message.reply_text(
+        "Feedback ricevuto, l'outline verrà rigenerata a breve.",
+        message_thread_id=update.effective_message.message_thread_id,
+    )
 
 
 def run_daemon(state_dir: str = None) -> None:
