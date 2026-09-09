@@ -100,6 +100,9 @@ def run_review_asr(
         completed_batches: List[str] = []
         all_issues: List[ASRIssue] = []
         save_asr_issues(all_issues, lesson_dir)
+        if force:
+            from rt.pipeline.ledger import purge_decisions_by_prefix
+            purge_decisions_by_prefix(lesson_dir, prefix="asr_")
     else:
         ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review_asr")
         existing_issues = load_asr_issues(lesson_dir)

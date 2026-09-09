@@ -197,6 +197,9 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
         reviewed_unit_ids = []
         all_science_issues: List[ScienceIssue] = []
         save_science_issues(all_science_issues, lesson_dir)
+        if force:
+            from rt.pipeline.ledger import purge_decisions_by_prefix
+            purge_decisions_by_prefix(lesson_dir, prefix="sci_")
     else:
         ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review_science")
         existing_issues = load_science_issues(lesson_dir)
