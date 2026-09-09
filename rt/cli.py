@@ -74,7 +74,8 @@ def cmd_prepare(args):
     force = getattr(args, "force", False)
     res = run_prepare(args.lesson_dir, force=force)
     _print_phase_action("prepare", res)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
 def cmd_outline(args):
@@ -102,7 +103,8 @@ def cmd_outline(args):
     force = getattr(args, "force", False)
     res = run_outline(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("outline", res)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
 
     channel = getattr(args, "channel", None)
     if not channel:
@@ -144,7 +146,8 @@ def cmd_rewrite(args):
     res = run_rewrite(args.lesson_dir, target_unit_id=args.unit, force=force, force_mock=args.mock)
     label = f"rewrite unit {args.unit}" if args.unit else "rewrite"
     _print_phase_action(label, res)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
 def cmd_validate_draft(args):
@@ -193,7 +196,8 @@ def cmd_review_asr(args):
     force = getattr(args, "force", False)
     res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-asr", res)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
     
     channel = getattr(args, "channel", None)
     if not channel:
@@ -240,7 +244,8 @@ def cmd_review_science(args):
     force = getattr(args, "force", False)
     res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-science", res)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
     
     channel = getattr(args, "channel", None)
     if not channel:
@@ -299,7 +304,8 @@ def cmd_build(args):
     force = getattr(args, "force", False)
     res = run_build(args.lesson_dir, force=force, rename_folder=args.rename)
     _print_phase_action("build", res)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    if getattr(args, "json", False):
+        print(json.dumps(res, ensure_ascii=False, indent=2))
 
     channel = getattr(args, "channel", None)
     if not channel:
@@ -805,6 +811,7 @@ def main():
     p_prep = subparsers.add_parser("prepare", help="Valida cartella ed estrae segmenti temporali")
     p_prep.add_argument("lesson_dir", help="Directory della lezione")
     p_prep.add_argument("--force", action="store_true", help="Forza la ripreparazione ignorando gli artefatti esistenti")
+    p_prep.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_prep.set_defaults(func=cmd_prepare)
 
     # outline
@@ -814,6 +821,7 @@ def main():
     p_out.add_argument("--mock", action="store_true", help="Usa mock deterministico")
     p_out.add_argument("--channel", choices=["terminal", "telegram"], default=None,
                         help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
+    p_out.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_out.set_defaults(func=cmd_outline)
 
     # validate-outline
@@ -827,6 +835,7 @@ def main():
     p_rew.add_argument("--unit", help="ID specifica unità da rielaborare")
     p_rew.add_argument("--force", action="store_true", help="Forza la rielaborazione (o la sola unità indicata)")
     p_rew.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_rew.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rew.set_defaults(func=cmd_rewrite)
 
     # validate-draft
@@ -857,6 +866,7 @@ def main():
         default=None,
         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
     )
+    p_rasr.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rasr.set_defaults(func=cmd_review_asr)
 
     # review-science
@@ -882,6 +892,7 @@ def main():
         default=None,
         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
     )
+    p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.set_defaults(func=cmd_review_science)
 
     # build
@@ -895,6 +906,7 @@ def main():
         default=None,
         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
     )
+    p_bld.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_bld.set_defaults(func=cmd_build)
 
     # status

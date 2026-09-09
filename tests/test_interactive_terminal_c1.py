@@ -503,7 +503,6 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
 
 
 def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, capsys):
-    import signal
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -525,7 +524,7 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # Sequenza: P (avvia) -> P (pausa SIGSTOP) -> P (riprendi SIGCONT) -> O (riavvia da capo) -> A (accetta e ferma audio)
+    # Sequenza: P (avvia) -> P (pausa terminate) -> P (riprendi con seek) -> O (riavvia da capo) -> A (accetta e ferma audio)
     keys = iter(["p", "p", "p", "o", "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
@@ -533,22 +532,33 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
     mock_proc1.poll.return_value = None
     mock_proc2 = MagicMock()
     mock_proc2.poll.return_value = None
+    mock_proc3 = MagicMock()
+    mock_proc3.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3"]) as mock_cut, \
-         patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2]) as mock_play:
+    # Simula avanzamento del tempo: monotonic avanza di 3.0s tra avvio e pausa
+    monotonic_times = [100.0, 103.0, 103.0, 104.0, 105.0, 106.0]
+    monkeypatch.setattr("time.monotonic", lambda: monotonic_times.pop(0) if monotonic_times else 200.0)
+
+    with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3", "/tmp/clip3.mp3"]) as mock_cut, \
+         patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]) as mock_play:
 
         res = run_interactive_review(lesson_dir, "asr", channel="terminal")
 
     assert res is True
-    # Tagli audio: esattamente 2 volte (primo P e poi O)
-    assert mock_cut.call_count == 2
-    # mock_proc1 ha ricevuto SIGSTOP e SIGCONT
-    mock_proc1.send_signal.assert_any_call(signal.SIGSTOP)
-    mock_proc1.send_signal.assert_any_call(signal.SIGCONT)
-    # mock_proc1 è stato terminato su O
+    # Tagli audio: 3 volte (1° play: 5.0 a 25.0, resume: 5.0+3.0=8.0 a 25.0, restart O: 5.0 a 25.0)
+    assert mock_cut.call_count == 3
+    audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
+    assert mock_cut.call_args_list[0][0] == (audio_path, 5.0, 25.0)
+    assert mock_cut.call_args_list[1][0] == (audio_path, 8.0, 25.0)
+    assert mock_cut.call_args_list[2][0] == (audio_path, 5.0, 25.0)
+
+    # mock_proc1 è stato terminato su pausa (terminate, NO send_signal)
     mock_proc1.terminate.assert_called()
-    # mock_proc2 è stato terminato prima o durante la finalizzazione dell'azione 'a'
+    mock_proc1.send_signal.assert_not_called()
+    # mock_proc2 è stato terminato su O
     mock_proc2.terminate.assert_called()
+    # mock_proc3 è stato terminato su azione 'a'
+    mock_proc3.terminate.assert_called()
 
     # Verifica che i messaggi di stato P/O NON compaiano in stdout
     captured = capsys.readouterr()
