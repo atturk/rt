@@ -7,8 +7,8 @@ click/risposta (vedi rt/telegram/daemon.py).
 """
 import os
 import re
-import signal
 import subprocess
+import time
 from typing import List, Optional
 from rt.core.models import ASRIssue, ScienceIssue
 from rt.telegram import issue_queue as tg_queue
@@ -383,11 +383,16 @@ def run_interactive_review(
     decided_this_session = set()
     current_audio_proc: Optional[subprocess.Popen] = None
     audio_paused: bool = False
+    audio_range_start: Optional[float] = None
+    audio_range_end: Optional[float] = None
+    audio_elapsed: float = 0.0
+    audio_resumed_at: float = 0.0
     temp_audio_clips: List[str] = []
     show_issue_details = True
+    prev_line_count = 0
 
     def _stop_audio():
-        nonlocal current_audio_proc, audio_paused
+        nonlocal current_audio_proc, audio_paused, audio_range_start, audio_range_end, audio_elapsed, audio_resumed_at
         if current_audio_proc is not None and current_audio_proc.poll() is None:
             try:
                 current_audio_proc.terminate()
@@ -395,6 +400,10 @@ def run_interactive_review(
                 pass
         current_audio_proc = None
         audio_paused = False
+        audio_range_start = None
+        audio_range_end = None
+        audio_elapsed = 0.0
+        audio_resumed_at = 0.0
 
     try:
         with raw_mode() as is_raw:
@@ -429,47 +438,67 @@ def run_interactive_review(
                                 break
 
                     if show_issue_details:
-                        print(f"\n[{idx + 1}/{total_count}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}")
+                        if prev_line_count > 0:
+                            sys.stdout.write(f"\x1b[{prev_line_count}A\x1b[0J")
+                            sys.stdout.flush()
+
+                        block_lines = [
+                            f"\n[{idx + 1}/{total_count}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}"
+                        ]
                         if unit_info != "N/D":
-                            print(f"  📚 Unità:         {fix_mojibake(unit_info)}")
-                        print(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
-                        print(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
-                        print(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
-                        print(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
+                            block_lines.append(f"  📚 Unità:         {fix_mojibake(unit_info)}")
+                        block_lines.append(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
+                        block_lines.append(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
+                        block_lines.append(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
+                        block_lines.append(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
                         if sentence:
-                            print(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
+                            block_lines.append(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
                         elif seg and seg.text_raw:
-                            print(f"  📖 Contesto (trascrizione grezza, non trovato nel draft): \"{fix_mojibake(seg.text_raw)}\"")
+                            block_lines.append(f"  📖 Contesto (trascrizione grezza, non trovato nel draft): \"{fix_mojibake(seg.text_raw)}\"")
                         if iss.id in decisions_map:
                             d = decisions_map[iss.id]
-                            print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+                            block_lines.append(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
 
-                    print("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ", end="", flush=True)
-                    
+                        block_lines.append("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
+                        full_block = "\n".join(block_lines)
+                        sys.stdout.write(full_block)
+                        sys.stdout.flush()
+                        prev_line_count = full_block.count("\n")
+                    else:
+                        prompt_str = "\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: "
+                        sys.stdout.write(prompt_str)
+                        sys.stdout.flush()
+                        prev_line_count += prompt_str.count("\n")
+
                     while True:
                         raw_key = read_single_key(already_raw=is_raw)
                         choice = raw_key.strip().lower()
 
                         if choice in ("a", "accetta", ""):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
                             decided_this_session.add(iss.id)
                             print("  ✔ Approvato.")
+                            prev_line_count += 1
                             idx += 1
                             show_issue_details = True
                             break
                         elif choice in ("r", "rifiuta"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
                             decided_this_session.add(iss.id)
                             print("  ❌ Rifiutato (mantenuto testo originale).")
+                            prev_line_count += 1
                             idx += 1
                             show_issue_details = True
                             break
                         elif choice in ("m", "modifica"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             if sentence_clean:
                                 ctx_text = sentence_clean
@@ -492,48 +521,67 @@ def run_interactive_review(
 
                             if resolved == ctx_clean:
                                 print("  ⚠️ Nessuna modifica rilevata.")
+                                prev_line_count += 1
                                 show_issue_details = False
                                 break
                             elif not resolved:
                                 print("  ⚠️ Testo vuoto, nessuna modifica applicata.")
+                                prev_line_count += 1
                                 show_issue_details = False
                                 break
                             else:
                                 record_decision(lesson_dir, iss.id, "edited", resolved_text=resolved, original_context=orig_context)
                                 decided_this_session.add(iss.id)
                                 print(f"  ✏ Modificato in: \"{resolved}\"")
+                                prev_line_count += 1
                                 idx += 1
                                 show_issue_details = True
                                 break
                         elif choice in ("p", "play", "audio"):
-                            if current_audio_proc is None or current_audio_proc.poll() is not None:
-                                audio_path = resolve_audio_path(lesson_dir)
-                                seg = seg_by_id.get(iss.segment_id)
-                                if not audio_path or not seg:
-                                    print("  ⚠️ File audio originale o timecode non disponibile.")
-                                else:
-                                    start_s = max(0.0, seg.start_seconds - 5.0)
-                                    end_s = seg.end_seconds + 5.0
+                            if not audio_paused:
+                                if current_audio_proc is not None and current_audio_proc.poll() is None:
+                                    audio_elapsed += time.monotonic() - audio_resumed_at
                                     try:
-                                        clip_path = cut_clip(audio_path, start_s, end_s)
+                                        current_audio_proc.terminate()
+                                    except Exception:
+                                        pass
+                                    current_audio_proc = None
+                                    audio_paused = True
+                                else:
+                                    audio_path = resolve_audio_path(lesson_dir)
+                                    seg = seg_by_id.get(iss.segment_id)
+                                    if not audio_path or not seg:
+                                        print("  ⚠️ File audio originale o timecode non disponibile.")
+                                        prev_line_count += 1
+                                    else:
+                                        audio_range_start = max(0.0, seg.start_seconds - 5.0)
+                                        audio_range_end = seg.end_seconds + 5.0
+                                        audio_elapsed = 0.0
+                                        try:
+                                            clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
+                                            temp_audio_clips.append(clip_path)
+                                            current_audio_proc = play_clip_background(clip_path)
+                                            audio_resumed_at = time.monotonic()
+                                            audio_paused = False
+                                        except Exception as e:
+                                            print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
+                                            prev_line_count += 1
+                            else:
+                                audio_path = resolve_audio_path(lesson_dir)
+                                if not audio_path or audio_range_start is None or audio_range_end is None:
+                                    print("  ⚠️ File audio originale o timecode non disponibile.")
+                                    prev_line_count += 1
+                                else:
+                                    new_start = audio_range_start + audio_elapsed
+                                    try:
+                                        clip_path = cut_clip(audio_path, new_start, audio_range_end)
                                         temp_audio_clips.append(clip_path)
                                         current_audio_proc = play_clip_background(clip_path)
+                                        audio_resumed_at = time.monotonic()
                                         audio_paused = False
                                     except Exception as e:
                                         print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
-                            else:
-                                if not audio_paused:
-                                    try:
-                                        current_audio_proc.send_signal(signal.SIGSTOP)
-                                        audio_paused = True
-                                    except Exception as e:
-                                        print(f"  ⚠️ Errore pausa audio: {e}")
-                                else:
-                                    try:
-                                        current_audio_proc.send_signal(signal.SIGCONT)
-                                        audio_paused = False
-                                    except Exception as e:
-                                        print(f"  ⚠️ Errore ripresa audio: {e}")
+                                        prev_line_count += 1
                             continue
                         elif choice in ("o", "riavvia", "restart"):
                             _stop_audio()
@@ -541,22 +589,28 @@ def run_interactive_review(
                             seg = seg_by_id.get(iss.segment_id)
                             if not audio_path or not seg:
                                 print("  ⚠️ File audio originale o timecode non disponibile.")
+                                prev_line_count += 1
                             else:
-                                start_s = max(0.0, seg.start_seconds - 5.0)
-                                end_s = seg.end_seconds + 5.0
+                                audio_range_start = max(0.0, seg.start_seconds - 5.0)
+                                audio_range_end = seg.end_seconds + 5.0
+                                audio_elapsed = 0.0
                                 try:
-                                    clip_path = cut_clip(audio_path, start_s, end_s)
+                                    clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
                                     temp_audio_clips.append(clip_path)
                                     current_audio_proc = play_clip_background(clip_path)
+                                    audio_resumed_at = time.monotonic()
                                     audio_paused = False
                                 except Exception as e:
                                     print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
+                                    prev_line_count += 1
                             continue
                         elif choice in ("b", "indietro", "back", "left"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             if idx == 0:
                                 print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                                prev_line_count += 1
                             else:
                                 idx -= 1
                                 prev_iss = to_review[idx]
@@ -564,12 +618,15 @@ def run_interactive_review(
                                     revert_last_decision(lesson_dir, prev_iss.id)
                                     decided_this_session.discard(prev_iss.id)
                                 print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
+                                prev_line_count += 1
                             show_issue_details = True
                             break
                         elif choice in ("s", "salta", "skip", "right"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             print("  ⏭ Saltato.")
+                            prev_line_count += 1
                             idx += 1
                             show_issue_details = True
                             break
@@ -598,53 +655,73 @@ def run_interactive_review(
                     sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
 
                     if show_issue_details:
-                        print(f"\n[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}")
+                        if prev_line_count > 0:
+                            sys.stdout.write(f"\x1b[{prev_line_count}A\x1b[0J")
+                            sys.stdout.flush()
+
+                        block_lines = [
+                            f"\n[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}"
+                        ]
                         if sci_unit_info != "N/D":
-                            print(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
-                        print(f"  ⏱ Timecode:     {tc}")
-                        print(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
-                        print(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
+                            block_lines.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
+                        block_lines.append(f"  ⏱ Timecode:     {tc}")
+                        block_lines.append(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
+                        block_lines.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
                         if iss.suggested_fix:
-                            print(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
+                            block_lines.append(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
                         if iss.diplomatic_question:
-                            print(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
+                            block_lines.append(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
                         if sci_unit and sci_unit.content:
-                            print(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
-                            print("  " + "-" * 56)
+                            block_lines.append(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
+                            block_lines.append("  " + "-" * 56)
                             for line in fix_mojibake(sci_unit.content).strip().split("\n"):
-                                print(f"  {line}")
-                            print("  " + "-" * 56)
+                                block_lines.append(f"  {line}")
+                            block_lines.append("  " + "-" * 56)
                         if iss.id in decisions_map:
                             d = decisions_map[iss.id]
-                            print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+                            block_lines.append(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
 
-                    print("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ", end="", flush=True)
-                    
+                        block_lines.append("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
+                        full_block = "\n".join(block_lines)
+                        sys.stdout.write(full_block)
+                        sys.stdout.flush()
+                        prev_line_count = full_block.count("\n")
+                    else:
+                        prompt_str = "\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: "
+                        sys.stdout.write(prompt_str)
+                        sys.stdout.flush()
+                        prev_line_count += prompt_str.count("\n")
+
                     while True:
                         raw_key = read_single_key(already_raw=is_raw)
                         choice = raw_key.strip().lower()
 
                         if choice in ("a", "accetta", "applica", ""):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             clean_fix = sanitize_suggested_fix(iss.suggested_fix)
                             record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
                             decided_this_session.add(iss.id)
                             print("  ✔ Correzione scientifica applicata.")
+                            prev_line_count += 1
                             idx += 1
                             show_issue_details = True
                             break
                         elif choice in ("m", "mantieni", "rifiuta", "r"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
                             decided_this_session.add(iss.id)
                             print("  ✔ Formulazione originale mantenuta.")
+                            prev_line_count += 1
                             idx += 1
                             show_issue_details = True
                             break
                         elif choice in ("e", "modifica"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             initial_editor_content = (
                                 "# Modifica liberamente il testo qui sotto, sostituirà l'affermazione originale.\n\n"
@@ -657,85 +734,111 @@ def run_interactive_review(
                                 record_decision(lesson_dir, iss.id, "edited", resolved_text=resolved)
                                 decided_this_session.add(iss.id)
                                 print(f"  ✏ Modificato in: \"{resolved}\"")
+                                prev_line_count += 1
                                 idx += 1
                                 show_issue_details = True
                                 break
                             else:
                                 print("  ⚠️ Nessuna modifica inserita.")
+                                prev_line_count += 1
                                 show_issue_details = False
                                 break
                         elif choice in ("p", "play", "audio"):
-                            if current_audio_proc is None or current_audio_proc.poll() is not None:
-                                audio_path = resolve_audio_path(lesson_dir)
-                                start_s, end_s = None, None
-                                if sci_unit:
-                                    start_seg = seg_by_id.get(sci_unit.start_segment_id)
-                                    end_seg = seg_by_id.get(sci_unit.end_segment_id)
-                                    if start_seg and end_seg:
-                                        start_s = start_seg.start_seconds
-                                        end_s = end_seg.end_seconds
-                                if start_s is None and iss.segment_id:
-                                    s_seg = seg_by_id.get(iss.segment_id)
-                                    if s_seg:
-                                        start_s = s_seg.start_seconds
-                                        end_s = s_seg.end_seconds
-
-                                if not audio_path or start_s is None or end_s is None:
-                                    print("  ⚠️ File audio originale o intervallo non disponibile.")
-                                else:
+                            if not audio_paused:
+                                if current_audio_proc is not None and current_audio_proc.poll() is None:
+                                    audio_elapsed += time.monotonic() - audio_resumed_at
                                     try:
-                                        clip_path = cut_clip(audio_path, start_s, end_s)
+                                        current_audio_proc.terminate()
+                                    except Exception:
+                                        pass
+                                    current_audio_proc = None
+                                    audio_paused = True
+                                else:
+                                    audio_path = resolve_audio_path(lesson_dir)
+                                    start_s, end_s = None, None
+                                    if iss.segment_id and iss.segment_id in seg_by_id:
+                                        s_seg = seg_by_id[iss.segment_id]
+                                        start_s = max(0.0, s_seg.start_seconds - 5.0)
+                                        end_s = s_seg.end_seconds + 5.0
+                                    elif sci_unit:
+                                        start_seg = seg_by_id.get(sci_unit.start_segment_id)
+                                        end_seg = seg_by_id.get(sci_unit.end_segment_id)
+                                        if start_seg and end_seg:
+                                            start_s = start_seg.start_seconds
+                                            end_s = end_seg.end_seconds
+
+                                    if not audio_path or start_s is None or end_s is None:
+                                        print("  ⚠️ File audio originale o intervallo non disponibile.")
+                                        prev_line_count += 1
+                                    else:
+                                        audio_range_start = start_s
+                                        audio_range_end = end_s
+                                        audio_elapsed = 0.0
+                                        try:
+                                            clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
+                                            temp_audio_clips.append(clip_path)
+                                            current_audio_proc = play_clip_background(clip_path)
+                                            audio_resumed_at = time.monotonic()
+                                            audio_paused = False
+                                        except Exception as e:
+                                            print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
+                                            prev_line_count += 1
+                            else:
+                                audio_path = resolve_audio_path(lesson_dir)
+                                if not audio_path or audio_range_start is None or audio_range_end is None:
+                                    print("  ⚠️ File audio originale o intervallo non disponibile.")
+                                    prev_line_count += 1
+                                else:
+                                    new_start = audio_range_start + audio_elapsed
+                                    try:
+                                        clip_path = cut_clip(audio_path, new_start, audio_range_end)
                                         temp_audio_clips.append(clip_path)
                                         current_audio_proc = play_clip_background(clip_path)
+                                        audio_resumed_at = time.monotonic()
                                         audio_paused = False
                                     except Exception as e:
                                         print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
-                            else:
-                                if not audio_paused:
-                                    try:
-                                        current_audio_proc.send_signal(signal.SIGSTOP)
-                                        audio_paused = True
-                                    except Exception as e:
-                                        print(f"  ⚠️ Errore pausa audio: {e}")
-                                else:
-                                    try:
-                                        current_audio_proc.send_signal(signal.SIGCONT)
-                                        audio_paused = False
-                                    except Exception as e:
-                                        print(f"  ⚠️ Errore ripresa audio: {e}")
+                                        prev_line_count += 1
                             continue
                         elif choice in ("o", "riavvia", "restart"):
                             _stop_audio()
                             audio_path = resolve_audio_path(lesson_dir)
                             start_s, end_s = None, None
-                            if sci_unit:
+                            if iss.segment_id and iss.segment_id in seg_by_id:
+                                s_seg = seg_by_id[iss.segment_id]
+                                start_s = max(0.0, s_seg.start_seconds - 5.0)
+                                end_s = s_seg.end_seconds + 5.0
+                            elif sci_unit:
                                 start_seg = seg_by_id.get(sci_unit.start_segment_id)
                                 end_seg = seg_by_id.get(sci_unit.end_segment_id)
                                 if start_seg and end_seg:
                                     start_s = start_seg.start_seconds
                                     end_s = end_seg.end_seconds
-                            if start_s is None and iss.segment_id:
-                                s_seg = seg_by_id.get(iss.segment_id)
-                                if s_seg:
-                                    start_s = s_seg.start_seconds
-                                    end_s = s_seg.end_seconds
 
                             if not audio_path or start_s is None or end_s is None:
                                 print("  ⚠️ File audio originale o intervallo non disponibile.")
+                                prev_line_count += 1
                             else:
+                                audio_range_start = start_s
+                                audio_range_end = end_s
+                                audio_elapsed = 0.0
                                 try:
-                                    clip_path = cut_clip(audio_path, start_s, end_s)
+                                    clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
                                     temp_audio_clips.append(clip_path)
                                     current_audio_proc = play_clip_background(clip_path)
+                                    audio_resumed_at = time.monotonic()
                                     audio_paused = False
                                 except Exception as e:
                                     print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
+                                    prev_line_count += 1
                             continue
                         elif choice in ("b", "indietro", "back", "left"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             if idx == 0:
                                 print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                                prev_line_count += 1
                             else:
                                 idx -= 1
                                 prev_iss = to_review[idx]
@@ -743,12 +846,15 @@ def run_interactive_review(
                                     revert_last_decision(lesson_dir, prev_iss.id)
                                     decided_this_session.discard(prev_iss.id)
                                 print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
+                                prev_line_count += 1
                             show_issue_details = True
                             break
                         elif choice in ("s", "salta", "skip", "right"):
                             print(raw_key)
+                            prev_line_count += 1
                             _stop_audio()
                             print("  ⏭ Saltato.")
+                            prev_line_count += 1
                             idx += 1
                             show_issue_details = True
                             break
