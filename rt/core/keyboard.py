@@ -22,7 +22,7 @@ def raw_mode():
         import tty
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
-        tty.setraw(fd)
+        tty.setcbreak(fd)
     except Exception:
         yield False
         return
@@ -101,7 +101,7 @@ def read_single_key(already_raw: bool = False) -> str:
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
-            tty.setraw(fd)
+            tty.setcbreak(fd)
             return _parse_tty_key()
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
