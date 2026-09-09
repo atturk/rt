@@ -184,21 +184,33 @@ class ConfidenceThresholds(BaseModel):
     yellow: float = Field(default=0.75, description=">= yellow e < green -> Coda di revisione")
 
 
-def _build_default_jobs() -> Dict[str, JobRoutingConfig]:
+def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
+    """Restituisce un dizionario di job con route primaria a guscio vuoto (provider/model a None,
+    già il default di RouteConfig). Usato come default_factory per RTConfig.jobs: ogni installazione
+    reale deve configurare esplicitamente provider e modello nel proprio config/ (o config.yaml).
+    'thinking'/'max_tokens'/'timeout_seconds' restano invece opinionati per job: sono parametri di
+    qualità/costo della route, non credenziali, e non fanno parte del concetto di 'guscio vuoto'."""
+    empty_shell = lambda thinking=True, max_tokens=8192, timeout=180: JobRoutingConfig(
+        primary=RouteConfig(
+            provider=None,
+            model=None,
+            base_url=None,
+            thinking=thinking,
+            reasoning_effort="low",
+            max_tokens=max_tokens,
+            timeout_seconds=timeout,
+        )
+    )
     return {
-        "outline": JobRoutingConfig(
-            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=16384, timeout_seconds=240)
-        ),
-        "rewrite": JobRoutingConfig(
-            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=8192, timeout_seconds=180)
-        ),
-        "review_asr": JobRoutingConfig(
-            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=8192, timeout_seconds=120)
-        ),
-        "review_science": JobRoutingConfig(
-            primary=RouteConfig(thinking=True, reasoning_effort="low", max_tokens=8192, timeout_seconds=180)
-        ),
+        "outline": empty_shell(max_tokens=16384, timeout=240),
+        "rewrite": empty_shell(max_tokens=8192, timeout=180),
+        "review_asr": empty_shell(max_tokens=8192, timeout=120),
+        "review_science": empty_shell(max_tokens=8192, timeout=180),
+        "recall_quiz": empty_shell(max_tokens=8192, timeout=120),
+        "recall_mirata": empty_shell(max_tokens=8192, timeout=120),
+        "recall_vasta": empty_shell(max_tokens=8192, timeout=120),
     }
+
 
 
 class TelegramRuntimeConfig(BaseModel):
@@ -208,9 +220,17 @@ class TelegramRuntimeConfig(BaseModel):
     state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram, relativa alla cwd da cui gira 'rt'")
     topics: Dict[str, int] = Field(
         default_factory=dict,
-        description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. "
-                    "Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato)."
+        description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. \"Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato).\""
     )
+    # ------------------------------------------------------
+    # Recall configuration
+    # ------------------------------------------------------
+    class RecallConfig(BaseModel):
+        reserve_targets: Dict[str, int] = Field(default_factory=lambda: {"mirata": 4, "quiz": 6, "vasta": 2})
+        refill_threshold: int = 3
+        refill_batch_size: int = 4
+        stt_engine: str = Field(default="macwhisper", description="'macwhisper' | 'api'")
+    recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 
 
 class RTConfig(BaseModel):

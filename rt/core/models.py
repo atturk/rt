@@ -228,3 +228,41 @@ class Manifest(BaseModel):
     model_info: Dict[str, Any] = Field(default_factory=dict)
     coverage_stats: Dict[str, Any] = Field(default_factory=dict)
     phase_records: Dict[str, Any] = Field(default_factory=dict)
+
+# ----------------------------------------------------------------------
+# Recall question/answer models (Phase D1)
+# ----------------------------------------------------------------------
+
+class RecallQuestionType(str, Enum):
+    QUIZ = "quiz"
+    MIRATA = "mirata"
+    VASTA = "vasta"
+
+class RecallQuestionStatus(str, Enum):
+    PENDING = "pending"
+    ASKED = "asked"
+    ANSWERED = "answered"
+
+class RecallQuestion(BaseModel):
+    id: str  # e.g., recall_000001
+    type: RecallQuestionType
+    unit_ids: List[str] = Field(..., min_length=1)
+    question_text: str
+    options: Optional[List[str]] = None  # only quiz, exactly 4
+    correct_index: Optional[int] = None  # only quiz
+    pregenerated_material: Optional[str] = None
+    status: RecallQuestionStatus = RecallQuestionStatus.PENDING
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+class RecallAnswer(BaseModel):
+    question_id: str
+    answer_text: str
+    is_voice: bool = False
+    evaluation: Optional[str] = None
+    vote: Optional[str] = None  # up | down | lightning
+    answered_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+class RecallBank(BaseModel):
+    schema_version: str = "1.0"
+    questions: List[RecallQuestion] = Field(default_factory=list)
+    answers: List[RecallAnswer] = Field(default_factory=list)
