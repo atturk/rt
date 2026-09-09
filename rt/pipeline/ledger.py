@@ -143,6 +143,17 @@ def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
     return True
 
 
+def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
+    """Rimuove dal ledger (append-only) tutte le voci il cui issue_id inizia con prefix. Salva e ritorna il numero di voci rimosse."""
+    ledger = load_ledger(lesson_dir)
+    original_count = len(ledger.decisions)
+    ledger.decisions = [d for d in ledger.decisions if not d.issue_id.startswith(prefix)]
+    removed_count = original_count - len(ledger.decisions)
+    if removed_count > 0:
+        save_ledger(ledger, lesson_dir)
+    return removed_count
+
+
 def apply_asr_decisions_to_text(
     content: str,
     asr_issues: List[ASRIssue],
