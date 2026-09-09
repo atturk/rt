@@ -14,14 +14,17 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
         from rt.core.config import load_config
 
         cfg = load_telegram_config()
-        topics = load_config().telegram.topics
-        message_thread_id = resolve_topic_id(lesson_dir, topics)
+        runtime_cfg = load_config().telegram
+        message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
         text = (
             f"✅ <b>Build completata</b>\n"
             f"{escape_html(lesson_title)}\n"
             f"📄 {escape_html(str(build_result.get('rielaborato', '')))}"
         )
         send_message(cfg, text=text, message_thread_id=message_thread_id)
+
+        from rt.telegram.last_lesson import record_last_lesson
+        record_last_lesson(runtime_cfg.state_dir, cfg.chat_id, message_thread_id, lesson_dir)
     except Exception as e:
         print(f"⚠️  Notifica Telegram di build non inviata: {e}", file=sys.stderr)
 

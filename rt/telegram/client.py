@@ -118,6 +118,35 @@ def edit_message_reply_markup(cfg: TelegramConfig, message_id: int, reply_markup
     return _call(cfg, "editMessageReplyMarkup", payload)
 
 
+def send_poll(
+    cfg: TelegramConfig,
+    question: str,
+    options: list,
+    correct_option_id: int,
+    message_thread_id: Optional[int] = None,
+    is_anonymous: bool = False,
+) -> Dict[str, Any]:
+    """Invia un quiz nativo Telegram (sendPoll, type=quiz): feedback visivo corretto/sbagliato
+    gestito dalla piattaforma. is_anonymous=False è necessario per ricevere gli update
+    poll_answer con l'identità di chi ha risposto (altrimenti Telegram non li invia)."""
+    payload = {
+        "chat_id": cfg.chat_id,
+        "question": question,
+        "options": options,
+        "type": "quiz",
+        "correct_option_id": correct_option_id,
+        "is_anonymous": is_anonymous,
+    }
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
+    return _call(cfg, "sendPoll", payload)
+
+
+def stop_poll(cfg: TelegramConfig, message_id: int) -> Dict[str, Any]:
+    payload = {"chat_id": cfg.chat_id, "message_id": message_id}
+    return _call(cfg, "stopPoll", payload)
+
+
 _FILE_BASE = "https://api.telegram.org/file/bot{token}/{file_path}"
 
 

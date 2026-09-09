@@ -84,9 +84,13 @@ pricing:
 
 ---
 
-## 2. File per-job (`outline.yaml`, `rewrite.yaml`, `review_asr.yaml`, `review_science.yaml`)
+## 2. File per-job
 
-Ogni file corrisponde a uno dei 4 job cognitivi. Nei file di template (`config.example/`), ciascun job ha solo il blocco `primary:` con `provider: null` e `model: null` (da compilare prima dell'uso), mentre i parametri di tuning ottimizzati sono preimpostati.
+Ogni file `<job>.yaml` corrisponde a uno dei job cognitivi della pipeline: il nome del file (senza estensione) è il nome del job, cercato **ricorsivamente** in tutta la cartella `config/` — la sottocartella in cui lo metti è a tua scelta, il codice non ne assume una struttura fissa. Nel template (`config.example/`) sono organizzati per chiarezza in due sottocartelle:
+- `config.example/rt/`: i 4 job della pipeline principale (`outline`, `rewrite`, `review_asr`, `review_science`).
+- `config.example/telegram/`: i job legati all'active recall via Telegram (`recall_quiz`, `recall_mirata`, `recall_vasta`, `recall_eval_mirata`, `recall_eval_vasta`).
+
+Nei file di template, ciascun job ha solo il blocco `primary:` con `provider: null` e `model: null` (da compilare prima dell'uso), mentre i parametri di tuning ottimizzati sono preimpostati.
 
 ### Campi comuni di livello superiore
 | Campo | Significato |

@@ -59,6 +59,22 @@ def _job_has_configured_route(job_cfg) -> bool:
     return bool(job_cfg and job_cfg.primary and job_cfg.primary.is_configured)
 
 
+def _job_config_hint(job_name: str) -> str:
+    """Messaggio di errore per un job non configurato: la sottocartella di config/ in cui
+    si trova il suo file .yaml è a scelta libera (vedi rt.core.config.find_job_yaml_paths),
+    quindi punta al percorso reale se il file esiste già, altrimenti a config/ in generale."""
+    from rt.core.config import find_job_yaml_paths
+    paths = find_job_yaml_paths(os.path.join(os.getcwd(), "config"))
+    existing = paths.get(job_name)
+    where = os.path.relpath(existing, os.getcwd()) if existing else f"config/{job_name}.yaml (in qualunque sottocartella di config/)"
+    return (
+        f"❌ Il job '{job_name}' non ha alcun provider configurato in {where}.\n"
+        f"   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+        f"   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+        f"   in {where}. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa."
+    )
+
+
 def _print_phase_action(phase_name: str, res: Dict[str, Any]):
     action = res.get("action", "RUN")
     reason = res.get("reason", "")
@@ -92,13 +108,7 @@ def cmd_outline(args):
         cfg = load_config()
         job_cfg = cfg.jobs.get("outline")
         if not _job_has_configured_route(job_cfg):
-            print(
-                "❌ Il job 'outline' non ha alcun provider configurato in config/outline.yaml.\n"
-                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                "   in config/outline.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
-                file=sys.stderr
-            )
+            print(_job_config_hint("outline"), file=sys.stderr)
             sys.exit(1)
     force = getattr(args, "force", False)
     res = run_outline(args.lesson_dir, force=force, force_mock=args.mock)
@@ -134,13 +144,7 @@ def cmd_rewrite(args):
         cfg = load_config()
         job_cfg = cfg.jobs.get("rewrite")
         if not _job_has_configured_route(job_cfg):
-            print(
-                "❌ Il job 'rewrite' non ha alcun provider configurato in config/rewrite.yaml.\n"
-                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                "   in config/rewrite.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
-                file=sys.stderr
-            )
+            print(_job_config_hint("rewrite"), file=sys.stderr)
             sys.exit(1)
     force = getattr(args, "force", False)
     res = run_rewrite(args.lesson_dir, target_unit_id=args.unit, force=force, force_mock=args.mock)
@@ -180,13 +184,7 @@ def cmd_review_asr(args):
         cfg = load_config()
         job_cfg = cfg.jobs.get("review_asr")
         if not _job_has_configured_route(job_cfg):
-            print(
-                "❌ Il job 'review_asr' non ha alcun provider configurato in config/review_asr.yaml.\n"
-                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                "   in config/review_asr.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
-                file=sys.stderr
-            )
+            print(_job_config_hint("review_asr"), file=sys.stderr)
             sys.exit(1)
     if getattr(args, "reset", False):
         from rt.pipeline.ledger import purge_decisions_by_prefix
@@ -228,13 +226,7 @@ def cmd_review_science(args):
         cfg = load_config()
         job_cfg = cfg.jobs.get("review_science")
         if not _job_has_configured_route(job_cfg):
-            print(
-                "❌ Il job 'review_science' non ha alcun provider configurato in config/review_science.yaml.\n"
-                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                "   in config/review_science.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
-                file=sys.stderr
-            )
+            print(_job_config_hint("review_science"), file=sys.stderr)
             sys.exit(1)
     if getattr(args, "reset", False):
         from rt.pipeline.ledger import purge_decisions_by_prefix
@@ -597,10 +589,12 @@ def cmd_prices_check(args):
             by_job.setdefault(entry["job"], []).append(entry)
 
         config_dir = os.path.join(os.getcwd(), "config")
+        from rt.core.config import find_job_yaml_paths
+        job_paths = find_job_yaml_paths(config_dir)
         for job_name, entries in by_job.items():
-            job_file = os.path.join(config_dir, f"{job_name}.yaml")
-            if not os.path.isfile(job_file):
-                print(f"⚠️  File non trovato: config/{job_name}.yaml (saltato)", file=sys.stderr)
+            job_file = job_paths.get(job_name)
+            if not job_file:
+                print(f"⚠️  File non trovato per il job '{job_name}' in config/ (saltato)", file=sys.stderr)
                 continue
 
             yaml = YAML()
@@ -638,7 +632,8 @@ def cmd_prices_check(args):
             cnt = len(updated_models)
             s = "prezzo aggiornato" if cnt == 1 else "prezzi aggiornati"
             models_str = ", ".join(updated_models)
-            print(f"✔ config/{job_name}.yaml: {cnt} {s} ({models_str})")
+            rel_path = os.path.relpath(job_file, os.getcwd())
+            print(f"✔ {rel_path}: {cnt} {s} ({models_str})")
 
 
 def cmd_prices_lookup(args):

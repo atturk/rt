@@ -81,28 +81,30 @@ def build_start_review_keyboard(short_id: str) -> dict:
 
 
 def render_recall_question_text(question) -> str:
-    """Rende il testo di una RecallQuestion per l'invio Telegram (quiz/mirata/vasta)."""
-    label = {"quiz": "🎯 Quiz", "mirata": "🔎 Domanda mirata", "vasta": "📚 Domanda vasta"}.get(question.type.value, "Domanda")
+    """Rende il testo di una RecallQuestion mirata/vasta per l'invio Telegram.
+    I quiz non passano di qui: sono inviati come poll nativo (vedi rt.telegram.client.send_poll),
+    che mostra già domanda e opzioni nella propria UI."""
+    label = {"mirata": "🔎 Domanda mirata", "vasta": "📚 Domanda vasta"}.get(question.type.value, "Domanda")
     lines = [f"<b>{escape_html(label)}</b>", f"📌 Unità: {escape_html(', '.join(question.unit_ids))}", ""]
     lines.append(escape_html(question.question_text))
-    if question.type.value == "quiz" and question.options:
-        lines.append("")
-        letters = ["A", "B", "C", "D"]
-        for i, opt in enumerate(question.options):
-            letter = letters[i] if i < len(letters) else str(i + 1)
-            lines.append(f"{letter}) {escape_html(opt)}")
     return "\n".join(lines)
 
 
-def build_recall_question_keyboard(short_id: str, question_type: str) -> dict:
-    """Tastiera per una domanda di recall: bottoni voto sempre presenti, opzioni quiz se pertinente."""
-    rows = []
-    if question_type == "quiz":
-        letters = ["A", "B", "C", "D"]
-        rows.append([{"text": letters[i], "callback_data": f"rq{i}:{short_id}"} for i in range(4)])
-    rows.append([
-        {"text": "👍", "callback_data": f"rvu:{short_id}"},
-        {"text": "👎", "callback_data": f"rvd:{short_id}"},
-        {"text": "⚡", "callback_data": f"rvl:{short_id}"},
-    ])
-    return {"inline_keyboard": rows}
+def build_recall_action_keyboard(short_id: str) -> dict:
+    """Tastiera con le uniche due azioni rapide sulla domanda di recall: 'Non lo so' (rivela
+    subito la risposta/spiegazione) e 'Skip' (passa oltre senza registrare nulla). Il voto sulla
+    qualità della domanda (👍👎⚡) non passa più da un bottone: si vota reagendo al messaggio
+    della domanda con l'emoji corrispondente (vedi rt.telegram.daemon.handle_message_reaction)."""
+    return {"inline_keyboard": [[
+        {"text": "🤷 Non lo so", "callback_data": f"rns:{short_id}"},
+        {"text": "⏭ Skip", "callback_data": f"rsk:{short_id}"},
+    ]]}
+
+
+def build_stile_keyboard(current_style: str) -> dict:
+    labels = {"quiz": "Quiz", "mirata": "Mirata", "vasta": "Vasta"}
+    row = []
+    for style, label in labels.items():
+        prefix = "✅ " if style == current_style else ""
+        row.append({"text": f"{prefix}{label}", "callback_data": f"stile:{style}"})
+    return {"inline_keyboard": [row]}
