@@ -14,7 +14,11 @@ import pytest
 import subprocess
 from unittest.mock import patch, MagicMock
 
-from rt.core.keyboard import read_single_key
+import io
+import threading
+import time
+
+from rt.core.keyboard import read_single_key, UNKNOWN_KEY
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
 from rt.core.editor_edit import edit_text_in_editor
 from rt.core.models import (
@@ -41,6 +45,12 @@ def test_read_single_key_fallback_when_not_atty(monkeypatch):
     with patch("builtins.input", return_value="\x1b[C"):
         res = read_single_key()
         assert res == "RIGHT"
+    with patch("builtins.input", return_value="\x1b"):
+        res = read_single_key()
+        assert res == UNKNOWN_KEY
+    with patch("builtins.input", return_value="\x1b[A"):
+        res = read_single_key()
+        assert res == UNKNOWN_KEY
 
 
 def test_read_single_key_raw_tty(monkeypatch):
@@ -79,12 +89,112 @@ def test_read_single_key_raw_tty_arrows_and_esc(monkeypatch):
         res = read_single_key()
         assert res == "RIGHT"
 
-    # 3. Standalone ESC: select timeout ([], [], [])
+    # 3. Standalone ESC: select timeout ([], [], []) -> UNKNOWN_KEY (NOT "")
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
          patch("select.select", return_value=([], [], [])), \
          patch.object(sys.stdin, "read", return_value="\x1b"):
         res = read_single_key()
-        assert res == ""
+        assert res == UNKNOWN_KEY
+        assert res != ""
+
+    # 4. ESC + non-bracket -> UNKNOWN_KEY
+    with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
+         patch("select.select", return_value=([sys.stdin], [], [])), \
+         patch.object(sys.stdin, "read", side_effect=["\x1b", "O"]):
+        res = read_single_key()
+        assert res == UNKNOWN_KEY
+
+    # 5. ESC + [ + non-arrow -> UNKNOWN_KEY
+    with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
+         patch("select.select", return_value=([sys.stdin], [], [])), \
+         patch.object(sys.stdin, "read", side_effect=["\x1b", "[", "A"]):
+        res = read_single_key()
+        assert res == UNKNOWN_KEY
+
+    # 6. ESC + [ + timeout on 3rd char -> UNKNOWN_KEY
+    with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
+         patch("select.select", side_effect=[([sys.stdin], [], []), ([], [], [])]), \
+         patch.object(sys.stdin, "read", side_effect=["\x1b", "["]):
+        res = read_single_key()
+        assert res == UNKNOWN_KEY
+
+
+def test_read_single_key_pipe_timing(monkeypatch):
+    """
+    Test di read_single_key con un vero os.pipe() e thread con ritardi controllati,
+    verificando la corretta interpretazione temporale delle sequenze ANSI e dei timeout.
+    """
+    mock_termios = MagicMock()
+    mock_tty = MagicMock()
+
+    def _read_from_pipe_with_writer(write_action):
+        r_fd, w_fd = os.pipe()
+        pipe_in = io.open(r_fd, "r", encoding="utf-8")
+        monkeypatch.setattr(sys, "stdin", pipe_in)
+        monkeypatch.setattr(pipe_in, "isatty", lambda: True)
+
+        def _writer():
+            try:
+                write_action(w_fd)
+            finally:
+                os.close(w_fd)
+
+        t = threading.Thread(target=_writer)
+        t.daemon = True
+        t.start()
+
+        try:
+            with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
+                res = read_single_key()
+        finally:
+            t.join(timeout=1.0)
+            pipe_in.close()
+
+        return res
+
+    # 1. Freccia Sinistra (\x1b[D) con ritardo di 20ms tra un byte e l'altro (entro i 150ms)
+    def write_left_arrow(w_fd):
+        os.write(w_fd, b"\x1b")
+        time.sleep(0.02)
+        os.write(w_fd, b"[")
+        time.sleep(0.02)
+        os.write(w_fd, b"D")
+
+    assert _read_from_pipe_with_writer(write_left_arrow) == "LEFT"
+
+    # 2. Freccia Destra (\x1b[C) con ritardo di 20ms tra un byte e l'altro
+    def write_right_arrow(w_fd):
+        os.write(w_fd, b"\x1b")
+        time.sleep(0.02)
+        os.write(w_fd, b"[")
+        time.sleep(0.02)
+        os.write(w_fd, b"C")
+
+    assert _read_from_pipe_with_writer(write_right_arrow) == "RIGHT"
+
+    # 3. Solo ESC arrivato, nessun byte successivo -> timeout 150ms -> UNKNOWN_KEY (NON "")
+    def write_only_esc(w_fd):
+        os.write(w_fd, b"\x1b")
+        time.sleep(0.25)
+
+    res_esc = _read_from_pipe_with_writer(write_only_esc)
+    assert res_esc == UNKNOWN_KEY
+    assert res_esc != ""
+
+    # 4. ESC + [ arrivati, terzo byte mai arrivato -> timeout 150ms -> UNKNOWN_KEY
+    def write_esc_bracket_incomplete(w_fd):
+        os.write(w_fd, b"\x1b[")
+        time.sleep(0.25)
+
+    res_incomplete = _read_from_pipe_with_writer(write_esc_bracket_incomplete)
+    assert res_incomplete == UNKNOWN_KEY
+    assert res_incomplete != ""
+
+    # 5. Invio premuto (\n o \r) -> ""
+    def write_enter(w_fd):
+        os.write(w_fd, b"\n")
+
+    assert _read_from_pipe_with_writer(write_enter) == ""
 
 
 def test_read_single_key_ctrl_c(monkeypatch):
@@ -330,7 +440,7 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
     assert ledger.decisions[0].resolved_text == "rettificazione"
 
 
-def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch):
+def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, capsys):
     import signal
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
@@ -378,6 +488,46 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch):
     # mock_proc2 è stato terminato prima o durante la finalizzazione dell'azione 'a'
     mock_proc2.terminate.assert_called()
 
+    # Verifica che i messaggi di stato P/O NON compaiano in stdout
+    captured = capsys.readouterr()
+    assert "Riproduzione audio in corso" not in captured.out
+    assert "In pausa" not in captured.out
+    assert "Ripreso" not in captured.out
+
+
+def test_audio_error_messages_remain_visible(tmp_path, monkeypatch, capsys):
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(
+            id="asr_001",
+            segment_id="seg_000001",
+            source_text="distillazione",
+            candidate="distillazione",
+            confidence=0.75,
+            level=ASRLevel.YELLOW,
+            reason="ambiguità fonetica"
+        )
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    # P con eccezione in cut_clip, poi A (accetta)
+    keys = iter(["p", "a"])
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+
+    with patch("rt.pipeline.issue_review.cut_clip", side_effect=RuntimeError("ffmpeg error test")):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+
+    assert res is True
+    captured = capsys.readouterr()
+    assert "Impossibile riprodurre l'audio: ffmpeg error test" in captured.out
+
 
 def test_unrecognized_key_no_action_no_advance(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
@@ -401,11 +551,46 @@ def test_unrecognized_key_no_action_no_advance(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # Sequenza: "z" (non riconosciuto -> no-op), "x" (non riconosciuto -> no-op), "a" (accetta)
-    keys = iter(["z", "x", "a"])
+    # Sequenza: "z" (non riconosciuto -> no-op), UNKNOWN_KEY (non riconosciuto -> no-op), "a" (accetta)
+    assert UNKNOWN_KEY != ""
+    keys = iter(["z", UNKNOWN_KEY, "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
 
     res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    assert res is True
+
+    ledger = load_ledger(lesson_dir)
+    assert len(ledger.decisions) == 1
+    assert ledger.decisions[0].decision == "accepted"
+
+
+def test_unknown_key_in_science_review_no_action(tmp_path, monkeypatch):
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    sci_issues = [
+        ScienceIssue(
+            id="sci_001",
+            type=ScienceType.ERR_RECONSTRUCTION,
+            severity=ScienceSeverity.HIGH,
+            unit_id="U1",
+            claim="abbiamo una reazione esotermica",
+            reason="in realtà è endotermica",
+            suggested_fix="abbiamo una reazione endotermica"
+        )
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    # UNKNOWN_KEY (e.g. standalone ESC o escape incompleto) -> no-op, poi "a" (accetta)
+    keys = iter([UNKNOWN_KEY, "a"])
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+
+    res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
 
     ledger = load_ledger(lesson_dir)
