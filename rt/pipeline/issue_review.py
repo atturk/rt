@@ -6,9 +6,14 @@ prima issue, ritorna. Il resto della coda viene avanzato dal daemon dopo ogni
 click/risposta (vedi rt/telegram/daemon.py).
 """
 import os
-from typing import List
+import re
+import subprocess
+from typing import List, Optional
 from rt.core.models import ASRIssue, ScienceIssue
 from rt.telegram import issue_queue as tg_queue
+from rt.core.keyboard import read_single_key
+from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
+from rt.core.editor_edit import edit_text_in_editor
 
 
 def start_review_via_telegram(lesson_dir: str, asr_to_review: List[ASRIssue], sci_to_review: List[ScienceIssue]) -> None:
@@ -38,7 +43,7 @@ def _prepare_issue_context(lesson_dir: str, issue, issue_type: str) -> dict:
     from rt.pipeline.rewrite import load_draft, get_draft_path
 
     seg_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
-    seg_by_id = {s.id: s for s in seg_data.segments}
+    seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
     draft_path = get_draft_path(lesson_dir)
     draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
     seg_to_unit, unit_by_id = {}, {}
@@ -55,18 +60,45 @@ def _prepare_issue_context(lesson_dir: str, issue, issue_type: str) -> dict:
         if target_unit:
             from rt.pipeline.ledger import extract_context_sentence
             sentence = extract_context_sentence(target_unit.content, issue.candidate, issue.source_text)
+        start_s = max(0.0, seg.start_seconds - 5.0) if seg else None
+        end_s = (seg.end_seconds + 5.0) if seg else None
         return {
             "timecode": seg.start_formatted if seg else "N/D",
             "listen_range": f"{seg.start_formatted} - {seg.end_formatted}" if seg else "N/D",
             "unit_info": f"{target_unit.unit_id} - {target_unit.title}" if target_unit else None,
             "sentence": sentence,
+            "start_segment_id": issue.segment_id,
+            "end_segment_id": issue.segment_id,
+            "start_s": start_s,
+            "end_s": end_s,
         }
     else:
         seg = seg_by_id.get(issue.segment_id) if issue.segment_id else None
         sci_unit = unit_by_id.get(issue.unit_id) if issue.unit_id else (seg_to_unit.get(issue.segment_id) if issue.segment_id else None)
+        start_segment_id, end_segment_id = None, None
+        start_s, end_s = None, None
+        if sci_unit:
+            start_segment_id = sci_unit.start_segment_id
+            end_segment_id = sci_unit.end_segment_id
+            s_seg = seg_by_id.get(sci_unit.start_segment_id)
+            e_seg = seg_by_id.get(sci_unit.end_segment_id)
+            if s_seg and e_seg:
+                start_s = s_seg.start_seconds
+                end_s = e_seg.end_seconds
+        if start_segment_id is None and issue.segment_id:
+            start_segment_id = issue.segment_id
+            end_segment_id = issue.segment_id
+            if seg:
+                start_s = seg.start_seconds
+                end_s = seg.end_seconds
+
         return {
             "timecode": seg.start_formatted if seg else "N/D",
             "unit_info": f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else issue.unit_id,
+            "start_segment_id": start_segment_id,
+            "end_segment_id": end_segment_id,
+            "start_s": start_s,
+            "end_s": end_s,
         }
 
 
@@ -140,6 +172,50 @@ def send_current_issue(lesson_dir: str) -> None:
             tg_session.update_session_message(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, msg_id)
     except tg_client.TelegramAPIError as e:
         print(f"⚠️  Invio issue a Telegram fallito: {e}")
+
+    # Invio / Deduplica clip audio
+    audio_path = resolve_audio_path(lesson_dir)
+    start_seg = ctx.get("start_segment_id")
+    end_seg = ctx.get("end_segment_id")
+    start_s = ctx.get("start_s")
+    end_s = ctx.get("end_s")
+
+    if audio_path and start_seg and end_seg and start_s is not None and end_s is not None:
+        from rt.telegram.audio_sent import get_sent_audio, record_sent_audio
+        sent = get_sent_audio(lesson_dir, start_seg, end_seg)
+        if sent and "message_id" in sent:
+            try:
+                tg_client.send_message(
+                    tg_cfg,
+                    text="🔊 Audio già inviato qui sopra ⬆️ per questa unità.",
+                    reply_to_message_id=sent["message_id"],
+                    message_thread_id=thread_id,
+                )
+            except Exception as e:
+                print(f"⚠️  Invio reply audio a Telegram fallito: {e}")
+        else:
+            tmp_clip = None
+            try:
+                tmp_clip = cut_clip(audio_path, start_s, end_s)
+                caption = f"🎧 Audio {issue_type.upper()}: {issue_id}"
+                voice_res = tg_client.send_voice(
+                    tg_cfg,
+                    voice_path=tmp_clip,
+                    caption=caption,
+                    message_thread_id=thread_id,
+                )
+                v_msg_id = voice_res.get("message_id") if isinstance(voice_res, dict) else getattr(voice_res, "message_id", None)
+                if v_msg_id is not None:
+                    record_sent_audio(lesson_dir, start_seg, end_seg, v_msg_id)
+            except Exception as e:
+                print(f"⚠️  Invio clip audio a Telegram fallito: {e}")
+            finally:
+                if tmp_clip and os.path.exists(tmp_clip):
+                    try:
+                        os.remove(tmp_clip)
+                    except Exception:
+                        pass
+
 
 
 def should_auto_accept_asr(iss: ASRIssue, auto_accept: Optional[str]) -> bool:
@@ -286,154 +362,250 @@ def run_interactive_review(
     total_count = len(to_review)
     interrupted = False
     decided_this_session = set()
+    current_audio_proc: Optional[subprocess.Popen] = None
+    temp_audio_clips: List[str] = []
 
-    while idx < total_count:
-        iss = to_review[idx]
-        ledger = load_ledger(lesson_dir)
-        decisions_map = {d.issue_id: d for d in ledger.decisions}
+    try:
+        while idx < total_count:
+            iss = to_review[idx]
+            ledger = load_ledger(lesson_dir)
+            decisions_map = {d.issue_id: d for d in ledger.decisions}
 
-        if issue_type == "asr":
-            seg = seg_by_id.get(iss.segment_id)
-            tc = seg.start_formatted if seg else "N/D"
-            listen = f"{seg.start_formatted} - {seg.end_formatted}" if seg else "N/D"
+            if issue_type == "asr":
+                seg = seg_by_id.get(iss.segment_id)
+                tc = seg.start_formatted if seg else "N/D"
+                listen = f"{seg.start_formatted} - {seg.end_formatted}" if seg else "N/D"
 
-            target_unit = seg_to_unit.get(iss.segment_id)
-            unit_info = f"{target_unit.unit_id} - {target_unit.title}" if target_unit else "N/D"
+                target_unit = seg_to_unit.get(iss.segment_id)
+                unit_info = f"{target_unit.unit_id} - {target_unit.title}" if target_unit else "N/D"
 
-            sentence = ""
-            if target_unit:
-                sentence = extract_context_sentence(target_unit.content, iss.candidate, iss.source_text)
-            if not sentence and draft:
-                for u in draft.units:
-                    if target_unit and u.unit_id == target_unit.unit_id:
-                        continue
-                    s_found = extract_context_sentence(u.content, iss.candidate, iss.source_text)
-                    if s_found:
-                        sentence = s_found
-                        unit_info = f"{u.unit_id} - {u.title}"
-                        break
+                sentence = ""
+                if target_unit:
+                    sentence = extract_context_sentence(target_unit.content, iss.candidate, iss.source_text)
+                if not sentence and draft:
+                    for u in draft.units:
+                        if target_unit and u.unit_id == target_unit.unit_id:
+                            continue
+                        s_found = extract_context_sentence(u.content, iss.candidate, iss.source_text)
+                        if s_found:
+                            sentence = s_found
+                            unit_info = f"{u.unit_id} - {u.title}"
+                            break
 
-            print(f"\n[{idx + 1}/{total_count}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}")
-            if unit_info != "N/D":
-                print(f"  📚 Unità:         {fix_mojibake(unit_info)}")
-            print(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
-            print(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
-            print(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
-            print(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
-            if sentence:
-                print(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
-            if iss.id in decisions_map:
-                d = decisions_map[iss.id]
-                print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+                print(f"\n[{idx + 1}/{total_count}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}")
+                if unit_info != "N/D":
+                    print(f"  📚 Unità:         {fix_mojibake(unit_info)}")
+                print(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
+                print(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
+                print(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
+                print(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
+                if sentence:
+                    print(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
+                if iss.id in decisions_map:
+                    d = decisions_map[iss.id]
+                    print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
 
-            choice = input("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / B=Indietro / S=Salta / Q=Esci]: ").strip().lower()
-            if choice in ("a", "accetta", ""):
-                record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
-                decided_this_session.add(iss.id)
-                print("  ✔ Approvato.")
-                idx += 1
-            elif choice in ("r", "rifiuta"):
-                record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
-                decided_this_session.add(iss.id)
-                print("  ❌ Rifiutato (mantenuto testo originale).")
-                idx += 1
-            elif choice in ("m", "modifica"):
-                custom = input("  Inserisci correzione personalizzata: ").strip()
-                if custom:
-                    record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
+                print("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / B=Indietro / S=Salta / Q=Esci]: ", end="", flush=True)
+                raw_key = read_single_key()
+                print(raw_key)
+                choice = raw_key.strip().lower()
+
+                if choice in ("a", "accetta", ""):
+                    record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
                     decided_this_session.add(iss.id)
-                    print(f"  ✏ Modificato in: \"{custom}\"")
+                    print("  ✔ Approvato.")
                     idx += 1
-                else:
-                    print("  ⚠️ Nessuna modifica inserita.")
-            elif choice in ("b", "indietro", "back"):
-                if idx == 0:
-                    print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
-                else:
-                    idx -= 1
-                    prev_iss = to_review[idx]
-                    if prev_iss.id in decided_this_session:
-                        revert_last_decision(lesson_dir, prev_iss.id)
-                        decided_this_session.discard(prev_iss.id)
-                    print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
-            elif choice in ("q", "esci", "quit"):
-                print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
-                interrupted = True
-                break
-            else:
-                print("  ⏭ Saltato.")
-                idx += 1
-
-        else:  # science
-            seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
-            tc = seg.start_formatted if seg else "N/D"
-
-            sci_unit = None
-            if iss.unit_id and iss.unit_id in unit_by_id:
-                sci_unit = unit_by_id[iss.unit_id]
-            elif iss.segment_id and iss.segment_id in seg_to_unit:
-                sci_unit = seg_to_unit[iss.segment_id]
-
-            sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
-
-            print(f"\n[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}")
-            if sci_unit_info != "N/D":
-                print(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
-            print(f"  ⏱ Timecode:     {tc}")
-            print(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
-            print(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
-            if iss.suggested_fix:
-                print(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
-            if iss.diplomatic_question:
-                print(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
-            if sci_unit and sci_unit.content:
-                print(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
-                print("  " + "-" * 56)
-                for line in fix_mojibake(sci_unit.content).strip().split("\n"):
-                    print(f"  {line}")
-                print("  " + "-" * 56)
-            if iss.id in decisions_map:
-                d = decisions_map[iss.id]
-                print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
-
-            choice = input("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / B=Indietro / S=Salta / Q=Esci]: ").strip().lower()
-            if choice in ("a", "accetta", "applica", ""):
-                clean_fix = sanitize_suggested_fix(iss.suggested_fix)
-                record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
-                decided_this_session.add(iss.id)
-                print("  ✔ Correzione scientifica applicata.")
-                idx += 1
-            elif choice in ("m", "mantieni", "rifiuta", "r"):
-                record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
-                decided_this_session.add(iss.id)
-                print("  ✔ Formulazione originale mantenuta.")
-                idx += 1
-            elif choice in ("e", "modifica"):
-                custom = input("  Inserisci testo corretto: ").strip()
-                if custom:
-                    record_decision(lesson_dir, iss.id, "edited", resolved_text=custom)
+                elif choice in ("r", "rifiuta"):
+                    record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
                     decided_this_session.add(iss.id)
-                    print(f"  ✏ Modificato in: \"{custom}\"")
+                    print("  ❌ Rifiutato (mantenuto testo originale).")
                     idx += 1
+                elif choice in ("m", "modifica"):
+                    ctx_text = sentence if sentence else iss.candidate
+                    if iss.candidate and iss.candidate in ctx_text:
+                        marked_body = ctx_text.replace(iss.candidate, f"»{iss.candidate}«", 1)
+                    elif iss.source_text and iss.source_text in ctx_text:
+                        marked_body = ctx_text.replace(iss.source_text, f"»{iss.source_text}«", 1)
+                    else:
+                        marked_body = f"»{iss.candidate}«\n{ctx_text}" if ctx_text != iss.candidate else f"»{iss.candidate}«"
+
+                    initial_editor_content = (
+                        "# Modifica solo il testo tra »« qui sotto. Il resto è solo contesto, non verrà usato.\n\n"
+                        f"{marked_body}\n"
+                    )
+                    edited_res = edit_text_in_editor(initial_editor_content)
+                    m = re.search(r"»(.*?)«", edited_res, re.DOTALL)
+                    if m is None:
+                        print("  ⚠️ Marcatori non trovati, nessuna modifica applicata.")
+                    else:
+                        resolved = m.group(1).strip()
+                        if resolved:
+                            record_decision(lesson_dir, iss.id, "edited", resolved_text=resolved)
+                            decided_this_session.add(iss.id)
+                            print(f"  ✏ Modificato in: \"{resolved}\"")
+                            idx += 1
+                        else:
+                            print("  ⚠️ Testo vuoto tra i marcatori, nessuna modifica applicata.")
+                elif choice in ("p", "play", "audio"):
+                    if current_audio_proc is not None and current_audio_proc.poll() is None:
+                        try:
+                            current_audio_proc.terminate()
+                        except Exception:
+                            pass
+                    audio_path = resolve_audio_path(lesson_dir)
+                    seg = seg_by_id.get(iss.segment_id)
+                    if not audio_path or not seg:
+                        print("  ⚠️ File audio originale o timecode non disponibile.")
+                    else:
+                        start_s = max(0.0, seg.start_seconds - 5.0)
+                        end_s = seg.end_seconds + 5.0
+                        try:
+                            clip_path = cut_clip(audio_path, start_s, end_s)
+                            temp_audio_clips.append(clip_path)
+                            current_audio_proc = play_clip_background(clip_path)
+                            print(f"  🔊 Riproduzione audio in corso ({seg.start_formatted} - {seg.end_formatted})...")
+                        except Exception as e:
+                            print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
+                elif choice in ("b", "indietro", "back"):
+                    if idx == 0:
+                        print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                    else:
+                        idx -= 1
+                        prev_iss = to_review[idx]
+                        if prev_iss.id in decided_this_session:
+                            revert_last_decision(lesson_dir, prev_iss.id)
+                            decided_this_session.discard(prev_iss.id)
+                        print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
+                elif choice in ("q", "esci", "quit"):
+                    print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
+                    interrupted = True
+                    break
                 else:
-                    print("  ⚠️ Nessuna modifica inserita.")
-            elif choice in ("b", "indietro", "back"):
-                if idx == 0:
-                    print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                    print("  ⏭ Saltato.")
+                    idx += 1
+
+            else:  # science
+                seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
+                tc = seg.start_formatted if seg else "N/D"
+
+                sci_unit = None
+                if iss.unit_id and iss.unit_id in unit_by_id:
+                    sci_unit = unit_by_id[iss.unit_id]
+                elif iss.segment_id and iss.segment_id in seg_to_unit:
+                    sci_unit = seg_to_unit[iss.segment_id]
+
+                sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
+
+                print(f"\n[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}")
+                if sci_unit_info != "N/D":
+                    print(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
+                print(f"  ⏱ Timecode:     {tc}")
+                print(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
+                print(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
+                if iss.suggested_fix:
+                    print(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
+                if iss.diplomatic_question:
+                    print(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
+                if sci_unit and sci_unit.content:
+                    print(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
+                    print("  " + "-" * 56)
+                    for line in fix_mojibake(sci_unit.content).strip().split("\n"):
+                        print(f"  {line}")
+                    print("  " + "-" * 56)
+                if iss.id in decisions_map:
+                    d = decisions_map[iss.id]
+                    print(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+
+                print("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / B=Indietro / S=Salta / Q=Esci]: ", end="", flush=True)
+                raw_key = read_single_key()
+                print(raw_key)
+                choice = raw_key.strip().lower()
+
+                if choice in ("a", "accetta", "applica", ""):
+                    clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+                    record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
+                    decided_this_session.add(iss.id)
+                    print("  ✔ Correzione scientifica applicata.")
+                    idx += 1
+                elif choice in ("m", "mantieni", "rifiuta", "r"):
+                    record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
+                    decided_this_session.add(iss.id)
+                    print("  ✔ Formulazione originale mantenuta.")
+                    idx += 1
+                elif choice in ("e", "modifica"):
+                    initial_editor_content = (
+                        "# Modifica liberamente il testo qui sotto, sostituirà l'affermazione originale.\n\n"
+                        f"{iss.claim}\n"
+                    )
+                    edited_res = edit_text_in_editor(initial_editor_content)
+                    lines = [line for line in edited_res.splitlines() if not line.strip().startswith("#")]
+                    resolved = "\n".join(lines).strip()
+                    if resolved:
+                        record_decision(lesson_dir, iss.id, "edited", resolved_text=resolved)
+                        decided_this_session.add(iss.id)
+                        print(f"  ✏ Modificato in: \"{resolved}\"")
+                        idx += 1
+                    else:
+                        print("  ⚠️ Nessuna modifica inserita.")
+                elif choice in ("p", "play", "audio"):
+                    if current_audio_proc is not None and current_audio_proc.poll() is None:
+                        try:
+                            current_audio_proc.terminate()
+                        except Exception:
+                            pass
+                    audio_path = resolve_audio_path(lesson_dir)
+                    start_s, end_s = None, None
+                    if sci_unit:
+                        start_seg = seg_by_id.get(sci_unit.start_segment_id)
+                        end_seg = seg_by_id.get(sci_unit.end_segment_id)
+                        if start_seg and end_seg:
+                            start_s = start_seg.start_seconds
+                            end_s = end_seg.end_seconds
+                    if start_s is None and iss.segment_id:
+                        s_seg = seg_by_id.get(iss.segment_id)
+                        if s_seg:
+                            start_s = s_seg.start_seconds
+                            end_s = s_seg.end_seconds
+
+                    if not audio_path or start_s is None or end_s is None:
+                        print("  ⚠️ File audio originale o intervallo non disponibile.")
+                    else:
+                        try:
+                            clip_path = cut_clip(audio_path, start_s, end_s)
+                            temp_audio_clips.append(clip_path)
+                            current_audio_proc = play_clip_background(clip_path)
+                            print(f"  🔊 Riproduzione audio unità in corso ({start_s:.1f}s - {end_s:.1f}s)...")
+                        except Exception as e:
+                            print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
+                elif choice in ("b", "indietro", "back"):
+                    if idx == 0:
+                        print("  ⚠️  Sei già al primo elemento, impossibile tornare oltre.")
+                    else:
+                        idx -= 1
+                        prev_iss = to_review[idx]
+                        if prev_iss.id in decided_this_session:
+                            revert_last_decision(lesson_dir, prev_iss.id)
+                            decided_this_session.discard(prev_iss.id)
+                        print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
+                elif choice in ("q", "esci", "quit"):
+                    print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
+                    interrupted = True
+                    break
                 else:
-                    idx -= 1
-                    prev_iss = to_review[idx]
-                    if prev_iss.id in decided_this_session:
-                        revert_last_decision(lesson_dir, prev_iss.id)
-                        decided_this_session.discard(prev_iss.id)
-                    print(f"  ◀️ Tornato all'issue precedente ({prev_iss.id}).")
-            elif choice in ("q", "esci", "quit"):
-                print("  ⏹ Revisione interrotta. I progressi finora sono stati salvati.")
-                interrupted = True
-                break
-            else:
-                print("  ⏭ Saltato.")
-                idx += 1
+                    print("  ⏭ Saltato.")
+                    idx += 1
+    finally:
+        if current_audio_proc is not None and current_audio_proc.poll() is None:
+            try:
+                current_audio_proc.terminate()
+            except Exception:
+                pass
+        for clip in temp_audio_clips:
+            if os.path.exists(clip):
+                try:
+                    os.remove(clip)
+                except Exception:
+                    pass
 
     if interrupted:
         return False
