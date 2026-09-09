@@ -502,7 +502,6 @@ def run_interactive_review(
                                 temp_audio_clips.append(clip_path)
                                 current_audio_proc = play_clip_background(clip_path)
                                 audio_paused = False
-                                print(f"  🔊 Riproduzione audio in corso ({seg.start_formatted} - {seg.end_formatted})...")
                             except Exception as e:
                                 print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
                     else:
@@ -510,14 +509,12 @@ def run_interactive_review(
                             try:
                                 current_audio_proc.send_signal(signal.SIGSTOP)
                                 audio_paused = True
-                                print("  ⏸ In pausa.")
                             except Exception as e:
                                 print(f"  ⚠️ Errore pausa audio: {e}")
                         else:
                             try:
                                 current_audio_proc.send_signal(signal.SIGCONT)
                                 audio_paused = False
-                                print("  ▶️ Ripreso.")
                             except Exception as e:
                                 print(f"  ⚠️ Errore ripresa audio: {e}")
                     show_issue_details = False
@@ -535,7 +532,6 @@ def run_interactive_review(
                             temp_audio_clips.append(clip_path)
                             current_audio_proc = play_clip_background(clip_path)
                             audio_paused = False
-                            print(f"  🔊 Riproduzione audio in corso ({seg.start_formatted} - {seg.end_formatted})...")
                         except Exception as e:
                             print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
                     show_issue_details = False
@@ -659,7 +655,6 @@ def run_interactive_review(
                                 temp_audio_clips.append(clip_path)
                                 current_audio_proc = play_clip_background(clip_path)
                                 audio_paused = False
-                                print(f"  🔊 Riproduzione audio unità in corso ({start_s:.1f}s - {end_s:.1f}s)...")
                             except Exception as e:
                                 print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
                     else:
@@ -667,14 +662,12 @@ def run_interactive_review(
                             try:
                                 current_audio_proc.send_signal(signal.SIGSTOP)
                                 audio_paused = True
-                                print("  ⏸ In pausa.")
                             except Exception as e:
                                 print(f"  ⚠️ Errore pausa audio: {e}")
                         else:
                             try:
                                 current_audio_proc.send_signal(signal.SIGCONT)
                                 audio_paused = False
-                                print("  ▶️ Ripreso.")
                             except Exception as e:
                                 print(f"  ⚠️ Errore ripresa audio: {e}")
                     show_issue_details = False
@@ -702,7 +695,6 @@ def run_interactive_review(
                             temp_audio_clips.append(clip_path)
                             current_audio_proc = play_clip_background(clip_path)
                             audio_paused = False
-                            print(f"  🔊 Riproduzione audio unità in corso ({start_s:.1f}s - {end_s:.1f}s)...")
                         except Exception as e:
                             print(f"  ⚠️ Impossibile riprodurre l'audio: {e}")
                     show_issue_details = False

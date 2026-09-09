@@ -6,6 +6,8 @@ Supporta macOS / Linux (termios/tty) con fallback su input() per ambienti non in
 
 import sys
 
+UNKNOWN_KEY = "\x00UNKNOWN"
+
 
 def read_single_key() -> str:
     """
@@ -20,6 +22,8 @@ def read_single_key() -> str:
                 return "LEFT"
             if val == "\x1b[C":
                 return "RIGHT"
+            if val.startswith("\x1b"):
+                return UNKNOWN_KEY
             return val
         except EOFError:
             return ""
@@ -40,23 +44,23 @@ def read_single_key() -> str:
                 return ""
             if ch == "\x1b":
                 try:
-                    r, _, _ = select.select([sys.stdin], [], [], 0.05)
+                    r, _, _ = select.select([sys.stdin], [], [], 0.15)
                     if r:
                         ch2 = sys.stdin.read(1)
                         if ch2 == "[":
-                            r2, _, _ = select.select([sys.stdin], [], [], 0.05)
+                            r2, _, _ = select.select([sys.stdin], [], [], 0.15)
                             if r2:
                                 ch3 = sys.stdin.read(1)
                                 if ch3 == "D":
                                     return "LEFT"
                                 elif ch3 == "C":
                                     return "RIGHT"
-                                return ""
-                            return ""
-                        return ""
-                    return ""
+                                return UNKNOWN_KEY
+                            return UNKNOWN_KEY
+                        return UNKNOWN_KEY
+                    return UNKNOWN_KEY
                 except Exception:
-                    return ""
+                    return UNKNOWN_KEY
             return ch
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -67,6 +71,8 @@ def read_single_key() -> str:
                 return "LEFT"
             if val == "\x1b[C":
                 return "RIGHT"
+            if val.startswith("\x1b"):
+                return UNKNOWN_KEY
             return val
         except EOFError:
             return ""
