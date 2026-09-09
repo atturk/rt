@@ -168,6 +168,7 @@ class ReviewDecision(BaseModel):
     resolved_by: str = Field(default="user", description="user | auto_green")
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     notes: Optional[str] = None
+    original_context: Optional[str] = None
 
 
 class DecisionLedger(BaseModel):

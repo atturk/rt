@@ -99,12 +99,14 @@ def record_decision(
     decision: str,
     resolved_text: Optional[str] = None,
     resolved_by: str = "user",
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    original_context: Optional[str] = None,
 ) -> ReviewDecision:
     """Registra una decisione nel ledger atomico append-only con sanitizzazione UTF-8."""
     ledger = load_ledger(lesson_dir)
     clean_resolved = fix_mojibake(resolved_text) if resolved_text else None
     clean_notes = fix_mojibake(notes) if notes else None
+    clean_context = fix_mojibake(original_context) if original_context else None
     
     # Se è una decisione scientifica accettata automaticamente, sanifica formule come 'Sostituire con:'
     if decision.lower().strip() == "accepted" and resolved_by.startswith("cli_auto") and clean_resolved:
@@ -118,7 +120,8 @@ def record_decision(
         resolved_text=clean_resolved,
         resolved_by=resolved_by,
         timestamp=datetime.now().isoformat(),
-        notes=clean_notes
+        notes=clean_notes,
+        original_context=clean_context,
     )
     
     ledger.decisions.append(dec_obj)
@@ -173,13 +176,18 @@ def apply_asr_decisions_to_text(
             if target_segment_ids is not None and iss.segment_id not in target_segment_ids:
                 continue
             resolved = fix_mojibake(dec.resolved_text) if dec.resolved_text else None
+            orig_ctx = fix_mojibake(dec.original_context) if dec.original_context else None
             if dec.decision in ("accepted", "edited") and resolved:
-                candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
-                source = fix_mojibake(iss.source_text) if iss.source_text else ""
-                if candidate and candidate in content:
-                    content = content.replace(candidate, resolved, 1)
-                elif source and source in content:
-                    content = content.replace(source, resolved, 1)
+                if orig_ctx:
+                    if orig_ctx in content:
+                        content = content.replace(orig_ctx, resolved, 1)
+                else:
+                    candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
+                    source = fix_mojibake(iss.source_text) if iss.source_text else ""
+                    if candidate and candidate in content:
+                        content = content.replace(candidate, resolved, 1)
+                    elif source and source in content:
+                        content = content.replace(source, resolved, 1)
             elif dec.decision == "rejected":
                 candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
                 source = fix_mojibake(iss.source_text) if iss.source_text else ""
@@ -248,10 +256,10 @@ def apply_decisions_to_draft(
     return Draft(schema_version=draft.schema_version, lesson_id=draft.lesson_id, units=updated_units)
 
 
-def extract_context_sentence(content: str, target: str, fallback_target: str = "") -> str:
+def extract_context_sentence(content: str, target: str, fallback_target: str = "", highlight: bool = True) -> str:
     """
     Estrae la singola frase dal testo del draft in cui compare il target (o il fallback),
-    evidenziando il termine tra parentesi quadre ([termine]), senza puntini di sospensione.
+    evidenziando il termine tra parentesi quadre ([termine]) se highlight=True, senza puntini di sospensione.
     """
     if not content:
         return ""
@@ -267,7 +275,7 @@ def extract_context_sentence(content: str, target: str, fallback_target: str = "
             for s in sentences:
                 s_clean = re.sub(r"^[#*\-\d\.\s]+", "", s).strip()
                 if pattern.search(s_clean):
-                    return pattern.sub(r"[\1]", s_clean, count=1)
+                    return pattern.sub(r"[\1]", s_clean, count=1) if highlight else s_clean
 
     # 2. Se non trovato come stringa intera, cerca per parole significative (>= 4 caratteri)
     words = [w for t in targets for w in re.findall(r"\b[A-Za-z0-9_-]{4,}\b", t)]
@@ -280,7 +288,7 @@ def extract_context_sentence(content: str, target: str, fallback_target: str = "
             for s in sentences:
                 s_clean = re.sub(r"^[#*\-\d\.\s]+", "", s).strip()
                 if pattern.search(s_clean):
-                    return pattern.sub(r"[\1]", s_clean, count=1)
+                    return pattern.sub(r"[\1]", s_clean, count=1) if highlight else s_clean
 
     return ""
 

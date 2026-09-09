@@ -487,7 +487,7 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
 
     with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/test_clip.mp3") as mock_cut, \
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc) as mock_play, \
-         patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di »rettificazione« abbiamo una reazione.") as mock_edit:
+         patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di rettificazione abbiamo una reazione esotermica importante.") as mock_edit:
 
         res = run_interactive_review(lesson_dir, "asr", channel="terminal")
 
@@ -499,7 +499,7 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "edited"
-    assert ledger.decisions[0].resolved_text == "rettificazione"
+    assert ledger.decisions[0].resolved_text == "Nel processo di rettificazione abbiamo una reazione esotermica importante."
 
 
 def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, capsys):
@@ -761,12 +761,12 @@ def test_asr_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # 1. 'm' -> l'utente cancella i marcatori »« -> stampa warning e ripresenta
+    # 1. 'm' -> l'utente lascia il testo invariato -> stampa warning e ripresenta
     # 2. 'a' -> accetta normalmente
     keys = iter(["m", "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
-    with patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Testo senza marcatori"):
+    with patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Nel processo di distillazione abbiamo una reazione esotermica importante."):
         res = run_interactive_review(lesson_dir, "asr", channel="terminal")
 
     assert res is True
@@ -883,4 +883,151 @@ def test_run_interactive_review_uses_raw_mode_once(tmp_path, monkeypatch):
     assert raw_mode_enter_count == 1
     assert raw_mode_exit_count == 1
     assert calls_already_raw == [True, True]
+
+
+def test_silent_p_o_and_unrecognized_keys_asr_and_science(tmp_path, monkeypatch, capsys):
+    """
+    Test di accettazione: P, O e tasti non riconosciuti (incluso UNKNOWN_KEY)
+    non devono stampare NULLA (né eco, né prompt duplicato).
+    """
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(
+            id="asr_001",
+            segment_id="seg_000001",
+            source_text="distillazione",
+            candidate="distillazione",
+            confidence=0.75,
+            level=ASRLevel.YELLOW,
+            reason="ambiguità fonetica"
+        )
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    # Sequenza ASR: p -> p -> p -> o -> z (invalido) -> UNKNOWN_KEY (invalido) -> a (accetta)
+    keys = iter(["p", "p", "p", "o", "z", UNKNOWN_KEY, "a"])
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
+
+    mock_proc1 = MagicMock()
+    mock_proc1.poll.return_value = None
+    mock_proc2 = MagicMock()
+    mock_proc2.poll.return_value = None
+
+    with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3"]), \
+         patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2]):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+
+    assert res is True
+    out = capsys.readouterr().out
+    prompt_str = "Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]:"
+    # Il prompt deve comparire ESATTAMENTE 1 volta
+    assert out.count(prompt_str) == 1
+    # Il blocco issue deve comparire ESATTAMENTE 1 volta
+    assert out.count("ASR AMBIGUITY") == 1
+    # Nessun eco per p, o, z, UNKNOWN_KEY
+    assert "\np\n" not in out
+    assert "\no\n" not in out
+    assert "\nz\n" not in out
+    # L'azione 'a' deve invece stampare l'eco e l'esito
+    assert "✔ Approvato." in out
+
+
+def test_quit_during_p_sequence_interrupts_cleanly(tmp_path, monkeypatch, capsys):
+    """
+    Test: 'Q' durante o dopo una sequenza di 'P' interrompe sia il ciclo interno sia quello esterno.
+    """
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(
+            id="asr_001",
+            segment_id="seg_000001",
+            source_text="distillazione",
+            candidate="distillazione",
+            confidence=0.75,
+            level=ASRLevel.YELLOW,
+            reason="ambiguità fonetica"
+        )
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    keys = iter(["p", "p", "q"])
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+
+    with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/clip1.mp3"), \
+         patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+
+    assert res is False
+    mock_proc.terminate.assert_called()
+    out = capsys.readouterr().out
+    assert "⏹ Revisione interrotta. I progressi finora sono stati salvati." in out
+    prompt_str = "Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]:"
+    assert out.count(prompt_str) == 1
+
+
+def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path, monkeypatch, capsys):
+    """
+    Test: Se M o E falliscono (marcatori non trovati o testo vuoto),
+    stampano l'eco del tasto + il messaggio di avviso,
+    ripresentano SOLO il prompt (senza redraw completo del blocco descrittivo),
+    e poi accettano la modifica al secondo tentativo.
+    """
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(
+            id="asr_001",
+            segment_id="seg_000001",
+            source_text="distillazione",
+            candidate="distillazione",
+            confidence=0.75,
+            level=ASRLevel.YELLOW,
+            reason="ambiguità fonetica"
+        )
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    # 1. 'm' -> testo invariato -> stampa warning, ripresenta solo prompt
+    # 2. 'm' -> testo vuoto -> stampa warning, ripresenta solo prompt
+    # 3. 'a' -> accetta
+    keys = iter(["m", "m", "a"])
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
+
+    with patch("rt.pipeline.issue_review.edit_text_in_editor", side_effect=["Nel processo di distillazione abbiamo una reazione esotermica importante.", ""]):
+        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+
+    assert res is True
+    out = capsys.readouterr().out
+    # Il blocco issue completo deve comparire UNA sola volta all'inizio
+    assert out.count("ASR AMBIGUITY") == 1
+    # Il prompt deve comparire 3 volte (inizio, dopo primo fallimento, dopo secondo fallimento)
+    prompt_str = "Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]:"
+    assert out.count(prompt_str) == 3
+    assert "⚠️ Nessuna modifica rilevata." in out
+    assert "⚠️ Testo vuoto, nessuna modifica applicata." in out
+    assert "✔ Approvato." in out
+
 
