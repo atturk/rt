@@ -185,6 +185,11 @@ def cmd_review_asr(args):
                 file=sys.stderr
             )
             sys.exit(1)
+    if getattr(args, "reset", False):
+        from rt.pipeline.ledger import purge_decisions_by_prefix
+        removed = purge_decisions_by_prefix(args.lesson_dir, prefix="asr_")
+        print(f"🔄 Reset: rimosse {removed} decisioni ASR precedenti (le issue esistenti restano invariate).")
+
     force = getattr(args, "force", False)
     res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-asr", res)
@@ -227,6 +232,11 @@ def cmd_review_science(args):
                 file=sys.stderr
             )
             sys.exit(1)
+    if getattr(args, "reset", False):
+        from rt.pipeline.ledger import purge_decisions_by_prefix
+        removed = purge_decisions_by_prefix(args.lesson_dir, prefix="sci_")
+        print(f"🔄 Reset: rimosse {removed} decisioni scientifiche precedenti (le issue esistenti restano invariate).")
+
     force = getattr(args, "force", False)
     res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("review-science", res)
@@ -828,6 +838,7 @@ def main():
     p_rasr = subparsers.add_parser("review-asr", help="Analisi ambiguità ASR, confidence gating e revisione")
     p_rasr.add_argument("lesson_dir", help="Directory della lezione")
     p_rasr.add_argument("--force", action="store_true", help="Forza la riesecuzione della revisione ASR")
+    p_rasr.add_argument("--reset", action="store_true", help="Reimposta come pendenti le decisioni ASR esistenti senza rigenerare le issue (debug/test)")
     p_rasr.add_argument("--mock", action="store_true", help="Usa mock deterministico")
     p_rasr.add_argument(
         "--auto-accept",
@@ -852,6 +863,7 @@ def main():
     p_rsci = subparsers.add_parser("review-science", help="Science critic indipendente e revisione")
     p_rsci.add_argument("lesson_dir", help="Directory della lezione")
     p_rsci.add_argument("--force", action="store_true", help="Forza la riesecuzione della critica scientifica")
+    p_rsci.add_argument("--reset", action="store_true", help="Reimposta come pendenti le decisioni scientifiche esistenti senza rigenerare le issue (debug/test)")
     p_rsci.add_argument("--mock", action="store_true", help="Usa mock deterministico")
     p_rsci.add_argument(
         "--auto-accept",
