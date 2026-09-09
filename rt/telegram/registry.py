@@ -88,6 +88,29 @@ def register_pending(lesson_dir: str, round_: int, kind: str, state_dir: str,
     return short_id
 
 
+def register_with_key(key: str, lesson_dir: str, kind: str, state_dir: str,
+                       message_thread_id: Optional[int] = None,
+                       extra: Optional[Dict[str, Any]] = None) -> None:
+    """Come register_pending, ma con una chiave esplicita invece che generata (es. il poll_id
+    assegnato da Telegram a un sendPoll, che arriva già come identificativo univoco negli
+    update poll_answer)."""
+    _acquire_lock(state_dir)
+    try:
+        data = _load_registry(state_dir)
+        entry = {
+            "lesson_dir": os.path.abspath(lesson_dir),
+            "kind": kind,
+            "created_at": datetime.now().isoformat(),
+            "message_thread_id": message_thread_id,
+        }
+        if extra:
+            entry.update(extra)
+        data["entries"][key] = entry
+        _save_registry(state_dir, data)
+    finally:
+        _release_lock(state_dir)
+
+
 
 def resolve_pending(short_id: str, state_dir: str) -> Optional[Dict[str, Any]]:
     data = _load_registry(state_dir)

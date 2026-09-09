@@ -13,6 +13,30 @@ from typing import Optional
 from rt.core.models import RecallQuestionType
 
 # -----------------------------------------------------------------------
+# Riferimento all'unità didattica di una domanda (allegato a ogni esito/valutazione)
+# -----------------------------------------------------------------------
+
+def format_unit_reference(lesson_dir: str, question) -> str:
+    """Blocco testuale (testo semplice, no HTML: i messaggi del daemon non impostano
+    parse_mode) con l'unità didattica di riferimento della domanda. Per le mirate include
+    il contenuto intero dell'unità (nessun altro materiale di riferimento è disponibile per
+    loro); per quiz/vasta solo titolo/unità, dato che hanno già pregenerated_material."""
+    from rt.pipeline.rewrite import load_draft
+    try:
+        draft = load_draft(lesson_dir)
+    except Exception:
+        return ""
+    units = [u for u in draft.units if u.unit_id in question.unit_ids]
+    if not units:
+        return ""
+    if question.type == RecallQuestionType.MIRATA:
+        u = units[0]
+        return f"\n\n📚 Unità {u.unit_id} - {u.title}:\n{u.content}"
+    names = ", ".join(f"{u.unit_id} - {u.title}" for u in units)
+    return f"\n\n📚 Unità: {names}"
+
+
+# -----------------------------------------------------------------------
 # Stato di sessione per lezione (ordine scelto, cursore round-robin)
 # -----------------------------------------------------------------------
 
@@ -90,7 +114,7 @@ def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is
 
     evaluation = evaluate_recall_answer(lesson_dir, question_id, answer_text, force_mock=force_mock)
     record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation)
-    return evaluation
+    return evaluation + format_unit_reference(lesson_dir, question)
 
 
 # -----------------------------------------------------------------------
@@ -183,7 +207,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
             tg_session.end_session(state_dir, tg_cfg.chat_id, thread_id)
             tg_client.send_message(
                 tg_cfg,
-                text=f"✨ Nessuna domanda '{active_style}' disponibile al momento. Cambia stile con /recall_style oppure riprova più tardi.",
+                text=f"✨ Nessuna domanda '{active_style}' disponibile al momento. Cambia stile con /stile oppure riprova più tardi.",
                 message_thread_id=thread_id,
             )
         except Exception:
@@ -195,19 +219,62 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         session_state["unit_cursor"] = question.unit_ids[0]
     save_recall_session_state(lesson_dir, session_state)
 
-    text = tg_fmt.render_recall_question_text(question)
-    short_id = tg_registry.register_pending(
-        lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
-        message_thread_id=thread_id, extra={"question_id": question.id, "qtype": question.type.value}
-    )
-    keyboard = tg_fmt.build_recall_question_keyboard(short_id, question.type.value)
-    try:
-        res = tg_client.send_message(tg_cfg, text=text, reply_markup=keyboard, message_thread_id=thread_id)
-        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
-        if msg_id is not None:
-            tg_session.update_session_message(state_dir, tg_cfg.chat_id, thread_id, msg_id)
-    except tg_client.TelegramAPIError as e:
-        print(f"⚠️  Invio domanda a Telegram fallito: {e}")
+    if question.type == RecallQuestionType.QUIZ:
+        # Poll nativo Telegram: mostra domanda+opzioni nella propria UI e dà il feedback
+        # visivo corretto/sbagliato automaticamente. Il voto sulla qualità della domanda si fa
+        # reagendo al messaggio del poll (vedi handle_message_reaction); "Non lo so"/"Skip"
+        # vanno in un messaggio a parte con bottoni, dato che un poll non può averne di suoi.
+        poll_msg_id = None
+        try:
+            poll_res = tg_client.send_poll(
+                tg_cfg, question=question.question_text, options=question.options,
+                correct_option_id=question.correct_index, message_thread_id=thread_id,
+            )
+            poll_id = poll_res.get("poll", {}).get("id")
+            poll_msg_id = poll_res.get("message_id")
+            if poll_id:
+                tg_registry.register_with_key(
+                    poll_id, lesson_dir, kind="recall_quiz_poll", state_dir=state_dir,
+                    message_thread_id=thread_id, extra={"question_id": question.id, "message_id": poll_msg_id},
+                )
+            if poll_msg_id is not None:
+                tg_registry.register_with_key(
+                    str(poll_msg_id), lesson_dir, kind="recall_question_message", state_dir=state_dir,
+                    message_thread_id=thread_id, extra={"question_id": question.id},
+                )
+                tg_session.update_session_message(state_dir, tg_cfg.chat_id, thread_id, poll_msg_id)
+        except tg_client.TelegramAPIError as e:
+            print(f"⚠️  Invio quiz a Telegram fallito: {e}")
+
+        action_short_id = tg_registry.register_pending(
+            lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
+            message_thread_id=thread_id, extra={"question_id": question.id, "qtype": "quiz", "poll_message_id": poll_msg_id},
+        )
+        action_keyboard = tg_fmt.build_recall_action_keyboard(action_short_id)
+        try:
+            tg_client.send_message(
+                tg_cfg, text="Non sei sicuro? Puoi anche:", reply_markup=action_keyboard, message_thread_id=thread_id,
+            )
+        except tg_client.TelegramAPIError as e:
+            print(f"⚠️  Invio bottoni azione a Telegram fallito: {e}")
+    else:
+        text = tg_fmt.render_recall_question_text(question)
+        short_id = tg_registry.register_pending(
+            lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
+            message_thread_id=thread_id, extra={"question_id": question.id, "qtype": question.type.value}
+        )
+        keyboard = tg_fmt.build_recall_action_keyboard(short_id)
+        try:
+            res = tg_client.send_message(tg_cfg, text=text, reply_markup=keyboard, message_thread_id=thread_id)
+            msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+            if msg_id is not None:
+                tg_session.update_session_message(state_dir, tg_cfg.chat_id, thread_id, msg_id)
+                tg_registry.register_with_key(
+                    str(msg_id), lesson_dir, kind="recall_question_message", state_dir=state_dir,
+                    message_thread_id=thread_id, extra={"question_id": question.id},
+                )
+        except tg_client.TelegramAPIError as e:
+            print(f"⚠️  Invio domanda a Telegram fallito: {e}")
 
     # Rifornimento se la riserva del tipo attivo è sotto soglia (non blocca l'invio già avvenuto sopra)
     remaining = get_reserve_count(lesson_dir, qtype)

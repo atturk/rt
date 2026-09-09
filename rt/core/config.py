@@ -375,10 +375,31 @@ def _load_rtconfig_from_file(path: str) -> RTConfig:
     return RTConfig()
 
 
+def find_job_yaml_paths(config_dir: str) -> Dict[str, str]:
+    """Cerca ricorsivamente in config_dir tutti i file <job>.yaml (nome file, senza
+    estensione, = nome del job) tranne il 'general.yaml' della cartella radice.
+    Ritorna {job_name: path_assoluto}. La struttura di sottocartelle è libera
+    (es. config/rt/outline.yaml, config/telegram/recall_quiz.yaml, o tutto piatto
+    come prima): il codice non impone né assume alcuna organizzazione specifica."""
+    result: Dict[str, str] = {}
+    config_dir_abs = os.path.abspath(config_dir)
+    for root, _dirs, files in os.walk(config_dir_abs):
+        for fname in sorted(files):
+            if not fname.endswith(".yaml"):
+                continue
+            full_path = os.path.join(root, fname)
+            if fname == "general.yaml" and os.path.dirname(full_path) == config_dir_abs:
+                continue
+            job_name = fname[:-len(".yaml")]
+            result[job_name] = full_path
+    return result
+
+
 def _load_config_dir(config_dir: str) -> RTConfig:
-    """Carica la configurazione divisa: config/general.yaml (impostazioni globali) +
-    un file config/<job>.yaml per ciascun job (il nome del file, senza estensione,
-    diventa la chiave in 'jobs'). Il file 'general.yaml' non è un job."""
+    """Carica la configurazione divisa: config/general.yaml (impostazioni globali, solo
+    nella cartella radice) + un file <job>.yaml per ciascun job, cercato ricorsivamente
+    in tutta la cartella (nome del file, senza estensione = chiave in 'jobs') — la
+    struttura di sottocartelle in cui vengono organizzati i job.yaml è a scelta libera."""
     merged_data: Dict[str, Any] = {}
 
     general_path = os.path.join(config_dir, "general.yaml")
@@ -389,11 +410,8 @@ def _load_config_dir(config_dir: str) -> RTConfig:
             merged_data.update(general_data)
 
     jobs_data: Dict[str, Any] = {}
-    for fname in sorted(os.listdir(config_dir)):
-        if not fname.endswith(".yaml") or fname == "general.yaml":
-            continue
-        job_name = fname[:-len(".yaml")]
-        with open(os.path.join(config_dir, fname), "r", encoding="utf-8") as f:
+    for job_name, job_path in sorted(find_job_yaml_paths(config_dir).items()):
+        with open(job_path, "r", encoding="utf-8") as f:
             job_data = yaml.safe_load(f.read())
         if isinstance(job_data, dict):
             jobs_data[job_name] = job_data

@@ -13,15 +13,15 @@ from datetime import datetime
 
 from telegram import Update
 from telegram.error import RetryAfter
-from telegram.ext import Application, CallbackQueryHandler, MessageHandler, CommandHandler, ContextTypes, filters
+from telegram.ext import Application, CallbackQueryHandler, MessageHandler, CommandHandler, PollAnswerHandler, MessageReactionHandler, ContextTypes, filters
 
 from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
 from rt.telegram import registry, pending as tg_pending, conversation_state as convo, session as tg_session
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
-RECALL_VOTE_ACTIONS = {"rvu", "rvd", "rvl"}
-RECALL_QUIZ_ACTIONS = {"rq0", "rq1", "rq2", "rq3"}
+RECALL_ACTION_ACTIONS = {"rns", "rsk"}
+RECALL_REACTION_VOTE_MAP = {"👍": "up", "👎": "down", "⚡": "lightning"}
 
 
 async def _send_with_retry(coro_factory, max_retries: int = 1):
@@ -134,33 +134,57 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     ))
 
 
-async def handle_recall_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/recall lanciato da Telegram: usa l'ultima lezione con build completata su questo
+    topic (tracciata da notify_build_completed). Nessun argomento richiesto — non è un
+    indice/browser di lezioni, solo 'l'ultima' per topic."""
+    state_dir = context.bot_data["state_dir"]
+    chat_id = update.effective_chat.id
+    thread_id = update.effective_message.message_thread_id if update.effective_message else None
+
+    from rt.telegram.last_lesson import get_last_lesson
+    lesson_dir = get_last_lesson(state_dir, chat_id, thread_id)
+    if not lesson_dir or not os.path.isdir(lesson_dir):
+        await _send_with_retry(lambda: update.effective_message.reply_text(
+            "Nessuna lezione recente trovata per questo topic (serve almeno una build completata). "
+            "Puoi avviare il recall da terminale con: rt recall \"<cartella>\" --channel telegram",
+            message_thread_id=thread_id,
+        ))
+        return
+
+    loop = asyncio.get_running_loop()
+    from rt.pipeline.recall_session import start_recall_via_telegram
+    await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "sequenziale", None, False)
+
+
+async def handle_stile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/stile: propone i 3 stili di domanda con dei bottoni, nessun argomento da digitare."""
     state_dir = context.bot_data["state_dir"]
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
-    from rt.telegram import recall_preferences
+    from rt.telegram import recall_preferences, formatting as tg_fmt
 
-    args = getattr(context, "args", None) or []
-    if not args:
-        current = recall_preferences.get_active_style(state_dir)
-        await _send_with_retry(lambda: update.effective_message.reply_text(
-            f"Stile attivo: {current}",
-            message_thread_id=thread_id,
-        ))
-        return
-
-    style = args[0].strip().lower()
-    if style not in recall_preferences.VALID_STYLES:
-        await _send_with_retry(lambda: update.effective_message.reply_text(
-            f"Stile non valido: '{style}'. Usa uno tra: {', '.join(recall_preferences.VALID_STYLES)}.",
-            message_thread_id=thread_id,
-        ))
-        return
-
-    recall_preferences.set_active_style(state_dir, style)
+    current = recall_preferences.get_active_style(state_dir)
+    keyboard = tg_fmt.build_stile_keyboard(current)
     await _send_with_retry(lambda: update.effective_message.reply_text(
-        f"Stile attivo impostato: {style}",
+        f"Stile attivo: {current}\nScegli lo stile per la prossima domanda di recall:",
+        reply_markup=keyboard,
         message_thread_id=thread_id,
     ))
+
+
+async def _handle_stile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, style: str) -> None:
+    state_dir = context.bot_data["state_dir"]
+    from rt.telegram import recall_preferences
+
+    if style not in recall_preferences.VALID_STYLES:
+        await update.callback_query.answer("Stile non valido.", show_alert=True)
+        return
+    recall_preferences.set_active_style(state_dir, style)
+    await update.callback_query.answer(f"Stile impostato: {style}")
+    try:
+        await update.callback_query.edit_message_text(f"Stile attivo: {style} ✅")
+    except Exception:
+        pass
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -176,13 +200,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_issue_callback(update, context, prefix, short_id)
     elif prefix == "ivr":
         await _handle_start_review_callback(update, context, short_id)
-    elif prefix in RECALL_VOTE_ACTIONS or prefix in RECALL_QUIZ_ACTIONS:
+    elif prefix in RECALL_ACTION_ACTIONS:
         await _handle_recall_callback(update, context, prefix, short_id)
+    elif prefix == "stile":
+        await _handle_stile_callback(update, context, short_id)
     else:
         await query.answer()
 
 
 async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
+    """'Non lo so' (rivela subito risposta/spiegazione) e 'Skip' (passa oltre senza
+    registrare nulla) sulla domanda di recall corrente. Il voto sulla qualità della
+    domanda non passa da qui: si vota reagendo al messaggio (handle_message_reaction)."""
     state_dir = context.bot_data["state_dir"]
     entry = registry.resolve_pending(short_id, state_dir)
     if entry is None or entry.get("kind") != "recall_question":
@@ -190,48 +219,150 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
         return
     lesson_dir = entry["lesson_dir"]
     question_id = entry["question_id"]
+    thread_id = entry.get("message_thread_id")
 
-    from rt.pipeline.recall import load_recall_bank, record_recall_vote, record_fewshot_vote, record_recall_answer
+    loop = asyncio.get_running_loop()
+
+    if action == "rsk":
+        await update.callback_query.answer("⏭ Saltato.")
+        try:
+            await update.callback_query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        from rt.pipeline.recall_session import send_current_recall_question
+        await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+        return
+
+    # rns: "Non lo so" — rivela la risposta/spiegazione, registra un tentativo vuoto, avanza.
+    from rt.pipeline.recall import load_recall_bank, record_recall_answer
+    bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
+    question = next((q for q in bank.questions if q.id == question_id), None)
+    if question is None:
+        await update.callback_query.answer("Domanda non più disponibile.", show_alert=True)
+        return
+
+    await update.callback_query.answer()
+    try:
+        await update.callback_query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    if question.type.value == "quiz":
+        poll_message_id = entry.get("poll_message_id")
+        if poll_message_id is not None:
+            from rt.telegram.config import load_telegram_config, TelegramConfigError
+            from rt.telegram.client import stop_poll
+            try:
+                tg_cfg = load_telegram_config()
+                await loop.run_in_executor(None, stop_poll, tg_cfg, poll_message_id)
+            except TelegramConfigError:
+                pass
+            except Exception:
+                pass
+        await loop.run_in_executor(
+            None, record_recall_answer, lesson_dir, question_id, "[Non risposto]", False, question.pregenerated_material, None
+        )
+        esito = "🤷 Nessuna risposta."
+        if question.pregenerated_material:
+            esito += f"\n\n{question.pregenerated_material}"
+        from rt.pipeline.recall_session import format_unit_reference
+        esito += await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
+    else:
+        from rt.pipeline.recall_session import handle_recall_answer
+        evaluation = await loop.run_in_executor(None, handle_recall_answer, lesson_dir, question_id, "[Non lo so]", False)
+        esito = evaluation or "🤷 Nessuna risposta."
+
+    await _send_with_retry(lambda: context.bot.send_message(
+        chat_id=update.effective_chat.id, text=esito, message_thread_id=thread_id,
+    ))
+
+    from rt.pipeline.recall_session import send_current_recall_question
+    await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+
+
+async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Voto sulla qualità di una domanda di recall: l'utente reagisce al messaggio della
+    domanda (testo mirata/vasta, o il poll nativo per i quiz) con 👍/👎/⚡ invece di
+    premere un bottone. Il message_id è mappato a question_id in
+    rt.telegram.registry (kind='recall_question_message'), registrato quando la
+    domanda viene inviata (vedi send_current_recall_question)."""
+    reaction_update = update.message_reaction
+    if reaction_update is None or not reaction_update.new_reaction:
+        return
+
+    state_dir = context.bot_data["state_dir"]
+    entry = registry.resolve_pending(str(reaction_update.message_id), state_dir)
+    if entry is None or entry.get("kind") != "recall_question_message":
+        return
+    lesson_dir = entry["lesson_dir"]
+    question_id = entry["question_id"]
+
+    last_reaction = reaction_update.new_reaction[-1]
+    emoji = getattr(last_reaction, "emoji", None)
+    vote = RECALL_REACTION_VOTE_MAP.get(emoji)
+    if vote is None:
+        return
+
+    from rt.pipeline.recall import load_recall_bank, record_recall_vote, record_fewshot_vote
+    loop = asyncio.get_running_loop()
+    bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
+    question = next((q for q in bank.questions if q.id == question_id), None)
+    await loop.run_in_executor(None, record_recall_vote, lesson_dir, question_id, vote)
+    if question is not None:
+        await loop.run_in_executor(None, record_fewshot_vote, question.type, question.question_text, vote, state_dir)
+
+
+async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Risposta a un quiz nativo Telegram (sendPoll type=quiz). Il poll_id fa da chiave
+    nel registry (vedi rt.telegram.registry.register_with_key), assegnata al momento
+    dell'invio in send_current_recall_question."""
+    state_dir = context.bot_data["state_dir"]
+    poll_answer = update.poll_answer
+    if not poll_answer or not poll_answer.option_ids:
+        return  # voto ritirato o poll non pertinente
+
+    entry = registry.resolve_pending(poll_answer.poll_id, state_dir)
+    if entry is None or entry.get("kind") != "recall_quiz_poll":
+        return
+    lesson_dir = entry["lesson_dir"]
+    question_id = entry["question_id"]
+    poll_message_id = entry.get("message_id")
+    thread_id = entry.get("message_thread_id")
+    idx_choice = poll_answer.option_ids[0]
+
+    from rt.pipeline.recall import load_recall_bank, record_recall_answer
 
     loop = asyncio.get_running_loop()
     bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
     question = next((q for q in bank.questions if q.id == question_id), None)
-
-    if action in RECALL_VOTE_ACTIONS:
-        vote_map = {"rvu": "up", "rvd": "down", "rvl": "lightning"}
-        vote = vote_map[action]
-        await loop.run_in_executor(None, record_recall_vote, lesson_dir, question_id, vote)
-        if question is not None:
-            await loop.run_in_executor(None, record_fewshot_vote, question.type, question.question_text, vote, state_dir)
-        emoji = {"up": "👍", "down": "👎", "lightning": "⚡"}[vote]
-        await update.callback_query.answer(f"Voto registrato: {emoji}")
-        return
-
-    # rq0..rq3: risposta quiz (bottone opzione)
-    if question is None or not question.options:
-        await update.callback_query.answer("Domanda non più disponibile.", show_alert=True)
-        return
-    idx_choice = int(action[2])
-    if idx_choice >= len(question.options):
-        await update.callback_query.answer("Opzione non valida.", show_alert=True)
+    if question is None or not question.options or idx_choice >= len(question.options):
         return
 
     is_correct = (question.correct_index == idx_choice)
     await loop.run_in_executor(
         None, record_recall_answer, lesson_dir, question_id, question.options[idx_choice], False, question.pregenerated_material, None
     )
-    await update.callback_query.answer("✔ Corretto!" if is_correct else "❌ Sbagliato.")
-    try:
-        await update.callback_query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
 
-    esito_msg = ("✔ Corretto!" if is_correct else "❌ Sbagliato.")
+    from rt.telegram.config import load_telegram_config, TelegramConfigError
+    from rt.telegram.client import stop_poll
+    try:
+        tg_cfg = load_telegram_config()
+    except TelegramConfigError:
+        return
+
+    if poll_message_id is not None:
+        try:
+            await loop.run_in_executor(None, stop_poll, tg_cfg, poll_message_id)
+        except Exception:
+            pass
+
+    esito_msg = "✔ Corretto!" if is_correct else "❌ Sbagliato."
     if question.pregenerated_material:
         esito_msg += f"\n\n{question.pregenerated_material}"
+    from rt.pipeline.recall_session import format_unit_reference
+    esito_msg += await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
     await _send_with_retry(lambda: context.bot.send_message(
-        chat_id=update.effective_chat.id, text=esito_msg,
-        message_thread_id=update.effective_message.message_thread_id,
+        chat_id=tg_cfg.chat_id, text=esito_msg, message_thread_id=thread_id,
     ))
 
     from rt.pipeline.recall_session import send_current_recall_question
@@ -554,10 +685,13 @@ def run_daemon(state_dir: str = None) -> None:
 
     application.add_handler(CommandHandler("quit", handle_quit))
     application.add_handler(CommandHandler("status", handle_status))
-    application.add_handler(CommandHandler("recall_style", handle_recall_style))
+    application.add_handler(CommandHandler("stile", handle_stile))
+    application.add_handler(CommandHandler("recall", handle_recall_command))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(PollAnswerHandler(handle_poll_answer))
+    application.add_handler(MessageReactionHandler(handle_message_reaction))
     application.job_queue.run_repeating(_write_heartbeat, interval=15, first=0)
 
     print(f"🤖 RT Telegram daemon in ascolto (state_dir='{resolved_state_dir}')...", file=sys.stderr)

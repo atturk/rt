@@ -65,12 +65,12 @@ RT supporta **OpenRouter**, **DeepSeek direct** e **Google Gemini** tramite prov
 
 ### Configurazione (`config/`):
 Il sistema viene configurato copiando `config.example/` in `config/`:
-- `general.yaml` per le impostazioni globali e credenziali/provider/pricing globali.
-- Un file `<job>.yaml` per ciascun job (es. `outline.yaml`, `rewrite.yaml`, `review_asr.yaml`, `review_science.yaml`).
+- `general.yaml` (solo nella cartella radice) per le impostazioni globali e credenziali/provider/pricing globali.
+- Un file `<job>.yaml` per ciascun job cognitivo, cercato ricorsivamente in tutta `config/` — nel template sono organizzati in `config/rt/` (pipeline principale: `outline.yaml`, `rewrite.yaml`, `review_asr.yaml`, `review_science.yaml`) e `config/telegram/` (active recall: `recall_quiz.yaml`, `recall_mirata.yaml`, `recall_vasta.yaml`, `recall_eval_mirata.yaml`, `recall_eval_vasta.yaml`), ma la struttura di sottocartelle è libera.
 
 Lo schema di configurazione mappa ciascun job cognitivo con route `primary`, fallback dedicati ed eventuale `pricing:` per-route:
 ```yaml
-# In config/outline.yaml:
+# In config/rt/outline.yaml:
 max_output_chars: 60000
 primary:
   provider: "openrouter"            # Provider di default per outline

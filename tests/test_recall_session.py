@@ -23,7 +23,10 @@ from rt.pipeline.recall_session import (
 )
 from rt.telegram import registry, recall_preferences
 from rt.telegram.config import TelegramConfig
-from rt.telegram.daemon import handle_callback, handle_text, handle_voice, handle_recall_style
+from rt.telegram.daemon import (
+    handle_callback, handle_text, handle_voice, handle_stile,
+    handle_recall_command, handle_poll_answer, handle_message_reaction,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +133,12 @@ class TestStartRecallViaTelegram:
             sent.append({"text": text, "reply_markup": reply_markup})
             return {"ok": True, "message_id": mid}
 
+        def fake_send_poll(cfg_, question, options, correct_option_id, message_thread_id=None, is_anonymous=False):
+            return {"message_id": 400, "poll": {"id": "POLLY"}}
+
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.send_message", side_effect=fake_send), \
+             patch("rt.telegram.client.send_poll", side_effect=fake_send_poll), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
             cfg_obj.telegram.state_dir = state_dir
@@ -146,6 +153,7 @@ class TestStartRecallViaTelegram:
         bank = load_recall_bank(lesson_dir)
         types_present = {q.type for q in bank.questions}
         assert types_present == {RecallQuestionType.QUIZ, RecallQuestionType.MIRATA, RecallQuestionType.VASTA}
+        # Il poll nativo per la domanda + il messaggio con i bottoni "Non lo so"/"Skip"
         assert len(sent) == 1
         assert sent[0]["reply_markup"] is not None
         assert recall_preferences.get_active_style(state_dir) == "quiz"
@@ -165,6 +173,7 @@ class TestStartRecallViaTelegram:
 
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.send_message", side_effect=fake_send), \
+             patch("rt.telegram.client.send_poll", return_value={"message_id": 500, "poll": {"id": "POLLZ"}}), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
             cfg_obj.telegram.state_dir = state_dir
@@ -195,6 +204,7 @@ class TestStartRecallViaTelegram:
 
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.send_message", return_value={"ok": True, "message_id": 1}), \
+             patch("rt.telegram.client.send_poll", return_value={"message_id": 1, "poll": {"id": "POLLX"}}), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
             cfg_obj.telegram.state_dir = state_dir
@@ -217,7 +227,7 @@ class TestStartRecallViaTelegram:
 # ---------------------------------------------------------------------------
 
 class TestSendCurrentRecallQuestion:
-    def test_sends_quiz_with_options_and_refills_below_threshold(self, tmp_path):
+    def test_sends_quiz_as_native_poll_and_refills_below_threshold(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -228,14 +238,20 @@ class TestSendCurrentRecallQuestion:
         recall_preferences.set_active_style(state_dir, "quiz")
 
         cfg = TelegramConfig(bot_token="TOK", chat_id=999)
-        sent = []
+        polls = []
+        messages = []
 
-        def fake_send(cfg_, text, reply_markup=None, message_thread_id=None, reply_to_message_id=None):
-            sent.append({"text": text, "reply_markup": reply_markup})
-            return {"ok": True, "message_id": 200}
+        def fake_send_poll(cfg_, question, options, correct_option_id, message_thread_id=None, is_anonymous=False):
+            polls.append({"question": question, "options": options, "correct_option_id": correct_option_id})
+            return {"message_id": 300, "poll": {"id": "POLL123"}}
+
+        def fake_send_message(cfg_, text, reply_markup=None, message_thread_id=None, reply_to_message_id=None):
+            messages.append({"text": text, "reply_markup": reply_markup})
+            return {"ok": True, "message_id": 301}
 
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
-             patch("rt.telegram.client.send_message", side_effect=fake_send), \
+             patch("rt.telegram.client.send_poll", side_effect=fake_send_poll), \
+             patch("rt.telegram.client.send_message", side_effect=fake_send_message), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
             cfg_obj.telegram.state_dir = state_dir
@@ -246,9 +262,16 @@ class TestSendCurrentRecallQuestion:
 
             send_current_recall_question(lesson_dir, force_mock=True)
 
-        assert len(sent) == 1
-        assert "A) A" in sent[0]["text"] and "B) B" in sent[0]["text"]
-        assert sent[0]["reply_markup"] is not None
+        assert len(polls) == 1
+        assert polls[0]["options"] == ["A", "B", "C", "D"] and polls[0]["correct_option_id"] == 1
+        assert len(messages) == 1  # bottoni "Non lo so"/"Skip" in un messaggio a parte
+        assert messages[0]["reply_markup"] is not None
+
+        # Il poll_id e il message_id devono essere risolvibili dal registry per le risposte successive
+        entry_poll = registry.resolve_pending("POLL123", state_dir)
+        assert entry_poll is not None and entry_poll["kind"] == "recall_quiz_poll"
+        entry_msg = registry.resolve_pending("300", state_dir)
+        assert entry_msg is not None and entry_msg["kind"] == "recall_question_message"
 
         # Il rifornimento deve aver aggiunto nuove domande quiz (partiva da 1, sotto soglia 5)
         assert get_reserve_count(lesson_dir, RecallQuestionType.QUIZ) >= 2
@@ -271,12 +294,16 @@ class TestHandleRecallAnswer:
         evaluation = handle_recall_answer(lesson_dir, "recall_000002", "La mia risposta.", is_voice=False, force_mock=True)
         assert evaluation is not None
         assert "Correttezza" in evaluation and "Completezza" in evaluation
+        assert "Unità 1.1" in evaluation  # riferimento all'unità didattica allegato alla risposta
 
         bank2 = load_recall_bank(lesson_dir)
         ans = next(a for a in bank2.answers if a.question_id == "recall_000002")
         assert ans.answer_text == "La mia risposta."
         assert ans.is_voice is False
-        assert ans.evaluation == evaluation
+        # Il ledger conserva la valutazione "pura" (senza il riferimento all'unità, allegato
+        # solo al messaggio di risposta mostrato all'utente)
+        assert ans.evaluation in evaluation
+        assert ans.evaluation != evaluation
 
     def test_quiz_returns_none(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
@@ -289,25 +316,44 @@ class TestHandleRecallAnswer:
 
 
 # ---------------------------------------------------------------------------
-# 5. Callback Telegram: voto e risposta quiz
+# 5. Voto per reazione, risposta a poll nativo, azioni "Non lo so"/"Skip"
 # ---------------------------------------------------------------------------
 
-class TestRecallCallbacks:
-    def test_vote_updates_ledger_and_fewshot_before_answering(self, tmp_path):
+def _make_mock_reaction_update(message_id: int, emoji: str, chat_id: int = 12345):
+    update = MagicMock()
+    reaction = MagicMock()
+    reaction.message_id = message_id
+    reaction.new_reaction = [MagicMock(emoji=emoji)]
+    update.message_reaction = reaction
+    update.effective_chat.id = chat_id
+    return update
+
+
+def _make_mock_poll_answer_update(poll_id: str, option_ids: list):
+    update = MagicMock()
+    answer = MagicMock()
+    answer.poll_id = poll_id
+    answer.option_ids = option_ids
+    update.poll_answer = answer
+    return update
+
+
+class TestRecallReactionVote:
+    def test_reaction_updates_ledger_and_fewshot(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
         bank = RecallBank(questions=[_make_mirata_question()])
         save_recall_bank(bank, lesson_dir)
 
-        short_id = registry.register_pending(
-            lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
-            extra={"question_id": "recall_000002", "qtype": "mirata"}
+        registry.register_with_key(
+            "555", lesson_dir, kind="recall_question_message", state_dir=state_dir,
+            extra={"question_id": "recall_000002"},
         )
-        update = _make_mock_callback_update(f"rvl:{short_id}")
+        update = _make_mock_reaction_update(555, "⚡")
         context = _make_mock_context(state_dir)
 
-        asyncio.run(handle_callback(update, context))
+        asyncio.run(handle_message_reaction(update, context))
 
         bank2 = load_recall_bank(lesson_dir)
         ans = next(a for a in bank2.answers if a.question_id == "recall_000002")
@@ -318,7 +364,122 @@ class TestRecallCallbacks:
         assert len(examples["mirata"]) == 1
         assert examples["mirata"][0]["vote"] == "lightning"
 
-    def test_quiz_option_records_answer_strips_markup_and_advances(self, tmp_path):
+    def test_unmapped_emoji_is_ignored(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        registry.register_with_key(
+            "556", lesson_dir, kind="recall_question_message", state_dir=state_dir,
+            extra={"question_id": "recall_000002"},
+        )
+        update = _make_mock_reaction_update(556, "😀")
+        context = _make_mock_context(state_dir)
+
+        asyncio.run(handle_message_reaction(update, context))
+
+        bank2 = load_recall_bank(lesson_dir)
+        assert not any(a.question_id == "recall_000002" for a in bank2.answers)
+
+
+class TestRecallPollAnswer:
+    def test_poll_answer_records_answer_stops_poll_and_advances(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_quiz_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        registry.register_with_key(
+            "POLL42", lesson_dir, kind="recall_quiz_poll", state_dir=state_dir,
+            extra={"question_id": "recall_000001", "message_id": 700},
+        )
+        update = _make_mock_poll_answer_update("POLL42", [1])  # opzione B, indice 1 = corretta
+        context = _make_mock_context(state_dir)
+
+        cfg = TelegramConfig(bot_token="TOK", chat_id=999)
+        with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
+             patch("rt.telegram.client.stop_poll") as mock_stop, \
+             patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+            asyncio.run(handle_poll_answer(update, context))
+            assert mock_stop.called
+            assert mock_next.called
+
+        assert context.bot.send_message.called
+        sent_text = context.bot.send_message.call_args.kwargs["text"]
+        assert "Corretto" in sent_text
+
+        bank2 = load_recall_bank(lesson_dir)
+        ans = next(a for a in bank2.answers if a.question_id == "recall_000001")
+        assert ans.answer_text == "B"
+        assert ans.evaluation == "B e' corretta perche'..."
+
+    def test_empty_option_ids_is_ignored(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_quiz_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        registry.register_with_key(
+            "POLL43", lesson_dir, kind="recall_quiz_poll", state_dir=state_dir,
+            extra={"question_id": "recall_000001", "message_id": 701},
+        )
+        update = _make_mock_poll_answer_update("POLL43", [])
+        context = _make_mock_context(state_dir)
+
+        asyncio.run(handle_poll_answer(update, context))
+        assert not context.bot.send_message.called
+
+
+class TestRecallActionCallbacks:
+    def test_skip_strips_markup_and_advances_without_recording(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "qtype": "mirata"}
+        )
+        update = _make_mock_callback_update(f"rsk:{short_id}")
+        context = _make_mock_context(state_dir)
+
+        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+            asyncio.run(handle_callback(update, context))
+            assert mock_next.called
+
+        assert update.callback_query.edit_message_reply_markup.called
+        bank2 = load_recall_bank(lesson_dir)
+        assert not any(a.question_id == "recall_000002" for a in bank2.answers)
+
+    def test_non_lo_so_on_mirata_evaluates_and_includes_unit_reference(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "qtype": "mirata"}
+        )
+        update = _make_mock_callback_update(f"rns:{short_id}")
+        context = _make_mock_context(state_dir)
+
+        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+            asyncio.run(handle_callback(update, context))
+            assert mock_next.called
+
+        assert context.bot.send_message.called
+        sent_text = context.bot.send_message.call_args.kwargs["text"]
+        assert "Unità 1.1" in sent_text  # riferimento all'unità didattica
+
+    def test_non_lo_so_on_quiz_stops_poll_and_includes_unit_reference(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -327,22 +488,22 @@ class TestRecallCallbacks:
 
         short_id = registry.register_pending(
             lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
-            extra={"question_id": "recall_000001", "qtype": "quiz"}
+            extra={"question_id": "recall_000001", "qtype": "quiz", "poll_message_id": 900}
         )
-        update = _make_mock_callback_update(f"rq1:{short_id}")  # opzione B, indice 1 = corretta
+        update = _make_mock_callback_update(f"rns:{short_id}")
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+        cfg = TelegramConfig(bot_token="TOK", chat_id=999)
+        with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
+             patch("rt.telegram.client.stop_poll") as mock_stop, \
+             patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
             asyncio.run(handle_callback(update, context))
+            assert mock_stop.called
             assert mock_next.called
 
-        assert update.callback_query.edit_message_reply_markup.called
         assert context.bot.send_message.called
-
-        bank2 = load_recall_bank(lesson_dir)
-        ans = next(a for a in bank2.answers if a.question_id == "recall_000001")
-        assert ans.answer_text == "B"
-        assert ans.evaluation == "B e' corretta perche'..."
+        sent_text = context.bot.send_message.call_args.kwargs["text"]
+        assert "Unità: 1.1" in sent_text  # riferimento all'unità didattica (quiz: solo id/titolo)
 
 
 # ---------------------------------------------------------------------------
@@ -402,43 +563,80 @@ class TestTextAndVoiceDispatch:
 
 
 # ---------------------------------------------------------------------------
-# 7. /recall_style
+# 7. /stile: propone i 3 stili con 3 bottoni, nessun argomento testuale
 # ---------------------------------------------------------------------------
 
-class TestRecallStyleCommand:
-    def test_no_args_reports_current_style(self, tmp_path):
+class TestStileCommand:
+    def test_shows_current_style_with_three_buttons(self, tmp_path):
         state_dir = str(tmp_path / "state")
         update = MagicMock()
         update.effective_message.message_thread_id = None
         update.effective_message.reply_text = AsyncMock()
         context = _make_mock_context(state_dir)
-        context.args = []
 
-        asyncio.run(handle_recall_style(update, context))
+        asyncio.run(handle_stile(update, context))
         update.effective_message.reply_text.assert_called_once()
+        _, kwargs = update.effective_message.reply_text.call_args
         assert "quiz" in update.effective_message.reply_text.call_args[0][0]
+        keyboard = kwargs["reply_markup"]
+        row = keyboard["inline_keyboard"][0]
+        assert len(row) == 3
+        assert {btn["callback_data"] for btn in row} == {"stile:quiz", "stile:mirata", "stile:vasta"}
 
-    def test_sets_style(self, tmp_path):
+    def test_button_callback_sets_style(self, tmp_path):
         state_dir = str(tmp_path / "state")
-        update = MagicMock()
-        update.effective_message.message_thread_id = None
-        update.effective_message.reply_text = AsyncMock()
+        update = _make_mock_callback_update("stile:vasta")
+        update.callback_query.edit_message_text = AsyncMock()
         context = _make_mock_context(state_dir)
-        context.args = ["vasta"]
 
-        asyncio.run(handle_recall_style(update, context))
+        asyncio.run(handle_callback(update, context))
         assert recall_preferences.get_active_style(state_dir) == "vasta"
+        assert update.callback_query.answer.called
+        assert update.callback_query.edit_message_text.called
 
-    def test_invalid_style_rejected(self, tmp_path):
+    def test_button_callback_rejects_invalid_style(self, tmp_path):
+        state_dir = str(tmp_path / "state")
+        update = _make_mock_callback_update("stile:boh")
+        context = _make_mock_context(state_dir)
+
+        asyncio.run(handle_callback(update, context))
+        assert recall_preferences.get_active_style(state_dir) == "quiz"  # default, non cambiato
+        update.callback_query.answer.assert_called_once_with("Stile non valido.", show_alert=True)
+
+
+# ---------------------------------------------------------------------------
+# 7b. /recall lanciato da Telegram: usa l'ultima lezione tracciata per il topic
+# ---------------------------------------------------------------------------
+
+class TestRecallCommand:
+    def test_no_last_lesson_replies_with_guidance(self, tmp_path):
         state_dir = str(tmp_path / "state")
         update = MagicMock()
+        update.effective_chat.id = 12345
         update.effective_message.message_thread_id = None
         update.effective_message.reply_text = AsyncMock()
         context = _make_mock_context(state_dir)
-        context.args = ["boh"]
 
-        asyncio.run(handle_recall_style(update, context))
-        assert recall_preferences.get_active_style(state_dir) == "quiz"  # default, non cambiato
+        asyncio.run(handle_recall_command(update, context))
+        update.effective_message.reply_text.assert_called_once()
+        assert "rt recall" in update.effective_message.reply_text.call_args[0][0]
+
+    def test_launches_session_for_last_lesson(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        from rt.telegram.last_lesson import record_last_lesson
+        record_last_lesson(state_dir, 12345, None, lesson_dir)
+
+        update = MagicMock()
+        update.effective_chat.id = 12345
+        update.effective_message.message_thread_id = None
+        context = _make_mock_context(state_dir)
+
+        with patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+            asyncio.run(handle_recall_command(update, context))
+            mock_start.assert_called_once_with(lesson_dir, "sequenziale", None, False)
 
 
 # ---------------------------------------------------------------------------
