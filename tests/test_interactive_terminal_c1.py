@@ -18,7 +18,7 @@ import io
 import threading
 import time
 
-from rt.core.keyboard import read_single_key, UNKNOWN_KEY
+from rt.core.keyboard import read_single_key, UNKNOWN_KEY, raw_mode
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
 from rt.core.editor_edit import edit_text_in_editor
 from rt.core.models import (
@@ -51,6 +51,67 @@ def test_read_single_key_fallback_when_not_atty(monkeypatch):
     with patch("builtins.input", return_value="\x1b[A"):
         res = read_single_key()
         assert res == UNKNOWN_KEY
+
+
+def test_raw_mode_tty(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    mock_termios = MagicMock()
+    mock_tty = MagicMock()
+    mock_fd = 0
+    monkeypatch.setattr(sys.stdin, "fileno", lambda: mock_fd)
+    mock_termios.tcgetattr.return_value = ["dummy_attrs"]
+
+    with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
+        with raw_mode() as is_raw:
+            assert is_raw is True
+            mock_tty.setraw.assert_called_once_with(mock_fd)
+            mock_termios.tcsetattr.assert_not_called()
+        mock_termios.tcsetattr.assert_called_once_with(mock_fd, mock_termios.TCSADRAIN, ["dummy_attrs"])
+
+
+def test_raw_mode_not_atty(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    mock_termios = MagicMock()
+    mock_tty = MagicMock()
+
+    with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
+        with raw_mode() as is_raw:
+            assert is_raw is False
+            mock_tty.setraw.assert_not_called()
+            mock_termios.tcgetattr.assert_not_called()
+            mock_termios.tcsetattr.assert_not_called()
+
+
+def test_read_single_key_already_raw(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    mock_termios = MagicMock()
+    mock_tty = MagicMock()
+    mock_fd = 0
+    monkeypatch.setattr(sys.stdin, "fileno", lambda: mock_fd)
+
+    with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
+        with patch.object(sys.stdin, "read", return_value="a"):
+            res = read_single_key(already_raw=True)
+            assert res == "a"
+            mock_tty.setraw.assert_not_called()
+            mock_termios.tcsetattr.assert_not_called()
+            mock_termios.tcgetattr.assert_not_called()
+
+        # Test arrows when already_raw=True
+        with patch("select.select", return_value=([sys.stdin], [], [])), \
+             patch.object(sys.stdin, "read", side_effect=["\x1b", "[", "D"]):
+            res = read_single_key(already_raw=True)
+            assert res == "LEFT"
+            mock_tty.setraw.assert_not_called()
+            mock_termios.tcsetattr.assert_not_called()
+
+        # Test UNKNOWN_KEY when already_raw=True
+        with patch("select.select", return_value=([], [], [])), \
+             patch.object(sys.stdin, "read", return_value="\x1b"):
+            res = read_single_key(already_raw=True)
+            assert res == UNKNOWN_KEY
+            mock_tty.setraw.assert_not_called()
+            mock_termios.tcsetattr.assert_not_called()
 
 
 def test_read_single_key_raw_tty(monkeypatch):
@@ -418,7 +479,7 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
     keys = iter(["p", "m"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
@@ -465,7 +526,7 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
 
     # Sequenza: P (avvia) -> P (pausa SIGSTOP) -> P (riprendi SIGCONT) -> O (riavvia da capo) -> A (accetta e ferma audio)
     keys = iter(["p", "p", "p", "o", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc1 = MagicMock()
     mock_proc1.poll.return_value = None
@@ -519,7 +580,7 @@ def test_audio_error_messages_remain_visible(tmp_path, monkeypatch, capsys):
 
     # P con eccezione in cut_clip, poi A (accetta)
     keys = iter(["p", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=RuntimeError("ffmpeg error test")):
         res = run_interactive_review(lesson_dir, "asr", channel="terminal")
@@ -554,7 +615,7 @@ def test_unrecognized_key_no_action_no_advance(tmp_path, monkeypatch):
     # Sequenza: "z" (non riconosciuto -> no-op), UNKNOWN_KEY (non riconosciuto -> no-op), "a" (accetta)
     assert UNKNOWN_KEY != ""
     keys = iter(["z", UNKNOWN_KEY, "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     res = run_interactive_review(lesson_dir, "asr", channel="terminal")
     assert res is True
@@ -588,7 +649,7 @@ def test_unknown_key_in_science_review_no_action(tmp_path, monkeypatch):
 
     # UNKNOWN_KEY (e.g. standalone ESC o escape incompleto) -> no-op, poi "a" (accetta)
     keys = iter([UNKNOWN_KEY, "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
@@ -634,7 +695,7 @@ def test_arrow_keys_aliases_left_right(tmp_path, monkeypatch):
     # 3. "a" -> accetta asr_001
     # 4. "a" -> accetta asr_002
     keys = iter(["RIGHT", "LEFT", "a", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     res = run_interactive_review(lesson_dir, "asr", channel="terminal")
     assert res is True
@@ -668,7 +729,7 @@ def test_context_fallback_when_draft_mismatch(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     keys = iter(["a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     res = run_interactive_review(lesson_dir, "asr", channel="terminal")
     assert res is True
@@ -702,7 +763,7 @@ def test_asr_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
     # 1. 'm' -> l'utente cancella i marcatori »« -> stampa warning e ripresenta
     # 2. 'a' -> accetta normalmente
     keys = iter(["m", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Testo senza marcatori"):
         res = run_interactive_review(lesson_dir, "asr", channel="terminal")
@@ -739,7 +800,7 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
     # 1. 'p' -> ascolto audio dell'intera unità U1 (10s a 30s)
     # 2. 'e' -> modifica via editor
     keys = iter(["p", "e"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda: next(keys))
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
@@ -760,3 +821,65 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "edited"
     assert ledger.decisions[0].resolved_text == "abbiamo una reazione endotermica controllata"
+
+
+def test_run_interactive_review_uses_raw_mode_once(tmp_path, monkeypatch):
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    asr_issues = [
+        ASRIssue(
+            id="asr_001",
+            segment_id="seg_000001",
+            source_text="distillazione",
+            candidate="distillazione",
+            confidence=0.75,
+            level=ASRLevel.YELLOW,
+            reason="ambiguità fonetica"
+        ),
+        ASRIssue(
+            id="asr_002",
+            segment_id="seg_000002",
+            source_text="reazione",
+            candidate="reazione",
+            confidence=0.85,
+            level=ASRLevel.YELLOW,
+            reason="ambiguità fonetica"
+        )
+    ]
+    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    raw_mode_enter_count = 0
+    raw_mode_exit_count = 0
+
+    import contextlib
+    @contextlib.contextmanager
+    def mock_raw_mode():
+        nonlocal raw_mode_enter_count, raw_mode_exit_count
+        raw_mode_enter_count += 1
+        try:
+            yield True
+        finally:
+            raw_mode_exit_count += 1
+
+    monkeypatch.setattr("rt.pipeline.issue_review.raw_mode", mock_raw_mode)
+
+    calls_already_raw = []
+    keys = iter(["a", "a"])
+    def mock_read_key(already_raw=False):
+        calls_already_raw.append(already_raw)
+        return next(keys)
+
+    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", mock_read_key)
+
+    res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    assert res is True
+    assert raw_mode_enter_count == 1
+    assert raw_mode_exit_count == 1
+    assert calls_already_raw == [True, True]
+
