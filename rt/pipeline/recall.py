@@ -67,8 +67,9 @@ def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
 def get_next_pending_question(
     lesson_dir: str,
     qtype: RecallQuestionType,
-    order: str = "sequenziale",
+    order: str = "alternato",
     unit_cursor: Optional[str] = None,
+    exclude_id: Optional[str] = None,
 ) -> Optional[RecallQuestion]:
     """Seleziona la prossima domanda pendente del tipo richiesto secondo l'ordine specificato.
 
@@ -77,12 +78,23 @@ def get_next_pending_question(
         'alternato'   - round-robin tra le unità distinte; unit_cursor e' l'ultima unità servita.
         'casuale'     - scelta random tra le pending.
 
+    exclude_id: se specificato, esclude quella domanda dal pool PRIMA di applicare l'ordine,
+        così una domanda appena saltata non viene immediatamente riproposta. Se è l'unica
+        pending disponibile, viene comunque restituita (fallback: meglio che bloccare).
+
     Marca la domanda restituita come ASKED e salva il bank.
     """
     bank = load_recall_bank(lesson_dir)
     pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
     if not pending:
         return None
+
+    # Applica exclude_id solo se ci sono altre opzioni disponibili
+    if exclude_id:
+        filtered = [q for q in pending if q.id != exclude_id]
+        if filtered:
+            pending = filtered
+        # else: exclude_id è l'unica pending → viene comunque riproposta (fallback)
 
     selected: Optional[RecallQuestion] = None
 
@@ -156,6 +168,22 @@ def record_recall_answer(
         bank.answers.append(ans)
     save_recall_bank(bank, lesson_dir)
     return ans
+
+
+def skip_recall_question(lesson_dir: str, question_id: str) -> None:
+    """Riporta una domanda ASKED → PENDING dopo uno skip, così non viene persa definitivamente.
+
+    No-op se la domanda è in stato diverso da ASKED (es. già ANSWERED — non toccarla)
+    o se non esiste nel bank. Centralizzata qui così sia il daemon che il terminale
+    riusano la stessa logica senza duplicarla.
+    """
+    bank = load_recall_bank(lesson_dir)
+    for q in bank.questions:
+        if q.id == question_id:
+            if q.status == RecallQuestionStatus.ASKED:
+                q.status = RecallQuestionStatus.PENDING
+                save_recall_bank(bank, lesson_dir)
+            return
 
 
 def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
@@ -279,11 +307,39 @@ def generate_recall_batch(
 
     # ---- Build list of unit index groups to generate questions for ----
     def _pick_unit_groups(num: int) -> List[List[int]]:
-        """Return list of index groups into `units`."""
+        """Restituisce i gruppi di indici di unità su cui generare domande.
+
+        Per quiz/mirata: favorisce le unità MENO rappresentate nel bank esistente per
+        quel qtype (conteggio domande in qualsiasi stato: pending/asked/answered),
+        ordinando per conteggio crescente e scegliendo le prime `num`.
+
+        Per vasta: favorisce le finestre (gruppi di 2-4 unità contigue) che coprono
+        le unità meno rappresentate da domande vasta esistenti, scegliendo il punto
+        di partenza basandosi sul conteggio minimo anziché sempre da i=0.
+        """
         if qtype == RecallQuestionType.VASTA:
+            # Conta copertura per unità (ogni domanda vasta copre un gruppo di unità)
+            unit_count: Dict[str, int] = {u.unit_id: 0 for u in units}
+            for q in bank.questions:
+                if q.type == RecallQuestionType.VASTA:
+                    for uid in q.unit_ids:
+                        if uid in unit_count:
+                            unit_count[uid] += 1
+            # Scegli il punto di partenza come l'unità con minimo conteggio
+            if units:
+                min_uid = min(unit_count, key=lambda uid: unit_count[uid])
+                start_i = next((i for i, u in enumerate(units) if u.unit_id == min_uid), 0)
+            else:
+                start_i = 0
             groups: List[List[int]] = []
-            i = 0
-            while len(groups) < num and i < len(units):
+            i = start_i
+            seen_start = set()
+            while len(groups) < num:
+                if i >= len(units):
+                    i = 0  # wrap-around
+                if i in seen_start:
+                    break  # evita loop infinito
+                seen_start.add(i)
                 size = min(4, max(2, len(units) - i))
                 group = list(range(i, min(i + size, len(units))))
                 groups.append(group)
@@ -292,11 +348,21 @@ def generate_recall_batch(
         else:
             if not units:
                 return []
+            # Conta quante domande (qualsiasi stato) già coprono ciascuna unità
+            covered: Dict[str, int] = {u.unit_id: 0 for u in units}
+            for q in bank.questions:
+                if q.type == qtype:
+                    uid = q.unit_ids[0] if q.unit_ids else None
+                    if uid and uid in covered:
+                        covered[uid] += 1
+            # Ordina le unità per conteggio crescente (a parità: ordine naturale del draft)
+            sorted_units = sorted(range(len(units)), key=lambda i: covered[units[i].unit_id])
             groups_idx: List[List[int]] = []
-            idx = 0
+            pool_idx = 0
             while len(groups_idx) < num:
-                groups_idx.append([idx % len(units)])
-                idx += 1
+                idx = sorted_units[pool_idx % len(sorted_units)]
+                groups_idx.append([idx])
+                pool_idx += 1
             return groups_idx
 
     unit_index_groups = _pick_unit_groups(count)

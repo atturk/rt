@@ -266,7 +266,7 @@ def cmd_recall(args):
         )
         sys.exit(1)
 
-    order = getattr(args, "order", "sequenziale")
+    order = getattr(args, "order", "alternato")
     style = getattr(args, "style", None)
     force_mock = getattr(args, "mock", False)
 
@@ -948,8 +948,8 @@ def main():
     # recall
     p_recall = subparsers.add_parser("recall", help="Sessione di active recall (quiz/mirata/vasta) su una lezione già rielaborata")
     p_recall.add_argument("lesson_dir", help="Directory della lezione")
-    p_recall.add_argument("--order", choices=["sequenziale", "alternato", "casuale"], default="sequenziale",
-                           help="Ordine di proposta delle domande per questa sessione (default: sequenziale)")
+    p_recall.add_argument("--order", choices=["sequenziale", "alternato", "casuale"], default="alternato",
+                           help="Ordine di proposta delle domande per questa sessione (default: alternato)")
     p_recall.add_argument("--channel", choices=["terminal", "telegram"], default=None,
                            help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_recall.add_argument("--style", choices=["quiz", "mirata", "vasta"], default=None,

@@ -125,10 +125,12 @@ def send_poll(
     correct_option_id: int,
     message_thread_id: Optional[int] = None,
     is_anonymous: bool = False,
+    reply_markup: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """Invia un quiz nativo Telegram (sendPoll, type=quiz): feedback visivo corretto/sbagliato
     gestito dalla piattaforma. is_anonymous=False è necessario per ricevere gli update
-    poll_answer con l'identità di chi ha risposto (altrimenti Telegram non li invia)."""
+    poll_answer con l'identità di chi ha risposto (altrimenti Telegram non li invia).
+    reply_markup opzionale: permette di allegare una tastiera inline al messaggio del poll."""
     payload = {
         "chat_id": cfg.chat_id,
         "question": question,
@@ -139,6 +141,8 @@ def send_poll(
     }
     if message_thread_id is not None:
         payload["message_thread_id"] = message_thread_id
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     return _call(cfg, "sendPoll", payload)
 
 
@@ -167,3 +171,31 @@ def download_voice(cfg: TelegramConfig, file_id: str, dest_path: str, timeout: f
 
     with open(dest_path, "wb") as f:
         f.write(resp.content)
+
+
+def send_audio(
+    cfg: TelegramConfig,
+    audio_path: str,
+    title: str,
+    performer: Optional[str] = None,
+    message_thread_id: Optional[int] = None,
+    timeout: float = 60.0,
+    max_retries: int = 1,
+) -> Dict[str, Any]:
+    """Invia un file audio tramite sendAudio (mostra titolo/artista, player stile playlist,
+    si accoda alla coda musicale Telegram — a differenza di sendVoice che mostra una bolla
+    vocale con forma d'onda). Usato per l'audio delle unità didattiche su richiesta esplicita."""
+    url = _API_BASE.format(token=cfg.bot_token, method="sendAudio")
+    data: Dict[str, Any] = {"chat_id": cfg.chat_id, "title": title}
+    if performer:
+        data["performer"] = performer
+    if message_thread_id is not None:
+        data["message_thread_id"] = message_thread_id
+
+    with open(audio_path, "rb") as f:
+        return _execute_request(
+            "sendAudio",
+            url,
+            {"data": data, "files": {"audio": f}, "timeout": timeout},
+            max_retries=max_retries,
+        )

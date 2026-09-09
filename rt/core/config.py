@@ -375,9 +375,15 @@ def _load_rtconfig_from_file(path: str) -> RTConfig:
     return RTConfig()
 
 
+_NON_JOB_YAML_FILENAMES = {"recall_lessons.yaml"}
+
+
 def find_job_yaml_paths(config_dir: str) -> Dict[str, str]:
     """Cerca ricorsivamente in config_dir tutti i file <job>.yaml (nome file, senza
-    estensione, = nome del job) tranne il 'general.yaml' della cartella radice.
+    estensione, = nome del job) tranne il 'general.yaml' della cartella radice e i
+    file elencati in _NON_JOB_YAML_FILENAMES (config non di routing LLM, es.
+    config/telegram/recall_lessons.yaml, letto a parte da rt.telegram.recall_lessons —
+    non ha la forma di un JobRoutingConfig e romperebbe la validazione se trattato come job).
     Ritorna {job_name: path_assoluto}. La struttura di sottocartelle è libera
     (es. config/rt/outline.yaml, config/telegram/recall_quiz.yaml, o tutto piatto
     come prima): il codice non impone né assume alcuna organizzazione specifica."""
@@ -386,6 +392,8 @@ def find_job_yaml_paths(config_dir: str) -> Dict[str, str]:
     for root, _dirs, files in os.walk(config_dir_abs):
         for fname in sorted(files):
             if not fname.endswith(".yaml"):
+                continue
+            if fname in _NON_JOB_YAML_FILENAMES:
                 continue
             full_path = os.path.join(root, fname)
             if fname == "general.yaml" and os.path.dirname(full_path) == config_dir_abs:

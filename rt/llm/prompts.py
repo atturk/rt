@@ -253,6 +253,7 @@ REGOLE CATEGORICHE:
 5. Il campo "pregenerated_material" deve contenere: una breve spiegazione del perché la risposta corretta è giusta E del perché ciascuno dei tre distrattori è sbagliato (in 3-4 righe totali).
 6. La domanda deve essere precisa, non ambigua, e formulata in italiano accademico.
 7. Non inserire numeri progressivi nelle opzioni (es. "A)", "1.") — solo testo.
+8. Ogni opzione deve essere breve e concisa: massimo 100 caratteri (limite tecnico dell'API di Telegram per i quiz nativi). La domanda stessa deve restare sotto i 290 caratteri.
 
 OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
 {

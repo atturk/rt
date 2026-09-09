@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from pydantic import BaseModel
 
-from rt.core.config import RouteConfig, JobRoutingConfig, RTConfig, load_config
+from rt.core.config import RouteConfig, JobRoutingConfig, RTConfig, load_config, find_job_yaml_paths, _load_config_dir
 from rt.llm.pricing import ModelPricing, calculate_cost
 from rt.llm.credentials import GLOBAL_CREDENTIALS, CredentialRef
 from rt.llm.client import LLMClient
@@ -577,3 +577,27 @@ def test_resolve_telegram_state_dir_branches(tmp_path, monkeypatch):
 
 
 
+
+
+def test_find_job_yaml_paths_excludes_recall_lessons_yaml(tmp_path):
+    """recall_lessons.yaml (config/telegram/) non è un job di routing LLM: se venisse
+    trattato come tale, _load_config_dir fallirebbe la validazione pydantic (JobRoutingConfig
+    richiede almeno 'primary', che recall_lessons.yaml non ha)."""
+    config_dir = tmp_path / "config"
+    (config_dir / "telegram").mkdir(parents=True)
+    (config_dir / "general.yaml").write_text("telegram:\n  state_dir: '.tg'\n", encoding="utf-8")
+    (config_dir / "telegram" / "recall_quiz.yaml").write_text(
+        "primary:\n  provider: null\n  model: null\n", encoding="utf-8"
+    )
+    (config_dir / "telegram" / "recall_lessons.yaml").write_text(
+        "BIOCHIMICA: \"/tmp/qualche/lezione\"\n", encoding="utf-8"
+    )
+
+    paths = find_job_yaml_paths(str(config_dir))
+    assert "recall_quiz" in paths
+    assert "recall_lessons" not in paths
+
+    # Non deve far fallire il caricamento della config (recall_lessons.yaml non ha la
+    # forma di un JobRoutingConfig e romperebbe model_validate se non fosse escluso).
+    cfg = _load_config_dir(str(config_dir))
+    assert "recall_quiz" in cfg.jobs

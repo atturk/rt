@@ -26,6 +26,8 @@ def edit_text_in_editor(initial_content: str) -> str:
         cmd = [editor]
         if os.path.basename(editor) == "nano":
             cmd.append("--softwrap")
+        elif os.path.basename(editor) == "micro":
+            cmd += ["-softwrap", "true"]
         cmd.append(tmp_path)
 
         subprocess.call(cmd)

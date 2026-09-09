@@ -7,7 +7,7 @@ import os
 import shutil
 import tempfile
 import subprocess
-from typing import Optional
+from typing import Optional, List, Tuple
 from rt.core.manifest import load_manifest
 
 
@@ -88,3 +88,21 @@ def play_clip_background(clip_path: str) -> subprocess.Popen:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+def resolve_unit_time_range(unit, segments: List) -> Tuple[float, float]:
+    """Risolve l'intervallo temporale (start_s, end_s) di una DraftUnit nel file audio della lezione.
+
+    Mappa start_segment_id / end_segment_id sui Segment corrispondenti tramite il loro .id.
+    Solleva ValueError se uno dei segmenti non è trovato.
+    Usato dal recall (bottone 🔊) e centralizza la stessa logica già presente in issue_review.py,
+    evitando ulteriori duplicazioni inline.
+    """
+    seg_by_id = {s.id: s for s in segments}
+    start_seg = seg_by_id.get(unit.start_segment_id)
+    end_seg = seg_by_id.get(unit.end_segment_id)
+    if start_seg is None:
+        raise ValueError(f"Segmento '{unit.start_segment_id}' non trovato per l'unità '{unit.unit_id}'.")
+    if end_seg is None:
+        raise ValueError(f"Segmento '{unit.end_segment_id}' non trovato per l'unità '{unit.unit_id}'.")
+    return start_seg.start_seconds, end_seg.end_seconds
