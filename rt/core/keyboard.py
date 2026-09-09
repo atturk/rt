@@ -5,6 +5,8 @@ Supporta macOS / Linux (termios/tty) con fallback su input() per ambienti non in
 """
 
 import contextlib
+import os
+import select
 import sys
 
 UNKNOWN_KEY = "\x00UNKNOWN"
@@ -33,22 +35,28 @@ def raw_mode():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def _parse_tty_key() -> str:
-    import select
-    ch = sys.stdin.read(1)
+def _parse_tty_key(fd: int) -> str:
+    """Legge una singola pressione di tasto (incluse sequenze ANSI frecce) dal file
+    descriptor grezzo ``fd``, senza passare per il buffer Python di sys.stdin.
+
+    Usare ``os.read`` e ``select.select`` sullo stesso ``fd`` a livello kernel
+    evita il bug in cui Python svuota il fd nel suo buffer interno e poi
+    ``select`` lo trova vuoto — causando la frammentazione di sequenze ANSI.
+    """
+    ch = os.read(fd, 1).decode("utf-8", errors="replace")
     if ch == "\x03":  # Ctrl+C
         raise KeyboardInterrupt()
     if ch in ("\r", "\n"):
         return ""
     if ch == "\x1b":
         try:
-            r, _, _ = select.select([sys.stdin], [], [], 0.15)
+            r, _, _ = select.select([fd], [], [], 0.15)
             if r:
-                ch2 = sys.stdin.read(1)
+                ch2 = os.read(fd, 1).decode("utf-8", errors="replace")
                 if ch2 == "[":
-                    r2, _, _ = select.select([sys.stdin], [], [], 0.15)
+                    r2, _, _ = select.select([fd], [], [], 0.15)
                     if r2:
-                        ch3 = sys.stdin.read(1)
+                        ch3 = os.read(fd, 1).decode("utf-8", errors="replace")
                         if ch3 == "D":
                             return "LEFT"
                         elif ch3 == "C":
@@ -88,7 +96,8 @@ def read_single_key(already_raw: bool = False) -> str:
 
     if already_raw:
         try:
-            return _parse_tty_key()
+            fd = sys.stdin.fileno()
+            return _parse_tty_key(fd)
         except KeyboardInterrupt:
             raise
         except Exception:
@@ -102,7 +111,7 @@ def read_single_key(already_raw: bool = False) -> str:
         old_settings = termios.tcgetattr(fd)
         try:
             tty.setcbreak(fd)
-            return _parse_tty_key()
+            return _parse_tty_key(fd)
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except KeyboardInterrupt:

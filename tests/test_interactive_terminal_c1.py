@@ -90,7 +90,8 @@ def test_read_single_key_already_raw(monkeypatch):
     monkeypatch.setattr(sys.stdin, "fileno", lambda: mock_fd)
 
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
-        with patch.object(sys.stdin, "read", return_value="a"):
+        # Normal char: os.read returns b"a"
+        with patch("rt.core.keyboard.os.read", return_value=b"a"):
             res = read_single_key(already_raw=True)
             assert res == "a"
             mock_tty.setraw.assert_not_called()
@@ -98,8 +99,8 @@ def test_read_single_key_already_raw(monkeypatch):
             mock_termios.tcgetattr.assert_not_called()
 
         # Test arrows when already_raw=True
-        with patch("select.select", return_value=([sys.stdin], [], [])), \
-             patch.object(sys.stdin, "read", side_effect=["\x1b", "[", "D"]):
+        with patch("select.select", return_value=([mock_fd], [], [])), \
+             patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"[", b"D"]):
             res = read_single_key(already_raw=True)
             assert res == "LEFT"
             mock_tty.setraw.assert_not_called()
@@ -107,7 +108,7 @@ def test_read_single_key_already_raw(monkeypatch):
 
         # Test UNKNOWN_KEY when already_raw=True
         with patch("select.select", return_value=([], [], [])), \
-             patch.object(sys.stdin, "read", return_value="\x1b"):
+             patch("rt.core.keyboard.os.read", return_value=b"\x1b"):
             res = read_single_key(already_raw=True)
             assert res == UNKNOWN_KEY
             mock_tty.setraw.assert_not_called()
@@ -122,7 +123,7 @@ def test_read_single_key_raw_tty(monkeypatch):
     monkeypatch.setattr(sys.stdin, "fileno", lambda: mock_fd)
 
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
-        with patch.object(sys.stdin, "read", return_value="p"):
+        with patch("rt.core.keyboard.os.read", return_value=b"p"):
             res = read_single_key()
             assert res == "p"
             mock_tty.setcbreak.assert_called_once_with(mock_fd)
@@ -130,52 +131,52 @@ def test_read_single_key_raw_tty(monkeypatch):
 
 
 def test_read_single_key_raw_tty_arrows_and_esc(monkeypatch):
-    import select
+    mock_fd = 0
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdin, "fileno", lambda: mock_fd)
     mock_termios = MagicMock()
     mock_tty = MagicMock()
-    monkeypatch.setattr(sys.stdin, "fileno", lambda: 0)
 
     # 1. Left arrow: \x1b[D
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
-         patch("select.select", return_value=([sys.stdin], [], [])), \
-         patch.object(sys.stdin, "read", side_effect=["\x1b", "[", "D"]):
+         patch("select.select", return_value=([mock_fd], [], [])), \
+         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"[", b"D"]):
         res = read_single_key()
         assert res == "LEFT"
 
     # 2. Right arrow: \x1b[C
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
-         patch("select.select", return_value=([sys.stdin], [], [])), \
-         patch.object(sys.stdin, "read", side_effect=["\x1b", "[", "C"]):
+         patch("select.select", return_value=([mock_fd], [], [])), \
+         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"[", b"C"]):
         res = read_single_key()
         assert res == "RIGHT"
 
     # 3. Standalone ESC: select timeout ([], [], []) -> UNKNOWN_KEY (NOT "")
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
          patch("select.select", return_value=([], [], [])), \
-         patch.object(sys.stdin, "read", return_value="\x1b"):
+         patch("rt.core.keyboard.os.read", return_value=b"\x1b"):
         res = read_single_key()
         assert res == UNKNOWN_KEY
         assert res != ""
 
     # 4. ESC + non-bracket -> UNKNOWN_KEY
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
-         patch("select.select", return_value=([sys.stdin], [], [])), \
-         patch.object(sys.stdin, "read", side_effect=["\x1b", "O"]):
+         patch("select.select", return_value=([mock_fd], [], [])), \
+         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"O"]):
         res = read_single_key()
         assert res == UNKNOWN_KEY
 
     # 5. ESC + [ + non-arrow -> UNKNOWN_KEY
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
-         patch("select.select", return_value=([sys.stdin], [], [])), \
-         patch.object(sys.stdin, "read", side_effect=["\x1b", "[", "A"]):
+         patch("select.select", return_value=([mock_fd], [], [])), \
+         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"[", b"A"]):
         res = read_single_key()
         assert res == UNKNOWN_KEY
 
     # 6. ESC + [ + timeout on 3rd char -> UNKNOWN_KEY
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
-         patch("select.select", side_effect=[([sys.stdin], [], []), ([], [], [])]), \
-         patch.object(sys.stdin, "read", side_effect=["\x1b", "["]):
+         patch("select.select", side_effect=[([mock_fd], [], []), ([], [], [])]), \
+         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"["]):
         res = read_single_key()
         assert res == UNKNOWN_KEY
 
@@ -265,7 +266,7 @@ def test_read_single_key_ctrl_c(monkeypatch):
     monkeypatch.setattr(sys.stdin, "fileno", lambda: 0)
 
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
-        with patch.object(sys.stdin, "read", return_value="\x03"):
+        with patch("rt.core.keyboard.os.read", return_value=b"\x03"):
             with pytest.raises(KeyboardInterrupt):
                 read_single_key()
 
