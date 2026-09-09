@@ -20,6 +20,7 @@ from rt.llm.prompts import (
     build_outline_revision_user_prompt,
 )
 from rt.pipeline.validator import validate_outline
+from rt.core.lesson_paths import lesson_path
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -34,7 +35,7 @@ from rt.core.idempotency import (
 
 
 def get_outline_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "outline.json")
+    return lesson_path(lesson_dir, "outline.json")
 
 
 def load_outline(lesson_dir: str) -> Outline:
@@ -58,13 +59,13 @@ def save_outline(outline: Outline, lesson_dir: str) -> None:
 
 def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
     """Genera e valida l'outline della lezione."""
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path)
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
     topics_val = info.get("argomenti") or None
     
-    segments_path = os.path.join(lesson_dir, "segments.json")
+    segments_path = lesson_path(lesson_dir, "segments.json")
     if not os.path.isfile(segments_path):
         raise FileNotFoundError(f"segments.json mancante. Esegui prima 'rt prepare' su '{lesson_dir}'")
         
@@ -143,13 +144,13 @@ def run_outline_revision(lesson_dir: str, feedback: str, force_mock: bool = Fals
     """Rigenera l'outline incorporando un feedback testuale libero dell'utente.
     A differenza di run_outline(), ignora sempre l'idempotenza: una revisione è
     per definizione una richiesta esplicita dell'utente."""
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path)
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
     topics_val = info.get("argomenti") or None
 
-    segments_path = os.path.join(lesson_dir, "segments.json")
+    segments_path = lesson_path(lesson_dir, "segments.json")
     segments_data = load_segments_json(segments_path)
 
     summary_lines = []

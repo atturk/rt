@@ -17,6 +17,7 @@ from rt.core.state import (
     read_info_yaml, get_current_state, WorkflowState,
     compute_effective_workflow_state
 )
+from rt.core.lesson_paths import lesson_path
 from rt.core.idempotency import (
     PhaseStatus,
     check_phase_status,
@@ -156,7 +157,7 @@ def test_transitive_staleness_on_segments_modification(fully_built_lesson):
     """
     lesson_dir = fully_built_lesson
 
-    seg_file = os.path.join(lesson_dir, "segments.json")
+    seg_file = lesson_path(lesson_dir, "segments.json")
     with open(seg_file, "r", encoding="utf-8") as f:
         seg_data = json.load(f)
     seg_data["segments"][0]["text_raw"] = "Testo segmento modificato radicalmente."

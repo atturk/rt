@@ -151,6 +151,19 @@ def stop_poll(cfg: TelegramConfig, message_id: int) -> Dict[str, Any]:
     return _call(cfg, "stopPoll", payload)
 
 
+def delete_message(cfg: TelegramConfig, message_id: int) -> bool:
+    """Elimina un messaggio dal chat/gruppo (deleteMessage). Pensata per gli script di
+    verifica live contro il bot reale: ogni messaggio di test inviato deve essere ripulito
+    a fine script per non riempire il gruppo di traffico di prova. Non solleva se il
+    messaggio è già stato eliminato o è troppo vecchio per l'API (>48h): ritorna False
+    invece di far fallire lo script di pulizia per un singolo messaggio non cancellabile."""
+    payload = {"chat_id": cfg.chat_id, "message_id": message_id}
+    try:
+        return bool(_call(cfg, "deleteMessage", payload))
+    except TelegramAPIError:
+        return False
+
+
 _FILE_BASE = "https://api.telegram.org/file/bot{token}/{file_path}"
 
 

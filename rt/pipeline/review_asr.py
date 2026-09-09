@@ -15,6 +15,7 @@ from rt.core.models import ASRIssue, ASRLevel
 from rt.core.segments import load_segments_json
 from rt.core.config import load_config
 from rt.core.state import transition_to, WorkflowState
+from rt.core.lesson_paths import lesson_path
 from rt.llm.client import LLMClient
 from rt.llm.prompts import ASR_REVIEW_SYSTEM_PROMPT, build_asr_review_user_prompt, ASRIssueList
 from rt.pipeline.ledger import record_decision
@@ -34,7 +35,7 @@ from rt.core.idempotency import (
 
 
 def get_asr_issues_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "asr_issues.json")
+    return lesson_path(lesson_dir, "asr_issues.json")
 
 
 def load_asr_issues(lesson_dir: str) -> List[ASRIssue]:
@@ -65,7 +66,7 @@ def run_review_asr(
     batch_size: int = 40
 ) -> Dict[str, Any]:
     """Esegue la revisione fonetica ASR con confidence gating deterministico e checkpointing continuo."""
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     config = load_config()
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
@@ -89,7 +90,7 @@ def run_review_asr(
 
     action = "FORCE" if force else "RUN"
     
-    segments_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_idx_map = {s.id: s.index for s in segments_data.segments}
     
     total_segments = len(segments_data.segments)

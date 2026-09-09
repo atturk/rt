@@ -386,7 +386,8 @@ class TestSendUnitAudio:
 
         assert len(sent) == 1
         assert sent[0]["title"] == "1.1 - Unita 1"
-        clip_cache_path = os.path.join(lesson_dir, "recall_audio_clips", "1.1.mp3")
+        from rt.core.lesson_paths import lesson_path
+        clip_cache_path = os.path.join(lesson_path(lesson_dir, "recall_audio_clips"), "1.1.mp3")
         assert os.path.isfile(clip_cache_path)
 
         # Seconda chiamata: riusa la cache, non ritaglia di nuovo.

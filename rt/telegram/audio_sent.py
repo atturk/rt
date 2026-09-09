@@ -8,10 +8,11 @@ import os
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any
+from rt.core.lesson_paths import lesson_path
 
 
 def _get_audio_sent_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "telegram_audio_sent.json")
+    return lesson_path(lesson_dir, "telegram_audio_sent.json")
 
 
 def _load_all_sent(lesson_dir: str) -> Dict[str, Any]:

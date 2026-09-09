@@ -15,6 +15,7 @@ from rt.telegram import issue_queue as tg_queue
 from rt.core.keyboard import read_single_key, raw_mode
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
 from rt.core.editor_edit import edit_text_in_editor
+from rt.core.lesson_paths import lesson_path
 
 
 def start_review_via_telegram(lesson_dir: str, asr_to_review: List[ASRIssue], sci_to_review: List[ScienceIssue]) -> None:
@@ -61,7 +62,7 @@ def _prepare_issue_context(lesson_dir: str, issue, issue_type: str) -> dict:
     from rt.core.segments import load_segments_json
     from rt.pipeline.rewrite import load_draft, get_draft_path
 
-    seg_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
     draft_path = get_draft_path(lesson_dir)
     draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
@@ -148,7 +149,7 @@ def send_current_issue(lesson_dir: str) -> None:
             pass
         except Exception:
             pass
-        yaml_path = os.path.join(lesson_dir, "info.yaml")
+        yaml_path = lesson_path(lesson_dir, "info.yaml")
         if os.path.isfile(yaml_path):
             try:
                 transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
@@ -336,7 +337,7 @@ def run_interactive_review(
     if len(to_review) == 0:
         rem_asr, rem_sci = get_pending_issues(lesson_dir)
         if not rem_asr and not rem_sci:
-            yaml_path = os.path.join(lesson_dir, "info.yaml")
+            yaml_path = lesson_path(lesson_dir, "info.yaml")
             if os.path.isfile(yaml_path):
                 try:
                     transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
@@ -363,7 +364,7 @@ def run_interactive_review(
     print(f"\n🔍 REVISIONE INTERATTIVA {issue_type.upper()} ({len(to_review)} casi{' [modalità history]' if history else ' pendenti'})")
     print("=" * 60)
 
-    seg_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in seg_data.segments}
 
     draft_path = get_draft_path(lesson_dir)
@@ -883,7 +884,7 @@ def run_interactive_review(
 
     rem_asr, rem_sci = get_pending_issues(lesson_dir)
     if not rem_asr and not rem_sci:
-        yaml_path = os.path.join(lesson_dir, "info.yaml")
+        yaml_path = lesson_path(lesson_dir, "info.yaml")
         if os.path.isfile(yaml_path):
             try:
                 transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)

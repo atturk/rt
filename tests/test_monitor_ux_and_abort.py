@@ -21,6 +21,7 @@ from rt.llm.errors import UserAbortedFailure, LLMFailure
 from rt.llm.telemetry import GLOBAL_TELEMETRY, LLMTelemetryRecord
 from rt.llm.router import RoutingEngine
 from rt.core.config import RTConfig, RouteConfig, JobRoutingConfig
+from rt.core.lesson_paths import lesson_path
 
 
 class SimpleItem(BaseModel):
@@ -379,7 +380,7 @@ def test_append_debug_log_on_success_and_failure(tmp_path, monkeypatch):
             max_retries=0  # salta repair turn per andare subito a fallback
         )
 
-    log_file = os.path.join(lesson_dir, "llm_debug.log")
+    log_file = lesson_path(lesson_dir, "llm_debug.log")
     assert os.path.isfile(log_file)
 
     with open(log_file, "r", encoding="utf-8") as f:

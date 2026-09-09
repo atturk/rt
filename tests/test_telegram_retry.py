@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from telegram.error import RetryAfter
 
-from rt.telegram.client import send_message, edit_message_reply_markup, TelegramAPIError
+from rt.telegram.client import send_message, edit_message_reply_markup, delete_message, TelegramAPIError
 from rt.telegram.config import TelegramConfig
 from rt.telegram.daemon import _send_with_retry, _handle_issue_callback, handle_text, handle_status
 from rt.telegram import registry, conversation_state as convo, pending as tg_pending
@@ -55,6 +55,36 @@ def test_client_send_message_raises_on_persistent_429():
         assert "Too Many Requests" in str(exc_info.value)
         assert mock_post.call_count == 2
         mock_sleep.assert_called_once_with(0.05)
+
+
+def test_client_delete_message_succeeds():
+    """delete_message è usata dagli script di verifica live contro il bot reale per
+    ripulire i messaggi di test dal gruppo a fine esecuzione (non deve mai far accumulare
+    traffico di prova nel gruppo dell'utente)."""
+    cfg = TelegramConfig(bot_token="fake_tok", chat_id=12345)
+    resp_ok = MagicMock()
+    resp_ok.status_code = 200
+    resp_ok.json.return_value = {"ok": True, "result": True}
+
+    with patch("requests.post", return_value=resp_ok) as mock_post:
+        assert delete_message(cfg, message_id=999) is True
+        sent_payload = mock_post.call_args.kwargs["json"]
+        assert sent_payload == {"chat_id": 12345, "message_id": 999}
+        assert "deleteMessage" in mock_post.call_args.args[0]
+
+
+def test_client_delete_message_returns_false_instead_of_raising_when_already_gone():
+    """Un messaggio già cancellato o troppo vecchio (>48h) non deve far fallire uno
+    script di pulizia: solo gli altri messaggi restano da cancellare."""
+    cfg = TelegramConfig(bot_token="fake_tok", chat_id=12345)
+    resp_fail = MagicMock()
+    resp_fail.status_code = 400
+    resp_fail.json.return_value = {
+        "ok": False, "error_code": 400, "description": "Bad Request: message to delete not found",
+    }
+
+    with patch("requests.post", return_value=resp_fail):
+        assert delete_message(cfg, message_id=999) is False
 
 
 def test_daemon_send_with_retry_succeeds_after_one_retry_after():

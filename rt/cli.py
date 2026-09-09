@@ -10,7 +10,7 @@ Comandi disponibili:
   rt review-asr         <cartella> [--mock]
   rt review-science     <cartella> [--mock]
   rt review             <cartella> (revisione interattiva casi YELLOW/RED)
-  rt build              <cartella> [--rename]
+  rt build              <cartella> [--no-rename] (rinomina la cartella col titolo finale, attivo di default)
   rt status             <cartella>
   rt test-llm           [--config <path>] (smoke test rapido DeepSeek/OpenRouter/Google)
   rt prices-check       (confronta i prezzi configurati con il catalogo live LiteLLM)
@@ -30,6 +30,7 @@ from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.encoding import fix_mojibake
 
 from rt.core.manifest import load_manifest
+from rt.core.lesson_paths import lesson_path
 from rt.core.segments import load_segments_json
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
@@ -391,7 +392,7 @@ def cmd_status(args):
     from rt.core.state import compute_effective_workflow_state
     from rt.core.models import ScienceType
     lesson_dir = args.lesson_dir
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path) if os.path.isfile(yaml_path) else {}
     manifest = load_manifest(lesson_dir)
     
@@ -961,7 +962,8 @@ def main():
     p_bld = subparsers.add_parser("build", help="Finalizzazione deterministica dei Markdown")
     p_bld.add_argument("lesson_dir", help="Directory della lezione")
     p_bld.add_argument("--force", action="store_true", help="Forza la rigenerazione di tutti i Markdown")
-    p_bld.add_argument("--rename", action="store_true", help="Rinomina la cartella con il titolo formale")
+    p_bld.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
+                        help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
     p_bld.add_argument(
         "--channel",
         choices=["terminal", "telegram"],
@@ -1013,7 +1015,8 @@ def main():
     p_run.add_argument("--with-review", action="store_true", dest="with_review",
                         help="Include anche generazione issue ASR/scientifiche e revisione umana nella run (comportamento monolitico precedente). Di default sono passi separati (rt review-asr / rt review-science / rt review).")
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
-    p_run.add_argument("--rename", action="store_true", help="Rinomina la cartella con il titolo formale")
+    p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
+                        help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
     p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
                         help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_run.set_defaults(func=cmd_run)

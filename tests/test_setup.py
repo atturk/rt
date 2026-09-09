@@ -13,6 +13,7 @@ from rt.pipeline.rewrite import run_rewrite
 from rt.pipeline.review_asr import run_review_asr
 from rt.pipeline.review_science import run_review_science
 from rt.pipeline.build import run_build
+from rt.core.lesson_paths import lesson_path
 
 
 def test_rt_setup_clean_initialization(tmp_path):
@@ -41,7 +42,8 @@ def test_rt_setup_clean_initialization(tmp_path):
     lecture_dir = os.path.join(dest_dir, folder_name)
     assert os.path.isdir(lecture_dir)
     
-    # Per il test inseriamo anche trascritto grezzo.json (come prodotto da MacWhisper)
+    # Per il test inseriamo anche trascritto grezzo.json (come prodotto da MacWhisper: sempre
+    # scritto alla radice da rt_setup.py/MacWhisper stesso, non passa da lesson_path())
     json_path = os.path.join(lecture_dir, "trascritto grezzo.json")
     raw_mw_json = {
         "segments": [
@@ -54,10 +56,10 @@ def test_rt_setup_clean_initialization(tmp_path):
         
     # --- VERIFICA RIGOROSA DELLO STATO DOPO RT_SETUP ---
     # FILE CHE DEVONO ESSERE PRESENTI
-    assert os.path.isfile(os.path.join(lecture_dir, "info.yaml")), "info.yaml deve essere presente"
-    assert os.path.isfile(os.path.join(lecture_dir, "trascritto grezzo.md")), "trascritto grezzo.md deve essere presente"
-    assert os.path.isfile(os.path.join(lecture_dir, "trascritto grezzo.json")), "trascritto grezzo.json deve essere presente"
-    assert os.path.isfile(os.path.join(lecture_dir, "test_audio.m4a")), "L'audio deve essere presente nella cartella"
+    assert os.path.isfile(lesson_path(lecture_dir,"info.yaml")), "info.yaml deve essere presente"
+    assert os.path.isfile(lesson_path(lecture_dir,"trascritto grezzo.md")), "trascritto grezzo.md deve essere presente"
+    assert os.path.isfile(lesson_path(lecture_dir,"trascritto grezzo.json")), "trascritto grezzo.json deve essere presente"
+    assert os.path.isfile(lesson_path(lecture_dir,"test_audio.m4a")), "L'audio deve essere presente nella cartella"
     
     # FILE CHE DEVONO ESSERE TASSATIVAMENTE ASSENTI DOPO SETUP
     forbidden_after_setup = [
@@ -74,56 +76,56 @@ def test_rt_setup_clean_initialization(tmp_path):
         "review_decisions.json"
     ]
     for filename in forbidden_after_setup:
-        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} NON deve essere presente dopo rt_setup!"
+        assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} NON deve essere presente dopo rt_setup!"
         
     # --- PASSO 2: RT PREPARE ---
     prep_res = run_prepare(lecture_dir)
     assert prep_res["status"] == "prepared"
-    assert os.path.isfile(os.path.join(lecture_dir, "segments.json")), "segments.json deve essere creato solo da prepare"
-    assert os.path.isfile(os.path.join(lecture_dir, "transcript_normalized.md"))
-    assert os.path.isfile(os.path.join(lecture_dir, "manifest.json"))
+    assert os.path.isfile(lesson_path(lecture_dir,"segments.json")), "segments.json deve essere creato solo da prepare"
+    assert os.path.isfile(lesson_path(lecture_dir,"transcript_normalized.md"))
+    assert os.path.isfile(lesson_path(lecture_dir,"manifest.json"))
     
     # Ancora assenti
     for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md", "outline.json", "draft.json"]:
-        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} non deve esistere dopo prepare!"
+        assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} non deve esistere dopo prepare!"
         
     # --- PASSO 3: RT OUTLINE ---
     out_res = run_outline(lecture_dir, force_mock=True)
     assert out_res["status"] == "outline_validated"
-    assert os.path.isfile(os.path.join(lecture_dir, "outline.json")), "outline.json creato da outline"
+    assert os.path.isfile(lesson_path(lecture_dir,"outline.json")), "outline.json creato da outline"
     
     # Ancora assenti i file finali
     for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md", "draft.json"]:
-        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} non deve esistere dopo outline!"
+        assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} non deve esistere dopo outline!"
         
     # --- PASSO 4: RT REWRITE ---
     rew_res = run_rewrite(lecture_dir, force_mock=True)
     assert rew_res["status"] == "draft_validated"
-    assert os.path.isfile(os.path.join(lecture_dir, "draft.json")), "draft.json creato da rewrite"
+    assert os.path.isfile(lesson_path(lecture_dir,"draft.json")), "draft.json creato da rewrite"
     for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md"]:
-        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} non deve esistere dopo rewrite!"
+        assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} non deve esistere dopo rewrite!"
         
     # --- PASSO 5 & 6: REVIEWS ---
     run_review_asr(lecture_dir, force_mock=True)
-    assert os.path.isfile(os.path.join(lecture_dir, "asr_issues.json"))
+    assert os.path.isfile(lesson_path(lecture_dir,"asr_issues.json"))
     
     run_review_science(lecture_dir, force_mock=True)
-    assert os.path.isfile(os.path.join(lecture_dir, "science_issues.json"))
+    assert os.path.isfile(lesson_path(lecture_dir,"science_issues.json"))
     
     # I file Markdown finali sono ANCORA assenti prima del build
     for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md"]:
-        assert not os.path.exists(os.path.join(lecture_dir, filename)), f"{filename} deve comparire SOLO con rt build!"
+        assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} deve comparire SOLO con rt build!"
         
     # --- PASSO 7: RT BUILD ---
     bld_res = run_build(lecture_dir, rename_folder=False)
     assert bld_res["status"] == "completed"
     
     # ORA e solo ora i file Markdown finali devono esistere
-    assert os.path.isfile(os.path.join(lecture_dir, "pre-elaborato.md"))
-    assert os.path.isfile(os.path.join(lecture_dir, "rielaborato.md"))
-    assert os.path.isfile(os.path.join(lecture_dir, "Revisioni ASR.md"))
-    assert os.path.isfile(os.path.join(lecture_dir, "Errori concettuali.md"))
-    assert os.path.isfile(os.path.join(lecture_dir, "Problemi scientifici.md"))
+    assert os.path.isfile(lesson_path(lecture_dir,"pre-elaborato.md"))
+    assert os.path.isfile(lesson_path(lecture_dir,"rielaborato.md"))
+    assert os.path.isfile(lesson_path(lecture_dir,"Revisioni ASR.md"))
+    assert os.path.isfile(lesson_path(lecture_dir,"Errori concettuali.md"))
+    assert os.path.isfile(lesson_path(lecture_dir,"Problemi scientifici.md"))
 
 
 def test_macwhisper_failure_hard_fails(tmp_path):
@@ -428,6 +430,6 @@ def test_full_pipeline_with_empty_argomenti_e2e_mock(tmp_path):
     # Build
     bld_res = run_build(lesson_dir)
     assert bld_res["status"] == "completed"
-    assert os.path.isfile(os.path.join(lesson_dir, "rielaborato.md"))
+    assert os.path.isfile(lesson_path(lesson_dir, "rielaborato.md"))
 
 

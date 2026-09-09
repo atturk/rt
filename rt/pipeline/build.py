@@ -16,6 +16,7 @@ from rt.core.models import (
 )
 from rt.core.timestamp import format_timestamp
 from rt.core.encoding import fix_mojibake
+from rt.core.lesson_paths import lesson_path
 
 
 class BuildError(Exception):
@@ -342,12 +343,12 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         record_phase_fingerprint,
     )
     
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path)
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
     topics_val = info.get("argomenti", "Argomenti")
-    
+
     outline = load_outline(lesson_dir)
     safe_title = re.sub(r'[/\\:*?"<>|]', ' ', outline.lesson_title)
     safe_title = re.sub(r'\s+', ' ', safe_title).strip()
@@ -363,19 +364,19 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
             "skipped": True,
             "reason": reason,
             "lesson_dir": lesson_dir,
-            "pre_elaborato": os.path.join(lesson_dir, "pre-elaborato.md"),
-            "rielaborato": os.path.join(lesson_dir, "rielaborato.md"),
+            "pre_elaborato": lesson_path(lesson_dir, "pre-elaborato.md"),
+            "rielaborato": lesson_path(lesson_dir, "rielaborato.md"),
             "named_file": named_filepath,
-            "revisioni_asr": os.path.join(lesson_dir, "Revisioni ASR.md"),
-            "errori_concettuali": os.path.join(lesson_dir, "Errori concettuali.md"),
-            "problemi_scientifici": os.path.join(lesson_dir, "Problemi scientifici.md"),
-            "telemetry_summary": os.path.join(lesson_dir, "telemetry_summary.json")
+            "revisioni_asr": lesson_path(lesson_dir, "Revisioni ASR.md"),
+            "errori_concettuali": lesson_path(lesson_dir, "Errori concettuali.md"),
+            "problemi_scientifici": lesson_path(lesson_dir, "Problemi scientifici.md"),
+            "telemetry_summary": lesson_path(lesson_dir, "telemetry_summary.json")
         }
 
     action = "FORCE" if force else "RUN"
     
     draft = load_draft(lesson_dir)
-    segments_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     ledger = load_ledger(lesson_dir)
     asr_issues = load_asr_issues(lesson_dir)
     science_issues = load_science_issues(lesson_dir)
@@ -394,7 +395,7 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         asr_issues=asr_issues,
         science_issues=science_issues
     )
-    _atomic_write_text(os.path.join(lesson_dir, "pre-elaborato.md"), pre_md)
+    _atomic_write_text(lesson_path(lesson_dir, "pre-elaborato.md"), pre_md)
         
     # 3. Generazione rielaborato.md (atomica)
     rielab_md = render_rielaborato_md(
@@ -406,35 +407,50 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         topics=topics_val,
         ledger=ledger
     )
-    _atomic_write_text(os.path.join(lesson_dir, "rielaborato.md"), rielab_md)
-        
+    # rielaborato.md è un intermedio interno (usato per il fingerprint di idempotenza):
+    # il deliverable che l'utente apre è il file col titolo formale, scritto al punto 7.
+    _atomic_write_text(lesson_path(lesson_dir, "rielaborato.md"), rielab_md)
+
     # 4. Generazione Revisioni ASR.md (atomica)
     asr_md = render_revisioni_asr_md(asr_issues, segments_data, date_val, subject_val, ledger)
-    _atomic_write_text(os.path.join(lesson_dir, "Revisioni ASR.md"), asr_md)
-        
+    _atomic_write_text(lesson_path(lesson_dir, "Revisioni ASR.md"), asr_md)
+
     # 5. Generazione Errori concettuali.md (atomica)
     err_md = render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger)
-    _atomic_write_text(os.path.join(lesson_dir, "Errori concettuali.md"), err_md)
-        
+    _atomic_write_text(lesson_path(lesson_dir, "Errori concettuali.md"), err_md)
+
     # 6. Generazione Problemi scientifici.md (atomica)
     prob_md = render_problemi_scientifici_md(science_issues, segments_data, date_val, subject_val, ledger)
-    _atomic_write_text(os.path.join(lesson_dir, "Problemi scientifici.md"), prob_md)
+    _atomic_write_text(lesson_path(lesson_dir, "Problemi scientifici.md"), prob_md)
         
-    # 7. Copia intitolata di rielaborato.md con nome formale (atomica)
+    # 7. Copia intitolata di rielaborato.md con nome formale (atomica) — questo, non
+    # rielaborato.md (spostato in _state/ al punto 3), è il deliverable che l'utente apre.
     _atomic_write_text(named_filepath, rielab_md)
-        
+
     current_dir = lesson_dir
-    # Rinomina cartella opzionale se richiesta
+    # Rinomina cartella opzionale (default: attiva, vedi --no-rename in rt/cli.py) con lo
+    # stesso schema data+materia+titolo del file col titolo formale, cosicché la cartella
+    # smetta di portare il nome provvisorio scelto al momento del setup.
     if rename_folder:
         folder_target_name = f"[{date_val}] {subject_val.upper()} - {safe_title}"
         parent = os.path.dirname(os.path.abspath(lesson_dir))
         target_dir = os.path.join(parent, folder_target_name)
-        if os.path.abspath(lesson_dir) != target_dir and not os.path.exists(target_dir):
+        abs_lesson_dir = os.path.abspath(lesson_dir)
+        if abs_lesson_dir == target_dir:
+            pass  # già nominata correttamente, nulla da fare
+        elif os.path.exists(target_dir):
+            print(
+                f"⚠️  Impossibile rinominare la cartella in '{folder_target_name}': "
+                f"esiste già un'altra cartella con quel nome in '{parent}'. "
+                f"La lezione resta in '{os.path.basename(abs_lesson_dir)}'."
+            )
+        else:
             os.rename(lesson_dir, target_dir)
             current_dir = target_dir
-            yaml_path = os.path.join(current_dir, "info.yaml")
+            print(f"📁 Cartella rinominata: '{os.path.basename(abs_lesson_dir)}' -> '{folder_target_name}'")
+            yaml_path = lesson_path(current_dir, "info.yaml")
             named_filepath = os.path.join(current_dir, named_filename)
-            
+
     # 8. Registrazione fingerprint build
     source_fp = compute_source_fingerprint(current_dir, "build")
     record_phase_fingerprint(
@@ -442,7 +458,7 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         phase_name="build",
         source_fingerprint=source_fp,
         artifact_fingerprints={
-            "rielaborato.md": compute_file_sha256(os.path.join(current_dir, "rielaborato.md"))
+            "rielaborato.md": compute_file_sha256(lesson_path(current_dir, "rielaborato.md"))
         }
     )
 
@@ -453,7 +469,7 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         "fase_corrente": "completato",
         "stato": "completato"
     })
-    
+
     init_or_update_manifest(
         lesson_dir=current_dir,
         lesson_id=os.path.basename(os.path.abspath(current_dir)),
@@ -462,10 +478,10 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         topics=topics_val,
         current_state=WorkflowState.COMPLETED.value
     )
-    
+
     # 10. Persistenza atomica della telemetria su disco
     from rt.llm.telemetry import GLOBAL_TELEMETRY
-    telemetry_file = os.path.join(current_dir, "telemetry_summary.json")
+    telemetry_file = lesson_path(current_dir, "telemetry_summary.json")
     GLOBAL_TELEMETRY.export_to_file(telemetry_file)
 
     return {
@@ -474,11 +490,11 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         "skipped": False,
         "reason": "explicit user-requested rerun" if force else reason,
         "lesson_dir": current_dir,
-        "pre_elaborato": os.path.join(current_dir, "pre-elaborato.md"),
-        "rielaborato": os.path.join(current_dir, "rielaborato.md"),
+        "pre_elaborato": lesson_path(current_dir, "pre-elaborato.md"),
+        "rielaborato": lesson_path(current_dir, "rielaborato.md"),
         "named_file": named_filepath,
-        "revisioni_asr": os.path.join(current_dir, "Revisioni ASR.md"),
-        "errori_concettuali": os.path.join(current_dir, "Errori concettuali.md"),
-        "problemi_scientifici": os.path.join(current_dir, "Problemi scientifici.md"),
+        "revisioni_asr": lesson_path(current_dir, "Revisioni ASR.md"),
+        "errori_concettuali": lesson_path(current_dir, "Errori concettuali.md"),
+        "problemi_scientifici": lesson_path(current_dir, "Problemi scientifici.md"),
         "telemetry_summary": telemetry_file
     }

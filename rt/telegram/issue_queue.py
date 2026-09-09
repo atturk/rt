@@ -9,10 +9,11 @@ import os
 import json
 from typing import Optional, Dict, List
 from rt.core.models import IssueReviewQueueState
+from rt.core.lesson_paths import lesson_path
 
 
 def get_queue_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "telegram_issue_queue.json")
+    return lesson_path(lesson_dir, "telegram_issue_queue.json")
 
 
 def load_queue(lesson_dir: str) -> Optional[IssueReviewQueueState]:

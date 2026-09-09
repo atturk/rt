@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Tuple, List
 
 from rt.core.manifest import load_manifest, save_manifest
+from rt.core.lesson_paths import lesson_path
 
 
 class PhaseStatus(str, Enum):
@@ -69,10 +70,10 @@ def compute_string_sha256(text: str) -> str:
 def find_raw_transcript_source(lesson_dir: str) -> Optional[str]:
     """Individua il file sorgente della trascrizione grezza."""
     candidates = [
-        os.path.join(lesson_dir, "trascritto grezzo.json"),
-        os.path.join(lesson_dir, "segments_raw.json"),
-        os.path.join(lesson_dir, "transcript.json"),
-        os.path.join(lesson_dir, "trascritto grezzo.md"),
+        lesson_path(lesson_dir, "trascritto grezzo.json"),
+        lesson_path(lesson_dir, "segments_raw.json"),
+        lesson_path(lesson_dir, "transcript.json"),
+        lesson_path(lesson_dir, "trascritto grezzo.md"),
     ]
     for c in candidates:
         if os.path.isfile(c):
@@ -98,7 +99,7 @@ def compute_source_fingerprint(
         raw_source = find_raw_transcript_source(lesson_dir)
         source_hash = compute_file_sha256(raw_source) if raw_source else "no_source"
         from rt.core.state import read_info_yaml
-        yaml_path = os.path.join(lesson_dir, "info.yaml")
+        yaml_path = lesson_path(lesson_dir, "info.yaml")
         info_str = ""
         if os.path.isfile(yaml_path):
             try:
@@ -109,10 +110,10 @@ def compute_source_fingerprint(
         return compute_string_sha256(f"{source_hash}|{info_str}|{proc_ver}")
 
     elif phase_name == "outline":
-        seg_path = os.path.join(lesson_dir, "segments.json")
+        seg_path = lesson_path(lesson_dir, "segments.json")
         seg_hash = compute_file_sha256(seg_path)
         from rt.core.state import read_info_yaml
-        yaml_path = os.path.join(lesson_dir, "info.yaml")
+        yaml_path = lesson_path(lesson_dir, "info.yaml")
         info_str = ""
         if os.path.isfile(yaml_path):
             try:
@@ -123,8 +124,8 @@ def compute_source_fingerprint(
         return compute_string_sha256(f"{seg_hash}|{info_str}|{proc_ver}")
 
     elif phase_name == "rewrite":
-        seg_path = os.path.join(lesson_dir, "segments.json")
-        out_path = os.path.join(lesson_dir, "outline.json")
+        seg_path = lesson_path(lesson_dir, "segments.json")
+        out_path = lesson_path(lesson_dir, "outline.json")
         seg_hash = compute_file_sha256(seg_path)
         out_hash = compute_file_sha256(out_path)
 
@@ -134,7 +135,7 @@ def compute_source_fingerprint(
         return compute_string_sha256(f"{seg_hash}|{out_hash}|{proc_ver}")
 
     elif phase_name == "review_asr":
-        seg_path = os.path.join(lesson_dir, "segments.json")
+        seg_path = lesson_path(lesson_dir, "segments.json")
         seg_hash = compute_file_sha256(seg_path)
         from rt.core.config import load_config
         try:
@@ -145,8 +146,8 @@ def compute_source_fingerprint(
         return compute_string_sha256(f"{seg_hash}|{cfg_str}|{proc_ver}")
 
     elif phase_name == "review_science":
-        draft_path = os.path.join(lesson_dir, "draft.json")
-        seg_path = os.path.join(lesson_dir, "segments.json")
+        draft_path = lesson_path(lesson_dir, "draft.json")
+        seg_path = lesson_path(lesson_dir, "segments.json")
         draft_hash = compute_file_sha256(draft_path)
         seg_hash = compute_file_sha256(seg_path)
         return compute_string_sha256(f"{draft_hash}|{seg_hash}|{proc_ver}")
@@ -154,7 +155,7 @@ def compute_source_fingerprint(
     elif phase_name == "build":
         in_hashes = []
         for fn in ["segments.json", "outline.json", "draft.json", "asr_issues.json", "science_issues.json", "review_decisions.json"]:
-            p = os.path.join(lesson_dir, fn)
+            p = lesson_path(lesson_dir, fn)
             in_hashes.append(compute_file_sha256(p))
         return compute_string_sha256("|".join(in_hashes) + f"|{proc_ver}")
 
@@ -201,7 +202,7 @@ def check_phase_status(
 
     primary_files = phase_primary_artifacts.get(phase_name, [])
     for pf in primary_files:
-        p = os.path.join(lesson_dir, pf)
+        p = lesson_path(lesson_dir, pf)
         if not os.path.isfile(p):
             return PhaseStatus.MISSING, f"{pf} non trovato"
 
@@ -228,8 +229,8 @@ def check_phase_status(
             return PhaseStatus.STALE, f"Dipendenza a monte '{dep}' non valida ({dep_status.value}: {dep_reason})"
 
     if phase_name == "prepare":
-        seg_path = os.path.join(lesson_dir, "segments.json")
-        md_norm = os.path.join(lesson_dir, "transcript_normalized.md")
+        seg_path = lesson_path(lesson_dir, "segments.json")
+        md_norm = lesson_path(lesson_dir, "transcript_normalized.md")
         if not os.path.isfile(seg_path) or not os.path.isfile(md_norm):
             return PhaseStatus.MISSING, "File segments.json o transcript_normalized.md mancante"
         try:
@@ -247,12 +248,12 @@ def check_phase_status(
         return PhaseStatus.VALID, "segments.json valido e aggiornato"
 
     elif phase_name == "outline":
-        out_path = os.path.join(lesson_dir, "outline.json")
+        out_path = lesson_path(lesson_dir, "outline.json")
         if not os.path.isfile(out_path):
             return PhaseStatus.MISSING, "outline.json non trovato"
 
         # Verifica se i segmenti sono validi
-        seg_path = os.path.join(lesson_dir, "segments.json")
+        seg_path = lesson_path(lesson_dir, "segments.json")
         if not os.path.isfile(seg_path):
             return PhaseStatus.STALE, "segments.json mancante"
 
@@ -273,12 +274,12 @@ def check_phase_status(
         return PhaseStatus.VALID, "outline.json valido e conforme ai segmenti"
 
     elif phase_name == "rewrite":
-        draft_path = os.path.join(lesson_dir, "draft.json")
+        draft_path = lesson_path(lesson_dir, "draft.json")
         if not os.path.isfile(draft_path):
             return PhaseStatus.MISSING, "draft.json non trovato"
 
-        out_path = os.path.join(lesson_dir, "outline.json")
-        seg_path = os.path.join(lesson_dir, "segments.json")
+        out_path = lesson_path(lesson_dir, "outline.json")
+        seg_path = lesson_path(lesson_dir, "segments.json")
         if not os.path.isfile(out_path) or not os.path.isfile(seg_path):
             return PhaseStatus.STALE, "outline.json o segments.json mancante"
 
@@ -332,7 +333,7 @@ def check_phase_status(
         return PhaseStatus.VALID, f"draft.json valido ({draft_units_count} unità verificate)"
 
     elif phase_name == "review_asr":
-        asr_path = os.path.join(lesson_dir, "asr_issues.json")
+        asr_path = lesson_path(lesson_dir, "asr_issues.json")
         if not os.path.isfile(asr_path):
             return PhaseStatus.MISSING, "asr_issues.json non trovato"
 
@@ -365,7 +366,7 @@ def check_phase_status(
         return PhaseStatus.VALID, f"asr_issues.json valido ({len(issues)} issue registrate)"
 
     elif phase_name == "review_science":
-        sci_path = os.path.join(lesson_dir, "science_issues.json")
+        sci_path = lesson_path(lesson_dir, "science_issues.json")
         if not os.path.isfile(sci_path):
             return PhaseStatus.MISSING, "science_issues.json non trovato"
 
@@ -411,7 +412,7 @@ def check_phase_status(
             "Problemi scientifici.md"
         ]
         for rf in required_files:
-            p = os.path.join(lesson_dir, rf)
+            p = lesson_path(lesson_dir, rf)
             if not os.path.isfile(p) or os.path.getsize(p) == 0:
                 return PhaseStatus.MISSING, f"Artefatto build mancante o vuoto: {rf}"
 
@@ -459,8 +460,8 @@ def record_phase_fingerprint(
         # Non impostare ciecamente VALID se mancano altre unità
         is_fully_complete = False
         if phase_name == "rewrite":
-            out_path = os.path.join(lesson_dir, "outline.json")
-            draft_path = os.path.join(lesson_dir, "draft.json")
+            out_path = lesson_path(lesson_dir, "outline.json")
+            draft_path = lesson_path(lesson_dir, "draft.json")
             if os.path.isfile(out_path) and os.path.isfile(draft_path):
                 try:
                     from rt.pipeline.outline import load_outline
@@ -562,7 +563,7 @@ def get_phase_checkpoint(
 
     art_fps = record.get("artifact_fingerprints", {})
     for fname, expected_hash in art_fps.items():
-        fpath = os.path.join(lesson_dir, fname)
+        fpath = lesson_path(lesson_dir, fname)
         if not os.path.isfile(fpath):
             return record, PhaseStatus.MISSING, f"Artefatto {fname} del checkpoint non trovato su disco"
         actual_hash = compute_file_sha256(fpath)
