@@ -8,7 +8,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i 4 job cognitivi LL
 """
 
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from rt.core.models import ASRIssue, ScienceIssue
 
 
@@ -421,3 +421,66 @@ def build_recall_vasta_user_prompt(
 {units_block}
 Restituisci l'oggetto JSON conforme a RecallQuestion (type=vasta) con question_text e pregenerated_material (scaletta ideale) compilati, e unit_ids=[{', '.join(repr(u) for u in unit_ids)}]."""
 
+
+
+# ----------------------------------------------------------------------
+# 8. RECALL EVAL MIRATA JOB (Fase D3)
+# ----------------------------------------------------------------------
+
+class RecallEvalMirataResult(BaseModel):
+    correttezza: int = Field(..., ge=0, le=100, description="Percentuale di correttezza complessiva della risposta")
+    completezza: int = Field(..., ge=0, le=100, description="Percentuale di completezza complessiva della risposta")
+    commento: str = Field(..., description="Breve spiegazione di cosa manca o è sbagliato nella risposta")
+
+
+RECALL_EVAL_MIRATA_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda mirata di active recall (concetto atomico).
+
+REGOLE CATEGORICHE:
+1. Valuta la risposta ESCLUSIVAMENTE rispetto al contenuto reale dell'unità didattica fornita come riferimento — non aggiungere nozioni esterne non presenti lì.
+2. "correttezza" (0-100): quanto ciò che lo studente ha detto è corretto rispetto al riferimento.
+3. "completezza" (0-100): quanto la risposta copre tutti gli aspetti rilevanti della domanda, anche se corretta solo parzialmente.
+4. "commento": breve (2-4 frasi), evidenzia specificamente cosa manca o cosa è sbagliato. Se la risposta è ottima, dillo brevemente e basta.
+5. Tono diretto ma non punitivo: lo studente sta studiando, l'obiettivo è farlo migliorare velocemente."""
+
+
+def build_recall_eval_mirata_user_prompt(question_text: str, unit_title: str, unit_content: str, answer_text: str) -> str:
+    return f"""DOMANDA POSTA:
+{question_text}
+
+RIFERIMENTO (unità didattica "{unit_title}"):
+{unit_content}
+
+RISPOSTA DELLO STUDENTE:
+{answer_text}
+
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento)."""
+
+
+# ----------------------------------------------------------------------
+# 9. RECALL EVAL VASTA JOB (Fase D3)
+# ----------------------------------------------------------------------
+
+class RecallEvalVastaResult(BaseModel):
+    commento: str = Field(..., description="Valutazione breve di correttezza concettuale e qualità organizzativa rispetto alla scaletta ideale")
+
+
+RECALL_EVAL_VASTA_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda vasta di active recall, stile esame orale.
+
+REGOLE CATEGORICHE:
+1. Valuta DUE aspetti insieme, in un commento unico e breve (4-6 frasi): (a) la correttezza concettuale di ciò che lo studente ha detto rispetto al riferimento fornito, (b) quanto la risposta segue o manca rispetto alla SCALETTA IDEALE già preparata per questa domanda (non generarne una nuova, usa quella fornita).
+2. Sii specifico: cita quali punti della scaletta sono stati toccati e quali no, non restare generico.
+3. Non aggiungere nozioni esterne non presenti nel riferimento o nella scaletta.
+4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente."""
+
+
+def build_recall_eval_vasta_user_prompt(question_text: str, scaletta_ideale: str, answer_text: str) -> str:
+    return f"""DOMANDA POSTA:
+{question_text}
+
+SCALETTA IDEALE (punti essenziali attesi in una risposta completa):
+{scaletta_ideale}
+
+RISPOSTA DELLO STUDENTE:
+{answer_text}
+
+Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento)."""

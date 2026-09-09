@@ -78,3 +78,31 @@ def build_issue_keyboard(short_id: str, issue_type: str) -> dict:
 def build_start_review_keyboard(short_id: str) -> dict:
     return {"inline_keyboard": [[{"text": "▶️ Inizia review", "callback_data": f"ivr:{short_id}"}]]}
 
+
+
+def render_recall_question_text(question) -> str:
+    """Rende il testo di una RecallQuestion per l'invio Telegram (quiz/mirata/vasta)."""
+    label = {"quiz": "🎯 Quiz", "mirata": "🔎 Domanda mirata", "vasta": "📚 Domanda vasta"}.get(question.type.value, "Domanda")
+    lines = [f"<b>{escape_html(label)}</b>", f"📌 Unità: {escape_html(', '.join(question.unit_ids))}", ""]
+    lines.append(escape_html(question.question_text))
+    if question.type.value == "quiz" and question.options:
+        lines.append("")
+        letters = ["A", "B", "C", "D"]
+        for i, opt in enumerate(question.options):
+            letter = letters[i] if i < len(letters) else str(i + 1)
+            lines.append(f"{letter}) {escape_html(opt)}")
+    return "\n".join(lines)
+
+
+def build_recall_question_keyboard(short_id: str, question_type: str) -> dict:
+    """Tastiera per una domanda di recall: bottoni voto sempre presenti, opzioni quiz se pertinente."""
+    rows = []
+    if question_type == "quiz":
+        letters = ["A", "B", "C", "D"]
+        rows.append([{"text": letters[i], "callback_data": f"rq{i}:{short_id}"} for i in range(4)])
+    rows.append([
+        {"text": "👍", "callback_data": f"rvu:{short_id}"},
+        {"text": "👎", "callback_data": f"rvd:{short_id}"},
+        {"text": "⚡", "callback_data": f"rvl:{short_id}"},
+    ])
+    return {"inline_keyboard": rows}

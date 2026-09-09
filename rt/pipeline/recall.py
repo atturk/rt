@@ -375,3 +375,73 @@ def generate_recall_batch(
 
     save_recall_bank(bank, lesson_dir)
     return new_questions
+
+# -----------------------------------------------------------------------
+# Valutazione LLM delle risposte a domande mirate/vaste (Fase D3)
+# -----------------------------------------------------------------------
+
+def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, force_mock: bool = False) -> str:
+    """Valuta con l'LLM la risposta a una domanda mirata o vasta e ritorna il testo di valutazione pronto da mostrare.
+
+    Mirata: "Correttezza: X%\\nCompletezza: Y%\\n\\n[commento]".
+    Vasta: solo il commento (valuta correttezza + aderenza alla scaletta ideale pregenerata).
+    Le domande quiz non passano da qui: la valutazione è il pregenerated_material, già pronto in D1.
+    """
+    from rt.llm.prompts import (
+        RECALL_EVAL_MIRATA_SYSTEM_PROMPT, build_recall_eval_mirata_user_prompt, RecallEvalMirataResult,
+        RECALL_EVAL_VASTA_SYSTEM_PROMPT, build_recall_eval_vasta_user_prompt, RecallEvalVastaResult,
+    )
+
+    bank = load_recall_bank(lesson_dir)
+    question = next((q for q in bank.questions if q.id == question_id), None)
+    if question is None:
+        raise ValueError(f"Domanda '{question_id}' non trovata nel recall bank di '{lesson_dir}'.")
+
+    if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
+        raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
+
+    # Mock deterministico gestito qui direttamente (stesso pattern di generate_recall_batch):
+    # _generate_mock_response() non conosce RecallEvalMirataResult/RecallEvalVastaResult.
+    if force_mock:
+        if question.type == RecallQuestionType.MIRATA:
+            return "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento."
+        return "[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale."
+
+    client = LLMClient(force_mock=force_mock)
+
+    if question.type == RecallQuestionType.MIRATA:
+        draft = load_draft(lesson_dir)
+        unit = next((u for u in draft.units if u.unit_id == question.unit_ids[0]), None)
+        unit_title = unit.title if unit else question.unit_ids[0]
+        unit_content = unit.content if unit else ""
+        user_prompt = build_recall_eval_mirata_user_prompt(
+            question_text=question.question_text,
+            unit_title=unit_title,
+            unit_content=unit_content,
+            answer_text=answer_text,
+        )
+        result: "RecallEvalMirataResult" = client.call_structured(
+            prompt=user_prompt,
+            system_prompt=RECALL_EVAL_MIRATA_SYSTEM_PROMPT,
+            response_model=RecallEvalMirataResult,
+            job_name="recall_eval_mirata",
+            unit_id=question.unit_ids[0],
+            lesson_dir=lesson_dir,
+        )
+        return f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}"
+
+    elif question.type == RecallQuestionType.VASTA:
+        user_prompt = build_recall_eval_vasta_user_prompt(
+            question_text=question.question_text,
+            scaletta_ideale=question.pregenerated_material or "",
+            answer_text=answer_text,
+        )
+        result_v: "RecallEvalVastaResult" = client.call_structured(
+            prompt=user_prompt,
+            system_prompt=RECALL_EVAL_VASTA_SYSTEM_PROMPT,
+            response_model=RecallEvalVastaResult,
+            job_name="recall_eval_vasta",
+            unit_id=", ".join(question.unit_ids),
+            lesson_dir=lesson_dir,
+        )
+        return result_v.commento

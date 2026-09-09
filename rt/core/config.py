@@ -209,6 +209,8 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "recall_quiz": empty_shell(max_tokens=8192, timeout=120),
         "recall_mirata": empty_shell(max_tokens=8192, timeout=120),
         "recall_vasta": empty_shell(max_tokens=8192, timeout=120),
+        "recall_eval_mirata": empty_shell(max_tokens=4096, timeout=120),
+        "recall_eval_vasta": empty_shell(max_tokens=4096, timeout=180),
     }
 
 
