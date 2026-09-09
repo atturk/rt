@@ -236,3 +236,188 @@ TRASCRIZIONE SORGENTE DEI SEGMENTI CORRISPONDENTI:
 {source_segments_text}
 
 Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ScienceIssueList."""
+
+
+# ----------------------------------------------------------------------
+# 5. RECALL QUIZ JOB
+# ----------------------------------------------------------------------
+
+RECALL_QUIZ_SYSTEM_PROMPT = """Sei un docente universitario esperto nella preparazione di test a scelta multipla per l'active recall degli studenti.
+Il tuo compito è generare UNA domanda a scelta multipla (quiz) basata sul contenuto di una specifica unità didattica fornita.
+
+REGOLE CATEGORICHE:
+1. La domanda deve vertere ESCLUSIVAMENTE sui concetti trattati nell'unità didattica fornita — nessun contenuto esterno, nessuna generalizzazione enciclopedica.
+2. Produci esattamente 4 opzioni di risposta: 1 corretta e 3 distrattori plausibili ma sbagliati.
+3. I distrattori devono essere scientificamente credibili (non palesemente assurdi), ma inequivocabilmente errati rispetto al contenuto dell'unità.
+4. Il campo "correct_index" indica l'indice (0-based) dell'opzione corretta nell'array "options".
+5. Il campo "pregenerated_material" deve contenere: una breve spiegazione del perché la risposta corretta è giusta E del perché ciascuno dei tre distrattori è sbagliato (in 3-4 righe totali).
+6. La domanda deve essere precisa, non ambigua, e formulata in italiano accademico.
+7. Non inserire numeri progressivi nelle opzioni (es. "A)", "1.") — solo testo.
+
+OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
+{
+  "id": "recall_NNNNNN",  (placeholder, verrà sovrascritto)
+  "type": "quiz",
+  "unit_ids": ["<unit_id>"],
+  "question_text": "<domanda>",
+  "options": ["<opz_0>", "<opz_1>", "<opz_2>", "<opz_3>"],
+  "correct_index": <0|1|2|3>,
+  "pregenerated_material": "<spiegazione perché corretta + perché le altre 3 sono sbagliate>",
+  "status": "pending"
+}"""
+
+
+def build_recall_quiz_user_prompt(
+    unit_id: str,
+    unit_title: str,
+    unit_content: str,
+    few_shot_examples: Optional[List[dict]] = None,
+) -> str:
+    fewshot_block = ""
+    if few_shot_examples:
+        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
+        for ex in few_shot_examples:
+            vote = ex.get("vote", "")
+            voted_at = ex.get("voted_at", "")
+            q = ex.get("question_text", "")
+            if vote == "up":
+                label = "✅ ESEMPIO BEN FATTO"
+            elif vote == "down":
+                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
+            elif vote == "lightning":
+                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
+            else:
+                label = "❌ ESEMPIO BOCCIATO"
+            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
+        fewshot_block = "\n".join(lines) + "\n\n"
+    return f"""{fewshot_block}Genera UNA domanda quiz (scelta multipla, 4 opzioni) per la seguente unità didattica:
+
+UNITÀ: {unit_id}
+TITOLO: {unit_title}
+
+CONTENUTO:
+{unit_content}
+
+Restituisci l'oggetto JSON conforme a RecallQuestion (type=quiz) con question_text, options (4 elementi), correct_index e pregenerated_material compilati."""
+
+
+# ----------------------------------------------------------------------
+# 6. RECALL MIRATA JOB
+# ----------------------------------------------------------------------
+
+RECALL_MIRATA_SYSTEM_PROMPT = """Sei un docente universitario esperto nell'identificare i concetti chiave di ogni lezione per guidare l'active recall degli studenti.
+Il tuo compito è generare UNA domanda mirata (risposta aperta su concetto atomico) basata sul contenuto di una specifica unità didattica fornita.
+
+REGOLE CATEGORICHE:
+1. La domanda deve vertere su UN SINGOLO concetto atomico dell'unità: una definizione, un meccanismo, una struttura, una relazione causa-effetto specifica.
+2. Evita domande vaghe o generaliste ("Cosa tratta questa unità?") — punti a concetti precisi e verificabili.
+3. Nessun "pregenerated_material": la valutazione avviene a runtime tramite LLM.
+4. La domanda deve essere formulata in italiano accademico, concisa (1-2 righe).
+5. Adatta la difficoltà al livello universitario: non troppo banale, non enciclopedicamente esaustiva.
+
+OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
+{
+  "id": "recall_NNNNNN",  (placeholder, verrà sovrascritto)
+  "type": "mirata",
+  "unit_ids": ["<unit_id>"],
+  "question_text": "<domanda sul concetto atomico>",
+  "options": null,
+  "correct_index": null,
+  "pregenerated_material": null,
+  "status": "pending"
+}"""
+
+
+def build_recall_mirata_user_prompt(
+    unit_id: str,
+    unit_title: str,
+    unit_content: str,
+    few_shot_examples: Optional[List[dict]] = None,
+) -> str:
+    fewshot_block = ""
+    if few_shot_examples:
+        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
+        for ex in few_shot_examples:
+            vote = ex.get("vote", "")
+            voted_at = ex.get("voted_at", "")
+            q = ex.get("question_text", "")
+            if vote == "up":
+                label = "✅ ESEMPIO BEN FATTO"
+            elif vote == "down":
+                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
+            elif vote == "lightning":
+                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
+            else:
+                label = "❌ ESEMPIO BOCCIATO"
+            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
+        fewshot_block = "\n".join(lines) + "\n\n"
+    return f"""{fewshot_block}Genera UNA domanda mirata (risposta aperta su concetto atomico) per la seguente unità didattica:
+
+UNITÀ: {unit_id}
+TITOLO: {unit_title}
+
+CONTENUTO:
+{unit_content}
+
+Restituisci l'oggetto JSON conforme a RecallQuestion (type=mirata) con solo question_text compilato (options=null, correct_index=null, pregenerated_material=null)."""
+
+
+# ----------------------------------------------------------------------
+# 7. RECALL VASTA JOB
+# ----------------------------------------------------------------------
+
+RECALL_VASTA_SYSTEM_PROMPT = """Sei un docente universitario esperto nella strutturazione di domande da esame orale per l'active recall degli studenti.
+Il tuo compito è generare UNA domanda vasta (risposta organizzata stile esame orale) che copra 2-4 unità didattiche contigue fornite.
+
+REGOLE CATEGORICHE:
+1. La domanda deve richiedere una risposta strutturata che attraversi i concetti principali delle unità citate.
+2. Deve essere aperta ma focalizzata: non "Parla di tutto il capitolo", ma piuttosto "Descrivi il meccanismo X e il suo ruolo in Y e Z".
+3. Il campo "pregenerated_material" deve contenere una scaletta ideale: i punti essenziali (3-7) che una risposta completa e corretta DEVE toccare, basata ESCLUSIVAMENTE sul contenuto reale delle unità fornite.
+4. La scaletta è strumento di valutazione per il docente (verrà usata in D3): deve essere concisa, precisa, priva di divagazioni enciclopediche esterne.
+5. Formulazione in italiano accademico, stile domanda d'esame.
+
+OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
+{
+  "id": "recall_NNNNNN",  (placeholder, verrà sovrascritto)
+  "type": "vasta",
+  "unit_ids": ["<unit_id_1>", "<unit_id_2>", ...],  (2-4 ID)
+  "question_text": "<domanda stile esame orale>",
+  "options": null,
+  "correct_index": null,
+  "pregenerated_material": "<scaletta: punto 1; punto 2; punto 3; ...>",
+  "status": "pending"
+}"""
+
+
+def build_recall_vasta_user_prompt(
+    unit_ids: List[str],
+    unit_titles: List[str],
+    unit_contents: List[str],
+    few_shot_examples: Optional[List[dict]] = None,
+) -> str:
+    fewshot_block = ""
+    if few_shot_examples:
+        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
+        for ex in few_shot_examples:
+            vote = ex.get("vote", "")
+            voted_at = ex.get("voted_at", "")
+            q = ex.get("question_text", "")
+            if vote == "up":
+                label = "✅ ESEMPIO BEN FATTO"
+            elif vote == "down":
+                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
+            elif vote == "lightning":
+                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
+            else:
+                label = "❌ ESEMPIO BOCCIATO"
+            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
+        fewshot_block = "\n".join(lines) + "\n\n"
+
+    units_block = ""
+    for uid, title, content in zip(unit_ids, unit_titles, unit_contents):
+        units_block += f"\n--- UNITÀ {uid}: {title} ---\n{content}\n"
+
+    return f"""{fewshot_block}Genera UNA domanda vasta (stile esame orale) che copra le seguenti {len(unit_ids)} unità didattiche contigue:
+{units_block}
+Restituisci l'oggetto JSON conforme a RecallQuestion (type=vasta) con question_text e pregenerated_material (scaletta ideale) compilati, e unit_ids=[{', '.join(repr(u) for u in unit_ids)}]."""
+

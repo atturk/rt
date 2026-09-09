@@ -76,6 +76,39 @@ def _test_default_jobs():
                 timeout_seconds=180,
             )
         ),
+        "recall_quiz": JobRoutingConfig(
+            primary=RouteConfig(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                base_url="https://api.deepseek.com",
+                thinking=True,
+                reasoning_effort="low",
+                max_tokens=8192,
+                timeout_seconds=120,
+            )
+        ),
+        "recall_mirata": JobRoutingConfig(
+            primary=RouteConfig(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                base_url="https://api.deepseek.com",
+                thinking=True,
+                reasoning_effort="low",
+                max_tokens=8192,
+                timeout_seconds=120,
+            )
+        ),
+        "recall_vasta": JobRoutingConfig(
+            primary=RouteConfig(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                base_url="https://api.deepseek.com",
+                thinking=True,
+                reasoning_effort="low",
+                max_tokens=8192,
+                timeout_seconds=120,
+            )
+        ),
     }
 
 
