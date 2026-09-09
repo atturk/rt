@@ -1,0 +1,12 @@
+# Override esplicito e opzionale per /recall lanciato da Telegram: mappa materia
+# (stessa chiave usata in 'topics' dentro config/general.yaml) -> cartella della
+# lezione da usare per quella materia, al posto del tracking automatico dell'ultima
+# build completata (rt.telegram.last_lesson).
+#
+# Facoltativo: se una materia non compare qui, /recall continua a usare il
+# comportamento automatico esistente (l'ultima lezione con build completata in
+# questo topic). Non è un job di routing LLM: NON viene caricato come job (vedi
+# rt.core.config.find_job_yaml_paths).
+#
+# Esempio:
+# BIOCHIMICA: "/Users/nome/Desktop/lezioni/[2026-09-05] BIOCHIMICA - trigliceridi"

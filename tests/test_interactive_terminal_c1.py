@@ -403,6 +403,24 @@ def test_edit_text_in_editor_nano_softwrap(monkeypatch):
         assert args[1] == "--softwrap"
 
 
+def test_edit_text_in_editor_micro_softwrap(monkeypatch):
+    monkeypatch.setenv("EDITOR", "micro")
+    with patch("subprocess.call", return_value=0) as mock_call:
+        edit_text_in_editor("Testo di prova")
+        mock_call.assert_called_once()
+        args = mock_call.call_args[0][0]
+        assert args[0] == "micro"
+        assert "-softwrap" in args and "true" in args
+        assert args.index("true") == args.index("-softwrap") + 1
+
+    monkeypatch.setenv("EDITOR", "/opt/homebrew/bin/micro")
+    with patch("subprocess.call", return_value=0) as mock_call:
+        edit_text_in_editor("Testo di prova")
+        args = mock_call.call_args[0][0]
+        assert args[0] == "/opt/homebrew/bin/micro"
+        assert "-softwrap" in args and "true" in args
+
+
 # ---------------------------------------------------------------------------
 # 5. run_interactive_review con P, O, M (ASR), E (Scienza), frecce, fallback
 # ---------------------------------------------------------------------------

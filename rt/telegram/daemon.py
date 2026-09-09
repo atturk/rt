@@ -21,6 +21,7 @@ from rt.telegram import registry, pending as tg_pending, conversation_state as c
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
 RECALL_ACTION_ACTIONS = {"rns", "rsk"}
+RECALL_POST_ANSWER_ACTIONS = {"rnx", "rut", "rua"}
 RECALL_REACTION_VOTE_MAP = {"👍": "up", "👎": "down", "⚡": "lightning"}
 
 
@@ -135,26 +136,46 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/recall lanciato da Telegram: usa l'ultima lezione con build completata su questo
-    topic (tracciata da notify_build_completed). Nessun argomento richiesto — non è un
-    indice/browser di lezioni, solo 'l'ultima' per topic."""
+    """/recall lanciato da Telegram: usa, in ordine, (1) l'override esplicito per la materia
+    di questo topic in config/telegram/recall_lessons.yaml se presente, altrimenti (2) l'ultima
+    lezione con build completata su questo topic (tracciata automaticamente da
+    notify_build_completed). Nessun argomento richiesto — non è un indice/browser di lezioni."""
     state_dir = context.bot_data["state_dir"]
     chat_id = update.effective_chat.id
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
 
+    from rt.core.config import load_config
+    from rt.telegram.recall_lessons import get_lesson_override
     from rt.telegram.last_lesson import get_last_lesson
-    lesson_dir = get_last_lesson(state_dir, chat_id, thread_id)
-    if not lesson_dir or not os.path.isdir(lesson_dir):
+
+    lesson_dir = None
+    runtime_cfg = load_config().telegram
+    materia = next((m for m, tid in (runtime_cfg.topics or {}).items() if tid == thread_id), None)
+    if materia:
+        override = get_lesson_override(materia)
+        if override and os.path.isdir(override):
+            lesson_dir = override
+
+    if not lesson_dir:
+        auto = get_last_lesson(state_dir, chat_id, thread_id)
+        if auto and os.path.isdir(auto):
+            lesson_dir = auto
+
+    if not lesson_dir:
         await _send_with_retry(lambda: update.effective_message.reply_text(
-            "Nessuna lezione recente trovata per questo topic (serve almeno una build completata). "
-            "Puoi avviare il recall da terminale con: rt recall \"<cartella>\" --channel telegram",
+            "Nessuna lezione trovata per questo topic. Il bot ricorda automaticamente solo "
+            "l'ULTIMA lezione con build completata fatta in questo topic (non è un indice: "
+            "serve almeno una build qui prima che /recall funzioni). Nel frattempo puoi "
+            "avviare il recall da terminale con: rt recall \"<cartella>\" --channel telegram\n\n"
+            "Per fissare esplicitamente quale lezione usare per questa materia, aggiungi una "
+            "entry a config/telegram/recall_lessons.yaml (vedi docs/CONFIGURATION_REFERENCE.md).",
             message_thread_id=thread_id,
         ))
         return
 
     loop = asyncio.get_running_loop()
     from rt.pipeline.recall_session import start_recall_via_telegram
-    await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "sequenziale", None, False)
+    await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "alternato", None, False)
 
 
 async def handle_stile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -202,10 +223,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_start_review_callback(update, context, short_id)
     elif prefix in RECALL_ACTION_ACTIONS:
         await _handle_recall_callback(update, context, prefix, short_id)
+    elif prefix in RECALL_POST_ANSWER_ACTIONS:
+        await _handle_post_answer_callback(update, context, prefix, short_id)
     elif prefix == "stile":
         await _handle_stile_callback(update, context, short_id)
     else:
         await query.answer()
+
+
+async def _send_post_answer_result(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, thread_id, lesson_dir: str,
+    question_id: str, esito_text: str, state_dir: str,
+) -> None:
+    """Manda il testo dell'esito con la tastiera post-risposta (⏭️ prossima / 📖 unità /
+    🔊 audio), SENZA avanzare automaticamente: l'avanzamento avviene solo al click di ⏭️
+    (vedi _handle_post_answer_callback). Centralizzata perché usata da ogni punto che
+    conclude una domanda di recall (poll, 'non lo so', risposta testuale, risposta vocale)."""
+    from rt.telegram import formatting as tg_fmt
+    short_id = registry.register_pending(
+        lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+        message_thread_id=thread_id, extra={"question_id": question_id},
+    )
+    keyboard = tg_fmt.build_post_answer_keyboard(short_id)
+    await _send_with_retry(lambda: context.bot.send_message(
+        chat_id=chat_id, text=esito_text, reply_markup=keyboard, message_thread_id=thread_id,
+    ))
 
 
 async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
@@ -229,11 +271,15 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
             await update.callback_query.edit_message_reply_markup(reply_markup=None)
         except Exception:
             pass
+        from rt.pipeline.recall import skip_recall_question
+        await loop.run_in_executor(None, skip_recall_question, lesson_dir, question_id)
         from rt.pipeline.recall_session import send_current_recall_question
-        await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+        await loop.run_in_executor(None, send_current_recall_question, lesson_dir, None, question_id)
         return
 
-    # rns: "Non lo so" — rivela la risposta/spiegazione, registra un tentativo vuoto, avanza.
+    # rns: "Non lo so" — rivela la risposta/spiegazione, registra un tentativo vuoto.
+    # L'unità didattica non viene più allegata automaticamente: è disponibile su richiesta
+    # tramite il bottone 📖 della tastiera post-risposta (vedi _send_post_answer_result).
     from rt.pipeline.recall import load_recall_bank, record_recall_answer
     bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
     question = next((q for q in bank.questions if q.id == question_id), None)
@@ -265,19 +311,65 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
         esito = "🤷 Nessuna risposta."
         if question.pregenerated_material:
             esito += f"\n\n{question.pregenerated_material}"
-        from rt.pipeline.recall_session import format_unit_reference
-        esito += await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
     else:
         from rt.pipeline.recall_session import handle_recall_answer
         evaluation = await loop.run_in_executor(None, handle_recall_answer, lesson_dir, question_id, "[Non lo so]", False)
         esito = evaluation or "🤷 Nessuna risposta."
 
-    await _send_with_retry(lambda: context.bot.send_message(
-        chat_id=update.effective_chat.id, text=esito, message_thread_id=thread_id,
-    ))
+    await _send_post_answer_result(context, update.effective_chat.id, thread_id, lesson_dir, question_id, esito, state_dir)
 
-    from rt.pipeline.recall_session import send_current_recall_question
-    await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+
+async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
+    """Bottoni dopo un esito di recall: ⏭️ avanza (rnx — l'UNICO che rimuove la tastiera e fa
+    proseguire la sessione: niente più avanzamento automatico), 📖 mostra il testo dell'unità
+    (rut) e 🔊 manda il suo audio (rua) — questi due lasciano la tastiera attiva, l'utente può
+    ripeterli o passare a ⏭️ quando vuole."""
+    state_dir = context.bot_data["state_dir"]
+    entry = registry.resolve_pending(short_id, state_dir)
+    if entry is None or entry.get("kind") != "recall_post_answer":
+        await update.callback_query.answer("Richiesta scaduta o non valida.", show_alert=True)
+        return
+    lesson_dir = entry["lesson_dir"]
+    question_id = entry["question_id"]
+    thread_id = entry.get("message_thread_id")
+    loop = asyncio.get_running_loop()
+
+    if action == "rnx":
+        await update.callback_query.answer()
+        try:
+            await update.callback_query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        from rt.pipeline.recall_session import send_current_recall_question
+        await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+        return
+
+    from rt.pipeline.recall import load_recall_bank
+    bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
+    question = next((q for q in bank.questions if q.id == question_id), None)
+    if question is None:
+        await update.callback_query.answer("Domanda non più disponibile.", show_alert=True)
+        return
+
+    if action == "rut":
+        await update.callback_query.answer()
+        from rt.pipeline.recall_session import format_unit_reference
+        text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
+        text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
+        await _send_with_retry(lambda: context.bot.send_message(
+            chat_id=update.effective_chat.id, text=text, message_thread_id=thread_id,
+        ))
+        return
+
+    # rua: manda l'audio di ciascuna unità della domanda (sendAudio, stile playlist)
+    await update.callback_query.answer("🔊 Preparo l'audio...")
+    from rt.pipeline.recall_session import send_unit_audio
+    try:
+        await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id)
+    except Exception as e:
+        await _send_with_retry(lambda: context.bot.send_message(
+            chat_id=update.effective_chat.id, text=f"⚠️ Impossibile inviare l'audio: {e}", message_thread_id=thread_id,
+        ))
 
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -359,14 +451,7 @@ async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     esito_msg = "✔ Corretto!" if is_correct else "❌ Sbagliato."
     if question.pregenerated_material:
         esito_msg += f"\n\n{question.pregenerated_material}"
-    from rt.pipeline.recall_session import format_unit_reference
-    esito_msg += await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
-    await _send_with_retry(lambda: context.bot.send_message(
-        chat_id=tg_cfg.chat_id, text=esito_msg, message_thread_id=thread_id,
-    ))
-
-    from rt.pipeline.recall_session import send_current_recall_question
-    await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+    await _send_post_answer_result(context, tg_cfg.chat_id, thread_id, lesson_dir, question_id, esito_msg, state_dir)
 
 
 async def _handle_outline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, prefix: str, short_id: str) -> None:
@@ -525,8 +610,9 @@ async def _handle_start_review_callback(update: Update, context: ContextTypes.DE
 async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, lesson_dir: str) -> None:
     """Testo libero ricevuto mentre una sessione di recall è attiva sul topic: trattalo come
     risposta alla domanda corrente (mirata/vasta). I quiz si rispondono con i bottoni."""
+    state_dir = context.bot_data["state_dir"]
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
-    from rt.pipeline.recall_session import load_recall_session_state, handle_recall_answer, send_current_recall_question
+    from rt.pipeline.recall_session import load_recall_session_state, handle_recall_answer
 
     session_state = load_recall_session_state(lesson_dir)
     question_id = session_state.get("current_question_id")
@@ -542,8 +628,7 @@ async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAU
         ))
         return
 
-    await _send_with_retry(lambda: update.message.reply_text(evaluation, message_thread_id=thread_id))
-    await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+    await _send_post_answer_result(context, update.effective_chat.id, thread_id, lesson_dir, question_id, evaluation, state_dir)
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -557,7 +642,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     lesson_dir = active["lesson_dir"]
 
-    from rt.pipeline.recall_session import load_recall_session_state, handle_recall_answer, send_current_recall_question
+    from rt.pipeline.recall_session import load_recall_session_state, handle_recall_answer
     from rt.pipeline.recall import load_recall_bank
     from rt.core.models import RecallQuestionType
 
@@ -612,11 +697,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         evaluation = await loop.run_in_executor(None, handle_recall_answer, lesson_dir, question_id, answer_text, True)
         if evaluation is None:
             return
-        await _send_with_retry(lambda: update.message.reply_text(
-            f"🗣 Trascritto: \"{answer_text}\"\n\n{evaluation}",
-            message_thread_id=thread_id,
-        ))
-        await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
+        esito = f"🗣 Trascritto: \"{answer_text}\"\n\n{evaluation}"
+        await _send_post_answer_result(context, chat_id, thread_id, lesson_dir, question_id, esito, state_dir)
     finally:
         if os.path.isfile(tmp_path):
             try:

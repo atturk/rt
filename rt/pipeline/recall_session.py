@@ -8,6 +8,7 @@ senza toccarne la logica.
 import os
 import json
 import sys
+import shutil
 from typing import Optional
 
 from rt.core.models import RecallQuestionType
@@ -18,9 +19,10 @@ from rt.core.models import RecallQuestionType
 
 def format_unit_reference(lesson_dir: str, question) -> str:
     """Blocco testuale (testo semplice, no HTML: i messaggi del daemon non impostano
-    parse_mode) con l'unità didattica di riferimento della domanda. Per le mirate include
-    il contenuto intero dell'unità (nessun altro materiale di riferimento è disponibile per
-    loro); per quiz/vasta solo titolo/unità, dato che hanno già pregenerated_material."""
+    parse_mode) con il contenuto completo di tutte le unità didattiche della domanda.
+    Mostra sempre il contenuto intero di ogni unità in question.unit_ids, separandole
+    con un'intestazione per unità (es. per vasta che può averne più).
+    Usata dal bottone 📖 (richiesta esplicita), non più incollata automaticamente agli esiti."""
     from rt.pipeline.rewrite import load_draft
     try:
         draft = load_draft(lesson_dir)
@@ -29,11 +31,51 @@ def format_unit_reference(lesson_dir: str, question) -> str:
     units = [u for u in draft.units if u.unit_id in question.unit_ids]
     if not units:
         return ""
-    if question.type == RecallQuestionType.MIRATA:
-        u = units[0]
-        return f"\n\n📚 Unità {u.unit_id} - {u.title}:\n{u.content}"
-    names = ", ".join(f"{u.unit_id} - {u.title}" for u in units)
-    return f"\n\n📚 Unità: {names}"
+    parts = []
+    for u in units:
+        parts.append(f"\n\n📚 Unità {u.unit_id} - {u.title}:\n{u.content}")
+    return "".join(parts)
+
+
+def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] = None) -> None:
+    """Manda via sendAudio (stile 'file musicale', non sendVoice) il clip di ciascuna unità
+    didattica della domanda. Il clip viene ritagliato una sola volta e messo in cache in
+    <lesson_dir>/recall_audio_clips/<unit_id><ext> (stessa estensione del file audio originale,
+    perché cut_clip usa -c copy: rinominare a .mp3 a prescindere sarebbe scorretto per sorgenti
+    non-mp3), riusato ai click successivi invece di rigenerarlo. Solleva ValueError con un
+    messaggio chiaro se manca il draft, l'audio originale, o la config Telegram."""
+    from rt.telegram.config import load_telegram_config, TelegramConfigError
+    from rt.telegram.client import send_audio
+    from rt.core.audio_clip import resolve_audio_path, cut_clip, resolve_unit_time_range
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.rewrite import load_draft
+
+    draft = load_draft(lesson_dir)
+    units = [u for u in draft.units if u.unit_id in question.unit_ids]
+    if not units:
+        raise ValueError("Nessuna unità didattica trovata per questa domanda.")
+
+    audio_path = resolve_audio_path(lesson_dir)
+    if not audio_path:
+        raise ValueError("Audio originale della lezione non trovato.")
+
+    try:
+        tg_cfg = load_telegram_config()
+    except TelegramConfigError as e:
+        raise ValueError(f"Telegram non configurato: {e}")
+
+    segments = load_segments_json(os.path.join(lesson_dir, "segments.json")).segments
+    clips_dir = os.path.join(lesson_dir, "recall_audio_clips")
+    os.makedirs(clips_dir, exist_ok=True)
+    ext = os.path.splitext(audio_path)[1] or ".mp3"
+
+    for u in units:
+        clip_path = os.path.join(clips_dir, f"{u.unit_id}{ext}")
+        if not os.path.isfile(clip_path):
+            start_s, end_s = resolve_unit_time_range(u, segments)
+            tmp_clip = cut_clip(audio_path, start_s, end_s)
+            shutil.move(tmp_clip, clip_path)
+        send_audio(tg_cfg, clip_path, title=f"{u.unit_id} - {u.title}", message_thread_id=message_thread_id)
 
 
 # -----------------------------------------------------------------------
@@ -47,18 +89,18 @@ def get_recall_session_state_path(lesson_dir: str) -> str:
 def load_recall_session_state(lesson_dir: str) -> dict:
     path = get_recall_session_state_path(lesson_dir)
     if not os.path.isfile(path):
-        return {"order": "sequenziale", "unit_cursor": None, "current_question_id": None, "force_mock": False}
+        return {"order": "alternato", "unit_cursor": None, "current_question_id": None, "force_mock": False}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return {
-            "order": data.get("order", "sequenziale"),
+            "order": data.get("order", "alternato"),
             "unit_cursor": data.get("unit_cursor"),
             "current_question_id": data.get("current_question_id"),
             "force_mock": data.get("force_mock", False),
         }
     except Exception:
-        return {"order": "sequenziale", "unit_cursor": None, "current_question_id": None, "force_mock": False}
+        return {"order": "alternato", "unit_cursor": None, "current_question_id": None, "force_mock": False}
 
 
 def save_recall_session_state(lesson_dir: str, state: dict) -> None:
@@ -114,14 +156,14 @@ def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is
 
     evaluation = evaluate_recall_answer(lesson_dir, question_id, answer_text, force_mock=force_mock)
     record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation)
-    return evaluation + format_unit_reference(lesson_dir, question)
+    return evaluation
 
 
 # -----------------------------------------------------------------------
 # Avvio sessione Telegram
 # -----------------------------------------------------------------------
 
-def start_recall_via_telegram(lesson_dir: str, order: str = "sequenziale", style: Optional[str] = None, force_mock: bool = False) -> None:
+def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: Optional[str] = None, force_mock: bool = False) -> None:
     try:
         from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
         from rt.telegram import client as tg_client, session as tg_session, recall_preferences
@@ -167,10 +209,13 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "sequenziale", style
 # e dal daemon dopo ogni voto/risposta/salto)
 # -----------------------------------------------------------------------
 
-def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = None) -> None:
+def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = None, exclude_id: Optional[str] = None) -> None:
     """force_mock=None (default) risolve dal flag persistito in telegram_recall_session.json
     (vedi handle_recall_answer): il daemon, chiamando questa funzione dopo ogni risposta/voto/
-    rifornimento, deve rispettare il --mock con cui la sessione è stata avviata da terminale."""
+    rifornimento, deve rispettare il --mock con cui la sessione è stata avviata da terminale.
+
+    exclude_id: se specificato (tipicamente la domanda appena skippata), viene passato a
+    get_next_pending_question per evitare di riproporla immediatamente come prossima."""
     from rt.telegram.config import load_telegram_config, TelegramConfigError, resolve_topic_id
     from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt, session as tg_session, recall_preferences
     from rt.core.config import load_config
@@ -182,17 +227,17 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
     qtype = RecallQuestionType(active_style)
 
     session_state = load_recall_session_state(lesson_dir)
-    order = session_state.get("order", "sequenziale")
+    order = session_state.get("order", "alternato")
     unit_cursor = session_state.get("unit_cursor")
     if force_mock is None:
         force_mock = session_state.get("force_mock", False)
 
-    question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor)
+    question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
 
     if question is None:
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
         generate_recall_batch(lesson_dir, qtype, runtime_cfg.recall.refill_batch_size, examples, force_mock=force_mock)
-        question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor)
+        question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
 
     try:
         tg_cfg = load_telegram_config()
@@ -220,15 +265,31 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
     save_recall_session_state(lesson_dir, session_state)
 
     if question.type == RecallQuestionType.QUIZ:
-        # Poll nativo Telegram: mostra domanda+opzioni nella propria UI e dà il feedback
-        # visivo corretto/sbagliato automaticamente. Il voto sulla qualità della domanda si fa
-        # reagendo al messaggio del poll (vedi handle_message_reaction); "Non lo so"/"Skip"
-        # vanno in un messaggio a parte con bottoni, dato che un poll non può averne di suoi.
+        # Poll nativo Telegram: la tastiera ("Non lo so"/"Skip") viene allegata direttamente
+        # al messaggio del poll tramite reply_markup di sendPoll (API Telegram supporta reply_markup).
+        # Troncamento difensivo: opzioni >100 caratteri e domanda >290 caratteri (limite API sendPoll).
         poll_msg_id = None
+        q_text = question.question_text
+        if len(q_text) > 290:
+            print(f"⚠️  [recall] Domanda quiz troncata ({len(q_text)} chars > 290): {q_text[:60]}...", file=sys.stderr)
+            q_text = q_text[:290] + "…"
+        safe_options = []
+        for opt in (question.options or []):
+            if len(opt) > 100:
+                print(f"⚠️  [recall] Opzione quiz troncata ({len(opt)} chars > 100): {opt[:40]}...", file=sys.stderr)
+                safe_options.append(opt[:97] + "…")
+            else:
+                safe_options.append(opt)
         try:
+            action_short_id = tg_registry.register_pending(
+                lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
+                message_thread_id=thread_id, extra={"question_id": question.id, "qtype": "quiz", "poll_message_id": None},
+            )
+            action_keyboard = tg_fmt.build_recall_action_keyboard(action_short_id)
             poll_res = tg_client.send_poll(
-                tg_cfg, question=question.question_text, options=question.options,
+                tg_cfg, question=q_text, options=safe_options,
                 correct_option_id=question.correct_index, message_thread_id=thread_id,
+                reply_markup=action_keyboard,
             )
             poll_id = poll_res.get("poll", {}).get("id")
             poll_msg_id = poll_res.get("message_id")
@@ -243,20 +304,13 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
                     message_thread_id=thread_id, extra={"question_id": question.id},
                 )
                 tg_session.update_session_message(state_dir, tg_cfg.chat_id, thread_id, poll_msg_id)
-        except tg_client.TelegramAPIError as e:
-            print(f"⚠️  Invio quiz a Telegram fallito: {e}")
-
-        action_short_id = tg_registry.register_pending(
-            lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
-            message_thread_id=thread_id, extra={"question_id": question.id, "qtype": "quiz", "poll_message_id": poll_msg_id},
-        )
-        action_keyboard = tg_fmt.build_recall_action_keyboard(action_short_id)
-        try:
-            tg_client.send_message(
-                tg_cfg, text="Non sei sicuro? Puoi anche:", reply_markup=action_keyboard, message_thread_id=thread_id,
+            # Aggiorna poll_message_id nell'entry recall_question già registrata
+            tg_registry.register_with_key(
+                action_short_id, lesson_dir, kind="recall_question", state_dir=state_dir,
+                message_thread_id=thread_id, extra={"question_id": question.id, "qtype": "quiz", "poll_message_id": poll_msg_id},
             )
         except tg_client.TelegramAPIError as e:
-            print(f"⚠️  Invio bottoni azione a Telegram fallito: {e}")
+            print(f"⚠️  Invio quiz a Telegram fallito: {e}")
     else:
         text = tg_fmt.render_recall_question_text(question)
         short_id = tg_registry.register_pending(
@@ -287,7 +341,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
 # Sessione interattiva da terminale
 # -----------------------------------------------------------------------
 
-def run_recall_terminal_session(lesson_dir: str, order: str = "sequenziale", style: Optional[str] = None, force_mock: bool = False) -> None:
+def run_recall_terminal_session(lesson_dir: str, order: str = "alternato", style: Optional[str] = None, force_mock: bool = False) -> None:
     from rt.core.keyboard import read_single_key, raw_mode
     from rt.core.editor_edit import edit_text_in_editor
     from rt.core.config import load_config
@@ -295,7 +349,7 @@ def run_recall_terminal_session(lesson_dir: str, order: str = "sequenziale", sty
     from rt.pipeline.recall import (
         get_next_pending_question, get_reserve_count, generate_recall_batch,
         load_fewshot_examples, record_recall_answer, record_recall_vote,
-        record_fewshot_vote, evaluate_recall_answer,
+        record_fewshot_vote, evaluate_recall_answer, skip_recall_question,
     )
 
     cfg = load_config()
@@ -315,16 +369,18 @@ def run_recall_terminal_session(lesson_dir: str, order: str = "sequenziale", sty
     print("=" * 60)
 
     unit_cursor: Optional[str] = None
+    exclude_id: Optional[str] = None
     interrupted = False
 
     try:
         with raw_mode() as is_raw:
             while not interrupted:
-                question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor)
+                question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
                 if question is None:
                     examples = load_fewshot_examples(qtype, state_dir=state_dir)
                     generate_recall_batch(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, examples, force_mock=force_mock)
-                    question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor)
+                    question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
+                exclude_id = None
                 if question is None:
                     print(f"\n✨ Nessuna domanda '{active_style}' disponibile al momento. Cambia stile o riprova più tardi.")
                     break
@@ -390,6 +446,8 @@ def run_recall_terminal_session(lesson_dir: str, order: str = "sequenziale", sty
                     elif choice in ("s", "salta", "skip"):
                         print(raw_key)
                         print("  ⏭ Saltato.")
+                        skip_recall_question(lesson_dir, question.id)
+                        exclude_id = question.id
                         break
                     elif choice in ("q", "esci", "quit"):
                         print(raw_key)

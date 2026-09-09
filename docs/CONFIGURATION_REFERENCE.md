@@ -92,6 +92,19 @@ Ogni file `<job>.yaml` corrisponde a uno dei job cognitivi della pipeline: il no
 
 Nei file di template, ciascun job ha solo il blocco `primary:` con `provider: null` e `model: null` (da compilare prima dell'uso), mentre i parametri di tuning ottimizzati sono preimpostati.
 
+### File di config non-job: `config/telegram/recall_lessons.yaml`
+
+Non tutti i file `.yaml` sotto `config/` sono job LLM: `recall_lessons.yaml` (se presente, sempre nella sottocartella `telegram/`) è un'eccezione esplicitamente esclusa dalla ricerca ricorsiva dei job (vedi `rt.core.config.find_job_yaml_paths`) e serve a un altro scopo — dire a `/recall` lanciato da Telegram **quale cartella usare per ciascuna materia**, al posto del comportamento automatico di default.
+
+Per default, `/recall` da Telegram usa l'ultima lezione con build completata in quel topic (tracciata automaticamente da `notify_build_completed`, nessuna configurazione richiesta) — se non hai mai fatto una build in un topic, `/recall` non trova nulla e te lo dice, non è un browser/indice di lezioni. `recall_lessons.yaml` è per chi vuole fissare esplicitamente la cartella indipendentemente dall'ultima build:
+
+```yaml
+# config/telegram/recall_lessons.yaml
+BIOCHIMICA: "/percorso/assoluto/[2026-09-05] BIOCHIMICA - trigliceridi"
+```
+
+La chiave è la stessa materia usata in `topics:` dentro `general.yaml`. Facoltativo per materia: quelle non elencate continuano a usare il comportamento automatico.
+
 ### Campi comuni di livello superiore
 | Campo | Significato |
 |---|---|

@@ -23,7 +23,7 @@ from rt.core.models import (
 from rt.pipeline.recall import (
     load_recall_bank, save_recall_bank, get_recall_bank_path,
     get_reserve_count,
-    get_next_pending_question,
+    get_next_pending_question, skip_recall_question,
     record_recall_answer, record_recall_vote,
     record_fewshot_vote, load_fewshot_examples,
     generate_recall_batch,
@@ -258,6 +258,62 @@ class TestGetNextPending:
         q = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
         assert q is None
 
+    def test_exclude_id_skips_it_when_alternatives_exist(self, lesson_dir):
+        self._setup_bank(lesson_dir)
+        bank = load_recall_bank(lesson_dir)
+        first_id = sorted(bank.questions, key=lambda q: (q.unit_ids[0], q.created_at))[0].id
+        q = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA, order="sequenziale", exclude_id=first_id)
+        assert q is not None
+        assert q.id != first_id
+
+    def test_exclude_id_falls_back_when_it_is_the_only_pending(self, lesson_dir):
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1"))
+        save_recall_bank(bank, lesson_dir)
+        q = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA, exclude_id="recall_000001")
+        assert q is not None
+        assert q.id == "recall_000001"  # nessun'altra alternativa: va restituita comunque
+
+
+# -----------------------------------------------------------------------
+# 4b. skip_recall_question
+# -----------------------------------------------------------------------
+
+class TestSkipRecallQuestion:
+    def test_reverts_asked_to_pending(self, lesson_dir):
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.ASKED))
+        save_recall_bank(bank, lesson_dir)
+        skip_recall_question(lesson_dir, "recall_000001")
+        bank2 = load_recall_bank(lesson_dir)
+        assert bank2.questions[0].status == RecallQuestionStatus.PENDING
+
+    def test_is_noop_on_answered_question(self, lesson_dir):
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.ANSWERED))
+        save_recall_bank(bank, lesson_dir)
+        skip_recall_question(lesson_dir, "recall_000001")
+        bank2 = load_recall_bank(lesson_dir)
+        assert bank2.questions[0].status == RecallQuestionStatus.ANSWERED
+
+    def test_is_noop_on_unknown_question(self, lesson_dir):
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.ASKED))
+        save_recall_bank(bank, lesson_dir)
+        skip_recall_question(lesson_dir, "recall_nonexistent")  # non deve sollevare eccezioni
+        bank2 = load_recall_bank(lesson_dir)
+        assert bank2.questions[0].status == RecallQuestionStatus.ASKED
+
+    def test_skipped_question_is_reachable_again(self, lesson_dir):
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.ASKED))
+        save_recall_bank(bank, lesson_dir)
+        assert get_reserve_count(lesson_dir, RecallQuestionType.MIRATA) == 0
+        skip_recall_question(lesson_dir, "recall_000001")
+        assert get_reserve_count(lesson_dir, RecallQuestionType.MIRATA) == 1
+        q = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
+        assert q is not None and q.id == "recall_000001"
+
 
 # -----------------------------------------------------------------------
 # 5. record_recall_answer / record_recall_vote
@@ -430,3 +486,41 @@ class TestGenerateBatch:
         qs = generate_recall_batch(lesson_dir, RecallQuestionType.QUIZ, count=3, few_shot_examples=[], force_mock=True)
         for q in qs:
             assert q.status == RecallQuestionStatus.PENDING
+
+
+class TestGenerateBatchDistribution:
+    """Bug reale trovato in verifica: prima del fix, _pick_unit_groups ripartiva sempre da
+    idx=0 (quiz/mirata) o i=0 (vasta) ad ogni chiamata, indipendentemente da quante domande
+    esistessero già — sia il batch iniziale sia ogni rifornimento finivano sempre sulle prime
+    N unità del draft, non toccando mai le altre. Il fix sceglie le unità meno rappresentate
+    nel bank esistente per quel tipo."""
+
+    def test_repeated_calls_spread_across_units_instead_of_restarting(self, lesson_dir):
+        """Con reserve_targets piccoli rispetto alle 6 unità della fixture, due chiamate
+        consecutive senza risposte nel mezzo devono coprire unità diverse tra loro."""
+        first = generate_recall_batch(lesson_dir, RecallQuestionType.MIRATA, count=2, few_shot_examples=[], force_mock=True)
+        second = generate_recall_batch(lesson_dir, RecallQuestionType.MIRATA, count=2, few_shot_examples=[], force_mock=True)
+        first_units = {q.unit_ids[0] for q in first}
+        second_units = {q.unit_ids[0] for q in second}
+        assert first_units.isdisjoint(second_units), (
+            f"le unità si ripetono tra le due generazioni: {first_units} vs {second_units}"
+        )
+
+    def test_prefers_units_with_no_existing_questions(self, lesson_dir):
+        """Con 2 unità già coperte da domande mirata esistenti, un nuovo batch di 2 deve
+        preferire le 2 unità scoperte invece di generare ancora su quelle già coperte."""
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1"))
+        bank.questions.append(_make_question("recall_000002", RecallQuestionType.MIRATA, "2.1"))
+        save_recall_bank(bank, lesson_dir)
+
+        qs = generate_recall_batch(lesson_dir, RecallQuestionType.MIRATA, count=2, few_shot_examples=[], force_mock=True)
+        new_units = {q.unit_ids[0] for q in qs}
+        assert new_units.isdisjoint({"1.1", "2.1"})
+
+    def test_vasta_windows_prefer_less_covered_units(self, lesson_dir):
+        """Una seconda finestra vasta non deve ripartire dalle stesse unità già coperte
+        dalla prima se altre unità del draft sono ancora scoperte."""
+        first = generate_recall_batch(lesson_dir, RecallQuestionType.VASTA, count=1, few_shot_examples=[], force_mock=True)
+        second = generate_recall_batch(lesson_dir, RecallQuestionType.VASTA, count=1, few_shot_examples=[], force_mock=True)
+        assert set(first[0].unit_ids).isdisjoint(set(second[0].unit_ids))
