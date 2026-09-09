@@ -64,7 +64,7 @@ def test_raw_mode_tty(monkeypatch):
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}):
         with raw_mode() as is_raw:
             assert is_raw is True
-            mock_tty.setraw.assert_called_once_with(mock_fd)
+            mock_tty.setcbreak.assert_called_once_with(mock_fd)
             mock_termios.tcsetattr.assert_not_called()
         mock_termios.tcsetattr.assert_called_once_with(mock_fd, mock_termios.TCSADRAIN, ["dummy_attrs"])
 
@@ -125,7 +125,7 @@ def test_read_single_key_raw_tty(monkeypatch):
         with patch.object(sys.stdin, "read", return_value="p"):
             res = read_single_key()
             assert res == "p"
-            mock_tty.setraw.assert_called_once_with(mock_fd)
+            mock_tty.setcbreak.assert_called_once_with(mock_fd)
             mock_termios.tcsetattr.assert_called_once()
 
 
