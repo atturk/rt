@@ -10,6 +10,7 @@ import pytest
 
 from rt.pipeline.prepare import run_prepare
 from rt.core.models import SegmentsData
+from rt.core.lesson_paths import lesson_path
 
 
 def test_json_is_authoritative_over_markdown(tmp_path):
@@ -60,7 +61,7 @@ materia: BIOCHIMICA
     assert prep_res["status"] == "prepared"
 
     # Leggiamo il segments.json generato
-    seg_file = os.path.join(lesson_dir, "segments.json")
+    seg_file = lesson_path(lesson_dir, "segments.json")
     assert os.path.isfile(seg_file)
     with open(seg_file, "r", encoding="utf-8") as f:
         seg_data = json.load(f)

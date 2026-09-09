@@ -15,6 +15,7 @@ from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, Rec
 from rt.pipeline.rewrite import load_draft
 from rt.llm.client import LLMClient
 from rt.core.config import load_config
+from rt.core.lesson_paths import lesson_path
 
 # -----------------------------------------------------------------------
 # Atomic write helper (same pattern as ledger.py / save_asr_issues)
@@ -31,7 +32,7 @@ def _atomic_write(path: str, data: dict) -> None:
 # -----------------------------------------------------------------------
 
 def get_recall_bank_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "recall_questions.json")
+    return lesson_path(lesson_dir, "recall_questions.json")
 
 
 def load_recall_bank(lesson_dir: str) -> RecallBank:

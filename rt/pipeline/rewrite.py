@@ -21,6 +21,7 @@ from rt.llm.client import LLMClient
 from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt
 from rt.pipeline.outline import load_outline
 from rt.pipeline.validator import validate_draft
+from rt.core.lesson_paths import lesson_path
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -37,7 +38,7 @@ from rt.core.idempotency import (
 
 
 def get_draft_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "draft.json")
+    return lesson_path(lesson_dir, "draft.json")
 
 
 def load_draft(lesson_dir: str) -> Draft:
@@ -100,11 +101,11 @@ def run_rewrite(
     force_mock: bool = False
 ) -> Dict[str, Any]:
     """Esegue la rielaborazione delle unità didattiche a finestre scorrevoli con checkpointing continuo."""
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path)
-    
+
     outline = load_outline(lesson_dir)
-    segments_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     
     seg_by_id: Dict[str, Segment] = {s.id: s for s in segments_data.segments}
     all_segments = segments_data.segments

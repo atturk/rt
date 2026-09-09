@@ -9,10 +9,11 @@ import json
 from datetime import datetime
 from typing import Optional
 from rt.core.models import TelegramPendingState, TelegramPendingStatus
+from rt.core.lesson_paths import lesson_path
 
 
 def get_pending_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "telegram_pending.json")
+    return lesson_path(lesson_dir, "telegram_pending.json")
 
 
 def load_pending(lesson_dir: str) -> Optional[TelegramPendingState]:

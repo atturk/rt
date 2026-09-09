@@ -176,7 +176,8 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     Se una fase a monte è STALE o INVALID, lo stato retrocede coerentemente
     alla prima fase che richiede attenzione.
     """
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    from rt.core.lesson_paths import lesson_path
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     if not os.path.isfile(yaml_path):
         return None
 

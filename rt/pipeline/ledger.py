@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from rt.core.models import DecisionLedger, ReviewDecision, ASRIssue, ScienceIssue, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
+from rt.core.lesson_paths import lesson_path
 
 
 def sanitize_suggested_fix(text: Optional[str]) -> Optional[str]:
@@ -68,7 +69,7 @@ def sanitize_suggested_fix(text: Optional[str]) -> Optional[str]:
 
 
 def get_ledger_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "review_decisions.json")
+    return lesson_path(lesson_dir, "review_decisions.json")
 
 
 def load_ledger(lesson_dir: str) -> DecisionLedger:

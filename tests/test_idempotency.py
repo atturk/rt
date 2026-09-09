@@ -20,6 +20,7 @@ from rt.core.models import (
 )
 from rt.core.state import read_info_yaml, transition_to, get_current_state, VALID_TRANSITIONS, WorkflowState
 from rt.core.manifest import load_manifest, init_or_update_manifest
+from rt.core.lesson_paths import lesson_path
 from rt.core.idempotency import (
     PhaseStatus,
     check_phase_status,
@@ -283,7 +284,7 @@ def test_upstream_input_change_marks_downstream_stale(synthetic_lesson):
     assert st == PhaseStatus.VALID
 
     # Modifica segments.json aggiungendo o modificando un segmento
-    seg_path = os.path.join(lesson_dir, "segments.json")
+    seg_path = lesson_path(lesson_dir, "segments.json")
     with open(seg_path, "r", encoding="utf-8") as f:
         seg_data = json.load(f)
     seg_data["segments"][0]["text_raw"] = "Testo modificato per test di invalidazione"
@@ -375,7 +376,7 @@ def test_partial_rewrite_single_unit(synthetic_lesson):
     run_prepare(lesson_dir)
     
     # Creiamo manualmente un'outline con 2 unità distinte
-    seg_path = os.path.join(lesson_dir, "segments.json")
+    seg_path = lesson_path(lesson_dir, "segments.json")
     from rt.core.segments import load_segments_json
     seg_data = load_segments_json(seg_path)
     

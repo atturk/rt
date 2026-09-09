@@ -15,6 +15,7 @@ from rt.pipeline.setup import run_setup, SetupError
 from rt.pipeline.prepare import run_prepare
 from rt.core.state import get_current_state, WorkflowState
 from rt.core.idempotency import PhaseStatus, check_phase_status
+from rt.core.lesson_paths import lesson_path
 
 
 FIXTURE_AUDIO = os.path.abspath("tests/fixtures/demo_lecture.wav")
@@ -63,16 +64,16 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
     assert os.path.isfile(os.path.join(lesson_dir, "trascritto grezzo.md"))
 
     # 2. Artefatti intermedi della pipeline
-    assert os.path.isfile(os.path.join(lesson_dir, "segments.json"))
-    assert os.path.isfile(os.path.join(lesson_dir, "outline.json"))
-    assert os.path.isfile(os.path.join(lesson_dir, "draft.json"))
-    assert os.path.isfile(os.path.join(lesson_dir, "asr_issues.json"))
-    assert os.path.isfile(os.path.join(lesson_dir, "science_issues.json"))
-    assert os.path.isfile(os.path.join(lesson_dir, "review_decisions.json"))
+    assert os.path.isfile(lesson_path(lesson_dir, "segments.json"))
+    assert os.path.isfile(lesson_path(lesson_dir, "outline.json"))
+    assert os.path.isfile(lesson_path(lesson_dir, "draft.json"))
+    assert os.path.isfile(lesson_path(lesson_dir, "asr_issues.json"))
+    assert os.path.isfile(lesson_path(lesson_dir, "science_issues.json"))
+    assert os.path.isfile(lesson_path(lesson_dir, "review_decisions.json"))
 
     # 3. Artefatti finali di build
-    assert os.path.isfile(os.path.join(lesson_dir, "pre-elaborato.md"))
-    assert os.path.isfile(os.path.join(lesson_dir, "rielaborato.md"))
+    assert os.path.isfile(lesson_path(lesson_dir, "pre-elaborato.md"))
+    assert os.path.isfile(lesson_path(lesson_dir, "rielaborato.md"))
     assert os.path.isfile(os.path.join(lesson_dir, "Revisioni ASR.md"))
     assert os.path.isfile(os.path.join(lesson_dir, "Errori concettuali.md"))
     assert os.path.isfile(os.path.join(lesson_dir, "Problemi scientifici.md"))
@@ -235,7 +236,7 @@ def test_audio_run_with_custom_dest_dir(tmp_path, capsys):
         "rielaborato.md"
     ]
     for art in required_artifacts:
-        art_path = os.path.join(expected_lesson_dir, art)
+        art_path = lesson_path(expected_lesson_dir, art)
         assert os.path.isfile(art_path), f"Artefatto atteso mancante: {art} in {expected_lesson_dir}"
 
     # Controllo stato finale COMPLETED

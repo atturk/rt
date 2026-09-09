@@ -8,10 +8,11 @@ import json
 from datetime import datetime
 from typing import Optional, Dict, Any
 from rt.core.models import Manifest
+from rt.core.lesson_paths import lesson_path
 
 
 def get_manifest_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "manifest.json")
+    return lesson_path(lesson_dir, "manifest.json")
 
 
 def load_manifest(lesson_dir: str) -> Optional[Manifest]:

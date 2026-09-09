@@ -4,6 +4,7 @@ Unit tests per il sistema di telemetria LLM, provider abstraction (DeepSeek / Op
 streaming SSE mock, calcolo costi e configurazione provider switching.
 """
 
+import os
 import json
 import pytest
 from unittest.mock import patch, MagicMock
@@ -17,6 +18,7 @@ from rt.llm.providers.deepseek import DeepSeekProvider
 from rt.llm.providers.openrouter import OpenRouterProvider
 from rt.llm.client import LLMClient, LLMError
 from rt.core.config import RTConfig, LLMModelConfig
+from rt.core.lesson_paths import lesson_path
 
 
 class SampleResponseModel(BaseModel):
@@ -617,8 +619,8 @@ def test_build_writes_telemetry_summary_file(tmp_path):
     res = run_build(str(lesson_dir), force=True, rename_folder=False)
     assert res["status"] == "completed"
 
-    summary_file = lesson_dir / "telemetry_summary.json"
-    assert summary_file.exists(), "telemetry_summary.json non è stato creato!"
+    summary_file = lesson_path(str(lesson_dir), "telemetry_summary.json")
+    assert os.path.isfile(summary_file), "telemetry_summary.json non è stato creato!"
     with open(summary_file, "r", encoding="utf-8") as f:
         data = json.load(f)
     assert data["total_requests"] >= 1

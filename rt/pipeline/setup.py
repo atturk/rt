@@ -374,10 +374,11 @@ def run_setup(
 
     # 4. CONTROLLO DI SICUREZZA CARTELLA ESISTENTE (Parte Q)
     if os.path.isdir(target_folder_path):
-        existing_info = os.path.join(target_folder_path, "info.yaml")
-        existing_decisions = os.path.join(target_folder_path, "review_decisions.json")
-        existing_draft = os.path.join(target_folder_path, "draft.json")
-        existing_rielab = os.path.join(target_folder_path, "rielaborato.md")
+        from rt.core.lesson_paths import lesson_path
+        existing_info = lesson_path(target_folder_path, "info.yaml")
+        existing_decisions = lesson_path(target_folder_path, "review_decisions.json")
+        existing_draft = lesson_path(target_folder_path, "draft.json")
+        existing_rielab = lesson_path(target_folder_path, "rielaborato.md")
 
         has_protected_work = any(os.path.isfile(p) for p in [existing_decisions, existing_draft, existing_rielab])
 

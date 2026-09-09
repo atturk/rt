@@ -12,6 +12,7 @@ import shutil
 from typing import Optional
 
 from rt.core.models import RecallQuestionType
+from rt.core.lesson_paths import lesson_path
 
 # -----------------------------------------------------------------------
 # Riferimento all'unità didattica di una domanda (allegato a ogni esito/valutazione)
@@ -64,8 +65,8 @@ def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] 
     except TelegramConfigError as e:
         raise ValueError(f"Telegram non configurato: {e}")
 
-    segments = load_segments_json(os.path.join(lesson_dir, "segments.json")).segments
-    clips_dir = os.path.join(lesson_dir, "recall_audio_clips")
+    segments = load_segments_json(lesson_path(lesson_dir, "segments.json")).segments
+    clips_dir = lesson_path(lesson_dir, "recall_audio_clips")
     os.makedirs(clips_dir, exist_ok=True)
     ext = os.path.splitext(audio_path)[1] or ".mp3"
 
@@ -83,7 +84,7 @@ def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] 
 # -----------------------------------------------------------------------
 
 def get_recall_session_state_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "telegram_recall_session.json")
+    return lesson_path(lesson_dir, "telegram_recall_session.json")
 
 
 def load_recall_session_state(lesson_dir: str) -> dict:

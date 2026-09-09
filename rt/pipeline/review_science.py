@@ -23,6 +23,7 @@ from rt.llm.prompts import (
 from rt.pipeline.rewrite import load_draft
 from rt.pipeline.review_asr import load_asr_issues
 from rt.core.models import ASRLevel
+from rt.core.lesson_paths import lesson_path
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -39,7 +40,7 @@ from rt.core.idempotency import (
 
 
 def get_science_issues_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, "science_issues.json")
+    return lesson_path(lesson_dir, "science_issues.json")
 
 
 def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
@@ -151,7 +152,7 @@ def disambiguate_science_issue(iss: Any, source_text: str) -> Any:
 
 def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft confrontato con l'ASR con checkpointing continuo."""
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
 
     # Controllo stato ASR review e warning non bloccante
     asr_status, _ = check_phase_status(lesson_dir, "review_asr")
@@ -185,7 +186,7 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     action = "FORCE" if force else "RUN"
     
     draft = load_draft(lesson_dir)
-    segments_data = load_segments_json(os.path.join(lesson_dir, "segments.json"))
+    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     ledger = load_ledger(lesson_dir)

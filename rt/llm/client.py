@@ -43,6 +43,7 @@ from rt.llm.errors import (
     LLMTimeoutError,
 )
 from rt.llm.router import RoutingEngine, ExecutionRoute
+from rt.core.lesson_paths import lesson_path
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -51,7 +52,7 @@ def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
     """Scrive una riga di telemetria e contesto in formato JSON Lines su llm_debug.log."""
     if not lesson_dir:
         return
-    log_path = os.path.join(lesson_dir, "llm_debug.log")
+    log_path = lesson_path(lesson_dir, "llm_debug.log")
     try:
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")

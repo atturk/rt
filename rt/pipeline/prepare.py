@@ -28,17 +28,18 @@ from rt.core.idempotency import (
     record_phase_fingerprint,
     mark_downstream_stale,
 )
+from rt.core.lesson_paths import lesson_path
 
 
 def run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione."""
     if not os.path.isdir(lesson_dir):
         raise FileNotFoundError(f"Directory della lezione non trovata: '{lesson_dir}'")
-        
-    yaml_path = os.path.join(lesson_dir, "info.yaml")
+
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
     if not os.path.isfile(yaml_path):
         raise FileNotFoundError(f"File critico 'info.yaml' mancante in '{lesson_dir}'")
-        
+
     info = read_info_yaml(yaml_path)
     current_state_raw = info.get("fase_corrente", "") or info.get("stato", "")
     date_val = info.get("data", "0000-00-00")
@@ -46,14 +47,14 @@ def run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     topics_val = info.get("argomenti", "Argomenti")
     audio_file = info.get("file_audio")
     lesson_id = os.path.basename(os.path.abspath(lesson_dir))
-    segments_json_path = os.path.join(lesson_dir, "segments.json")
-    norm_md_path = os.path.join(lesson_dir, "transcript_normalized.md")
+    segments_json_path = lesson_path(lesson_dir, "segments.json")
+    norm_md_path = lesson_path(lesson_dir, "transcript_normalized.md")
 
     # Controllo stato METADATA_ONLY: la preparazione non può proseguire senza ASR reale
     json_candidates = [
-        os.path.join(lesson_dir, "trascritto grezzo.json"),
-        os.path.join(lesson_dir, "segments_raw.json"),
-        os.path.join(lesson_dir, "transcript.json"),
+        lesson_path(lesson_dir, "trascritto grezzo.json"),
+        lesson_path(lesson_dir, "segments_raw.json"),
+        lesson_path(lesson_dir, "transcript.json"),
     ]
     has_valid_json = any(os.path.isfile(jc) and os.path.getsize(jc) > 10 for jc in json_candidates)
     if current_state_raw in (WorkflowState.METADATA_ONLY.value, "in_attesa_di_trascrizione") and not has_valid_json:
@@ -83,7 +84,7 @@ def run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     action = "FORCE" if force else "RUN"
     
     # 1. Ricerca del trascritto sorgente: JSON è la SOURCE OF TRUTH assoluta
-    md_path = os.path.join(lesson_dir, "trascritto grezzo.md")
+    md_path = lesson_path(lesson_dir, "trascritto grezzo.md")
     
     source_type = None
     source_path = None

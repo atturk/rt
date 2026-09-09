@@ -34,8 +34,9 @@ def resolve_topic_id(lesson_dir: str, topics: dict) -> Optional[int]:
     non è mappata o info.yaml non è leggibile."""
     import os
     from rt.core.state import read_info_yaml
+    from rt.core.lesson_paths import lesson_path
     try:
-        info = read_info_yaml(os.path.join(lesson_dir, "info.yaml"))
+        info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     except Exception:
         return None
     materia = str(info.get("materia", "")).strip().upper()
