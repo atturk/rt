@@ -23,7 +23,12 @@ def edit_text_in_editor(initial_content: str) -> str:
         tmp_file.flush()
         tmp_file.close()
 
-        subprocess.call([editor, tmp_path])
+        cmd = [editor]
+        if os.path.basename(editor) == "nano":
+            cmd.append("--softwrap")
+        cmd.append(tmp_path)
+
+        subprocess.call(cmd)
 
         with open(tmp_path, "r", encoding="utf-8") as f:
             content = f.read()
