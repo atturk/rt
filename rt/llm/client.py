@@ -1071,7 +1071,8 @@ class LLMClient:
             Outline, OutlineMacro, OutlineUnit,
             Draft, DraftUnit,
             ASRIssue, ASRLevel,
-            ScienceIssue
+            ScienceIssue,
+            RecallQuestion,
         )
 
         model_name = response_model.__name__
@@ -1239,6 +1240,50 @@ class LLMClient:
                     )
                 )
             return ScienceIssueList(issues=mock_issues)  # type: ignore
+
+        elif model_name == "RecallQuestion":
+            from rt.core.models import RecallQuestionType
+
+            u_match = re.search(r"UNIT[ÀA]:\s*([\w.]+)", prompt)
+            unit_id = u_match.group(1) if u_match else "1.1"
+            jn = job_name or ""
+
+            if "quiz" in jn:
+                qtype = RecallQuestionType.QUIZ
+                options = ["[MOCK] Opzione A (corretta)", "[MOCK] Opzione B", "[MOCK] Opzione C", "[MOCK] Opzione D"]
+                correct_index = 0
+                pregenerated = "[MOCK] L'opzione A e' corretta perche'... Le altre tre sono sbagliate perche'..."
+            elif "vasta" in jn:
+                qtype = RecallQuestionType.VASTA
+                options = None
+                correct_index = None
+                pregenerated = "[MOCK] Scaletta ideale: 1) Punto essenziale; 2) Punto essenziale; 3) Punto essenziale."
+            else:
+                qtype = RecallQuestionType.MIRATA
+                options = None
+                correct_index = None
+                pregenerated = None
+
+            return RecallQuestion(  # type: ignore
+                id="recall_mock",
+                type=qtype,
+                unit_ids=[unit_id],
+                question_text="[MOCK] Domanda generata automaticamente per test offline.",
+                options=options,
+                correct_index=correct_index,
+                pregenerated_material=pregenerated,
+            )
+
+        elif model_name == "RecallEvalMirataResult":
+            return response_model(  # type: ignore
+                correttezza=75, completezza=70,
+                commento="[MOCK] Risposta plausibile ma incompleta rispetto al riferimento.",
+            )
+
+        elif model_name == "RecallEvalVastaResult":
+            return response_model(  # type: ignore
+                commento="[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.",
+            )
 
         # Fallback generico per qualsiasi altro modello
         try:

@@ -262,6 +262,61 @@ def cmd_review_science(args):
     run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
 
 
+def cmd_recall(args):
+    from rt.core.idempotency import check_phase_status, PhaseStatus
+
+    status, reason = check_phase_status(args.lesson_dir, "rewrite")
+    if status != PhaseStatus.VALID:
+        print(
+            f"❌ La lezione non ha un draft valido ({reason}).\n"
+            f"   Il recall pesca le domande dal draft: esegui prima 'rt rewrite \"{args.lesson_dir}\"'.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    order = getattr(args, "order", "sequenziale")
+    style = getattr(args, "style", None)
+    force_mock = getattr(args, "mock", False)
+
+    if not force_mock:
+        if not _has_real_config_source():
+            print(
+                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+                "   cp -r config.example config",
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+        from rt.core.config import load_config
+        from rt.telegram import recall_preferences
+        cfg = load_config()
+        effective_style = style or recall_preferences.get_active_style(cfg.telegram.state_dir)
+        jobs_needed = [f"recall_{effective_style}"]
+        if effective_style in ("mirata", "vasta"):
+            jobs_needed.append(f"recall_eval_{effective_style}")
+        missing_jobs = [j for j in jobs_needed if not _job_has_configured_route(cfg.jobs.get(j))]
+        if missing_jobs:
+            print(
+                f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing_jobs)}.\n"
+                f"   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                f"   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                f"   nei rispettivi file config/{{job}}.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+
+    from rt.pipeline.recall_session import start_recall_via_telegram, run_recall_terminal_session
+    if channel == "telegram":
+        start_recall_via_telegram(args.lesson_dir, order=order, style=style, force_mock=force_mock)
+    else:
+        run_recall_terminal_session(args.lesson_dir, order=order, style=style, force_mock=force_mock)
+
 
 from rt.pipeline.ledger import extract_context_sentence
 from rt.pipeline.issue_review import should_auto_accept_asr, should_auto_accept_science
@@ -894,6 +949,18 @@ def main():
     )
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.set_defaults(func=cmd_review_science)
+
+    # recall
+    p_recall = subparsers.add_parser("recall", help="Sessione di active recall (quiz/mirata/vasta) su una lezione già rielaborata")
+    p_recall.add_argument("lesson_dir", help="Directory della lezione")
+    p_recall.add_argument("--order", choices=["sequenziale", "alternato", "casuale"], default="sequenziale",
+                           help="Ordine di proposta delle domande per questa sessione (default: sequenziale)")
+    p_recall.add_argument("--channel", choices=["terminal", "telegram"], default=None,
+                           help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
+    p_recall.add_argument("--style", choices=["quiz", "mirata", "vasta"], default=None,
+                           help="Tipo di domanda per questa sessione; se passato, aggiorna anche lo stile attivo globale (default: stile attivo corrente)")
+    p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
+    p_recall.set_defaults(func=cmd_recall)
 
     # build
     p_bld = subparsers.add_parser("build", help="Finalizzazione deterministica dei Markdown")

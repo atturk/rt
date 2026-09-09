@@ -116,3 +116,25 @@ def edit_message_reply_markup(cfg: TelegramConfig, message_id: int, reply_markup
         "reply_markup": reply_markup or {"inline_keyboard": []},
     }
     return _call(cfg, "editMessageReplyMarkup", payload)
+
+
+_FILE_BASE = "https://api.telegram.org/file/bot{token}/{file_path}"
+
+
+def download_voice(cfg: TelegramConfig, file_id: str, dest_path: str, timeout: float = 30.0, max_retries: int = 1) -> None:
+    """Scarica un file vocale Telegram (getFile + download binario) e lo scrive in dest_path."""
+    file_info = _call(cfg, "getFile", {"file_id": file_id}, timeout=timeout, max_retries=max_retries)
+    remote_path = file_info.get("file_path")
+    if not remote_path:
+        raise TelegramAPIError(f"getFile non ha restituito un file_path valido per file_id='{file_id}'.")
+
+    url = _FILE_BASE.format(token=cfg.bot_token, file_path=remote_path)
+    try:
+        resp = requests.get(url, timeout=timeout)
+    except requests.RequestException as e:
+        raise TelegramAPIError(f"Errore di rete nel download del vocale: {e}") from e
+    if resp.status_code != 200:
+        raise TelegramAPIError(f"Download del vocale fallito (HTTP {resp.status_code}).")
+
+    with open(dest_path, "wb") as f:
+        f.write(resp.content)
