@@ -82,9 +82,9 @@ def _print_phase_action(phase_name: str, res: Dict[str, Any]):
     if action == "SKIP":
         print(f"\n[SKIP] {phase_name}\nReason: {reason}\n")
     elif action == "FORCE":
-        print(f"\n[FORCE] {phase_name}\nReason: {reason}\n")
+        print(f"\n[FORCE] {phase_name}\nReason: {reason}\n✔ {phase_name} completato (rigenerazione forzata).\n")
     else:
-        print(f"\n[RUN] {phase_name}\nReason: {reason}\n")
+        print(f"\n[RUN] {phase_name}\nReason: {reason}\n✔ {phase_name} completato.\n")
 
 
 def cmd_prepare(args):
