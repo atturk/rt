@@ -3,7 +3,7 @@ rt.llm.pricing
 Configurazione e calcolo stime di costo per le chiamate LLM.
 Disaccoppiato dalla logica di business e configurabile per provider e modello.
 
-I valori sottostanti sono stime di riferimento e possono invecchiare. Usa 'rt prices-check' per confrontarli con il catalogo live.
+I valori sottostanti sono stime di riferimento e possono invecchiare: verificale manualmente contro il listino del provider.
 """
 
 from typing import Optional, Dict, Any

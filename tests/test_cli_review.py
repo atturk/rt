@@ -8,12 +8,9 @@ Verifica delle funzionalità avanzate della review CLI:
 
 import unittest
 from rt.core.models import ASRLevel, ASRIssue, ScienceIssue, ScienceType, ScienceSeverity
-from rt.cli import (
-    extract_context_sentence,
-    should_auto_accept_asr,
-    should_auto_accept_science,
-    normalize_review_cli_args,
-)
+from rt.pipeline.ledger import extract_context_sentence
+from rt.pipeline.issue_review import should_auto_accept_asr, should_auto_accept_science
+from rt.cli import normalize_review_cli_args
 
 
 class TestCLIReview(unittest.TestCase):
