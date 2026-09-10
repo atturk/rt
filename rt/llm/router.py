@@ -67,9 +67,11 @@ class RoutingEngine:
         default_job = self.config.jobs.get("default") or self.config.llm.get("default")
         if default_job:
             return default_job
-        # Fallback di sicurezza: route standard deepseek
-        return JobRoutingConfig(
-            primary=RouteConfig(provider="deepseek", model="deepseek-v4-flash")
+        raise ValueError(
+            f"Nessuna configurazione di routing trovata per il job '{job_name}' "
+            f"(né una voce dedicata né un job 'default'). Dichiara esplicitamente "
+            f"provider e modello in config/{job_name}.yaml sotto 'primary:'. "
+            f"Vedi docs/CONFIGURATION_REFERENCE.md."
         )
 
     def is_route_available(self, route: RouteConfig) -> bool:
@@ -98,10 +100,6 @@ class RoutingEngine:
                 return ExecutionRoute(route=job_cfg.secondary, route_role="secondary")
 
         return ExecutionRoute(route=job_cfg.primary, route_role="primary")
-
-    def get_primary_route(self, job_name: str) -> ExecutionRoute:
-        """Alias retrocompatibile per select_initial_route."""
-        return self.select_initial_route(job_name)
 
     def select_fallback_route(
         self,
