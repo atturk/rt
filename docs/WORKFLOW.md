@@ -16,7 +16,7 @@ stateDiagram-v2
     SETUP_COMPLETED --> PREPARED: rt prepare
     PREPARED --> OUTLINE_VALIDATED: rt outline
     OUTLINE_VALIDATED --> DRAFT_VALIDATED: rt rewrite
-    PREPARED --> ASR_REVIEW_READY: rt review-asr (indipendente dal draft)
+    DRAFT_VALIDATED --> ASR_REVIEW_READY: rt review-asr
     DRAFT_VALIDATED --> HUMAN_REVIEW_REQUIRED: rt review-science (se pendenti YELLOW/RED)
     DRAFT_VALIDATED --> READY_TO_BUILD: rt review-science (se 0 pendenti)
     HUMAN_REVIEW_REQUIRED --> READY_TO_BUILD: rt review (decisioni registrate)
@@ -135,7 +135,7 @@ Ogni fase registra nel manifest (`phase_records`):
 Quando una fase produce un nuovo artefatto (per modifiche ai sorgenti o tramite flag `--force`), solo le fasi downstream dipendenti vengono marcate come `STALE`:
 - Modifica a `prepare` (`segments.json`) $\rightarrow$ invalida `outline`, `rewrite`, `review-asr`, `review-science`, `build`.
 - Modifica a `outline` (`outline.json`) $\rightarrow$ invalida `rewrite`, `review-science`, `build`.
-- Modifica a `rewrite` (`draft.json`) $\rightarrow$ invalida `review-science`, `build`.
+- Modifica a `rewrite` (`draft.json`) $\rightarrow$ invalida `review-asr`, `review-science`, `build`.
 - Modifica a `review-asr` (`asr_issues.json`) o `review-science` (`science_issues.json`) $\rightarrow$ invalida `build`.
 - I file sorgente grezzi (`trascritto grezzo.*`, `audio.*`) e le decisioni umane registrate (`review_decisions.json`) **non vengono mai sovrascritti o cancellati**.
 

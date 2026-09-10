@@ -113,10 +113,10 @@ def test_round_robin_selection_alternation(monkeypatch):
         ]
     )
 
-    r1 = client.router.get_primary_route("outline")
-    r2 = client.router.get_primary_route("outline")
-    r3 = client.router.get_primary_route("outline")
-    r4 = client.router.get_primary_route("outline")
+    r1 = client.router.select_initial_route("outline")
+    r2 = client.router.select_initial_route("outline")
+    r3 = client.router.select_initial_route("outline")
+    r4 = client.router.select_initial_route("outline")
 
     assert r1.route.route_id == "google_p1"
     assert r2.route.route_id == "google_p2"
@@ -140,8 +140,8 @@ def test_round_robin_disabled(monkeypatch):
         ]
     )
 
-    assert client.router.get_primary_route("outline").route.route_id == "google_p1"
-    assert client.router.get_primary_route("outline").route.route_id == "google_p1"
+    assert client.router.select_initial_route("outline").route.route_id == "google_p1"
+    assert client.router.select_initial_route("outline").route.route_id == "google_p1"
 
 
 def test_loop_protection_prevents_routing_cycles(monkeypatch):
@@ -687,4 +687,16 @@ def test_same_route_timeout_retry_distinct_from_routing_failover(monkeypatch):
     assert records[2].route_id == "r_deepseek"
     assert records[2].status == "success"
     assert records[2].parent_attempt == 2
+
+
+def test_unconfigured_job_without_default_raises_value_error():
+    """Verifica che la richiesta di configurazione per un job inesistente e senza 'default' sollevi ValueError."""
+    import pytest
+    from rt.core.config import RTConfig
+    from rt.llm.router import RoutingEngine
+    config = RTConfig(jobs={}, llm={})
+    engine = RoutingEngine(config)
+    with pytest.raises(ValueError, match="Nessuna configurazione di routing trovata per il job 'nonexistent'"):
+        engine._get_job_config("nonexistent")
+
 
