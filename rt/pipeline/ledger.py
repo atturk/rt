@@ -189,12 +189,15 @@ def apply_asr_decisions_to_text(
                         content = content.replace(candidate, resolved, 1)
                     elif source and source in content:
                         content = content.replace(source, resolved, 1)
-            elif dec.decision == "rejected":
-                candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
-                source = fix_mojibake(iss.source_text) if iss.source_text else ""
-                if candidate and candidate in content:
-                    content = content.replace(candidate, source, 1)
-                    
+            # "rejected": no-op deliberato. Rifiutare una proposta di correzione ASR non
+            # significa "ripristina il testo grezzo originale" — significa "non applicare
+            # questa proposta". Il draft potrebbe già contenere un testo diverso sia da
+            # source_text sia da candidate (tipicamente perché il modello di rewrite ha
+            # già gestito autonomamente l'ambiguità, indipendentemente da questa issue):
+            # sovrascriverlo con iss.source_text lo corromperebbe. Ogni render riparte
+            # comunque da draft.json non modificato, quindi non c'è mai un "ripristino"
+            # legittimo da fare qui.
+
     return content
 
 
@@ -255,6 +258,27 @@ def apply_decisions_to_draft(
         updated_units.append(unit_copy)
         
     return Draft(schema_version=draft.schema_version, lesson_id=draft.lesson_id, units=updated_units)
+
+
+def load_resolved_draft(lesson_dir: str) -> Draft:
+    """Carica il draft con le decisioni del ledger (ASR + scientifiche) già applicate —
+    la stessa vista che build.py usa per generare i documenti finali.
+
+    Qualunque consumatore che mostra all'utente, o ragiona su, il testo di un'unità
+    didattica (es. il recall) deve usare questa funzione invece di rt.pipeline.rewrite
+    .load_draft(): il draft grezzo non riflette le correzioni che l'utente ha approvato
+    in review, e usarlo direttamente li fa divergere silenziosamente da quello che
+    l'utente ha davvero studiato (bug reale riscontrato: domande/valutazioni del recall
+    basate su un testo che l'utente aveva già corretto)."""
+    from rt.pipeline.rewrite import load_draft
+    from rt.pipeline.review_asr import load_asr_issues
+    from rt.pipeline.review_science import load_science_issues
+
+    draft = load_draft(lesson_dir)
+    ledger = load_ledger(lesson_dir)
+    asr_issues = load_asr_issues(lesson_dir)
+    science_issues = load_science_issues(lesson_dir)
+    return apply_decisions_to_draft(draft, ledger, asr_issues, science_issues)
 
 
 def extract_context_sentence(content: str, target: str, fallback_target: str = "", highlight: bool = True) -> str:

@@ -24,9 +24,9 @@ def format_unit_reference(lesson_dir: str, question) -> str:
     Mostra sempre il contenuto intero di ogni unità in question.unit_ids, separandole
     con un'intestazione per unità (es. per vasta che può averne più).
     Usata dal bottone 📖 (richiesta esplicita), non più incollata automaticamente agli esiti."""
-    from rt.pipeline.rewrite import load_draft
+    from rt.pipeline.ledger import load_resolved_draft
     try:
-        draft = load_draft(lesson_dir)
+        draft = load_resolved_draft(lesson_dir)
     except Exception:
         return ""
     units = [u for u in draft.units if u.unit_id in question.unit_ids]
@@ -49,9 +49,9 @@ def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] 
     from rt.telegram.client import send_audio
     from rt.core.audio_clip import resolve_audio_path, cut_clip, resolve_unit_time_range
     from rt.core.segments import load_segments_json
-    from rt.pipeline.rewrite import load_draft
+    from rt.pipeline.ledger import load_resolved_draft
 
-    draft = load_draft(lesson_dir)
+    draft = load_resolved_draft(lesson_dir)
     units = [u for u in draft.units if u.unit_id in question.unit_ids]
     if not units:
         raise ValueError("Nessuna unità didattica trovata per questa domanda.")

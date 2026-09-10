@@ -348,6 +348,34 @@ class TestFormatUnitReference:
         )
         assert format_unit_reference(lesson_dir, question) == ""
 
+    def test_reflects_accepted_science_decision_not_raw_draft(self, tmp_path):
+        """Bug reale: il bottone 📖 mostrava il testo grezzo del draft, ignorando le
+        correzioni scientifiche già approvate — diverso da quello che l'utente studia
+        davvero nel documento finale."""
+        from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+        from rt.pipeline.review_science import get_science_issues_path
+        from rt.pipeline.ledger import record_decision
+
+        lesson_dir = str(tmp_path / "lesson")
+        _setup_lesson(lesson_dir)
+
+        sci_issue = ScienceIssue(
+            id="sci_000001", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.LOW,
+            unit_id="1.1", segment_id="seg_000001", claim="Contenuto unita 1.",
+            reason="Dettaglio approvato dal docente.",
+            suggested_fix="Contenuto unita 1, RIVISTO E APPROVATO.",
+        )
+        with open(get_science_issues_path(lesson_dir), "w", encoding="utf-8") as f:
+            json.dump([sci_issue.model_dump(mode="json")], f)
+        record_decision(lesson_dir=lesson_dir, issue_id="sci_000001", decision="accepted", resolved_text=sci_issue.suggested_fix)
+
+        question = RecallQuestion(
+            id="recall_000011", type=RecallQuestionType.MIRATA, unit_ids=["1.1"],
+            question_text="Domanda di prova.",
+        )
+        text = format_unit_reference(lesson_dir, question)
+        assert "RIVISTO E APPROVATO" in text
+
 
 class TestSendUnitAudio:
     def _setup_lesson_with_audio(self, lesson_dir: str) -> None:

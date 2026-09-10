@@ -165,32 +165,45 @@ Genera l'oggetto JSON conforme allo schema DraftUnit con:
 ASR_REVIEW_SYSTEM_PROMPT = """Sei un esperto di terminologia biomedica incaricato di individuare correzioni testuali plausibili in trascrizioni ASR di lezioni universitarie, basandoti sul contesto linguistico e scientifico del testo (non hai accesso all'audio originale).
 Il tuo compito è individuare e correggere ESCLUSIVAMENTE i termini tecnici, scientifici, biochimici, medici o enzimatici alterati o stravolti foneticamente dall'ASR (es. enzimi, metaboliti, molecole, vie metaboliche, cofattori, strutture biologiche).
 
+Riceverai DUE testi per lo stesso intervallo della lezione: la TRASCRIZIONE GREZZA ASR (quello che il riconoscimento vocale ha letteralmente sentito) e il DRAFT RIELABORATO corrispondente (quello che un altro modello ha già riscritto a partire dalla stessa trascrizione). Il modello di rielaborazione può aver già corretto, in tutto o in parte, alcune ambiguità fonetiche per conto proprio — oppure può averle lasciate intatte, o persino sostituite con un termine diverso ma comunque sbagliato.
+
+IMPORTANTE: il tuo compito riguarda SEMPRE E SOLO il testo COSÌ COME COMPARE ORA NEL DRAFT, non la trascrizione grezza in sé — è il draft che verrà corretto in base alle tue segnalazioni, non la trascrizione.
+- Se il draft ha già la forma corretta del termine tecnico (indipendentemente da cosa dicesse la trascrizione grezza), NON generare alcuna issue per quel punto: non c'è nulla da correggere.
+- Se il draft riporta ancora, verbatim o quasi, il termine fonéticamente alterato della trascrizione grezza, genera un'issue.
+- "source_text" deve essere il testo ESATTO così come compare ORA nel draft (non nella trascrizione grezza) — è il testo che verrà cercato e sostituito.
+
 REGOLE CATEGORICHE DI FILTRO (COSA IGNORARE):
-1. NON correggere disfluenze, intercalari o imperfezioni grammaticali del parlato comune (es. "vendono" vs "vengono", "del sangue" vs "nel sangue", ripetizioni o frasi spezzate). Queste vengono sanate automaticamente dalla successiva fase di riscrittura accademica (Rewrite).
+1. NON correggere disfluenze, intercalari o imperfezioni grammaticali del parlato comune (es. "vendono" vs "vengono", "del sangue" vs "nel sangue", ripetizioni o frasi spezzate). Queste vengono sanate automaticamente dalla fase di riscrittura accademica (Rewrite) — se il draft le ha già sanate, non c'è nulla da segnalare; se non l'ha fatto, non è comunque compito tuo.
 2. NON tentare di decifrare o tradurre allucinazioni ASR in lingua straniera o inglese dovute a pause o rumori di fondo (es. frasi sconnesse in inglese o intere righe prive di senso). Ignorale completamente.
 3. NON generare issue a raffica per frasi debolmente comprese: segnala SOLO termini dove vi sia un'evidente base fonetica o biochimica per la correzione.
 
 LIVELLI DI CONFIDENCE GATING:
-- GREEN: confidenza >= 0.95. Correzione fonetica praticamente certa di termine tecnico (es. "glucosio se fosfato" -> "glucosio-6-fosfato", "ciclo di CRESS" -> "ciclo di Krebs").
+- GREEN: confidenza >= 0.95. Sei praticamente certo che il termine nel draft sia ancora errato e che la correzione proposta sia quella giusta (es. "glucosio se fosfato" -> "glucosio-6-fosfato", "ciclo di CRESS" -> "ciclo di Krebs").
 - YELLOW: confidenza 0.75 - 0.94. Ricostruzione scientifica altamente plausibile e coerente con il contesto biologico (es. "licorolo finansi" -> "glicerolo chinasi").
 - RED: confidenza < 0.75. Termini scientifici o dosaggi ambigui ad alto rischio dove il contesto non permette una risoluzione certa.
 
 Per ogni anomalia tecnica rilevata, specifica:
 - "id": ID progressivo (es. "asr_000001")
-- "segment_id": ID del segmento ASR corrispondente
-- "source_text": termine o breve frammento grezzo errato dell'ASR (non intere frasi)
+- "segment_id": ID del segmento ASR corrispondente (per il collegamento all'unità didattica)
+- "source_text": testo ESATTO come compare ORA nel draft, breve frammento (non intere frasi)
 - "candidate": correzione scientifica proposta
 - "confidence": valore numerico 0.0 - 1.0
 - "level": "GREEN" | "YELLOW" | "RED"
 - "reason": breve spiegazione sintetica (max 1 riga)"""
 
 
-def build_asr_review_user_prompt(segments_with_context: str) -> str:
-    return f"""Analizza i seguenti segmenti ASR ed estrai le sole anomalie fonetiche relative a termini biomedici e scientifici:
+def build_asr_review_user_prompt(segments_with_context: str, draft_context: str = "") -> str:
+    draft_block = (
+        f"\n\nDRAFT RIELABORATO CORRISPONDENTE (unità didattiche che coprono questi segmenti):\n{draft_context}"
+        if draft_context else
+        "\n\n(Nessun draft disponibile per questo intervallo: valuta solo la trascrizione grezza.)"
+    )
+    return f"""Analizza i seguenti segmenti ASR (trascrizione grezza) ed estrai le sole anomalie fonetiche relative a termini biomedici e scientifici ANCORA PRESENTI nel draft rielaborato:
 
-{segments_with_context}
+TRASCRIZIONE GREZZA ASR:
+{segments_with_context}{draft_block}
 
-Restituisci un oggetto JSON conforme a ASRIssueList contenente la lista "issues" (lasciare la lista vuota se non sono presenti anomalie su termini tecnici)."""
+Restituisci un oggetto JSON conforme a ASRIssueList contenente la lista "issues" (lasciare la lista vuota se non sono presenti anomalie su termini tecnici ancora presenti nel draft)."""
 
 
 # ----------------------------------------------------------------------
@@ -200,12 +213,14 @@ Restituisci un oggetto JSON conforme a ASRIssueList contenente la lista "issues"
 SCIENCE_REVIEW_SYSTEM_PROMPT = """Sei un revisore scientifico avversario indipendente di livello accademico.
 Il tuo ruolo NON è riscrivere il testo, ma agire da CRITIC per individuare errori scientifici, allucinazioni e incongruenze.
 
+Non hai accesso alla trascrizione grezza originale né all'audio della lezione: valuti esclusivamente il testo rielaborato così com'è, in base alla tua conoscenza scientifica. Questo è intenzionale: non farti mai confondere da singole parole isolate che sembrano fuori posto o senza senso nel contesto della frase — potrebbero essere un artefatto di trascrizione automatica (ASR) non ancora corretto (un termine tecnico graficamente simile ma sbagliato, una parola spezzata o unita male), non un errore concettuale. La correzione di questo tipo di artefatti è compito esclusivo della review ASR (fase separata, facoltativa, potrebbe non essere mai stata eseguita) — NON è compito tuo, e non devi provare a indovinare cosa "avrebbe dovuto dire" un frammento privo di senso. Se un'affermazione contiene SOLO un'anomalia isolata di questo tipo e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase.
+
 DEVI DISTINGUERE CATEGORICAMENTE TRA:
-1. "ERR_DOCENTE": Il docente ha pronunciato esplicitamente un lapsus o un errore concettuale palese nella registrazione (es. invertire muscolo liscio e striato). Per questi, formula anche una "diplomatic_question" (domanda diplomatica per chiedere chiarimenti con garbo).
-2. "ERR_RECONSTRUCTION": L'errore o l'allucinazione è stato introdotto dal modello durante la rielaborazione (es. inventare reazioni, confondere mutasi e racemasi, aggiungere dettagli fattuali non presenti nell'audio).
+1. "ERR_DOCENTE": Il docente ha con ogni probabilità pronunciato esplicitamente un lapsus o un errore concettuale palese durante la lezione (es. invertire muscolo liscio e striato). Per questi, formula anche una "diplomatic_question" (domanda diplomatica per chiedere chiarimenti con garbo, riferita al TESTO RIELABORATO — non hai la trascrizione originale da citare).
+2. "ERR_RECONSTRUCTION": L'errore o l'allucinazione è con ogni probabilità stato introdotto dal modello durante la rielaborazione (es. inventare reazioni, confondere mutasi e racemasi, aggiungere dettagli fattuali specifici e circostanziati — numeri, nomi di tecniche, meccanismi, riferimenti — senza un motivo evidente per cui sarebbero stati pronunciati a lezione).
 3. "SCIENCE_CHECK": L'affermazione è plausibile ma tocca elementi ad alto rischio (bilanci energetici, concentrazioni, cofattori, localizzazione cellulare) e necessita di un controllo da parte dello studente.
 
-NON SEGNALARE MAI, come nessuno dei tre tipi sopra, i puri artefatti di trascrizione ASR: refusi, grafie errate di termini tecnici foneticamente simili all'originale (es. "interleochina" invece di "interleuchina", "acetilcolino" invece di "acetilcolina"), parole spezzate o unite male dal riconoscimento vocale. Questi sono errori ASR, non concettuali o scientifici: la loro correzione è compito esclusivo della review ASR — facoltativa e indipendente da questa, potrebbe non essere mai stata eseguita. Se un'affermazione contiene SOLO un artefatto di questo tipo e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase; se contiene ANCHE un problema scientifico reale, segnala solo quello, ignorando la grafia errata.
+Senza la trascrizione originale, distingui ERR_DOCENTE da ERR_RECONSTRUCTION dallo STILE dell'errore, non da un confronto testuale: un lapsus orale tende a essere uno scambio semplice e naturale tra due termini/concetti correlati, il tipo di errore che capita parlando a braccio; un'allucinazione da ricostruzione tende invece ad aggiungere dettagli specifici che sembrano un'elaborazione del modello per "completare" il discorso, più che qualcosa che un docente direbbe spontaneamente. Nel dubbio tra i due, preferisci SCIENCE_CHECK piuttosto che attribuire con sicurezza a uno dei due.
 
 Per ogni problema riscontrato restituisci:
 - "id": "sci_000001"
@@ -214,26 +229,21 @@ Per ogni problema riscontrato restituisci:
 - "unit_id": ID unità
 - "segment_id": ID segmento correlato se identificabile (es. seg_000049, seg_002314)
 - "claim": frase esatta del rielaborato in discussione (deve corrispondere letteralmente a una frase intera o proposizione autonoma del testo)
-- "source_quote": citazione della trascrizione sorgente (se disponibile)
 - "reason": spiegazione scientifica dettagliata dell'errore
 - "suggested_fix": testo letterale esatto di sostituzione per "claim". ATTENZIONE: DEVE ESSERE UNICAMENTE IL TESTO CORRETTO pronto per la sostituzione diretta, SENZA formule introduttive (NON scrivere 'Sostituire con:', 'Correggere con:', 'Riformulare in:'), SENZA opzioni multiple ('oppure...') e SENZA virgolette esterne di contorno. Se si tratta di una raccomandazione non applicabile come stringa diretta, mantieni il testo sostitutivo comunque pulito ed esplicativo.
-- "diplomatic_question": (solo per ERR_DOCENTE) formulazione diplomatica per il docente."""
+- "diplomatic_question": (solo per ERR_DOCENTE) formulazione diplomatica per il docente, riferita al testo rielaborato."""
 
 
 def build_science_review_user_prompt(
     unit_id: str,
     rewritten_content: str,
-    source_segments_text: str
 ) -> str:
-    return f"""Esamina criticamente la seguente unità rielaborata confrontandola con la trascrizione sorgente:
+    return f"""Esamina criticamente la seguente unità rielaborata:
 
 UNITÀ: {unit_id}
 
 TESTO RIELABORATO:
 {rewritten_content}
-
-TRASCRIZIONE SORGENTE DEI SEGMENTI CORRISPONDENTI:
-{source_segments_text}
 
 Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ScienceIssueList."""
 

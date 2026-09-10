@@ -334,7 +334,8 @@ def test_corrupt_artifact_triggers_regeneration(synthetic_lesson):
 # ==============================================================================
 
 def test_force_rerun_and_selective_downstream_invalidation(synthetic_lesson):
-    """Riesecuzione forzata di rewrite invalida solo science review e build, senza toccare prepare o asr."""
+    """Riesecuzione forzata di rewrite invalida science review, ASR review (draft-aware) e build,
+    senza toccare prepare o outline."""
     lesson_dir = synthetic_lesson
     run_prepare(lesson_dir)
     run_outline(lesson_dir, force_mock=True)
@@ -353,15 +354,16 @@ def test_force_rerun_and_selective_downstream_invalidation(synthetic_lesson):
     assert res["action"] == "FORCE"
 
     # Verifichiamo gli stati dopo il force rewrite:
-    # - prepare, outline, review_asr: rimangono VALID (non dipendono da draft)
+    # - prepare, outline: rimangono VALID (non dipendono dal draft)
     assert check_phase_status(lesson_dir, "prepare")[0] == PhaseStatus.VALID
     assert check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.VALID
-    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.VALID
 
     # - rewrite: è tornato VALID (appena rigenerato)
     assert check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID
 
-    # - review_science e build: devono essere STALE!
+    # - review_asr, review_science e build: devono essere STALE! (review_asr dipende ora
+    #   anche dal draft, non solo dalla trascrizione grezza)
+    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.STALE
     assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.STALE
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.STALE
 

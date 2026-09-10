@@ -461,19 +461,22 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
     assert build_called == [], "run_build() non deve essere chiamato se run_interactive_review() ritorna False"
 
 
-def test_run_review_science_warning_when_asr_pending(tmp_path, capsys):
+def test_run_review_science_no_warning_and_no_order_dependency_on_asr(tmp_path, capsys):
+    """Il critic scientifico non vede più la trascrizione grezza (solo il draft), quindi
+    può girare prima, dopo o senza mai eseguire review-asr: nessun avviso, nessun vincolo
+    d'ordine — a differenza del comportamento precedente."""
     from rt.pipeline.review_science import run_review_science
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
-    # 1. ASR review mai eseguita (asr_issues.json assente)
+    # 1. ASR review mai eseguita (asr_issues.json assente): nessun avviso.
     with patch("rt.llm.client.LLMClient.call_structured", return_value=MagicMock(issues=[])):
-        run_review_science(lesson_dir, force=True, force_mock=True)
-
+        res1 = run_review_science(lesson_dir, force=True, force_mock=True)
     out = capsys.readouterr().out
-    assert "⚠️  Ci sono issue ASR non ancora generate/decise" in out
+    assert "Ci sono issue ASR non ancora generate/decise" not in out
+    assert res1["status"] == "science_review_completed"
 
-    # 2. ASR review con issue pendenti
+    # 2. ASR review con issue pendenti: comportamento identico, ancora nessun avviso.
     asr_issues = [
         ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
     ]
@@ -481,10 +484,10 @@ def test_run_review_science_warning_when_asr_pending(tmp_path, capsys):
         json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
 
     with patch("rt.llm.client.LLMClient.call_structured", return_value=MagicMock(issues=[])):
-        run_review_science(lesson_dir, force=True, force_mock=True)
-
+        res2 = run_review_science(lesson_dir, force=True, force_mock=True)
     out2 = capsys.readouterr().out
-    assert "⚠️  Ci sono issue ASR non ancora generate/decise" in out2
+    assert "Ci sono issue ASR non ancora generate/decise" not in out2
+    assert res2["status"] == "science_review_completed"
 
 
 def test_interactive_review_auto_accept(tmp_path):

@@ -53,6 +53,7 @@ def test_notify_build_completed_with_topic(tmp_path, monkeypatch):
          patch("rt.telegram.client.send_message") as mock_send:
         cfg_obj = MagicMock()
         cfg_obj.telegram.topics = {"BIOCHIMICA": 42}
+        cfg_obj.telegram.state_dir = str(tmp_path / "state")
         mock_cfg.return_value = cfg_obj
 
         notify_build_completed(lesson_dir, {"rielaborato": "test.md"}, "Lezione 1")

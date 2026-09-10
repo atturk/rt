@@ -91,16 +91,18 @@ stato: setup_completato
 def test_dag_definition_and_semantics():
     """
     Verifica esplicita della semantica della DAG:
-    - review_asr dipende SOLO da prepare (analizza fedeltà fonetica/terminologica ASR rispetto all'audio/source).
+    - review_asr dipende da prepare E da rewrite: valuta il testo COME COMPARE ORA NEL
+      DRAFT (non solo la trascrizione grezza), perché il rewrite può aver già corretto,
+      parzialmente o del tutto, le ambiguità fonetiche per conto proprio.
     - review_science dipende da rewrite (analizza correttezza scientifica del testo riscritturante).
     - build dipende da rewrite, review_asr e review_science.
     """
     assert "prepare" not in UPSTREAM_DEPENDENCIES or UPSTREAM_DEPENDENCIES["prepare"] == []
     assert UPSTREAM_DEPENDENCIES["outline"] == ["prepare"]
     assert set(UPSTREAM_DEPENDENCIES["rewrite"]) == {"prepare", "outline"}
-    assert UPSTREAM_DEPENDENCIES["review_asr"] == ["prepare"], (
-        "review_asr deve dipendere unicamente da prepare per analizzare la trascrizione sorgente, "
-        "indipendentemente da bozze o riscritture."
+    assert set(UPSTREAM_DEPENDENCIES["review_asr"]) == {"prepare", "rewrite"}, (
+        "review_asr deve dipendere anche da rewrite: valuta il testo del draft, che il "
+        "rewrite può aver già corretto o meno rispetto alla trascrizione grezza."
     )
     assert set(UPSTREAM_DEPENDENCIES["review_science"]) == {"prepare", "rewrite"}, (
         "review_science deve dipendere da rewrite (e trascritto prepare) per valutare la validità scientifica del draft riscritturato."
@@ -113,7 +115,7 @@ def test_transitive_staleness_on_outline_modification(fully_built_lesson):
     Caso 1: Modifica a outline.json
     - rewrite diventa STALE
     - build diventa transitivamente STALE (anche se il file rielaborato.md esiste fisicamente)
-    - review_asr RIMANE VALID (perché dipende solo da prepare)
+    - review_asr diventa transitivamente STALE (dipende ora anche da rewrite)
     - compute_effective_workflow_state() riporta OUTLINE_VALIDATED
     """
     lesson_dir = fully_built_lesson
@@ -137,7 +139,7 @@ def test_transitive_staleness_on_outline_modification(fully_built_lesson):
     assert "outline" in r_rew
 
     st_asr, r_asr = check_phase_status(lesson_dir, "review_asr")
-    assert st_asr == PhaseStatus.VALID, "review_asr non deve essere invalidata da modifiche all'outline!"
+    assert st_asr == PhaseStatus.STALE, "review_asr dipende ora anche da rewrite, quindi diventa transitivamente STALE"
 
     st_sci, r_sci = check_phase_status(lesson_dir, "review_science")
     assert st_sci == PhaseStatus.STALE, "review_science dipende da rewrite, quindi diventa transitivamente STALE"
@@ -178,7 +180,8 @@ def test_selective_invalidation_draft_modification(fully_built_lesson):
     """
     Caso 3: Modifica a draft.json
     - review_science e build diventano STALE.
-    - review_asr RIMANE VALID (perché dipende solo da prepare, non dal draft).
+    - review_asr diventa STALE (ora dipende anche dal draft: le sue issue riguardano il
+      testo come compare nel draft, non solo la trascrizione grezza).
     - outline RIMANE VALID.
     """
     lesson_dir = fully_built_lesson
@@ -192,7 +195,7 @@ def test_selective_invalidation_draft_modification(fully_built_lesson):
 
     assert check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.VALID
     assert check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID  # Il file draft esiste e l'input outline non è cambiato
-    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.VALID, "review_asr resta valida!"
+    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.STALE, "review_asr deve essere STALE perché draft è mutato"
     assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.STALE, "review_science deve essere STALE perché draft è mutato"
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.STALE, "build deve essere STALE"
 

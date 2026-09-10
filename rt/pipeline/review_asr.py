@@ -89,10 +89,20 @@ def run_review_asr(
         }
 
     action = "FORCE" if force else "RUN"
-    
+
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_idx_map = {s.id: s.index for s in segments_data.segments}
-    
+
+    # Mappa segment_id -> unità didattica del draft che lo copre, per dare a ogni batch
+    # il testo del draft corrispondente (vedi ASR_REVIEW_SYSTEM_PROMPT: le issue riguardano
+    # il testo come compare ora nel draft, non la trascrizione grezza in sé).
+    from rt.pipeline.rewrite import load_draft
+    draft = load_draft(lesson_dir)
+    unit_by_segment = {}
+    for u in draft.units:
+        for sid in u.source_segment_ids:
+            unit_by_segment[sid] = u
+
     total_segments = len(segments_data.segments)
     total_batches = max(1, (total_segments + batch_size - 1) // batch_size)
 
@@ -167,8 +177,19 @@ def run_review_asr(
 
         batch_label = f"batch {idx:02d}/{total_batches:02d} (seg {start_seg}-{end_seg})"
         batch_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {s.text_raw}" for s in batch)
-        
-        prompt = build_asr_review_user_prompt(batch_text)
+
+        # Unità didattiche del draft che coprono i segmenti di questo batch (dedup preservando
+        # l'ordine di prima apparizione, un'unità può coprire più batch consecutivi).
+        covering_units = []
+        seen_unit_ids = set()
+        for s in batch:
+            u = unit_by_segment.get(s.id)
+            if u and u.unit_id not in seen_unit_ids:
+                covering_units.append(u)
+                seen_unit_ids.add(u.unit_id)
+        draft_context = "\n\n".join(f"[Unità {u.unit_id} - {u.title}]\n{u.content}" for u in covering_units)
+
+        prompt = build_asr_review_user_prompt(batch_text, draft_context)
         issue_list = client.call_structured(
             prompt=prompt,
             system_prompt=ASR_REVIEW_SYSTEM_PROMPT,

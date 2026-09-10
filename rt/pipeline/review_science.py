@@ -129,11 +129,15 @@ def disambiguate_science_issue(iss: Any, source_text: str) -> Any:
             new_reason = f"[AUTO-RECLASSIFIED to SCIENCE_CHECK: correlazione parziale con la registrazione] {curr_reason}"
 
     elif curr_type == ScienceType.ERR_RECONSTRUCTION.value:
-        if score_quote >= 0.75:
-            # La citazione contestata è letteralmente presente nella trascrizione del docente
+        if max_grounding >= 0.75:
+            # Il testo contestato (claim, dal draft) ha forte riscontro letterale nella
+            # trascrizione originale: non è un'invenzione del modello, il docente l'ha
+            # detto (o quasi) così. Usa "claim" (prosa del draft), mai "quote": il critic
+            # non ha più accesso alla trascrizione grezza, un'eventuale "quote" prodotta
+            # comunque dal modello non è affidabile e non va mai mostrata all'utente.
             new_type = ScienceType.ERR_DOCENTE.value
             if not new_question:
-                new_question = f"Professore, nel passaggio '{quote}', intendeva confermare questo dettaglio?"
+                new_question = f"Professore, riguardo a '{claim}', intendeva confermare questo dettaglio?"
 
     if is_dict:
         iss["type"] = new_type
@@ -154,13 +158,11 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     """Esegue la critica scientifica indipendente sul draft confrontato con l'ASR con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
 
-    # Controllo stato ASR review e warning non bloccante
-    asr_status, _ = check_phase_status(lesson_dir, "review_asr")
-    from rt.pipeline.ledger import get_pending_issues, load_ledger, apply_asr_decisions_to_text
-    pending_asr, _ = get_pending_issues(lesson_dir)
-    if asr_status == PhaseStatus.MISSING or len(pending_asr) > 0:
-        print("⚠️  Ci sono issue ASR non ancora generate/decise: la review scientifica potrebbe "
-              "confondere un artefatto di trascrizione con un errore concettuale. Consigliato completare prima 'rt review-asr'.")
+    # Nessun avviso o vincolo d'ordine rispetto a review-asr: il critic scientifico non
+    # vede più la trascrizione grezza (vedi SCIENCE_REVIEW_SYSTEM_PROMPT), quindi può
+    # essere eseguito prima, dopo o senza mai eseguire review-asr, senza rischio di
+    # confondere un artefatto ASR con un errore concettuale.
+    from rt.pipeline.ledger import load_ledger, apply_asr_decisions_to_text
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "review_science")
@@ -227,21 +229,24 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
         if not force and unit.unit_id in reviewed_set:
             continue
 
-        # Recupera trascrizione sorgente corrispondente
+        # Trascrizione sorgente corrispondente: NON va al prompt dell'LLM (vedi
+        # SCIENCE_REVIEW_SYSTEM_PROMPT — il critic valuta solo il draft, mai la
+        # trascrizione grezza, per non confondersi con artefatti ASR). Resta usata
+        # solo qui sotto, a livello di codice, da disambiguate_science_issue() per il
+        # controllo di grounding deterministico (non-LLM) di ERR_DOCENTE/RECONSTRUCTION.
         source_texts = []
         for s_id in unit.source_segment_ids:
             s = seg_by_id.get(s_id)
             if s:
                 source_texts.append(f"[{s.id}] {s.text_raw}")
         source_context = "\n".join(source_texts)
-        
+
         unit_content_for_prompt = apply_asr_decisions_to_text(
             unit.content, asr_issues, decisions_map, unit.source_segment_ids
         )
         prompt = build_science_review_user_prompt(
             unit_id=unit.unit_id,
             rewritten_content=unit_content_for_prompt,
-            source_segments_text=source_context
         )
         
         unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
@@ -263,7 +268,12 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             iss.unit_id = unit.unit_id
             if not iss.segment_id and unit.source_segment_ids:
                 iss.segment_id = unit.source_segment_ids[0]
-            iss = disambiguate_science_issue(iss, source_context)
+            # Il grounding deterministico serve a validare/riclassificare l'output di un
+            # LLM reale contro la trascrizione originale: su testo sintetico di force_mock
+            # (mai realmente ancorato a nulla) non ha senso applicarlo, servirebbe solo a
+            # declassare artificialmente le issue mock generate come ERR_DOCENTE.
+            if not force_mock:
+                iss = disambiguate_science_issue(iss, source_context)
             all_science_issues.append(iss)
             
         # Numerazione deterministica progressiva

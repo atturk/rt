@@ -11,7 +11,7 @@ from rt.telegram.formatting import build_issue_keyboard
 from rt.telegram.notify import notify_issues_ready, notify_build_completed
 from rt.pipeline.review_asr import run_review_asr
 from rt.pipeline.review_science import run_review_science
-from rt.llm.prompts import SCIENCE_REVIEW_SYSTEM_PROMPT
+from rt.llm.prompts import SCIENCE_REVIEW_SYSTEM_PROMPT, build_science_review_user_prompt
 from rt.cli import main, cmd_review_asr, cmd_review_science, cmd_build
 
 
@@ -194,18 +194,18 @@ def test_notify_issues_ready_positive_count(tmp_path):
         assert kwargs.get("reply_markup") is not None
 
 
-def test_science_review_prompt_exact_paragraph():
-    expected_paragraph = (
-        "NON SEGNALARE MAI, come nessuno dei tre tipi sopra, i puri artefatti di trascrizione ASR: "
-        "refusi, grafie errate di termini tecnici foneticamente simili all'originale "
-        '(es. "interleochina" invece di "interleuchina", "acetilcolino" invece di "acetilcolina"), '
-        "parole spezzate o unite male dal riconoscimento vocale. Questi sono errori ASR, non concettuali "
-        "o scientifici: la loro correzione è compito esclusivo della review ASR — facoltativa e indipendente "
-        "da questa, potrebbe non essere mai stata eseguita. Se un'affermazione contiene SOLO un artefatto di questo tipo "
-        "e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase; se contiene ANCHE "
-        "un problema scientifico reale, segnala solo quello, ignorando la grafia errata."
-    )
-    assert expected_paragraph in SCIENCE_REVIEW_SYSTEM_PROMPT
+def test_science_review_prompt_has_no_raw_transcript_access_and_ignores_asr_artifacts():
+    """Il critic scientifico non riceve più la trascrizione grezza (causa di confusione
+    reale riscontrata: citava frammenti ASR grezzi come se fossero affermazioni del
+    docente). Il prompt deve dirglielo esplicitamente e istruirlo a ignorare anomalie
+    isolate che potrebbero essere artefatti ASR non ancora corretti."""
+    assert "Non hai accesso alla trascrizione grezza originale né all'audio" in SCIENCE_REVIEW_SYSTEM_PROMPT
+    assert "review ASR" in SCIENCE_REVIEW_SYSTEM_PROMPT
+    assert "source_quote" not in SCIENCE_REVIEW_SYSTEM_PROMPT
+
+    import inspect
+    sig = inspect.signature(build_science_review_user_prompt)
+    assert "source_segments_text" not in sig.parameters
 
 
 def test_mock_generation_rich_asr_and_science(tmp_path):
