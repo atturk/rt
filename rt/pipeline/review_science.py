@@ -14,6 +14,8 @@ from typing import Dict, Any, List
 from rt.core.models import ScienceIssue, ScienceType
 from rt.core.segments import load_segments_json
 from rt.core.state import transition_to, WorkflowState
+from rt.core.manifest import load_manifest
+from rt.core.config import load_config
 from rt.llm.client import LLMClient
 from rt.llm.prompts import (
     SCIENCE_REVIEW_SYSTEM_PROMPT,
@@ -164,6 +166,15 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     # confondere un artefatto ASR con un errore concettuale.
     from rt.pipeline.ledger import load_ledger, apply_asr_decisions_to_text
 
+    manifest_before = load_manifest(lesson_dir)
+    old_sci_hash = (
+        manifest_before.phase_records.get("review_science", {})
+        .get("artifact_fingerprints", {})
+        .get("science_issues.json")
+        if manifest_before and manifest_before.phase_records
+        else None
+    )
+
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "review_science")
     if phase_status == PhaseStatus.VALID and not force:
@@ -309,9 +320,24 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
 
         source_fp = compute_source_fingerprint(lesson_dir, "review_science")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
-        record_phase_fingerprint(lesson_dir, "review_science", source_fp, {"science_issues.json": sci_hash})
-        if force or phase_status == PhaseStatus.STALE:
+
+        _cfg = load_config()
+        _job_cfg = _cfg.jobs.get("review_science") or _cfg.llm.get("review_science")
+        _provenance = {
+            "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
+            "model": _job_cfg.primary.model if (_job_cfg and _job_cfg.primary) else None,
+        }
+
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir,
+            phase_name="review_science",
+            source_fingerprint=source_fp,
+            artifact_fingerprints={"science_issues.json": sci_hash},
+            metadata=_provenance,
+        )
+        if (force or phase_status == PhaseStatus.STALE) and (old_sci_hash is None or old_sci_hash != sci_hash):
             mark_downstream_stale(lesson_dir, "review_science")
+
         
         asr_issues = load_asr_issues(lesson_dir)
         pending_asr = [a for a in asr_issues if a.level in (ASRLevel.YELLOW, ASRLevel.RED) and a.status == "pending"]
