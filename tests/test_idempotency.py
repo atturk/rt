@@ -557,3 +557,41 @@ def test_manifest_self_heals_after_folder_moved(tmp_path):
 
     manifest = load_manifest(new_dir)
     assert manifest.lesson_dir == os.path.abspath(new_dir)
+
+
+def test_content_hash_invalidation_and_provenance(synthetic_lesson):
+    """Verifica che un rerun con --force che produce un artefatto con hash identico non invalidi downstream,
+    e che i metadati di provenance (provider e model) vengano registrati nel manifest."""
+    lesson_dir = synthetic_lesson
+    run_prepare(lesson_dir)
+    run_outline(lesson_dir, force_mock=True)
+    run_rewrite(lesson_dir, force_mock=True)
+
+    # Test rerun di rewrite con --force prima di review_asr (stesso input -> draft.json identico)
+    run_rewrite(lesson_dir, force=True, force_mock=True)
+
+    run_review_asr(lesson_dir, force_mock=True)
+    run_review_science(lesson_dir, force_mock=True)
+    run_build(lesson_dir)
+
+    # Verifica provenance nei phase_records
+    manifest = load_manifest(lesson_dir)
+    for phase in ["outline", "rewrite", "review_asr", "review_science"]:
+        rec = manifest.phase_records.get(phase, {})
+        assert "provider" in rec, f"Fase {phase} non contiene 'provider' nei metadata"
+        assert "model" in rec, f"Fase {phase} non contiene 'model' nei metadata"
+
+    # Verifichiamo che build sia VALID
+    st_build, _ = check_phase_status(lesson_dir, "build")
+    assert st_build == PhaseStatus.VALID
+
+    # Rerun con force=True su review_science (produce science_issues.json identico e non tocca ledger)
+    run_review_science(lesson_dir, force=True, force_mock=True)
+
+    # Poiché science_issues.json non è cambiato, build non deve essere STALE
+    st_build_after, reason_build = check_phase_status(lesson_dir, "build")
+    assert st_build_after == PhaseStatus.VALID, f"Expected VALID but got {st_build_after}: {reason_build}"
+
+
+
+

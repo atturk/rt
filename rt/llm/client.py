@@ -86,17 +86,13 @@ class LLMClient:
         default_cfg = self.config.jobs.get("default") or self.config.llm.get("default")
         if default_cfg:
             return default_cfg
-        return JobRoutingConfig(
-            primary=RouteConfig(
-                provider="deepseek",
-                model="deepseek-v4-flash",
-                base_url="https://api.deepseek.com",
-                thinking=True,
-                reasoning_effort="low",
-                max_tokens=8192,
-                timeout_seconds=180
-            )
+        raise ValueError(
+            f"Nessuna configurazione di routing trovata per il job '{job_name}' "
+            f"(né una voce dedicata né un job 'default'). Dichiara esplicitamente "
+            f"provider e modello in config/{job_name}.yaml sotto 'primary:'. "
+            f"Vedi docs/CONFIGURATION_REFERENCE.md."
         )
+
 
     def _resolve_custom_pricing(self, route: RouteConfig, provider_name: str, model_name: str) -> Optional[Dict[str, Any]]:
         """Se la route ha un pricing specifico, lo inietta come override esatto per
