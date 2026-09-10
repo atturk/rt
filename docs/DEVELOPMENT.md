@@ -59,7 +59,7 @@ python3 -m pytest tests/ -q
 
 ---
 
-## 3. Configurazione Provider LLM e Micro Smoke Test
+## 3. Configurazione Provider LLM
 
 RT supporta **OpenRouter**, **DeepSeek direct** e **Google Gemini** tramite provider adapter dedicati in `rt/llm/providers/`.
 
@@ -91,28 +91,6 @@ primary:
 - Per DeepSeek: `export DEEPSEEK_API_KEY="sk-..."`
 - Per Google Gemini: `export GOOGLE_API_KEY_1="AIzaSy..."` e `export GOOGLE_API_KEY_2="AIzaSy..."` (Dual-Key) oppure `export GEMINI_API_KEY="AIzaSy..."`
 (oppure inserite in `.env` locale non versionato).
-
-### Esecuzione Micro Smoke Test:
-Un comando leggero per validare connettività, streaming e telemetria con una singola richiesta minima (`{"ok": true}`):
-```bash
-# Smoke test verso il provider di default del job outline (OpenRouter)
-./bin/rt test-llm
-
-# Smoke test verso OpenRouter con modello esplicito
-./bin/rt test-llm --provider openrouter --model deepseek/deepseek-chat
-
-# Smoke test verso DeepSeek
-./bin/rt test-llm --provider deepseek --model deepseek-chat
-
-# Smoke test verso Google Gemini (default: google_1)
-./bin/rt test-llm --provider google --model gemini-2.0-flash
-
-# Smoke test verso Google Gemini con credenziale specifica (google_2)
-./bin/rt test-llm --provider google --credential google_2 --model gemini-2.0-flash
-
-# Esecuzione senza streaming
-./bin/rt test-llm --provider google --no-stream
-```
 
 ### Aggiungere un Nuovo Provider:
 1. Crea un adapter in `rt/llm/providers/<nome>.py` estendendo `BaseLLMProvider`.

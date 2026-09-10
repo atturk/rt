@@ -19,7 +19,7 @@ stateDiagram-v2
     DRAFT_VALIDATED --> ASR_REVIEW_READY: rt review-asr
     DRAFT_VALIDATED --> HUMAN_REVIEW_REQUIRED: rt review-science (se pendenti YELLOW/RED)
     DRAFT_VALIDATED --> READY_TO_BUILD: rt review-science (se 0 pendenti)
-    HUMAN_REVIEW_REQUIRED --> READY_TO_BUILD: rt review (decisioni registrate)
+    HUMAN_REVIEW_REQUIRED --> READY_TO_BUILD: rt review-asr / rt review-science (decisioni registrate)
     READY_TO_BUILD --> COMPLETED: rt build
     COMPLETED --> [*]
 ```
@@ -88,18 +88,16 @@ stateDiagram-v2
   - `ERR_RECONSTRUCTION`: allucinazione o reazione introdotta dal modello.
   - `SCIENCE_CHECK`: affermazione che tocca parametri critici (bilanci energetici, isoforme).
 
-### Fase 7: Human-in-the-Loop Review (`rt review`)
-- L'utente interagisce tramite CLI vedendo solo i casi pendenti YELLOW e RED.
+### Fase 7: Human-in-the-Loop Review (`rt review-asr` / `rt review-science`)
+- Ciascun comando di review (`rt review-asr` e `rt review-science`) esegue l'analisi e avvia direttamente la sessione di revisione interattiva (via terminale o Telegram) per i casi pendenti YELLOW e RED.
 - Mostra in cima l'identificativo e il titolo dell'Unità didattica, il timecode, il frammento ASR originale, la proposta AI e la motivazione.
 - **Contesto Draft ASR**: per le ambiguità ASR estrae e mostra la singola frase pulita dal testo rielaborato dove cade il termine (`[termine]`), senza puntini di sospensione.
 - **Contesto Draft Scienza**: per le critiche scientifiche mostra l'intero testo dell'unità didattica per una valutazione contestuale completa.
 - Scelte interattive: `[A]ccetta`, `[R]ifiuta`, `[M]odifica testo`, `[S]alta`, `[Q]Esci e salva`.
 - **Opzioni di auto-approvazione**:
-  - `--auto-accept`: accetta automaticamente tutte le review (ASR e Science).
-  - `--auto-accept-asr`: accetta tutte le review ASR e lascia le review scientifiche.
-  - `--auto-accept-science`: accetta tutte le review scientifiche e lascia le review ASR.
-  - `--auto-accept yellow`: auto-accetta le review YELLOW (rimangono solo le ROSSE da controllare).
-  - `--auto-accept-science red`: approva tutto tranne le review Science e RED (auto-accetta le YELLOW).
+  - `--auto-accept`: accetta automaticamente tutte le proposte (oppure `all`).
+  - `--auto-accept yellow`: auto-accetta le proposte YELLOW (rimangono solo le ROSSE da controllare).
+  - `--auto-accept red`: auto-accetta le proposte RED.
 - Tutte le decisioni sono scritte in tempo reale in `review_decisions.json`.
 
 ### Fase 8: Deterministic Build (`rt build`)

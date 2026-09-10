@@ -73,9 +73,8 @@ Per testare offline senza consumare crediti API:
 ./bin/rt validate-outline "cartella_lezione"  # Valida monotonicità e copertura
 ./bin/rt rewrite "cartella_lezione"           # Rielabora a finestre con provenance
 ./bin/rt validate-draft "cartella_lezione"    # Valida il draft prodotto
-./bin/rt review-asr "cartella_lezione"        # Rileva ambiguità ASR con confidence gating
-./bin/rt review-science "cartella_lezione"    # Esegue il science critic
-./bin/rt review "cartella_lezione"            # Interfaccia interattiva per casi YELLOW/RED
+./bin/rt review-asr "cartella_lezione"        # Rileva ambiguità ASR e avvia la revisione interattiva
+./bin/rt review-science "cartella_lezione"    # Esegue il science critic e avvia la revisione interattiva
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi
 ./bin/rt status "cartella_lezione"            # Mostra lo stato di avanzamento
 ```

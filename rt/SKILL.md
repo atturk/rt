@@ -40,7 +40,6 @@ Tutte le operazioni sono orchestrate tramite la CLI deterministica:
 ./bin/rt validate-draft "<cartella_lezione>"
 ./bin/rt review-asr "<cartella_lezione>"
 ./bin/rt review-science "<cartella_lezione>"
-./bin/rt review "<cartella_lezione>"    # Interattivo per casi YELLOW/RED
 ./bin/rt build "<cartella_lezione>"     # Assemblaggio deterministico Markdown
 ./bin/rt status "<cartella_lezione>"    # Stato, segmenti e issue
 ```
@@ -86,8 +85,8 @@ Lo stato della lezione avanza rigorosamente controllato in `info.yaml` e `manife
 | `outline_validata` | Outline gerarchica convalidata | `rt rewrite` |
 | `draft_validato` | Rielaborazione completata con provenance | `rt review-asr` |
 | `revisione_asr_completata` | Ambiguità fonetiche classificate (GREEN/YELLOW/RED) | `rt review-science` |
-| `revisione_scientifica_completata` | Critic scientifico completato | `rt review` o `rt build` |
-| `in_attesa_revisione_umana` | Presenza di casi YELLOW/RED in attesa | `rt review` |
+| `revisione_scientifica_completata` | Critic scientifico completato | `rt build` |
+| `in_attesa_revisione_umana` | Presenza di casi YELLOW/RED in attesa | `rt review-asr` / `rt review-science` |
 | `pronto_per_build` | Tutte le issue risolte nel ledger | `rt build` |
 | `completato` | File Markdown finali assemblati con successo | Studio / Obsidian / Telegram |
 

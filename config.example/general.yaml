@@ -15,8 +15,6 @@ thresholds:
   green: 0.85
   yellow: 0.75
 
-pricing_staleness_warning_days: 7
-
 credentials:
   - name: "openrouter"
     provider: "openrouter"

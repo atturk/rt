@@ -126,12 +126,10 @@ def render_rielaborato_md(
     segments_data: SegmentsData,
     date: str,
     subject: str,
-    topics: str,
-    ledger: Optional[DecisionLedger] = None
+    topics: str
 ) -> str:
     """
     Renderizza rielaborato.md pulito e pronto per lo studio/Obsidian/Telegram.
-    Applica deterministicamente le decisioni convalidate dal ledger.
     I timestamp derivano sempre da segments_data.
     """
     seg_by_id: Dict[str, Segment] = {s.id: s for s in segments_data.segments}
@@ -172,13 +170,6 @@ def render_rielaborato_md(
             draft_unit = draft_by_unit_id.get(unit.id)
             content = draft_unit.content.strip() if draft_unit else ""
             
-            # Applicazione deterministica del decision ledger
-            if ledger and content:
-                for decision in ledger.decisions:
-                    if decision.decision in ("accepted", "edited") and decision.resolved_text:
-                        # Se è stata specificata una sostituzione esplicita
-                        pass
-                        
             # Pulizia di qualsiasi eventuale marker residuo
             content = re.sub(r"\s*\(\s*(?:⁉️|⚠️|⁉|⚠)\s*(?:AMB|ERR)\d+.*?\)", "", content)
             content = re.sub(r"\s{2,}", " ", content).strip()
@@ -404,8 +395,7 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         segments_data=segments_data,
         date=date_val,
         subject=subject_val,
-        topics=topics_val,
-        ledger=ledger
+        topics=topics_val
     )
     # rielaborato.md è un intermedio interno (usato per il fingerprint di idempotenza):
     # il deliverable che l'utente apre è il file col titolo formale, scritto al punto 7.

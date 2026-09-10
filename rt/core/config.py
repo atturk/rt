@@ -246,7 +246,6 @@ class RTConfig(BaseModel):
     show_monitor: bool = Field(default=True, description="Mostra il live terminal monitor durante le chiamate")
     show_monitor_verbose: bool = Field(default=False, description="Se True, mostra il box dettagliato multi-riga invece della riga compatta di default")
     pricing: Optional[Dict[str, Dict[str, Any]]] = Field(default=None, description="Pricing custom opzionale per provider e modello")
-    pricing_staleness_warning_days: int = Field(default=7, description="Giorni dopo i quali avvisare che i prezzi configurati non sono stati verificati con 'rt prices-check' (0 per disattivare l'avviso)")
 
     @property
     def llm(self) -> Dict[str, JobRoutingConfig]:

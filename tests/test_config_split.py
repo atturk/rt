@@ -29,7 +29,7 @@ def test_config_split_loads_identically_to_single_file(tmp_path, monkeypatch):
     config_dir.mkdir()
 
     general_content = """version: "2.0.0"
-pricing_staleness_warning_days: 3
+show_monitor_verbose: true
 mock_llm: false
 streaming: true
 show_monitor: true
@@ -68,7 +68,7 @@ primary:
 
     # Single-file equivalent
     single_content = """version: "2.0.0"
-pricing_staleness_warning_days: 3
+show_monitor_verbose: true
 mock_llm: false
 streaming: true
 show_monitor: true
@@ -112,7 +112,7 @@ jobs:
     cfg_single = load_config(str(single_file))
 
     assert cfg_split.version == cfg_single.version
-    assert cfg_split.pricing_staleness_warning_days == 3
+    assert cfg_split.show_monitor_verbose is True
     assert cfg_split.retry.max_timeout_retries == 2
     assert cfg_split.retry.timeout_backoff_seconds == 3.5
     assert cfg_split.thresholds.green == 0.96
@@ -131,15 +131,15 @@ def test_config_split_precedence_over_single_file(tmp_path, monkeypatch):
     """
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    (config_dir / "general.yaml").write_text("pricing_staleness_warning_days: 42\n", encoding="utf-8")
+    (config_dir / "general.yaml").write_text("show_monitor_verbose: true\n", encoding="utf-8")
 
     single_file = tmp_path / "rt.config.yaml"
-    single_file.write_text("pricing_staleness_warning_days: 10\n", encoding="utf-8")
+    single_file.write_text("show_monitor_verbose: false\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
     cfg = load_config()
 
-    assert cfg.pricing_staleness_warning_days == 42
+    assert cfg.show_monitor_verbose is True
 
 
 def test_explicit_config_path_ignores_config_dir(tmp_path, monkeypatch):
@@ -149,15 +149,15 @@ def test_explicit_config_path_ignores_config_dir(tmp_path, monkeypatch):
     """
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    (config_dir / "general.yaml").write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+    (config_dir / "general.yaml").write_text("show_monitor_verbose: false\n", encoding="utf-8")
 
     explicit_file = tmp_path / "custom_config.yaml"
-    explicit_file.write_text("pricing_staleness_warning_days: 5\n", encoding="utf-8")
+    explicit_file.write_text("show_monitor_verbose: true\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
     cfg = load_config(str(explicit_file))
 
-    assert cfg.pricing_staleness_warning_days == 5
+    assert cfg.show_monitor_verbose is True
 
 
 def test_credentials_registered_from_split_general_yaml(tmp_path, monkeypatch):
@@ -358,14 +358,14 @@ def test_load_config_no_fallback_without_config_dir(tmp_path, monkeypatch):
     restituisca i default di RTConfig(), NON i valori di quel file (fallback rimosso).
     """
     single_file = tmp_path / "rt.config.yaml"
-    single_file.write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+    single_file.write_text("show_monitor_verbose: true\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
     with patch("rt.core.config._default_project_root", return_value=str(tmp_path)):
         cfg = load_config()
 
-    # Deve restituire il default (7) e non 99
-    assert cfg.pricing_staleness_warning_days == 7
+    # Deve restituire il default (False) e non True
+    assert cfg.show_monitor_verbose is False
 
 
 def test_load_config_explicit_path_still_works(tmp_path):
@@ -374,10 +374,10 @@ def test_load_config_explicit_path_still_works(tmp_path):
     come prima anche se punta a un file chiamato rt.config.yaml.
     """
     single_file = tmp_path / "rt.config.yaml"
-    single_file.write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+    single_file.write_text("show_monitor_verbose: true\n", encoding="utf-8")
 
     cfg = load_config(str(single_file))
-    assert cfg.pricing_staleness_warning_days == 99
+    assert cfg.show_monitor_verbose is True
 
 
 def test_cli_commands_exit_when_no_config_dir_and_not_mock(tmp_path, monkeypatch, capsys):
@@ -508,7 +508,7 @@ def test_cwd_takes_precedence_over_project_root(tmp_path, monkeypatch):
     fake_project_root.mkdir()
     fake_root_config = fake_project_root / "config"
     fake_root_config.mkdir()
-    (fake_root_config / "general.yaml").write_text("pricing_staleness_warning_days: 10\n", encoding="utf-8")
+    (fake_root_config / "general.yaml").write_text("show_monitor_verbose: false\n", encoding="utf-8")
     (fake_project_root / ".env").write_text("TEST_PRECEDENCE_VAR=from_project_root\n", encoding="utf-8")
 
     # Fake cwd con valori differenti
@@ -516,14 +516,14 @@ def test_cwd_takes_precedence_over_project_root(tmp_path, monkeypatch):
     fake_cwd.mkdir()
     fake_cwd_config = fake_cwd / "config"
     fake_cwd_config.mkdir()
-    (fake_cwd_config / "general.yaml").write_text("pricing_staleness_warning_days: 99\n", encoding="utf-8")
+    (fake_cwd_config / "general.yaml").write_text("show_monitor_verbose: true\n", encoding="utf-8")
     (fake_cwd / ".env").write_text("TEST_PRECEDENCE_VAR=from_cwd\n", encoding="utf-8")
 
     monkeypatch.chdir(fake_cwd)
     with patch("rt.core.config._default_project_root", return_value=str(fake_project_root)):
         # Config carica da cwd
         cfg = load_config()
-        assert cfg.pricing_staleness_warning_days == 99
+        assert cfg.show_monitor_verbose is True
         assert cfg.telegram.state_dir == os.path.join(str(fake_cwd), ".rt_telegram")
 
         # Env carica da cwd

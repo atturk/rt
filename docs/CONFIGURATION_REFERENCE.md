@@ -22,7 +22,6 @@ cp -r config.example config
 | `retry.idle_read_timeout_seconds` | Timeout di inattività applicativa: tempo massimo senza contenuto/reasoning reale prima di considerare la risposta bloccata. |
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
-| `pricing_staleness_warning_days` | Giorni dopo i quali `rt run` avvisa che i prezzi configurati non sono stati riverificati con `rt prices-check` (`0` disattiva l'avviso). |
 
 ### Dichiarazione delle Credenziali (`credentials:`)
 
@@ -125,7 +124,7 @@ La chiave è la stessa materia usata in `topics:` dentro `general.yaml`. Facolta
 | `max_tokens` | Limite di token sull'output totale (`null` = nessun limite esplicito). |
 | `timeout_seconds` | Timeout di rete per la singola chiamata su questa route. |
 | `pricing` | Override opzionale del pricing (`input_per_million`, `output_per_million`) per questa route specifica. |
-| `provider_routing` | Oggetto `provider` di OpenRouter (`only`, `quantizations`, `sort`, `allow_fallbacks`, ...) per questa route (pass-through non validato, vedi Sezione 5). |
+| `provider_routing` | Oggetto `provider` di OpenRouter (`only`, `quantizations`, `sort`, `allow_fallbacks`, ...) per questa route (pass-through non validato, vedi Sezione 4). |
 
 ### Route opzionali aggiuntive
 
@@ -217,39 +216,7 @@ I template out-of-the-box in `config.example/` mantengono i parametri di tuning 
 
 ---
 
-## 4. Verifica e applicazione dei prezzi (`rt prices-check`)
-
-`rt prices-check` confronta i prezzi in uso (custom se dichiarati, altrimenti le stime hardcoded in `rt/llm/pricing.py`) con il catalogo live di LiteLLM, per ogni route effettivamente configurata (`provider`/`model` non `null`) in `config/`. Le route non ancora configurate vengono semplicemente omesse dal report, senza errori.
-
-```bash
-rt prices-check                # solo report a schermo, nessuna modifica
-rt prices-check --interactive  # permette di scegliere quali prezzi live applicare
-```
-
-### Come funziona la selezione interattiva
-
-`--interactive` apre una **checklist multi-selezione** (libreria `questionary`), una voce per ogni route con un modello trovato nel catalogo live:
-
-```
-? Seleziona i prezzi da applicare (SPAZIO per selezionare/deselezionare la voce
-evidenziata, INVIO per confermare la selezione — le voci con ⚠ sono pre-selezionate,
-spostare il cursore da solo NON seleziona nulla): (Use arrow keys to move, <space> to select, <a> to toggle, <i> to invert)
- » ○ [outline] openrouter/openai/gpt-5.6-luna  ...
-   ○ [review_asr] openrouter/tencent/hy3  ...
-   ● [rewrite] google/gemini-3.5-flash-lite  ⚠ DA VERIFICARE  ...
-```
-
-Punto importante, fonte comune di confusione: **il cursore (`»`) e la selezione (`●`/`○`) sono due cose indipendenti**, come in qualunque checkbox multi-selezione da terminale:
-- Le **frecce** ↑/↓ spostano solo il cursore (dove sei "posizionato"), **non selezionano nulla**.
-- La **barra spaziatrice** (o `a`) seleziona/deseleziona la voce su cui si trova il cursore in quel momento.
-- Le voci marcate `⚠ DA VERIFICARE` (scarto di prezzo oltre il 15%) sono **pre-selezionate automaticamente** (`●`) fin dall'apertura del prompt — se vuoi applicare *solo* un'altra voce, devi prima deselezionare esplicitamente quelle pre-selezionate che non vuoi (cursore sopra + spazio) e selezionare quelle che vuoi, **prima** di premere Invio.
-- **Invio** conferma l'insieme delle voci attualmente selezionate (marcate `●`) — non la voce su cui si trova il cursore.
-
-I prezzi selezionati vengono scritti nel campo `pricing:` della route esatta nel corrispondente `config/<job>.yaml`, preservando commenti e formattazione del file (round-trip `ruamel.yaml`). `rt.config.yaml` (deprecato) non viene mai toccato.
-
----
-
-## 5. Routing dei backend OpenRouter (`provider_routing:`)
+## 4. Routing dei backend OpenRouter (`provider_routing:`)
 
 OpenRouter espone nel payload della richiesta un oggetto [`provider: { ... }`](https://openrouter.ai/docs/guides/routing/provider-selection) che consente di controllare a quali backend/hoster viene instradata la chiamata: `only`/`ignore` (whitelist/blacklist per slug provider), `quantizations` (filtro qualità quantizzazione, es. `["fp8", "bf16", "fp16"]`), `sort` (`"price"` | `"throughput"` | `"latency"`), `allow_fallbacks`, `require_parameters`, `max_price`, `data_collection`, `zdr`.
 

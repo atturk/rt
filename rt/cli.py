@@ -2,20 +2,21 @@
 rt.cli
 CLI unificata per il workflow accademico RT.
 Comandi disponibili:
+  rt run                <cartella> [--mock]
+  rt setup              --audio <file> --date <YYYY-MM-DD> --materia <nome>
   rt prepare            <cartella>
   rt outline            <cartella> [--mock]
-  rt validate-outline   <cartella>
   rt rewrite            <cartella> [--unit <id>] [--mock]
-  rt validate-draft     <cartella>
   rt review-asr         <cartella> [--mock]
   rt review-science     <cartella> [--mock]
-  rt review             <cartella> (revisione interattiva casi YELLOW/RED)
+  rt recall             <cartella>
   rt build              <cartella> [--no-rename] (rinomina la cartella col titolo finale, attivo di default)
   rt status             <cartella>
-  rt test-llm           [--config <path>] (smoke test rapido DeepSeek/OpenRouter/Google)
-  rt prices-check       (confronta i prezzi configurati con il catalogo live LiteLLM)
-  rt prices-lookup      <query> [--provider <p>] (cerca il prezzo live nel catalogo LiteLLM)
-  rt run                <cartella> [--mock]
+  rt telegram-daemon    [--state-dir <path>]
+
+Comandi diagnostici (uso avanzato):
+  rt validate-outline   <cartella>
+  rt validate-draft     <cartella>
 """
 
 import sys
@@ -39,10 +40,10 @@ from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review_asr import run_review_asr, load_asr_issues
 from rt.pipeline.review_science import run_review_science, load_science_issues
-from rt.pipeline.issue_review import run_interactive_review, should_auto_accept_asr, should_auto_accept_science
-from rt.pipeline.ledger import load_ledger, record_decision, sanitize_suggested_fix
+from rt.pipeline.issue_review import run_interactive_review
+from rt.pipeline.ledger import load_ledger
 from rt.pipeline.build import run_build
-from rt.core.models import ASRLevel, ASRIssue, ScienceIssue
+from rt.core.models import ASRLevel
 
 
 
@@ -76,15 +77,70 @@ def _job_config_hint(job_name: str) -> str:
     )
 
 
-def _print_phase_action(phase_name: str, res: Dict[str, Any]):
+def _ensure_config_ready(required_jobs: List[str]) -> Any:
+    """Verifica che esista una sorgente di configurazione reale e che tutti i job in required_jobs
+    abbiano una route primaria configurata. Se manca la sorgente o un job non è configurato,
+    stampa il messaggio d'errore appropriato su stderr ed esce con sys.exit(1). Restituisce l'oggetto RTConfig."""
+    if not _has_real_config_source():
+        print(
+            "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
+            "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
+            "   cp -r config.example config",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    from rt.core.config import load_config
+    cfg = load_config()
+
+    missing = [j for j in required_jobs if not _job_has_configured_route(cfg.jobs.get(j))]
+    if missing:
+        if len(missing) == 1:
+            print(_job_config_hint(missing[0]), file=sys.stderr)
+        else:
+            print(
+                f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing)}.\n"
+                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
+                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
+                "   nei rispettivi file config/<job>.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                file=sys.stderr
+            )
+        sys.exit(1)
+
+    return cfg
+
+
+def _print_phase_action(
+    phase_name: str,
+    res: Dict[str, Any],
+    step: Optional[int] = None,
+    total_steps: Optional[int] = None,
+    description: Optional[str] = None,
+    details: Optional[str] = None,
+):
     action = res.get("action", "RUN")
     reason = res.get("reason", "")
-    if action == "SKIP":
-        print(f"\n[SKIP] {phase_name}\nReason: {reason}\n")
-    elif action == "FORCE":
-        print(f"\n[FORCE] {phase_name}\nReason: {reason}\n✔ {phase_name} completato (rigenerazione forzata).\n")
+    skipped = res.get("skipped", False) or action == "SKIP"
+
+    if step is not None and total_steps is not None:
+        header_desc = f" ({description})" if description else ""
+        print(f"\n[{step}/{total_steps}] {phase_name.upper()}{header_desc}...")
+        if skipped:
+            msg = details if details else f"{phase_name} già valido ({reason})"
+            print(f"⏩ [SKIP] {msg}")
+        elif action == "FORCE":
+            msg = details if details else f"{phase_name} completato (rigenerazione forzata)."
+            print(f"✔ [FORCE] {msg}")
+        else:
+            msg = details if details else f"{phase_name} completato."
+            print(f"✔ {msg}")
     else:
-        print(f"\n[RUN] {phase_name}\nReason: {reason}\n✔ {phase_name} completato.\n")
+        if action == "SKIP":
+            print(f"\n[SKIP] {phase_name}\nReason: {reason}\n")
+        elif action == "FORCE":
+            print(f"\n[FORCE] {phase_name}\nReason: {reason}\n✔ {phase_name} completato (rigenerazione forzata).\n")
+        else:
+            print(f"\n[RUN] {phase_name}\nReason: {reason}\n✔ {phase_name} completato.\n")
 
 
 def cmd_prepare(args):
@@ -97,20 +153,7 @@ def cmd_prepare(args):
 
 def cmd_outline(args):
     if not getattr(args, "mock", False):
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-                "   cp -r config.example config",
-                file=sys.stderr
-            )
-            sys.exit(1)
-        from rt.core.config import load_config
-        cfg = load_config()
-        job_cfg = cfg.jobs.get("outline")
-        if not _job_has_configured_route(job_cfg):
-            print(_job_config_hint("outline"), file=sys.stderr)
-            sys.exit(1)
+        _ensure_config_ready(["outline"])
     force = getattr(args, "force", False)
     res = run_outline(args.lesson_dir, force=force, force_mock=args.mock)
     _print_phase_action("outline", res)
@@ -133,20 +176,7 @@ def cmd_validate_outline(args):
 
 def cmd_rewrite(args):
     if not getattr(args, "mock", False):
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-                "   cp -r config.example config",
-                file=sys.stderr
-            )
-            sys.exit(1)
-        from rt.core.config import load_config
-        cfg = load_config()
-        job_cfg = cfg.jobs.get("rewrite")
-        if not _job_has_configured_route(job_cfg):
-            print(_job_config_hint("rewrite"), file=sys.stderr)
-            sys.exit(1)
+        _ensure_config_ready(["rewrite"])
     force = getattr(args, "force", False)
     res = run_rewrite(args.lesson_dir, target_unit_id=args.unit, force=force, force_mock=args.mock)
     label = f"rewrite unit {args.unit}" if args.unit else "rewrite"
@@ -173,20 +203,7 @@ def _get_lesson_title_for_notify(lesson_dir: str) -> str:
 
 def cmd_review_asr(args):
     if not getattr(args, "mock", False):
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-                "   cp -r config.example config",
-                file=sys.stderr
-            )
-            sys.exit(1)
-        from rt.core.config import load_config
-        cfg = load_config()
-        job_cfg = cfg.jobs.get("review_asr")
-        if not _job_has_configured_route(job_cfg):
-            print(_job_config_hint("review_asr"), file=sys.stderr)
-            sys.exit(1)
+        _ensure_config_ready(["review_asr"])
     if getattr(args, "reset", False):
         from rt.pipeline.ledger import purge_decisions_by_prefix
         removed = purge_decisions_by_prefix(args.lesson_dir, prefix="asr_")
@@ -207,7 +224,6 @@ def cmd_review_asr(args):
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "asr", res.get("total_issues", 0))
 
-    from rt.pipeline.issue_review import run_interactive_review
     auto_accept = getattr(args, "auto_accept", None)
     history = getattr(args, "history", False)
     run_interactive_review(args.lesson_dir, "asr", channel=channel, auto_accept=auto_accept, history=history)
@@ -215,20 +231,7 @@ def cmd_review_asr(args):
 
 def cmd_review_science(args):
     if not getattr(args, "mock", False):
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-                "   cp -r config.example config",
-                file=sys.stderr
-            )
-            sys.exit(1)
-        from rt.core.config import load_config
-        cfg = load_config()
-        job_cfg = cfg.jobs.get("review_science")
-        if not _job_has_configured_route(job_cfg):
-            print(_job_config_hint("review_science"), file=sys.stderr)
-            sys.exit(1)
+        _ensure_config_ready(["review_science"])
     if getattr(args, "reset", False):
         from rt.pipeline.ledger import purge_decisions_by_prefix
         removed = purge_decisions_by_prefix(args.lesson_dir, prefix="sci_")
@@ -249,7 +252,6 @@ def cmd_review_science(args):
         from rt.telegram.notify import notify_issues_ready
         notify_issues_ready(args.lesson_dir, "science", res.get("total_science_issues", 0))
 
-    from rt.pipeline.issue_review import run_interactive_review
     auto_accept = getattr(args, "auto_accept", None)
     history = getattr(args, "history", False)
     run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
@@ -272,32 +274,13 @@ def cmd_recall(args):
     force_mock = getattr(args, "mock", False)
 
     if not force_mock:
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-                "   cp -r config.example config",
-                file=sys.stderr
-            )
-            sys.exit(1)
-
-        from rt.core.config import load_config
+        cfg = _ensure_config_ready([])
         from rt.telegram import recall_preferences
-        cfg = load_config()
         effective_style = style or recall_preferences.get_active_style(cfg.telegram.state_dir)
         jobs_needed = [f"recall_{effective_style}"]
         if effective_style in ("mirata", "vasta"):
             jobs_needed.append(f"recall_eval_{effective_style}")
-        missing_jobs = [j for j in jobs_needed if not _job_has_configured_route(cfg.jobs.get(j))]
-        if missing_jobs:
-            print(
-                f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing_jobs)}.\n"
-                f"   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                f"   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                f"   nei rispettivi file config/{{job}}.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
-                file=sys.stderr
-            )
-            sys.exit(1)
+        _ensure_config_ready(jobs_needed)
 
     channel = getattr(args, "channel", None)
     if not channel:
@@ -310,9 +293,6 @@ def cmd_recall(args):
     else:
         run_recall_terminal_session(args.lesson_dir, order=order, style=style, force_mock=force_mock)
 
-
-from rt.pipeline.ledger import extract_context_sentence
-from rt.pipeline.issue_review import should_auto_accept_asr, should_auto_accept_science
 
 
 
@@ -496,156 +476,6 @@ def cmd_status(args):
         print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
-def cmd_test_llm(args):
-    """Smoke test rapido per verificare la connessione e i parametri con DeepSeek, OpenRouter o Google."""
-    from rt.pipeline.smoke_test import run_smoke_test
-    try:
-        run_smoke_test(
-            config_path=args.config,
-            provider=args.provider,
-            model=args.model,
-            credential=getattr(args, "credential", None),
-            stream=not args.no_stream if hasattr(args, "no_stream") and args.no_stream else None,
-            show_monitor=not args.no_monitor if hasattr(args, "no_monitor") and args.no_monitor else None,
-            verbose=True
-        )
-    except Exception as e:
-        sys.exit(1)
-
-
-def cmd_prices_check(args):
-    from rt.core.config import load_config
-    from rt.llm.pricing_sync import check_configured_pricing
-    cfg = load_config()
-    report = check_configured_pricing(cfg)
-    print("\n💵 VERIFICA PREZZI CONFIGURATI vs CATALOGO LIVE (LiteLLM)\n" + "=" * 70)
-    for entry in report:
-        flag = "⚠ DA VERIFICARE" if entry.get("stale") else "✔"
-        print(f"\n[{entry['job']}] {entry['provider']}/{entry['model']}  {flag}")
-        print(f"  In uso oggi:  in=${entry['used_input_per_million']}/M  out=${entry['used_output_per_million']}/M")
-        if entry["live_match"]:
-            lm = entry["live_match"]
-            print(f"  Live (LiteLLM, '{lm['key']}'): in=${lm['input_per_million']}/M  out=${lm['output_per_million']}/M")
-            if "input_diff_pct" in entry:
-                print(f"  Differenza input: {entry['input_diff_pct']}%")
-        else:
-            print("  Nessun match trovato nel catalogo live per questo modello.")
-    print("\n" + "=" * 70)
-    print("Nota: nessuna modifica è stata applicata automaticamente. Se un prezzo risulta")
-    print("invecchiato, aggiornalo manualmente nella sezione 'pricing:' della configurazione in 'config/'.")
-
-    if getattr(args, "interactive", False):
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Impossibile applicare prezzi interattivamente senza file in 'config/'.",
-                file=sys.stderr
-            )
-            sys.exit(1)
-
-        applicable_entries = [e for e in report if e.get("live_match")]
-        if not applicable_entries:
-            print("Nessun prezzo live disponibile da applicare.")
-            return
-
-        import questionary
-        from ruamel.yaml import YAML
-
-        choices = []
-        for entry in applicable_entries:
-            lm = entry["live_match"]
-            label = (
-                f"[{entry['job']}] {entry['provider']}/{entry['model']}  "
-                f"in uso: in=${entry['used_input_per_million']}/M out=${entry['used_output_per_million']}/M  →  "
-                f"live: in=${lm['input_per_million']}/M out=${lm['output_per_million']}/M"
-            )
-            choices.append(questionary.Choice(title=label, value=entry, checked=bool(entry.get("stale"))))
-
-        selected = questionary.checkbox(
-            "Seleziona i prezzi da applicare (SPAZIO per selezionare/deselezionare la voce evidenziata, "
-            "INVIO per confermare la selezione — le voci con ⚠ sono pre-selezionate, spostare il cursore "
-            "da solo NON seleziona nulla):",
-            choices=choices
-        ).ask()
-
-        if selected is None:
-            print("Annullato, nessuna modifica applicata.")
-            return
-
-        if not selected:
-            print("Nessuna voce selezionata, nessuna modifica applicata.")
-            return
-
-        print("\nStai per applicare questi prezzi:")
-        for entry in selected:
-            lm = entry["live_match"]
-            print(f"  [{entry['job']}] {entry['provider']}/{entry['model']}  ->  in=${lm['input_per_million']}/M out=${lm['output_per_million']}/M")
-        confirm = questionary.confirm(f"Confermi la scrittura in {len(set(e['job'] for e in selected))} file di config/?", default=False).ask()
-        if not confirm:
-            print("Annullato, nessuna modifica applicata.")
-            return
-
-        by_job: Dict[str, List[Dict[str, Any]]] = {}
-        for entry in selected:
-            by_job.setdefault(entry["job"], []).append(entry)
-
-        config_dir = os.path.join(os.getcwd(), "config")
-        from rt.core.config import find_job_yaml_paths
-        job_paths = find_job_yaml_paths(config_dir)
-        for job_name, entries in by_job.items():
-            job_file = job_paths.get(job_name)
-            if not job_file:
-                print(f"⚠️  File non trovato per il job '{job_name}' in config/ (saltato)", file=sys.stderr)
-                continue
-
-            yaml = YAML()
-            with open(job_file, "r", encoding="utf-8") as f:
-                data = yaml.load(f)
-
-            if data is None:
-                data = {}
-
-            updated_models = []
-            for entry in entries:
-                path = entry.get("path")
-                if not path:
-                    continue
-                node = data
-                for step in path:
-                    if isinstance(node, dict) and step in node:
-                        node = node[step]
-                    elif isinstance(node, list) and isinstance(step, int) and 0 <= step < len(node):
-                        node = node[step]
-                    else:
-                        node = None
-                        break
-
-                if node is not None and isinstance(node, dict):
-                    node["pricing"] = {
-                        "input_per_million": entry["live_match"]["input_per_million"],
-                        "output_per_million": entry["live_match"]["output_per_million"],
-                    }
-                    updated_models.append(f"{entry['provider']}/{entry['model']}")
-
-            with open(job_file, "w", encoding="utf-8") as f:
-                yaml.dump(data, f)
-
-            cnt = len(updated_models)
-            s = "prezzo aggiornato" if cnt == 1 else "prezzi aggiornati"
-            models_str = ", ".join(updated_models)
-            rel_path = os.path.relpath(job_file, os.getcwd())
-            print(f"✔ {rel_path}: {cnt} {s} ({models_str})")
-
-
-def cmd_prices_lookup(args):
-    from rt.llm.pricing_sync import lookup_live_price
-    results = lookup_live_price(args.query, provider_hint=getattr(args, "provider", None))
-    if not results:
-        print(f"Nessun modello trovato per '{args.query}'.")
-        return
-    print(f"\nRisultati per '{args.query}':\n" + "=" * 70)
-    for r in results[:20]:
-        print(f"  {r['key']:<55} in=${r['input_per_million']}/M  out=${r['output_per_million']}/M  ({r['provider']})")
 
 
 def cmd_run(args):
@@ -659,27 +489,7 @@ def cmd_run(args):
     with_review = getattr(args, "with_review", False)
 
     if not mock_mode:
-        if not _has_real_config_source():
-            print(
-                "❌ Nessuna configurazione trovata (cartella 'config/' mancante).\n"
-                "   Copia 'config.example/' in 'config/' e personalizza i modelli prima di eseguire questo comando:\n"
-                "   cp -r config.example config",
-                file=sys.stderr
-            )
-            sys.exit(1)
-        from rt.core.config import load_config
-        cfg = load_config()
-        missing = [j for j in ("outline", "rewrite", "review_asr", "review_science")
-                   if not _job_has_configured_route(cfg.jobs.get(j))]
-        if missing:
-            print(
-                f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing)}.\n"
-                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                "   nei rispettivi file config/<job>.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
-                file=sys.stderr
-            )
-            sys.exit(1)
+        _ensure_config_ready(["outline", "rewrite", "review_asr", "review_science"])
 
     is_audio_input = any(is_audio_file(x) for x in raw_inputs)
 
@@ -688,16 +498,6 @@ def cmd_run(args):
         print("🎙️  RT 2.0 — PIPELINE END-TO-END DA SORGENTE AUDIO")
         print("=" * 60)
         print(f"File audio in ingresso: {', '.join(os.path.basename(x) for x in raw_inputs)}")
-
-        from rt.core.config import load_config as _load_cfg_for_staleness
-        from rt.llm.pricing_sync import get_cache_age_days
-        _cfg_staleness = _load_cfg_for_staleness()
-        _staleness_days = getattr(_cfg_staleness, "pricing_staleness_warning_days", 7)
-        if _staleness_days > 0:
-            _cache_age = get_cache_age_days()
-            if _cache_age is None or _cache_age > _staleness_days:
-                print(f"ℹ️  I prezzi configurati non sono stati verificati con 'rt prices-check' da oltre {_staleness_days} giorni "
-                      f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
 
         step_offset = 2
         total_steps = 8 if with_review else 6
@@ -738,32 +538,16 @@ def cmd_run(args):
         print(f"🚀 RT 2.0 — PIPELINE END-TO-END PER: {lesson_dir}")
         print("=" * 60)
 
-        from rt.core.config import load_config as _load_cfg_for_staleness
-        from rt.llm.pricing_sync import get_cache_age_days
-        _cfg_staleness = _load_cfg_for_staleness()
-        _staleness_days = getattr(_cfg_staleness, "pricing_staleness_warning_days", 7)
-        if _staleness_days > 0:
-            _cache_age = get_cache_age_days()
-            if _cache_age is None or _cache_age > _staleness_days:
-                print(f"ℹ️  I prezzi configurati non sono stati verificati con 'rt prices-check' da oltre {_staleness_days} giorni "
-                      f"(o mai). Le stime di costo potrebbero non riflettere i prezzi reali attuali.")
-
         step_offset = 0
         total_steps = 6 if with_review else 4
 
-    print(f"\n[{step_offset + 1}/{total_steps}] PREPARE (Parsing deterministico segmenti)...")
     prep_res = run_prepare(lesson_dir, force=force)
-    if prep_res.get("skipped"):
-        print(f"⏩ [SKIP] Segmenti già validi ({prep_res['segment_count']} segmenti, {prep_res['duration_seconds']:.1f}s)")
-    else:
-        print(f"✔ Segmenti estratti: {prep_res['segment_count']} ({prep_res['duration_seconds']:.1f}s)")
+    prep_details = f"Segmenti già validi ({prep_res['segment_count']} segmenti, {prep_res['duration_seconds']:.1f}s)" if prep_res.get("skipped") else f"Segmenti estratti: {prep_res['segment_count']} ({prep_res['duration_seconds']:.1f}s)"
+    _print_phase_action("prepare", prep_res, step=step_offset + 1, total_steps=total_steps, description="Parsing deterministico segmenti", details=prep_details)
 
-    print(f"\n[{step_offset + 2}/{total_steps}] OUTLINE (Scaletta gerarchica didattica)...")
     out_res = run_outline(lesson_dir, force=force, force_mock=mock_mode)
-    if out_res.get("skipped"):
-        print(f"⏩ [SKIP] Outline già valida ({out_res['validation_report']['units_count']} unità didattiche, 0 chiamate LLM)")
-    else:
-        print(f"✔ Outline validata: {out_res['validation_report']['units_count']} unità didattiche ({out_res['validation_report']['coverage_percentage']}% copertura)")
+    out_details = f"Outline già valida ({out_res['validation_report']['units_count']} unità didattiche, 0 chiamate LLM)" if out_res.get("skipped") else f"Outline validata: {out_res['validation_report']['units_count']} unità didattiche ({out_res['validation_report']['coverage_percentage']}% copertura)"
+    _print_phase_action("outline", out_res, step=step_offset + 2, total_steps=total_steps, description="Scaletta gerarchica didattica", details=out_details)
 
     channel = getattr(args, "channel", None)
     if not channel:
@@ -771,20 +555,14 @@ def cmd_run(args):
         channel = _load_cfg_for_channel().telegram.default_channel
     confirm_or_revise_outline(lesson_dir, channel=channel, force=force, force_mock=mock_mode)
 
-    print(f"\n[{step_offset + 3}/{total_steps}] REWRITE (Rielaborazione fluida a finestre con provenance)...")
     rew_res = run_rewrite(lesson_dir, force=force, force_mock=mock_mode)
-    if rew_res.get("skipped"):
-        print(f"⏩ [SKIP] Draft già valido ({rew_res['total_units']} unità verificate, 0 chiamate LLM)")
-    else:
-        print(f"✔ Rielaborate {rew_res['processed_units']}/{rew_res['total_units']} unità. Provenance verificata.")
+    rew_details = f"Draft già valido ({rew_res['total_units']} unità verificate, 0 chiamate LLM)" if rew_res.get("skipped") else f"Rielaborate {rew_res['processed_units']}/{rew_res['total_units']} unità. Provenance verificata."
+    _print_phase_action("rewrite", rew_res, step=step_offset + 3, total_steps=total_steps, description="Rielaborazione fluida a finestre con provenance", details=rew_details)
 
     if with_review:
-        print(f"\n[{step_offset + 4}/{total_steps}] ASR REVIEW (Ambiguità fonetiche e Confidence Gating)...")
         asr_res = run_review_asr(lesson_dir, force=force, force_mock=mock_mode)
-        if asr_res.get("skipped"):
-            print(f"⏩ [SKIP] Review ASR già completata ({asr_res['total_issues']} issue note, 0 chiamate LLM)")
-        else:
-            print(f"✔ Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})")
+        asr_details = f"Review ASR già completata ({asr_res['total_issues']} issue note, 0 chiamate LLM)" if asr_res.get("skipped") else f"Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})"
+        _print_phase_action("review-asr", asr_res, step=step_offset + 4, total_steps=total_steps, description="Ambiguità fonetiche e Confidence Gating", details=asr_details)
 
         auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
         asr_ok = run_interactive_review(lesson_dir, "asr", channel=channel, auto_accept=auto_accept_val)
@@ -793,12 +571,9 @@ def cmd_run(args):
                   f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
             return
 
-        print(f"\n[{step_offset + 5}/{total_steps}] SCIENCE REVIEW (Critic indipendente su docente e allucinazioni)...")
         sci_res = run_review_science(lesson_dir, force=force, force_mock=mock_mode)
-        if sci_res.get("skipped"):
-            print(f"⏩ [SKIP] Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)")
-        else:
-            print(f"✔ Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})")
+        sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})"
+        _print_phase_action("review-science", sci_res, step=step_offset + 5, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)
 
         sci_ok = run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val)
         if not sci_ok:
@@ -810,18 +585,16 @@ def cmd_run(args):
     else:
         build_step_num = step_offset + 4
 
-    print(f"\n[{build_step_num}/{total_steps}] BUILD (Finalizzazione deterministica Markdown)...")
-
     bld_res = run_build(lesson_dir, force=force, rename_folder=args.rename)
-    if bld_res.get("skipped"):
-        print("⏩ [SKIP] Documenti finali già generati e aggiornati.")
-    else:
-        print("✔ File finali generati con successo:")
-        print(f"  - Rielaborato: {bld_res['rielaborato']}")
-        print(f"  - Pre-elaborato: {bld_res['pre_elaborato']}")
-        print(f"  - Revisioni ASR: {bld_res['revisioni_asr']}")
-        print(f"  - Errori concettuali: {bld_res['errori_concettuali']}")
-        print(f"  - Problemi scientifici: {bld_res['problemi_scientifici']}")
+    bld_details = "Documenti finali già generati e aggiornati." if bld_res.get("skipped") else (
+        "File finali generati con successo:\n"
+        f"  - Rielaborato: {bld_res['rielaborato']}\n"
+        f"  - Pre-elaborato: {bld_res['pre_elaborato']}\n"
+        f"  - Revisioni ASR: {bld_res['revisioni_asr']}\n"
+        f"  - Errori concettuali: {bld_res['errori_concettuali']}\n"
+        f"  - Problemi scientifici: {bld_res['problemi_scientifici']}"
+    )
+    _print_phase_action("build", bld_res, step=build_step_num, total_steps=total_steps, description="Finalizzazione deterministica Markdown", details=bld_details)
     print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
 
     if channel == "telegram":
@@ -846,12 +619,53 @@ def cmd_telegram_daemon(args):
     run_daemon(state_dir=getattr(args, "state_dir", None))
 
 
+class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    def _format_action(self, action):
+        if isinstance(action, argparse._SubParsersAction):
+            orig_subactions = action._get_subactions
+            action._get_subactions = lambda: [a for a in orig_subactions() if a.help != argparse.SUPPRESS]
+            res = super()._format_action(action)
+            action._get_subactions = orig_subactions
+            return res
+        return super()._format_action(action)
+
+
 def main():
     load_env_file(override=True)
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
-    parser = argparse.ArgumentParser(prog="rt", description="Academic Lecture Transcription & Reconstruction Workflow")
+    epilog_text = (
+        "Comandi diagnostici (uso avanzato):\n"
+        "  validate-outline    Valida deterministicamente l'outline\n"
+        "  validate-draft      Valida il draft rielaborato"
+    )
+    parser = argparse.ArgumentParser(
+        prog="rt",
+        description="Academic Lecture Transcription & Reconstruction Workflow",
+        epilog=epilog_text,
+        formatter_class=RTHelpFormatter
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # run
+    p_run = subparsers.add_parser("run", help="Esegue l'intera pipeline end-to-end (accetta file audio o cartella lezione)")
+    p_run.add_argument("input", nargs="+", help="File audio (.m4a, .wav...) o cartella lezione esistente")
+    p_run.add_argument("-d", "--date", help="Data della lezione (se input è audio)")
+    p_run.add_argument("-m", "--materia", help="Nome della materia (se input è audio)")
+    p_run.add_argument("-a", "--argomenti", help="Argomenti trattati (se input è audio)")
+    p_run.add_argument("-o", "--dest-dir", help="Directory base di destinazione per nuova lezione")
+    p_run.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello MacWhisper per trascrizione (default: {DEFAULT_MODEL})")
+    p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
+    p_run.add_argument("--force", action="store_true", help="Forza l'intera pipeline ignorando i risultati precedenti")
+    p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
+    p_run.add_argument("--with-review", action="store_true", dest="with_review",
+                        help="Include anche generazione issue ASR/scientifiche e revisione umana nella run (comportamento monolitico precedente). Di default sono passi separati (rt review-asr / rt review-science).")
+    p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
+    p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
+                        help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
+    p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
+                        help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
+    p_run.set_defaults(func=cmd_run)
 
     # setup
     p_set = subparsers.add_parser("setup", help="Esegue l'ingest di file audio, trascrizione MacWhisper e metadati")
@@ -875,11 +689,6 @@ def main():
     p_out.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_out.set_defaults(func=cmd_outline)
 
-    # validate-outline
-    p_vout = subparsers.add_parser("validate-outline", help="Valida deterministicamente l'outline")
-    p_vout.add_argument("lesson_dir", help="Directory della lezione")
-    p_vout.set_defaults(func=cmd_validate_outline)
-
     # rewrite
     p_rew = subparsers.add_parser("rewrite", help="Rielabora le unità didattiche a finestre con provenance")
     p_rew.add_argument("lesson_dir", help="Directory della lezione")
@@ -888,11 +697,6 @@ def main():
     p_rew.add_argument("--mock", action="store_true", help="Usa mock deterministico")
     p_rew.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rew.set_defaults(func=cmd_rewrite)
-
-    # validate-draft
-    p_vdr = subparsers.add_parser("validate-draft", help="Valida il draft rielaborato")
-    p_vdr.add_argument("lesson_dir", help="Directory della lezione")
-    p_vdr.set_defaults(func=cmd_validate_draft)
 
     # review-asr
     p_rasr = subparsers.add_parser("review-asr", help="Analisi ambiguità ASR, confidence gating e revisione")
@@ -980,52 +784,20 @@ def main():
     p_stat.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo dello stato")
     p_stat.set_defaults(func=cmd_status)
 
-    # test-llm
-    p_tllm = subparsers.add_parser("test-llm", help="Smoke test rapido per verificare DeepSeek, OpenRouter o Google")
-    p_tllm.add_argument("--config", help="Percorso alternativo del file di configurazione", default=None)
-    p_tllm.add_argument("--provider", help="Provider da testare (deepseek | openrouter | google)", choices=["deepseek", "openrouter", "google"], default=None)
-    p_tllm.add_argument("--credential", help="Credenziale specifica da testare (es. google_1, google_2, openrouter, deepseek)", default=None)
-    p_tllm.add_argument("--model", help="Modello specifico da testare (es. gemini-2.5-flash, deepseek-v4-flash, deepseek/deepseek-v4-pro)", default=None)
-    p_tllm.add_argument("--no-stream", action="store_true", help="Disabilita lo streaming SSE")
-    p_tllm.add_argument("--no-monitor", action="store_true", help="Disabilita il monitor progressivo da terminale")
-    p_tllm.set_defaults(func=cmd_test_llm)
-
-    # prices-check
-    p_pc = subparsers.add_parser("prices-check", help="Confronta i prezzi configurati con il catalogo live LiteLLM")
-    p_pc.add_argument("--interactive", action="store_true", help="Seleziona interattivamente quali prezzi live applicare ai file config/<job>.yaml")
-    p_pc.set_defaults(func=cmd_prices_check)
-
-    # prices-lookup
-    p_pl = subparsers.add_parser("prices-lookup", help="Cerca il prezzo live di un modello nel catalogo LiteLLM")
-    p_pl.add_argument("query", help="Stringa di ricerca (es. 'gemini-3.5-flash', 'deepseek-v4')")
-    p_pl.add_argument("--provider", help="Filtra per provider LiteLLM (es. 'deepseek', 'gemini')", default=None)
-    p_pl.set_defaults(func=cmd_prices_lookup)
-
-    # run
-    p_run = subparsers.add_parser("run", help="Esegue l'intera pipeline end-to-end (accetta file audio o cartella lezione)")
-    p_run.add_argument("input", nargs="+", help="File audio (.m4a, .wav...) o cartella lezione esistente")
-    p_run.add_argument("-d", "--date", help="Data della lezione (se input è audio)")
-    p_run.add_argument("-m", "--materia", help="Nome della materia (se input è audio)")
-    p_run.add_argument("-a", "--argomenti", help="Argomenti trattati (se input è audio)")
-    p_run.add_argument("-o", "--dest-dir", help="Directory base di destinazione per nuova lezione")
-    p_run.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello MacWhisper per trascrizione (default: {DEFAULT_MODEL})")
-    p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
-    p_run.add_argument("--force", action="store_true", help="Forza l'intera pipeline ignorando i risultati precedenti")
-    p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
-    p_run.add_argument("--with-review", action="store_true", dest="with_review",
-                        help="Include anche generazione issue ASR/scientifiche e revisione umana nella run (comportamento monolitico precedente). Di default sono passi separati (rt review-asr / rt review-science / rt review).")
-    p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
-    p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
-                        help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
-    p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
-                        help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
-    p_run.set_defaults(func=cmd_run)
-
-
     # telegram-daemon
     p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
     p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
     p_tgd.set_defaults(func=cmd_telegram_daemon)
+
+    # validate-outline
+    p_vout = subparsers.add_parser("validate-outline", help=argparse.SUPPRESS)
+    p_vout.add_argument("lesson_dir", help="Directory della lezione")
+    p_vout.set_defaults(func=cmd_validate_outline)
+
+    # validate-draft
+    p_vdr = subparsers.add_parser("validate-draft", help=argparse.SUPPRESS)
+    p_vdr.add_argument("lesson_dir", help="Directory della lezione")
+    p_vdr.set_defaults(func=cmd_validate_draft)
 
     normalized_argv = normalize_review_cli_args(sys.argv[1:])
     args = parser.parse_args(normalized_argv)

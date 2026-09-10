@@ -149,7 +149,6 @@ def test_end_to_end_openrouter_provider_routing_sent_in_body(tmp_path, monkeypat
     config_dir.mkdir()
 
     general_content = """version: "2.0.0"
-pricing_staleness_warning_days: 3
 mock_llm: false
 streaming: true
 show_monitor: false
