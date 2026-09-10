@@ -21,6 +21,7 @@ from rt.llm.prompts import (
 )
 from rt.pipeline.validator import validate_outline
 from rt.core.lesson_paths import lesson_path
+from rt.core.config import load_config
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -114,7 +115,13 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
     # Registrazione fingerprint e invalidazione downstream
     source_fp = compute_source_fingerprint(lesson_dir, "outline")
     out_hash = compute_file_sha256(get_outline_path(lesson_dir))
-    record_phase_fingerprint(lesson_dir, "outline", source_fp, {"outline.json": out_hash})
+    _cfg = load_config()
+    _job_cfg = _cfg.jobs.get("outline") or _cfg.llm.get("outline")
+    _provenance = {
+        "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
+        "model": _job_cfg.primary.model if (_job_cfg and _job_cfg.primary) else None,
+    }
+    record_phase_fingerprint(lesson_dir, "outline", source_fp, {"outline.json": out_hash}, metadata=_provenance)
     if force or phase_status == PhaseStatus.STALE:
         mark_downstream_stale(lesson_dir, "outline")
     
@@ -179,7 +186,13 @@ def run_outline_revision(lesson_dir: str, feedback: str, force_mock: bool = Fals
 
     source_fp = compute_source_fingerprint(lesson_dir, "outline")
     out_hash = compute_file_sha256(get_outline_path(lesson_dir))
-    record_phase_fingerprint(lesson_dir, "outline", source_fp, {"outline.json": out_hash})
+    _cfg = load_config()
+    _job_cfg = _cfg.jobs.get("outline") or _cfg.llm.get("outline")
+    _provenance = {
+        "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
+        "model": _job_cfg.primary.model if (_job_cfg and _job_cfg.primary) else None,
+    }
+    record_phase_fingerprint(lesson_dir, "outline", source_fp, {"outline.json": out_hash}, metadata=_provenance)
     mark_downstream_stale(lesson_dir, "outline")
 
     init_or_update_manifest(

@@ -16,7 +16,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from rt.core.models import Draft, DraftUnit, Segment
 from rt.core.segments import load_segments_json
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
-from rt.core.manifest import init_or_update_manifest
+from rt.core.manifest import load_manifest, init_or_update_manifest
+from rt.core.config import load_config
 from rt.llm.client import LLMClient
 from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt
 from rt.pipeline.outline import load_outline
@@ -124,8 +125,18 @@ def run_rewrite(
         
     draft_units_map = {u.unit_id: u for u in draft.units}
     
+    manifest_before = load_manifest(lesson_dir)
+    old_draft_hash = (
+        manifest_before.phase_records.get("rewrite", {})
+        .get("artifact_fingerprints", {})
+        .get("draft.json")
+        if manifest_before and manifest_before.phase_records
+        else None
+    )
+
     # Controllo idempotenza: se valido e non forzato, SKIP immediato senza chiamate LLM
     phase_status, reason = check_phase_status(lesson_dir, "rewrite", target_unit_id=target_unit_id)
+
     if phase_status == PhaseStatus.VALID and not force:
         validation_report = validate_draft(draft, outline, segments_data)
         return {
@@ -321,14 +332,26 @@ def run_rewrite(
         validation_report = validate_draft(draft, outline, segments_data)
         source_fp = compute_source_fingerprint(lesson_dir, "rewrite")
         draft_hash = compute_file_sha256(draft_path)
+
+        _cfg = load_config()
+        _job_cfg = _cfg.jobs.get("rewrite") or _cfg.llm.get("rewrite")
+        _provenance = {
+            "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
+            "model": _job_cfg.primary.model if (_job_cfg and _job_cfg.primary) else None,
+        }
+
         record_phase_fingerprint(
             lesson_dir=lesson_dir,
             phase_name="rewrite",
             source_fingerprint=source_fp,
-            artifact_fingerprints={"draft.json": draft_hash}
+            artifact_fingerprints={"draft.json": draft_hash},
+            metadata=_provenance,
         )
-        if force or phase_status == PhaseStatus.STALE or processed_count > 0:
+        if (force or phase_status == PhaseStatus.STALE or processed_count > 0) and (old_draft_hash is None or old_draft_hash != draft_hash):
             mark_downstream_stale(lesson_dir, "rewrite")
+
+
+
         
         init_or_update_manifest(
             lesson_dir=lesson_dir,

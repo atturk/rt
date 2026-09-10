@@ -443,9 +443,11 @@ def test_unknown_provider_raises_error(monkeypatch):
             prompt="test",
             system_prompt="test",
             response_model=SampleResponseModel,
+            job_name="outline",
             override_provider="non_existent_provider"
         )
     assert "non configurato o non supportato" in str(exc.value)
+
 
 
 def test_max_thinking_tokens_config_and_client_integration(monkeypatch):

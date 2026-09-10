@@ -700,3 +700,16 @@ def test_unconfigured_job_without_default_raises_value_error():
         engine._get_job_config("nonexistent")
 
 
+def test_unconfigured_job_without_default_raises_value_error_in_llm_client():
+    """Verifica che LLMClient._get_job_routing_config sollevi ValueError se un job non è configurato e manca il default."""
+    import pytest
+    from rt.core.config import RTConfig
+    from rt.llm.client import LLMClient
+    client = LLMClient(force_mock=True)
+    client.config = RTConfig(jobs={}, llm={})
+    with pytest.raises(ValueError, match="Nessuna configurazione di routing trovata per il job 'nonexistent'"):
+        client._get_job_routing_config("nonexistent")
+
+
+
+
