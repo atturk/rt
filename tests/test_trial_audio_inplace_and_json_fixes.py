@@ -367,3 +367,51 @@ def test_json_flag_behavior_on_cli_commands(capsys):
         cmd_setup(argparse.Namespace(audio="a.mp3", date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False, force=False, mock=True))
         out = capsys.readouterr().out
         assert "{\n  \"lesson_dir\": \"test_dir\"\n}" in out
+
+
+def test_print_phase_action_success_confirmation():
+    """Verifica che _print_phase_action aggiunga una riga di conferma esplicita di successo
+    per i rami RUN e FORCE, e che il ramo SKIP resti invariato (nessuna riga aggiuntiva)."""
+    from rt.cli import _print_phase_action
+
+    # RUN
+    res_run = {"action": "RUN", "reason": "segments.json non trovato"}
+    with patch("builtins.print") as mock_print:
+        _print_phase_action("prepare", res_run)
+    full_output = "".join(call.args[0] for call in mock_print.call_args_list)
+    assert "[RUN] prepare" in full_output
+    assert "Reason: segments.json non trovato" in full_output
+    assert "completato" in full_output
+    assert "✔" in full_output
+    assert full_output.index("Reason:") < full_output.index("completato")
+
+    # FORCE
+    res_force = {"action": "FORCE", "reason": "explicit user-requested rerun"}
+    with patch("builtins.print") as mock_print:
+        _print_phase_action("build", res_force)
+    full_output = "".join(call.args[0] for call in mock_print.call_args_list)
+    assert "[FORCE] build" in full_output
+    assert "Reason: explicit user-requested rerun" in full_output
+    assert "completato (rigenerazione forzata)" in full_output
+    assert "✔" in full_output
+
+    # SKIP — nessuna riga di conferma aggiuntiva deve comparire
+    res_skip = {"action": "SKIP", "reason": "outline.json valido e conforme ai segmenti"}
+    with patch("builtins.print") as mock_print:
+        _print_phase_action("outline", res_skip)
+    full_output = "".join(call.args[0] for call in mock_print.call_args_list)
+    assert "[SKIP] outline" in full_output
+    assert "Reason: outline.json valido e conforme ai segmenti" in full_output
+    assert "completato" not in full_output
+
+
+def test_print_phase_action_uses_dynamic_label():
+    """La riga di conferma usa lo stesso phase_name passato alla funzione (es. rewrite unit 1.1)."""
+    from rt.cli import _print_phase_action
+
+    res = {"action": "RUN", "reason": "segments.json modificati"}
+    with patch("builtins.print") as mock_print:
+        _print_phase_action("rewrite unit 1.1", res)
+    full_output = "".join(call.args[0] for call in mock_print.call_args_list)
+    assert "[RUN] rewrite unit 1.1" in full_output
+    assert "✔ rewrite unit 1.1 completato." in full_output
