@@ -14,6 +14,7 @@ from typing import Dict, Any, List
 from rt.core.models import ASRIssue, ASRLevel
 from rt.core.segments import load_segments_json
 from rt.core.config import load_config
+from rt.core.manifest import load_manifest
 from rt.core.state import transition_to, WorkflowState
 from rt.core.lesson_paths import lesson_path
 from rt.llm.client import LLMClient
@@ -68,6 +69,15 @@ def run_review_asr(
     """Esegue la revisione fonetica ASR con confidence gating deterministico e checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
     config = load_config()
+
+    manifest_before = load_manifest(lesson_dir)
+    old_asr_hash = (
+        manifest_before.phase_records.get("review_asr", {})
+        .get("artifact_fingerprints", {})
+        .get("asr_issues.json")
+        if manifest_before and manifest_before.phase_records
+        else None
+    )
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "review_asr")
@@ -254,9 +264,24 @@ def run_review_asr(
     if is_all_batches_done:
         source_fp = compute_source_fingerprint(lesson_dir, "review_asr")
         asr_hash = compute_file_sha256(get_asr_issues_path(lesson_dir))
-        record_phase_fingerprint(lesson_dir, "review_asr", source_fp, {"asr_issues.json": asr_hash})
-        if force or phase_status == PhaseStatus.STALE:
+
+        _cfg = load_config()
+        _job_cfg = _cfg.jobs.get("review_asr") or _cfg.llm.get("review_asr")
+        _provenance = {
+            "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
+            "model": _job_cfg.primary.model if (_job_cfg and _job_cfg.primary) else None,
+        }
+
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir,
+            phase_name="review_asr",
+            source_fingerprint=source_fp,
+            artifact_fingerprints={"asr_issues.json": asr_hash},
+            metadata=_provenance,
+        )
+        if (force or phase_status == PhaseStatus.STALE) and (old_asr_hash is None or old_asr_hash != asr_hash):
             mark_downstream_stale(lesson_dir, "review_asr")
+
 
         transition_to(yaml_path, WorkflowState.ASR_REVIEW_READY, allow_force=(force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL)))
         status_msg = "asr_review_completed"
