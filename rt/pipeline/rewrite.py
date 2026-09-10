@@ -350,9 +350,6 @@ def run_rewrite(
         if (force or phase_status == PhaseStatus.STALE or processed_count > 0) and (old_draft_hash is None or old_draft_hash != draft_hash):
             mark_downstream_stale(lesson_dir, "rewrite")
 
-
-
-        
         init_or_update_manifest(
             lesson_dir=lesson_dir,
             lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
