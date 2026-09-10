@@ -524,3 +524,73 @@ class TestGenerateBatchDistribution:
         first = generate_recall_batch(lesson_dir, RecallQuestionType.VASTA, count=1, few_shot_examples=[], force_mock=True)
         second = generate_recall_batch(lesson_dir, RecallQuestionType.VASTA, count=1, few_shot_examples=[], force_mock=True)
         assert set(first[0].unit_ids).isdisjoint(set(second[0].unit_ids))
+
+
+# -----------------------------------------------------------------------
+# 8. Il recall usa il draft con le decisioni del ledger già applicate
+# -----------------------------------------------------------------------
+
+class TestRecallUsesResolvedDraft:
+    """Bug reale riscontrato: generate_recall_batch/evaluate_recall_answer leggevano il
+    draft grezzo (load_draft), ignorando le correzioni scientifiche/ASR già approvate
+    dall'utente. L'utente veniva interrogato/valutato su un testo diverso da quello che
+    aveva davvero studiato nel documento finale. Devono usare load_resolved_draft()."""
+
+    def _accept_science_decision_on_unit_1(self, lesson_dir):
+        from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+        from rt.pipeline.review_science import get_science_issues_path
+        from rt.pipeline.ledger import record_decision
+
+        sci_issue = ScienceIssue(
+            id="sci_000001",
+            type=ScienceType.ERR_DOCENTE,
+            severity=ScienceSeverity.LOW,
+            unit_id="1.1",
+            segment_id="seg_000001",
+            claim="Contenuto accademico dell'unita' 1.",
+            reason="Dettaglio mancante confermato dal docente.",
+            suggested_fix="Contenuto accademico RIVISTO E APPROVATO dell'unita' 1.",
+        )
+        with open(get_science_issues_path(lesson_dir), "w", encoding="utf-8") as f:
+            json.dump([sci_issue.model_dump(mode="json")], f)
+        record_decision(
+            lesson_dir=lesson_dir, issue_id="sci_000001", decision="accepted",
+            resolved_text=sci_issue.suggested_fix,
+        )
+
+    def test_generate_recall_batch_prompt_uses_resolved_content(self, lesson_dir):
+        self._accept_science_decision_on_unit_1(lesson_dir)
+        captured = {}
+
+        def fake_call_structured(self, prompt, system_prompt, response_model, **kwargs):
+            captured["prompt"] = prompt
+            return response_model(
+                id="placeholder", type=RecallQuestionType.MIRATA, unit_ids=["1.1"],
+                question_text="Domanda di prova?",
+            )
+
+        from unittest.mock import patch
+        with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
+            generate_recall_batch(lesson_dir, RecallQuestionType.MIRATA, count=1, few_shot_examples=[], force_mock=False)
+
+        assert "RIVISTO E APPROVATO" in captured["prompt"]
+
+    def test_evaluate_recall_answer_prompt_uses_resolved_content(self, lesson_dir):
+        self._accept_science_decision_on_unit_1(lesson_dir)
+        bank = RecallBank(questions=[
+            RecallQuestion(id="recall_000001", type=RecallQuestionType.MIRATA, unit_ids=["1.1"], question_text="Domanda?")
+        ])
+        save_recall_bank(bank, lesson_dir)
+
+        captured = {}
+
+        def fake_call_structured(self, prompt, system_prompt, response_model, **kwargs):
+            captured["prompt"] = prompt
+            return response_model(correttezza=80, completezza=70, commento="ok")
+
+        from unittest.mock import patch
+        from rt.pipeline.recall import evaluate_recall_answer
+        with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
+            evaluate_recall_answer(lesson_dir, "recall_000001", "risposta studente", force_mock=False)
+
+        assert "RIVISTO E APPROVATO" in captured["prompt"]

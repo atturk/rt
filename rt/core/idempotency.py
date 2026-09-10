@@ -36,16 +36,20 @@ PROCESSOR_VERSIONS = {
 # Spiegazione architetturale delle dipendenze:
 # - outline dipende da prepare (ha bisogno dei segmenti temporali).
 # - rewrite dipende da prepare e outline (rielabora i segmenti seguendo la struttura didattica).
-# - review_asr dipende SOLO da prepare: analizza le ambiguità fonetiche direttamente sui segmenti grezzi
-#   della lezione (segments.json), indipendentemente dal draft. Può quindi rimanere valida anche se il draft viene riscritto.
-# - review_science dipende da prepare e rewrite: agisce come critic avversario indipendente confrontando il
-#   draft rielaborato con la fonte originale (draft.json + segments.json). Se il draft cambia, la critica deve essere rigenerata.
+# - review_asr dipende da prepare E da rewrite: oltre alla trascrizione grezza (segments.json),
+#   vede anche il testo del draft corrispondente, perché il modello di rewrite può aver già
+#   corretto (parzialmente, del tutto, o per nulla) le ambiguità fonetiche per conto proprio —
+#   le issue riguardano il testo COME COMPARE ORA NEL DRAFT, non la trascrizione grezza in sé.
+#   Se il draft viene riscritto, le issue ASR vanno quindi rigenerate.
+# - review_science dipende da prepare e rewrite: agisce come critic avversario indipendente,
+#   valutando il draft rielaborato (non vede più la trascrizione grezza, solo il draft).
+#   Se il draft cambia, la critica deve essere rigenerata.
 # - build dipende da tutte le fasi precedenti (prepare, outline, rewrite, review_asr, review_science).
 UPSTREAM_DEPENDENCIES = {
     "prepare": [],
     "outline": ["prepare"],
     "rewrite": ["prepare", "outline"],
-    "review_asr": ["prepare"],
+    "review_asr": ["prepare", "rewrite"],
     "review_science": ["prepare", "rewrite"],
     "build": ["prepare", "outline", "rewrite", "review_asr", "review_science"],
 }
@@ -136,14 +140,16 @@ def compute_source_fingerprint(
 
     elif phase_name == "review_asr":
         seg_path = lesson_path(lesson_dir, "segments.json")
+        draft_path = lesson_path(lesson_dir, "draft.json")
         seg_hash = compute_file_sha256(seg_path)
+        draft_hash = compute_file_sha256(draft_path)
         from rt.core.config import load_config
         try:
             cfg = load_config()
             cfg_str = f"{cfg.thresholds.green}:{cfg.thresholds.yellow}"
         except Exception:
             cfg_str = "0.95:0.75"
-        return compute_string_sha256(f"{seg_hash}|{cfg_str}|{proc_ver}")
+        return compute_string_sha256(f"{seg_hash}|{draft_hash}|{cfg_str}|{proc_ver}")
 
     elif phase_name == "review_science":
         draft_path = lesson_path(lesson_dir, "draft.json")
@@ -591,7 +597,7 @@ def mark_downstream_stale(
     downstream_map = {
         "prepare": ["outline", "rewrite", "review_asr", "review_science", "build"],
         "outline": ["rewrite", "review_science", "build"],
-        "rewrite": ["review_science", "build"],
+        "rewrite": ["review_asr", "review_science", "build"],
         "review_asr": ["build"],
         "review_science": ["build"],
         "build": []

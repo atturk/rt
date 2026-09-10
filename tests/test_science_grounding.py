@@ -30,6 +30,33 @@ def test_verbatim_quote_maintains_err_docente():
     assert "ERR_RECONSTRUCTION" not in result.get("explanation", "")
 
 
+def test_grounded_reconstruction_reclassified_to_err_docente_via_claim_not_quote():
+    """Se l'LLM classifica come ERR_RECONSTRUCTION (pensando di aver individuato
+    un'invenzione del modello) ma il 'claim' (dal draft, sempre disponibile: il critic
+    non ha più accesso alla trascrizione grezza per produrre un source_quote affidabile)
+    è in realtà fortemente presente nella trascrizione originale, va riclassificato a
+    ERR_DOCENTE: il docente l'ha detto per davvero, non è un'allucinazione del rewrite.
+    La domanda diplomatica generata deve citare 'claim' (prosa pulita del draft), MAI
+    'source_quote': anche se il modello ne produce comunque uno (nonostante le istruzioni,
+    senza accesso alla trascrizione grezza non è affidabile e non va mai mostrato all'utente)."""
+    source_text = "Oggi parliamo della beta-ossidazione e del ruolo della carnitina palmitoil transferasi nella membrana mitocondriale esterna."
+    unreliable_quote = "cominciamo ad entrare allora gli spot del rey a differenza della seconda"
+    issue_dict = {
+        "id": "sci_05",
+        "type": "ERR_RECONSTRUCTION",
+        "severity": "MEDIUM",
+        "source_quote": unreliable_quote,
+        "claim": "il ruolo della carnitina palmitoil transferasi nella membrana mitocondriale esterna",
+        "correction": "n/a",
+        "explanation": "Sembra un dettaglio inventato dal modello",
+    }
+
+    result = disambiguate_science_issue(issue_dict, source_text)
+    assert result["type"] == ScienceType.ERR_DOCENTE.value
+    assert issue_dict["claim"] in result["diplomatic_question"]
+    assert unreliable_quote not in result["diplomatic_question"]
+
+
 def test_unsupported_claim_reclassified_to_err_reconstruction():
     """
     Se l'LLM segnala un presunto ERR_DOCENTE ma la frase o il concetto NON esistono minimamente

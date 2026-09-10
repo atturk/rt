@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import List, Optional, Dict
 
 from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer
-from rt.pipeline.rewrite import load_draft
+from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.core.config import load_config
 from rt.core.lesson_paths import lesson_path
@@ -300,7 +300,7 @@ def generate_recall_batch(
         RECALL_VASTA_SYSTEM_PROMPT, build_recall_vasta_user_prompt,
     )
 
-    draft = load_draft(lesson_dir)
+    draft = load_resolved_draft(lesson_dir)
     bank = load_recall_bank(lesson_dir)
     new_questions: List[RecallQuestion] = []
     client = LLMClient(force_mock=force_mock)
@@ -477,7 +477,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     client = LLMClient(force_mock=force_mock)
 
     if question.type == RecallQuestionType.MIRATA:
-        draft = load_draft(lesson_dir)
+        draft = load_resolved_draft(lesson_dir)
         unit = next((u for u in draft.units if u.unit_id == question.unit_ids[0]), None)
         unit_title = unit.title if unit else question.unit_ids[0]
         unit_content = unit.content if unit else ""

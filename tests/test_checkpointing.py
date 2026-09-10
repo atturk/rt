@@ -405,6 +405,7 @@ def test_review_asr_checkpoint_ledger_consistency_and_id_stability(multi_unit_le
     4. Alla ripresa, il batch 1 non viene rieseguito e non si generano duplicati nel ledger.
     """
     lesson_dir = multi_unit_lesson
+    run_rewrite(lesson_dir, force_mock=True)  # review_asr dipende ora anche da rewrite (draft-aware)
     original_call = LLMClient(force_mock=True).call_structured
 
     # Creiamo 3 batch ASR usando batch_size=2 sui 6 segmenti
@@ -498,6 +499,7 @@ def test_review_asr_reconciliation_missing_ledger_entry(multi_unit_lesson):
     All'avvio, la procedura di riconciliazione deve rilevarla e committarla nel ledger.
     """
     lesson_dir = multi_unit_lesson
+    run_rewrite(lesson_dir, force_mock=True)  # review_asr dipende ora anche da rewrite (draft-aware)
 
     # Inizializziamo asr_issues con una issue GREEN
     green_iss = ASRIssue(
