@@ -181,6 +181,7 @@ graph TD
     prepare --> rewrite[rewrite: draft.json]
     outline --> rewrite
     prepare --> review_asr[review_asr: asr_issues.json]
+    rewrite --> review_asr
     prepare --> review_science[review_science: science_issues.json]
     rewrite --> review_science
     prepare --> build[build: Markdown finali]
@@ -191,8 +192,8 @@ graph TD
 ```
 
 ### Semantica della DAG:
-1. **`review_asr` dipende UNICAMENTE da `prepare`**:
-   L'analisi ASR valuta la fedeltà fonetica e terminologica della trascrizione automatica rispetto all'audio sorgente. Poiché questa valutazione riguarda esclusivamente la sorgente grezza e i segmenti iniziali, è totalmente indipendente da qualunque bozza o riscrittura didattica successiva.
+1. **`review_asr` dipende da `prepare` e `rewrite`**:
+   L'analisi ASR valuta le issue fonetiche e terminologiche rispetto al testo così come compare ora nel draft (`draft.json`), oltre che sulla trascrizione grezza (`segments.json`), poiché la fase di rewrite può aver già corretto (parzialmente, del tutto o per nulla) alcune ambiguità per conto proprio. Se il draft viene riscritto, le issue ASR vanno quindi rigenerate.
 2. **`review_science` dipende da `rewrite` e `prepare`**:
    Il critic scientifico valuta la correttezza concettuale del testo effettivamente riscritto nel draft rispetto al discorso pronunciato dal docente (trascrizione sorgente). Qualsiasi modifica all'outline o al draft invalida transitivamente la review scientifica.
 3. **Propagazione Transitiva della Staleness**:
