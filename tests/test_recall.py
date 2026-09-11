@@ -589,7 +589,8 @@ class TestRecallUsesResolvedDraft:
             return response_model(correttezza=80, completezza=70, commento="ok")
 
         from unittest.mock import patch
-        with patch("rt.pipeline.recall.evaluate_recall_answer", evaluate_recall_answer):
+        from rt.pipeline.recall import evaluate_recall_answer
+        with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
             evaluate_recall_answer(lesson_dir, "recall_000001", "risposta studente", force_mock=False)
 
         assert "RIVISTO E APPROVATO" in captured["prompt"]
@@ -641,4 +642,50 @@ class TestStaleQuestionInvalidation:
         assert ret is None
         bank_after = load_recall_bank(lesson_dir)
         assert len(bank_after.questions) == 2
+
+
+class TestPurgeRecall:
+    def test_purge_recall_by_type_selective(self, lesson_dir):
+        from rt.pipeline.recall import purge_recall_by_type
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.QUIZ, "1.1"))
+        bank.questions.append(_make_question("recall_000002", RecallQuestionType.MIRATA, "1.1"))
+        bank.answers.append(RecallAnswer(question_id="recall_000001", answer_text="A"))
+        bank.answers.append(RecallAnswer(question_id="recall_000002", answer_text="B"))
+        save_recall_bank(bank, lesson_dir)
+
+        count = purge_recall_by_type(lesson_dir, RecallQuestionType.QUIZ)
+        assert count == 1
+        bank_after = load_recall_bank(lesson_dir)
+        assert len(bank_after.questions) == 1
+        assert bank_after.questions[0].type == RecallQuestionType.MIRATA
+        assert len(bank_after.answers) == 1
+        assert bank_after.answers[0].question_id == "recall_000002"
+
+    def test_purge_recall_all(self, lesson_dir):
+        from rt.pipeline.recall import purge_recall_by_type
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.QUIZ, "1.1"))
+        bank.questions.append(_make_question("recall_000002", RecallQuestionType.MIRATA, "1.1"))
+        bank.answers.append(RecallAnswer(question_id="recall_000001", answer_text="A"))
+        save_recall_bank(bank, lesson_dir)
+
+        count = purge_recall_by_type(lesson_dir, None)
+        assert count == 2
+        bank_after = load_recall_bank(lesson_dir)
+        assert len(bank_after.questions) == 0
+        assert len(bank_after.answers) == 0
+
+
+class TestNonLoSoEvaluation:
+    def test_evaluate_non_lo_so_forces_zero_scores(self, lesson_dir):
+        from rt.pipeline.recall import evaluate_recall_answer
+        bank = RecallBank()
+        bank.questions.append(_make_question("recall_000001", RecallQuestionType.MIRATA, "1.1"))
+        save_recall_bank(bank, lesson_dir)
+
+        eval_res = evaluate_recall_answer(lesson_dir, "recall_000001", "[Non lo so]", force_mock=True)
+        assert "Correttezza: 0%" in eval_res
+        assert "Completezza: 0%" in eval_res
+
 

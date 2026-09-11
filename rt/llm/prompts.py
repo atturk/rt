@@ -450,7 +450,18 @@ REGOLE CATEGORICHE:
 5. Tono diretto ma non punitivo: lo studente sta studiando, l'obiettivo è farlo migliorare velocemente."""
 
 
-def build_recall_eval_mirata_user_prompt(question_text: str, unit_title: str, unit_content: str, answer_text: str) -> str:
+DONT_KNOW_NOTE = (
+    "\n\nNOTA: lo studente ha dichiarato esplicitamente di non sapere rispondere "
+    "(non ha fornito alcun tentativo). NON scrivere che la risposta è assente, mancante o non fornita — "
+    "è già noto. Fornisci direttamente e solo la spiegazione corretta e completa dell'argomento, "
+    "come se stessi semplicemente insegnando la risposta."
+)
+
+
+def build_recall_eval_mirata_user_prompt(
+    question_text: str, unit_title: str, unit_content: str, answer_text: str, dont_know: bool = False
+) -> str:
+    note = DONT_KNOW_NOTE if dont_know else ""
     return f"""DOMANDA POSTA:
 {question_text}
 
@@ -458,7 +469,7 @@ RIFERIMENTO (unità didattica "{unit_title}"):
 {unit_content}
 
 RISPOSTA DELLO STUDENTE:
-{answer_text}
+{answer_text}{note}
 
 Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento)."""
 
@@ -480,7 +491,10 @@ REGOLE CATEGORICHE:
 4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente."""
 
 
-def build_recall_eval_vasta_user_prompt(question_text: str, scaletta_ideale: str, answer_text: str) -> str:
+def build_recall_eval_vasta_user_prompt(
+    question_text: str, scaletta_ideale: str, answer_text: str, dont_know: bool = False
+) -> str:
+    note = DONT_KNOW_NOTE if dont_know else ""
     return f"""DOMANDA POSTA:
 {question_text}
 
@@ -488,6 +502,6 @@ SCALETTA IDEALE (punti essenziali attesi in una risposta completa):
 {scaletta_ideale}
 
 RISPOSTA DELLO STUDENTE:
-{answer_text}
+{answer_text}{note}
 
 Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento)."""

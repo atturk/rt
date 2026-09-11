@@ -486,7 +486,7 @@ def generate_recall_batch(
 def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, force_mock: bool = False) -> str:
     """Valuta con l'LLM la risposta a una domanda mirata o vasta e ritorna il testo di valutazione pronto da mostrare.
 
-    Mirata: "Correttezza: X%\\nCompletezza: Y%\\n\\n[commento]".
+    Mirata: "Correttezza: X%\nCompletezza: Y%\n\n[commento]".
     Vasta: solo il commento (valuta correttezza + aderenza alla scaletta ideale pregenerata).
     Le domande quiz non passano da qui: la valutazione è il pregenerated_material, già pronto in D1.
     """
@@ -503,11 +503,17 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
         raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
 
+    is_dont_know = answer_text.strip() == "[Non lo so]"
+
     # Mock deterministico gestito qui direttamente (stesso pattern di generate_recall_batch):
     # _generate_mock_response() non conosce RecallEvalMirataResult/RecallEvalVastaResult.
     if force_mock:
         if question.type == RecallQuestionType.MIRATA:
+            if is_dont_know:
+                return "Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota."
             return "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento."
+        if is_dont_know:
+            return "[MOCK] Spiegazione automatica per risposta non nota."
         return "[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale."
 
     client = LLMClient(force_mock=force_mock)
@@ -522,6 +528,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             unit_title=unit_title,
             unit_content=unit_content,
             answer_text=answer_text,
+            dont_know=is_dont_know,
         )
         result: "RecallEvalMirataResult" = client.call_structured(
             prompt=user_prompt,
@@ -531,6 +538,9 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             unit_id=question.unit_ids[0],
             lesson_dir=lesson_dir,
         )
+        if is_dont_know:
+            result.correttezza = 0
+            result.completezza = 0
         return f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}"
 
     elif question.type == RecallQuestionType.VASTA:
@@ -538,6 +548,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             question_text=question.question_text,
             scaletta_ideale=question.pregenerated_material or "",
             answer_text=answer_text,
+            dont_know=is_dont_know,
         )
         result_v: "RecallEvalVastaResult" = client.call_structured(
             prompt=user_prompt,
@@ -548,3 +559,19 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             lesson_dir=lesson_dir,
         )
         return result_v.commento
+
+
+def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = None) -> int:
+    """Rimuove dal recall bank le domande (e le relative risposte) del tipo specificato,
+    o tutte se qtype è None. Ritorna il numero di domande rimosse."""
+    bank = load_recall_bank(lesson_dir)
+    if qtype is None:
+        removed_ids = {q.id for q in bank.questions}
+        bank.questions = []
+    else:
+        removed_ids = {q.id for q in bank.questions if q.type == qtype}
+        bank.questions = [q for q in bank.questions if q.type != qtype]
+    bank.answers = [a for a in bank.answers if a.question_id not in removed_ids]
+    if removed_ids:
+        save_recall_bank(bank, lesson_dir)
+    return len(removed_ids)
