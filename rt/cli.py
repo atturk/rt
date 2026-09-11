@@ -254,6 +254,16 @@ def cmd_review_science(args):
 
 
 def cmd_recall(args):
+    if getattr(args, "reset", None) is not None:
+        from rt.pipeline.recall import purge_recall_by_type
+        from rt.core.models import RecallQuestionType
+        reset_val = args.reset
+        qtype = None if reset_val == "all" else RecallQuestionType(reset_val)
+        count = purge_recall_by_type(args.lesson_dir, qtype)
+        type_str = reset_val if reset_val != "all" else "tutti i tipi"
+        print(f"🗑 Rimossi {count} elementi di recall per {type_str} da '{args.lesson_dir}'.")
+        return
+
     from rt.core.idempotency import check_phase_status, PhaseStatus
 
     status, reason = check_phase_status(args.lesson_dir, "rewrite")
@@ -772,6 +782,11 @@ def main():
                            help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_recall.add_argument("--style", choices=["quiz", "mirata", "vasta"], default=None,
                            help="Tipo di domanda per questa sessione; se passato, aggiorna anche lo stile attivo globale (default: stile attivo corrente)")
+    p_recall.add_argument(
+        "--reset", nargs="?", const="all", choices=["all", "quiz", "mirata", "vasta"], default=None,
+        help="Resetta le domande/risposte di recall già effettuate: senza valore o 'all' azzera "
+             "tutto, 'quiz'/'mirata'/'vasta' azzera solo quel tipo."
+    )
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)
 
