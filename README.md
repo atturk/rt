@@ -30,6 +30,15 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 ### 1. Requisiti e Configurazione
 
+#### Installazione Automatica (Consigliata su macOS)
+
+```bash
+git clone <repo-url> && cd rt && ./install.sh
+```
+Lo script `install.sh` verifica i prerequisiti di sistema (Homebrew, Python 3.10+, `ffmpeg`), crea l'ambiente virtuale `.venv`, installa le dipendenze e inizializza i file di configurazione (`config/` e `.env`).
+
+#### Installazione Manuale (Alternativa / Non-macOS)
+
 Python 3.10+ con dipendenze installate:
 ```bash
 pip install -r requirements.txt
