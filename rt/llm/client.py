@@ -132,7 +132,8 @@ class LLMClient:
         timeout_backoff_seconds: Optional[float] = None,
         idle_read_timeout_seconds: Optional[float] = None,
         min_elapsed_seconds: Optional[float] = None,
-        lesson_dir: Optional[str] = None
+        lesson_dir: Optional[str] = None,
+        history: Optional[List[Dict[str, str]]] = None
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -260,11 +261,13 @@ class LLMClient:
             f"{json_schema_str}\n"
             f"Nessun commento prima o dopo il JSON."
         )
-        messages = [
-            {"role": "system", "content": full_system},
-            {"role": "user", "content": prompt}
-        ]
-        approx_in_tok = max(1, (len(full_system) + len(prompt)) // 4)
+        messages = [{"role": "system", "content": full_system}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
+
+        history_len = sum(len(m.get("content", "")) for m in history) if history else 0
+        approx_in_tok = max(1, (len(full_system) + len(prompt) + history_len) // 4)
         prev_session_cost = GLOBAL_TELEMETRY.get_summary().get("total_estimated_cost_usd", 0.0)
 
         # Retry config locale per timeout sulla stessa route

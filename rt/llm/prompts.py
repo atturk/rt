@@ -35,7 +35,14 @@ VINCOLI FONDAMENTALI:
    - "start_segment_id": ID del primo segmento (es. "seg_000001")
    - "end_segment_id": ID dell'ultimo segmento costituente (es. "seg_000015")
    I timestamp visibili nel documento finale verranno ricavati deterministicamente dal codice.
-4. Nessun segmento temporale deve andare all'indietro (monotonicità cronologica assoluta).
+4. Nessun segmento temporale deve andare all'indietro: per OGNI coppia di unità consecutive
+   nell'ordine in cui compaiono nell'outline (sia all'interno dello stesso macro-capitolo,
+   sia tra un macro-capitolo e il successivo), l'indice del start_segment_id dell'unità
+   successiva DEVE essere maggiore o uguale all'indice del end_segment_id dell'unità
+   precedente. Non sono ammesse sovrapposizioni né salti all'indietro. Prima di produrre
+   l'output finale, ripercorri mentalmente la sequenza di tutte le unità e verifica che
+   questo vincolo sia rispettato ovunque — è facile perdere il conto in lezioni lunghe con
+   molte unità.
 5. Il titolo generale della lezione deve essere accademico, formale ed esaustivo.
 6. LINEE GUIDA SUL RAGIONAMENTO: Mantieni il ragionamento interno sintetico ed essenziale. Individua i confini concettuali tra i temi principali senza disperdere token analizzando singolarmente ogni micro-segmento.
 
@@ -73,32 +80,21 @@ Genera l'oggetto JSON conforme allo schema Outline con:
 - "macro_sections": lista di macro sezioni con unità didattiche (ciascuna con start_segment_id e end_segment_id)."""
 
 
-OUTLINE_REVISION_SYSTEM_PROMPT = OUTLINE_SYSTEM_PROMPT + """
+def build_outline_revision_followup_prompt(feedback: str) -> str:
+    return f"""MODALITÀ REVISIONE: l'outline che hai generato nel tuo turno precedente è quella attuale per questa lezione. L'utente ha fornito il seguente feedback libero su di essa:
 
-MODALITÀ REVISIONE: ti viene fornita un'outline già generata e il feedback libero dell'utente su di essa.
-Produci una NUOVA outline COMPLETA che incorpori il feedback, mantenendo tutti i vincoli sopra
-(fedeltà rigorosa a segment_id realmente esistenti, copertura completa, monotonicità cronologica).
-Non limitarti a modifiche cosmetiche se il feedback richiede una ristrutturazione sostanziale."""
-
-
-def build_outline_revision_user_prompt(
-    date: str, subject: str, topics: Optional[str], segments_summary: str,
-    previous_outline_json: str, feedback: str
-) -> str:
-    topic_suffix = f" - {topics}" if topics else ""
-    return f"""Lezione: [{date}] {subject.upper()}{topic_suffix}
-
-Ecco il sommario dei segmenti ASR della lezione con i rispettivi ID temporali:
-{segments_summary}
-
-OUTLINE PRECEDENTE (da rivedere):
-{previous_outline_json}
-
-FEEDBACK DELL'UTENTE SULL'OUTLINE PRECEDENTE:
+FEEDBACK DELL'UTENTE:
 {feedback}
 
-Genera una NUOVA versione completa dell'oggetto JSON conforme allo schema Outline che incorpori il feedback,
-con "lesson_title" e "macro_sections" (ciascuna unità con start_segment_id e end_segment_id validi)."""
+Genera una NUOVA versione COMPLETA dell'oggetto JSON conforme allo schema Outline che incorpori il feedback, rispettando tutti i vincoli del messaggio di sistema (fedeltà rigorosa a segment_id realmente esistenti, copertura completa, monotonicità cronologica). Non limitarti a modifiche cosmetiche se il feedback richiede una ristrutturazione sostanziale."""
+
+
+def build_outline_selfrepair_followup_prompt(error_message: str) -> str:
+    return f"""L'outline che hai appena generato NON supera la validazione deterministica, per questo motivo:
+
+{error_message}
+
+Genera una NUOVA versione COMPLETA dell'oggetto JSON conforme allo schema Outline che corregga esattamente questo problema, rispettando tutti i vincoli del messaggio di sistema."""
 
 
 # ----------------------------------------------------------------------

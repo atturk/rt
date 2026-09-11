@@ -16,10 +16,10 @@ from rt.llm.client import LLMClient
 from rt.llm.prompts import (
     OUTLINE_SYSTEM_PROMPT,
     build_outline_user_prompt,
-    OUTLINE_REVISION_SYSTEM_PROMPT,
-    build_outline_revision_user_prompt,
+    build_outline_revision_followup_prompt,
+    build_outline_selfrepair_followup_prompt,
 )
-from rt.pipeline.validator import validate_outline
+from rt.pipeline.validator import validate_outline, ValidationError
 from rt.core.lesson_paths import lesson_path
 from rt.core.config import load_config
 
@@ -95,19 +95,87 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
         summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
     segments_summary = "\n".join(summary_lines)
     
+def _generate_validated_outline(
+    client: LLMClient,
+    system_prompt: str,
+    base_history: list,
+    final_user_prompt: str,
+    segments_data,
+    lesson_dir: str,
+    max_repair_attempts: int = 2,
+):
+    history = list(base_history)
+    current_prompt = final_user_prompt
+    last_error = None
+    for attempt in range(max_repair_attempts + 1):
+        outline = client.call_structured(
+            prompt=current_prompt,
+            system_prompt=system_prompt,
+            response_model=Outline,
+            job_name="outline",
+            lesson_dir=lesson_dir,
+            history=history or None,
+        )
+        try:
+            return outline, validate_outline(outline, segments_data)
+        except ValidationError as e:
+            last_error = e
+            if attempt >= max_repair_attempts:
+                raise
+            print(f"⚠️  Outline non valida (tentativo {attempt+1}/{max_repair_attempts+1}): {e}\n"
+                  f"   Richiedo correzione automatica all'LLM...")
+            outline_json = json.dumps(outline.model_dump(mode="json"), ensure_ascii=False, indent=2)
+            history = history + [
+                {"role": "user", "content": current_prompt},
+                {"role": "assistant", "content": outline_json},
+            ]
+            current_prompt = build_outline_selfrepair_followup_prompt(str(e))
+    raise last_error
+
+
+def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
+    """Genera e valida l'outline della lezione."""
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
+    info = read_info_yaml(yaml_path)
+    date_val = info.get("data", "0000-00-00")
+    subject_val = info.get("materia", "MATERIA")
+    topics_val = info.get("argomenti") or None
+    
+    segments_path = lesson_path(lesson_dir, "segments.json")
+    if not os.path.isfile(segments_path):
+        raise FileNotFoundError(f"segments.json mancante. Esegui prima 'rt prepare' su '{lesson_dir}'")
+        
+    segments_data = load_segments_json(segments_path)
+    
+    # Controllo idempotenza: se valido e non forzato, SKIP immediato senza invocare LLM
+    phase_status, reason = check_phase_status(lesson_dir, "outline")
+    if phase_status == PhaseStatus.VALID and not force:
+        cached_outline = load_outline(lesson_dir)
+        validation_report = validate_outline(cached_outline, segments_data)
+        return {
+            "status": "outline_validated",
+            "action": "SKIP",
+            "skipped": True,
+            "reason": reason,
+            "outline_path": get_outline_path(lesson_dir),
+            "validation_report": validation_report
+        }
+        
+    action = "FORCE" if force else "RUN"
+    
+    # Costruzione sommario segmenti per prompt
+    summary_lines = []
+    for s in segments_data.segments:
+        text_preview = " ".join(s.text_raw.split()[:18])
+        summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
+    segments_summary = "\n".join(summary_lines)
+    
     prompt = build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary)
     client = LLMClient(force_mock=force_mock)
     
-    outline = client.call_structured(
-        prompt=prompt,
-        system_prompt=OUTLINE_SYSTEM_PROMPT,
-        response_model=Outline,
-        job_name="outline",
-        lesson_dir=lesson_dir
+    outline, validation_report = _generate_validated_outline(
+        client, OUTLINE_SYSTEM_PROMPT, [], prompt, segments_data, lesson_dir
     )
-    
-    # Validazione deterministica
-    validation_report = validate_outline(outline, segments_data)
     
     # Salvataggio atomico
     save_outline(outline, lesson_dir)
@@ -169,19 +237,18 @@ def run_outline_revision(lesson_dir: str, feedback: str, force_mock: bool = Fals
     previous_outline = load_outline(lesson_dir)
     previous_outline_json = json.dumps(previous_outline.model_dump(mode="json"), ensure_ascii=False, indent=2)
 
-    prompt = build_outline_revision_user_prompt(
-        date_val, subject_val, topics_val, segments_summary, previous_outline_json, feedback
-    )
+    original_user_prompt = build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary)
     client = LLMClient(force_mock=force_mock)
-    outline = client.call_structured(
-        prompt=prompt,
-        system_prompt=OUTLINE_REVISION_SYSTEM_PROMPT,
-        response_model=Outline,
-        job_name="outline",  # riusa il routing/costo del job "outline" esistente; nessun job dedicato in questo MVP
-        lesson_dir=lesson_dir
+
+    history = [
+        {"role": "user", "content": original_user_prompt},
+        {"role": "assistant", "content": previous_outline_json},
+    ]
+    followup_prompt = build_outline_revision_followup_prompt(feedback)
+    outline, validation_report = _generate_validated_outline(
+        client, OUTLINE_SYSTEM_PROMPT, history, followup_prompt, segments_data, lesson_dir
     )
 
-    validation_report = validate_outline(outline, segments_data)
     save_outline(outline, lesson_dir)
 
     source_fp = compute_source_fingerprint(lesson_dir, "outline")
