@@ -121,14 +121,19 @@ def build_stile_keyboard(current_style: str) -> dict:
     return {"inline_keyboard": [row]}
 
 
-def build_post_answer_keyboard(short_id: str) -> dict:
-    """Tastiera post-risposta con 3 bottoni in riga unica:
+def build_post_answer_keyboard(short_id: str, has_transcript: bool = False) -> dict:
+    """Tastiera post-risposta con 3 o 4 bottoni in riga unica:
+    🗣 mostra/nasconde il trascritto vocale (se disponibile),
     ⏭️ avanza alla domanda successiva (rimuove tastiera, chiama send_current_recall_question),
     📖 mostra il testo completo dell'unità didattica (non rimuove tastiera),
     🔊 manda l'audio dell'unità come file musicale (non rimuove tastiera).
     Appare SOLO dopo un esito (risposta, non-lo-so, quiz), non prima della risposta."""
-    return {"inline_keyboard": [[
+    row = []
+    if has_transcript:
+        row.append({"text": "🗣", "callback_data": f"rtt:{short_id}"})
+    row.extend([
         {"text": "⏭️", "callback_data": f"rnx:{short_id}"},
         {"text": "📖", "callback_data": f"rut:{short_id}"},
         {"text": "🔊", "callback_data": f"rua:{short_id}"},
-    ]]}
+    ])
+    return {"inline_keyboard": [row]}

@@ -112,6 +112,17 @@ def register_with_key(key: str, lesson_dir: str, kind: str, state_dir: str,
 
 
 
+def update_pending(short_id: str, extra_updates: Dict[str, Any], state_dir: str) -> None:
+    _acquire_lock(state_dir)
+    try:
+        data = _load_registry(state_dir)
+        if short_id in data["entries"]:
+            data["entries"][short_id].update(extra_updates)
+            _save_registry(state_dir, data)
+    finally:
+        _release_lock(state_dir)
+
+
 def resolve_pending(short_id: str, state_dir: str) -> Optional[Dict[str, Any]]:
     data = _load_registry(state_dir)
     return data["entries"].get(short_id)

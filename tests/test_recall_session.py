@@ -1048,3 +1048,91 @@ class TestCmdRecallGuard:
         assert exc.value.code == 1
         captured = capsys.readouterr()
         assert "recall_quiz" in captured.err
+
+
+class TestTask10TelegramFloodingAndCleanup:
+    def test_rnx_deletes_extra_message_ids(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "extra_message_ids": [101, 102]},
+        )
+        update = _make_mock_callback_update(f"rnx:{short_id}")
+        context = _make_mock_context(state_dir)
+        context.bot.delete_message = AsyncMock()
+
+        with patch("rt.pipeline.recall_session.send_current_recall_question"):
+            asyncio.run(handle_callback(update, context))
+
+        assert context.bot.delete_message.call_count == 2
+        context.bot.delete_message.assert_any_call(chat_id=12345, message_id=101)
+        context.bot.delete_message.assert_any_call(chat_id=12345, message_id=102)
+
+    def test_text_answer_clears_question_reply_markup(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+        save_recall_session_state(lesson_dir, {
+            "order": "sequenziale", "unit_cursor": None,
+            "current_question_id": "recall_000002", "current_question_message_id": 555
+        })
+
+        from rt.telegram import session as tg_session
+        tg_session.start_session(state_dir, 12345, None, "recall", lesson_dir)
+
+        update = MagicMock()
+        update.effective_chat.id = 12345
+        update.effective_message.message_thread_id = None
+        update.message.text = "Mia risposta testuale."
+        update.message.reply_text = AsyncMock()
+        context = _make_mock_context(state_dir)
+        context.bot.edit_message_reply_markup = AsyncMock()
+
+        with patch("rt.pipeline.recall.evaluate_recall_answer", return_value="Valutazione ok."):
+            asyncio.run(handle_text(update, context))
+
+        context.bot.edit_message_reply_markup.assert_called_once_with(
+            chat_id=12345, message_id=555, reply_markup=None
+        )
+
+    def test_rtt_toggles_transcript_visibility(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={
+                "question_id": "recall_000002",
+                "transcript": "Risposta detta a voce",
+                "transcript_visible": False,
+                "evaluation_text": "Esito valutazione: 10/10",
+                "message_id": 888,
+            },
+        )
+        update = _make_mock_callback_update(f"rtt:{short_id}")
+        context = _make_mock_context(state_dir)
+        context.bot.edit_message_text = AsyncMock()
+
+        # Primi click: mostra trascritto
+        asyncio.run(handle_callback(update, context))
+        context.bot.edit_message_text.assert_called_once()
+        _, kwargs = context.bot.edit_message_text.call_args
+        assert "🗣 Trascritto: \"Risposta detta a voce\"" in kwargs["text"]
+        assert "Esito valutazione: 10/10" in kwargs["text"]
+
+        # Secondo click: nasconde trascritto
+        context.bot.edit_message_text.reset_mock()
+        asyncio.run(handle_callback(update, context))
+        context.bot.edit_message_text.assert_called_once()
+        _, kwargs2 = context.bot.edit_message_text.call_args
+        assert "🗣 Trascritto:" not in kwargs2["text"]
+        assert kwargs2["text"] == "Esito valutazione: 10/10"
+
