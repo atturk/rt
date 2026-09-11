@@ -4,17 +4,18 @@ I file numerati in questa cartella sono già il piano di implementazione complet
 essere eseguito: NON produrre un tuo piano di implementazione separato prima di iniziare.
 Leggi ogni file di task e implementa direttamente quanto descritto.
 
-**Stato**: 01-05 sono già stati implementati, revisionati e pushati in un round precedente —
-non rifarli, non toccare quel codice se non indicato esplicitamente da uno dei task 06-10.
-Il lavoro corrente da eseguire è **06 → 07 → 08 → 09 → 10**.
+**Stato**: 01-10 sono già stati implementati, revisionati (con alcuni fix di hardening
+applicati direttamente in revisione) e pushati in round precedenti — non rifarli, non toccare
+quel codice se non indicato esplicitamente da uno dei task 11-12. Il lavoro corrente da
+eseguire è **11 → 12**. Nota: il Task 12 rivede deliberatamente un comportamento introdotto dal
+Task 08 (cambia "cancellazione silenziosa" in "avviso + revisione manuale") — non è un
+conflitto, è un cambio di design intenzionale, leggi il Task 12 per il contesto.
 
 ## Ordine di esecuzione
 
-Esegui i task in ordine numerico sequenziale: **06 → 07 → 08 → 09 → 10**, nella stessa
-sessione/working tree, uno alla volta (06 e 07 sono completamente indipendenti dal resto; 08 e
-09 condividono `rt/pipeline/recall.py` su funzioni diverse — l'ordine numerico 08 prima di 09
-evita qualunque necessità di merge; 10 è indipendente ma tocca file Telegram, va comunque bene
-farlo per ultimo).
+Esegui i task in ordine numerico sequenziale: **11 → 12**, nella stessa sessione/working tree.
+Sono sostanzialmente indipendenti (piccola sovrapposizione su `rt/pipeline/recall_session.py`,
+funzioni diverse — l'ordine numerico evita qualunque necessità di merge).
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
@@ -37,5 +38,16 @@ generale, i singoli file di task qui sono già autosufficienti per l'implementaz
 
 Quando tutti i task sono completati (o se ti sei fermato bloccato su un task), segnalalo in
 chat con un riepilogo breve per task: file toccati, output dei test, e — importante — cosa
-non hai fatto o non sei sicuro sia corretto. I 5 commit separati e il diff completo verranno
+non hai fatto o non sei sicuro sia corretto. I commit separati e il diff completo verranno
 revisionati e poi pushati.
+
+## Nota su un bug di portabilità ricorrente nei giri precedenti
+
+Più task nei round precedenti hanno usato `Optional[...]`/`List[...]` (e simili da `typing`)
+come annotazione di tipo senza il corrispondente `from typing import ...` in cima al file.
+Funziona per puro caso in questo ambiente (Python 3.14 valuta le annotazioni in modo differito
+di default, PEP 649) ma darebbe `NameError` all'import su Python <3.14. Quando aggiungi o
+modifichi una firma di funzione con un'annotazione da `typing`, verifica sempre che sia
+importata esplicitamente in quel file — non dare per scontato che "i test passano" sia una
+prova sufficiente, dato che i test girano nello stesso ambiente Python 3.14 che maschera il
+problema.
