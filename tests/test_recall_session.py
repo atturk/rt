@@ -675,7 +675,7 @@ class TestRecallActionCallbacks:
 
 
 class TestPostAnswerCallbacks:
-    def test_rnx_removes_keyboard_and_advances(self, tmp_path):
+    def test_rnx_updates_keyboard_to_persistent_and_advances(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -693,7 +693,10 @@ class TestPostAnswerCallbacks:
             asyncio.run(handle_callback(update, context))
             assert mock_next.called
 
-        assert update.callback_query.edit_message_reply_markup.called
+        from rt.telegram.formatting import build_persistent_recall_keyboard
+        update.callback_query.edit_message_reply_markup.assert_called_once_with(
+            reply_markup=build_persistent_recall_keyboard(short_id)
+        )
 
     def test_rut_sends_unit_text_and_keeps_keyboard(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
@@ -1051,7 +1054,7 @@ class TestCmdRecallGuard:
 
 
 class TestTask10TelegramFloodingAndCleanup:
-    def test_rnx_deletes_extra_message_ids(self, tmp_path):
+    def test_rnx_leaves_extra_messages_and_sets_persistent_keyboard(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -1060,7 +1063,7 @@ class TestTask10TelegramFloodingAndCleanup:
 
         short_id = registry.register_pending(
             lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
-            extra={"question_id": "recall_000002", "extra_message_ids": [101, 102]},
+            extra={"question_id": "recall_000002", "unit_text_message_id": 101, "audio_message_ids": [102]},
         )
         update = _make_mock_callback_update(f"rnx:{short_id}")
         context = _make_mock_context(state_dir)
@@ -1069,9 +1072,11 @@ class TestTask10TelegramFloodingAndCleanup:
         with patch("rt.pipeline.recall_session.send_current_recall_question"):
             asyncio.run(handle_callback(update, context))
 
-        assert context.bot.delete_message.call_count == 2
-        context.bot.delete_message.assert_any_call(chat_id=12345, message_id=101)
-        context.bot.delete_message.assert_any_call(chat_id=12345, message_id=102)
+        assert not context.bot.delete_message.called
+        from rt.telegram.formatting import build_persistent_recall_keyboard
+        update.callback_query.edit_message_reply_markup.assert_called_once_with(
+            reply_markup=build_persistent_recall_keyboard(short_id)
+        )
 
     def test_text_answer_clears_question_reply_markup(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
@@ -1135,4 +1140,99 @@ class TestTask10TelegramFloodingAndCleanup:
         _, kwargs2 = context.bot.edit_message_text.call_args
         assert "🗣 Trascritto:" not in kwargs2["text"]
         assert kwargs2["text"] == "Esito valutazione: 10/10"
+
+
+class TestTask11PersistentUnitAudioButtons:
+    def test_rut_toggle_send_delete_resend(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "unit_text_message_id": None, "audio_message_ids": []},
+        )
+        update = _make_mock_callback_update(f"rut:{short_id}")
+        context = _make_mock_context(state_dir)
+        context.bot.send_message = AsyncMock(return_value={"message_id": 501})
+        context.bot.delete_message = AsyncMock()
+
+        # 1st click: sends unit text message
+        asyncio.run(handle_callback(update, context))
+        assert context.bot.send_message.called
+        entry = registry.resolve_pending(short_id, state_dir)
+        assert entry.get("unit_text_message_id") == 501
+
+        # 2nd click: deletes unit text message
+        context.bot.send_message.reset_mock()
+        asyncio.run(handle_callback(update, context))
+        assert not context.bot.send_message.called
+        context.bot.delete_message.assert_called_once_with(chat_id=12345, message_id=501)
+        entry = registry.resolve_pending(short_id, state_dir)
+        assert entry.get("unit_text_message_id") is None
+
+        # 3rd click: resends unit text message
+        context.bot.send_message.return_value = {"message_id": 502}
+        asyncio.run(handle_callback(update, context))
+        assert context.bot.send_message.called
+        entry = registry.resolve_pending(short_id, state_dir)
+        assert entry.get("unit_text_message_id") == 502
+
+    def test_rua_toggle_send_delete_list(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "unit_text_message_id": None, "audio_message_ids": []},
+        )
+        update = _make_mock_callback_update(f"rua:{short_id}")
+        context = _make_mock_context(state_dir)
+        context.bot.delete_message = AsyncMock()
+
+        with patch("rt.pipeline.recall_session.send_unit_audio", return_value=[201, 202]):
+            # 1st click: sends audio messages
+            asyncio.run(handle_callback(update, context))
+            entry = registry.resolve_pending(short_id, state_dir)
+            assert entry.get("audio_message_ids") == [201, 202]
+
+            # 2nd click: deletes audio messages
+            asyncio.run(handle_callback(update, context))
+            assert context.bot.delete_message.call_count == 2
+            context.bot.delete_message.assert_any_call(chat_id=12345, message_id=201)
+            context.bot.delete_message.assert_any_call(chat_id=12345, message_id=202)
+            entry = registry.resolve_pending(short_id, state_dir)
+            assert entry.get("audio_message_ids") == []
+
+    def test_handle_quit_updates_post_answer_reply_markup(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        save_recall_session_state(lesson_dir, {
+            "order": "sequenziale", "unit_cursor": None,
+            "current_question_id": "recall_000002", "current_question_message_id": 555,
+            "current_post_answer_short_id": "pa123", "current_post_answer_message_id": 999,
+        })
+
+        from rt.telegram import session as tg_session, daemon as tg_daemon
+        tg_session.start_session(state_dir, 12345, None, "recall", lesson_dir)
+        tg_session.update_session_message(state_dir, 12345, None, 555)
+
+        update = MagicMock()
+        update.effective_chat.id = 12345
+        update.effective_message.message_thread_id = None
+        update.effective_message.reply_text = AsyncMock()
+        context = _make_mock_context(state_dir)
+        context.bot.edit_message_reply_markup = AsyncMock()
+
+        asyncio.run(tg_daemon.handle_quit(update, context))
+
+        from rt.telegram.formatting import build_persistent_recall_keyboard
+        context.bot.edit_message_reply_markup.assert_any_call(chat_id=12345, message_id=555, reply_markup=None)
+        context.bot.edit_message_reply_markup.assert_any_call(chat_id=12345, message_id=999, reply_markup=build_persistent_recall_keyboard("pa123"))
 

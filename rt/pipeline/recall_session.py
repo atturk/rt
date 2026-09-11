@@ -107,6 +107,10 @@ def load_recall_session_state(lesson_dir: str) -> dict:
         }
         if "current_question_message_id" in data:
             res["current_question_message_id"] = data["current_question_message_id"]
+        if "current_post_answer_short_id" in data:
+            res["current_post_answer_short_id"] = data["current_post_answer_short_id"]
+        if "current_post_answer_message_id" in data:
+            res["current_post_answer_message_id"] = data["current_post_answer_message_id"]
         return res
     except Exception:
         return {"order": "alternato", "unit_cursor": None, "current_question_id": None, "force_mock": False}
