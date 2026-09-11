@@ -19,3 +19,11 @@ credentials:
   - name: "openrouter"
     provider: "openrouter"
     env_var: "OPENROUTER_API_KEY"
+
+telegram:
+  default_channel: "terminal"
+  lessons_root: "/percorso/assoluto/cartella/che/contiene/tutte/le/lezioni"
+  topics:
+    BIOCHIMICA: 123
+    FARMACOLOGIA: 456
+  misc_topic_id: 789

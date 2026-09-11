@@ -22,6 +22,10 @@ cp -r config.example config
 | `retry.idle_read_timeout_seconds` | Timeout di inattività applicativa: tempo massimo senza contenuto/reasoning reale prima di considerare la risposta bloccata. |
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
+| `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`). |
+| `telegram.lessons_root` | Cartella radice assoluta contenente tutte le cartelle delle lezioni per l'enumerazione via bot Telegram. |
+| `telegram.topics` | Mappa da materia in maiuscolo (es. `BIOCHIMICA`) a `message_thread_id` del topic Telegram dedicato nel gruppo. |
+| `telegram.misc_topic_id` | `message_thread_id` del topic "Varie/Generale" per materie non presenti in `topics`. |
 
 ### Dichiarazione delle Credenziali (`credentials:`)
 

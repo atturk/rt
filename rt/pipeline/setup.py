@@ -153,6 +153,32 @@ def parse_flexible_date(raw_input: str) -> str:
     raise ValueError(f"Formato data non riconosciuto: '{raw_input}'")
 
 
+def _prompt_materia_select(default_guess: str = "") -> str:
+    """Propone le materie già mappate in config (telegram.topics) come selezione,
+    con una voce 'Altro' per materia libera. Degrada a prompt testuale libero se la
+    config non è disponibile, topics è vuoto, questionary fallisce, o non siamo in un TTY."""
+    try:
+        from rt.core.config import load_config
+        topic_keys = sorted(load_config().telegram.topics.keys())
+    except Exception:
+        topic_keys = []
+
+    ALTRO = "➕ Altro (nuova materia)"
+    if topic_keys:
+        try:
+            import questionary
+            default_choice = default_guess.upper() if default_guess.upper() in topic_keys else None
+            selection = questionary.select("Materia:", choices=topic_keys + [ALTRO], default=default_choice).ask()
+            if selection is None:
+                print(f"\nOperazione annullata dall'utente.")
+                sys.exit(0)
+            if selection != ALTRO:
+                return selection
+        except Exception:
+            pass
+    return prompt_clean("Materia (es. BIOINFORMATICA, BIOCHIMICA)", default=default_guess)
+
+
 def guess_subject_from_filename(filename: str) -> str:
     """Tenta di dedurre la materia dal nome del file audio se non è generico."""
     base = os.path.splitext(filename)[0]
@@ -338,16 +364,13 @@ def run_setup(
     materia_val = materia.strip() if materia else ""
     while not materia_val:
         if interactive and sys.stdin.isatty():
-            materia_val = prompt_clean("Materia (es. BIOINFORMATICA, BIOCHIMICA)", default=guess_subject)
+            materia_val = _prompt_materia_select(default_guess=guess_subject)
         else:
             materia_val = guess_subject if guess_subject else "LEZIONE"
     materia_val = sanitize_filename_part(materia_val.upper())
 
     # Argomenti (opzionale: se lasciato vuoto, nessun argomento viene registrato né mostrato all'LLM)
-    argomenti_val = argomenti.strip() if argomenti else ""
-    if not argomenti_val and interactive and sys.stdin.isatty():
-        argomenti_val = prompt_clean("Argomenti trattati (opzionale, invio per lasciare vuoto, es. 'Sinapsi e neurotrasmettitori')")
-    argomenti_val = sanitize_filename_part(argomenti_val) if argomenti_val else ""
+    argomenti_val = sanitize_filename_part(argomenti.strip()) if argomenti and argomenti.strip() else ""
 
     # 3. Risoluzione cartella di destinazione
     if dest_dir:
