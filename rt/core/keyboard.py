@@ -61,6 +61,10 @@ def _parse_tty_key(fd: int) -> str:
                             return "LEFT"
                         elif ch3 == "C":
                             return "RIGHT"
+                        elif ch3 == "A":
+                            return "UP"
+                        elif ch3 == "B":
+                            return "DOWN"
                         return UNKNOWN_KEY
                     return UNKNOWN_KEY
                 return UNKNOWN_KEY
@@ -77,6 +81,10 @@ def _fallback_input_key() -> str:
             return "LEFT"
         if val == "\x1b[C":
             return "RIGHT"
+        if val == "\x1b[A":
+            return "UP"
+        if val == "\x1b[B":
+            return "DOWN"
         if val.startswith("\x1b"):
             return UNKNOWN_KEY
         return val
