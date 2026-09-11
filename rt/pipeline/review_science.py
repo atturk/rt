@@ -10,7 +10,7 @@ Salva science_issues.json.
 
 import os
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from rt.core.models import ScienceIssue, ScienceType
 from rt.core.segments import load_segments_json
 from rt.core.state import transition_to, WorkflowState

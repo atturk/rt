@@ -9,6 +9,7 @@ import json
 import time
 import asyncio
 from datetime import datetime
+from typing import Optional
 
 from telegram import Update
 from telegram.error import RetryAfter

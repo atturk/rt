@@ -1,16 +1,20 @@
 # Task per Antigravity — consolidamento ingest/outline/review/recall
 
-I file numerati in questa cartella (01-05) sono già il piano di implementazione completo,
-pronto per essere eseguito: NON produrre un tuo piano di implementazione separato prima di
-iniziare. Leggi ogni file di task e implementa direttamente quanto descritto.
+I file numerati in questa cartella sono già il piano di implementazione completo, pronto per
+essere eseguito: NON produrre un tuo piano di implementazione separato prima di iniziare.
+Leggi ogni file di task e implementa direttamente quanto descritto.
+
+**Stato**: 01-05 sono già stati implementati, revisionati e pushati in un round precedente —
+non rifarli, non toccare quel codice se non indicato esplicitamente da uno dei task 06-10.
+Il lavoro corrente da eseguire è **06 → 07 → 08 → 09 → 10**.
 
 ## Ordine di esecuzione
 
-Esegui i task in ordine numerico sequenziale: **01 → 02 → 03 → 04 → 05**, nella stessa
-sessione/working tree, uno alla volta. (01-04 sono indipendenti tra loro nel contenuto —
-nessuno presuppone che un altro sia già stato fatto — ma vanno comunque eseguiti in sequenza,
-non in parallelo su branch separati, per evitare qualunque necessità di merge. 05 dipende
-davvero da 02 e 03: non iniziarlo prima che entrambi siano completati e testati.)
+Esegui i task in ordine numerico sequenziale: **06 → 07 → 08 → 09 → 10**, nella stessa
+sessione/working tree, uno alla volta (06 e 07 sono completamente indipendenti dal resto; 08 e
+09 condividono `rt/pipeline/recall.py` su funzioni diverse — l'ordine numerico 08 prima di 09
+evita qualunque necessità di merge; 10 è indipendente ma tocca file Telegram, va comunque bene
+farlo per ultimo).
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 

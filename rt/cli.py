@@ -617,9 +617,10 @@ def cmd_run(args):
     _print_phase_action("build", bld_res, step=build_step_num, total_steps=total_steps, description="Finalizzazione deterministica Markdown", details=bld_details)
     print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
 
-    from rt.telegram.notify import notify_build_completed
-    final_dir = bld_res.get("lesson_dir") or lesson_dir
-    notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
+    if not mock_mode:
+        from rt.telegram.notify import notify_build_completed
+        final_dir = bld_res.get("lesson_dir") or lesson_dir
+        notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
 
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     summary = GLOBAL_TELEMETRY.get_summary()
