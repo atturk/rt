@@ -12,6 +12,20 @@ ORIGINAL_BUILD_DEFAULT_JOBS = rt.core.config._build_default_jobs
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _disable_real_telegram_notifications():
+    """Impedisce che i test raggiungano il vero bot Telegram. rt/llm/credentials.py chiama
+    load_env_file() senza percorso esplicito ovunque risolva una credenziale, caricando così
+    il vero '.env' di sviluppo (incluse le credenziali Telegram reali) nell'ambiente del
+    processo pytest — dopodiché qualunque test che esegua una pipeline anche solo in --mock
+    (notify_build_completed/notify_issues_ready non controllano force_mock) manda messaggi
+    reali nel gruppo Telegram reale. Un placeholder non-vuoto, non un unset: load_env_file
+    usa load_dotenv(override=False), che riempie solo le variabili ASSENTI — un unset
+    verrebbe quindi ripopolato dal vero '.env' alla primissima chiamata successiva."""
+    os.environ["RT_TELEGRAM_BOT_TOKEN"] = "test-disabled-token"
+    os.environ["RT_TELEGRAM_CHAT_ID"] = "0"
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _register_standard_test_credentials():
     """Molti test esistenti costruiscono route con credential='openrouter'/'deepseek'/
     'google_1'/'google_2' assumendo che siano risolvibili, comportamento che prima di

@@ -9,7 +9,7 @@ import os
 import json
 import sys
 import shutil
-from typing import Optional
+from typing import Optional, List
 
 from rt.core.models import RecallQuestionType
 from rt.core.lesson_paths import lesson_path
