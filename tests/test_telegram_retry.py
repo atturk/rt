@@ -6,7 +6,7 @@ from telegram.error import RetryAfter
 from rt.telegram.client import send_message, edit_message_reply_markup, delete_message, TelegramAPIError
 from rt.telegram.config import TelegramConfig
 from rt.telegram.daemon import _send_with_retry, _handle_issue_callback, handle_text, handle_status
-from rt.telegram import registry, conversation_state as convo, pending as tg_pending
+from rt.telegram import registry, conversation_state as convo
 
 
 def test_client_send_message_retries_on_429_and_succeeds():

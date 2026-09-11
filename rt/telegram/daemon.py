@@ -17,7 +17,7 @@ from telegram.ext import Application, CallbackQueryHandler, MessageHandler, Comm
 
 from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
-from rt.telegram import registry, pending as tg_pending, conversation_state as convo, session as tg_session
+from rt.telegram import registry, conversation_state as convo, session as tg_session
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
 RECALL_ACTION_ACTIONS = {"rns", "rsk"}
@@ -93,16 +93,6 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if kind == "issue_review":
         await _send_with_retry(lambda: update.effective_message.reply_text(
             "⏹ Revisione interrotta. I progressi finora sono stati salvati.",
-            message_thread_id=thread_id,
-        ))
-    elif kind == "outline_confirmation":
-        if lesson_dir and os.path.exists(lesson_dir):
-            try:
-                tg_pending.mark_responded(lesson_dir, status="cancelled", responded_via="telegram")
-            except Exception:
-                pass
-        await _send_with_retry(lambda: update.effective_message.reply_text(
-            "⏹ Conferma outline annullata.",
             message_thread_id=thread_id,
         ))
     else:
@@ -215,9 +205,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.answer()
         return
     prefix, short_id = data.split(":", 1)
-    if prefix in ("rtappr", "rtedit"):
-        await _handle_outline_callback(update, context, prefix, short_id)
-    elif prefix in ISSUE_ACTIONS:
+    if prefix in ISSUE_ACTIONS:
         await _handle_issue_callback(update, context, prefix, short_id)
     elif prefix == "ivr":
         await _handle_start_review_callback(update, context, short_id)
@@ -454,41 +442,6 @@ async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await _send_post_answer_result(context, tg_cfg.chat_id, thread_id, lesson_dir, question_id, esito_msg, state_dir)
 
 
-async def _handle_outline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, prefix: str, short_id: str) -> None:
-    query = update.callback_query
-    state_dir = context.bot_data["state_dir"]
-    action = prefix[2:]
-
-    entry = registry.resolve_pending(short_id, state_dir)
-    if entry is None:
-        await query.answer("Richiesta scaduta o non valida.", show_alert=True)
-        return
-    lesson_dir = entry["lesson_dir"]
-
-    state = tg_pending.load_pending(lesson_dir)
-    if state is None or state.short_id != short_id or state.status != "pending":
-        await query.answer("Questa richiesta non è più valida (outline già aggiornata).", show_alert=True)
-        return
-
-    if action == "appr":
-        tg_pending.mark_responded(lesson_dir, status="approved", responded_via="telegram")
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-        await query.answer("Outline approvata ✅")
-    elif action == "edit":
-        convo.set_awaiting_feedback(state_dir, chat_id=update.effective_chat.id, short_id=short_id, lesson_dir=lesson_dir)
-        try:
-            await query.answer()
-        except Exception:
-            pass
-        await _send_with_retry(lambda: context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Scrivi il tuo feedback in un messaggio di testo per rigenerare l'outline.",
-            message_thread_id=update.effective_message.message_thread_id,
-        ))
-
 
 async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
     state_dir = context.bot_data["state_dir"]
@@ -719,8 +672,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await _handle_recall_text_answer(update, context, active["lesson_dir"])
         return
 
-    kind = awaiting.get("kind", "outline_feedback")
-    lesson_dir = awaiting["lesson_dir"]
+    kind = awaiting.get("kind")
+    lesson_dir = awaiting.get("lesson_dir")
 
     if kind == "issue_edit":
         issue_id = awaiting["extra"]["issue_id"]
@@ -738,23 +691,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await loop.run_in_executor(None, send_current_issue, lesson_dir)
         return
 
-    # kind == "outline_feedback": feedback per rigenerazione outline
-    short_id = awaiting["short_id"]
-    state = tg_pending.load_pending(lesson_dir)
-    if state is None or state.short_id != short_id or state.status != "pending":
-        await _send_with_retry(lambda: update.message.reply_text(
-            "Questa richiesta non è più valida.",
-            message_thread_id=update.effective_message.message_thread_id,
-        ))
-        convo.clear_awaiting_feedback(state_dir, chat_id)
-        return
-
-    tg_pending.mark_responded(lesson_dir, status="changes_requested", feedback_text=update.message.text, responded_via="telegram")
     convo.clear_awaiting_feedback(state_dir, chat_id)
-    await _send_with_retry(lambda: update.message.reply_text(
-        "Feedback ricevuto, l'outline verrà rigenerata a breve.",
-        message_thread_id=update.effective_message.message_thread_id,
-    ))
 
 
 def run_daemon(state_dir: str = None) -> None:

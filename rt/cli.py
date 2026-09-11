@@ -24,7 +24,7 @@ import os
 import argparse
 import json
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from rt.core.config import load_env_file, _default_project_root
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
@@ -160,11 +160,7 @@ def cmd_outline(args):
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
 
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
-    confirm_or_revise_outline(args.lesson_dir, channel=channel, force=force, force_mock=args.mock)
+    confirm_or_revise_outline(args.lesson_dir, force=force, force_mock=args.mock)
 
 
 def cmd_validate_outline(args):
@@ -295,6 +291,19 @@ def cmd_recall(args):
 
 
 
+
+
+def _normalize_with_review(value) -> Tuple[bool, bool]:
+    """Ritorna (run_asr, run_sci). True/'all' -> entrambi; 'asr'/'science' -> solo quello;
+    None/False -> nessuno. Il ramo True/truthy copre i chiamanti che costruiscono un Namespace
+    manualmente con with_review=True (o MagicMock), per compatibilità coi test."""
+    if not value:
+        return False, False
+    if value == "asr":
+        return True, False
+    if value == "science":
+        return False, True
+    return True, True
 
 
 def normalize_review_cli_args(argv: List[str]) -> List[str]:
@@ -486,12 +495,18 @@ def cmd_run(args):
     first_input = raw_inputs[0] if raw_inputs else ""
     force = getattr(args, "force", False)
     mock_mode = getattr(args, "mock", False)
-    with_review = getattr(args, "with_review", False)
+    run_asr, run_sci = _normalize_with_review(getattr(args, "with_review", None))
 
     if not mock_mode:
-        _ensure_config_ready(["outline", "rewrite", "review_asr", "review_science"])
+        required = ["outline", "rewrite"]
+        if run_asr:
+            required.append("review_asr")
+        if run_sci:
+            required.append("review_science")
+        _ensure_config_ready(required)
 
     is_audio_input = any(is_audio_file(x) for x in raw_inputs)
+    total_steps = (6 if is_audio_input else 4) + int(run_asr) + int(run_sci)
 
     if is_audio_input:
         print("\n" + "=" * 60)
@@ -500,7 +515,6 @@ def cmd_run(args):
         print(f"File audio in ingresso: {', '.join(os.path.basename(x) for x in raw_inputs)}")
 
         step_offset = 2
-        total_steps = 8 if with_review else 6
 
         print(f"\n[1/{total_steps}] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...")
         try:
@@ -539,7 +553,6 @@ def cmd_run(args):
         print("=" * 60)
 
         step_offset = 0
-        total_steps = 6 if with_review else 4
 
     prep_res = run_prepare(lesson_dir, force=force)
     prep_details = f"Segmenti già validi ({prep_res['segment_count']} segmenti, {prep_res['duration_seconds']:.1f}s)" if prep_res.get("skipped") else f"Segmenti estratti: {prep_res['segment_count']} ({prep_res['duration_seconds']:.1f}s)"
@@ -549,41 +562,43 @@ def cmd_run(args):
     out_details = f"Outline già valida ({out_res['validation_report']['units_count']} unità didattiche, 0 chiamate LLM)" if out_res.get("skipped") else f"Outline validata: {out_res['validation_report']['units_count']} unità didattiche ({out_res['validation_report']['coverage_percentage']}% copertura)"
     _print_phase_action("outline", out_res, step=step_offset + 2, total_steps=total_steps, description="Scaletta gerarchica didattica", details=out_details)
 
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
-    confirm_or_revise_outline(lesson_dir, channel=channel, force=force, force_mock=mock_mode)
+    confirm_or_revise_outline(lesson_dir, force=force, force_mock=mock_mode)
 
     rew_res = run_rewrite(lesson_dir, force=force, force_mock=mock_mode)
     rew_details = f"Draft già valido ({rew_res['total_units']} unità verificate, 0 chiamate LLM)" if rew_res.get("skipped") else f"Rielaborate {rew_res['processed_units']}/{rew_res['total_units']} unità. Provenance verificata."
     _print_phase_action("rewrite", rew_res, step=step_offset + 3, total_steps=total_steps, description="Rielaborazione fluida a finestre con provenance", details=rew_details)
 
-    if with_review:
+    next_step = step_offset + 4
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+
+    if run_asr:
         asr_res = run_review_asr(lesson_dir, force=force, force_mock=mock_mode)
         asr_details = f"Review ASR già completata ({asr_res['total_issues']} issue note, 0 chiamate LLM)" if asr_res.get("skipped") else f"Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})"
-        _print_phase_action("review-asr", asr_res, step=step_offset + 4, total_steps=total_steps, description="Ambiguità fonetiche e Confidence Gating", details=asr_details)
+        _print_phase_action("review-asr", asr_res, step=next_step, total_steps=total_steps, description="Ambiguità fonetiche e Confidence Gating", details=asr_details)
 
         auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
-        asr_ok = run_interactive_review(lesson_dir, "asr", channel=channel, auto_accept=auto_accept_val)
-        if not asr_ok:
+        if not run_interactive_review(lesson_dir, "asr", channel=channel, auto_accept=auto_accept_val):
             print(f"\n⏸  In attesa che la revisione ASR venga completata (Telegram, oppure esegui 'rt review-asr \"{lesson_dir}\"' da terminale). "
                   f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
             return
+        next_step += 1
 
+    if run_sci:
         sci_res = run_review_science(lesson_dir, force=force, force_mock=mock_mode)
         sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})"
-        _print_phase_action("review-science", sci_res, step=step_offset + 5, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)
+        _print_phase_action("review-science", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)
 
-        sci_ok = run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val)
-        if not sci_ok:
+        auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
+        if not run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val):
             print(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review-science \"{lesson_dir}\"' da terminale). "
                   f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
             return
+        next_step += 1
 
-        build_step_num = step_offset + 6
-    else:
-        build_step_num = step_offset + 4
+    build_step_num = next_step
 
     bld_res = run_build(lesson_dir, force=force, rename_folder=args.rename)
     bld_details = "Documenti finali già generati e aggiornati." if bld_res.get("skipped") else (
@@ -658,13 +673,19 @@ def main():
     p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
     p_run.add_argument("--force", action="store_true", help="Forza l'intera pipeline ignorando i risultati precedenti")
     p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
-    p_run.add_argument("--with-review", action="store_true", dest="with_review",
-                        help="Include anche generazione issue ASR/scientifiche e revisione umana nella run (comportamento monolitico precedente). Di default sono passi separati (rt review-asr / rt review-science).")
+    p_run.add_argument(
+        "--with-review", nargs="?", const="all", choices=["all", "asr", "science"], default=None,
+        dest="with_review",
+        help="Include anche la review nella run: senza valore o 'all' = ASR+scientifica, "
+             "'asr' = solo ASR, 'science' = solo scientifica. Default: nessuna (passi separati). "
+             "Nota: se usato senza valore esplicito, va messo DOPO l'input posizionale "
+             "(es. 'rt run cartella --with-review', non 'rt run --with-review cartella')."
+    )
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
                         help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
     p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
-                        help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
+                        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_run.set_defaults(func=cmd_run)
 
     # setup
@@ -684,8 +705,6 @@ def main():
     p_out.add_argument("lesson_dir", help="Directory della lezione")
     p_out.add_argument("--force", action="store_true", help="Forza la rigenerazione dell'outline")
     p_out.add_argument("--mock", action="store_true", help="Usa mock deterministico")
-    p_out.add_argument("--channel", choices=["terminal", "telegram"], default=None,
-                        help="Canale di conferma outline per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_out.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_out.set_defaults(func=cmd_outline)
 

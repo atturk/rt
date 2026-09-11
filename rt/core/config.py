@@ -217,7 +217,6 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
 
 class TelegramRuntimeConfig(BaseModel):
     default_channel: str = Field(default="terminal", description="'terminal' | 'telegram', usato quando --channel non è passato a 'rt run'")
-    poll_interval_seconds: float = Field(default=3.0, description="Intervallo di polling locale di telegram_pending.json")
     wait_timeout_seconds: int = Field(default=0, description="0 = nessun timeout, attende indefinitamente (Ctrl+C per uscire)")
     state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram, relativa alla cwd da cui gira 'rt'")
     topics: Dict[str, int] = Field(

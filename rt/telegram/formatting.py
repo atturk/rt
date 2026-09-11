@@ -29,15 +29,6 @@ def render_outline_summary_text(outline: Outline) -> str:
     return text
 
 
-def build_outline_decision_keyboard(short_id: str) -> dict:
-    return {
-        "inline_keyboard": [[
-            {"text": "✅ Approva", "callback_data": f"rtappr:{short_id}"},
-            {"text": "✏️ Richiedi modifiche", "callback_data": f"rtedit:{short_id}"},
-        ]]
-    }
-
-
 def render_asr_issue_text(issue, unit_info: Optional[str], timecode: str, listen_range: str, sentence: str) -> str:
     lines = [f"🎙 <b>Ambiguità ASR ({escape_html(issue.level.value)})</b>"]
     if unit_info:
