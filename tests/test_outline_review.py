@@ -85,8 +85,8 @@ def test_render_outline_summary_text_formatting():
     long_title = "Titolo Lezione Molto Lungo " * 50
     macro = OutlineMacro(
         id="1",
-        title="Macro 1 " * 100,
-        units=[OutlineUnit(id="1.1", title="Unit 1.1 " * 100, start_segment_id="s1", end_segment_id="s2", key_concepts=["c1", "c2"])]
+        title="Macro 1 " * 200,
+        units=[OutlineUnit(id="1.1", title="Unit 1.1 " * 200, start_segment_id="s1", end_segment_id="s2", key_concepts=["c1", "c2"])]
     )
     outline = Outline(lesson_title=long_title, macro_sections=[macro])
 
@@ -131,7 +131,9 @@ def test_build_outline_tree_diff():
             OutlineMacro(
                 id="2",
                 title="Nuova Macro 2 Aggiunta",
-                units=[]
+                units=[
+                    OutlineUnit(id="2.1", title="Unità 2.1", start_segment_id="s7", end_segment_id="s8", key_concepts=[])
+                ]
             )
         ]
     )

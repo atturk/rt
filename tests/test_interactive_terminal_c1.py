@@ -45,12 +45,12 @@ def test_read_single_key_fallback_when_not_atty(monkeypatch):
     with patch("builtins.input", return_value="\x1b[C"):
         res = read_single_key()
         assert res == "RIGHT"
-    with patch("builtins.input", return_value="\x1b"):
+    with patch("builtins.input", return_value="\x1b[Z"):
         res = read_single_key()
         assert res == UNKNOWN_KEY
     with patch("builtins.input", return_value="\x1b[A"):
         res = read_single_key()
-        assert res == UNKNOWN_KEY
+        assert res == "UP"
 
 
 def test_raw_mode_tty(monkeypatch):
@@ -169,7 +169,7 @@ def test_read_single_key_raw_tty_arrows_and_esc(monkeypatch):
     # 5. ESC + [ + non-arrow -> UNKNOWN_KEY
     with patch.dict("sys.modules", {"termios": mock_termios, "tty": mock_tty}), \
          patch("select.select", return_value=([mock_fd], [], [])), \
-         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"[", b"A"]):
+         patch("rt.core.keyboard.os.read", side_effect=[b"\x1b", b"[", b"Z"]):
         res = read_single_key()
         assert res == UNKNOWN_KEY
 

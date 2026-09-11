@@ -153,7 +153,27 @@ def disambiguate_science_issue(iss: Any, source_text: str) -> Any:
         if new_question:
             iss.diplomatic_question = new_question
 
-    return iss
+def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
+    """Stima il segment_id più vicino al punto in cui 'claim' compare nel testo rielaborato
+    dell'unità, mappando proporzionalmente la posizione del carattere sulla durata cumulativa
+    dei segmenti sorgente. Approssimazione: non esiste provenance a grana fine tra singole
+    frasi rielaborate e segmenti sorgente. Ritorna None se la claim non è rintracciabile
+    (nessuna corrispondenza testuale) o se l'unità non ha segmenti sorgente risolvibili."""
+    offset = unit.content.find(claim.strip())
+    if offset < 0:
+        return None
+    segs = [seg_by_id[sid] for sid in unit.source_segment_ids if sid in seg_by_id]
+    if not segs:
+        return None
+    ratio = offset / max(1, len(unit.content))
+    total_duration = sum(max(0.01, s.end_seconds - s.start_seconds) for s in segs)
+    target = ratio * total_duration
+    cumulative = 0.0
+    for s in segs:
+        cumulative += max(0.01, s.end_seconds - s.start_seconds)
+        if cumulative >= target:
+            return s.id
+    return segs[-1].id
 
 
 def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
@@ -240,11 +260,6 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
         if not force and unit.unit_id in reviewed_set:
             continue
 
-        # Trascrizione sorgente corrispondente: NON va al prompt dell'LLM (vedi
-        # SCIENCE_REVIEW_SYSTEM_PROMPT — il critic valuta solo il draft, mai la
-        # trascrizione grezza, per non confondersi con artefatti ASR). Resta usata
-        # solo qui sotto, a livello di codice, da disambiguate_science_issue() per il
-        # controllo di grounding deterministico (non-LLM) di ERR_DOCENTE/RECONSTRUCTION.
         source_texts = []
         for s_id in unit.source_segment_ids:
             s = seg_by_id.get(s_id)
@@ -277,12 +292,8 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
         
         for iss in res.issues:
             iss.unit_id = unit.unit_id
-            if not iss.segment_id and unit.source_segment_ids:
-                iss.segment_id = unit.source_segment_ids[0]
-            # Il grounding deterministico serve a validare/riclassificare l'output di un
-            # LLM reale contro la trascrizione originale: su testo sintetico di force_mock
-            # (mai realmente ancorato a nulla) non ha senso applicarlo, servirebbe solo a
-            # declassare artificialmente le issue mock generate come ERR_DOCENTE.
+            if not iss.segment_id:
+                iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
             if not force_mock:
                 iss = disambiguate_science_issue(iss, source_context)
             all_science_issues.append(iss)
