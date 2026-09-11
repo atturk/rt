@@ -249,9 +249,8 @@ def test_redraw_in_place_ansi_sequences(tmp_path, monkeypatch, capsys):
 
     captured = capsys.readouterr()
     raw_out = captured.out
-    # Verifica che la sequenza ANSI di risalita e cancellazione compaia nell'output grezzo
-    assert "\x1b[" in raw_out
-    assert "A\x1b[0J" in raw_out
+    # Verifica che il pannello Rich compaia nell'output renderizzato
+    assert "ASR Review" in raw_out
 
 
 def test_json_flag_behavior_on_cli_commands(capsys):
