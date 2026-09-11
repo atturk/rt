@@ -9,9 +9,11 @@ import json
 import hashlib
 import base64
 import re
+import math
 from typing import Dict, Any, Optional, List, Tuple
 from rt.core.lesson_paths import lesson_path
 from rt.core.image_extract import ExtractedImage, extract_images
+from rt.core.searxng_client import search_images, download_image
 from rt.llm.client import LLMClient
 from rt.llm.prompts import (
     ImageDescription,
@@ -215,9 +217,76 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
     return results
 
 
+def build_macro_search_queries(outline: Any) -> Dict[str, str]:
+    """Per ogni macro-sezione, unisce (deduplicati, in ordine di comparsa) i key_concepts di
+    tutte le sue unità, prende i primi 3 e li unisce in un'unica stringa di query. Ritorna
+    {macro_id: query_string}. Macro-sezioni senza alcun key_concept ottengono una query di
+    fallback basata sul solo title della macro."""
+    queries: Dict[str, str] = {}
+    for macro in getattr(outline, "macro_sections", []):
+        macro_id = str(macro.id)
+        seen_kc: List[str] = []
+        for unit in getattr(macro, "units", []):
+            for kc in getattr(unit, "key_concepts", []) or []:
+                clean_kc = str(kc).strip()
+                if clean_kc and clean_kc not in seen_kc:
+                    seen_kc.append(clean_kc)
+        if seen_kc:
+            query = " ".join(seen_kc[:3])
+        else:
+            query = re.sub(r'[/\\:*?"<>|]', ' ', getattr(macro, "title", "Macro")).strip()
+        queries[macro_id] = query
+    return queries
+
+
+def fetch_web_images(
+    lesson_dir: str,
+    outline: Any,
+    total_count: int,
+    base_url: Optional[str] = None,
+    force_mock: bool = False,
+) -> List[ExtractedImage]:
+    """Cerca ed estrae immagini dal web via SearXNG."""
+    if not base_url and not force_mock:
+        raise ValueError(
+            "Impossibile eseguire la ricerca immagini web (--web-search): 'searxng_base_url' "
+            "non è configurato in config/general.yaml."
+        )
+
+    queries = build_macro_search_queries(outline)
+    if not queries or total_count <= 0:
+        return []
+
+    count_per_macro = math.ceil(total_count / len(queries))
+    extracted: List[ExtractedImage] = []
+
+    if force_mock:
+        for idx, (macro_id, query) in enumerate(queries.items(), start=1):
+            for i in range(count_per_macro):
+                dummy_bytes = f"mock web image bytes {macro_id}_{i}".encode("utf-8")
+                extracted.append(ExtractedImage(image_bytes=dummy_bytes, source_label=f"websearch:{query}#{i+1}"))
+        return extracted[:total_count]
+
+    for macro_id, query in queries.items():
+        try:
+            web_results = search_images(base_url, query, count=count_per_macro)
+        except Exception:
+            continue
+        for res in web_results:
+            try:
+                data = download_image(res.image_url)
+                label = f"websearch:{query}"
+                extracted.append(ExtractedImage(image_bytes=data, source_label=label))
+            except Exception:
+                continue
+
+    return extracted[:total_count]
+
+
 def run_add_images(
     lesson_dir: str,
     input_path: Optional[str] = None,
+    web_search_count: Optional[int] = None,
     carousel: bool = False,
     force_mock: bool = False,
 ) -> Dict[str, Any]:
@@ -239,14 +308,31 @@ def run_add_images(
             f"(stato attuale: {phase_status.value}). Esegui prima 'rt build'."
         )
 
+    outline = load_outline(lesson_dir)
+    extracted: List[ExtractedImage] = []
+
     if input_path:
-        extracted = extract_images(input_path)
+        extracted.extend(extract_images(input_path))
+
+    if web_search_count and web_search_count > 0:
+        from rt.core.config import load_config
+        cfg = load_config()
+        searxng_url = getattr(cfg, "searxng_base_url", None)
+        web_extracted = fetch_web_images(
+            lesson_dir=lesson_dir,
+            outline=outline,
+            total_count=web_search_count,
+            base_url=searxng_url,
+            force_mock=force_mock,
+        )
+        extracted.extend(web_extracted)
+
+    if extracted:
         new_images, _cached = partition_new_vs_cached_images(lesson_dir, extracted)
         if new_images:
             lesson_context = get_lesson_context(lesson_dir)
             describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock)
 
-    outline = load_outline(lesson_dir)
     assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock)
 
     descriptions = load_image_descriptions(lesson_dir)
