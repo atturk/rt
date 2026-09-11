@@ -254,6 +254,11 @@ def cmd_review_science(args):
 
 
 def cmd_recall(args):
+    if getattr(args, "check", False) is True:
+        from rt.pipeline.recall_session import run_stale_recall_check
+        run_stale_recall_check(args.lesson_dir)
+        return
+
     reset_val = getattr(args, "reset", None)
     if isinstance(reset_val, str) and reset_val in ("all", "quiz", "mirata", "vasta"):
         from rt.pipeline.recall import purge_recall_by_type
@@ -788,6 +793,7 @@ def main():
         help="Resetta le domande/risposte di recall già effettuate: senza valore o 'all' azzera "
              "tutto, 'quiz'/'mirata'/'vasta' azzera solo quel tipo."
     )
+    p_recall.add_argument("--check", action="store_true", help="Revisione interattiva da terminale delle domande stale per modifica dell'unità")
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)
 

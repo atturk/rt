@@ -4,13 +4,14 @@ Test di accettazione per la Fase D2 (sessione interattiva di Active Recall)
 e per il comando CLI `rt recall`.
 """
 import os
+import sys
 import json
 import asyncio
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from rt.core.models import (
-    RecallQuestion, RecallQuestionType, RecallQuestionStatus,
+    RecallQuestion, RecallQuestionType, RecallQuestionStatus, RecallAnswer,
     SegmentsData, Segment, Draft, DraftUnit,
 )
 from rt.core.manifest import init_or_update_manifest
@@ -1235,4 +1236,88 @@ class TestTask11PersistentUnitAudioButtons:
         from rt.telegram.formatting import build_persistent_recall_keyboard
         context.bot.edit_message_reply_markup.assert_any_call(chat_id=12345, message_id=555, reply_markup=None)
         context.bot.edit_message_reply_markup.assert_any_call(chat_id=12345, message_id=999, reply_markup=build_persistent_recall_keyboard("pa123"))
+
+
+class TestTask12StaleRecallCheck:
+    def test_send_current_recall_question_prepends_stale_warning(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        q = _make_mirata_question("recall_000001")
+        q.content_fingerprint = "old_stale_fp"
+        bank = RecallBank(questions=[q])
+        save_recall_bank(bank, lesson_dir)
+
+        with patch("rt.telegram.client.send_message") as mock_send:
+            mock_send.return_value = {"message_id": 999}
+            send_current_recall_question(lesson_dir, force_mock=True)
+
+            assert mock_send.called
+            sent_text = mock_send.call_args[1].get("text", "")
+            assert "⚠️ L'unità 1.1 da cui è tratta questa domanda è stata modificata" in sent_text
+
+    def test_check_refuses_when_telegram_session_active(self, tmp_path, capsys):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        q = _make_mirata_question("recall_000001")
+        q.content_fingerprint = "old_stale_fp"
+        save_recall_bank(RecallBank(questions=[q]), lesson_dir)
+
+        from rt.telegram import session as tg_session
+        tg_session.start_session(state_dir, 12345, None, "recall", lesson_dir)
+
+        from rt.pipeline.recall_session import run_stale_recall_check
+        run_stale_recall_check(lesson_dir, state_dir=state_dir)
+
+        out = capsys.readouterr().out
+        assert "C'è già una sessione Telegram attiva" in out
+
+    def test_check_interactive_mantieni_and_elimina_and_undo(self, tmp_path, monkeypatch):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        q1 = _make_mirata_question("recall_000001", unit_id="1.1")
+        q1.content_fingerprint = "old_fp_1"
+        q2 = _make_mirata_question("recall_000002", unit_id="1.1")
+        q2.content_fingerprint = "old_fp_2"
+
+        a2 = RecallAnswer(question_id="recall_000002", answer_text="Mia risp", is_voice=False)
+        bank = RecallBank(questions=[q1, q2], answers=[a2])
+        save_recall_bank(bank, lesson_dir)
+
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+        inputs = iter(["m", "e"])
+        with patch("rt.core.keyboard.read_single_key", side_effect=lambda **kwargs: next(inputs)):
+            from rt.pipeline.recall_session import run_stale_recall_check
+            run_stale_recall_check(lesson_dir, state_dir=state_dir)
+
+        b_after = load_recall_bank(lesson_dir)
+        from rt.pipeline.recall import _compute_units_fingerprint
+        fp1 = _compute_units_fingerprint(lesson_dir, ["1.1"])
+        q1_after = next((q for q in b_after.questions if q.id == "recall_000001"), None)
+        assert q1_after is not None
+        assert q1_after.content_fingerprint == fp1
+
+        q2_after = next((q for q in b_after.questions if q.id == "recall_000002"), None)
+        assert q2_after is None
+        assert len(b_after.answers) == 0
+
+        q1_b = _make_mirata_question("recall_000001", unit_id="1.1")
+        q1_b.content_fingerprint = "old_fp_1"
+        save_recall_bank(RecallBank(questions=[q1_b, q2], answers=[a2]), lesson_dir)
+        inputs_undo = iter(["m", "b", "e", "b", "s", "q"])
+        with patch("rt.core.keyboard.read_single_key", side_effect=lambda **kwargs: next(inputs_undo)):
+            run_stale_recall_check(lesson_dir, state_dir=state_dir)
+
+        b_undo = load_recall_bank(lesson_dir)
+        q1_undo = next((q for q in b_undo.questions if q.id == "recall_000001"), None)
+        q2_undo = next((q for q in b_undo.questions if q.id == "recall_000002"), None)
+        assert q1_undo is not None and q1_undo.content_fingerprint == "old_fp_1"
+        assert q2_undo is not None
+        assert len(b_undo.answers) == 1
 

@@ -609,16 +609,17 @@ class TestStaleQuestionInvalidation:
         assert ret is not None
         assert ret.id == "recall_000001"
 
-    def test_stale_pending_question_removed_from_bank(self, lesson_dir):
+    def test_stale_pending_question_kept_and_returned(self, lesson_dir):
         q = _make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.PENDING)
         q.content_fingerprint = "old_stale_fingerprint_123"
         bank = RecallBank(questions=[q])
         save_recall_bank(bank, lesson_dir)
 
         ret = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
-        assert ret is None
+        assert ret is not None
+        assert ret.id == "recall_000001"
         bank_after = load_recall_bank(lesson_dir)
-        assert len(bank_after.questions) == 0
+        assert len(bank_after.questions) == 1
 
     def test_none_fingerprint_backward_compatibility(self, lesson_dir):
         q = _make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.PENDING)
