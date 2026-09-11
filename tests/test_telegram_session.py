@@ -4,10 +4,9 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from rt.telegram import session as tg_session, registry, pending as tg_pending
+from rt.telegram import session as tg_session, registry
 from rt.telegram.daemon import handle_quit, handle_status, _handle_issue_callback
 from rt.telegram.notify import notify_issues_ready
-from rt.pipeline.outline_review import confirm_or_revise_outline
 
 
 def _make_mock_message_update(text: str = "/status", chat_id: int = 12345, thread_id: int = None):
@@ -183,49 +182,6 @@ def test_handle_quit_issue_review_with_message_id(tmp_path):
     reply = update.effective_message.reply_text.call_args[0][0]
     assert "Revisione interrotta" in reply
 
-
-def test_handle_quit_outline_confirmation(tmp_path):
-    lesson_dir = str(tmp_path / "lesson")
-    os.makedirs(lesson_dir, exist_ok=True)
-    state_dir = str(tmp_path / "state")
-
-    tg_pending.create_pending(lesson_dir, round_=1, short_id="out123", outline_summary_text="test")
-    tg_session.start_session(state_dir, 12345, None, "outline_confirmation", lesson_dir)
-
-    update = _make_mock_message_update("/quit", chat_id=12345)
-    context = _make_mock_context(state_dir)
-
-    asyncio.run(handle_quit(update, context))
-
-    assert tg_session.get_active_session(state_dir, 12345, None) is None
-    context.bot.edit_message_reply_markup.assert_not_called()
-    p = tg_pending.load_pending(lesson_dir)
-    assert p.status == "cancelled"
-    reply = update.effective_message.reply_text.call_args[0][0]
-    assert "Conferma outline annullata" in reply
-
-
-def test_handle_quit_outline_confirmation_with_message_id(tmp_path):
-    lesson_dir = str(tmp_path / "lesson")
-    os.makedirs(lesson_dir, exist_ok=True)
-    state_dir = str(tmp_path / "state")
-
-    tg_pending.create_pending(lesson_dir, round_=1, short_id="out123", outline_summary_text="test")
-    tg_session.start_session(state_dir, 12345, 42, "outline_confirmation", lesson_dir, message_id=8888)
-
-    update = _make_mock_message_update("/quit", chat_id=12345, thread_id=42)
-    context = _make_mock_context(state_dir)
-
-    asyncio.run(handle_quit(update, context))
-
-    assert tg_session.get_active_session(state_dir, 12345, 42) is None
-    context.bot.edit_message_reply_markup.assert_awaited_once_with(
-        chat_id=12345, message_id=8888, reply_markup=None
-    )
-    p = tg_pending.load_pending(lesson_dir)
-    assert p.status == "cancelled"
-    reply = update.effective_message.reply_text.call_args[0][0]
-    assert "Conferma outline annullata" in reply
 
 
 def test_handle_quit_edit_message_reply_markup_error_suppressed(tmp_path):
