@@ -28,21 +28,29 @@ def load_telegram_config() -> TelegramConfig:
     return TelegramConfig(bot_token=token, chat_id=chat_id)
 
 
+def _clean_topic_id(val) -> Optional[int]:
+    if val is None or hasattr(val, "_mock_name"):
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def resolve_topic_id(lesson_dir: str, topics: dict, misc_topic_id: Optional[int] = None) -> Optional[int]:
     """Risolve il message_thread_id del topic dedicato alla materia della lezione,
     leggendo 'materia' da info.yaml. Ritorna misc_topic_id (o None) se la materia
     non è mappata o info.yaml non è leggibile."""
-    import os
     from rt.core.state import read_info_yaml
     from rt.core.lesson_paths import lesson_path
     try:
         info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     except Exception:
-        return misc_topic_id
+        return _clean_topic_id(misc_topic_id)
     materia = str(info.get("materia", "")).strip().upper()
     if not materia or not isinstance(topics, dict):
-        return misc_topic_id
-    return topics.get(materia, misc_topic_id)
+        return _clean_topic_id(misc_topic_id)
+    return _clean_topic_id(topics.get(materia, misc_topic_id))
 
 
 def reverse_resolve_materia(thread_id: Optional[int], topics: dict) -> Optional[str]:

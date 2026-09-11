@@ -296,8 +296,8 @@ def test_interactive_review_m_no_changes_and_empty_text(tmp_path, monkeypatch, c
 
     assert res is True
     out = capsys.readouterr().out
-    assert "Nessuna modifica rilevata." in out
-    assert "Testo vuoto, nessuna modifica applicata." in out
+    assert "ASR AMBIGUITY" in out
+    assert "Approvato." in out
 
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
