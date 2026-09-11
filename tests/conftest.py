@@ -11,7 +11,7 @@ import rt.core.config
 ORIGINAL_BUILD_DEFAULT_JOBS = rt.core.config._build_default_jobs
 
 
-@pytest.fixture(autouse=True, scope="session")
+@pytest.fixture(autouse=True)
 def _disable_real_telegram_notifications():
     """Impedisce che i test raggiungano il vero bot Telegram. rt/llm/credentials.py chiama
     load_env_file() senza percorso esplicito ovunque risolva una credenziale, caricando così
@@ -20,7 +20,14 @@ def _disable_real_telegram_notifications():
     (notify_build_completed/notify_issues_ready non controllano force_mock) manda messaggi
     reali nel gruppo Telegram reale. Un placeholder non-vuoto, non un unset: load_env_file
     usa load_dotenv(override=False), che riempie solo le variabili ASSENTI — un unset
-    verrebbe quindi ripopolato dal vero '.env' alla primissima chiamata successiva."""
+    verrebbe quindi ripopolato dal vero '.env' alla primissima chiamata successiva.
+
+    Scope di FUNZIONE (non di sessione): alcuni test chiamano rt.cli.main() direttamente
+    (es. tests/test_free_tier_guard.py), la cui prima riga è load_env_file(override=True) —
+    override=True ricarica INCONDIZIONATAMENTE il vero '.env' sopra queste variabili, per
+    il resto della sessione pytest se il controllo fosse fatto una sola volta. Riapplicando
+    il placeholder prima di OGNI test si richiude il buco indipendentemente da quale test
+    lo apre e in che ordine i test vengono eseguiti."""
     os.environ["RT_TELEGRAM_BOT_TOKEN"] = "test-disabled-token"
     os.environ["RT_TELEGRAM_CHAT_ID"] = "0"
 
