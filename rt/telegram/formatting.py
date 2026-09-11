@@ -14,19 +14,30 @@ def escape_html(text: str) -> str:
     return html.escape(text, quote=False)
 
 
-def render_outline_summary_text(outline: Outline) -> str:
-    lines = [f"📋 <b>{escape_html(outline.lesson_title)}</b>", ""]
-    for macro in outline.macro_sections:
-        lines.append(f"<b>{escape_html(macro.id)}. {escape_html(macro.title)}</b>")
-        for unit in macro.units:
-            concepts = ", ".join(unit.key_concepts[:4])
-            suffix = f" — {escape_html(concepts)}" if concepts else ""
-            lines.append(f"  {escape_html(unit.id)} {escape_html(unit.title)}{suffix}")
-        lines.append("")
-    text = "\n".join(lines).strip()
-    if len(text) > MAX_MESSAGE_CHARS:
-        text = text[:MAX_MESSAGE_CHARS] + "\n\n… (troncato, elenco completo in outline.json)"
-    return text
+def render_outline_summary_text(outline: Outline, for_telegram: bool = True) -> str:
+    if for_telegram:
+        lines = [f"📋 <b>{escape_html(outline.lesson_title)}</b>", ""]
+        for macro in outline.macro_sections:
+            lines.append(f"<b>{escape_html(macro.id)}. {escape_html(macro.title)}</b>")
+            for unit in macro.units:
+                concepts = ", ".join(unit.key_concepts[:4])
+                suffix = f" — {escape_html(concepts)}" if concepts else ""
+                lines.append(f"  {escape_html(unit.id)} {escape_html(unit.title)}{suffix}")
+            lines.append("")
+        text = "\n".join(lines).strip()
+        if len(text) > MAX_MESSAGE_CHARS:
+            text = text[:MAX_MESSAGE_CHARS] + "\n\n… (troncato, elenco completo in outline.json)"
+        return text
+    else:
+        lines = [f"📋 {outline.lesson_title}", ""]
+        for macro in outline.macro_sections:
+            lines.append(f"{macro.id}. {macro.title}")
+            for unit in macro.units:
+                concepts = ", ".join(unit.key_concepts[:4])
+                suffix = f" — {concepts}" if concepts else ""
+                lines.append(f"  {unit.id} {unit.title}{suffix}")
+            lines.append("")
+        return "\n".join(lines).strip()
 
 
 def render_lesson_list_text(entries, show_materia: bool) -> str:
