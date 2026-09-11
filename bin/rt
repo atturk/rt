@@ -12,6 +12,14 @@ if os.path.basename(script_dir) == "bin":
 else:
     project_root = script_dir
 
+venv_python = os.path.join(project_root, ".venv", "bin", "python3")
+if os.path.isfile(venv_python) and os.path.realpath(sys.executable) != os.path.realpath(venv_python):
+    # Riesegue questo stesso script con l'interprete del venv locale, così 'rt' funziona
+    # anche invocato via PATH senza aver attivato il venv a mano in quella shell (es. dopo
+    # aver seguito le istruzioni di install.sh, che aggiungono bin/ al PATH ma non attivano
+    # il venv per ogni nuova sessione di terminale).
+    os.execv(venv_python, [venv_python, os.path.abspath(__file__)] + sys.argv[1:])
+
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
