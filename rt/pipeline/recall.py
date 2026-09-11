@@ -106,24 +106,6 @@ def get_next_pending_question(
     if not pending:
         return None
 
-    fresh_pending = []
-    stale_ids = set()
-    for q in pending:
-        if q.content_fingerprint is None:
-            fresh_pending.append(q)
-            continue
-        current_fp = _compute_units_fingerprint(lesson_dir, q.unit_ids)
-        if current_fp is not None and current_fp != q.content_fingerprint:
-            stale_ids.add(q.id)
-        else:
-            fresh_pending.append(q)
-    if stale_ids:
-        bank.questions = [q for q in bank.questions if q.id not in stale_ids]
-        save_recall_bank(bank, lesson_dir)
-    pending = fresh_pending
-    if not pending:
-        return None
-
     # Applica exclude_id solo se ci sono altre opzioni disponibili
     if exclude_id:
         filtered = [q for q in pending if q.id != exclude_id]

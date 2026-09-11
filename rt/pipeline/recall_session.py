@@ -277,7 +277,26 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         session_state["unit_cursor"] = question.unit_ids[0]
     save_recall_session_state(lesson_dir, session_state)
 
+    from rt.pipeline.recall import _compute_units_fingerprint
+    current_fp = _compute_units_fingerprint(lesson_dir, question.unit_ids)
+    is_stale = (
+        question.content_fingerprint is not None
+        and current_fp is not None
+        and current_fp != question.content_fingerprint
+    )
+    unit_ids_str = ", ".join(question.unit_ids)
+    stale_warning = f"⚠️ L'unità {unit_ids_str} da cui è tratta questa domanda è stata modificata dopo la generazione di questa domanda.\n\n"
+
     if question.type == RecallQuestionType.QUIZ:
+        if is_stale:
+            try:
+                tg_client.send_message(
+                    tg_cfg,
+                    text=f"⚠️ L'unità {unit_ids_str} da cui è tratta questa domanda è stata modificata dopo la generazione di questa domanda.",
+                    message_thread_id=thread_id,
+                )
+            except Exception:
+                pass
         # Poll nativo Telegram: la tastiera ("Non lo so"/"Skip") viene allegata direttamente
         # al messaggio del poll tramite reply_markup di sendPoll (API Telegram supporta reply_markup).
         # Troncamento difensivo: opzioni >100 caratteri e domanda >290 caratteri (limite API sendPoll).
@@ -327,7 +346,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         except tg_client.TelegramAPIError as e:
             print(f"⚠️  Invio quiz a Telegram fallito: {e}")
     else:
-        text = tg_fmt.render_recall_question_text(question)
+        text = (stale_warning if is_stale else "") + tg_fmt.render_recall_question_text(question)
         short_id = tg_registry.register_pending(
             lesson_dir, round_=0, kind="recall_question", state_dir=state_dir,
             message_thread_id=thread_id, extra={"question_id": question.id, "qtype": question.type.value}
@@ -482,3 +501,165 @@ def run_recall_terminal_session(lesson_dir: str, order: str = "alternato", style
                     generate_recall_batch(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, examples, force_mock=force_mock)
     except KeyboardInterrupt:
         print("\n  ⏹ Sessione di recall interrotta.")
+
+
+def run_stale_recall_check(lesson_dir: str, state_dir: Optional[str] = None) -> None:
+    """Revisione interattiva da terminale delle domande stale il cui content_fingerprint
+    non corrisponde più al contenuto attuale delle unità didattiche."""
+    from rt.core.config import load_config
+    from rt.telegram import session as tg_session
+    if not state_dir:
+        state_dir = load_config().telegram.state_dir
+    active = tg_session.get_active_session_for_lesson(state_dir, lesson_dir, kind="recall")
+    if active is not None:
+        print("ℹ️ C'è già una sessione Telegram attiva di recall per questa lezione. Usa /quit su Telegram per chiuderla prima di eseguire --check.")
+        return
+
+    from rt.pipeline.recall import load_recall_bank, save_recall_bank, _compute_units_fingerprint
+    bank = load_recall_bank(lesson_dir)
+    stale_questions = []
+    for q in bank.questions:
+        if q.content_fingerprint is not None:
+            current_fp = _compute_units_fingerprint(lesson_dir, q.unit_ids)
+            if current_fp is not None and current_fp != q.content_fingerprint:
+                stale_questions.append(q)
+
+    if not stale_questions:
+        print("Nessuna domanda da rivedere.")
+        return
+
+    if not sys.stdin.isatty():
+        print(f"⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(stale_questions)} domande stale che richiedono revisione umana.")
+        return
+
+    print(f"\n🔍 REVISIONE DOMANDE STALE ({len(stale_questions)} da rivedere)")
+    print("=" * 60)
+
+    from rich.console import Console
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.text import Text
+    from rt.core.keyboard import read_single_key, raw_mode
+    from rt.core.encoding import fix_mojibake
+
+    console = Console()
+    total_count = len(stale_questions)
+    idx = 0
+    history_stack = []
+    kept_count = 0
+    deleted_count = 0
+    skipped_count = 0
+    last_status: Optional[str] = None
+    interrupted = False
+
+    def _build_stale_panel(idx: int, total_count: int, q, bank, last_status: Optional[str] = None):
+        lines = [
+            f"[{idx + 1}/{total_count}] STALE RECALL QUESTION ({q.type.value.upper()}) - ID: {q.id}",
+            f"  📚 Unità: {', '.join(q.unit_ids)}",
+            f"  📌 Stato: {q.status.value}",
+            f"  ❓ Domanda: \"{fix_mojibake(q.question_text)}\"",
+        ]
+        if q.type == RecallQuestionType.QUIZ and q.options:
+            lines.append("  📝 Opzioni:")
+            for opt in q.options:
+                lines.append(f"    - {fix_mojibake(opt)}")
+        if q.pregenerated_material:
+            lines.append(f"  💡 Spiegazione: {fix_mojibake(q.pregenerated_material)}")
+        answers = [a for a in bank.answers if a.question_id == q.id]
+        if answers:
+            last_ans = answers[-1]
+            lines.append(f"  💬 Ultima risposta registrata: \"{fix_mojibake(last_ans.answer_text)}\"")
+            if last_ans.evaluation:
+                lines.append(f"  ⭐ Ultima valutazione: {fix_mojibake(last_ans.evaluation)}")
+
+        if last_status:
+            lines.append(f"\n  {last_status}")
+
+        lines.append("\n  Azione [M=Mantieni (aggiorna fingerprint) / E=Elimina domanda+risposte / S=Salta / B=Indietro / Q=Esci]: ")
+        content = "\n".join(lines)
+        return Panel(Text(content), title=f"Stale Recall Check [{idx + 1}/{total_count}]", border_style="yellow")
+
+    try:
+        with raw_mode() as is_raw, Live(console=console, auto_refresh=False, transient=False, vertical_overflow="visible") as live:
+            while idx < total_count:
+                q = stale_questions[idx]
+                bank = load_recall_bank(lesson_dir)
+                panel = _build_stale_panel(idx, total_count, q, bank, last_status)
+                live.update(panel, refresh=True)
+
+                while True:
+                    raw_key = read_single_key(already_raw=is_raw)
+                    choice = raw_key.strip().lower()
+
+                    if choice in ("m", "mantieni"):
+                        old_fp = q.content_fingerprint
+                        cur_fp = _compute_units_fingerprint(lesson_dir, q.unit_ids)
+                        b = load_recall_bank(lesson_dir)
+                        bq = next((item for item in b.questions if item.id == q.id), None)
+                        if bq:
+                            bq.content_fingerprint = cur_fp
+                            save_recall_bank(b, lesson_dir)
+                        history_stack.append(("kept", q.id, old_fp))
+                        kept_count += 1
+                        last_status = f"✔ Mantenuta domanda {q.id} (fingerprint aggiornato)."
+                        idx += 1
+                        break
+                    elif choice in ("e", "elimina"):
+                        b = load_recall_bank(lesson_dir)
+                        q_to_del = next((item for item in b.questions if item.id == q.id), None)
+                        a_to_del = [a for a in b.answers if a.question_id == q.id]
+                        b.questions = [item for item in b.questions if item.id != q.id]
+                        b.answers = [a for a in b.answers if a.question_id != q.id]
+                        save_recall_bank(b, lesson_dir)
+                        history_stack.append(("deleted", q_to_del or q, a_to_del))
+                        deleted_count += 1
+                        last_status = f"🗑 Eliminata domanda {q.id} e relative risposte."
+                        idx += 1
+                        break
+                    elif choice in ("s", "salta", "skip", "right", "RIGHT"):
+                        history_stack.append(("skipped", q.id, None))
+                        skipped_count += 1
+                        last_status = "⏭ Saltato."
+                        idx += 1
+                        break
+                    elif choice in ("b", "indietro", "back", "left", "LEFT"):
+                        if idx == 0:
+                            last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
+                            panel = _build_stale_panel(idx, total_count, q, bank, last_status)
+                            live.update(panel, refresh=True)
+                            continue
+                        else:
+                            idx -= 1
+                            action_type, hist_q, hist_extra = history_stack.pop()
+                            b = load_recall_bank(lesson_dir)
+                            if action_type == "kept":
+                                bq = next((item for item in b.questions if item.id == hist_q), None)
+                                if bq:
+                                    bq.content_fingerprint = hist_extra
+                                    save_recall_bank(b, lesson_dir)
+                                kept_count -= 1
+                            elif action_type == "deleted":
+                                if not any(item.id == hist_q.id for item in b.questions):
+                                    b.questions.append(hist_q)
+                                for a in hist_extra:
+                                    b.answers.append(a)
+                                save_recall_bank(b, lesson_dir)
+                                deleted_count -= 1
+                            elif action_type == "skipped":
+                                skipped_count -= 1
+                            prev_q = stale_questions[idx]
+                            last_status = f"◀️ Tornato alla domanda precedente ({prev_q.id})."
+                            break
+                    elif choice in ("q", "esci", "quit"):
+                        last_status = "⏹ Revisione interrotta."
+                        interrupted = True
+                        break
+                    else:
+                        continue
+
+                if interrupted:
+                    break
+    except KeyboardInterrupt:
+        print("\n  ⏹ Sessione interrotta.")
+
+    print(f"\n📊 Riepilogo revisione stale: {kept_count} mantenute, {deleted_count} eliminate, {skipped_count} saltate.")

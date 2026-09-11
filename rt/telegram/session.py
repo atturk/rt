@@ -155,3 +155,19 @@ def end_session(
             _save_sessions(state_dir, data)
     finally:
         _release_lock(state_dir)
+
+
+def get_active_session_for_lesson(
+    state_dir: str,
+    lesson_dir: str,
+    kind: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Cerca se esiste una qualsiasi sessione attiva in active_sessions.json per la lezione data (e tipo se specificato)."""
+    data = _load_sessions(state_dir)
+    target_real = os.path.realpath(lesson_dir)
+    for sess in data.get("sessions", {}).values():
+        sess_ld = sess.get("lesson_dir")
+        if sess_ld and os.path.realpath(sess_ld) == target_real:
+            if kind is None or sess.get("kind") == kind:
+                return sess
+    return None
