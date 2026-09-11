@@ -127,3 +127,51 @@ def test_paraphrase_without_exact_match_maintains_err_docente():
     assert result["type"] == ScienceType.ERR_DOCENTE.value
     assert "ERR_RECONSTRUCTION" not in result.get("explanation", "")
 
+
+def test_localize_claim_segment():
+    from rt.pipeline.review_science import _localize_claim_segment
+    from rt.core.models import Segment, DraftUnit
+
+    seg1 = Segment(id="seg_01", index=1, start_seconds=0.0, end_seconds=60.0, start_formatted="00:00", end_formatted="01:00", text_raw="Primo segmento.")
+    seg2 = Segment(id="seg_02", index=2, start_seconds=60.0, end_seconds=120.0, start_formatted="01:00", end_formatted="02:00", text_raw="Secondo segmento.")
+    seg3 = Segment(id="seg_03", index=3, start_seconds=120.0, end_seconds=180.0, start_formatted="02:00", end_formatted="03:00", text_raw="Terzo segmento.")
+    seg_by_id = {"seg_01": seg1, "seg_02": seg2, "seg_03": seg3}
+
+    unit_content = (
+        "Inizio della lezione introducendo concetti base. " * 5 +
+        "Nella parte centrale discutiamo di meccanismi intermedi. " * 5 +
+        "Alla fine della lezione si afferma che l'enzima X inibisce il processo Y in modo irreversibile."
+    )
+    unit = DraftUnit(
+        unit_id="U1",
+        title="Unità Didattica",
+        content=unit_content,
+        start_segment_id="seg_01",
+        end_segment_id="seg_03",
+        source_segment_ids=["seg_01", "seg_02", "seg_03"],
+        key_concepts=[]
+    )
+
+    # 1. Claim vicino alla fine dell'unità -> stima seg_03 (non il primo seg_01)
+    claim_end = "l'enzima X inibisce il processo Y"
+    loc_seg = _localize_claim_segment(claim_end, unit, seg_by_id)
+    assert loc_seg == "seg_03"
+
+    # 2. Claim non rintracciabile -> None
+    loc_none = _localize_claim_segment("affermazione totalmente assente", unit, seg_by_id)
+    assert loc_none is None
+
+    # 3. Unità con un solo segmento sorgente -> quel segmento
+    unit_single = DraftUnit(
+        unit_id="U2",
+        title="Unità Singolo Seg",
+        content=unit_content,
+        start_segment_id="seg_01",
+        end_segment_id="seg_01",
+        source_segment_ids=["seg_01"],
+        key_concepts=[]
+    )
+    loc_single = _localize_claim_segment(claim_end, unit_single, seg_by_id)
+    assert loc_single == "seg_01"
+
+

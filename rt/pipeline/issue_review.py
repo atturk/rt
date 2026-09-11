@@ -323,7 +323,7 @@ def _build_science_panel(
     ]
     if sci_unit_info != "N/D":
         lines.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
-    lines.append(f"  ⏱ Timecode:     {tc}")
+    lines.append(f"  ⏱ Timecode (stima): {tc}")
     lines.append(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
     lines.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
     if iss.suggested_fix:
@@ -430,7 +430,7 @@ def run_interactive_review(
                     transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
                 except Exception:
                     pass
-        print(f"\n✨ Nessuna issue {issue_type.upper()} in attesa di revisione umana (tutte già risolte o auto-approvate).")
+        print(f"\n✨ Nessuna issue {issue_type.upper()} in attesa di revisione humana (tutte già risolte o auto-approvate).")
         return True
 
     # 3. Canale Telegram
@@ -494,7 +494,7 @@ def run_interactive_review(
         audio_resumed_at = 0.0
 
     try:
-        with raw_mode() as is_raw, Live(console=console, auto_refresh=False, transient=False) as live:
+        with raw_mode() as is_raw, Live(console=console, auto_refresh=False, transient=False, vertical_overflow="visible") as live:
             while idx < total_count:
                 iss = to_review[idx]
                 ledger = load_ledger(lesson_dir)
