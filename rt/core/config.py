@@ -223,6 +223,18 @@ class TelegramRuntimeConfig(BaseModel):
         default_factory=dict,
         description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. \"Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato).\""
     )
+    misc_topic_id: Optional[int] = Field(
+        default=None,
+        description="message_thread_id del topic 'Varie/Generale' per lezioni la cui materia "
+                    "non è mappata in 'topics'. Se non impostato, tali lezioni continuano ad "
+                    "andare nel topic Generale nativo di Telegram (nessun message_thread_id)."
+    )
+    lessons_root: Optional[str] = Field(
+        default=None,
+        description="Cartella che contiene direttamente tutte le sotto-cartelle di lezione (una "
+                    "per lezione, struttura piatta senza annidamento), usata da /list e /recall "
+                    "<query> su Telegram per enumerare le lezioni disponibili."
+    )
     # ------------------------------------------------------
     # Recall configuration
     # ------------------------------------------------------

@@ -26,7 +26,7 @@ def start_review_via_telegram(lesson_dir: str, asr_to_review: List[ASRIssue], sc
 
         tg_cfg = load_telegram_config()
         runtime_cfg = load_config().telegram
-        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
 
         active = tg_session.get_active_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id)
         if active is not None:
@@ -141,7 +141,7 @@ def send_current_issue(lesson_dir: str) -> None:
         try:
             tg_cfg = load_telegram_config()
             runtime_cfg = load_config().telegram
-            thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+            thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
             from rt.telegram import session as tg_session
             tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id)
             tg_client.send_message(tg_cfg, text="✨ Review completata. Esegui 'rt build' quando vuoi.", message_thread_id=thread_id)
@@ -178,7 +178,7 @@ def send_current_issue(lesson_dir: str) -> None:
         return
 
     runtime_cfg = load_config().telegram
-    thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+    thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
     short_id = tg_registry.register_pending(
         lesson_dir, round_=queue.current_index, kind="issue_review", state_dir=runtime_cfg.state_dir,
         message_thread_id=thread_id, extra={"issue_id": issue_id, "issue_type": issue_type}

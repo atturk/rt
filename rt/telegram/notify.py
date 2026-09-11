@@ -7,15 +7,19 @@ from typing import Dict, Any
 
 
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
-    try:
-        from rt.telegram.config import load_telegram_config, resolve_topic_id
-        from rt.telegram.client import send_message
-        from rt.telegram.formatting import escape_html
-        from rt.core.config import load_config
+    from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
+    from rt.telegram.client import send_message
+    from rt.telegram.formatting import escape_html
+    from rt.core.config import load_config
 
+    try:
         cfg = load_telegram_config()
+    except TelegramConfigError:
+        return
+
+    try:
         runtime_cfg = load_config().telegram
-        message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+        message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
         text = (
             f"✅ <b>Build completata</b>\n"
             f"{escape_html(lesson_title)}\n"
@@ -32,15 +36,19 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
 def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
     """issue_type: 'asr' | 'science'. Fire-and-forget: non deve mai bloccare né
     far fallire il comando chiamante. Se count == 0 manda un messaggio di conferma senza bottoni."""
-    try:
-        import os
-        from rt.telegram.config import load_telegram_config, resolve_topic_id
-        from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt, session as tg_session
-        from rt.core.config import load_config
+    import os
+    from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
+    from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt, session as tg_session
+    from rt.core.config import load_config
 
+    try:
         cfg = load_telegram_config()
+    except TelegramConfigError:
+        return
+
+    try:
         runtime_cfg = load_config().telegram
-        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
         label = "ASR" if issue_type == "asr" else "scientifiche"
 
         if count <= 0:

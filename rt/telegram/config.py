@@ -28,9 +28,9 @@ def load_telegram_config() -> TelegramConfig:
     return TelegramConfig(bot_token=token, chat_id=chat_id)
 
 
-def resolve_topic_id(lesson_dir: str, topics: dict) -> Optional[int]:
+def resolve_topic_id(lesson_dir: str, topics: dict, misc_topic_id: Optional[int] = None) -> Optional[int]:
     """Risolve il message_thread_id del topic dedicato alla materia della lezione,
-    leggendo 'materia' da info.yaml. Ritorna None (topic 'Generale') se la materia
+    leggendo 'materia' da info.yaml. Ritorna misc_topic_id (o None) se la materia
     non è mappata o info.yaml non è leggibile."""
     import os
     from rt.core.state import read_info_yaml
@@ -38,9 +38,17 @@ def resolve_topic_id(lesson_dir: str, topics: dict) -> Optional[int]:
     try:
         info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     except Exception:
-        return None
+        return misc_topic_id
     materia = str(info.get("materia", "")).strip().upper()
     if not materia or not isinstance(topics, dict):
+        return misc_topic_id
+    return topics.get(materia, misc_topic_id)
+
+
+def reverse_resolve_materia(thread_id: Optional[int], topics: dict) -> Optional[str]:
+    """Inversa di resolve_topic_id: la materia mappata su questo thread_id, o None se
+    thread_id è il topic Generale o non corrisponde a nessuna voce di 'topics'."""
+    if thread_id is None or not isinstance(topics, dict):
         return None
-    return topics.get(materia)
+    return next((m for m, tid in topics.items() if tid == thread_id), None)
 

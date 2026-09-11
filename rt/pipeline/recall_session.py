@@ -172,7 +172,7 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: 
 
         tg_cfg = load_telegram_config()
         runtime_cfg = load_config().telegram
-        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
 
         active = tg_session.get_active_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id)
         if active is not None:
@@ -246,7 +246,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         print("⚠️  Telegram non configurato: impossibile inviare la domanda.")
         return
 
-    thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics)
+    thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
 
     if question is None:
         try:

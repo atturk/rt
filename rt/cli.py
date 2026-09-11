@@ -344,14 +344,9 @@ def cmd_build(args):
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
 
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
-    if channel == "telegram":
-        final_dir = res.get("lesson_dir") or args.lesson_dir
-        from rt.telegram.notify import notify_build_completed
-        notify_build_completed(final_dir, res, lesson_title=_get_lesson_title_for_notify(final_dir))
+    final_dir = res.get("lesson_dir") or args.lesson_dir
+    from rt.telegram.notify import notify_build_completed
+    notify_build_completed(final_dir, res, lesson_title=_get_lesson_title_for_notify(final_dir))
 
 
 def cmd_setup(args):
@@ -612,10 +607,9 @@ def cmd_run(args):
     _print_phase_action("build", bld_res, step=build_step_num, total_steps=total_steps, description="Finalizzazione deterministica Markdown", details=bld_details)
     print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
 
-    if channel == "telegram":
-        from rt.telegram.notify import notify_build_completed
-        final_dir = bld_res.get("lesson_dir") or lesson_dir
-        notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
+    from rt.telegram.notify import notify_build_completed
+    final_dir = bld_res.get("lesson_dir") or lesson_dir
+    notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
 
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     summary = GLOBAL_TELEMETRY.get_summary()
@@ -787,12 +781,6 @@ def main():
     p_bld.add_argument("--force", action="store_true", help="Forza la rigenerazione di tutti i Markdown")
     p_bld.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
                         help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
-    p_bld.add_argument(
-        "--channel",
-        choices=["terminal", "telegram"],
-        default=None,
-        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
-    )
     p_bld.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_bld.set_defaults(func=cmd_build)
 
