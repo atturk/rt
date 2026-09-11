@@ -65,6 +65,22 @@ def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
 # Pending question selection
 # -----------------------------------------------------------------------
 
+def _compute_units_fingerprint(lesson_dir: str, unit_ids: list) -> Optional[str]:
+    from rt.pipeline.ledger import load_resolved_draft
+    from rt.core.idempotency import compute_string_sha256
+    try:
+        draft = load_resolved_draft(lesson_dir)
+    except Exception:
+        return None
+    contents = []
+    for uid in unit_ids:
+        unit = next((u for u in draft.units if u.unit_id == uid), None)
+        if unit is None:
+            return None
+        contents.append(unit.content)
+    return compute_string_sha256("|".join(contents))
+
+
 def get_next_pending_question(
     lesson_dir: str,
     qtype: RecallQuestionType,
@@ -87,6 +103,24 @@ def get_next_pending_question(
     """
     bank = load_recall_bank(lesson_dir)
     pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
+    if not pending:
+        return None
+
+    fresh_pending = []
+    stale_ids = set()
+    for q in pending:
+        if q.content_fingerprint is None:
+            fresh_pending.append(q)
+            continue
+        current_fp = _compute_units_fingerprint(lesson_dir, q.unit_ids)
+        if current_fp is not None and current_fp != q.content_fingerprint:
+            stale_ids.add(q.id)
+        else:
+            fresh_pending.append(q)
+    if stale_ids:
+        bank.questions = [q for q in bank.questions if q.id not in stale_ids]
+        save_recall_bank(bank, lesson_dir)
+    pending = fresh_pending
     if not pending:
         return None
 
@@ -392,6 +426,7 @@ def generate_recall_batch(
                 options=options,
                 correct_index=correct_index,
                 pregenerated_material=pregenerated,
+                content_fingerprint=_compute_units_fingerprint(lesson_dir, ug_ids),
             )
             bank.questions.append(question)
             new_questions.append(question)
@@ -437,6 +472,7 @@ def generate_recall_batch(
         generated.id = qid
         generated.type = qtype
         generated.unit_ids = [units[i].unit_id for i in group_idxs]
+        generated.content_fingerprint = _compute_units_fingerprint(lesson_dir, generated.unit_ids)
         bank.questions.append(generated)
         new_questions.append(generated)
 

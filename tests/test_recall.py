@@ -589,8 +589,56 @@ class TestRecallUsesResolvedDraft:
             return response_model(correttezza=80, completezza=70, commento="ok")
 
         from unittest.mock import patch
-        from rt.pipeline.recall import evaluate_recall_answer
-        with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
+        with patch("rt.pipeline.recall.evaluate_recall_answer", evaluate_recall_answer):
             evaluate_recall_answer(lesson_dir, "recall_000001", "risposta studente", force_mock=False)
 
         assert "RIVISTO E APPROVATO" in captured["prompt"]
+
+
+class TestStaleQuestionInvalidation:
+    def test_pending_question_with_matching_fingerprint_returned(self, lesson_dir):
+        from rt.pipeline.recall import _compute_units_fingerprint
+        fp = _compute_units_fingerprint(lesson_dir, ["1.1"])
+        q = _make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.PENDING)
+        q.content_fingerprint = fp
+        bank = RecallBank(questions=[q])
+        save_recall_bank(bank, lesson_dir)
+
+        ret = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
+        assert ret is not None
+        assert ret.id == "recall_000001"
+
+    def test_stale_pending_question_removed_from_bank(self, lesson_dir):
+        q = _make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.PENDING)
+        q.content_fingerprint = "old_stale_fingerprint_123"
+        bank = RecallBank(questions=[q])
+        save_recall_bank(bank, lesson_dir)
+
+        ret = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
+        assert ret is None
+        bank_after = load_recall_bank(lesson_dir)
+        assert len(bank_after.questions) == 0
+
+    def test_none_fingerprint_backward_compatibility(self, lesson_dir):
+        q = _make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.PENDING)
+        q.content_fingerprint = None
+        bank = RecallBank(questions=[q])
+        save_recall_bank(bank, lesson_dir)
+
+        ret = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
+        assert ret is not None
+        assert ret.id == "recall_000001"
+
+    def test_asked_or_answered_stale_question_not_removed(self, lesson_dir):
+        q1 = _make_question("recall_000001", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.ASKED)
+        q1.content_fingerprint = "old_stale_fingerprint_123"
+        q2 = _make_question("recall_000002", RecallQuestionType.MIRATA, "1.1", RecallQuestionStatus.ANSWERED)
+        q2.content_fingerprint = "old_stale_fingerprint_123"
+        bank = RecallBank(questions=[q1, q2])
+        save_recall_bank(bank, lesson_dir)
+
+        ret = get_next_pending_question(lesson_dir, RecallQuestionType.MIRATA)
+        assert ret is None
+        bank_after = load_recall_bank(lesson_dir)
+        assert len(bank_after.questions) == 2
+
