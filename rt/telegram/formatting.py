@@ -137,3 +137,13 @@ def build_post_answer_keyboard(short_id: str, has_transcript: bool = False) -> d
         {"text": "🔊", "callback_data": f"rua:{short_id}"},
     ])
     return {"inline_keyboard": [row]}
+
+
+def build_persistent_recall_keyboard(short_id: str) -> dict:
+    """Bottoni 📖/🔊 permanenti: sopravvivono al passaggio alla domanda successiva e alla
+    chiusura della sessione, restano cliccabili indefinitamente."""
+    return {"inline_keyboard": [[
+        {"text": "📖", "callback_data": f"rut:{short_id}"},
+        {"text": "🔊", "callback_data": f"rua:{short_id}"},
+    ]]}
+

@@ -9,7 +9,7 @@ import json
 import time
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from telegram import Update
 from telegram.error import RetryAfter
@@ -17,7 +17,7 @@ from telegram.ext import Application, CallbackQueryHandler, MessageHandler, Comm
 
 from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
-from rt.telegram import registry, conversation_state as convo, session as tg_session
+from rt.telegram import registry, conversation_state as convo, session as tg_session, formatting as tg_fmt
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
 RECALL_ACTION_ACTIONS = {"rns", "rsk"}
@@ -86,6 +86,22 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
         except Exception:
             pass
+
+    if kind == "recall" and lesson_dir:
+        from rt.pipeline.recall_session import load_recall_session_state
+        from rt.telegram import formatting as tg_fmt
+        sess_state = load_recall_session_state(lesson_dir)
+        pa_short_id = sess_state.get("current_post_answer_short_id")
+        pa_msg_id = sess_state.get("current_post_answer_message_id")
+        if pa_short_id and pa_msg_id:
+            try:
+                await context.bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=pa_msg_id,
+                    reply_markup=tg_fmt.build_persistent_recall_keyboard(pa_short_id),
+                )
+            except Exception:
+                pass
 
     convo.clear_awaiting_feedback(state_dir, chat_id)
     tg_session.end_session(state_dir, chat_id, thread_id)
@@ -390,7 +406,8 @@ async def _send_post_answer_result(
             "transcript": transcript,
             "transcript_visible": False,
             "evaluation_text": esito_text,
-            "extra_message_ids": [],
+            "unit_text_message_id": None,
+            "audio_message_ids": [],
             "message_id": None,
         },
     )
@@ -401,6 +418,11 @@ async def _send_post_answer_result(
     msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
     if isinstance(msg_id, int):
         registry.update_pending(short_id, {"message_id": msg_id}, state_dir)
+        from rt.pipeline.recall_session import load_recall_session_state, save_recall_session_state
+        sess_state = load_recall_session_state(lesson_dir)
+        sess_state["current_post_answer_short_id"] = short_id
+        sess_state["current_post_answer_message_id"] = msg_id
+        save_recall_session_state(lesson_dir, sess_state)
 
 
 async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
@@ -502,7 +524,6 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
             new_text = eval_text
 
         msg_id = entry.get("message_id") or (update.effective_message.message_id if update.effective_message else None)
-        from rt.telegram import formatting as tg_fmt
         keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=True)
         if msg_id is not None:
             try:
@@ -519,17 +540,11 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
     if action == "rnx":
         await update.callback_query.answer()
         try:
-            await update.callback_query.edit_message_reply_markup(reply_markup=None)
+            await update.callback_query.edit_message_reply_markup(
+                reply_markup=tg_fmt.build_persistent_recall_keyboard(short_id)
+            )
         except Exception:
             pass
-
-        # Elimina tutti i messaggi extra accumulati (testo unità, audio)
-        extra_msg_ids = entry.get("extra_message_ids", [])
-        for extra_id in extra_msg_ids:
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=extra_id)
-            except Exception:
-                pass
 
         from rt.pipeline.recall_session import send_current_recall_question
         await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
@@ -544,6 +559,14 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
 
     if action == "rut":
         await update.callback_query.answer()
+        existing_id = entry.get("unit_text_message_id")
+        if existing_id:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=existing_id)
+            except Exception:
+                pass
+            registry.update_pending(short_id, {"unit_text_message_id": None}, state_dir)
+            return
         from rt.pipeline.recall_session import format_unit_reference
         text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
         text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
@@ -552,29 +575,31 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         ))
         msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
         if isinstance(msg_id, int):
-            extra_ids = list(entry.get("extra_message_ids", []))
-            extra_ids.append(msg_id)
-            registry.update_pending(short_id, {"extra_message_ids": extra_ids}, state_dir)
+            registry.update_pending(short_id, {"unit_text_message_id": msg_id}, state_dir)
         return
 
-    # rua: manda l'audio di ciascuna unità della domanda (sendAudio, stile playlist)
-    await update.callback_query.answer("🔊 Preparo l'audio...")
-    from rt.pipeline.recall_session import send_unit_audio
-    try:
-        sent_ids = await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id)
-        if sent_ids:
-            extra_ids = list(entry.get("extra_message_ids", []))
-            extra_ids.extend([i for i in sent_ids if isinstance(i, int)])
-            registry.update_pending(short_id, {"extra_message_ids": extra_ids}, state_dir)
-    except Exception as e:
-        res = await _send_with_retry(lambda: context.bot.send_message(
-            chat_id=update.effective_chat.id, text=f"⚠️ Impossibile inviare l'audio: {e}", message_thread_id=thread_id,
-        ))
-        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
-        if isinstance(msg_id, int):
-            extra_ids = list(entry.get("extra_message_ids", []))
-            extra_ids.append(msg_id)
-            registry.update_pending(short_id, {"extra_message_ids": extra_ids}, state_dir)
+    if action == "rua":
+        existing_ids = entry.get("audio_message_ids") or []
+        if existing_ids:
+            await update.callback_query.answer()
+            for mid in existing_ids:
+                try:
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=mid)
+                except Exception:
+                    pass
+            registry.update_pending(short_id, {"audio_message_ids": []}, state_dir)
+            return
+        await update.callback_query.answer("🔊 Preparo l'audio...")
+        from rt.pipeline.recall_session import send_unit_audio
+        try:
+            sent_ids = await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id)
+            if sent_ids:
+                registry.update_pending(short_id, {"audio_message_ids": [i for i in sent_ids if isinstance(i, int)]}, state_dir)
+        except Exception as e:
+            await _send_with_retry(lambda: context.bot.send_message(
+                chat_id=update.effective_chat.id, text=f"⚠️ Impossibile inviare l'audio: {e}", message_thread_id=thread_id,
+            ))
+        return
 
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
