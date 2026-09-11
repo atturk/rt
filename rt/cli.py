@@ -308,6 +308,22 @@ def cmd_recall(args):
 
 
 
+def cmd_add_images(args):
+    if not getattr(args, "input", None):  # TODO Task 17: includere --web-search in questo controllo
+        print("❌ Nessuna sorgente di immagini indicata. Usa -i <pdf_o_cartella>.", file=sys.stderr)
+        sys.exit(1)
+    if not getattr(args, "mock", False):
+        _ensure_config_ready(["image_description", "image_unit_judge"])
+    from rt.pipeline.add_images import run_add_images
+    try:
+        res = run_add_images(args.lesson_dir, input_path=args.input, carousel=args.carousel, force_mock=args.mock)
+    except Exception as e:
+        print(f"❌ {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"✔ {res['images_added']} immagini aggiunte, {len(res['macros_with_images'])} sezioni coinvolte.")
+    print(f"  - {res['deliverable_md']}")
+
+
 def _normalize_with_review(value) -> Tuple[bool, bool]:
     """Ritorna (run_asr, run_sci). True/'all' -> entrambi; 'asr'/'science' -> solo quello;
     None/False -> nessuno. Il ramo True/truthy copre i chiamanti che costruiscono un Namespace
@@ -805,6 +821,14 @@ def main():
                         help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
     p_bld.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_bld.set_defaults(func=cmd_build)
+
+    # add-images
+    p_addimg = subparsers.add_parser("add-images", help="Integra slide/foto (o immagini trovate sul web) nel documento finale, per macro-sezione")
+    p_addimg.add_argument("lesson_dir", help="Directory della lezione")
+    p_addimg.add_argument("-i", "--input", default=None, help="Percorso a un file PDF di slide o una cartella di foto")
+    p_addimg.add_argument("--carousel", action="store_true", help="Raggruppa le immagini di ogni sezione in un blocco carosello (plugin Obsidian napkin-notes) instead di righe immagine singole")
+    p_addimg.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM/vision reale)")
+    p_addimg.set_defaults(func=cmd_add_images)
 
     # status
     p_stat = subparsers.add_parser("status", help="Mostra lo stato della lezione")

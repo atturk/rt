@@ -14,6 +14,7 @@ from rt.pipeline.add_images import (
     partition_new_vs_cached_images,
     describe_new_images,
     judge_images_by_macro,
+    run_add_images,
     get_lesson_context,
 )
 from rt.llm.prompts import (
@@ -23,6 +24,16 @@ from rt.llm.prompts import (
     ImageUnitJudgeResult,
 )
 from rt.llm.client import LLMClient
+from rt.core.lesson_paths import lesson_path
+from rt.core.idempotency import compute_source_fingerprint, compute_file_sha256, record_phase_fingerprint
+from rt.pipeline.build import run_build, render_rielaborato_md
+from rt.pipeline.outline import save_outline
+from rt.pipeline.rewrite import save_draft
+from rt.core.models import (
+    Outline, OutlineMacro, OutlineUnit,
+    Draft, DraftUnit,
+    SegmentsData, Segment
+)
 
 
 def test_compute_image_hash():
@@ -159,7 +170,6 @@ def test_build_image_descriptions_context_message():
     msg1 = build_image_descriptions_context_message(desc)
     msg2 = build_image_descriptions_context_message(desc)
     assert msg1 == msg2
-    # Verify hash_a appears before hash_b due to sorted keys
     assert msg1.index("hash_a") < msg1.index("hash_b")
 
 
@@ -205,3 +215,114 @@ def test_judge_images_by_macro_mock(tmp_path):
     assert "1" in res
     assert "2" in res
     assert isinstance(res["1"], list)
+
+
+@pytest.fixture
+def built_synthetic_lesson(tmp_path):
+    lesson_dir = str(tmp_path / "[2026-09-11] BIOCHIMICA - Lezione Test")
+    os.makedirs(lesson_dir, exist_ok=True)
+    os.makedirs(os.path.join(lesson_dir, "_state"), exist_ok=True)
+
+    info_content = "data: '2026-09-11'\nmateria: BIOCHIMICA\nargomenti: Lipidi\nfase_corrente: completato\nstato: completato\n"
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write(info_content)
+
+    seg_data = SegmentsData(segments=[
+        Segment(id="seg_000001", index=1, start_seconds=0.0, end_seconds=10.0, start_formatted="00:00", end_formatted="00:10", text="Test", text_raw="Test")
+    ])
+    with open(lesson_path(lesson_dir, "segments.json"), "w", encoding="utf-8") as f:
+        f.write(seg_data.model_dump_json())
+
+    with open(lesson_path(lesson_dir, "transcript_normalized.md"), "w", encoding="utf-8") as f:
+        f.write("Transcript")
+
+    outline = Outline(
+        schema_version="1.0",
+        lesson_title="Lezione Test",
+        macro_sections=[
+            OutlineMacro(
+                id="1",
+                title="Prima Sezione",
+                units=[OutlineUnit(id="1.1", title="Unita Uno", start_segment_id="seg_000001", end_segment_id="seg_000001", key_concepts=["concetto"])]
+            )
+        ]
+    )
+    save_outline(outline, lesson_dir)
+
+    draft = Draft(
+        schema_version="1.0",
+        units=[DraftUnit(unit_id="1.1", title="Unita Uno", start_segment_id="seg_000001", end_segment_id="seg_000001", source_segment_ids=["seg_000001"], content="Contenuto unita uno.")]
+    )
+    save_draft(draft, lesson_dir)
+
+    for ph in ["prepare", "outline", "rewrite", "build"]:
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir,
+            phase_name=ph,
+            source_fingerprint=compute_source_fingerprint(lesson_dir, ph),
+            artifact_fingerprints={}
+        )
+
+    run_build(lesson_dir, force=True)
+    for ph in ["prepare", "outline", "rewrite", "build"]:
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir,
+            phase_name=ph,
+            source_fingerprint=compute_source_fingerprint(lesson_dir, ph),
+            artifact_fingerprints={}
+        )
+    return lesson_dir
+
+
+def test_run_add_images_not_built(tmp_path):
+    unbuilt_dir = str(tmp_path / "unbuilt_lesson")
+    os.makedirs(unbuilt_dir, exist_ok=True)
+    with pytest.raises(RuntimeError) as exc_info:
+        run_add_images(unbuilt_dir)
+    assert "non ha ancora completato la fase di build" in str(exc_info.value)
+
+
+def test_run_add_images_end_to_end(built_synthetic_lesson, tmp_path):
+    photos_dir = tmp_path / "photos"
+    photos_dir.mkdir()
+    (photos_dir / "slide1.png").write_bytes(b"png slide bytes")
+
+    # Mock judge to return hash of slide1 for macro "1"
+    h = compute_image_hash(b"png slide bytes")
+
+    def mock_judge(lesson_dir, outline, force_mock=False):
+        return {"1": [h]}
+
+    from unittest.mock import patch
+    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=mock_judge):
+        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=False, force_mock=True)
+
+    assert res["images_added"] == 1
+    assert "1" in res["macros_with_images"]
+
+    rielab_content = open(res["rielaborato_md"], "r", encoding="utf-8").read()
+    deliverable_content = open(res["deliverable_md"], "r", encoding="utf-8").read()
+    pre_content = open(lesson_path(built_synthetic_lesson, "pre-elaborato.md"), "r", encoding="utf-8").read()
+
+    assert f"assets/images/{h[:16]}.png" in rielab_content
+    assert f"assets/images/{h[:16]}.png" in deliverable_content
+    assert "assets/images" not in pre_content
+
+
+def test_run_add_images_carousel(built_synthetic_lesson, tmp_path):
+    photos_dir = tmp_path / "photos"
+    photos_dir.mkdir()
+    (photos_dir / "slide1.png").write_bytes(b"png slide bytes 2")
+
+    h = compute_image_hash(b"png slide bytes 2")
+
+    def mock_judge(lesson_dir, outline, force_mock=False):
+        return {"1": [h]}
+
+    from unittest.mock import patch
+    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=mock_judge):
+        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=True, force_mock=True)
+
+    rielab_content = open(res["rielaborato_md"], "r", encoding="utf-8").read()
+    assert "```napkin-notes" in rielab_content
+    assert f"[[assets/images/{h[:16]}.png]]" in rielab_content
