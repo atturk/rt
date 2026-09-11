@@ -206,6 +206,7 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "rewrite": empty_shell(max_tokens=8192, timeout=180),
         "review_asr": empty_shell(max_tokens=8192, timeout=120),
         "review_science": empty_shell(max_tokens=8192, timeout=180),
+        "image_description": empty_shell(max_tokens=2048, timeout=120),
         "recall_quiz": empty_shell(max_tokens=8192, timeout=120),
         "recall_mirata": empty_shell(max_tokens=8192, timeout=120),
         "recall_vasta": empty_shell(max_tokens=8192, timeout=120),

@@ -133,7 +133,8 @@ class LLMClient:
         idle_read_timeout_seconds: Optional[float] = None,
         min_elapsed_seconds: Optional[float] = None,
         lesson_dir: Optional[str] = None,
-        history: Optional[List[Dict[str, str]]] = None
+        history: Optional[List[Dict[str, str]]] = None,
+        image_data_url: Optional[str] = None
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -264,9 +265,18 @@ class LLMClient:
         messages = [{"role": "system", "content": full_system}]
         if history:
             messages.extend(history)
-        messages.append({"role": "user", "content": prompt})
+        if image_data_url:
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            })
+        else:
+            messages.append({"role": "user", "content": prompt})
 
-        history_len = sum(len(m.get("content", "")) for m in history) if history else 0
+        history_len = sum(len(m.get("content", "")) if isinstance(m.get("content"), str) else 0 for m in history) if history else 0
         approx_in_tok = max(1, (len(full_system) + len(prompt) + history_len) // 4)
         prev_session_cost = GLOBAL_TELEMETRY.get_summary().get("total_estimated_cost_usd", 0.0)
 
@@ -1284,6 +1294,17 @@ class LLMClient:
             return response_model(  # type: ignore
                 commento="[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.",
             )
+
+        elif model_name == "ImageDescription":
+            from rt.llm.prompts import ImageDescription
+            return ImageDescription(
+                slide_title="[MOCK] Titolo Slide",
+                ocr_text="[MOCK] Testo OCR estratto dalla slide",
+                visual_elements=[{"type": "diagram", "description": "[MOCK] Diagramma di test"}],
+                summary_keywords=["mock", "test", "slide"],
+                alt_text="[MOCK] Immagine di test con diagramma e testo.",
+            )  # type: ignore
+
 
         # Fallback generico per qualsiasi altro modello
         try:
