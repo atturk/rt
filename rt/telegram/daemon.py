@@ -125,47 +125,170 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     ))
 
 
+async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state_dir = context.bot_data["state_dir"]
+    thread_id = update.effective_message.message_thread_id if update.effective_message else None
+
+    from rt.core.config import load_config
+    from rt.telegram.config import reverse_resolve_materia
+    from rt.core.lesson_index import scan_lessons, filter_by_materia, filter_unmapped
+    from rt.telegram.formatting import render_lesson_list_text
+
+    runtime_cfg = load_config().telegram
+    if not runtime_cfg.lessons_root:
+        await _send_with_retry(lambda: update.effective_message.reply_text(
+            "⚠️ Parameter 'telegram.lessons_root' non configurato in general.yaml.\n"
+            "Per favore configura 'telegram.lessons_root' nei tuoi file di configurazione (vedi docs/CONFIGURATION_REFERENCE.md).",
+            message_thread_id=thread_id,
+        ))
+        return
+
+    entries = scan_lessons(runtime_cfg.lessons_root)
+    materia = reverse_resolve_materia(thread_id, runtime_cfg.topics)
+
+    if materia:
+        scoped = filter_by_materia(entries, materia)
+        show_materia = False
+    else:
+        scoped = filter_unmapped(entries, runtime_cfg.topics)
+        show_materia = True
+
+    if not scoped:
+        await _send_with_retry(lambda: update.effective_message.reply_text(
+            "Nessuna lezione trovata per questo topic.",
+            message_thread_id=thread_id,
+        ))
+        return
+
+    text = render_lesson_list_text(scoped, show_materia=show_materia)
+    await _send_with_retry(lambda: update.effective_message.reply_text(
+        text,
+        message_thread_id=thread_id,
+        parse_mode="HTML"
+    ))
+
+
 async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/recall lanciato da Telegram: usa, in ordine, (1) l'override esplicito per la materia
-    di questo topic in config/telegram/recall_lessons.yaml se presente, altrimenti (2) l'ultima
-    lezione con build completata su questo topic (tracciata automaticamente da
-    notify_build_completed). Nessun argomento richiesto — non è un indice/browser di lezioni."""
+    """/recall lanciato da Telegram: senza argomenti risponde usando l'override statico o l'ultima
+    lezione su questo topic; con argomenti risolve per data e/o parola chiave."""
     state_dir = context.bot_data["state_dir"]
     chat_id = update.effective_chat.id
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
 
     from rt.core.config import load_config
-    from rt.telegram.recall_lessons import get_lesson_override
-    from rt.telegram.last_lesson import get_last_lesson
+    from rt.telegram.config import reverse_resolve_materia
+    from rt.core.lesson_index import scan_lessons, filter_by_materia, filter_unmapped
+    from rt.telegram.lesson_query import resolve_recall_query, MAX_INLINE_DISAMBIGUATION
+    from rt.telegram.formatting import render_lesson_list_text
 
-    lesson_dir = None
     runtime_cfg = load_config().telegram
-    materia = next((m for m, tid in (runtime_cfg.topics or {}).items() if tid == thread_id), None)
-    if materia:
-        override = get_lesson_override(materia)
-        if override and os.path.isdir(override):
-            lesson_dir = override
 
-    if not lesson_dir:
-        auto = get_last_lesson(state_dir, chat_id, thread_id)
-        if auto and os.path.isdir(auto):
-            lesson_dir = auto
+    if not context.args:
+        from rt.telegram.recall_lessons import get_lesson_override
+        from rt.telegram.last_lesson import get_last_lesson
 
-    if not lesson_dir:
+        lesson_dir = None
+        materia = next((m for m, tid in (runtime_cfg.topics or {}).items() if tid == thread_id), None)
+        if materia:
+            override = get_lesson_override(materia)
+            if override and os.path.isdir(override):
+                lesson_dir = override
+
+        if not lesson_dir:
+            auto = get_last_lesson(state_dir, chat_id, thread_id)
+            if auto and os.path.isdir(auto):
+                lesson_dir = auto
+
+        if not lesson_dir:
+            await _send_with_retry(lambda: update.effective_message.reply_text(
+                "Nessuna lezione trovata per questo topic. Il bot ricorda automaticamente solo "
+                "l'ULTIMA lezione con build completata fatta in questo topic (non è un indice: "
+                "serve almeno una build qui prima che /recall funzioni). Nel frattempo puoi "
+                "avviare il recall da terminale con: rt recall \"<cartella>\" --channel telegram. "
+                "Usa /list per vedere le lezioni disponibili o inserisci una query es. '/recall <data o parola chiave>'.\n\n"
+                "Per fissare esplicitamente quale lezione usare per questa materia, aggiungi una "
+                "entry a config/telegram/recall_lessons.yaml (vedi docs/CONFIGURATION_REFERENCE.md).",
+                message_thread_id=thread_id,
+            ))
+            return
+
+        loop = asyncio.get_running_loop()
+        from rt.pipeline.recall_session import start_recall_via_telegram
+        await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "alternato", None, False)
+        return
+
+    raw_query = " ".join(context.args)
+
+    if not runtime_cfg.lessons_root:
         await _send_with_retry(lambda: update.effective_message.reply_text(
-            "Nessuna lezione trovata per questo topic. Il bot ricorda automaticamente solo "
-            "l'ULTIMA lezione con build completata fatta in questo topic (non è un indice: "
-            "serve almeno una build qui prima che /recall funzioni). Nel frattempo puoi "
-            "avviare il recall da terminale con: rt recall \"<cartella>\" --channel telegram\n\n"
-            "Per fissare esplicitamente quale lezione usare per questa materia, aggiungi una "
-            "entry a config/telegram/recall_lessons.yaml (vedi docs/CONFIGURATION_REFERENCE.md).",
+            "⚠️ Parameter 'telegram.lessons_root' non configurato in general.yaml.\n"
+            "Per favore configura 'telegram.lessons_root' nei tuoi file di configurazione (vedi docs/CONFIGURATION_REFERENCE.md).",
             message_thread_id=thread_id,
         ))
         return
 
-    loop = asyncio.get_running_loop()
-    from rt.pipeline.recall_session import start_recall_via_telegram
-    await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "alternato", None, False)
+    entries = scan_lessons(runtime_cfg.lessons_root)
+    materia = reverse_resolve_materia(thread_id, runtime_cfg.topics)
+
+    if materia:
+        scoped = filter_by_materia(entries, materia)
+        show_materia = False
+    else:
+        scoped = filter_unmapped(entries, runtime_cfg.topics)
+        show_materia = True
+
+    mode, matches = resolve_recall_query(scoped, raw_query)
+
+    if len(matches) == 0:
+        await _send_with_retry(lambda: update.effective_message.reply_text(
+            f"Nessuna lezione trovata per '{raw_query}'. Usa /list per vedere le lezioni disponibili.",
+            message_thread_id=thread_id,
+        ))
+        return
+    elif len(matches) == 1:
+        loop = asyncio.get_running_loop()
+        from rt.pipeline.recall_session import start_recall_via_telegram
+        await loop.run_in_executor(None, start_recall_via_telegram, matches[0].lesson_dir, "alternato", None, False)
+        return
+    elif len(matches) <= MAX_INLINE_DISAMBIGUATION:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        text_list = render_lesson_list_text(matches, show_materia=show_materia)
+        prompt_msg = f"Trovate più lezioni corrispondenti:\n\n{text_list}\n\nScegli quale lezione avviare:"
+
+        short_id = registry.register_pending(
+            lesson_dir=matches[0].lesson_dir,
+            round_=0,
+            kind="recall_disambiguation",
+            state_dir=state_dir,
+            message_thread_id=thread_id,
+            extra={"candidate_dirs": [m.lesson_dir for m in matches]}
+        )
+
+        buttons = [
+            InlineKeyboardButton(str(i + 1), callback_data=f"rld:{short_id}:{i}")
+            for i in range(len(matches))
+        ]
+        keyboard = InlineKeyboardMarkup([buttons])
+
+        await _send_with_retry(lambda: update.effective_message.reply_text(
+            prompt_msg,
+            reply_markup=keyboard,
+            message_thread_id=thread_id,
+            parse_mode="HTML"
+        ))
+        return
+    else:  # > MAX_INLINE_DISAMBIGUATION
+        text_list = render_lesson_list_text(matches, show_materia=show_materia)
+        msg = (
+            f"Trovate {len(matches)} lezioni corrispondenti a '{raw_query}':\n\n{text_list}\n\n"
+            "Affina la ricerca fornendo una query più specifica (data e/o parola chiave, o 'data - parola chiave')."
+        )
+        await _send_with_retry(lambda: update.effective_message.reply_text(
+            msg,
+            message_thread_id=thread_id,
+            parse_mode="HTML"
+        ))
+        return
 
 
 async def handle_stile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -198,6 +321,36 @@ async def _handle_stile_callback(update: Update, context: ContextTypes.DEFAULT_T
         pass
 
 
+async def _handle_recall_disambiguation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, data_part: str) -> None:
+    parts = data_part.split(":")
+    if len(parts) < 2:
+        await update.callback_query.answer("Dati non validi.", show_alert=True)
+        return
+    short_id, idx_str = parts[0], parts[1]
+    state_dir = context.bot_data["state_dir"]
+    entry = registry.resolve_pending(short_id, state_dir)
+    if entry is None or entry.get("kind") != "recall_disambiguation":
+        await update.callback_query.answer("Richiesta d'appello scaduta o non valida.", show_alert=True)
+        return
+    try:
+        idx = int(idx_str)
+        candidate_dirs = entry["candidate_dirs"]
+        target_dir = candidate_dirs[idx]
+    except (ValueError, IndexError, KeyError):
+        await update.callback_query.answer("Opzione non valida.", show_alert=True)
+        return
+
+    await update.callback_query.answer()
+    try:
+        await update.callback_query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    loop = asyncio.get_running_loop()
+    from rt.pipeline.recall_session import start_recall_via_telegram
+    await loop.run_in_executor(None, start_recall_via_telegram, target_dir, "alternato", None, False)
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     data = query.data or ""
@@ -215,6 +368,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_post_answer_callback(update, context, prefix, short_id)
     elif prefix == "stile":
         await _handle_stile_callback(update, context, short_id)
+    elif prefix == "rld":
+        await _handle_recall_disambiguation_callback(update, context, short_id)
     else:
         await query.answer()
 
@@ -705,6 +860,7 @@ def run_daemon(state_dir: str = None) -> None:
     application.add_handler(CommandHandler("quit", handle_quit))
     application.add_handler(CommandHandler("status", handle_status))
     application.add_handler(CommandHandler("stile", handle_stile))
+    application.add_handler(CommandHandler("list", handle_list_command))
     application.add_handler(CommandHandler("recall", handle_recall_command))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
