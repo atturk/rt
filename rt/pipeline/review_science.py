@@ -153,6 +153,9 @@ def disambiguate_science_issue(iss: Any, source_text: str) -> Any:
         if new_question:
             iss.diplomatic_question = new_question
 
+    return iss
+
+
 def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
     """Stima il segment_id più vicino al punto in cui 'claim' compare nel testo rielaborato
     dell'unità, mappando proporzionalmente la posizione del carattere sulla durata cumulativa

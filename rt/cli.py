@@ -254,10 +254,10 @@ def cmd_review_science(args):
 
 
 def cmd_recall(args):
-    if getattr(args, "reset", None) is not None:
+    reset_val = getattr(args, "reset", None)
+    if isinstance(reset_val, str) and reset_val in ("all", "quiz", "mirata", "vasta"):
         from rt.pipeline.recall import purge_recall_by_type
         from rt.core.models import RecallQuestionType
-        reset_val = args.reset
         qtype = None if reset_val == "all" else RecallQuestionType(reset_val)
         count = purge_recall_by_type(args.lesson_dir, qtype)
         type_str = reset_val if reset_val != "all" else "tutti i tipi"

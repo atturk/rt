@@ -20,7 +20,7 @@ from rt.telegram import registry, conversation_state as convo, session as tg_ses
 
 ISSUE_ACTIONS = {"ia", "ir", "ie", "is", "iq", "ib"}
 RECALL_ACTION_ACTIONS = {"rns", "rsk"}
-RECALL_POST_ANSWER_ACTIONS = {"rnx", "rut", "rua"}
+RECALL_POST_ANSWER_ACTIONS = {"rnx", "rut", "rua", "rtt"}
 RECALL_REACTION_VOTE_MAP = {"👍": "up", "👎": "down", "⚡": "lightning"}
 
 
@@ -375,21 +375,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def _send_post_answer_result(
     context: ContextTypes.DEFAULT_TYPE, chat_id: int, thread_id, lesson_dir: str,
-    question_id: str, esito_text: str, state_dir: str,
+    question_id: str, esito_text: str, state_dir: str, transcript: Optional[str] = None,
 ) -> None:
-    """Manda il testo dell'esito con la tastiera post-risposta (⏭️ prossima / 📖 unità /
-    🔊 audio), SENZA avanzare automaticamente: l'avanzamento avviene solo al click di ⏭️
-    (vedi _handle_post_answer_callback). Centralizzata perché usata da ogni punto che
-    conclude una domanda di recall (poll, 'non lo so', risposta testuale, risposta vocale)."""
+    """Manda il testo dell'esito con la tastiera post-risposta (🗣 trascritto se presente /
+    ⏭️ prossima / 📖 unità / 🔊 audio), SENZA avanzare automaticamente: l'avanzamento avviene
+    solo al click di ⏭️ (vedi _handle_post_answer_callback). Centralizzata perché usata da ogni
+    punto che conclude una domanda di recall (poll, 'non lo so', risposta testuale, risposta vocale)."""
     from rt.telegram import formatting as tg_fmt
     short_id = registry.register_pending(
         lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
-        message_thread_id=thread_id, extra={"question_id": question_id},
+        message_thread_id=thread_id, extra={
+            "question_id": question_id,
+            "transcript": transcript,
+            "transcript_visible": False,
+            "evaluation_text": esito_text,
+            "extra_message_ids": [],
+            "message_id": None,
+        },
     )
-    keyboard = tg_fmt.build_post_answer_keyboard(short_id)
-    await _send_with_retry(lambda: context.bot.send_message(
+    keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=(transcript is not None))
+    res = await _send_with_retry(lambda: context.bot.send_message(
         chat_id=chat_id, text=esito_text, reply_markup=keyboard, message_thread_id=thread_id,
     ))
+    msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+    if isinstance(msg_id, int):
+        registry.update_pending(short_id, {"message_id": msg_id}, state_dir)
 
 
 async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
@@ -462,10 +472,10 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, short_id: str) -> None:
-    """Bottoni dopo un esito di recall: ⏭️ avanza (rnx — l'UNICO che rimuove la tastiera e fa
-    proseguire la sessione: niente più avanzamento automatico), 📖 mostra il testo dell'unità
-    (rut) e 🔊 manda il suo audio (rua) — questi due lasciano la tastiera attiva, l'utente può
-    ripeterli o passare a ⏭️ quando vuole."""
+    """Bottoni dopo un esito di recall: 🗣 trascritto a comparsa (rtt), ⏭️ avanza (rnx —
+    l'UNICO che rimuove la tastiera, cancella messaggi extra e fa proseguire la sessione),
+    📖 mostra il testo dell'unità (rut) e 🔊 manda il suo audio (rua) — questi lasciano la
+    tastiera attiva, l'utente può ripeterli o passare a ⏭️ quando vuole."""
     state_dir = context.bot_data["state_dir"]
     entry = registry.resolve_pending(short_id, state_dir)
     if entry is None or entry.get("kind") != "recall_post_answer":
@@ -476,12 +486,50 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
     thread_id = entry.get("message_thread_id")
     loop = asyncio.get_running_loop()
 
+    if action == "rtt":
+        await update.callback_query.answer()
+        transcript = entry.get("transcript")
+        if not transcript:
+            return
+        visible = not entry.get("transcript_visible", False)
+        registry.update_pending(short_id, {"transcript_visible": visible}, state_dir)
+
+        eval_text = entry.get("evaluation_text", "")
+        if visible:
+            new_text = f"🗣 Trascritto: \"{transcript}\"\n\n{eval_text}"
+        else:
+            new_text = eval_text
+
+        msg_id = entry.get("message_id") or (update.effective_message.message_id if update.effective_message else None)
+        from rt.telegram import formatting as tg_fmt
+        keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=True)
+        if msg_id is not None:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=msg_id,
+                    text=new_text,
+                    reply_markup=keyboard,
+                )
+            except Exception:
+                pass
+        return
+
     if action == "rnx":
         await update.callback_query.answer()
         try:
             await update.callback_query.edit_message_reply_markup(reply_markup=None)
         except Exception:
             pass
+
+        # Elimina tutti i messaggi extra accumulati (testo unità, audio)
+        extra_msg_ids = entry.get("extra_message_ids", [])
+        for extra_id in extra_msg_ids:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=extra_id)
+            except Exception:
+                pass
+
         from rt.pipeline.recall_session import send_current_recall_question
         await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
         return
@@ -498,20 +546,34 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         from rt.pipeline.recall_session import format_unit_reference
         text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
         text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
-        await _send_with_retry(lambda: context.bot.send_message(
+        res = await _send_with_retry(lambda: context.bot.send_message(
             chat_id=update.effective_chat.id, text=text, message_thread_id=thread_id,
         ))
+        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+        if isinstance(msg_id, int):
+            extra_ids = list(entry.get("extra_message_ids", []))
+            extra_ids.append(msg_id)
+            registry.update_pending(short_id, {"extra_message_ids": extra_ids}, state_dir)
         return
 
     # rua: manda l'audio di ciascuna unità della domanda (sendAudio, stile playlist)
     await update.callback_query.answer("🔊 Preparo l'audio...")
     from rt.pipeline.recall_session import send_unit_audio
     try:
-        await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id)
+        sent_ids = await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id)
+        if sent_ids:
+            extra_ids = list(entry.get("extra_message_ids", []))
+            extra_ids.extend([i for i in sent_ids if isinstance(i, int)])
+            registry.update_pending(short_id, {"extra_message_ids": extra_ids}, state_dir)
     except Exception as e:
-        await _send_with_retry(lambda: context.bot.send_message(
+        res = await _send_with_retry(lambda: context.bot.send_message(
             chat_id=update.effective_chat.id, text=f"⚠️ Impossibile inviare l'audio: {e}", message_thread_id=thread_id,
         ))
+        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+        if isinstance(msg_id, int):
+            extra_ids = list(entry.get("extra_message_ids", []))
+            extra_ids.append(msg_id)
+            registry.update_pending(short_id, {"extra_message_ids": extra_ids}, state_dir)
 
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -726,6 +788,17 @@ async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAU
     if not question_id:
         return
 
+    q_msg_id = session_state.get("current_question_message_id")
+    if q_msg_id is not None:
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=update.effective_chat.id,
+                message_id=q_msg_id,
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+
     loop = asyncio.get_running_loop()
     evaluation = await loop.run_in_executor(None, handle_recall_answer, lesson_dir, question_id, update.message.text, False)
     if evaluation is None:
@@ -757,6 +830,17 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     question_id = session_state.get("current_question_id")
     if not question_id:
         return
+
+    q_msg_id = session_state.get("current_question_message_id")
+    if q_msg_id is not None:
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=q_msg_id,
+                reply_markup=None,
+            )
+        except Exception:
+            pass
 
     loop = asyncio.get_running_loop()
     bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
@@ -804,8 +888,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         evaluation = await loop.run_in_executor(None, handle_recall_answer, lesson_dir, question_id, answer_text, True)
         if evaluation is None:
             return
-        esito = f"🗣 Trascritto: \"{answer_text}\"\n\n{evaluation}"
-        await _send_post_answer_result(context, chat_id, thread_id, lesson_dir, question_id, esito, state_dir)
+        await _send_post_answer_result(context, chat_id, thread_id, lesson_dir, question_id, evaluation, state_dir, transcript=answer_text)
     finally:
         if os.path.isfile(tmp_path):
             try:

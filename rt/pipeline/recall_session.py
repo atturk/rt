@@ -38,7 +38,7 @@ def format_unit_reference(lesson_dir: str, question) -> str:
     return "".join(parts)
 
 
-def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] = None) -> None:
+def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] = None) -> List[int]:
     """Manda via sendAudio (stile 'file musicale', non sendVoice) il clip di ciascuna unità
     didattica della domanda. Il clip viene ritagliato una sola volta e messo in cache in
     <lesson_dir>/recall_audio_clips/<unit_id><ext> (stessa estensione del file audio originale,
@@ -70,13 +70,18 @@ def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] 
     os.makedirs(clips_dir, exist_ok=True)
     ext = os.path.splitext(audio_path)[1] or ".mp3"
 
+    sent_msg_ids: List[int] = []
     for u in units:
         clip_path = os.path.join(clips_dir, f"{u.unit_id}{ext}")
         if not os.path.isfile(clip_path):
             start_s, end_s = resolve_unit_time_range(u, segments)
             tmp_clip = cut_clip(audio_path, start_s, end_s)
             shutil.move(tmp_clip, clip_path)
-        send_audio(tg_cfg, clip_path, title=f"{u.unit_id} - {u.title}", message_thread_id=message_thread_id)
+        res = send_audio(tg_cfg, clip_path, title=f"{u.unit_id} - {u.title}", message_thread_id=message_thread_id)
+        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
+        if isinstance(msg_id, int):
+            sent_msg_ids.append(msg_id)
+    return sent_msg_ids
 
 
 # -----------------------------------------------------------------------
@@ -94,12 +99,15 @@ def load_recall_session_state(lesson_dir: str) -> dict:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return {
+        res = {
             "order": data.get("order", "alternato"),
             "unit_cursor": data.get("unit_cursor"),
             "current_question_id": data.get("current_question_id"),
             "force_mock": data.get("force_mock", False),
         }
+        if "current_question_message_id" in data:
+            res["current_question_message_id"] = data["current_question_message_id"]
+        return res
     except Exception:
         return {"order": "alternato", "unit_cursor": None, "current_question_id": None, "force_mock": False}
 
@@ -300,6 +308,8 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
                     message_thread_id=thread_id, extra={"question_id": question.id, "message_id": poll_msg_id},
                 )
             if poll_msg_id is not None:
+                session_state["current_question_message_id"] = poll_msg_id
+                save_recall_session_state(lesson_dir, session_state)
                 tg_registry.register_with_key(
                     str(poll_msg_id), lesson_dir, kind="recall_question_message", state_dir=state_dir,
                     message_thread_id=thread_id, extra={"question_id": question.id},
@@ -308,7 +318,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
             # Aggiorna poll_message_id nell'entry recall_question già registrata
             tg_registry.register_with_key(
                 action_short_id, lesson_dir, kind="recall_question", state_dir=state_dir,
-                message_thread_id=thread_id, extra={"question_id": question.id, "qtype": "quiz", "poll_message_id": poll_msg_id},
+                message_thread_id=thread_id, extra={"question_id": question.id, "qtype": "quiz", "poll_message_id": poll_msg_id, "message_id": poll_msg_id},
             )
         except tg_client.TelegramAPIError as e:
             print(f"⚠️  Invio quiz a Telegram fallito: {e}")
@@ -322,7 +332,10 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         try:
             res = tg_client.send_message(tg_cfg, text=text, reply_markup=keyboard, message_thread_id=thread_id)
             msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
-            if msg_id is not None:
+            if isinstance(msg_id, int):
+                session_state["current_question_message_id"] = msg_id
+                save_recall_session_state(lesson_dir, session_state)
+                tg_registry.update_pending(short_id, {"message_id": msg_id}, state_dir)
                 tg_session.update_session_message(state_dir, tg_cfg.chat_id, thread_id, msg_id)
                 tg_registry.register_with_key(
                     str(msg_id), lesson_dir, kind="recall_question_message", state_dir=state_dir,
