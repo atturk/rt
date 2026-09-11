@@ -259,6 +259,7 @@ class RTConfig(BaseModel):
     show_monitor: bool = Field(default=True, description="Mostra il live terminal monitor durante le chiamate")
     show_monitor_verbose: bool = Field(default=False, description="Se True, mostra il box dettagliato multi-riga invece della riga compatta di default")
     pricing: Optional[Dict[str, Dict[str, Any]]] = Field(default=None, description="Pricing custom opzionale per provider e modello")
+    searxng_base_url: Optional[str] = Field(default=None, description="URL base dell'istanza SearXNG self-hosted per la ricerca immagini web con --web-search")
 
     @property
     def llm(self) -> Dict[str, JobRoutingConfig]:

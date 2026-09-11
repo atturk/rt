@@ -27,3 +27,6 @@ telegram:
     BIOCHIMICA: 123
     FARMACOLOGIA: 456
   misc_topic_id: 789
+
+# URL base dell'istanza SearXNG per la ricerca immagini web (richiesta da `rt add-images --web-search`)
+# searxng_base_url: "http://localhost:8080"

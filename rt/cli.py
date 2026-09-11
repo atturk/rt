@@ -309,14 +309,20 @@ def cmd_recall(args):
 
 
 def cmd_add_images(args):
-    if not getattr(args, "input", None):  # TODO Task 17: includere --web-search in questo controllo
-        print("❌ Nessuna sorgente di immagini indicata. Usa -i <pdf_o_cartella>.", file=sys.stderr)
+    if not getattr(args, "input", None) and not getattr(args, "web_search", None):
+        print("❌ Nessuna sorgente di immagini indicata. Usa -i <pdf_o_cartella> e/o --web-search N.", file=sys.stderr)
         sys.exit(1)
     if not getattr(args, "mock", False):
         _ensure_config_ready(["image_description", "image_unit_judge"])
     from rt.pipeline.add_images import run_add_images
     try:
-        res = run_add_images(args.lesson_dir, input_path=args.input, carousel=args.carousel, force_mock=args.mock)
+        res = run_add_images(
+            args.lesson_dir,
+            input_path=args.input,
+            web_search_count=args.web_search,
+            carousel=args.carousel,
+            force_mock=args.mock,
+        )
     except Exception as e:
         print(f"❌ {e}", file=sys.stderr)
         sys.exit(1)
@@ -826,7 +832,12 @@ def main():
     p_addimg = subparsers.add_parser("add-images", help="Integra slide/foto (o immagini trovate sul web) nel documento finale, per macro-sezione")
     p_addimg.add_argument("lesson_dir", help="Directory della lezione")
     p_addimg.add_argument("-i", "--input", default=None, help="Percorso a un file PDF di slide o una cartella di foto")
-    p_addimg.add_argument("--carousel", action="store_true", help="Raggruppa le immagini di ogni sezione in un blocco carosello (plugin Obsidian napkin-notes) instead di righe immagine singole")
+    p_addimg.add_argument(
+        "--web-search", nargs="?", const=5, type=int, default=None,
+        help="Cerca e integra N immagini dal web via SearXNG (default 5 se il flag è usato senza valore). "
+             "Combinabile con -i. Richiede 'searxng_base_url' configurato in config/general.yaml."
+    )
+    p_addimg.add_argument("--carousel", action="store_true", help="Raggruppa le immagini di ogni sezione in un blocco carosello (plugin Obsidian napkin-notes) invece di righe immagine singole")
     p_addimg.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM/vision reale)")
     p_addimg.set_defaults(func=cmd_add_images)
 

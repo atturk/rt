@@ -14,6 +14,8 @@ from rt.pipeline.add_images import (
     partition_new_vs_cached_images,
     describe_new_images,
     judge_images_by_macro,
+    build_macro_search_queries,
+    fetch_web_images,
     run_add_images,
     get_lesson_context,
 )
@@ -326,3 +328,37 @@ def test_run_add_images_carousel(built_synthetic_lesson, tmp_path):
     rielab_content = open(res["rielaborato_md"], "r", encoding="utf-8").read()
     assert "```napkin-notes" in rielab_content
     assert f"[[assets/images/{h[:16]}.png]]" in rielab_content
+
+
+def test_build_macro_search_queries():
+    outline = MockOutline(
+        macro_sections=[
+            MockMacro(id="1", title="Macro 1", units=[MockUnit(id="1.1", title="U1.1", key_concepts=["K1", "K2", "K3", "K4"])]),
+            MockMacro(id="2", title="Macro 2 (Senza KC)", units=[MockUnit(id="2.1", title="U2.1", key_concepts=[])]),
+        ]
+    )
+    queries = build_macro_search_queries(outline)
+    assert queries["1"] == "K1 K2 K3"
+    assert queries["2"] == "Macro 2 (Senza KC)"
+
+
+def test_fetch_web_images():
+    outline = MockOutline(
+        macro_sections=[
+            MockMacro(id="1", title="M1", units=[MockUnit(id="1.1", title="U1", key_concepts=["K1"])]),
+        ]
+    )
+    with pytest.raises(ValueError) as exc_info:
+        fetch_web_images("dummy_dir", outline, total_count=3, base_url=None, force_mock=False)
+    assert "searxng_base_url" in str(exc_info.value)
+
+    web_imgs = fetch_web_images("dummy_dir", outline, total_count=3, base_url=None, force_mock=True)
+    assert len(web_imgs) == 3
+    assert web_imgs[0].source_label.startswith("websearch:")
+
+
+def test_run_add_images_web_search(built_synthetic_lesson):
+    res = run_add_images(built_synthetic_lesson, web_search_count=2, force_mock=True)
+    assert "rielaborato_md" in res
+    assert os.path.isfile(res["rielaborato_md"])
+
