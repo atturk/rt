@@ -1,6 +1,8 @@
 import os
 import json
 import pytest
+from dataclasses import dataclass
+from typing import List
 from rt.core.image_extract import ExtractedImage
 from rt.pipeline.add_images import (
     get_images_dir,
@@ -11,9 +13,15 @@ from rt.pipeline.add_images import (
     save_raw_image,
     partition_new_vs_cached_images,
     describe_new_images,
+    judge_images_by_macro,
     get_lesson_context,
 )
-from rt.llm.prompts import build_image_description_user_prompt, ImageDescription
+from rt.llm.prompts import (
+    build_image_description_user_prompt,
+    build_image_descriptions_context_message,
+    ImageDescription,
+    ImageUnitJudgeResult,
+)
 from rt.llm.client import LLMClient
 
 
@@ -106,7 +114,7 @@ def test_build_image_description_user_prompt():
     assert "Contesto della lezione:" not in prompt_no_ctx
 
 
-def test_call_structured_with_image_data_url(monkeypatch):
+def test_call_structured_with_image_data_url():
     client = LLMClient(force_mock=True)
     res = client.call_structured(
         prompt="Descrivi",
@@ -141,3 +149,59 @@ def test_describe_new_images(tmp_path):
     assert desc_map[h_curated]["source"] == "pdf:slides.pdf#1"
     assert desc_map[h_web]["source"] == "websearch:query#1"
     assert os.path.isfile(os.path.join(lesson_dir, desc_map[h_curated]["filename"]))
+
+
+def test_build_image_descriptions_context_message():
+    desc = {
+        "hash_b": {"slide_title": "B", "ocr_text": "text B", "visual_elements": [], "summary_keywords": [], "alt_text": "B"},
+        "hash_a": {"slide_title": "A", "ocr_text": "text A", "visual_elements": [], "summary_keywords": [], "alt_text": "A"},
+    }
+    msg1 = build_image_descriptions_context_message(desc)
+    msg2 = build_image_descriptions_context_message(desc)
+    assert msg1 == msg2
+    # Verify hash_a appears before hash_b due to sorted keys
+    assert msg1.index("hash_a") < msg1.index("hash_b")
+
+
+@dataclass
+class MockUnit:
+    id: str
+    title: str
+    key_concepts: List[str]
+
+@dataclass
+class MockMacro:
+    id: str
+    title: str
+    units: List[MockUnit]
+
+@dataclass
+class MockOutline:
+    macro_sections: List[MockMacro]
+
+
+def test_judge_images_by_macro_empty(tmp_path):
+    lesson_dir = str(tmp_path)
+    outline = MockOutline(macro_sections=[MockMacro(id="1", title="M1", units=[])])
+    res = judge_images_by_macro(lesson_dir, outline, force_mock=True)
+    assert res == {}
+
+
+def test_judge_images_by_macro_mock(tmp_path):
+    lesson_dir = str(tmp_path)
+    save_image_descriptions(
+        lesson_dir,
+        {
+            "hash1": {"slide_title": "S1", "ocr_text": "T1", "visual_elements": [], "summary_keywords": [], "alt_text": "A1"}
+        }
+    )
+    outline = MockOutline(
+        macro_sections=[
+            MockMacro(id="1", title="Macro 1", units=[MockUnit(id="1.1", title="U1.1", key_concepts=["c1"])]),
+            MockMacro(id="2", title="Macro 2", units=[MockUnit(id="2.1", title="U2.1", key_concepts=["c2"])]),
+        ]
+    )
+    res = judge_images_by_macro(lesson_dir, outline, force_mock=True)
+    assert "1" in res
+    assert "2" in res
+    assert isinstance(res["1"], list)
