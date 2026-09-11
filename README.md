@@ -33,7 +33,7 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 #### Installazione Automatica (Consigliata su macOS)
 
 ```bash
-git clone <repo-url> && cd rt && ./install.sh
+git clone https://github.com/atturk/rt.git && cd rt && ./install.sh
 ```
 Lo script `install.sh` verifica i prerequisiti di sistema (Homebrew, Python 3.10+, `ffmpeg`), crea l'ambiente virtuale `.venv`, installa le dipendenze e inizializza i file di configurazione (`config/` e `.env`).
 
