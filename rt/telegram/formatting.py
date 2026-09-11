@@ -29,6 +29,15 @@ def render_outline_summary_text(outline: Outline) -> str:
     return text
 
 
+def render_lesson_list_text(entries, show_materia: bool) -> str:
+    lines = []
+    for i, e in enumerate(entries, start=1):
+        label = e.titolo or e.argomenti or e.folder_name
+        suffix = f" ({e.materia})" if show_materia and e.materia else ""
+        lines.append(f"{i}. [{e.data}] {escape_html(label)}{suffix}")
+    return "\n".join(lines)
+
+
 def render_asr_issue_text(issue, unit_info: Optional[str], timecode: str, listen_range: str, sentence: str) -> str:
     lines = [f"🎙 <b>Ambiguità ASR ({escape_html(issue.level.value)})</b>"]
     if unit_info:
