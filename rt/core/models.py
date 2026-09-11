@@ -229,6 +229,7 @@ class RecallQuestion(BaseModel):
     options: Optional[List[str]] = None  # only quiz, exactly 4
     correct_index: Optional[int] = None  # only quiz
     pregenerated_material: Optional[str] = None
+    content_fingerprint: Optional[str] = None
     status: RecallQuestionStatus = RecallQuestionStatus.PENDING
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
