@@ -4,18 +4,23 @@ I file numerati in questa cartella sono già il piano di implementazione complet
 essere eseguito: NON produrre un tuo piano di implementazione separato prima di iniziare.
 Leggi ogni file di task e implementa direttamente quanto descritto.
 
-**Stato**: 01-10 sono già stati implementati, revisionati (con alcuni fix di hardening
+**Stato**: 01-12 sono già stati implementati, revisionati (con alcuni fix di hardening
 applicati direttamente in revisione) e pushati in round precedenti — non rifarli, non toccare
-quel codice se non indicato esplicitamente da uno dei task 11-12. Il lavoro corrente da
-eseguire è **11 → 12**. Nota: il Task 12 rivede deliberatamente un comportamento introdotto dal
-Task 08 (cambia "cancellazione silenziosa" in "avviso + revisione manuale") — non è un
-conflitto, è un cambio di design intenzionale, leggi il Task 12 per il contesto.
+quel codice se non indicato esplicitamente da uno dei task 13-17. Il lavoro corrente da
+eseguire è **13 → 14 → 15 → 16 → 17**: una feature nuova e sostanziale ("rt add-images",
+integra slide/foto/immagini web nel documento finale sotto la macro-sezione pertinente), NON
+un fix — leggi bene il "Contesto" di ciascun file, sono più densi dei task precedenti.
 
 ## Ordine di esecuzione
 
-Esegui i task in ordine numerico sequenziale: **11 → 12**, nella stessa sessione/working tree.
-Sono sostanzialmente indipendenti (piccola sovrapposizione su `rt/pipeline/recall_session.py`,
-funzioni diverse — l'ordine numerico evita qualunque necessità di merge).
+Esegui i task in ordine numerico sequenziale: **13 → 14 → 15 → 16 → 17**, nella stessa
+sessione/working tree. A differenza dei round precedenti, qui l'ordine non è solo una
+convenzione per evitare merge: è una **vera catena di dipendenze funzionali** — ogni task
+successivo usa codice che il precedente crea (13 = estrazione+cache, 14 = job descrizione
+immagine, 15 = job giudice macro-sezione, 16 = inserimento nel documento + comando CLI
+completo e funzionante, 17 = aggiunge `--web-search`). Ogni file di task dichiara
+esplicitamente le sue precondizioni ("richiede che il Task N sia già completato") — se non
+sono soddisfatte, fermati e segnalalo invece di improvvisare.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
@@ -32,9 +37,12 @@ Un commit per task completato e verificato permette di isolare subito quale task
 introdotto un problema, invece di dover analizzare un diff enorme e indistinguibile a fine
 lavoro — ma non serve fermarsi ad aspettare conferma tra un task e l'altro.
 
-Riferimento: piano approvato in
-`/Users/attilioturco/.claude/plans/ok-adesso-vorrei-fare-reactive-spark.md` (contesto
-generale, i singoli file di task qui sono già autosufficienti per l'implementazione).
+Riferimento: piano approvato per i task 01-12 in
+`/Users/attilioturco/.claude/plans/ok-adesso-vorrei-fare-reactive-spark.md`; piano approvato
+per i task 13-17 (feature "add-images") in
+`/Users/attilioturco/.claude/plans/discutiamo-prima-il-punto-flickering-chipmunk.md` (contesto
+generale in entrambi i casi, i singoli file di task qui sono già autosufficienti per
+l'implementazione).
 
 Quando tutti i task sono completati (o se ti sei fermato bloccato su un task), segnalalo in
 chat con un riepilogo breve per task: file toccati, output dei test, e — importante — cosa
