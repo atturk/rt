@@ -7,7 +7,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i 4 job cognitivi LL
 4. Science Review (critic indipendente per docente, ricostruzione e plausibilità)
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 from rt.core.models import ASRIssue, ScienceIssue
 
@@ -505,3 +505,34 @@ RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
 Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento)."""
+
+
+# ----------------------------------------------------------------------
+# 10. IMAGE DESCRIPTION JOB (Vision)
+# ----------------------------------------------------------------------
+
+class ImageDescription(BaseModel):
+    slide_title: str = Field(..., description="Titolo principale della slide/immagine, o 'N/A' se assente")
+    ocr_text: str = Field(default="", description="Testo leggibile trascritto fedelmente dall'immagine")
+    visual_elements: List[Dict[str, str]] = Field(default_factory=list, description="Lista di {type, description} per ogni elemento visivo (diagramma, grafico, foto, tabella, schema, altro)")
+    summary_keywords: List[str] = Field(default_factory=list, description="3-6 parole chiave del contenuto")
+    alt_text: str = Field(..., description="Descrizione sintetica in una frase, pronta per l'attributo alt del markdown")
+
+
+IMAGE_DESCRIPTION_SYSTEM_PROMPT = """Sei un assistente specializzato nell'analisi di slide e immagini didattiche universitarie.
+Analizza l'immagine fornita e restituisci una descrizione strutturata accurata e fedele di ciò che è effettivamente visibile."""
+
+IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT = IMAGE_DESCRIPTION_SYSTEM_PROMPT + """
+
+IMPORTANTE: questa immagine proviene da una ricerca web automatica e potrebbe NON essere
+pertinente all'argomento di alcuna lezione. Descrivi ESCLUSIVAMENTE ciò che è oggettivamente
+visibile nell'immagine, senza assumere o inventare alcuna pertinenza tematica, medica o
+accademica. Se l'immagine è generica o non correlata a un contesto didattico, descrivila
+comunque in modo neutro e letterale."""
+
+
+def build_image_description_user_prompt(context: Optional[str] = None) -> str:
+    header = f"Contesto della lezione: {context}\n\n" if context else ""
+    return f"""{header}Analizza l'immagine allegata e genera l'oggetto JSON conforme allo schema ImageDescription
+(slide_title, ocr_text, visual_elements, summary_keywords, alt_text)."""
+

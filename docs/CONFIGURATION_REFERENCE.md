@@ -217,6 +217,7 @@ I template out-of-the-box in `config.example/` mantengono i parametri di tuning 
 - **`rewrite.yaml`**: `thinking: true`, `reasoning_effort: "high"`, `timeout_seconds: 180`.
 - **`review_asr.yaml`**: `thinking: false`, `reasoning_effort: "low"`, `timeout_seconds: 300` (rilevamento errori fonetici su segmenti temporali brevi).
 - **`review_science.yaml`**: `thinking: true`, `reasoning_effort: "high"`, `max_thinking_tokens: 16392`, `timeout_seconds: 300` (analisi di plausibilità concettuale e critica scientifica).
+- **`image_description.yaml`**: `thinking: true`, `reasoning_effort: "low"`, `max_tokens: 2048`, `timeout_seconds: 120` (descrizione vision strutturata di slide/foto/immagini web). Nota: il job `image_description` richiede un provider/modello con capacità vision (es. `google` con Gemini, `openrouter` con modelli multimodali, oppure `openai_compatible` con endpoint vision). I provider puramente testuali come `deepseek` non supportano input visivo.
 
 ---
 

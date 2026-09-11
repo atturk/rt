@@ -10,7 +10,11 @@ from rt.pipeline.add_images import (
     save_image_descriptions,
     save_raw_image,
     partition_new_vs_cached_images,
+    describe_new_images,
+    get_lesson_context,
 )
+from rt.llm.prompts import build_image_description_user_prompt, ImageDescription
+from rt.llm.client import LLMClient
 
 
 def test_compute_image_hash():
@@ -92,3 +96,48 @@ def test_partition_new_vs_cached_images(tmp_path):
     assert len(new_imgs) == 1
     assert new_imgs[0][0].source_label == "pdf:slide#2"
     assert new_imgs[0][1] == hash2
+
+
+def test_build_image_description_user_prompt():
+    prompt_with_ctx = build_image_description_user_prompt(context="BIOCHIMICA - Lipidi")
+    assert "Contesto della lezione: BIOCHIMICA - Lipidi" in prompt_with_ctx
+
+    prompt_no_ctx = build_image_description_user_prompt(context=None)
+    assert "Contesto della lezione:" not in prompt_no_ctx
+
+
+def test_call_structured_with_image_data_url(monkeypatch):
+    client = LLMClient(force_mock=True)
+    res = client.call_structured(
+        prompt="Descrivi",
+        system_prompt="System",
+        response_model=ImageDescription,
+        job_name="image_description",
+        image_data_url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    )
+    assert isinstance(res, ImageDescription)
+    assert res.slide_title != ""
+
+
+def test_describe_new_images(tmp_path):
+    lesson_dir = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("materia: BIOCHIMICA\ntitolo: Lipidi\n")
+
+    img_curated = ExtractedImage(image_bytes=b"curated bytes", source_label="pdf:slides.pdf#1")
+    img_web = ExtractedImage(image_bytes=b"web bytes", source_label="websearch:query#1")
+    h_curated = compute_image_hash(img_curated.image_bytes)
+    h_web = compute_image_hash(img_web.image_bytes)
+
+    new_images = [
+        (img_curated, h_curated),
+        (img_web, h_web),
+    ]
+
+    describe_new_images(lesson_dir, new_images, force_mock=True)
+
+    desc_map = load_image_descriptions(lesson_dir)
+    assert h_curated in desc_map
+    assert h_web in desc_map
+    assert desc_map[h_curated]["source"] == "pdf:slides.pdf#1"
+    assert desc_map[h_web]["source"] == "websearch:query#1"
+    assert os.path.isfile(os.path.join(lesson_dir, desc_map[h_curated]["filename"]))

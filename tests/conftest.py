@@ -97,6 +97,17 @@ def _test_default_jobs():
                 timeout_seconds=180,
             )
         ),
+        "image_description": JobRoutingConfig(
+            primary=RouteConfig(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                base_url="https://api.deepseek.com",
+                thinking=True,
+                reasoning_effort="low",
+                max_tokens=2048,
+                timeout_seconds=120,
+            )
+        ),
         "recall_quiz": JobRoutingConfig(
             primary=RouteConfig(
                 provider="deepseek",
