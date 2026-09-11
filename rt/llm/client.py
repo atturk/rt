@@ -1305,6 +1305,11 @@ class LLMClient:
                 alt_text="[MOCK] Immagine di test con diagramma e testo.",
             )  # type: ignore
 
+        elif model_name == "ImageUnitJudgeResult":
+            from rt.llm.prompts import ImageUnitJudgeResult
+            return ImageUnitJudgeResult(image_hashes=[])  # type: ignore
+
+
 
         # Fallback generico per qualsiasi altro modello
         try:

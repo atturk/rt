@@ -7,7 +7,8 @@ Prompt specializzati, istruzioni di sistema e contratti per i 4 job cognitivi LL
 4. Science Review (critic indipendente per docente, ricostruzione e plausibilità)
 """
 
-from typing import List, Optional, Dict
+import json
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from rt.core.models import ASRIssue, ScienceIssue
 
@@ -535,4 +536,55 @@ def build_image_description_user_prompt(context: Optional[str] = None) -> str:
     header = f"Contesto della lezione: {context}\n\n" if context else ""
     return f"""{header}Analizza l'immagine allegata e genera l'oggetto JSON conforme allo schema ImageDescription
 (slide_title, ocr_text, visual_elements, summary_keywords, alt_text)."""
+
+
+# ----------------------------------------------------------------------
+# 11. IMAGE UNIT JUDGE JOB (Assigning images to macro sections)
+# ----------------------------------------------------------------------
+
+class ImageUnitJudgeResult(BaseModel):
+    image_hashes: List[str] = Field(default_factory=list, description="Chiavi sha256 (da descriptions.json) delle immagini pertinenti a questa macro-sezione, lista vuota se nessuna")
+
+
+IMAGE_UNIT_JUDGE_SYSTEM_PROMPT = """Sei un assistente che decide quali immagini tra quelle
+disponibili sono pertinenti al contenuto di una specifica sezione di una lezione universitaria.
+Riceverai prima l'elenco completo delle immagini disponibili con le loro descrizioni, poi il
+contenuto della sezione da valutare. Per ogni immagine, valuta se il suo contenuto (titolo,
+testo OCR, elementi visivi, parole chiave) è concettualmente pertinente al contenuto della
+sezione. Una sezione può avere più immagini pertinenti, o nessuna. La stessa immagine, in
+chiamate separate per sezioni diverse, può essere ritenuta pertinente a più di una sezione:
+valuta ogni sezione in modo indipendente, senza preoccuparti di eventuali assegnazioni ad
+altre sezioni. Sii selettivo: assegna un'immagine solo se il collegamento tematico è chiaro,
+non genericamente plausibile."""
+
+
+def build_image_descriptions_context_message(descriptions: Dict[str, Any]) -> str:
+    """Serializza l'intero descriptions.json (hash -> {slide_title, ocr_text, visual_elements,
+    summary_keywords, alt_text} — ometti 'filename'/'source', non rilevanti per il giudizio)
+    in una stringa JSON compatta e leggibile, da passare come primo messaggio 'user' della
+    history. DEVE produrre output byte-identico a parità di input, per la cache-friendliness
+    (usa json.dumps con sort_keys=True)."""
+    filtered = {}
+    for h, d in sorted(descriptions.items()):
+        filtered[h] = {
+            "slide_title": d.get("slide_title", "N/A"),
+            "ocr_text": d.get("ocr_text", ""),
+            "visual_elements": d.get("visual_elements", []),
+            "summary_keywords": d.get("summary_keywords", []),
+            "alt_text": d.get("alt_text", ""),
+        }
+    return f"Ecco le descrizioni delle immagini disponibili per questa lezione:\n\n{json.dumps(filtered, ensure_ascii=False, indent=2, sort_keys=True)}"
+
+
+def build_image_unit_judge_user_prompt(macro_title: str, units_text: str) -> str:
+    return f"""Valuta questa sezione della lezione:
+
+TITOLO SEZIONE: {macro_title}
+
+CONTENUTO DELLE UNITÀ DIDATTICHE DI QUESTA SEZIONE:
+{units_text}
+
+Restituisci l'oggetto JSON conforme a ImageUnitJudgeResult con gli hash delle immagini
+pertinenti a questa sezione (lista vuota se nessuna)."""
+
 

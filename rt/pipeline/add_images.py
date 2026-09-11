@@ -17,6 +17,10 @@ from rt.llm.prompts import (
     IMAGE_DESCRIPTION_SYSTEM_PROMPT,
     IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT,
     build_image_description_user_prompt,
+    ImageUnitJudgeResult,
+    IMAGE_UNIT_JUDGE_SYSTEM_PROMPT,
+    build_image_descriptions_context_message,
+    build_image_unit_judge_user_prompt,
 )
 
 
@@ -168,3 +172,43 @@ def describe_new_images(
             "alt_text": desc.alt_text,
         }
         save_image_descriptions(lesson_dir, existing_descriptions)
+
+
+def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = False) -> Dict[str, List[str]]:
+    """Per ogni macro-sezione di 'outline', esegue UNA chiamata a call_structured con la history
+    condivisa (messaggio 1: descriptions.json completo, messaggio 2: ack dell'assistant) e il
+    prompt specifico della macro-sezione. Ritorna {macro_id: [hash, ...]}. Se descriptions.json
+    è vuoto, ritorna {} senza chiamate LLM."""
+    descriptions = load_image_descriptions(lesson_dir)
+    if not descriptions:
+        return {}
+
+    desc_msg = build_image_descriptions_context_message(descriptions)
+    history = [
+        {"role": "user", "content": desc_msg},
+        {"role": "assistant", "content": "Ho letto tutte le descrizioni delle immagini disponibili."}
+    ]
+
+    client = LLMClient(force_mock=force_mock)
+    results: Dict[str, List[str]] = {}
+
+    for macro in getattr(outline, "macro_sections", []):
+        macro_id = str(macro.id)
+        unit_lines = []
+        for unit in getattr(macro, "units", []):
+            kc = ", ".join(unit.key_concepts) if getattr(unit, "key_concepts", None) else "Nessuno"
+            unit_lines.append(f"- Unità {unit.id}: {unit.title} (Concetti chiave: {kc})")
+        units_text = "\n".join(unit_lines)
+
+        user_prompt = build_image_unit_judge_user_prompt(macro.title, units_text)
+        res: ImageUnitJudgeResult = client.call_structured(
+            prompt=user_prompt,
+            system_prompt=IMAGE_UNIT_JUDGE_SYSTEM_PROMPT,
+            response_model=ImageUnitJudgeResult,
+            job_name="image_unit_judge",
+            history=history,
+            lesson_dir=lesson_dir,
+        )
+        results[macro_id] = res.image_hashes
+
+    return results
