@@ -8,9 +8,10 @@ import os
 import json
 import hashlib
 import base64
+import re
 from typing import Dict, Any, Optional, List, Tuple
 from rt.core.lesson_paths import lesson_path
-from rt.core.image_extract import ExtractedImage
+from rt.core.image_extract import ExtractedImage, extract_images
 from rt.llm.client import LLMClient
 from rt.llm.prompts import (
     ImageDescription,
@@ -212,3 +213,91 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
         results[macro_id] = res.image_hashes
 
     return results
+
+
+def run_add_images(
+    lesson_dir: str,
+    input_path: Optional[str] = None,
+    carousel: bool = False,
+    force_mock: bool = False,
+) -> Dict[str, Any]:
+    """Orchestratore principale di 'rt add-images'."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    from rt.core.state import read_info_yaml
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.outline import load_outline
+    from rt.pipeline.rewrite import load_draft
+    from rt.pipeline.review_asr import load_asr_issues
+    from rt.pipeline.review_science import load_science_issues
+    from rt.pipeline.ledger import load_ledger, apply_decisions_to_draft
+    from rt.pipeline.build import render_rielaborato_md, _atomic_write_text
+
+    phase_status, reason = check_phase_status(lesson_dir, "build")
+    if phase_status != PhaseStatus.VALID:
+        raise RuntimeError(
+            f"La lezione in '{lesson_dir}' non ha ancora completato la fase di build "
+            f"(stato attuale: {phase_status.value}). Esegui prima 'rt build'."
+        )
+
+    if input_path:
+        extracted = extract_images(input_path)
+        new_images, _cached = partition_new_vs_cached_images(lesson_dir, extracted)
+        if new_images:
+            lesson_context = get_lesson_context(lesson_dir)
+            describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock)
+
+    outline = load_outline(lesson_dir)
+    assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock)
+
+    descriptions = load_image_descriptions(lesson_dir)
+    images_by_macro: Dict[str, List[dict]] = {}
+    assigned_hashes = set()
+
+    for macro_id, hashes in assignments.items():
+        macro_imgs = []
+        for h in hashes:
+            if h in descriptions:
+                macro_imgs.append(descriptions[h])
+                assigned_hashes.add(h)
+        if macro_imgs:
+            images_by_macro[macro_id] = macro_imgs
+
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
+    info = read_info_yaml(yaml_path)
+    date_val = info.get("data", "0000-00-00")
+    subject_val = info.get("materia", "MATERIA")
+    topics_val = info.get("argomenti", "Argomenti")
+
+    draft = load_draft(lesson_dir)
+    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+    ledger = load_ledger(lesson_dir)
+    asr_issues = load_asr_issues(lesson_dir)
+    science_issues = load_science_issues(lesson_dir)
+
+    resolved_draft = apply_decisions_to_draft(draft, ledger, asr_issues, science_issues)
+
+    rielab_md = render_rielaborato_md(
+        outline=outline,
+        draft=resolved_draft,
+        segments_data=segments_data,
+        date=date_val,
+        subject=subject_val,
+        topics=topics_val,
+        images_by_macro=images_by_macro,
+        carousel=carousel,
+    )
+
+    safe_title = re.sub(r'[/\\:*?"<>|]', ' ', outline.lesson_title)
+    safe_title = re.sub(r'\s+', ' ', safe_title).strip()
+    named_filename = f"[{date_val}] {subject_val.upper()} - {safe_title}.md"
+    named_filepath = os.path.join(lesson_dir, named_filename)
+
+    _atomic_write_text(lesson_path(lesson_dir, "rielaborato.md"), rielab_md)
+    _atomic_write_text(named_filepath, rielab_md)
+
+    return {
+        "images_added": len(assigned_hashes),
+        "macros_with_images": list(images_by_macro.keys()),
+        "rielaborato_md": lesson_path(lesson_dir, "rielaborato.md"),
+        "deliverable_md": named_filepath,
+    }
