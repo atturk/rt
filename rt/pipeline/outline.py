@@ -58,43 +58,6 @@ def save_outline(outline: Outline, lesson_dir: str) -> None:
     os.replace(tmp_path, path)
 
 
-def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
-    """Genera e valida l'outline della lezione."""
-    yaml_path = lesson_path(lesson_dir, "info.yaml")
-    info = read_info_yaml(yaml_path)
-    date_val = info.get("data", "0000-00-00")
-    subject_val = info.get("materia", "MATERIA")
-    topics_val = info.get("argomenti") or None
-    
-    segments_path = lesson_path(lesson_dir, "segments.json")
-    if not os.path.isfile(segments_path):
-        raise FileNotFoundError(f"segments.json mancante. Esegui prima 'rt prepare' su '{lesson_dir}'")
-        
-    segments_data = load_segments_json(segments_path)
-    
-    # Controllo idempotenza: se valido e non forzato, SKIP immediato senza invocare LLM
-    phase_status, reason = check_phase_status(lesson_dir, "outline")
-    if phase_status == PhaseStatus.VALID and not force:
-        cached_outline = load_outline(lesson_dir)
-        validation_report = validate_outline(cached_outline, segments_data)
-        return {
-            "status": "outline_validated",
-            "action": "SKIP",
-            "skipped": True,
-            "reason": reason,
-            "outline_path": get_outline_path(lesson_dir),
-            "validation_report": validation_report
-        }
-        
-    action = "FORCE" if force else "RUN"
-    
-    # Costruzione sommario segmenti per prompt
-    summary_lines = []
-    for s in segments_data.segments:
-        text_preview = " ".join(s.text_raw.split()[:18])
-        summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
-    segments_summary = "\n".join(summary_lines)
-    
 def _generate_validated_outline(
     client: LLMClient,
     system_prompt: str,

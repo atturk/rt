@@ -1,8 +1,7 @@
 """
 rt.telegram.daemon
 Processo persistente in polling: unico componente che riceve bottoni cliccati e
-messaggi di feedback. Risolve short_id -> lesson_dir tramite rt.telegram.registry
-e scrive le risposte in telegram_pending.json tramite rt.telegram.pending.
+messaggi di feedback. Risolve short_id -> lesson_dir tramite rt.telegram.registry.
 """
 import os
 import sys
