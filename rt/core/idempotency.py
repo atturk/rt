@@ -27,8 +27,7 @@ PROCESSOR_VERSIONS = {
     "prepare": "prepare_v1.0",
     "outline": "outline_v1.0",
     "rewrite": "rewrite_v1.0",
-    "review_asr": "review_asr_v1.0",
-    "review_science": "review_science_v1.0",
+    "review": "review_v1.0",
     "build": "build_v1.0",
 }
 
@@ -36,22 +35,16 @@ PROCESSOR_VERSIONS = {
 # Spiegazione architetturale delle dipendenze:
 # - outline dipende da prepare (ha bisogno dei segmenti temporali).
 # - rewrite dipende da prepare e outline (rielabora i segmenti seguendo la struttura didattica).
-# - review_asr dipende da prepare E da rewrite: oltre alla trascrizione grezza (segments.json),
-#   vede anche il testo del draft corrispondente, perché il modello di rewrite può aver già
-#   corretto (parzialmente, del tutto, o per nulla) le ambiguità fonetiche per conto proprio —
-#   le issue riguardano il testo COME COMPARE ORA NEL DRAFT, non la trascrizione grezza in sé.
-#   Se il draft viene riscritto, le issue ASR vanno quindi rigenerate.
-# - review_science dipende da prepare e rewrite: agisce come critic avversario indipendente,
+# - review dipende da prepare e rewrite: agisce come critic avversario indipendente,
 #   valutando il draft rielaborato (non vede più la trascrizione grezza, solo il draft).
 #   Se il draft cambia, la critica deve essere rigenerata.
-# - build dipende da tutte le fasi precedenti (prepare, outline, rewrite, review_asr, review_science).
+# - build dipende da tutte le fasi precedenti (prepare, outline, rewrite, review).
 UPSTREAM_DEPENDENCIES = {
     "prepare": [],
     "outline": ["prepare"],
     "rewrite": ["prepare", "outline"],
-    "review_asr": ["prepare", "rewrite"],
-    "review_science": ["prepare", "rewrite"],
-    "build": ["prepare", "outline", "rewrite", "review_asr", "review_science"],
+    "review": ["prepare", "rewrite"],
+    "build": ["prepare", "outline", "rewrite", "review"],
 }
 
 
@@ -138,20 +131,7 @@ def compute_source_fingerprint(
             return compute_string_sha256(f"{seg_hash}|{out_hash}|unit:{target_unit_id}|{proc_ver}")
         return compute_string_sha256(f"{seg_hash}|{out_hash}|{proc_ver}")
 
-    elif phase_name == "review_asr":
-        seg_path = lesson_path(lesson_dir, "segments.json")
-        draft_path = lesson_path(lesson_dir, "draft.json")
-        seg_hash = compute_file_sha256(seg_path)
-        draft_hash = compute_file_sha256(draft_path)
-        from rt.core.config import load_config
-        try:
-            cfg = load_config()
-            cfg_str = f"{cfg.thresholds.green}:{cfg.thresholds.yellow}"
-        except Exception:
-            cfg_str = "0.95:0.75"
-        return compute_string_sha256(f"{seg_hash}|{draft_hash}|{cfg_str}|{proc_ver}")
-
-    elif phase_name == "review_science":
+    elif phase_name == "review":
         draft_path = lesson_path(lesson_dir, "draft.json")
         seg_path = lesson_path(lesson_dir, "segments.json")
         draft_hash = compute_file_sha256(draft_path)
@@ -160,7 +140,7 @@ def compute_source_fingerprint(
 
     elif phase_name == "build":
         in_hashes = []
-        for fn in ["segments.json", "outline.json", "draft.json", "asr_issues.json", "science_issues.json", "review_decisions.json"]:
+        for fn in ["segments.json", "outline.json", "draft.json", "science_issues.json", "review_decisions.json"]:
             p = lesson_path(lesson_dir, fn)
             in_hashes.append(compute_file_sha256(p))
         return compute_string_sha256("|".join(in_hashes) + f"|{proc_ver}")
@@ -195,12 +175,10 @@ def check_phase_status(
         "prepare": ["segments.json", "transcript_normalized.md"],
         "outline": ["outline.json"],
         "rewrite": ["draft.json"],
-        "review_asr": ["asr_issues.json"],
-        "review_science": ["science_issues.json"],
+        "review": ["science_issues.json"],
         "build": [
             "pre-elaborato.md",
             "rielaborato.md",
-            "Revisioni ASR.md",
             "Errori concettuali.md",
             "Problemi scientifici.md"
         ]
@@ -218,11 +196,11 @@ def check_phase_status(
         _visited = set()
     _visited.add(phase_name)
 
-    # review_asr/review_science sono fasi opzionali (disaccoppiate dalla run di default):
-    # se non sono mai state eseguite (MISSING), questo NON deve invalidare i discendenti
-    # (es. build) — solo se erano state generate e sono poi diventate STALE/INVALID per
+    # review è una fase opzionale (disaccoppiata dalla run di default):
+    # se non è mai stata eseguita (MISSING), questo NON deve invalidare i discendenti
+    # (es. build) — solo se era stata generata e poi diventata STALE/INVALID per
     # una modifica a monte deve continuare a propagarsi normalmente.
-    OPTIONAL_UPSTREAM_DEPS = {"review_asr", "review_science"}
+    OPTIONAL_UPSTREAM_DEPS = {"review"}
 
     upstream_deps = UPSTREAM_DEPENDENCIES.get(phase_name, [])
     for dep in upstream_deps:
@@ -338,51 +316,18 @@ def check_phase_status(
 
         return PhaseStatus.VALID, f"draft.json valido ({draft_units_count} unità verificate)"
 
-    elif phase_name == "review_asr":
-        asr_path = lesson_path(lesson_dir, "asr_issues.json")
-        if not os.path.isfile(asr_path):
-            return PhaseStatus.MISSING, "asr_issues.json non trovato"
-
-        try:
-            from rt.pipeline.review_asr import load_asr_issues
-            issues = load_asr_issues(lesson_dir)
-        except Exception as e:
-            return PhaseStatus.INVALID, f"asr_issues.json non valido: {e}"
-
-        current_fp = compute_source_fingerprint(lesson_dir, "review_asr")
-        recorded_fp = current_rec.get("source_fingerprint")
-        if recorded_fp and recorded_fp != current_fp:
-            return PhaseStatus.STALE, "segments.json o soglie configurazione modificate"
-
-        # Controllo hash artefatto se parziale
-        if current_rec.get("status") == PhaseStatus.PARTIAL.value:
-            art_fps = current_rec.get("artifact_fingerprints", {})
-            if "asr_issues.json" in art_fps:
-                actual_h = compute_file_sha256(asr_path)
-                if actual_h != art_fps["asr_issues.json"]:
-                    return PhaseStatus.INVALID, "asr_issues.json modificato esternamente rispetto al checkpoint"
-
-        if current_rec.get("status") == PhaseStatus.PARTIAL.value:
-            completed_batches = current_rec.get("completed_items", [])
-            return PhaseStatus.PARTIAL, f"asr_issues.json parziale ({len(completed_batches)} batch completati)"
-
-        if current_rec.get("status") != PhaseStatus.VALID.value:
-            return PhaseStatus.PARTIAL, f"asr_issues.json parziale ({len(issues)} issue registrate)"
-
-        return PhaseStatus.VALID, f"asr_issues.json valido ({len(issues)} issue registrate)"
-
-    elif phase_name == "review_science":
+    elif phase_name == "review":
         sci_path = lesson_path(lesson_dir, "science_issues.json")
         if not os.path.isfile(sci_path):
             return PhaseStatus.MISSING, "science_issues.json non trovato"
 
         try:
-            from rt.pipeline.review_science import load_science_issues
+            from rt.pipeline.review import load_science_issues
             issues = load_science_issues(lesson_dir)
         except Exception as e:
             return PhaseStatus.INVALID, f"science_issues.json non valido: {e}"
 
-        current_fp = compute_source_fingerprint(lesson_dir, "review_science")
+        current_fp = compute_source_fingerprint(lesson_dir, "review")
         recorded_fp = current_rec.get("source_fingerprint")
         if recorded_fp and recorded_fp != current_fp:
             return PhaseStatus.STALE, "draft.json o segments.json modificati dopo la revisione scientifica"
@@ -413,7 +358,6 @@ def check_phase_status(
         required_files = [
             "pre-elaborato.md",
             "rielaborato.md",
-            "Revisioni ASR.md",
             "Errori concettuali.md",
             "Problemi scientifici.md"
         ]
@@ -595,11 +539,10 @@ def mark_downstream_stale(
     Ritorna la lista dei nomi delle fasi invalidate.
     """
     downstream_map = {
-        "prepare": ["outline", "rewrite", "review_asr", "review_science", "build"],
-        "outline": ["rewrite", "review_science", "build"],
-        "rewrite": ["review_asr", "review_science", "build"],
-        "review_asr": ["build"],
-        "review_science": ["build"],
+        "prepare": ["outline", "rewrite", "review", "build"],
+        "outline": ["rewrite", "review", "build"],
+        "rewrite": ["review", "build"],
+        "review": ["build"],
         "build": []
     }
 

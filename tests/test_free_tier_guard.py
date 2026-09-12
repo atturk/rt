@@ -80,7 +80,7 @@ def test_feature1_resolved_model_propagated_to_telemetry(monkeypatch):
     GLOBAL_CREDENTIALS.reload_from_env()
 
     client = LLMClient(force_mock=False)
-    client.config.jobs["review_asr"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=1,
         primary=RouteConfig(
             route_id="r_or_free",
@@ -110,7 +110,7 @@ def test_feature1_resolved_model_propagated_to_telemetry(monkeypatch):
             prompt="Prompt",
             system_prompt="System",
             response_model=DummyResponseModel,
-            job_name="review_asr",
+            job_name="review",
             show_monitor=False,
             unit_id="unit_resolved_check"
         )
@@ -125,7 +125,7 @@ def test_feature1_resolved_model_propagated_to_telemetry(monkeypatch):
 def test_feature1_monitor_display_resolved_model(monkeypatch):
     """Verifica che il monitor mostri 'Resolved: ...' solo quando differisce da 'Model: ...'."""
     monitor = LiveTerminalMonitor(
-        job="review_science",
+        job="review",
         provider="openrouter",
         model="openrouter/free",
         unit_id="unit_mon_test",
@@ -185,7 +185,7 @@ def test_suspicious_fast_response_discarded_and_retried_on_openrouter_free(monke
     client = LLMClient(force_mock=False)
     client.config.retry.max_timeout_retries = 0
 
-    client.config.jobs["review_asr"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=3,
         primary=RouteConfig(
             route_id="r_or_free",
@@ -223,7 +223,7 @@ def test_suspicious_fast_response_discarded_and_retried_on_openrouter_free(monke
                 prompt="Prompt",
                 system_prompt="System",
                 response_model=DummyResponseModel,
-                job_name="review_asr",
+                job_name="review",
                 show_monitor=False,
                 min_elapsed_seconds=5.0
             )
@@ -246,7 +246,7 @@ def test_suspicious_fast_response_escalates_thinking_after_two_consecutive_failu
     client = LLMClient(force_mock=False)
     client.config.retry.max_timeout_retries = 0
 
-    client.config.jobs["review_science"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=3,
         primary=RouteConfig(
             route_id="r_or_free",
@@ -288,7 +288,7 @@ def test_suspicious_fast_response_escalates_thinking_after_two_consecutive_failu
                 prompt="Prompt",
                 system_prompt="System",
                 response_model=DummyResponseModel,
-                job_name="review_science",
+                job_name="review",
                 show_monitor=False,
                 min_elapsed_seconds=5.0
             )
@@ -310,7 +310,7 @@ def test_fast_response_accepted_for_non_free_tier(monkeypatch):
     GLOBAL_CREDENTIALS.reload_from_env()
 
     client = LLMClient(force_mock=False)
-    client.config.jobs["review_asr"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=3,
         primary=RouteConfig(
             route_id="r_ds",
@@ -348,7 +348,7 @@ def test_fast_response_accepted_for_non_free_tier(monkeypatch):
                 prompt="Prompt",
                 system_prompt="System",
                 response_model=DummyResponseModel,
-                job_name="review_asr",
+                job_name="review",
                 show_monitor=False,
                 min_elapsed_seconds=5.0
             )
@@ -425,7 +425,7 @@ def test_feature2b_output_limit_same_route_retry_recovers(monkeypatch):
     GLOBAL_CREDENTIALS.reload_from_env()
 
     client = LLMClient(force_mock=False)
-    client.config.jobs["review_science"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=3,
         max_output_chars=200,
         primary=RouteConfig(
@@ -478,7 +478,7 @@ def test_feature2b_output_limit_same_route_retry_recovers(monkeypatch):
             prompt="Prompt",
             system_prompt="System",
             response_model=DummyResponseModel,
-            job_name="review_science",
+            job_name="review",
             show_monitor=False
         )
 
@@ -498,7 +498,7 @@ def test_feature2b_output_limit_exhausts_to_exception(monkeypatch):
     GLOBAL_CREDENTIALS.reload_from_env()
 
     client = LLMClient(force_mock=False)
-    client.config.jobs["review_science"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=3,
         max_output_chars=100,
         primary=RouteConfig(
@@ -529,7 +529,7 @@ def test_feature2b_output_limit_exhausts_to_exception(monkeypatch):
                 prompt="Prompt",
                 system_prompt="System",
                 response_model=DummyResponseModel,
-                job_name="review_science",
+                job_name="review",
                 show_monitor=False
             )
 
@@ -552,7 +552,7 @@ def test_feature2b_independent_counters_output_limit_and_reasoning_required(monk
     GLOBAL_CREDENTIALS.reload_from_env()
 
     client = LLMClient(force_mock=False)
-    client.config.jobs["review_science"] = JobRoutingConfig(
+    client.config.jobs["review"] = JobRoutingConfig(
         max_attempts=3,
         max_output_chars=100,
         primary=RouteConfig(
@@ -599,7 +599,7 @@ def test_feature2b_independent_counters_output_limit_and_reasoning_required(monk
             prompt="Prompt",
             system_prompt="System",
             response_model=DummyResponseModel,
-            job_name="review_science",
+            job_name="review",
             show_monitor=False
         )
 

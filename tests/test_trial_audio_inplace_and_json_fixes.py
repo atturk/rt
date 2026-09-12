@@ -21,12 +21,12 @@ import argparse
 import rt.pipeline.issue_review as ir_module
 from rt.pipeline.issue_review import run_interactive_review
 from rt.core.models import (
-    ASRIssue, ASRLevel, ScienceIssue, ScienceType, ScienceSeverity,
+    ScienceIssue, ScienceType, ScienceSeverity,
     SegmentsData, Segment, Draft, DraftUnit
 )
 from rt.core.manifest import init_or_update_manifest
 from rt.cli import (
-    cmd_prepare, cmd_outline, cmd_rewrite, cmd_review_asr, cmd_review_science, cmd_build,
+    cmd_prepare, cmd_outline, cmd_rewrite, cmd_review, cmd_build,
     cmd_validate_outline, cmd_validate_draft, cmd_setup
 )
 
@@ -93,21 +93,20 @@ def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
+    sci_issues = [
+        ScienceIssue(
+            id="sci_001",
+            type=ScienceType.ERR_RECONSTRUCTION,
+            severity=ScienceSeverity.HIGH,
+            unit_id="U1",
             segment_id="seg_000001",
-            source_text="reazione",
-            candidate="reazione",
-            confidence=0.80,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità"
+            claim="reazione",
+            reason="ambiguità",
+            suggested_fix="reazione"
         )
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
@@ -128,7 +127,7 @@ def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/c1.mp3", "/tmp/c2.mp3", "/tmp/c3.mp3"]) as mock_cut, \
          patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]):
 
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
     assert mock_cut.call_count == 3
@@ -160,8 +159,6 @@ def test_science_clip_claim_vs_unit_fallback(tmp_path, monkeypatch):
         reason="in realtà è atermica",
         suggested_fix="abbiamo una reazione atermica"
     )
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([sci_issue_with_seg.model_dump(mode="json")], f)
 
@@ -214,63 +211,69 @@ def test_redraw_in_place_ansi_sequences(tmp_path, monkeypatch, capsys):
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
+    sci_issues = [
+        ScienceIssue(
+            id="sci_001",
+            type=ScienceType.ERR_RECONSTRUCTION,
+            severity=ScienceSeverity.HIGH,
+            unit_id="U1",
             segment_id="seg_000001",
-            source_text="test1",
-            candidate="test1_fixed",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità 1"
+            claim="test1",
+            reason="ambiguità 1",
+            suggested_fix="test1_fixed"
         ),
-        ASRIssue(
-            id="asr_002",
+        ScienceIssue(
+            id="sci_002",
+            type=ScienceType.ERR_RECONSTRUCTION,
+            severity=ScienceSeverity.HIGH,
+            unit_id="U1",
             segment_id="seg_000002",
-            source_text="test2",
-            candidate="test2_fixed",
-            confidence=0.85,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità 2"
+            claim="test2",
+            reason="ambiguità 2",
+            suggested_fix="test2_fixed"
         ),
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
     keys = iter(["a", "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
-    res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
 
     captured = capsys.readouterr()
     raw_out = captured.out
     # Verifica che il pannello Rich compaia nell'output renderizzato
     assert "ASR Review" in raw_out
+    assert mock_cut.call_count == 3
+    audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
+    assert mock_cut.call_args_list[0][0] == (audio_path, 10.0, 30.0)
+    assert mock_cut.call_args_list[1][0] == (audio_path, 13.0, 30.0)
+    assert mock_cut.call_args_list[2][0] == (audio_path, 10.0, 30.0)
+
+    mock_proc1.terminate.assert_called()
+    mock_proc2.terminate.assert_called()
+    mock_proc3.terminate.assert_called()
 
 
-def test_json_flag_behavior_on_cli_commands(capsys):
-    """Test 6: Per i 6 comandi, senza --json solo testo umano; con --json blob JSON.
-
-    validate-outline, validate-draft, setup stampano sempre JSON.
-    """
+def test_cli_json_flag_and_stdout(capsys):
+    """Test 6: Flag --json su CLI (prepare, outline, rewrite, review, build)."""
     # 1. prepare
-    with patch("rt.cli.run_prepare", return_value={"status": "OK", "segment_count": 5}):
-        args_no_json = argparse.Namespace(lesson_dir="dummy", force=False, json=False)
+    with patch("rt.cli.run_prepare", return_value={"status": "OK"}):
+        args_no_json = argparse.Namespace(lesson_dir="dummy", json=False)
         cmd_prepare(args_no_json)
-        out1 = capsys.readouterr().out
-        assert "[RUN] prepare" in out1
-        assert "{\n  \"status\": \"OK\"" not in out1
+        out = capsys.readouterr().out
+        assert "[RUN] prepare" in out
+        assert "{\n  \"status\": \"OK\"" not in out
 
-        args_json = argparse.Namespace(lesson_dir="dummy", force=False, json=True)
+        args_json = argparse.Namespace(lesson_dir="dummy", json=True)
         cmd_prepare(args_json)
-        out2 = capsys.readouterr().out
-        assert "[RUN] prepare" in out2
-        assert "{\n  \"status\": \"OK\"" in out2
+        out = capsys.readouterr().out
+        assert "[RUN] prepare" in out
+        assert "{\n  \"status\": \"OK\"" in out
 
     # 2. outline
     with patch("rt.cli._has_real_config_source", return_value=True), \
@@ -304,36 +307,20 @@ def test_json_flag_behavior_on_cli_commands(capsys):
         assert "[RUN] rewrite" in out
         assert "{\n  \"status\": \"OK\"" in out
 
-    # 4. review-asr
+    # 4. review
     with patch("rt.cli._has_real_config_source", return_value=True), \
-         patch("rt.cli.run_review_asr", return_value={"status": "OK"}), \
+         patch("rt.cli.run_review", return_value={"status": "OK"}), \
          patch("rt.pipeline.issue_review.run_interactive_review"):
         args_no_json = argparse.Namespace(lesson_dir="dummy", force=False, mock=True, channel="terminal", json=False, reset=False, auto_accept=None, history=False)
-        cmd_review_asr(args_no_json)
+        cmd_review(args_no_json)
         out = capsys.readouterr().out
-        assert "[RUN] review-asr" in out
+        assert "[RUN] review" in out
         assert "{\n  \"status\": \"OK\"" not in out
 
         args_json = argparse.Namespace(lesson_dir="dummy", force=False, mock=True, channel="terminal", json=True, reset=False, auto_accept=None, history=False)
-        cmd_review_asr(args_json)
+        cmd_review(args_json)
         out = capsys.readouterr().out
-        assert "[RUN] review-asr" in out
-        assert "{\n  \"status\": \"OK\"" in out
-
-    # 5. review-science
-    with patch("rt.cli._has_real_config_source", return_value=True), \
-         patch("rt.cli.run_review_science", return_value={"status": "OK"}), \
-         patch("rt.pipeline.issue_review.run_interactive_review"):
-        args_no_json = argparse.Namespace(lesson_dir="dummy", force=False, mock=True, channel="terminal", json=False, reset=False, auto_accept=None, history=False)
-        cmd_review_science(args_no_json)
-        out = capsys.readouterr().out
-        assert "[RUN] review-science" in out
-        assert "{\n  \"status\": \"OK\"" not in out
-
-        args_json = argparse.Namespace(lesson_dir="dummy", force=False, mock=True, channel="terminal", json=True, reset=False, auto_accept=None, history=False)
-        cmd_review_science(args_json)
-        out = capsys.readouterr().out
-        assert "[RUN] review-science" in out
+        assert "[RUN] review" in out
         assert "{\n  \"status\": \"OK\"" in out
 
     # 6. build

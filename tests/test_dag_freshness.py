@@ -26,10 +26,8 @@ from rt.core.idempotency import (
     compute_source_fingerprint
 )
 from rt.pipeline.prepare import run_prepare
-from rt.pipeline.outline import run_outline, get_outline_path
 from rt.pipeline.rewrite import run_rewrite, get_draft_path
-from rt.pipeline.review_asr import run_review_asr, get_asr_issues_path
-from rt.pipeline.review_science import run_review_science, get_science_issues_path
+from rt.pipeline.review import run_review, get_science_issues_path
 from rt.pipeline.build import run_build
 from rt.pipeline.ledger import record_decision
 
@@ -68,15 +66,7 @@ stato: setup_completato
     run_prepare(lesson_dir)
     run_outline(lesson_dir, force_mock=True)
     run_rewrite(lesson_dir, force_mock=True)
-    run_review_asr(lesson_dir, force_mock=True)
-    run_review_science(lesson_dir, force_mock=True)
-
-    # Registriamo tutte le decisioni per sbloccare la review
-    asr_path = get_asr_issues_path(lesson_dir)
-    with open(asr_path, "r", encoding="utf-8") as f:
-        asr_data = json.load(f)
-    for iss in asr_data:
-        record_decision(lesson_dir, iss["id"], "accetta", notes="auto test accept")
+    run_review(lesson_dir, force_mock=True)
 
     sci_path = get_science_issues_path(lesson_dir)
     with open(sci_path, "r", encoding="utf-8") as f:
@@ -89,25 +79,11 @@ stato: setup_completato
 
 
 def test_dag_definition_and_semantics():
-    """
-    Verifica esplicita della semantica della DAG:
-    - review_asr dipende da prepare E da rewrite: valuta il testo COME COMPARE ORA NEL
-      DRAFT (non solo la trascrizione grezza), perché il rewrite può aver già corretto,
-      parzialmente o del tutto, le ambiguità fonetiche per conto proprio.
-    - review_science dipende da rewrite (analizza correttezza scientifica del testo riscritturante).
-    - build dipende da rewrite, review_asr e review_science.
-    """
     assert "prepare" not in UPSTREAM_DEPENDENCIES or UPSTREAM_DEPENDENCIES["prepare"] == []
     assert UPSTREAM_DEPENDENCIES["outline"] == ["prepare"]
     assert set(UPSTREAM_DEPENDENCIES["rewrite"]) == {"prepare", "outline"}
-    assert set(UPSTREAM_DEPENDENCIES["review_asr"]) == {"prepare", "rewrite"}, (
-        "review_asr deve dipendere anche da rewrite: valuta il testo del draft, che il "
-        "rewrite può aver già corretto o meno rispetto alla trascrizione grezza."
-    )
-    assert set(UPSTREAM_DEPENDENCIES["review_science"]) == {"prepare", "rewrite"}, (
-        "review_science deve dipendere da rewrite (e trascritto prepare) per valutare la validità scientifica del draft riscritturato."
-    )
-    assert set(UPSTREAM_DEPENDENCIES["build"]) == {"prepare", "outline", "rewrite", "review_asr", "review_science"}
+    assert set(UPSTREAM_DEPENDENCIES["review"]) == {"prepare", "rewrite"}
+    assert set(UPSTREAM_DEPENDENCIES["build"]) == {"prepare", "outline", "rewrite", "review"}
 
 
 def test_transitive_staleness_on_outline_modification(fully_built_lesson):
@@ -138,11 +114,8 @@ def test_transitive_staleness_on_outline_modification(fully_built_lesson):
     assert st_rew == PhaseStatus.STALE
     assert "outline" in r_rew
 
-    st_asr, r_asr = check_phase_status(lesson_dir, "review_asr")
-    assert st_asr == PhaseStatus.STALE, "review_asr dipende ora anche da rewrite, quindi diventa transitivamente STALE"
-
-    st_sci, r_sci = check_phase_status(lesson_dir, "review_science")
-    assert st_sci == PhaseStatus.STALE, "review_science dipende da rewrite, quindi diventa transitivamente STALE"
+    st_rev, r_rev = check_phase_status(lesson_dir, "review")
+    assert st_rev == PhaseStatus.STALE, "review dipende da rewrite, quindi diventa transitivamente STALE"
 
     st_bld, r_bld = check_phase_status(lesson_dir, "build")
     assert st_bld == PhaseStatus.STALE, "build deve essere transitivamente STALE se rewrite è STALE"
@@ -155,7 +128,7 @@ def test_transitive_staleness_on_outline_modification(fully_built_lesson):
 def test_transitive_staleness_on_segments_modification(fully_built_lesson):
     """
     Caso 2: Modifica a segments.json
-    - Tutte le fasi a valle (outline, rewrite, review_asr, review_science, build) diventano STALE.
+    - Tutte le fasi a valle (outline, rewrite, review, build) diventano STALE.
     """
     lesson_dir = fully_built_lesson
 
@@ -168,8 +141,7 @@ def test_transitive_staleness_on_segments_modification(fully_built_lesson):
 
     assert check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.STALE
     assert check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.STALE
-    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.STALE
-    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.STALE
+    assert check_phase_status(lesson_dir, "review")[0] == PhaseStatus.STALE
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.STALE
 
     eff_state = compute_effective_workflow_state(lesson_dir)
@@ -179,9 +151,7 @@ def test_transitive_staleness_on_segments_modification(fully_built_lesson):
 def test_selective_invalidation_draft_modification(fully_built_lesson):
     """
     Caso 3: Modifica a draft.json
-    - review_science e build diventano STALE.
-    - review_asr diventa STALE (ora dipende anche dal draft: le sue issue riguardano il
-      testo come compare nel draft, non solo la trascrizione grezza).
+    - review e build diventano STALE.
     - outline RIMANE VALID.
     """
     lesson_dir = fully_built_lesson
@@ -195,8 +165,7 @@ def test_selective_invalidation_draft_modification(fully_built_lesson):
 
     assert check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.VALID
     assert check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID  # Il file draft esiste e l'input outline non è cambiato
-    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.STALE, "review_asr deve essere STALE perché draft è mutato"
-    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.STALE, "review_science deve essere STALE perché draft è mutato"
+    assert check_phase_status(lesson_dir, "review")[0] == PhaseStatus.STALE, "review deve essere STALE perché draft è mutato"
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.STALE, "build deve essere STALE"
 
 

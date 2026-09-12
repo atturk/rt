@@ -23,8 +23,7 @@ from rt.core.manifest import init_or_update_manifest
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline
 from rt.pipeline.rewrite import run_rewrite
-from rt.pipeline.review_asr import run_review_asr
-from rt.pipeline.review_science import run_review_science
+from rt.pipeline.review import run_review
 from rt.pipeline.build import run_build
 from rt.core.idempotency import PhaseStatus, check_phase_status
 
@@ -124,8 +123,7 @@ class TestOldFlatLayoutStaysFlat:
         run_prepare(lesson_dir)
         run_outline(lesson_dir, force_mock=True)
         run_rewrite(lesson_dir, force_mock=True)
-        run_review_asr(lesson_dir, force_mock=True)
-        run_review_science(lesson_dir, force_mock=True)
+        run_review(lesson_dir, force_mock=True)
         run_build(lesson_dir, rename_folder=False)
         assert os.path.isdir(os.path.join(lesson_dir, STATE_SUBDIR))
 
@@ -146,8 +144,7 @@ class TestOldFlatLayoutStaysFlat:
         run_prepare(lesson_dir, force=True)
         run_outline(lesson_dir, force_mock=True)
         run_rewrite(lesson_dir, force_mock=True)
-        run_review_asr(lesson_dir, force_mock=True)
-        run_review_science(lesson_dir, force_mock=True)
+        run_review(lesson_dir, force_mock=True)
         bld_res = run_build(lesson_dir, force=True, rename_folder=False)
         assert bld_res["status"] == "completed"
 
@@ -163,12 +160,11 @@ class TestOldFlatLayoutStaysFlat:
         run_prepare(lesson_dir)
         run_outline(lesson_dir, force_mock=True)
         run_rewrite(lesson_dir, force_mock=True)
-        run_review_asr(lesson_dir, force_mock=True)
-        run_review_science(lesson_dir, force_mock=True)
+        run_review(lesson_dir, force_mock=True)
         run_build(lesson_dir, rename_folder=False)
         _flatten_state_dir(lesson_dir)
 
-        for phase in ("prepare", "outline", "rewrite", "review_asr", "review_science", "build"):
+        for phase in ("prepare", "outline", "rewrite", "review", "build"):
             status, reason = check_phase_status(lesson_dir, phase)
             assert status == PhaseStatus.VALID, f"{phase}: {reason}"
 
@@ -195,22 +191,18 @@ class TestNewLessonUsesStateSubdir:
         run_rewrite(lesson_dir, force_mock=True)
         assert os.path.isfile(os.path.join(state_dir, "draft.json"))
 
-        run_review_asr(lesson_dir, force_mock=True)
-        assert os.path.isfile(os.path.join(state_dir, "asr_issues.json"))
-
-        run_review_science(lesson_dir, force_mock=True)
+        run_review(lesson_dir, force_mock=True)
         assert os.path.isfile(os.path.join(state_dir, "science_issues.json"))
 
         bld_res = run_build(lesson_dir, rename_folder=False)
         assert bld_res["status"] == "completed"
 
         # Deliverable: SOLO in radice.
-        assert os.path.isfile(os.path.join(lesson_dir, "Revisioni ASR.md"))
         assert os.path.isfile(os.path.join(lesson_dir, "Errori concettuali.md"))
         assert os.path.isfile(os.path.join(lesson_dir, "Problemi scientifici.md"))
         # Il file col titolo formale (il deliverable finale) è in radice...
         md_deliverables = [f for f in os.listdir(lesson_dir) if f.endswith(".md")]
-        assert any(f not in ("Revisioni ASR.md", "Errori concettuali.md", "Problemi scientifici.md") for f in md_deliverables)
+        assert any(f not in ("Errori concettuali.md", "Problemi scientifici.md") for f in md_deliverables)
         # ...mentre rielaborato.md e pre-elaborato.md (intermedi) sono SOLO in _state/,
         # non duplicati anche in radice (era la ridondanza segnalata dall'utente).
         assert "rielaborato.md" not in md_deliverables
@@ -231,8 +223,7 @@ class TestIdempotencyParityAcrossLayouts:
         run_prepare(new_dir)
         run_outline(new_dir, force_mock=True)
         run_rewrite(new_dir, force_mock=True)
-        run_review_asr(new_dir, force_mock=True)
-        run_review_science(new_dir, force_mock=True)
+        run_review(new_dir, force_mock=True)
         run_build(new_dir, rename_folder=False)
         status_new, _ = check_phase_status(new_dir, "build")
         assert status_new == PhaseStatus.VALID
@@ -253,8 +244,7 @@ class TestIdempotencyParityAcrossLayouts:
         run_prepare(old_dir, force=True)
         run_outline(old_dir, force_mock=True)
         run_rewrite(old_dir, force_mock=True)
-        run_review_asr(old_dir, force_mock=True)
-        run_review_science(old_dir, force_mock=True)
+        run_review(old_dir, force_mock=True)
         run_build(old_dir, rename_folder=False)
         status_old, _ = check_phase_status(old_dir, "build")
         assert status_old == PhaseStatus.VALID
@@ -270,8 +260,7 @@ class TestBuildFolderRename:
         run_prepare(lesson_dir)
         run_outline(lesson_dir, force_mock=True)
         run_rewrite(lesson_dir, force_mock=True)
-        run_review_asr(lesson_dir, force_mock=True)
-        run_review_science(lesson_dir, force_mock=True)
+        run_review(lesson_dir, force_mock=True)
 
     def test_renames_to_target_and_result_reflects_new_dir(self, tmp_path):
         lesson_dir = str(tmp_path / "provvisorio")

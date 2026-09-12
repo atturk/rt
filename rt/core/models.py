@@ -107,27 +107,6 @@ class Draft(BaseModel):
 
 
 # ---------------------------------------------------------
-# ASR AMBIGUITIES & CONFIDENCE GATING
-# ---------------------------------------------------------
-
-class ASRLevel(str, Enum):
-    GREEN = "GREEN"    # Correzione certa / fonetica ovvia -> auto apply con tracciamento
-    YELLOW = "YELLOW"  # Plausibile ma ambigua -> coda di revisione
-    RED = "RED"        # Incertezza critica o rischio scientifico -> richiesta conferma esplicita
-
-
-class ASRIssue(BaseModel):
-    id: str = Field(..., description="ID univoco (es. asr_000001)")
-    segment_id: str = Field(..., description="ID del segmento ASR correlato")
-    source_text: str = Field(..., description="Frammento ASR originale")
-    candidate: str = Field(..., description="Ipotesi o correzione proposta")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Stima di plausibilità della correzione da parte del modello linguistico (non una probabilità fonetica calibrata sull'audio originale)")
-    level: ASRLevel = Field(..., description="Livello di gating: GREEN, YELLOW, RED")
-    reason: str = Field(..., description="Motivazione fonetica o semantica")
-    status: str = Field(default="pending", description="pending | accepted | rejected | edited")
-
-
-# ---------------------------------------------------------
 # SCIENCE CRITIC ISSUES
 # ---------------------------------------------------------
 

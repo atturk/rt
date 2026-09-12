@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 
 from rt.llm.credentials import CredentialRegistry, CredentialRef
 from rt.core.config import RouteConfig, JobRoutingConfig, _load_config_dir, load_config
-from rt.cli import _job_has_configured_route, cmd_outline, cmd_rewrite, cmd_review_asr, cmd_review_science, cmd_run
+from rt.cli import _job_has_configured_route, cmd_outline, cmd_rewrite, cmd_review, cmd_run
 
 
 def test_no_built_in_shortcuts_in_clean_registry():
@@ -61,7 +61,7 @@ def test_original_build_default_jobs_is_empty_shell():
     """Verifica che i default di produzione _build_default_jobs siano un guscio vuoto (provider/model a None)."""
     from tests.conftest import ORIGINAL_BUILD_DEFAULT_JOBS
     jobs = ORIGINAL_BUILD_DEFAULT_JOBS()
-    for job_name in ("outline", "rewrite", "review_asr", "review_science",
+    for job_name in ("outline", "rewrite", "review",
                      "recall_quiz", "recall_mirata", "recall_vasta",
                      "recall_eval_mirata", "recall_eval_vasta"):
         assert job_name in jobs
@@ -74,7 +74,7 @@ def test_config_example_loads_as_empty_shell():
     """5. config.example/ si carica senza eccezioni e produce per ciascuno dei 9 job is_configured=False."""
     cfg = _load_config_dir("config.example")
     assert cfg.version == "2.0.0"
-    for job_name in ("outline", "rewrite", "review_asr", "review_science",
+    for job_name in ("outline", "rewrite", "review",
                      "recall_quiz", "recall_mirata", "recall_vasta",
                      "recall_eval_mirata", "recall_eval_vasta"):
         job_cfg = cfg.jobs.get(job_name)
@@ -114,7 +114,7 @@ def _create_unconfigured_config_dir(config_dir_path):
     with open(os.path.join(config_dir_path, "general.yaml"), "w") as f:
         yaml.safe_dump(general_yaml, f)
 
-    for job in ("outline", "rewrite", "review_asr", "review_science"):
+    for job in ("outline", "rewrite", "review"):
         job_yaml = {
             "round_robin": False,
             "max_attempts": 3,
@@ -157,19 +157,12 @@ def test_cli_single_job_commands_abort_when_unconfigured(tmp_path, monkeypatch, 
     captured = capsys.readouterr()
     assert "Il job 'rewrite' non ha alcun provider configurato in config/rewrite.yaml" in captured.err
 
-    # review_asr
+    # review
     with pytest.raises(SystemExit) as exc:
-        cmd_review_asr(args)
+        cmd_review(args)
     assert exc.value.code == 1
     captured = capsys.readouterr()
-    assert "Il job 'review_asr' non ha alcun provider configurato in config/review_asr.yaml" in captured.err
-
-    # review_science
-    with pytest.raises(SystemExit) as exc:
-        cmd_review_science(args)
-    assert exc.value.code == 1
-    captured = capsys.readouterr()
-    assert "Il job 'review_science' non ha alcun provider configurato in config/review_science.yaml" in captured.err
+    assert "Il job 'review' non ha alcun provider configurato in config/review.yaml" in captured.err
 
 
 def test_cli_cmd_run_reports_all_missing_jobs(tmp_path, monkeypatch, capsys):
@@ -177,7 +170,7 @@ def test_cli_cmd_run_reports_all_missing_jobs(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     _create_unconfigured_config_dir(tmp_path / "config")
 
-    # Configuriamo solo 'outline' e 'rewrite', lasciando non configurati 'review_asr' e 'review_science'
+    # Configuriamo solo 'outline' e 'rewrite', lasciando non configurato 'review'
     for job in ("outline", "rewrite"):
         job_yaml = {
             "round_robin": False,
@@ -203,7 +196,7 @@ def test_cli_cmd_run_reports_all_missing_jobs(tmp_path, monkeypatch, capsys):
         cmd_run(args)
     assert exc.value.code == 1
     captured = capsys.readouterr()
-    assert "I seguenti job non hanno un provider configurato: review_asr, review_science" in captured.err
+    assert "I seguenti job non hanno un provider configurato: review" in captured.err
 
 
 def test_cli_commands_bypass_when_mock_flag(tmp_path, monkeypatch):

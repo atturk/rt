@@ -18,10 +18,16 @@ from rt.pipeline.ledger import (
     get_pending_issues,
     purge_decisions_by_prefix,
 )
-from rt.pipeline.review_asr import run_review_asr, save_asr_issues
-from rt.pipeline.review_science import run_review_science, save_science_issues
+from rt.pipeline.ledger import (
+    load_ledger,
+    save_ledger,
+    record_decision,
+    get_pending_issues,
+    purge_decisions_by_prefix,
+)
+from rt.pipeline.review import run_review, save_science_issues
 from rt.core.models import (
-    ASRIssue, ASRLevel, ScienceIssue, ScienceType, ScienceSeverity,
+    ScienceIssue, ScienceType, ScienceSeverity,
     SegmentsData, Segment, Draft, DraftUnit
 )
 from rt.core.manifest import init_or_update_manifest
@@ -79,15 +85,15 @@ def test_purge_decisions_by_prefix_unit(tmp_path):
     lesson_dir = str(tmp_path)
     _setup_test_lesson(lesson_dir)
 
-    record_decision(lesson_dir, "asr_000001", "accepted", resolved_text="corr1")
-    record_decision(lesson_dir, "asr_000002", "rejected", resolved_text="orig2")
+    record_decision(lesson_dir, "old_000001", "accepted", resolved_text="corr1")
+    record_decision(lesson_dir, "old_000002", "rejected", resolved_text="orig2")
     record_decision(lesson_dir, "sci_000001", "accepted", resolved_text="fix1")
 
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 3
 
-    # Purga solo asr_
-    removed = purge_decisions_by_prefix(lesson_dir, "asr_")
+    # Purga solo old_
+    removed = purge_decisions_by_prefix(lesson_dir, "old_")
     assert removed == 2
 
     ledger_after = load_ledger(lesson_dir)
@@ -98,55 +104,13 @@ def test_purge_decisions_by_prefix_unit(tmp_path):
     assert purge_decisions_by_prefix(lesson_dir, "nonexistent_") == 0
 
 
-def test_force_review_asr_purges_and_resets_pending_issues(tmp_path):
+def test_force_review_purges_and_resets_pending_issues(tmp_path):
     lesson_dir = str(tmp_path)
     _setup_test_lesson(lesson_dir)
 
-    # 1. Prima esecuzione mock di review-asr
-    res1 = run_review_asr(lesson_dir, force=True, force_mock=True)
-    assert res1["status"] == "asr_review_completed"
-
-    pending_asr, _ = get_pending_issues(lesson_dir)
-    assert len(pending_asr) > 0
-
-    # 2. Decidi tutte le issue ASR pendenti
-    for iss in pending_asr:
-        record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
-
-    # Aggiungi anche una decisione per una issue science
-    record_decision(lesson_dir, "sci_000001", "accepted", resolved_text="fix1")
-
-    # Verifica che ora ASR sia 0 pendenti
-    pending_asr_after, _ = get_pending_issues(lesson_dir)
-    assert len(pending_asr_after) == 0
-
-    # 3. Riesegui con force=False (idempotente) -> deve essere SKIP e rimanere 0 pendenti
-    res_skip = run_review_asr(lesson_dir, force=False, force_mock=True)
-    assert res_skip["action"] == "SKIP"
-    pending_asr_skip, _ = get_pending_issues(lesson_dir)
-    assert len(pending_asr_skip) == 0
-
-    # 4. Riesegui con force=True -> deve rigenerare le issue e purgare le vecchie decisioni ASR
-    res_force = run_review_asr(lesson_dir, force=True, force_mock=True)
-    assert res_force["action"] == "FORCE"
-
-    pending_asr_forced, pending_sci_forced = get_pending_issues(lesson_dir)
-    # Le issue ASR YELLOW/RED devono essere nuovamente pendenti!
-    assert len(pending_asr_forced) > 0
-    # La decisione science NON deve essere stata cancellata
-    ledger = load_ledger(lesson_dir)
-    sci_decisions = [d for d in ledger.decisions if d.issue_id.startswith("sci_")]
-    assert len(sci_decisions) == 1
-    assert sci_decisions[0].issue_id == "sci_000001"
-
-
-def test_force_review_science_purges_and_resets_pending_issues(tmp_path):
-    lesson_dir = str(tmp_path)
-    _setup_test_lesson(lesson_dir)
-
-    # 1. Prima esecuzione mock di review-science
-    res1 = run_review_science(lesson_dir, force=True, force_mock=True)
-    assert res1["status"] == "science_review_completed"
+    # 1. Prima esecuzione mock di review
+    res1 = run_review(lesson_dir, force=True, force_mock=True)
+    assert res1["status"] == "review_completed"
 
     _, pending_sci = get_pending_issues(lesson_dir)
     assert len(pending_sci) > 0
@@ -155,28 +119,29 @@ def test_force_review_science_purges_and_resets_pending_issues(tmp_path):
     for iss in pending_sci:
         record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.suggested_fix)
 
-    # Aggiungi anche una decisione per una issue asr
-    record_decision(lesson_dir, "asr_000001", "accepted", resolved_text="cand1")
+    # Aggiungi anche una decisione custom con prefisso diverso
+    record_decision(lesson_dir, "custom_000001", "accepted", resolved_text="cand1")
 
     # Verifica che ora Science sia 0 pendenti
     _, pending_sci_after = get_pending_issues(lesson_dir)
     assert len(pending_sci_after) == 0
 
     # 3. Riesegui con force=False (idempotente) -> SKIP e 0 pendenti
-    res_skip = run_review_science(lesson_dir, force=False, force_mock=True)
+    res_skip = run_review(lesson_dir, force=False, force_mock=True)
     assert res_skip["action"] == "SKIP"
     _, pending_sci_skip = get_pending_issues(lesson_dir)
     assert len(pending_sci_skip) == 0
 
     # 4. Riesegui con force=True -> rigenera e purga le vecchie decisioni Science
-    res_force = run_review_science(lesson_dir, force=True, force_mock=True)
+    res_force = run_review(lesson_dir, force=True, force_mock=True)
     assert res_force["action"] == "FORCE"
 
-    pending_asr_forced, pending_sci_forced = get_pending_issues(lesson_dir)
+    _, pending_sci_forced = get_pending_issues(lesson_dir)
     assert len(pending_sci_forced) > 0
 
-    # La decisione ASR NON deve essere stata cancellata
+    # La decisione custom NON deve essere stata cancellata
     ledger = load_ledger(lesson_dir)
-    asr_decisions = [d for d in ledger.decisions if d.issue_id.startswith("asr_")]
-    assert len(asr_decisions) == 1
-    assert asr_decisions[0].issue_id == "asr_000001"
+    custom_decisions = [d for d in ledger.decisions if d.issue_id.startswith("custom_")]
+    assert len(custom_decisions) == 1
+    assert custom_decisions[0].issue_id == "custom_000001"
+

@@ -9,7 +9,7 @@ import re
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
-from rt.core.models import DecisionLedger, ReviewDecision, ASRIssue, ScienceIssue, Draft
+from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.core.lesson_paths import lesson_path
 
@@ -158,53 +158,9 @@ def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     return removed_count
 
 
-def apply_asr_decisions_to_text(
-    content: str,
-    asr_issues: List[ASRIssue],
-    decisions_map: Dict[str, ReviewDecision],
-    target_segment_ids: Optional[List[str]] = None,
-) -> str:
-    """
-    Applica al testo le correzioni ASR decise nel ledger per i segmenti specificati
-    (o per tutti i segmenti se target_segment_ids è None).
-    """
-    asr_by_id = {iss.id: iss for iss in asr_issues}
-    content = fix_mojibake(content)
-    
-    for iss_id, dec in decisions_map.items():
-        if iss_id in asr_by_id:
-            iss = asr_by_id[iss_id]
-            if target_segment_ids is not None and iss.segment_id not in target_segment_ids:
-                continue
-            resolved = fix_mojibake(dec.resolved_text) if dec.resolved_text else None
-            orig_ctx = fix_mojibake(dec.original_context) if dec.original_context else None
-            if dec.decision in ("accepted", "edited") and resolved:
-                if orig_ctx:
-                    if orig_ctx in content:
-                        content = content.replace(orig_ctx, resolved, 1)
-                else:
-                    candidate = fix_mojibake(iss.candidate) if iss.candidate else ""
-                    source = fix_mojibake(iss.source_text) if iss.source_text else ""
-                    if candidate and candidate in content:
-                        content = content.replace(candidate, resolved, 1)
-                    elif source and source in content:
-                        content = content.replace(source, resolved, 1)
-            # "rejected": no-op deliberato. Rifiutare una proposta di correzione ASR non
-            # significa "ripristina il testo grezzo originale" — significa "non applicare
-            # questa proposta". Il draft potrebbe già contenere un testo diverso sia da
-            # source_text sia da candidate (tipicamente perché il modello di rewrite ha
-            # già gestito autonomamente l'ambiguità, indipendentemente da questa issue):
-            # sovrascriverlo con iss.source_text lo corromperebbe. Ogni render riparte
-            # comunque da draft.json non modificato, quindi non c'è mai un "ripristino"
-            # legittimo da fare qui.
-
-    return content
-
-
 def apply_decisions_to_draft(
     draft: Draft,
     ledger: DecisionLedger,
-    asr_issues: List[ASRIssue],
     science_issues: List[ScienceIssue]
 ) -> Draft:
     """
@@ -218,10 +174,7 @@ def apply_decisions_to_draft(
     for unit in draft.units:
         content = fix_mojibake(unit.content)
         
-        # 1. Applica decisioni su ASR Issues
-        content = apply_asr_decisions_to_text(content, asr_issues, decisions_map, unit.source_segment_ids)
-                            
-        # 2. Applica decisioni su Science Issues
+        # Applica decisioni su Science Issues
         for iss_id, dec in decisions_map.items():
             if iss_id in sci_by_id:
                 s_iss = sci_by_id[iss_id]
@@ -261,24 +214,21 @@ def apply_decisions_to_draft(
 
 
 def load_resolved_draft(lesson_dir: str) -> Draft:
-    """Carica il draft con le decisioni del ledger (ASR + scientifiche) già applicate —
+    """Carica il draft con le decisioni del ledger scientifiche già applicate —
     la stessa vista che build.py usa per generare i documenti finali.
 
     Qualunque consumatore che mostra all'utente, o ragiona su, il testo di un'unità
     didattica (es. il recall) deve usare questa funzione invece di rt.pipeline.rewrite
     .load_draft(): il draft grezzo non riflette le correzioni che l'utente ha approvato
     in review, e usarlo direttamente li fa divergere silenziosamente da quello che
-    l'utente ha davvero studiato (bug reale riscontrato: domande/valutazioni del recall
-    basate su un testo che l'utente aveva già corretto)."""
+    l'utente ha davvero studiato."""
     from rt.pipeline.rewrite import load_draft
-    from rt.pipeline.review_asr import load_asr_issues
-    from rt.pipeline.review_science import load_science_issues
+    from rt.pipeline.review import load_science_issues
 
     draft = load_draft(lesson_dir)
     ledger = load_ledger(lesson_dir)
-    asr_issues = load_asr_issues(lesson_dir)
     science_issues = load_science_issues(lesson_dir)
-    return apply_decisions_to_draft(draft, ledger, asr_issues, science_issues)
+    return apply_decisions_to_draft(draft, ledger, science_issues)
 
 
 def extract_context_sentence(content: str, target: str, fallback_target: str = "", highlight: bool = True) -> str:
@@ -319,40 +269,21 @@ def extract_context_sentence(content: str, target: str, fallback_target: str = "
 
 
 def get_pending_issues(lesson_dir: str):
-    """Issue ASR (YELLOW/RED) e scientifiche non ancora decise nel ledger. Ritorna (asr_issues, science_issues)."""
-    from rt.core.models import ASRLevel
-    from rt.pipeline.review_asr import load_asr_issues
-    from rt.pipeline.review_science import load_science_issues
+    """Issue scientifiche non ancora decise nel ledger. Ritorna ([], science_issues)."""
+    from rt.pipeline.review import load_science_issues
 
     ledger = load_ledger(lesson_dir)
     decided_ids = {d.issue_id for d in ledger.decisions}
-    asr_issues = [
-        iss for iss in load_asr_issues(lesson_dir)
-        if iss.level in (ASRLevel.YELLOW, ASRLevel.RED) and iss.id not in decided_ids
-    ]
     sci_issues = [
         iss for iss in load_science_issues(lesson_dir)
         if iss.id not in decided_ids
     ]
-    return asr_issues, sci_issues
-
-
-def find_asr_issue_by_id(lesson_dir: str, issue_id: str):
-    from rt.pipeline.review_asr import load_asr_issues
-    return next((iss for iss in load_asr_issues(lesson_dir) if iss.id == issue_id), None)
+    return [], sci_issues
 
 
 def find_science_issue_by_id(lesson_dir: str, issue_id: str):
-    from rt.pipeline.review_science import load_science_issues
+    from rt.pipeline.review import load_science_issues
     return next((iss for iss in load_science_issues(lesson_dir) if iss.id == issue_id), None)
-
-
-def resolve_asr_accept_text(iss) -> str:
-    return iss.candidate
-
-
-def resolve_asr_reject_text(iss) -> str:
-    return iss.source_text
 
 
 def resolve_science_accept_text(iss) -> Optional[str]:

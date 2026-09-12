@@ -247,15 +247,15 @@ def test_start_review_via_telegram_registers_session(tmp_path, monkeypatch):
     state_dir = str(tmp_path / "state")
     _setup_review_lesson(lesson_dir)
 
-    from rt.core.models import ASRIssue, ASRLevel
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
     from rt.pipeline.issue_review import start_review_via_telegram
     from rt.telegram.config import TelegramConfig
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err", candidate="corr", confidence=0.8, level=ASRLevel.YELLOW, reason="reason")
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr("rt.telegram.client.send_message", lambda *args, **kwargs: {"ok": True})
     monkeypatch.setattr("rt.telegram.config.load_telegram_config", lambda: TelegramConfig(bot_token="tok", chat_id=12345))
@@ -269,8 +269,8 @@ def test_start_review_via_telegram_registers_session(tmp_path, monkeypatch):
         # Verify no session before
         assert tg_session.get_active_session(state_dir, 12345, None) is None
 
-        # Call start_review_via_telegram directly (as done by review-asr/review-science/run --with-review)
-        start_review_via_telegram(lesson_dir, asr_issues, [])
+        # Call start_review_via_telegram directly
+        start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
 
         # Verify session is registered!
         sess = tg_session.get_active_session(state_dir, 12345, None)
@@ -290,17 +290,17 @@ def test_start_review_via_telegram_registers_session(tmp_path, monkeypatch):
 def test_start_review_callback_integration_registers_session(tmp_path, monkeypatch):
     from rt.telegram.daemon import handle_callback
     from rt.telegram.config import TelegramConfig
-    from rt.core.models import ASRIssue, ASRLevel
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
 
     lesson_dir = str(tmp_path / "lesson_cb")
     state_dir = str(tmp_path / "state")
     _setup_review_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err", candidate="corr", confidence=0.8, level=ASRLevel.YELLOW, reason="reason")
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     short_id = registry.register_pending(
         lesson_dir, round_=1, kind="start_issue_review", state_dir=state_dir
@@ -335,18 +335,18 @@ def test_start_review_callback_integration_registers_session(tmp_path, monkeypat
 def test_start_review_via_telegram_prevents_duplicate_active_session(tmp_path, monkeypatch):
     from rt.pipeline.issue_review import start_review_via_telegram
     from rt.telegram.config import TelegramConfig
-    from rt.core.models import ASRIssue, ASRLevel
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
     from rt.telegram import issue_queue as tg_queue
 
     lesson_dir = str(tmp_path / "lesson_dup")
     state_dir = str(tmp_path / "state")
     _setup_review_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err", candidate="corr", confidence=0.8, level=ASRLevel.YELLOW, reason="reason")
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     sent_messages = []
 
@@ -366,14 +366,14 @@ def test_start_review_via_telegram_prevents_duplicate_active_session(tmp_path, m
 
         # 1. Prima chiamata: crea sessione, crea coda, invia primo messaggio con bottoni
         with patch("rt.telegram.issue_queue.create_queue", wraps=tg_queue.create_queue) as mock_create_queue:
-            start_review_via_telegram(lesson_dir, asr_issues, [])
+            start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
             assert mock_create_queue.call_count == 1
             assert len(sent_messages) == 1
             assert sent_messages[0]["reply_markup"] is not None
 
         # 2. Seconda chiamata identica: non deve ricreare la coda né inviare nuovi bottoni
         with patch("rt.telegram.issue_queue.create_queue", wraps=tg_queue.create_queue) as mock_create_queue:
-            start_review_via_telegram(lesson_dir, asr_issues, [])
+            start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
             assert mock_create_queue.call_count == 0
             # Ha inviato un secondo messaggio che è solo il promemoria senza bottoni
             assert len(sent_messages) == 2
@@ -384,18 +384,18 @@ def test_start_review_via_telegram_prevents_duplicate_active_session(tmp_path, m
 def test_start_review_via_telegram_busy_different_activity(tmp_path, monkeypatch):
     from rt.pipeline.issue_review import start_review_via_telegram
     from rt.telegram.config import TelegramConfig
-    from rt.core.models import ASRIssue, ASRLevel
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
     from rt.telegram import issue_queue as tg_queue
 
     lesson_dir = str(tmp_path / "lesson_busy")
     state_dir = str(tmp_path / "state")
     _setup_review_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err", candidate="corr", confidence=0.8, level=ASRLevel.YELLOW, reason="reason")
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     # Crea sessione attiva di tipo diverso (es. outline_confirmation su un'altra lezione)
     tg_session.start_session(state_dir, 12345, None, "outline_confirmation", "/tmp/other_lesson")

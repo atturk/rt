@@ -602,8 +602,7 @@ def _apply_profile_to_job(job_file: str, profile: Dict[str, Any]) -> None:
 _JOB_GROUPS: List[Tuple[str, List[str]]] = [
     ("outline", ["outline"]),
     ("rewrite", ["rewrite"]),
-    ("review_asr", ["review_asr"]),
-    ("review_science", ["review_science"]),
+    ("review", ["review"]),
     ("immagini (descrizione slide/foto + assegnazione a sezione)", ["image_description", "image_unit_judge"]),
     ("recall (quiz, domande mirate/vaste, valutazioni)", ["recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta"]),
 ]

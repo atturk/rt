@@ -757,16 +757,11 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         await update.callback_query.answer("Saltata.")
     else:
         from rt.pipeline.ledger import (
-            record_decision, find_asr_issue_by_id, find_science_issue_by_id,
-            resolve_asr_accept_text, resolve_asr_reject_text,
+            record_decision, find_science_issue_by_id,
             resolve_science_accept_text, resolve_science_reject_text,
         )
-        if issue_type == "asr":
-            issue = find_asr_issue_by_id(lesson_dir, issue_id)
-            resolved = resolve_asr_accept_text(issue) if action == "ia" else resolve_asr_reject_text(issue)
-        else:
-            issue = find_science_issue_by_id(lesson_dir, issue_id)
-            resolved = resolve_science_accept_text(issue) if action == "ia" else resolve_science_reject_text(issue)
+        issue = find_science_issue_by_id(lesson_dir, issue_id)
+        resolved = resolve_science_accept_text(issue) if action == "ia" else resolve_science_reject_text(issue)
         record_decision(lesson_dir, issue_id, "accepted" if action == "ia" else "rejected", resolved_text=resolved)
         await update.callback_query.answer("✔ Registrato." if action == "ia" else "Registrato (mantenuto originale).")
 
@@ -797,9 +792,9 @@ async def _handle_start_review_callback(update: Update, context: ContextTypes.DE
 
     from rt.pipeline.ledger import get_pending_issues
     from rt.pipeline.issue_review import start_review_via_telegram
-    asr_to_review, sci_to_review = get_pending_issues(lesson_dir)
+    _, sci_to_review = get_pending_issues(lesson_dir)
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, start_review_via_telegram, lesson_dir, asr_to_review, sci_to_review)
+    await loop.run_in_executor(None, start_review_via_telegram, lesson_dir, None, sci_to_review)
 
 
 async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, lesson_dir: str) -> None:

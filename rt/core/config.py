@@ -187,11 +187,6 @@ class JobRoutingConfig(BaseModel):
             super().__setattr__(name, value)
 
 
-class ConfidenceThresholds(BaseModel):
-    green: float = Field(default=0.95, description=">= green -> Auto-apply con tracciamento")
-    yellow: float = Field(default=0.75, description=">= yellow e < green -> Coda di revisione")
-
-
 def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
     """Restituisce un dizionario di job con route primaria a guscio vuoto (provider/model a None,
     già il default di RouteConfig). Usato come default_factory per RTConfig.jobs: ogni installazione
@@ -212,8 +207,7 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
     return {
         "outline": empty_shell(max_tokens=16384, timeout=240),
         "rewrite": empty_shell(max_tokens=8192, timeout=180),
-        "review_asr": empty_shell(max_tokens=8192, timeout=120),
-        "review_science": empty_shell(max_tokens=8192, timeout=180),
+        "review": empty_shell(max_tokens=8192, timeout=180),
         "image_description": empty_shell(max_tokens=2048, timeout=120),
         "image_unit_judge": empty_shell(max_tokens=8192, timeout=180),
         "recall_quiz": empty_shell(max_tokens=8192, timeout=120),
@@ -222,7 +216,6 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "recall_eval_mirata": empty_shell(max_tokens=4096, timeout=120),
         "recall_eval_vasta": empty_shell(max_tokens=4096, timeout=180),
     }
-
 
 
 class TelegramRuntimeConfig(BaseModel):
@@ -260,7 +253,6 @@ class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
-    thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
     telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)
     mock_llm: bool = Field(default=False, description="Usa mock deterministico per test e CI")
     streaming: bool = Field(default=True, description="Abilita streaming SSE se supportato dal provider")

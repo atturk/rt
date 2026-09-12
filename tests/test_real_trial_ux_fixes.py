@@ -4,15 +4,14 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from rt.core.models import ASRLevel, ScienceType, SegmentsData, Segment, Draft, DraftUnit, ASRIssue, ScienceIssue
+from rt.core.models import ScienceType, SegmentsData, Segment, Draft, DraftUnit, ScienceIssue
 from rt.telegram import registry, issue_queue as tg_queue
 from rt.telegram.daemon import handle_callback
 from rt.telegram.formatting import build_issue_keyboard
 from rt.telegram.notify import notify_issues_ready, notify_build_completed
-from rt.pipeline.review_asr import run_review_asr
-from rt.pipeline.review_science import run_review_science
+from rt.pipeline.review import run_review
 from rt.llm.prompts import SCIENCE_REVIEW_SYSTEM_PROMPT, build_science_review_user_prompt
-from rt.cli import main, cmd_review_asr, cmd_review_science, cmd_build
+from rt.cli import main, cmd_review, cmd_build
 
 
 def _setup_test_lesson(lesson_dir: str):
@@ -208,17 +207,11 @@ def test_science_review_prompt_has_no_raw_transcript_access_and_ignores_asr_arti
     assert "source_segments_text" not in sig.parameters
 
 
-def test_mock_generation_rich_asr_and_science(tmp_path):
+def test_mock_generation_rich_science(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     _setup_test_lesson(lesson_dir)
 
-    res_asr = run_review_asr(lesson_dir, force=True, force_mock=True)
-    assert res_asr["total_issues"] == 10
-    assert res_asr["green_auto_applied"] > 0
-    assert res_asr["yellow_review_queue"] > 0
-    assert res_asr["red_human_required"] > 0
-
-    res_sci = run_review_science(lesson_dir, force=True, force_mock=True)
+    res_sci = run_review(lesson_dir, force=True, force_mock=True)
     assert res_sci["total_science_issues"] == 10
     assert res_sci["docente_issues"] > 0
     assert res_sci["reconstruction_issues"] > 0
@@ -226,11 +219,6 @@ def test_mock_generation_rich_asr_and_science(tmp_path):
 
 
 def test_mock_generation_bounded_across_many_units(tmp_path):
-    """Regressione trovata in test manuale: run_review_science() chiama l'LLM una
-    volta per unità didattica (run_review_asr una volta per batch di segmenti). Senza
-    un contatore per-istanza in LLMClient, il mock iniettava lo stesso set di ~10 issue
-    ad OGNI chiamata, moltiplicandosi per il numero di unità (24 unità -> 240 issue
-    scientifiche mock su una lezione reale, invece di ~10 totali come da richiesta)."""
     lesson_dir = str(tmp_path / "lesson")
     _setup_test_lesson(lesson_dir)
 
@@ -246,7 +234,7 @@ def test_mock_generation_bounded_across_many_units(tmp_path):
     with open(draft_path, "w", encoding="utf-8") as f:
         json.dump(draft_data, f)
 
-    res_sci = run_review_science(lesson_dir, force=True, force_mock=True)
+    res_sci = run_review(lesson_dir, force=True, force_mock=True)
     assert res_sci["total_science_issues"] == 10, (
         f"Atteso ~10 issue scientifiche totali indipendentemente dal numero di unità "
         f"(12 in questo test), trovate {res_sci['total_science_issues']}"
@@ -257,29 +245,21 @@ def test_cli_channel_dispatch(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     _setup_test_lesson(lesson_dir)
 
-    # 1. review-asr con channel terminale -> nessuna notifica telegram
-    args_rasr_term = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="terminal")
+    # 1. review con channel terminale -> nessuna notifica telegram
+    args_rev_term = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="terminal")
     with patch("rt.telegram.notify.notify_issues_ready") as mock_notify:
-        cmd_review_asr(args_rasr_term)
+        cmd_review(args_rev_term)
         assert not mock_notify.called
 
-    # 2. review-asr con channel telegram -> invia notifica telegram
-    args_rasr_tg = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="telegram")
+    # 2. review con channel telegram -> invia notifica telegram
+    args_rev_tg = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="telegram")
     with patch("rt.telegram.notify.notify_issues_ready") as mock_notify:
-        cmd_review_asr(args_rasr_tg)
-        assert mock_notify.called
-        assert mock_notify.call_args[0][1] == "asr"
-        assert mock_notify.call_args[0][2] == 10
-
-    # 3. review-science con channel telegram -> invia notifica telegram
-    args_rsci_tg = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="telegram")
-    with patch("rt.telegram.notify.notify_issues_ready") as mock_notify:
-        cmd_review_science(args_rsci_tg)
+        cmd_review(args_rev_tg)
         assert mock_notify.called
         assert mock_notify.call_args[0][1] == "science"
         assert mock_notify.call_args[0][2] == 10
 
-    # 4. build standalone con channel telegram -> invia notify_build_completed
+    # 3. build standalone con channel telegram -> invia notify_build_completed
     args_bld_tg = MagicMock(lesson_dir=lesson_dir, force=True, rename=False, channel="telegram")
     with patch("rt.cli.run_build", return_value={"status": "completed", "lesson_dir": lesson_dir, "rielaborato": "rielaborato.md"}), \
          patch("rt.telegram.notify.notify_build_completed") as mock_notify_bld:

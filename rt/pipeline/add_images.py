@@ -296,8 +296,7 @@ def run_add_images(
     from rt.core.segments import load_segments_json
     from rt.pipeline.outline import load_outline
     from rt.pipeline.rewrite import load_draft
-    from rt.pipeline.review_asr import load_asr_issues
-    from rt.pipeline.review_science import load_science_issues
+    from rt.pipeline.review import load_science_issues
     from rt.pipeline.ledger import load_ledger, apply_decisions_to_draft
     from rt.pipeline.build import render_rielaborato_md, _atomic_write_text
 
@@ -356,11 +355,9 @@ def run_add_images(
 
     draft = load_draft(lesson_dir)
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    ledger = load_ledger(lesson_dir)
-    asr_issues = load_asr_issues(lesson_dir)
     science_issues = load_science_issues(lesson_dir)
 
-    resolved_draft = apply_decisions_to_draft(draft, ledger, asr_issues, science_issues)
+    resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
 
     rielab_md = render_rielaborato_md(
         outline=outline,
