@@ -249,9 +249,15 @@ class TelegramRuntimeConfig(BaseModel):
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 
 
+class ReviewConfig(BaseModel):
+    asr_statistical_k: float = Field(default=3.0, description="Fattore k per z-score robusto su mediana e MAD")
+    asr_statistical_floor: float = Field(default=0.35, description="Soglia assoluta di sicurezza per confidenza ASR")
+
+
 class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
+    review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
     telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)
     mock_llm: bool = Field(default=False, description="Usa mock deterministico per test e CI")

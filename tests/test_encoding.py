@@ -81,7 +81,7 @@ class TestEncoding(unittest.TestCase):
             ]
         )
 
-        resolved_draft = apply_decisions_to_draft(draft, ledger, asr_issues=[], science_issues=[sci_issue])
+        resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues=[sci_issue])
         res_content = resolved_draft.units[0].content
 
         self.assertIn("La quota può variare notevolmente.", res_content)

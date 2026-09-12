@@ -26,6 +26,7 @@ from rt.core.idempotency import (
     compute_source_fingerprint
 )
 from rt.pipeline.prepare import run_prepare
+from rt.pipeline.outline import run_outline, get_outline_path
 from rt.pipeline.rewrite import run_rewrite, get_draft_path
 from rt.pipeline.review import run_review, get_science_issues_path
 from rt.pipeline.build import run_build

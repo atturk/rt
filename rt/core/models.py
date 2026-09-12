@@ -114,6 +114,7 @@ class ScienceType(str, Enum):
     ERR_DOCENTE = "ERR_DOCENTE"              # Lapsus o errore esplicito pronunciato dal docente
     ERR_RECONSTRUCTION = "ERR_RECONSTRUCTION"# Errore o allucinazione introdotta dall'LLM durante la rielaborazione
     SCIENCE_CHECK = "SCIENCE_CHECK"          # Affermazione plausibile che merita verifica scientifica o controllo fonti
+    ERR_ASR_ST = "ERR_ASR_ST"                # Segmento ASR con confidenza significativamente degradata (statistico)
 
 
 class ScienceSeverity(str, Enum):

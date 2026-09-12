@@ -27,7 +27,7 @@ PROCESSOR_VERSIONS = {
     "prepare": "prepare_v1.0",
     "outline": "outline_v1.0",
     "rewrite": "rewrite_v1.0",
-    "review": "review_v1.0",
+    "review": "review_v1.1",
     "build": "build_v1.0",
 }
 

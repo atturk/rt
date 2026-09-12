@@ -24,6 +24,7 @@ from rt.llm.prompts import (
 )
 from rt.pipeline.rewrite import load_draft
 from rt.core.lesson_paths import lesson_path
+from rt.core.asr_risk import detect_statistical_asr_risks
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -197,7 +198,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
         pending_sci = [s for s in all_science_issues if s.status == "pending"]
         next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci else WorkflowState.READY_TO_BUILD.value
         return {
-            "status": "science_review_completed",
+            "status": "review_completed",
             "action": "SKIP",
             "skipped": True,
             "reason": reason,
@@ -311,6 +312,15 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
     is_fully_reviewed = all(uid in reviewed_set for uid in all_draft_unit_ids)
 
     if is_fully_reviewed:
+        _cfg = load_config()
+        st_issues = detect_statistical_asr_risks(
+            lesson_dir=lesson_dir,
+            k=_cfg.review.asr_statistical_k,
+            floor=_cfg.review.asr_statistical_floor,
+        )
+        all_science_issues = [iss for iss in all_science_issues if iss.type != ScienceType.ERR_ASR_ST]
+        all_science_issues.extend(st_issues)
+
         for s_idx, iss in enumerate(all_science_issues, start=1):
             iss.id = f"sci_{s_idx:06d}"
         save_science_issues(all_science_issues, lesson_dir)
@@ -318,7 +328,6 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
         source_fp = compute_source_fingerprint(lesson_dir, "review")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
 
-        _cfg = load_config()
         _job_cfg = _cfg.jobs.get("review") or _cfg.llm.get("review")
         _provenance = {
             "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
@@ -344,10 +353,10 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
         else:
             transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=allow_t)
             next_state = WorkflowState.READY_TO_BUILD.value
-        status_msg = "science_review_completed"
+        status_msg = "review_completed"
     else:
         next_state = "partial"
-        status_msg = "science_review_partial"
+        status_msg = "review_partial"
 
     return {
         "status": status_msg,
@@ -358,6 +367,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
         "docente_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_DOCENTE),
         "reconstruction_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_RECONSTRUCTION),
         "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
+        "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
         "next_state": next_state,
         "issues_path": get_science_issues_path(lesson_dir)
     }

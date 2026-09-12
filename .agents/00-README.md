@@ -122,6 +122,69 @@ Telegram, sullo stesso pattern di `--models`/`--telegram` già esistenti.
 Eseguili in quest'ordine (36 → 37 → 38) per isolare i commit per causa e ridurre conflitti di
 merge, come indicato nell'intestazione di ciascun file.
 
+## Aggiornamento — Task 35-39 completati, verificati manualmente in chat (non fidarsi del
+walkthrough testuale di Antigravity)
+
+Task 35-39 risultano committati (`5fbfe79`...`1d9ee3b`) e la suite passa (643/643, verificato
+rieseguendo `pytest` direttamente, non fidandosi del resoconto). Verifica puntuale del codice
+reale (non del solo testo del walkthrough, che di nuovo conteneva percorsi di file inventati,
+es. `.agents/tasks/...` — quella cartella non esiste): Task 35, 36, 37, 39 corretti e verificati
+a livello di codice. **Task 38 è incompleto rispetto alla spec**: doveva riusare la UI a card
+`rich.Live`/`read_single_key` già esistente in `issue_review.py` (stile "science-review", frecce
+LEFT/RIGHT dirette), ma è stato implementato invece con un menu `questionary.select` con voci
+testuali "⬅️ Fase precedente"/"➡️ Fase successiva" — funzionalmente nella direzione giusta
+(navigazione libera, scrittura differita a conferma, modifica post-conferma) ma non la UI a
+blocchi letteralmente richiesta. **Task 43** (vedi sotto) corregge questo con una specifica UX
+più precisa fornita dall'utente.
+
+## Aggiornamento — Task 40-42: rimozione review_asr, rename review_science→review, nuovo
+meccanismo di rilevamento ASR statistico + LLM opzionale
+
+Decisione dell'utente dopo mesi di uso reale: `review_asr` (correzione termini tecnici via LLM,
+confidence gating GREEN/YELLOW/RED) non è mai usato nella pratica — il rewrite gestisce già da
+solo il ~95% dei casi — e va **rimosso interamente**, non solo disattivato. Contestualmente,
+`review_science`/`rt review-science` viene **rinominato internamente e non solo nel comando** in
+`review`/`rt review` (modulo, funzione, chiave di fase idempotenza, file YAML di job) — nessun
+vincolo di retrocompatibilità: siamo in fase di test, non esistono lezioni reali da proteggere.
+
+**Task 40** (prerequisito di 41 e 42): rimozione completa di `review_asr` (modulo, CLI, job
+YAML, prompt LLM, soglie config, wiring in `rt run`, integrazione review interattiva/Telegram,
+docs) + rename completo `review_science`→`review` in ogni namespace (job routing, fase di
+idempotenza, modulo/funzione, comando CLI, docs) — **eccetto** i nomi delle classi Pydantic
+`ScienceIssue`/`ScienceType`/`ScienceSeverity`, che restano invariati (fuori scope, nessun
+beneficio a fronte di un refactor enorme).
+
+**Task 41**: nuovo meccanismo di rilevamento ASR **puramente statistico e deterministico**
+(zero LLM, gratis), integrato DENTRO `review` (non una fase separata) e mostrato nella STESSA UI
+a card delle issue scientifiche. Per ogni segmento calcola il percentile-10 delle confidenze
+parola (NON la media già esistente in `Segment.confidence` dal Task 35 — quella resta per il suo
+scopo attuale), poi flagga i segmenti significativamente degradati rispetto alla distribuzione
+di QUELLA lezione (mediana + MAD scalato, soglia relativa) più una soglia assoluta di sicurezza
+per lezioni con audio uniformemente scadente. Genera issue `ScienceType.ERR_ASR_ST` (una per
+unità, non per segmento), con solo due azioni utente possibili — Accetta / Modifica, niente
+"Applica correzione" perché non c'è un candidato proposto da un LLM. **Include un fix di un bug
+reale trovato leggendo `ledger.py::apply_decisions_to_draft`**: la sostituzione testuale cerca
+`iss.claim` come sottostringa letterale nel draft, ma per queste issue `claim` è la trascrizione
+RAW (quasi certamente non presente verbatim nel testo riscritto) — senza il fix, una correzione
+scritta dall'utente verrebbe silenziosamente scartata e mai applicata al documento finale.
+
+**Task 42**: flag opzionale `rt review --asr-llm` che sostituisce, SOLO per le unità con
+candidati statistici, la generazione diretta di `ERR_ASR_ST` con un arricchimento del prompt
+della normale chiamata LLM di critica scientifica per quell'unità (nessuna chiamata di rete
+aggiuntiva, solo più contesto nel prompt per le unità coinvolte) — l'LLM giudica se il testo
+rielaborato è fedele o fabbricato rispetto al segmento raw a rischio, generando `ERR_ASR_LLM`
+solo se conferma il sospetto (altrimenti il candidato è scartato senza generare nulla): meno
+falsi positivi, costo leggermente più alto solo per le unità toccate.
+
+## Ordine di esecuzione (aggiornato)
+
+1. **Task 40** (prerequisito di 41, 42 e 43).
+2. **Task 41** (dipende da 40).
+3. **Task 42** (dipende da 41).
+4. **Task 43** (dipende solo da 40, non da 41/42 — file diverso, `configure.py` non
+   `review.py`/`models.py`; corregge il Task 38 con una UI a card letterale, sostituendo il
+   meccanismo `questionary.select` con `rich.Live`+`read_single_key`).
+
 Quando tutti i task sono completati (o se ti sei fermato bloccato su un task), segnalalo in
 chat con un riepilogo breve per task: file toccati, output dei test, e — importante — cosa
 non hai fatto o non sei sicuro sia corretto. I commit separati e il diff completo verranno

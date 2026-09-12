@@ -354,7 +354,7 @@ class TestFormatUnitReference:
         correzioni scientifiche già approvate — diverso da quello che l'utente studia
         davvero nel documento finale."""
         from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
-        from rt.pipeline.review_science import get_science_issues_path
+        from rt.pipeline.review import get_science_issues_path
         from rt.pipeline.ledger import record_decision
 
         lesson_dir = str(tmp_path / "lesson")

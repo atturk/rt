@@ -261,23 +261,22 @@ def test_telegram_review_missing_audio_does_not_fail(tmp_path):
     if os.path.exists(audio_file):
         os.remove(audio_file)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
+    sci_issues = [
+        ScienceIssue(
+            id="sci_001",
+            type=ScienceType.ERR_DOCENTE,
+            severity=ScienceSeverity.HIGH,
+            unit_id="U1",
             segment_id="seg_000001",
-            source_text="errore",
-            candidate="correzione",
-            confidence=0.8,
-            level=ASRLevel.YELLOW,
-            reason="test"
+            claim="errore",
+            reason="test",
+            suggested_fix="correzione"
         )
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    tg_queue.create_queue(lesson_dir, ["asr_001"], {"asr_001": "asr"})
+    tg_queue.create_queue(lesson_dir, ["sci_001"], {"sci_001": "science"})
     cfg = TelegramConfig(bot_token="MOCK_TOKEN", chat_id=12345)
 
     with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \

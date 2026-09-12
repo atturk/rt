@@ -79,14 +79,17 @@ class TestCLIReview(unittest.TestCase):
 
     def test_cli_removed_review_subcommands_fail(self):
         from rt.cli import main
+        from unittest.mock import patch
         # review-asr and review-science must fail as invalid choices
-        with self.assertRaises(SystemExit) as cm1:
-            main(["review-asr", "dummy"])
-        self.assertEqual(cm1.exception.code, 2)
+        with patch("sys.argv", ["rt", "review-asr", "dummy"]):
+            with self.assertRaises(SystemExit) as cm1:
+                main()
+            self.assertEqual(cm1.exception.code, 2)
 
-        with self.assertRaises(SystemExit) as cm2:
-            main(["review-science", "dummy"])
-        self.assertEqual(cm2.exception.code, 2)
+        with patch("sys.argv", ["rt", "review-science", "dummy"]):
+            with self.assertRaises(SystemExit) as cm2:
+                main()
+            self.assertEqual(cm2.exception.code, 2)
 
 
 if __name__ == "__main__":
