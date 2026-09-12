@@ -80,20 +80,8 @@ fi
 if command -v micro &>/dev/null; then
     echo "ℹ️ Editor 'micro' già installato."
 else
-    if [ -t 0 ]; then
-        read -r -p "Vuoi installare l'editor raccomandato 'micro' via Homebrew? [y/N] " reply
-        case "$reply" in
-            [yY][eE][sS]|[yY]|[sS][ìI]|[sS])
-                echo "🍺 Installazione di micro..."
-                brew install micro
-                ;;
-            *)
-                echo "ℹ️ Salto l'installazione di micro."
-                ;;
-        esac
-    else
-        echo "ℹ️ Sessione non interattiva, salto l'installazione di micro."
-    fi
+    echo "🍺 Installazione di micro (editor consigliato per le revisioni interattive)..."
+    brew install micro
 fi
 
 # 2. Ambiente virtuale
