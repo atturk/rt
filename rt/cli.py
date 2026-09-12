@@ -204,7 +204,8 @@ def cmd_review(args):
         print(f"🔄 Reset: rimosse {removed} decisioni scientifiche precedenti (le issue esistenti restano invariate).")
 
     force = getattr(args, "force", False)
-    res = run_review(args.lesson_dir, force=force, force_mock=args.mock)
+    asr_llm = getattr(args, "asr_llm", False)
+    res = run_review(args.lesson_dir, force=force, force_mock=args.mock, asr_llm=asr_llm)
     _print_phase_action("review", res)
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
@@ -721,6 +722,11 @@ def main():
         choices=["terminal", "telegram"],
         default=None,
         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
+    )
+    p_rsci.add_argument(
+        "--asr-llm",
+        action="store_true",
+        help="Affida all'LLM di critica scientifica la validazione dei candidati a rischio ASR invece del solo criterio statistico (meno falsi positivi, costa di più)"
     )
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.set_defaults(func=cmd_review)

@@ -178,7 +178,7 @@ def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
     return segs[-1].id
 
 
-def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
+def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
 
@@ -206,6 +206,8 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
             "docente_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_DOCENTE),
             "reconstruction_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_RECONSTRUCTION),
             "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
+            "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
+            "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
             "next_state": next_state,
             "issues_path": get_science_issues_path(lesson_dir)
         }
@@ -215,6 +217,17 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
     draft = load_draft(lesson_dir)
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
+
+    _cfg = load_config()
+    st_issues_all = detect_statistical_asr_risks(
+        lesson_dir=lesson_dir,
+        k=_cfg.review.asr_statistical_k,
+        floor=_cfg.review.asr_statistical_floor,
+    )
+    st_issues_by_unit: Dict[str, List[ScienceIssue]] = {}
+    for st_iss in st_issues_all:
+        if st_iss.unit_id:
+            st_issues_by_unit.setdefault(st_iss.unit_id, []).append(st_iss)
 
     # Riconciliazione all'avvio:
     if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
@@ -257,9 +270,25 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
                 source_texts.append(f"[{s.id}] {s.text_raw}")
         source_context = "\n".join(source_texts)
 
+        asr_risk_context = None
+        if asr_llm and unit.unit_id in st_issues_by_unit:
+            unit_st = st_issues_by_unit[unit.unit_id][0]
+            asr_risk_context = (
+                f"SEGMENTO A RISCHIO ASR RILEVATO STATISTICAMENTE IN QUESTA UNITÀ:\n"
+                f"Trascrizione raw: \"{unit_st.claim}\"\n"
+                f"Dettaglio: {unit_st.reason}\n\n"
+                f"ECCEZIONE PER QUESTO PUNTO SPECIFICO: la tua istruzione generale è di ignorare artefatti ASR isolati — "
+                f"per QUESTO segmento specifico, invece, valuta se il testo rielaborato corrispondente riflette fedelmente "
+                f"questa trascrizione raw o se sembra un'invenzione/allucinazione introdotta durante la riscrittura. "
+                f"Se sospetti fabbricazione o travisamento, genera una issue con \"type\": \"ERR_ASR_LLM\", "
+                f"\"segment_id\": \"{unit_st.segment_id or ''}\", \"claim\": \"{unit_st.claim}\", \"reason\": la tua motivazione, "
+                f"\"suggested_fix\": null. Se non sospetti nulla, non generare alcuna issue per questo punto."
+            )
+
         prompt = build_science_review_user_prompt(
             unit_id=unit.unit_id,
             rewritten_content=unit.content,
+            asr_risk_context=asr_risk_context,
         )
         
         unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
@@ -312,14 +341,9 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
     is_fully_reviewed = all(uid in reviewed_set for uid in all_draft_unit_ids)
 
     if is_fully_reviewed:
-        _cfg = load_config()
-        st_issues = detect_statistical_asr_risks(
-            lesson_dir=lesson_dir,
-            k=_cfg.review.asr_statistical_k,
-            floor=_cfg.review.asr_statistical_floor,
-        )
         all_science_issues = [iss for iss in all_science_issues if iss.type != ScienceType.ERR_ASR_ST]
-        all_science_issues.extend(st_issues)
+        if not asr_llm:
+            all_science_issues.extend(st_issues_all)
 
         for s_idx, iss in enumerate(all_science_issues, start=1):
             iss.id = f"sci_{s_idx:06d}"
@@ -368,6 +392,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -
         "reconstruction_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_RECONSTRUCTION),
         "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
         "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
+        "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
         "next_state": next_state,
         "issues_path": get_science_issues_path(lesson_dir)
     }

@@ -180,13 +180,17 @@ Per ogni problema riscontrato restituisci:
 def build_science_review_user_prompt(
     unit_id: str,
     rewritten_content: str,
+    asr_risk_context: Optional[str] = None,
 ) -> str:
+    asr_block = ""
+    if asr_risk_context:
+        asr_block = f"\n\n---\n{asr_risk_context.strip()}\n---"
     return f"""Esamina criticamente la seguente unità rielaborata:
 
 UNITÀ: {unit_id}
 
 TESTO RIELABORATO:
-{rewritten_content}
+{rewritten_content}{asr_block}
 
 Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ScienceIssueList."""
 
