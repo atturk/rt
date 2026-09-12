@@ -679,8 +679,15 @@ class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
 
 def cmd_config(args: argparse.Namespace) -> None:
-    from rt.pipeline.configure import run_config_wizard
-    run_config_wizard()
+    if getattr(args, "models", False):
+        from rt.pipeline.configure import run_models_management
+        run_models_management()
+    elif getattr(args, "telegram", False):
+        from rt.pipeline.configure import run_telegram_only
+        run_telegram_only()
+    else:
+        from rt.pipeline.configure import run_config_wizard
+        run_config_wizard()
 
 
 def main():
