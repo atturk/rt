@@ -37,7 +37,7 @@ def _is_placeholder_or_invalid_bot_token(token: str) -> bool:
 
 def parse_telegram_topic_link(link: str) -> Optional[Tuple[int, int]]:
     """
-    Parsa un link a un messaggio Telegram di un supergruppo/forum (es. 'https://t.me/c/4490473926/541/679')
+    Parsa un link a un messaggio Telegram di un supergruppo/forum (es. 'https://t.me/c/1234567890/12/34')
     e restituisce (chat_id, message_thread_id) come tuple di int, con prefisso -100 sul chat_id.
     Ritorna None se il formato non è valido.
     """
@@ -954,7 +954,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
     topics_map: Dict[str, int] = {}
     misc_topic_id: Optional[int] = None
 
-    if mode and mode.startswith("📡"):
+    while mode and mode.startswith("📡"):
         print("\n--- 📡 Discovery Live Topic ---")
         print("ISTRUZIONI:")
         print("1. Assicurati che il bot sia stato aggiunto al tuo gruppo Telegram.")
@@ -1030,21 +1030,39 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
         except KeyboardInterrupt:
             print("\nPolling interrotto dall'utente.")
 
-    if (mode and mode.startswith("🔗")) or (not topics_map and not detected_chat_id and mode and not mode.startswith("⏭")):
-        if mode and mode.startswith("📡") and not topics_map:
+        if not topics_map and not detected_chat_id:
             print("\n⚠️  Nessun messaggio rilevato via discovery live.")
             print("Verifica che il bot sia nel gruppo e che abbia i permessi di lettura messaggi.")
+            disc_action = questionary.select(
+                "Come vuoi procedere?",
+                choices=[
+                    "🔄 Riprova discovery live",
+                    "🔗 Passa all'inserimento manuale via link",
+                    "⏭ Annulla/salta questa parte"
+                ]
+            ).ask()
+            if disc_action and disc_action.startswith("🔄"):
+                continue
+            elif disc_action and disc_action.startswith("🔗"):
+                mode = "🔗 Incolla link topic (manuale)"
+                break
+            else:
+                mode = "⏭ Salta questa parte"
+                break
+        else:
+            break
 
+    if mode and mode.startswith("🔗"):
         print("\n--- 🔗 Inserimento Manuale via Link Topic ---")
         while True:
             link = questionary.text(
-                "Incolla il link a un messaggio del topic (es. https://t.me/c/4490473926/541/679) [invio per terminare]:"
+                "Incolla il link a un messaggio del topic (es. https://t.me/c/1234567890/12/34) [invio per terminare]:"
             ).ask()
             if not link or not link.strip():
                 break
             parsed = parse_telegram_topic_link(link)
             if not parsed:
-                print("❌ Formato link non valido. Esempio atteso: https://t.me/c/4490473926/541/679")
+                print("❌ Formato link non valido. Esempio atteso: https://t.me/c/1234567890/12/34")
                 continue
 
             chat_id, topic_id = parsed
@@ -1481,9 +1499,162 @@ def run_models_management() -> None:
         _edit_model_profile(config_dir, env_path, general_yaml_path, general_data, profiles, choice)
 
 
+def _edit_single_topic_mapping(
+    general_yaml_path: str,
+    general_data: Dict[str, Any],
+    topics_map: Dict[str, Any],
+    mat_name: str
+) -> None:
+    curr_val = topics_map.get(mat_name)
+    print(f"\n--- Gestione Topic per materia: '{mat_name}' ---")
+    if isinstance(curr_val, dict):
+        print(f"Chat ID: {curr_val.get('chat_id')}, Topic ID: {curr_val.get('message_thread_id')}")
+    else:
+        print(f"Topic ID: {curr_val}")
+
+    action = questionary.select(
+        f"Operazione su materia '{mat_name}':",
+        choices=[
+            "✏️ Rinomina materia",
+            "🔧 Modifica chat_id / topic_id",
+            "🗑️ Rimuovi mappatura",
+            "⏭ Torna alla lista"
+        ]
+    ).ask()
+
+    if not action or action.startswith("⏭"):
+        return
+
+    if action.startswith("✏️"):
+        new_mat = questionary.text("Nuovo nome materia (in maiuscolo):", default=mat_name).ask()
+        if not new_mat or not new_mat.strip():
+            return
+        new_mat_clean = new_mat.strip().upper()
+        if new_mat_clean == mat_name:
+            return
+        if new_mat_clean in topics_map:
+            print(f"⚠️ La materia '{new_mat_clean}' ha già una mappatura topic.")
+            return
+        val = topics_map.pop(mat_name)
+        topics_map[new_mat_clean] = val
+        general_data["telegram"]["topics"] = topics_map
+        _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+        print(f"✅ Materia rinominata da '{mat_name}' a '{new_mat_clean}'.")
+
+    elif action.startswith("🔧"):
+        if isinstance(curr_val, dict):
+            c_id_def = str(curr_val.get("chat_id", ""))
+            t_id_def = str(curr_val.get("message_thread_id", ""))
+        else:
+            c_id_def = str(os.environ.get("RT_TELEGRAM_CHAT_ID", ""))
+            t_id_def = str(curr_val or "")
+
+        new_cid = questionary.text("Chat ID (es. -1001234567890):", default=c_id_def).ask()
+        new_tid = questionary.text("Message Thread ID (Topic ID):", default=t_id_def).ask()
+
+        if new_cid and new_tid and new_cid.strip() and new_tid.strip():
+            try:
+                cid_int = int(new_cid.strip())
+                tid_int = int(new_tid.strip())
+                topics_map[mat_name] = {"chat_id": cid_int, "message_thread_id": tid_int}
+                general_data["telegram"]["topics"] = topics_map
+                _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+                print(f"✅ Mappatura '{mat_name}' aggiornata: chat_id={cid_int}, topic_id={tid_int}.")
+            except ValueError:
+                print("❌ Chat ID e Topic ID devono essere numeri interi.")
+
+    elif action.startswith("🗑️"):
+        confirm_del = questionary.confirm(f"Sei sicuro di voler rimuovere la mappatura per '{mat_name}'?", default=False).ask()
+        if confirm_del:
+            topics_map.pop(mat_name, None)
+            general_data["telegram"]["topics"] = topics_map
+            _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+            print(f"✅ Mappatura '{mat_name}' rimossa.")
+
+
+def run_topics_management() -> None:
+    """Apre il menu di gestione delle mappature materia -> topic Telegram in config/general.yaml."""
+    print("================================================------------")
+    print("⚙️  RT CONFIG — Gestione Topic Telegram")
+    print("================================================------------")
+    config_dir, env_path = _resolve_or_bootstrap_config_paths()
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+
+    while True:
+        general_data: Dict[str, Any] = {}
+        if os.path.isfile(general_yaml_path):
+            try:
+                with open(general_yaml_path, "r", encoding="utf-8") as f:
+                    loaded = yaml.safe_load(f)
+                    if isinstance(loaded, dict):
+                        general_data = loaded
+            except Exception:
+                pass
+
+        if "telegram" not in general_data or not isinstance(general_data["telegram"], dict):
+            general_data["telegram"] = {}
+
+        topics_map = general_data["telegram"].get("topics", {})
+        if not isinstance(topics_map, dict):
+            topics_map = {}
+
+        print("\n--- Mappature Materie <-> Topic Telegram Attuali ---")
+        if not topics_map:
+            print("  (Nessuna mappatura topic configurata)")
+        else:
+            for mat, val in sorted(topics_map.items()):
+                if isinstance(val, dict):
+                    cid = val.get("chat_id")
+                    tid = val.get("message_thread_id")
+                    print(f"  • {mat} -> chat_id: {cid}, topic_id: {tid}")
+                else:
+                    print(f"  • {mat} -> topic_id: {val}")
+
+        EXIT = "⏭ Esci"
+        ADD = "➕ Aggiungi nuova mappatura topic"
+        choices = [f"✏️ Gestisci '{m}'" for m in sorted(topics_map.keys())] + [ADD, EXIT]
+
+        action = questionary.select(
+            "Seleziona un'operazione:",
+            choices=choices
+        ).ask()
+
+        if action is None or action == EXIT:
+            break
+
+        if action == ADD:
+            bot_token = os.environ.get("RT_TELEGRAM_BOT_TOKEN", "")
+            if _is_placeholder_or_invalid_bot_token(bot_token):
+                print("⚠️ Bot Token Telegram non configurato. Esegui prima 'rt config --telegram'.")
+                continue
+
+            link = questionary.text(
+                "Incolla il link a un messaggio del topic (es. https://t.me/c/1234567890/12/34):"
+            ).ask()
+            if not link or not link.strip():
+                continue
+            parsed = parse_telegram_topic_link(link)
+            if not parsed:
+                print("❌ Formato link non valido. Esempio atteso: https://t.me/c/1234567890/12/34")
+                continue
+            chat_id, topic_id = parsed
+            mat = questionary.text(f"Materia per Topic ID {topic_id} (es. BIOCHIMICA):").ask()
+            if mat and mat.strip():
+                mat_clean = mat.strip().upper()
+                topics_map[mat_clean] = {"chat_id": chat_id, "message_thread_id": topic_id}
+                general_data["telegram"]["topics"] = topics_map
+                _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+                print(f"✅ Mappatura '{mat_clean}' aggiunta.")
+            continue
+
+        mat_name = action.replace("✏️ Gestisci '", "")[:-1]
+        _edit_single_topic_mapping(general_yaml_path, general_data, topics_map, mat_name)
+
+
 def configure_config_parser(parser: Any) -> Any:
     """Configura l'argparse parser per rt config."""
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--models", action="store_true", help="Apre direttamente il menu di gestione dei profili modello salvati (senza attraversare l'intero wizard)")
     group.add_argument("--telegram", action="store_true", help="Configura direttamente solo la sezione Telegram (senza attraversare l'intero wizard)")
+    group.add_argument("--topics", action="store_true", help="Apre direttamente il menu di gestione dei topic Telegram già configurati (senza attraversare l'intero wizard)")
     return parser
