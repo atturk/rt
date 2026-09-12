@@ -134,8 +134,14 @@ La chiave è la stessa materia usata in `topics:` dentro `general.yaml`. Facolta
 
 ### Route opzionali aggiuntive
 
-#### 1. Round-Robin dual-key (`secondary:`)
-Se si desidera distribuire il carico tra due account/chiavi (es. per il job `rewrite`):
+#### 1. Round-Robin N-way (`secondary:` oppure `primary_routes:`)
+Se si desidera distribuire il carico tra più account/chiavi (es. per il job `rewrite`), è possibile usare `secondary:` per 2 chiavi oppure `primary_routes:` per un numero N arbitrario di chiavi (es. 3+):
+
+- ogni voce della lista è una `RouteConfig` completa (stessi campi di `primary`/`secondary`);
+- ogni voce dovrebbe avere una `credential` distinta (registrata in `general.yaml` sotto `credentials:` con un `env_var` diverso ciascuna) altrimenti il round-robin non ha senso (userebbe la stessa chiave API più volte);
+- il conteggio round-robin è persistente per tutta la vita del processo `rt` (non per singola chiamata), quindi chiamate successive allo stesso job ciclano deterministicamente su tutte le route in ordine, non solo tra le prime due.
+
+Esempio con 2 chiavi (`primary:` / `secondary:`):
 ```yaml
 round_robin: true
 max_attempts: 5
@@ -156,6 +162,33 @@ secondary:
   thinking: true
   reasoning_effort: "high"
   timeout_seconds: 180
+```
+
+Esempio con 3+ chiavi (`primary_routes:`):
+```yaml
+round_robin: true
+max_attempts: 5
+max_output_chars: 45000
+
+primary_routes:
+  - provider: "google"
+    credential: "google_1"
+    model: "gemini-3.5-flash-lite"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 180
+  - provider: "google"
+    credential: "google_2"
+    model: "gemini-3.5-flash-lite"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 180
+  - provider: "google"
+    credential: "google_3"
+    model: "gemini-3.5-flash-lite"
+    thinking: true
+    reasoning_effort: "high"
+    timeout_seconds: 180
 ```
 
 #### 2. Mappa di `fallback` mirata

@@ -84,20 +84,20 @@ class RoutingEngine:
     def select_initial_route(self, job_name: str) -> ExecutionRoute:
         """
         Policy di Scheduling a condizioni normali:
-        - Se round_robin è True e secondary è presente, alterna primary e secondary.
+        - Se round_robin è True, alterna tra le route in primary_routes o tra primary e secondary.
         - Se round_robin è False, seleziona sempre primary.
         """
         job_cfg = self._get_job_config(job_name)
 
-        if job_cfg.round_robin and job_cfg.secondary:
-            with self._lock:
-                count = self._rr_counters.get(job_name, 0)
-                self._rr_counters[job_name] = count + 1
-
-            if count % 2 == 0:
-                return ExecutionRoute(route=job_cfg.primary, route_role="primary")
-            else:
-                return ExecutionRoute(route=job_cfg.secondary, route_role="secondary")
+        if job_cfg.round_robin:
+            routes = job_cfg.effective_routes
+            if len(routes) >= 2:
+                with self._lock:
+                    count = self._rr_counters.get(job_name, 0)
+                    self._rr_counters[job_name] = count + 1
+                idx = count % len(routes)
+                role = "primary" if idx == 0 else f"round_robin_{idx + 1}"
+                return ExecutionRoute(route=routes[idx], route_role=role)
 
         return ExecutionRoute(route=job_cfg.primary, route_role="primary")
 
@@ -166,15 +166,7 @@ class RoutingEngine:
             alt_reason: str = reason_tag
 
             # 3a. Cerca una route alternativa configurata non ancora visitata
-            configured_candidates = []
-            if job_cfg.primary:
-                configured_candidates.append(job_cfg.primary)
-            if job_cfg.secondary:
-                configured_candidates.append(job_cfg.secondary)
-            if job_cfg.primary_routes:
-                for r in job_cfg.primary_routes:
-                    if r not in configured_candidates:
-                        configured_candidates.append(r)
+            configured_candidates = list(job_cfg.effective_routes)
 
             for cand in configured_candidates:
                 if cand.route_id in visited_route_ids:

@@ -147,6 +147,12 @@ class JobRoutingConfig(BaseModel):
     max_attempts: int = Field(default=5, ge=1, le=10, description="Cap globale della catena di esecuzione dell'unità")
     max_output_chars: Optional[int] = Field(default=45000, description="Hard guard contro output runaway")
 
+    @property
+    def effective_routes(self) -> List[RouteConfig]:
+        if self.primary_routes:
+            return list(self.primary_routes)
+        return [r for r in (self.primary, self.secondary) if r is not None]
+
     def model_post_init(self, __context: Any) -> None:
         if self.primary_routes:
             if not self.primary and len(self.primary_routes) > 0:
@@ -157,13 +163,15 @@ class JobRoutingConfig(BaseModel):
         if not self.primary:
             raise ValueError("JobRoutingConfig richiede la definizione di 'primary' o 'primary_routes'.")
 
-        if self.round_robin and not self.secondary:
-            raise ValueError("Configurazione non valida: round_robin è abilitato ma manca la route 'secondary'.")
+        if self.round_robin and len(self.effective_routes) < 2:
+            raise ValueError(
+                "Configurazione non valida: round_robin è abilitato ma è disponibile una sola route (serve 'secondary:' oppure 'primary_routes:' con almeno 2 elementi)."
+            )
 
     # Proxy trasparente degli attributi verso primary per retrocompatibilità totale con codice che accede a job_cfg.provider, etc.
     def __getattr__(self, name: str) -> Any:
         # Evita ricorsioni durante serializzazione o inizializzazione
-        if name in ("primary", "secondary", "primary_routes", "round_robin", "fallback", "max_attempts", "max_output_chars", "__dict__"):
+        if name in ("primary", "secondary", "primary_routes", "round_robin", "fallback", "max_attempts", "max_output_chars", "effective_routes", "__dict__"):
             return super().__getattribute__(name)
         primary_obj = self.__dict__.get("primary")
         if primary_obj and hasattr(primary_obj, name):
@@ -171,7 +179,7 @@ class JobRoutingConfig(BaseModel):
         raise AttributeError(f"'{type(self).__name__}' non ha l'attributo '{name}'")
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in ("primary", "secondary", "primary_routes", "round_robin", "fallback", "max_attempts", "max_output_chars"):
+        if name in ("primary", "secondary", "primary_routes", "round_robin", "fallback", "max_attempts", "max_output_chars", "effective_routes"):
             super().__setattr__(name, value)
         elif hasattr(self, "primary") and hasattr(self.primary, name):
             setattr(self.primary, name, value)
