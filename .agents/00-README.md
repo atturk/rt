@@ -9,18 +9,18 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-29 sono
-completati, revisionati e pushati. In revisione del Task 29 è stata trovata e rimossa una
-modifica non richiesta a `find_compatible_python`/`requirements.txt` (esclusione di Python 3.14
-+ downgrade di `pydantic>=2.13` a `>=2.0`), motivata con una premessa rivelatasi falsa in un
-test empirico diretto (ogni dipendenza installa senza problemi su Python 3.14 reale, incluse le
-wheel native cp314 di pydantic-core) — se in un task futuro emerge un problema reale legato a
-una versione specifica di Python, verificalo sempre empiricamente prima di escluderla. Aspetta
-nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
+indicato esplicitamente da un task attivo. 01-29 sono completati, revisionati e pushati (in
+revisione del Task 29 è stata trovata e rimossa una modifica non richiesta a
+`find_compatible_python`/`requirements.txt` basata su una premessa rivelatasi falsa in un test
+empirico diretto — verifica sempre empiricamente prima di escludere una versione Python). Il
+lavoro corrente da eseguire è **30**: sostituisce il prompt testuale `read -rp [S/n]`
+(introdotto nel Task 29) con un menu `questionary` in stile `rt config`, con un piccolo bootstrap
+anticipato del venv (solo `questionary`, per non perdere il parallelismo del download introdotto
+nel Task 28) e fallback al prompt testuale se il bootstrap fallisce.
 
 ## Ordine di esecuzione
 
-Nessun task attivo al momento.
+Un solo task attivo (**30**), indipendente da tutto il resto.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
