@@ -1,12 +1,12 @@
 # Utilizzo di Motori di Trascrizione Alternativi in RT
 
-Questo documento illustra come utilizzare motori di Speech-to-Text (STT) alternativi a MacWhisper (es. Whisper locale/faster-whisper, Deepgram, OpenAI Audio API, Voxtral, Gladia, AssemblyAI, ecc.) con la pipeline di RT.
+Questo documento illustra come utilizzare motori di Speech-to-Text (STT) alternativi al motore predefinito `macparakeet-cli` (es. Whisper locale/faster-whisper, Deepgram, OpenAI Audio API, MacWhisper, Voxtral, Gladia, AssemblyAI, ecc.) con la pipeline di RT.
 
 ---
 
 ## Principio Architetturale
 
-RT **non è vincolato a MacWhisper**: il core deterministico del sistema opera esclusivamente sulla struttura standard dei segmenti temporali (`segments.json`).
+RT **non è vincolato a macparakeet-cli**: il core deterministico del sistema opera esclusivamente sulla struttura standard dei segmenti temporali (`segments.json`).
 
 La fase `prepare` (`rt prepare "cartella_lezione"`) cerca nella cartella della lezione uno tra questi tre file:
 1. `trascritto grezzo.json`
@@ -17,11 +17,28 @@ Indipendentemente da quale motore abbia generato la trascrizione, è sufficiente
 
 ---
 
-## I 3 Formati JSON Supportati da `parse_segments_from_json`
+## I 4 Formati JSON Supportati da `parse_segments_from_json`
 
-La funzione di ingestione `parse_segments_from_json` supporta automaticamente 3 formati:
+La funzione di ingestione `parse_segments_from_json` supporta automaticamente 4 formati:
 
-### 1. Formato MacWhisper (Timestamp in millisecondi)
+### 1. Formato macparakeet-cli (Caso 4 — Motore Predefinito)
+Struttura con array `transcriptSegments` e campo `rawTranscript`, in cui `startMs` ed `endMs` sono numeri in millisecondi.
+
+```json
+{
+  "rawTranscript": "Buongiorno a tutti, oggi iniziamo la lezione.",
+  "transcriptSegments": [
+    {
+      "startMs": 0,
+      "endMs": 4500,
+      "text": "Buongiorno a tutti, oggi iniziamo la lezione.",
+      "speakerLabel": "Speaker 1"
+    }
+  ]
+}
+```
+
+### 2. Formato MacWhisper (Caso 1 — Storico)
 Struttura con array `segments` o lista root in cui `start` ed `end` sono numeri in millisecondi.
 
 ```json

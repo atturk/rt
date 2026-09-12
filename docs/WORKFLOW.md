@@ -45,7 +45,7 @@ stateDiagram-v2
 - Modulo unificato `rt/pipeline/setup.py` con wrapper retrocompatibile `rt_setup.py`.
 - Riceve uno o più file audio (.m4a, .wav, .mp3...), la data, la materia e gli argomenti.
 - In caso di file multipli, calcola l'offset cumulativo in millisecondi in modo deterministico e preserva la monotonicità temporale.
-- Invoca MacWhisper CLI (`mw`) per generare `trascritto grezzo.json` (Source of Truth assoluta) e `trascritto grezzo.md`.
+- Invoca `macparakeet-cli` per generare `trascritto grezzo.json` (Source of Truth assoluta) e `trascritto grezzo.md`.
 - Con `--skip-transcribe`, imposta lo stato protetto `metadata_only`.
 - Con `--mock`, genera un mock ASR deterministico offline a costo zero.
 - Protezione sovrascrittura: rifiuta cartelle con avanzamenti senza `--force`, e con `--force` preserva sempre `review_decisions.json`.

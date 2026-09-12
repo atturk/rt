@@ -128,9 +128,9 @@ def test_rt_setup_clean_initialization(tmp_path):
     assert os.path.isfile(lesson_path(lecture_dir,"Problemi scientifici.md"))
 
 
-def test_macwhisper_failure_hard_fails(tmp_path):
+def test_macparakeet_failure_hard_fails(tmp_path):
     """
-    Verifica che un fallimento irreversibile di MacWhisper provochi l'arresto immediato (hard-fail)
+    Verifica che un fallimento irreversibile di macparakeet-cli provochi l'arresto immediato (hard-fail)
     sollevando SetupError, senza contrassegnare la lezione come completata o funzionante.
     """
     from unittest.mock import patch
@@ -141,17 +141,17 @@ def test_macwhisper_failure_hard_fails(tmp_path):
     with open(audio_file, "wb") as f:
         f.write(b"RIFF audio fake")
 
-    # Mock per simulare fallimento MacWhisper CLI
+    # Mock per simulare fallimento macparakeet-cli
     failed_proc = subprocess.CompletedProcess(
-        args=["mw", "transcribe"],
+        args=["macparakeet-cli", "transcribe"],
         returncode=1,
         stdout="",
-        stderr="Error: Model weights corrupted or MacWhisper crash"
+        stderr="Error: Model weights corrupted or macparakeet crash"
     )
 
-    with patch("shutil.which", return_value="/usr/local/bin/mw"):
-        with patch("rt.pipeline.setup._run_mw_with_spinner", return_value=failed_proc):
-            with pytest.raises(SetupError, match="Trascrizione MacWhisper JSON fallita"):
+    with patch("shutil.which", return_value="/usr/local/bin/macparakeet-cli"):
+        with patch("rt.pipeline.setup._run_transcribe_with_spinner", return_value=failed_proc):
+            with pytest.raises(SetupError, match="Trascrizione macparakeet-cli JSON fallita"):
                 run_setup(
                     audio=audio_file,
                     date="2026-09-05",
@@ -191,23 +191,15 @@ def test_run_setup_on_progress_callback(tmp_path):
     assert "✔ Cartella lezione:" in messages_mock[0]
     assert "FARMACOLOGIA" in messages_mock[0]
 
-    # 2. Con trascrizione reale (mockando _run_mw_with_spinner per simulare successo e scrittura file):
+    # 2. Con trascrizione reale (mockando _run_transcribe_with_spinner per simulare successo e scrittura file):
     messages_real = []
 
-    def fake_mw_run(cmd, label):
-        # Scrive il file di output fittizio atteso
-        out_idx = cmd.index("-o") + 1
-        out_file = cmd[out_idx]
-        if out_file.endswith(".json"):
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump({"segments": [{"id": "s1", "start": 0, "end": 1000, "text": "Test"}], "text": "Test"}, f)
-        elif out_file.endswith(".md"):
-            with open(out_file, "w", encoding="utf-8") as f:
-                f.write("Test markdown")
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    def fake_transcribe_run(cmd, label):
+        payload = json.dumps({"transcriptSegments": [{"id": "s1", "startMs": 0, "endMs": 1000, "text": "Test"}], "rawTranscript": "Test"})
+        return subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr="")
 
-    with patch("shutil.which", return_value="/usr/local/bin/mw"):
-        with patch("rt.pipeline.setup._run_mw_with_spinner", side_effect=fake_mw_run):
+    with patch("shutil.which", return_value="/usr/local/bin/macparakeet-cli"):
+        with patch("rt.pipeline.setup._run_transcribe_with_spinner", side_effect=fake_transcribe_run):
             run_setup(
                 audio=audio_file,
                 date="2026-09-06",
@@ -221,15 +213,15 @@ def test_run_setup_on_progress_callback(tmp_path):
     assert len(messages_real) == 2
     assert "✔ Cartella lezione:" in messages_real[0]
     assert "ANATOMIA" in messages_real[0]
-    assert "[2/9] MACWHISPER TRANSCRIPTION" in messages_real[1]
+    assert "[2/9] MACPARAKEET TRANSCRIPTION" in messages_real[1]
 
 
-def test_run_mw_with_spinner_polling():
+def test_run_transcribe_with_spinner_polling():
     """
-    Verifica che _run_mw_with_spinner esegua correttamente subprocess.Popen e ritorni CompletedProcess.
+    Verifica che _run_transcribe_with_spinner esegua correttamente subprocess.Popen e ritorni CompletedProcess.
     """
     from unittest.mock import patch, MagicMock
-    from rt.pipeline.setup import _run_mw_with_spinner
+    from rt.pipeline.setup import _run_transcribe_with_spinner
 
     mock_proc = MagicMock()
     # poll() restituisce None (running) la prima volta, poi 0 (terminato)
@@ -239,7 +231,7 @@ def test_run_mw_with_spinner_polling():
 
     with patch("subprocess.Popen", return_value=mock_proc):
         with patch("time.sleep"):  # velocizza il test
-            res = _run_mw_with_spinner(["echo", "hello"], "Test label")
+            res = _run_transcribe_with_spinner(["echo", "hello"], "Test label")
 
     assert res.returncode == 0
     assert res.stdout == "fake stdout"
@@ -247,9 +239,9 @@ def test_run_mw_with_spinner_polling():
     assert res.args == ["echo", "hello"]
 
 
-def test_macwhisper_single_run_per_audio(tmp_path):
+def test_macparakeet_single_run_per_audio(tmp_path):
     """
-    Verifica che MacWhisper (_run_mw_with_spinner) venga chiamato esattamente UNA volta
+    Verifica che macparakeet-cli (_run_transcribe_with_spinner) venga chiamato esattamente UNA volta
     per file audio (solo export JSON, senza export Markdown duplicato).
     """
     from unittest.mock import patch, MagicMock
@@ -262,17 +254,13 @@ def test_macwhisper_single_run_per_audio(tmp_path):
 
     calls = []
 
-    def fake_mw_run(cmd, label):
+    def fake_transcribe_run(cmd, label):
         calls.append(cmd)
-        out_idx = cmd.index("-o") + 1
-        out_file = cmd[out_idx]
-        if out_file.endswith(".json"):
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump({"segments": [{"id": "s1", "start": 0, "end": 1000, "text": "Test"}], "text": "Test"}, f)
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        payload = json.dumps({"transcriptSegments": [{"id": "s1", "startMs": 0, "endMs": 1000, "text": "Test"}], "rawTranscript": "Test"})
+        return subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr="")
 
-    with patch("shutil.which", return_value="/usr/local/bin/mw"):
-        with patch("rt.pipeline.setup._run_mw_with_spinner", side_effect=fake_mw_run) as mock_mw:
+    with patch("shutil.which", return_value="/usr/local/bin/macparakeet-cli"):
+        with patch("rt.pipeline.setup._run_transcribe_with_spinner", side_effect=fake_transcribe_run) as mock_mw:
             res = run_setup(
                 audio=audio_file,
                 date="2026-09-07",

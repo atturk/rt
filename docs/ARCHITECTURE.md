@@ -7,7 +7,7 @@ Il sistema RT 2.0 è progettato per risolvere la fragilità insita nei workflow 
 ```text
                     ┌─────────────────────┐
                     │      AUDIO/ASR      │
-                    │   (MacWhisper mw)   │
+                    │   (macparakeet-cli) │
                     └──────────┬──────────┘
                                ↓
                     ┌─────────────────────┐
