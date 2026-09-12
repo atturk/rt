@@ -3,6 +3,8 @@ set -euo pipefail
 
 # RT 2.0 — Script di installazione automatizzata per macOS
 
+SECONDS=0
+
 # Silenzia l'auto-update di Homebrew per la durata di questo script (output più
 # pulito e installazioni più veloci/deterministiche) — non tocca la config globale
 # dell'utente, vale solo per i comandi brew lanciati da qui.
@@ -11,11 +13,54 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
-echo "🚀 Inizio installazione di RT..."
+LOG_FILE="${REPO_DIR}/install.log"
+> "$LOG_FILE"
 
-# 1. Controllo prerequisiti di sistema
+# Palette colori ANSI coerente con setup.py (disabilitata se non su terminale TTY)
+if [ -t 1 ]; then
+    CYAN=$'\033[1;36m'
+    GREEN=$'\033[1;32m'
+    YELLOW=$'\033[1;33m'
+    RED=$'\033[1;31m'
+    BOLD=$'\033[1m'
+    RESET=$'\033[0m'
+else
+    CYAN=""
+    GREEN=""
+    YELLOW=""
+    RED=""
+    BOLD=""
+    RESET=""
+fi
+
+echo "${BOLD}🚀 Inizio installazione di RT...${RESET}"
+echo ""
+
+model_pid=""
+cleanup() {
+    if [ -n "${model_pid:-}" ] && kill -0 "$model_pid" 2>/dev/null; then
+        kill "$model_pid" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+brew_install_quiet() {
+    local pkg="$1"
+    local name="${2:-$pkg}"
+    echo "🍺 Installazione di ${name} via Homebrew..."
+    if brew install "$pkg" >>"$LOG_FILE" 2>&1; then
+        echo "${GREEN}✅ ${name} installato.${RESET}"
+    else
+        echo "${RED}❌ Installazione di ${name} fallita — vedi install.log per i dettagli.${RESET}" >&2
+        exit 1
+    fi
+}
+
+# 1. Prerequisiti di sistema
+echo "${CYAN}${BOLD}[1/5] Prerequisiti di sistema${RESET}"
+
 if ! command -v brew &>/dev/null; then
-    echo "❌ Homebrew non trovato."
+    echo "${RED}❌ Homebrew non trovato.${RESET}"
     echo "Homebrew è richiesto per installare le dipendenze di sistema (ffmpeg, python)."
     echo "Per installarlo, visita: https://brew.sh"
     exit 1
@@ -36,73 +81,75 @@ find_compatible_python() {
 PYTHON_BIN="$(find_compatible_python || true)"
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "🍺 Nessuna versione compatibile di Python (>= 3.10) trovata. Installazione via Homebrew..."
-    brew install python@3.13
+    echo "${YELLOW}⚠️  Nessuna versione compatibile di Python (>= 3.10) trovata. Installazione via Homebrew...${RESET}"
+    brew_install_quiet python@3.13 "python@3.13"
     PYTHON_BIN="$(find_compatible_python || true)"
 fi
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "❌ Impossibile trovare o installare Python >= 3.10." >&2
+    echo "${RED}❌ Impossibile trovare o installare Python >= 3.10.${RESET}" >&2
     exit 1
 fi
 
 PYTHON_VER="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')"
 echo "ℹ️ Utilizzo di Python $PYTHON_VER ($PYTHON_BIN)"
 
-if ! command -v ffmpeg &>/dev/null; then
-    echo "🍺 Installazione di ffmpeg via Homebrew..."
-    brew install ffmpeg
-else
+if command -v ffmpeg &>/dev/null; then
     echo "ℹ️ ffmpeg è già installato."
+else
+    brew_install_quiet ffmpeg "ffmpeg"
 fi
 
 if command -v macparakeet-cli &>/dev/null; then
     echo "ℹ️ macparakeet-cli è già installato."
 else
-    echo "🍺 Installazione di macparakeet-cli via Homebrew..."
-    brew install moona3k/tap/macparakeet-cli
+    brew_install_quiet moona3k/tap/macparakeet-cli "macparakeet-cli"
 fi
-echo "📥 Scaricamento modello Parakeet v3 (~465MB, può richiedere qualche minuto)..."
-macparakeet-cli models download parakeet-v3 &
-download_pid=$!
-elapsed=0
-while kill -0 "$download_pid" 2>/dev/null; do
-    sleep 10
-    elapsed=$((elapsed + 10))
-    echo "   ⏳ ancora in corso (${elapsed}s)..."
-done
-if wait "$download_pid"; then
-    echo "✅ Modello Parakeet v3 pronto."
-else
-    echo "⚠️  Download del modello fallito (verrà ritentato automaticamente alla prima trascrizione reale)."
-fi
+echo ""
 
+# 2. Download modello Parakeet (in background)
+echo "${CYAN}${BOLD}[2/5] Download modello Parakeet (in background)${RESET}"
+echo "📥 Avvio scaricamento modello Parakeet v3 (~465MB)..."
+macparakeet-cli models download parakeet-v3 >>"$LOG_FILE" 2>&1 &
+model_pid=$!
+echo "ℹ️ Download avviato in background (PID $model_pid). Proseguo con le altre fasi."
+echo ""
+
+# 3. Ambiente virtuale Python
+echo "${CYAN}${BOLD}[3/5] Ambiente virtuale Python${RESET}"
 if command -v micro &>/dev/null; then
     echo "ℹ️ Editor 'micro' già installato."
 else
-    echo "🍺 Installazione di micro (editor consigliato per le revisioni interattive)..."
-    brew install micro
+    brew_install_quiet micro "micro"
 fi
 
-# 2. Ambiente virtuale
 VENV_DIR="${REPO_DIR}/.venv"
 if [ -d "$VENV_DIR" ]; then
     echo "ℹ️ venv già presente, riuso."
 else
     echo "⚙️ Creazione dell'ambiente virtuale .venv..."
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
+    "$PYTHON_BIN" -m venv "$VENV_DIR" >>"$LOG_FILE" 2>&1
+    echo "${GREEN}✅ Ambiente virtuale creato.${RESET}"
 fi
 
 echo "📦 Aggiornamento pip e installazione dipendenze in .venv..."
-"${VENV_DIR}/bin/python" -m pip install --upgrade pip -q
-"${VENV_DIR}/bin/pip" install -r requirements.txt -q
+if "${VENV_DIR}/bin/python" -m pip install --upgrade pip -q >>"$LOG_FILE" 2>&1 && \
+   "${VENV_DIR}/bin/pip" install -r requirements.txt -q >>"$LOG_FILE" 2>&1; then
+    echo "${GREEN}✅ Dipendenze Python installate con successo.${RESET}"
+else
+    echo "${RED}❌ Installazione dipendenze Python fallita — vedi install.log per i dettagli.${RESET}" >&2
+    exit 1
+fi
+echo ""
 
-# 3. Configurazione
+# 4. Configurazione
+echo "${CYAN}${BOLD}[4/5] Configurazione${RESET}"
 if [ -d "${REPO_DIR}/config" ]; then
     echo "ℹ️ config/ già presente, non toccata."
 else
     echo "⚙️ Copia di config.example/ -> config/..."
     cp -r "${REPO_DIR}/config.example" "${REPO_DIR}/config"
+    echo "${GREEN}✅ Cartella config/ creata.${RESET}"
 fi
 
 if [ -f "${REPO_DIR}/.env" ]; then
@@ -110,24 +157,47 @@ if [ -f "${REPO_DIR}/.env" ]; then
 else
     echo "⚙️ Copia di .env.example -> .env..."
     cp "${REPO_DIR}/.env.example" "${REPO_DIR}/.env"
+    echo "${GREEN}✅ File .env creato.${RESET}"
 fi
 
-# 4. Permessi ed eseguibilità
 echo "⚙️ Impostazione permessi di esecuzione su bin/rt..."
 chmod +x "${REPO_DIR}/bin/rt"
+echo "${GREEN}✅ Permessi impostati.${RESET}"
+echo ""
 
-# 6. Verifica finale
+# 5. Verifica finale
+echo "${CYAN}${BOLD}[5/5] Verifica finale${RESET}"
+
+if [ -n "$model_pid" ]; then
+    if kill -0 "$model_pid" 2>/dev/null; then
+        echo "⏳ In attesa del completamento del download del modello Parakeet v3..."
+        elapsed=0
+        while kill -0 "$model_pid" 2>/dev/null; do
+            sleep 10
+            elapsed=$((elapsed + 10))
+            echo "   ⏳ ancora in corso (${elapsed}s)..."
+        done
+    fi
+
+    if wait "$model_pid" 2>/dev/null; then
+        echo "${GREEN}✅ Modello Parakeet v3 pronto.${RESET}"
+    else
+        echo "${YELLOW}⚠️  Download del modello fallito (verrà ritentato automaticamente alla prima trascrizione reale).${RESET}"
+    fi
+    model_pid=""
+fi
+
 echo "🔍 Verifica installazione..."
-if "${VENV_DIR}/bin/python" "${REPO_DIR}/bin/rt" -h &>/dev/null; then
-    echo "✅ Verification OK: ./bin/rt risponde correttamente."
+if "${VENV_DIR}/bin/python" "${REPO_DIR}/bin/rt" -h >>"$LOG_FILE" 2>&1; then
+    echo "${GREEN}✅ Verification OK: ./bin/rt risponde correttamente.${RESET}"
 else
-    echo "❌ Errore durante la verifica di ./bin/rt -h." >&2
+    echo "${RED}❌ Errore durante la verifica di ./bin/rt -h — vedi install.log per i dettagli.${RESET}" >&2
     exit 1
 fi
 
-# 7. Riepilogo finale
+# Riepilogo finale
 echo ""
-echo "✅ Installazione completata."
+echo "${GREEN}${BOLD}✅ Installazione completata in ${SECONDS}s.${RESET}"
 echo ""
 echo "Prossimi passi:"
 echo "1. Esegui la configurazione guidata interattiva:"
