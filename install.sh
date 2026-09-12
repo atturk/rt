@@ -57,7 +57,12 @@ else
     echo "🍺 Installazione di macparakeet-cli via Homebrew..."
     brew install moona3k/tap/macparakeet-cli
 fi
-macparakeet-cli models download parakeet-v3 &>/dev/null || true
+echo "📥 Scaricamento modello Parakeet v3 (~465MB, può richiedere qualche minuto)..."
+if macparakeet-cli models download parakeet-v3; then
+    echo "✅ Modello Parakeet v3 pronto."
+else
+    echo "⚠️  Download del modello fallito (verrà ritentato automaticamente alla prima trascrizione reale)."
+fi
 
 if command -v micro &>/dev/null; then
     echo "ℹ️ Editor 'micro' già installato."
