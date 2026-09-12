@@ -9,14 +9,18 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-25 sono
-tutti completati, revisionati (inclusa verifica end-to-end reale: round-robin a 5 chiavi
-generato dal wizard e poi eseguito davvero da `RoutingEngine`, ciclo confermato corretto) e
-pushati. Aspetta nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
+indicato esplicitamente da un task attivo. 01-25 sono completati, revisionati e pushati (inclusa
+rimozione di `rt_setup.py`/`rt/SKILL.md`, codice/doc morti emersi da un audit di portabilità).
+Il lavoro corrente da eseguire è **26-27**: sostituiscono il comportamento "un provider per
+tutti i job" del wizard `rt config` con una libreria di **profili modello riutilizzabili**
+(l'utente usa davvero modelli diversi per fase — outline, rewrite in round-robin pesante,
+review_science, recall, immagini — e vuole poterli configurare e riusare per singola fase,
+non tutti uguali). 26 estrae le fondamenta (libreria profili + creazione/applicazione), 27
+implementa la vera selezione per-fase con rilevamento del profilo già assegnato ai rerun.
 
 ## Ordine di esecuzione
 
-Nessun task attivo al momento.
+26 → 27 vanno eseguiti IN ORDINE (27 dipende dalle funzioni estratte in 26).
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
