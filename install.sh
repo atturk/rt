@@ -94,9 +94,9 @@ if ! command -v brew &>/dev/null; then
 fi
 
 find_compatible_python() {
-    for py in python3.13 python3.12 python3.11 python3.10 python3; do
+    for py in python3 python3.13 python3.12 python3.11 python3.10; do
         if command -v "$py" &>/dev/null; then
-            if "$py" -c 'import sys; sys.exit(0 if (3, 10) <= sys.version_info < (3, 14) else 1)' &>/dev/null; then
+            if "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' &>/dev/null; then
                 echo "$py"
                 return 0
             fi
