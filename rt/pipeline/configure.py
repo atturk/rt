@@ -533,13 +533,100 @@ def _apply_profile_to_job(job_file: str, profile: Dict[str, Any]) -> None:
     _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
 
 
+_JOB_DISPLAY_ORDER = [
+    "outline", "rewrite", "review_asr", "review_science",
+    "image_description", "image_unit_judge",
+    "recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta",
+]
+
+
+def _job_has_real_config(job_data: Dict[str, Any]) -> bool:
+    """
+    Ritorna True se il job ha una configurazione LLM reale (non un guscio vuoto senza provider).
+    """
+    if not isinstance(job_data, dict):
+        return False
+    if job_data.get("round_robin") is True:
+        routes = job_data.get("primary_routes")
+        if isinstance(routes, list) and len(routes) > 0:
+            first = routes[0]
+            if isinstance(first, dict) and first.get("provider"):
+                return True
+    prim = job_data.get("primary")
+    if isinstance(prim, dict) and prim.get("provider"):
+        return True
+    return False
+
+
+def _find_matching_profile(job_data: Dict[str, Any], profiles: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """
+    Confronta la configurazione LLM attuale di un job con la libreria dei profili noti.
+    Restituisce il nome del profilo se v'è corrispondenza esatta, altrimenti None.
+    """
+    if not _job_has_real_config(job_data):
+        return None
+
+    is_rr = bool(job_data.get("round_robin", False))
+    job_provider: Optional[str] = None
+    job_base_url: Optional[str] = None
+    job_routes_set: Set[Tuple[str, str]] = set()
+
+    if is_rr:
+        routes = job_data.get("primary_routes", [])
+        if isinstance(routes, list) and len(routes) > 0:
+            first = routes[0]
+            if isinstance(first, dict):
+                job_provider = first.get("provider")
+                job_base_url = first.get("base_url")
+            for r in routes:
+                if isinstance(r, dict):
+                    cred = str(r.get("credential", ""))
+                    mod = str(r.get("model", ""))
+                    job_routes_set.add((cred, mod))
+    else:
+        prim = job_data.get("primary", {})
+        if isinstance(prim, dict):
+            job_provider = prim.get("provider")
+            job_base_url = prim.get("base_url")
+            cred = str(prim.get("credential", ""))
+            mod = str(prim.get("model", ""))
+            job_routes_set.add((cred, mod))
+
+    if not job_provider:
+        return None
+
+    norm_job_base = job_base_url.strip() if isinstance(job_base_url, str) and job_base_url.strip() else None
+
+    for prof_name, prof_data in profiles.items():
+        if prof_data.get("provider") != job_provider:
+            continue
+        if bool(prof_data.get("round_robin", False)) != is_rr:
+            continue
+
+        prof_base = prof_data.get("base_url")
+        norm_prof_base = prof_base.strip() if isinstance(prof_base, str) and prof_base.strip() else None
+        if norm_prof_base != norm_job_base:
+            continue
+
+        prof_routes = prof_data.get("routes", [])
+        prof_routes_set = set(
+            (str(r.get("credential", "")), str(r.get("model", "")))
+            for r in prof_routes if isinstance(r, dict)
+        )
+
+        if job_routes_set == prof_routes_set:
+            return prof_name
+
+    return None
+
+
 def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str, str]:
     """
-    Guida l'utente nella configurazione dei profili modello LLM per i vari job della pipeline.
-    Restituisce una mappa {job_name: profile_name}.
+    Guida l'utente nella configurazione dei profili modello LLM per ciascuna fase della pipeline.
+    Restituisce una mappa {job_name: profile_name_o_descrizione}.
     """
     print("\n------------------------------------------------------------")
-    print("🤖 1. Configurazione Provider LLM")
+    print("🤖 1. Configurazione Provider LLM per ciascuna fase")
     print("------------------------------------------------------------")
 
     general_yaml_path = os.path.join(config_dir, "general.yaml")
@@ -561,23 +648,82 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
             print("Operazione annullata dall'utente.")
             return {}
         profiles[prof_name] = prof_dict
-        chosen_profile = prof_name
-    else:
-        if "generale" in profiles:
-            chosen_profile = "generale"
-        else:
-            chosen_profile = next(iter(profiles.keys()))
+
+    job_paths = find_job_yaml_paths(config_dir)
+    ordered_job_names: List[str] = []
+    for jn in _JOB_DISPLAY_ORDER:
+        if jn in job_paths:
+            ordered_job_names.append(jn)
+    for jn in sorted(job_paths.keys()):
+        if jn not in ordered_job_names:
+            ordered_job_names.append(jn)
+
+    ordered_jobs: List[Tuple[str, str]] = [(jn, job_paths[jn]) for jn in ordered_job_names]
+
+    job_assignments: Dict[str, str] = {}
+    for job_name, job_file in ordered_jobs:
+        job_data: Dict[str, Any] = {}
+        if os.path.isfile(job_file):
+            try:
+                with open(job_file, "r", encoding="utf-8") as f:
+                    loaded_job = yaml.safe_load(f)
+                    if isinstance(loaded_job, dict):
+                        job_data = loaded_job
+            except Exception:
+                pass
+
+        current_match = _find_matching_profile(job_data, profiles)
+        has_unrecognized = (current_match is None and _job_has_real_config(job_data))
+
+        choices: List[str] = []
+        default_choice: Optional[str] = None
+        keep_label = "🔧 Mantieni configurazione attuale (non riconosciuta come profilo salvato)"
+
+        if has_unrecognized:
+            choices.append(keep_label)
+            default_choice = keep_label
+
+        choices.extend(sorted(profiles.keys()))
+        NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
+        choices.append(NEW_PROFILE)
+
+        if default_choice is None:
+            if current_match:
+                default_choice = current_match
+            elif "generale" in profiles:
+                default_choice = "generale"
+            else:
+                default_choice = choices[0]
+
+        selection = questionary.select(
+            f"Modello per la fase '{job_name}':",
+            choices=choices,
+            default=default_choice
+        ).ask()
+
+        if selection is None:
+            print("Configurazione LLM interrotta dall'utente.")
+            break
+
+        if has_unrecognized and selection == keep_label:
+            job_assignments[job_name] = "(configurazione attuale mantenuta)"
+            continue
+
+        if selection == NEW_PROFILE:
+            p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint=job_name)
+            if not p_name:
+                print("Creazione nuovo profilo annullata.")
+                break
+            profiles[p_name] = p_dict
+            selection = p_name
+
+        _apply_profile_to_job(job_file, profiles[selection])
+        job_assignments[job_name] = selection
 
     _save_model_profiles(general_data, profiles)
     _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
 
-    job_paths = find_job_yaml_paths(config_dir)
-    job_assignments: Dict[str, str] = {}
-    for job_name, job_file in sorted(job_paths.items()):
-        _apply_profile_to_job(job_file, profiles[chosen_profile])
-        job_assignments[job_name] = chosen_profile
-
-    print(f"\n✅ Provider LLM (profilo '{chosen_profile}') applicato a {len(job_assignments)} job!")
+    print(f"\n✅ Assegnazione modelli completata per {len(job_assignments)} job!")
     return job_assignments
 
 

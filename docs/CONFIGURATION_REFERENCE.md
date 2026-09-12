@@ -2,7 +2,9 @@
 
 I file YAML in `config.example/` costituiscono un **guscio vuoto out-of-the-box**: non assumono alcun provider o credenziale preimpostata nel codice. Questo documento spiega la struttura dei file, come dichiarare esplicitamente le credenziali e i modelli, e come configurare le route opzionali avanzate (dual-key round-robin, fallback mirati).
 
-> **💡 Configurazione Automatica**: È possibile generare e aggiornare la configurazione in modo interattivo eseguendo `./bin/rt config`. Il wizard ti guiderà nella scelta del provider LLM, API key, topic Telegram, motore STT e listino prezzi custom.
+> **💡 Configurazione Automatica**: È possibile generare e aggiornare la configurazione in modo interattivo eseguendo `./bin/rt config`. Il wizard ti guiderà nella scelta dei profili modello LLM per ciascuna fase della pipeline, API key, topic Telegram, motore STT e listino prezzi custom.
+>
+> **Libreria Profili Modello (`model_profiles:`)**: `config/general.yaml` può contenere una sezione `model_profiles:` con profili modello riutilizzabili salvati dal wizard `rt config`. Questa sezione è ad uso esclusivo del wizard per comodità di configurazione; `RTConfig` e il motore di routing ignorano completamente `model_profiles:`. L'effettivo comportamento a runtime di ciascun job resta determinato esclusivamente dai campi `primary:`, `primary_routes:` e `round_robin:` nei file `config/<job>.yaml`. Chi preferisce modificare i file a mano può continuare a farlo direttamente nei singoli file per-job ignorando `model_profiles:`.
 
 Per iniziare manualmente: copia l'intera cartella in `config/` e personalizza i file al suo interno — `config/` è ignorata da git per proteggere le tue impostazioni locali.
 ```bash
