@@ -10,7 +10,7 @@ import re
 import subprocess
 import time
 from typing import List, Optional
-from rt.core.models import ASRIssue, ScienceIssue
+from rt.core.models import ScienceIssue
 from rt.telegram import issue_queue as tg_queue
 from rt.core.keyboard import read_single_key, raw_mode
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
@@ -18,7 +18,15 @@ from rt.core.editor_edit import edit_text_in_editor
 from rt.core.lesson_paths import lesson_path
 
 
-def start_review_via_telegram(lesson_dir: str, asr_to_review: List[ASRIssue], sci_to_review: List[ScienceIssue]) -> None:
+def start_review_via_telegram(
+    lesson_dir: str,
+    asr_to_review: Optional[List] = None,
+    sci_to_review: Optional[List[ScienceIssue]] = None
+) -> None:
+    if sci_to_review is None and isinstance(asr_to_review, list):
+        sci_to_review = asr_to_review
+    sci_to_review = sci_to_review or []
+
     try:
         from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
         from rt.telegram import client as tg_client, session as tg_session
@@ -43,15 +51,14 @@ def start_review_via_telegram(lesson_dir: str, asr_to_review: List[ASRIssue], sc
 
         tg_session.start_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, "issue_review", lesson_dir)
     except TelegramConfigError:
-        print("⚠️  Telegram non configurato: impossibile inviare l'issue. Usa 'rt review-asr \"<cartella>\"' o 'rt review-science' da terminale.")
+        print("⚠️  Telegram non configurato: impossibile inviare l'issue. Usa 'rt review \"<cartella>\"' da terminale.")
         return
     except Exception as e:
         print(f"⚠️  Impossibile avviare la sessione Telegram: {e}")
         return
 
-    issue_ids = [iss.id for iss in asr_to_review] + [iss.id for iss in sci_to_review]
-    issue_types = {iss.id: "asr" for iss in asr_to_review}
-    issue_types.update({iss.id: "science" for iss in sci_to_review})
+    issue_ids = [iss.id for iss in sci_to_review]
+    issue_types = {iss.id: "science" for iss in sci_to_review}
     tg_queue.create_queue(lesson_dir, issue_ids=issue_ids, issue_types=issue_types)
     print(f"📤 {len(issue_ids)} issue in coda per la review su Telegram.")
     send_current_issue(lesson_dir)
@@ -375,9 +382,7 @@ def run_interactive_review(
         sanitize_suggested_fix,
         extract_context_sentence,
     )
-    from rt.pipeline.review_asr import load_asr_issues
-    from rt.pipeline.review_science import load_science_issues
-    from rt.core.models import ASRLevel
+    from rt.pipeline.review import load_science_issues
 
     if not channel:
         from rt.core.config import load_config as _load_cfg_for_channel
@@ -389,36 +394,23 @@ def run_interactive_review(
 
     # 1. Carica le issue da revisionare
     if history:
-        if issue_type == "asr":
-            to_review = [iss for iss in load_asr_issues(lesson_dir) if iss.level in (ASRLevel.YELLOW, ASRLevel.RED)]
-        else:
-            to_review = list(load_science_issues(lesson_dir))
+        to_review = list(load_science_issues(lesson_dir))
     else:
-        pending_asr, pending_sci = get_pending_issues(lesson_dir)
-        raw_issues = pending_asr if issue_type == "asr" else pending_sci
+        _, raw_issues = get_pending_issues(lesson_dir)
 
         to_review = []
         auto_accepted = []
-        if issue_type == "asr":
-            for iss in raw_issues:
-                if should_auto_accept_asr(iss, auto_accept):
-                    auto_accepted.append(iss)
-                else:
-                    to_review.append(iss)
-            for iss in auto_accepted:
-                record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate, resolved_by="cli_auto")
-        else:
-            for iss in raw_issues:
-                if should_auto_accept_science(iss, auto_accept):
-                    auto_accepted.append(iss)
-                else:
-                    to_review.append(iss)
-            for iss in auto_accepted:
-                clean_fix = sanitize_suggested_fix(iss.suggested_fix)
-                record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix, resolved_by="cli_auto")
+        for iss in raw_issues:
+            if should_auto_accept_science(iss, auto_accept):
+                auto_accepted.append(iss)
+            else:
+                to_review.append(iss)
+        for iss in auto_accepted:
+            clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+            record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix, resolved_by="cli_auto")
 
         if auto_accepted:
-            print(f"\n⚡ Auto-approvati {len(auto_accepted)} casi ({issue_type.upper()}) in base ai filtri CLI.")
+            print(f"\n⚡ Auto-approvati {len(auto_accepted)} casi in base ai filtri CLI.")
 
     # 2. Se non resta nulla da rivedere
     if len(to_review) == 0:
@@ -430,21 +422,18 @@ def run_interactive_review(
                     transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
                 except Exception:
                     pass
-        print(f"\n✨ Nessuna issue {issue_type.upper()} in attesa di revisione umana (tutte già risolte o auto-approvate).")
+        print(f"\n✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).")
         return True
 
     # 3. Canale Telegram
     if channel == "telegram":
-        if issue_type == "asr":
-            start_review_via_telegram(lesson_dir, asr_to_review=to_review, sci_to_review=[])
-        else:
-            start_review_via_telegram(lesson_dir, asr_to_review=[], sci_to_review=to_review)
+        start_review_via_telegram(lesson_dir, sci_to_review=to_review)
         return False
 
     # 4. Controllo TTY
     if not sys.stdin.isatty():
-        print(f"\n⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(to_review)} issue {issue_type.upper()} che richiedono revisione umana.")
-        print(f"Esegui 'rt review-{issue_type} \"{lesson_dir}\"' per completare la revisione (da un terminale interattivo, o con --channel telegram).")
+        print(f"\n⚠️  [HUMAN REVIEW REQUIRED] Ci sono {len(to_review)} issue che richiedono revisione umana.")
+        print(f"Esegui 'rt review \"{lesson_dir}\"' per completare la revisione (da un terminale interattivo, o con --channel telegram).")
         return False
 
     # 5. Sessione interattiva da terminale con indice mobile

@@ -4,22 +4,20 @@ import sys
 import pytest
 from unittest.mock import patch, MagicMock
 from rt.core.models import (
-    ASRIssue, ASRLevel, ScienceIssue, ScienceType, ScienceSeverity,
+    ScienceIssue, ScienceType, ScienceSeverity,
     ReviewDecision, DecisionLedger, SegmentsData, Segment, Draft, DraftUnit
 )
 from rt.core.state import WorkflowState
 
 from rt.pipeline.ledger import (
     get_pending_issues, record_decision, revert_last_decision, save_ledger, load_ledger,
-    apply_asr_decisions_to_text,
-    find_asr_issue_by_id, find_science_issue_by_id,
-    resolve_asr_accept_text, resolve_asr_reject_text,
+    find_science_issue_by_id,
     resolve_science_accept_text, resolve_science_reject_text
 )
 from rt.telegram import issue_queue as tg_queue
 from rt.pipeline.issue_review import start_review_via_telegram, send_current_issue, run_interactive_review
 from rt.telegram.config import TelegramConfig
-from rt.cli import cmd_review_asr, cmd_review_science
+from rt.cli import cmd_review
 
 
 def _create_sample_lesson(lesson_dir: str):
@@ -47,7 +45,7 @@ def _create_sample_lesson(lesson_dir: str):
             DraftUnit(
                 unit_id="U1",
                 title="Introduzione",
-                content="Questo è il testo con il target ASR e una affermazione scientifica.",
+                content="Questo è il testo con una affermazione scientifica.",
                 start_segment_id="seg_000001",
                 end_segment_id="seg_000002",
                 source_segment_ids=["seg_000001", "seg_000002"],
@@ -68,14 +66,6 @@ def test_get_pending_issues(tmp_path):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.9, level=ASRLevel.GREEN, reason="r1"),
-        ASRIssue(id="asr_2", segment_id="seg_000001", source_text="err2", candidate="corr2", confidence=0.7, level=ASRLevel.YELLOW, reason="r2"),
-        ASRIssue(id="asr_3", segment_id="seg_000002", source_text="err3", candidate="corr3", confidence=0.4, level=ASRLevel.RED, reason="r3"),
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
-
     sci_issues = [
         ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
         ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
@@ -83,17 +73,15 @@ def test_get_pending_issues(tmp_path):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    # Senza decisioni: asr_2 (YELLOW) e asr_3 (RED) incluse (GREEN esclusa), sci_1 e sci_2 incluse
     pending_asr, pending_sci = get_pending_issues(lesson_dir)
-    assert [x.id for x in pending_asr] == ["asr_2", "asr_3"]
+    assert pending_asr == []
     assert [x.id for x in pending_sci] == ["sci_1", "sci_2"]
 
-    # Registra una decisione per asr_2 e sci_1
-    record_decision(lesson_dir, "asr_2", "accepted", resolved_text="corr2")
+    # Registra una decisione per sci_1
     record_decision(lesson_dir, "sci_1", "rejected", resolved_text="claim 1")
 
     pending_asr2, pending_sci2 = get_pending_issues(lesson_dir)
-    assert [x.id for x in pending_asr2] == ["asr_3"]
+    assert pending_asr2 == []
     assert [x.id for x in pending_sci2] == ["sci_2"]
 
 
@@ -133,15 +121,9 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_y", segment_id="seg_000001", source_text="err_y", candidate="corr_y", confidence=0.8, level=ASRLevel.YELLOW, reason="mot_y"),
-        ASRIssue(id="asr_r", segment_id="seg_000002", source_text="err_r", candidate="corr_r", confidence=0.5, level=ASRLevel.RED, reason="mot_r"),
-    ]
     sci_issues = [
         ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim", reason="reason", suggested_fix="Sostituire con: \"fix\""),
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
@@ -159,50 +141,29 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     from rt.core.config import load_config
     runtime_cfg = load_config().telegram
 
-    start_review_via_telegram(lesson_dir, asr_issues, sci_issues)
+    start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
 
     # 1. Verifica coda salvata
     queue = tg_queue.load_queue(lesson_dir)
     assert queue is not None
     assert queue.current_index == 0
-    assert queue.issue_ids == ["asr_y", "asr_r", "sci_1"]
-    assert queue.issue_types == {"asr_y": "asr", "asr_r": "asr", "sci_1": "science"}
+    assert queue.issue_ids == ["sci_1"]
 
     # 2. Verifica che sia stato mandato il primo messaggio e tracciato il message_id
     assert len(sent_messages) == 1
-    assert "Ambiguità ASR (YELLOW)" in sent_messages[0]["text"]
+    assert "Science Critic (ERR_DOCENTE)" in sent_messages[0]["text"]
     assert sent_messages[0]["reply_markup"] is not None
     sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
     assert sess is not None
     assert sess["message_id"] == 100
 
-    # 3. Avanza e invia seconda issue
-    record_decision(lesson_dir, "asr_y", "accepted", resolved_text="corr_y")
-    tg_queue.advance(lesson_dir)
-    send_current_issue(lesson_dir)
-
-    assert len(sent_messages) == 2
-    assert "Ambiguità ASR (RED)" in sent_messages[1]["text"]
-    sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
-    assert sess["message_id"] == 101
-
-    # 4. Avanza e invia terza issue (scienza)
-    record_decision(lesson_dir, "asr_r", "rejected", resolved_text="err_r")
-    tg_queue.advance(lesson_dir)
-    send_current_issue(lesson_dir)
-
-    assert len(sent_messages) == 3
-    assert "Science Critic (ERR_DOCENTE)" in sent_messages[2]["text"]
-    sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
-    assert sess["message_id"] == 102
-
-    # 5. Avanza oltre la fine: review completata e transizione a READY_TO_BUILD
+    # 3. Avanza oltre la fine: review completata e transizione a READY_TO_BUILD
     record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix")
     tg_queue.advance(lesson_dir)
     send_current_issue(lesson_dir)
 
-    assert len(sent_messages) == 4
-    assert "✨ Review completata" in sent_messages[3]["text"]
+    assert len(sent_messages) == 2
+    assert "✨ Review completata" in sent_messages[1]["text"]
     assert tg_session.get_active_session(runtime_cfg.state_dir, 123, None) is None
 
     from rt.core.state import get_current_state
@@ -216,23 +177,21 @@ def test_telegram_callback_indietro(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
-        ASRIssue(id="asr_2", segment_id="seg_000002", source_text="err2", candidate="corr2", confidence=0.5, level=ASRLevel.RED, reason="m2"),
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="r2", suggested_fix="fix 2"),
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     # Coda creata con index 1 (prima issue già decisa)
-    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="corr1")
-    q = tg_queue.create_queue(lesson_dir, ["asr_1", "asr_2"], {"asr_1": "asr", "asr_2": "asr"})
+    record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix 1")
+    q = tg_queue.create_queue(lesson_dir, ["sci_1", "sci_2"], {"sci_1": "science", "sci_2": "science"})
     q.current_index = 1
     tg_queue._save(q, lesson_dir)
 
     state_dir = str(tmp_path / "tg_state")
-    short_id = registry.register_pending(lesson_dir, round_=1, kind="issue_review", state_dir=state_dir, extra={"issue_id": "asr_2", "issue_type": "asr"})
+    short_id = registry.register_pending(lesson_dir, round_=1, kind="issue_review", state_dir=state_dir, extra={"issue_id": "sci_2", "issue_type": "science"})
 
     query = MagicMock()
     query.answer = MagicMock(return_value=None)
@@ -251,7 +210,7 @@ def test_telegram_callback_indietro(tmp_path, monkeypatch):
     updated_q = tg_queue.load_queue(lesson_dir)
     assert updated_q.current_index == 0
 
-    # Decision for asr_1 should have been reverted
+    # Decision for sci_1 should have been reverted
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 0
 
@@ -260,52 +219,40 @@ def test_interactive_terminal_backward_navigation(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
-        ASRIssue(id="asr_2", segment_id="seg_000002", source_text="err2", candidate="corr2", confidence=0.5, level=ASRLevel.RED, reason="m2"),
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="r2", suggested_fix="fix 2"),
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # Simula input utente:
-    # 1. Su asr_1 -> 'b' (prova indietro al primo elemento -> non regredisce)
-    # 2. Su asr_1 -> 'a' (accetta)
-    # 3. Su asr_2 -> 'b' (torna indietro -> revert asr_1 e ripropone asr_1)
-    # 4. Su asr_1 ripresentata -> 'r' (rifiuta invece di accettare)
-    # 5. Su asr_2 -> 'a' (accetta)
     inputs = iter(["b", "a", "b", "r", "a"])
     with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
     ledger = load_ledger(lesson_dir)
-    # Due decisioni finali registrate
     decisions_map = {d.issue_id: d for d in ledger.decisions}
-    assert decisions_map["asr_1"].decision == "rejected"
-    assert decisions_map["asr_2"].decision == "accepted"
+    assert decisions_map["sci_1"].decision == "rejected"
+    assert decisions_map["sci_2"].decision == "accepted"
 
 
 def test_history_mode_terminal_and_telegram(tmp_path, monkeypatch, capsys):
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
+    sci_issues = [
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    # Già decisa nel ledger
-    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="corr1")
+    record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix 1")
 
     # 1. Telegram con history -> avviso e fallback a pendenti (che sono 0 -> True immediato)
-    res_tg = run_interactive_review(lesson_dir, "asr", channel="telegram", history=True)
+    res_tg = run_interactive_review(lesson_dir, "science", channel="telegram", history=True)
     assert res_tg is True
     out = capsys.readouterr().out
     assert "⚠️  La modalità --history è disponibile solo da terminale" in out
@@ -313,51 +260,13 @@ def test_history_mode_terminal_and_telegram(tmp_path, monkeypatch, capsys):
     # 2. Terminal con history -> mostra issue già decisa e ri-decisione aggiunge nuova voce
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     with patch("builtins.input", side_effect=["r"]):
-        res_term = run_interactive_review(lesson_dir, "asr", channel="terminal", history=True)
+        res_term = run_interactive_review(lesson_dir, "science", channel="terminal", history=True)
 
     assert res_term is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 2
     assert ledger.decisions[0].decision == "accepted"
     assert ledger.decisions[1].decision == "rejected"
-
-
-def test_history_mode_backward_does_not_revert_untouched_historical_decision(tmp_path, monkeypatch):
-    lesson_dir = str(tmp_path)
-    _create_sample_lesson(lesson_dir)
-
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
-        ASRIssue(id="asr_2", segment_id="seg_000002", source_text="err2", candidate="corr2", confidence=0.5, level=ASRLevel.RED, reason="m2"),
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
-    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
-
-    # Decisione storica preesistente per asr_1
-    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="corr1")
-    ledger_before = load_ledger(lesson_dir)
-    assert len(ledger_before.decisions) == 1
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    # In sessione --history:
-    # 1. Su asr_1 -> 's' (salta senza toccare la decisione storica)
-    # 2. Su asr_2 -> 'b' (torna indietro a asr_1)
-    # 3. Su asr_1 ripresentata -> 's' (salta di nuovo)
-    # 4. Su asr_2 -> 'q' (esci)
-    inputs = iter(["s", "b", "s", "q"])
-    with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal", history=True)
-
-    assert res is False  # interrupted with 'q'
-    ledger_after = load_ledger(lesson_dir)
-    # La decisione storica per asr_1 deve restare intatta
-    assert len(ledger_after.decisions) == 1
-    assert ledger_after.decisions[0].issue_id == "asr_1"
-    assert ledger_after.decisions[0].decision == "accepted"
-    assert ledger_after.decisions[0].resolved_text == "corr1"
 
 
 def test_history_mode_backward_science_does_not_revert_untouched_historical_decision(tmp_path, monkeypatch):
@@ -368,20 +277,13 @@ def test_history_mode_backward_science_does_not_revert_untouched_historical_deci
         ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
         ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    # Decisione storica preesistente per sci_1
     record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix 1")
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # In sessione --history su science:
-    # 1. Su sci_1 -> 's' (salta)
-    # 2. Su sci_2 -> 'b' (indietro a sci_1)
-    # 3. Su sci_1 -> 'q' (esci)
     inputs = iter(["s", "b", "q"])
     with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
         res = run_interactive_review(lesson_dir, "science", channel="terminal", history=True)
@@ -391,41 +293,6 @@ def test_history_mode_backward_science_does_not_revert_untouched_historical_deci
     assert len(ledger_after.decisions) == 1
     assert ledger_after.decisions[0].issue_id == "sci_1"
     assert ledger_after.decisions[0].decision == "accepted"
-
-
-def test_run_review_science_applies_decided_asr_to_prompt(tmp_path):
-    from rt.pipeline.review_science import run_review_science
-    lesson_dir = str(tmp_path)
-    _create_sample_lesson(lesson_dir)
-
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="target ASR", candidate="correzione ASR applicata", confidence=0.9, level=ASRLevel.YELLOW, reason="m1"),
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
-    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
-
-    record_decision(lesson_dir, "asr_1", "accepted", resolved_text="correzione ASR applicata")
-
-    prompts_captured = []
-
-    def mock_call_structured(prompt, **kwargs):
-        prompts_captured.append(prompt)
-        from rt.llm.prompts import ScienceIssueList
-        return ScienceIssueList(issues=[])
-
-    with patch("rt.llm.client.LLMClient.call_structured", side_effect=mock_call_structured):
-        res = run_review_science(lesson_dir, force=True, force_mock=True)
-
-    assert len(prompts_captured) > 0
-    # La correzione ASR deve comparire nel prompt passato al critic
-    assert "correzione ASR applicata" in prompts_captured[0]
-
-    # Ma il draft su disco NON deve essere stato modificato
-    with open(os.path.join(lesson_dir, "draft.json"), "r", encoding="utf-8") as f:
-        draft_on_disk = json.load(f)
-    assert "target ASR" in draft_on_disk["units"][0]["content"]
 
 
 def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monkeypatch):
@@ -440,7 +307,7 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
     def fake_run_build(*a, **kw):
         build_called.append((a, kw))
         return {"skipped": False, "rielaborato": "x", "pre_elaborato": "x",
-                "revisioni_asr": "x", "errori_concettuali": "x", "problemi_scientifici": "x"}
+                "errori_concettuali": "x", "problemi_scientifici": "x"}
 
     args = argparse.Namespace(
         input=lesson_dir, force=False, mock=True, with_review=True, channel="telegram",
@@ -452,7 +319,7 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
          patch("rt.cli.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 1, "coverage_percentage": 100}}), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli.run_rewrite", return_value={"skipped": True, "total_units": 1, "processed_units": 1}), \
-         patch("rt.cli.run_review_asr", return_value={"skipped": True, "total_issues": 1, "green_auto_applied": 0, "yellow_review_queue": 1, "red_human_required": 0}), \
+         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 1, "docente_issues": 1, "reconstruction_issues": 0, "science_checks": 0}), \
          patch("rt.cli.run_interactive_review", return_value=False) as mock_review, \
          patch("rt.cli.run_build", side_effect=fake_run_build):
         cmd_run(args)
@@ -460,62 +327,5 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
     mock_review.assert_called_once()
     assert build_called == [], "run_build() non deve essere chiamato se run_interactive_review() ritorna False"
 
-
-def test_run_review_science_no_warning_and_no_order_dependency_on_asr(tmp_path, capsys):
-    """Il critic scientifico non vede più la trascrizione grezza (solo il draft), quindi
-    può girare prima, dopo o senza mai eseguire review-asr: nessun avviso, nessun vincolo
-    d'ordine — a differenza del comportamento precedente."""
-    from rt.pipeline.review_science import run_review_science
-    lesson_dir = str(tmp_path)
-    _create_sample_lesson(lesson_dir)
-
-    # 1. ASR review mai eseguita (asr_issues.json assente): nessun avviso.
-    with patch("rt.llm.client.LLMClient.call_structured", return_value=MagicMock(issues=[])):
-        res1 = run_review_science(lesson_dir, force=True, force_mock=True)
-    out = capsys.readouterr().out
-    assert "Ci sono issue ASR non ancora generate/decise" not in out
-    assert res1["status"] == "science_review_completed"
-
-    # 2. ASR review con issue pendenti: comportamento identico, ancora nessun avviso.
-    asr_issues = [
-        ASRIssue(id="asr_1", segment_id="seg_000001", source_text="err1", candidate="corr1", confidence=0.8, level=ASRLevel.YELLOW, reason="m1"),
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
-
-    with patch("rt.llm.client.LLMClient.call_structured", return_value=MagicMock(issues=[])):
-        res2 = run_review_science(lesson_dir, force=True, force_mock=True)
-    out2 = capsys.readouterr().out
-    assert "Ci sono issue ASR non ancora generate/decise" not in out2
-    assert res2["status"] == "science_review_completed"
-
-
-def test_interactive_review_auto_accept(tmp_path):
-    lesson_dir = str(tmp_path)
-    _create_sample_lesson(lesson_dir)
-
-    asr_issues = [
-        ASRIssue(id="asr_y", segment_id="seg_000001", source_text="err_y", candidate="corr_y", confidence=0.8, level=ASRLevel.YELLOW, reason="mot_y"),
-        ASRIssue(id="asr_r", segment_id="seg_000002", source_text="err_r", candidate="corr_r", confidence=0.5, level=ASRLevel.RED, reason="mot_r"),
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
-
-    # auto-accept yellow -> auto-accetta asr_y, lascia asr_r da rivedere
-    # Con non-tty si ferma e ritorna False perché asr_r resta
-    with patch("sys.stdin.isatty", return_value=False):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal", auto_accept="yellow")
-    assert res is False
-
-    ledger = load_ledger(lesson_dir)
-    assert len(ledger.decisions) == 1
-    assert ledger.decisions[0].issue_id == "asr_y"
-    assert ledger.decisions[0].decision == "accepted"
-
-    # Ora auto-accept red -> auto-accetta asr_r -> non resta più nulla -> ritorna True
-    res2 = run_interactive_review(lesson_dir, "asr", channel="terminal", auto_accept="red")
-    assert res2 is True
-    ledger2 = load_ledger(lesson_dir)
-    assert len(ledger2.decisions) == 2
 
 

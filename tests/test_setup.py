@@ -10,8 +10,7 @@ import pytest
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline
 from rt.pipeline.rewrite import run_rewrite
-from rt.pipeline.review_asr import run_review_asr
-from rt.pipeline.review_science import run_review_science
+from rt.pipeline.review import run_review
 from rt.pipeline.build import run_build
 from rt.core.lesson_paths import lesson_path
 
@@ -106,27 +105,23 @@ def test_rt_setup_clean_initialization(tmp_path):
     for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md"]:
         assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} non deve esistere dopo rewrite!"
         
-    # --- PASSO 5 & 6: REVIEWS ---
-    run_review_asr(lecture_dir, force_mock=True)
-    assert os.path.isfile(lesson_path(lecture_dir,"asr_issues.json"))
-    
-    run_review_science(lecture_dir, force_mock=True)
-    assert os.path.isfile(lesson_path(lecture_dir,"science_issues.json"))
+    # --- PASSO 5: REVIEW ---
+    run_review(lecture_dir, force_mock=True)
+    assert os.path.isfile(lesson_path(lecture_dir, "science_issues.json"))
     
     # I file Markdown finali sono ANCORA assenti prima del build
-    for filename in ["Errori concettuali.md", "Revisioni ASR.md", "pre-elaborato.md", "rielaborato.md"]:
-        assert not os.path.exists(lesson_path(lecture_dir,filename)), f"{filename} deve comparire SOLO con rt build!"
+    for filename in ["Errori concettuali.md", "pre-elaborato.md", "rielaborato.md"]:
+        assert not os.path.exists(lesson_path(lecture_dir, filename)), f"{filename} deve comparire SOLO con rt build!"
         
-    # --- PASSO 7: RT BUILD ---
+    # --- PASSO 6: RT BUILD ---
     bld_res = run_build(lecture_dir, rename_folder=False)
     assert bld_res["status"] == "completed"
     
     # ORA e solo ora i file Markdown finali devono esistere
-    assert os.path.isfile(lesson_path(lecture_dir,"pre-elaborato.md"))
-    assert os.path.isfile(lesson_path(lecture_dir,"rielaborato.md"))
-    assert os.path.isfile(lesson_path(lecture_dir,"Revisioni ASR.md"))
-    assert os.path.isfile(lesson_path(lecture_dir,"Errori concettuali.md"))
-    assert os.path.isfile(lesson_path(lecture_dir,"Problemi scientifici.md"))
+    assert os.path.isfile(lesson_path(lecture_dir, "pre-elaborato.md"))
+    assert os.path.isfile(lesson_path(lecture_dir, "rielaborato.md"))
+    assert os.path.isfile(lesson_path(lecture_dir, "Errori concettuali.md"))
+    assert os.path.isfile(lesson_path(lecture_dir, "Problemi scientifici.md"))
 
 
 def test_macparakeet_failure_hard_fails(tmp_path):
@@ -416,13 +411,9 @@ def test_full_pipeline_with_empty_argomenti_e2e_mock(tmp_path):
     rew_res = run_rewrite(lesson_dir, force_mock=True)
     assert rew_res["status"] == "draft_validated"
 
-    # Review ASR
-    asr_res = run_review_asr(lesson_dir, force_mock=True)
-    assert asr_res["status"] == "asr_review_completed"
-
-    # Review Science
-    sci_res = run_review_science(lesson_dir, force_mock=True)
-    assert sci_res["status"] == "science_review_completed"
+    # Review
+    rev_res = run_review(lesson_dir, force_mock=True)
+    assert rev_res["status"] == "review_completed"
 
     # Build
     bld_res = run_build(lesson_dir)

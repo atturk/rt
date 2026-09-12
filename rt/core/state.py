@@ -16,8 +16,7 @@ class WorkflowState(str, Enum):
     PREPARED = "preparato"
     OUTLINE_VALIDATED = "outline_validata"
     DRAFT_VALIDATED = "draft_validato"
-    ASR_REVIEW_READY = "revisione_asr_completata"
-    SCIENCE_REVIEW_READY = "revisione_scientifica_completata"
+    REVIEW_READY = "revisione_completata"
     HUMAN_REVIEW_REQUIRED = "in_attesa_revisione_umana"
     READY_TO_BUILD = "pronto_per_build"
     COMPLETED = "completato"
@@ -28,17 +27,14 @@ class WorkflowState(str, Enum):
 VALID_TRANSITIONS = {
     WorkflowState.METADATA_ONLY: {WorkflowState.SETUP_COMPLETED, WorkflowState.PREPARED, WorkflowState.FAILED},
     WorkflowState.SETUP_COMPLETED: {WorkflowState.PREPARED, WorkflowState.FAILED},
-    WorkflowState.PREPARED: {WorkflowState.OUTLINE_VALIDATED, WorkflowState.PREPARED, WorkflowState.ASR_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
+    WorkflowState.PREPARED: {WorkflowState.OUTLINE_VALIDATED, WorkflowState.PREPARED, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
     WorkflowState.OUTLINE_VALIDATED: {WorkflowState.DRAFT_VALIDATED, WorkflowState.OUTLINE_VALIDATED, WorkflowState.FAILED},
-    WorkflowState.DRAFT_VALIDATED: {WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
-    WorkflowState.ASR_REVIEW_READY: {WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
-    WorkflowState.SCIENCE_REVIEW_READY: {WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
+    WorkflowState.DRAFT_VALIDATED: {WorkflowState.REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
+    WorkflowState.REVIEW_READY: {WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.COMPLETED, WorkflowState.FAILED},
     WorkflowState.HUMAN_REVIEW_REQUIRED: {WorkflowState.READY_TO_BUILD, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.COMPLETED, WorkflowState.FAILED},
-    WorkflowState.READY_TO_BUILD: {WorkflowState.COMPLETED, WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
-    WorkflowState.COMPLETED: {WorkflowState.COMPLETED, WorkflowState.PREPARED, WorkflowState.ASR_REVIEW_READY, WorkflowState.SCIENCE_REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD}, # Ribilanciamento / review incrementale / re-build consentito
-
-
-    WorkflowState.FAILED: set(WorkflowState), # Da fallito è possibile ripartire da qualsiasi stato valido dopo fix
+    WorkflowState.READY_TO_BUILD: {WorkflowState.COMPLETED, WorkflowState.REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD, WorkflowState.FAILED},
+    WorkflowState.COMPLETED: {WorkflowState.COMPLETED, WorkflowState.PREPARED, WorkflowState.REVIEW_READY, WorkflowState.HUMAN_REVIEW_REQUIRED, WorkflowState.READY_TO_BUILD},
+    WorkflowState.FAILED: set(WorkflowState),
 }
 
 
@@ -190,9 +186,7 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
 
     from rt.core.idempotency import check_phase_status, PhaseStatus
     from rt.pipeline.ledger import load_ledger
-    from rt.pipeline.review_asr import load_asr_issues
-    from rt.pipeline.review_science import load_science_issues
-    from rt.core.models import ASRLevel
+    from rt.pipeline.review import load_science_issues
 
     # 1. Prepare
     st_prep, _ = check_phase_status(lesson_dir, "prepare")
@@ -209,37 +203,25 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     if st_rew != PhaseStatus.VALID:
         return WorkflowState.OUTLINE_VALIDATED
 
-    # 4. Review ASR — opzionale dal disaccoppiamento dalla run di default: MISSING (mai
-    # generata, per scelta) non blocca il completamento; solo STALE/INVALID (era stata
-    # generata ma una modifica a monte l'ha resa superata) retrocede davvero lo stato.
-    st_asr, _ = check_phase_status(lesson_dir, "review_asr")
-    if st_asr not in (PhaseStatus.VALID, PhaseStatus.MISSING):
+    # 4. Review — opzionale: MISSING non blocca il completamento; solo STALE/INVALID retrocede lo stato.
+    st_rev, _ = check_phase_status(lesson_dir, "review")
+    if st_rev not in (PhaseStatus.VALID, PhaseStatus.MISSING):
         return WorkflowState.DRAFT_VALIDATED
 
-    # 5. Review Science — stessa logica del punto 4.
-    st_sci, _ = check_phase_status(lesson_dir, "review_science")
-    if st_sci not in (PhaseStatus.VALID, PhaseStatus.MISSING):
-        return WorkflowState.ASR_REVIEW_READY
-
-    # 6. Verifica Decisioni Umane (ASR YELLOW/RED e Science)
+    # 5. Verifica Decisioni Umane (Science Issues)
     ledger = load_ledger(lesson_dir)
     decided_ids = {d.issue_id for d in ledger.decisions}
-    asr_issues = load_asr_issues(lesson_dir)
     sci_issues = load_science_issues(lesson_dir)
 
-    pending_asr = [
-        iss for iss in asr_issues
-        if iss.level in (ASRLevel.YELLOW, ASRLevel.RED) and iss.id not in decided_ids
-    ]
     pending_sci = [
         iss for iss in sci_issues
         if iss.id not in decided_ids
     ]
 
-    if pending_asr or pending_sci:
+    if pending_sci:
         return WorkflowState.HUMAN_REVIEW_REQUIRED
 
-    # 7. Build
+    # 6. Build
     st_bld, _ = check_phase_status(lesson_dir, "build")
     if st_bld != PhaseStatus.VALID:
         return WorkflowState.READY_TO_BUILD

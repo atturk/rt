@@ -1,6 +1,6 @@
 """
-rt.pipeline.review_science
-Fase E: SCIENCE REVIEW (Critic Scientifico Indipendente).
+rt.pipeline.review
+Fase E: REVIEW (Critic Scientifico Indipendente).
 Analizza il draft contro la fonte originale identificando:
 - ERR_DOCENTE (lapsus del docente con domanda diplomatica)
 - ERR_RECONSTRUCTION (errori introdotti dal modello durante la rielaborazione)
@@ -23,8 +23,6 @@ from rt.llm.prompts import (
     ScienceIssueList
 )
 from rt.pipeline.rewrite import load_draft
-from rt.pipeline.review_asr import load_asr_issues
-from rt.core.models import ASRLevel
 from rt.core.lesson_paths import lesson_path
 
 
@@ -179,19 +177,13 @@ def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
     return segs[-1].id
 
 
-def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
-    """Esegue la critica scientifica indipendente sul draft confrontato con l'ASR con checkpointing continuo."""
+def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
+    """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-
-    # Nessun avviso o vincolo d'ordine rispetto a review-asr: il critic scientifico non
-    # vede più la trascrizione grezza (vedi SCIENCE_REVIEW_SYSTEM_PROMPT), quindi può
-    # essere eseguito prima, dopo o senza mai eseguire review-asr, senza rischio di
-    # confondere un artefatto ASR con un errore concettuale.
-    from rt.pipeline.ledger import load_ledger, apply_asr_decisions_to_text
 
     manifest_before = load_manifest(lesson_dir)
     old_sci_hash = (
-        manifest_before.phase_records.get("review_science", {})
+        manifest_before.phase_records.get("review", {})
         .get("artifact_fingerprints", {})
         .get("science_issues.json")
         if manifest_before and manifest_before.phase_records
@@ -199,13 +191,11 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     )
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
-    phase_status, reason = check_phase_status(lesson_dir, "review_science")
+    phase_status, reason = check_phase_status(lesson_dir, "review")
     if phase_status == PhaseStatus.VALID and not force:
         all_science_issues = load_science_issues(lesson_dir)
-        asr_issues = load_asr_issues(lesson_dir)
-        pending_asr = [a for a in asr_issues if a.level in (ASRLevel.YELLOW, ASRLevel.RED) and a.status == "pending"]
         pending_sci = [s for s in all_science_issues if s.status == "pending"]
-        next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if (pending_asr or pending_sci) else WorkflowState.READY_TO_BUILD.value
+        next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci else WorkflowState.READY_TO_BUILD.value
         return {
             "status": "science_review_completed",
             "action": "SKIP",
@@ -225,10 +215,6 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
 
-    ledger = load_ledger(lesson_dir)
-    decisions_map = {d.issue_id: d for d in ledger.decisions}
-    asr_issues = load_asr_issues(lesson_dir)
-
     # Riconciliazione all'avvio:
     if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
         reviewed_unit_ids = []
@@ -238,7 +224,7 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             from rt.pipeline.ledger import purge_decisions_by_prefix
             purge_decisions_by_prefix(lesson_dir, prefix="sci_")
     else:
-        ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review_science")
+        ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review")
         existing_issues = load_science_issues(lesson_dir)
         if ckpt and ckpt.get("completed_items"):
             reviewed_unit_ids = list(ckpt["completed_items"])
@@ -270,12 +256,9 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
                 source_texts.append(f"[{s.id}] {s.text_raw}")
         source_context = "\n".join(source_texts)
 
-        unit_content_for_prompt = apply_asr_decisions_to_text(
-            unit.content, asr_issues, decisions_map, unit.source_segment_ids
-        )
         prompt = build_science_review_user_prompt(
             unit_id=unit.unit_id,
-            rewritten_content=unit_content_for_prompt,
+            rewritten_content=unit.content,
         )
         
         unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
@@ -287,7 +270,7 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             prompt=prompt,
             system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
             response_model=ScienceIssueList,
-            job_name="review_science",
+            job_name="review",
             unit_id=unit_label,
             min_elapsed_seconds=5.0,
             lesson_dir=lesson_dir
@@ -313,11 +296,11 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             reviewed_unit_ids.append(unit.unit_id)
             reviewed_set.add(unit.unit_id)
 
-        source_fp = compute_source_fingerprint(lesson_dir, "review_science")
+        source_fp = compute_source_fingerprint(lesson_dir, "review")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
         record_phase_checkpoint(
             lesson_dir=lesson_dir,
-            phase_name="review_science",
+            phase_name="review",
             source_fingerprint=source_fp,
             artifact_fingerprints={"science_issues.json": sci_hash},
             completed_items=reviewed_unit_ids
@@ -332,11 +315,11 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
             iss.id = f"sci_{s_idx:06d}"
         save_science_issues(all_science_issues, lesson_dir)
 
-        source_fp = compute_source_fingerprint(lesson_dir, "review_science")
+        source_fp = compute_source_fingerprint(lesson_dir, "review")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
 
         _cfg = load_config()
-        _job_cfg = _cfg.jobs.get("review_science") or _cfg.llm.get("review_science")
+        _job_cfg = _cfg.jobs.get("review") or _cfg.llm.get("review")
         _provenance = {
             "provider": _job_cfg.primary.provider if (_job_cfg and _job_cfg.primary) else None,
             "model": _job_cfg.primary.model if (_job_cfg and _job_cfg.primary) else None,
@@ -344,21 +327,18 @@ def run_review_science(lesson_dir: str, force: bool = False, force_mock: bool = 
 
         record_phase_fingerprint(
             lesson_dir=lesson_dir,
-            phase_name="review_science",
+            phase_name="review",
             source_fingerprint=source_fp,
             artifact_fingerprints={"science_issues.json": sci_hash},
             metadata=_provenance,
         )
         if (force or phase_status == PhaseStatus.STALE) and (old_sci_hash is None or old_sci_hash != sci_hash):
-            mark_downstream_stale(lesson_dir, "review_science")
+            mark_downstream_stale(lesson_dir, "review")
 
-        
-        asr_issues = load_asr_issues(lesson_dir)
-        pending_asr = [a for a in asr_issues if a.level in (ASRLevel.YELLOW, ASRLevel.RED) and a.status == "pending"]
         pending_sci = [s for s in all_science_issues if s.status == "pending"]
         
         allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL))
-        if pending_asr or pending_sci:
+        if pending_sci:
             transition_to(yaml_path, WorkflowState.HUMAN_REVIEW_REQUIRED, allow_force=allow_t)
             next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value
         else:

@@ -75,18 +75,7 @@ def _test_default_jobs():
                 timeout_seconds=180,
             )
         ),
-        "review_asr": JobRoutingConfig(
-            primary=RouteConfig(
-                provider="deepseek",
-                model="deepseek-v4-flash",
-                base_url="https://api.deepseek.com",
-                thinking=True,
-                reasoning_effort="low",
-                max_tokens=8192,
-                timeout_seconds=120,
-            )
-        ),
-        "review_science": JobRoutingConfig(
+        "review": JobRoutingConfig(
             primary=RouteConfig(
                 provider="deepseek",
                 model="deepseek-v4-flash",
@@ -200,7 +189,7 @@ def _isolate_load_config_from_ambient_repo_config(monkeypatch):
     più rt.core.config stesso (per gli import locali dinamici in rt/cli.py)."""
     import rt.core.config
     import rt.llm.client
-    import rt.pipeline.review_asr
+    import rt.pipeline.review
     import rt.pipeline.smoke_test
 
     original_load_config = rt.core.config.load_config
@@ -214,7 +203,7 @@ def _isolate_load_config_from_ambient_repo_config(monkeypatch):
 
     monkeypatch.setattr(rt.core.config, "load_config", patched_load_config)
     monkeypatch.setattr(rt.llm.client, "load_config", patched_load_config)
-    monkeypatch.setattr(rt.pipeline.review_asr, "load_config", patched_load_config)
+    monkeypatch.setattr(rt.pipeline.review, "load_config", patched_load_config)
     monkeypatch.setattr(rt.pipeline.smoke_test, "load_config", patched_load_config)
 
 

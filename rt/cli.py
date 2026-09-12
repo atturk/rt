@@ -8,8 +8,7 @@ Comandi disponibili:
   rt prepare            <cartella>
   rt outline            <cartella> [--mock]
   rt rewrite            <cartella> [--unit <id>] [--mock]
-  rt review-asr         <cartella> [--mock]
-  rt review-science     <cartella> [--mock]
+  rt review             <cartella> [--mock]
   rt recall             <cartella>
   rt build              <cartella> [--no-rename] (rinomina la cartella col titolo finale, attivo di default)
   rt status             <cartella>
@@ -39,12 +38,10 @@ from rt.pipeline.outline import run_outline, load_outline
 from rt.pipeline.outline_review import confirm_or_revise_outline
 from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
-from rt.pipeline.review_asr import run_review_asr, load_asr_issues
-from rt.pipeline.review_science import run_review_science, load_science_issues
+from rt.pipeline.review import run_review, load_science_issues
 from rt.pipeline.issue_review import run_interactive_review
 from rt.pipeline.ledger import load_ledger
 from rt.pipeline.build import run_build
-from rt.core.models import ASRLevel
 
 
 
@@ -198,45 +195,17 @@ def _get_lesson_title_for_notify(lesson_dir: str) -> str:
         return os.path.basename(os.path.abspath(lesson_dir))
 
 
-def cmd_review_asr(args):
+def cmd_review(args):
     if not getattr(args, "mock", False):
-        _ensure_config_ready(["review_asr"])
-    if getattr(args, "reset", False):
-        from rt.pipeline.ledger import purge_decisions_by_prefix
-        removed = purge_decisions_by_prefix(args.lesson_dir, prefix="asr_")
-        print(f"🔄 Reset: rimosse {removed} decisioni ASR precedenti (le issue esistenti restano invariate).")
-
-    force = getattr(args, "force", False)
-    res = run_review_asr(args.lesson_dir, force=force, force_mock=args.mock)
-    _print_phase_action("review-asr", res)
-    if getattr(args, "json", False):
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-    
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
-
-    if not res.get("skipped") and channel == "telegram":
-        from rt.telegram.notify import notify_issues_ready
-        notify_issues_ready(args.lesson_dir, "asr", res.get("total_issues", 0))
-
-    auto_accept = getattr(args, "auto_accept", None)
-    history = getattr(args, "history", False)
-    run_interactive_review(args.lesson_dir, "asr", channel=channel, auto_accept=auto_accept, history=history)
-
-
-def cmd_review_science(args):
-    if not getattr(args, "mock", False):
-        _ensure_config_ready(["review_science"])
+        _ensure_config_ready(["review"])
     if getattr(args, "reset", False):
         from rt.pipeline.ledger import purge_decisions_by_prefix
         removed = purge_decisions_by_prefix(args.lesson_dir, prefix="sci_")
         print(f"🔄 Reset: rimosse {removed} decisioni scientifiche precedenti (le issue esistenti restano invariate).")
 
     force = getattr(args, "force", False)
-    res = run_review_science(args.lesson_dir, force=force, force_mock=args.mock)
-    _print_phase_action("review-science", res)
+    res = run_review(args.lesson_dir, force=force, force_mock=args.mock)
+    _print_phase_action("review", res)
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
     
@@ -332,29 +301,20 @@ def cmd_add_images(args):
 
 
 def _normalize_with_review(value) -> Tuple[bool, bool]:
-    """Ritorna (run_asr, run_sci). True/'all' -> entrambi; 'asr'/'science' -> solo quello;
-    None/False -> nessuno. Il ramo True/truthy copre i chiamanti che costruiscono un Namespace
-    manualmente con with_review=True (o MagicMock), per compatibilità coi test."""
+    """Ritorna (run_asr, run_sci). ASR rimosso, run_sci = bool(value)."""
     if not value:
         return False, False
-    if value == "asr":
-        return True, False
-    if value == "science":
-        return False, True
-    return True, True
+    return False, True
 
 
 def normalize_review_cli_args(argv: List[str]) -> List[str]:
     """
-    Normalizza gli argomenti della CLI per supportare sintassi flessibili come:
-      --auto-accept
-      --auto-accept yellow
-    anche quando specificati prima o dopo il parametro posizionale lesson_dir.
+    Normalizza gli argomenti della CLI per supportare sintassi flessibili.
     """
-    known_commands = {"review-asr", "review-science"}
+    known_commands = {"review"}
     if not any(cmd in argv for cmd in known_commands):
         return argv
-    known_levels = {"yellow", "red", "all", "green"}
+    known_levels = {"all"}
     flags = {"--auto-accept"}
     new_argv = []
     i = 0
@@ -419,15 +379,9 @@ def cmd_status(args):
     manifest = load_manifest(lesson_dir)
     
     ledger = load_ledger(lesson_dir)
-    asr_issues = load_asr_issues(lesson_dir)
     sci_issues = load_science_issues(lesson_dir)
     decisions = ledger.decisions
     decided_ids = {d.issue_id for d in decisions}
-
-    # Calcoli dinamici (nessun valore hardcoded)
-    asr_green = sum(1 for x in asr_issues if x.level == ASRLevel.GREEN)
-    asr_yellow = sum(1 for x in asr_issues if x.level == ASRLevel.YELLOW)
-    asr_red = sum(1 for x in asr_issues if x.level == ASRLevel.RED)
 
     sci_docente = sum(1 for x in sci_issues if x.type == ScienceType.ERR_DOCENTE)
     sci_reconstruction = sum(1 for x in sci_issues if x.type == ScienceType.ERR_RECONSTRUCTION)
@@ -439,14 +393,13 @@ def cmd_status(args):
     dec_auto = sum(1 for d in decisions if getattr(d, "resolved_by", "").startswith("auto") or getattr(d, "resolved_by", "") == "cli_auto")
     dec_user = len(decisions) - dec_auto
 
-    pending_asr = [x for x in asr_issues if x.id not in decided_ids and x.level in (ASRLevel.YELLOW, ASRLevel.RED)]
     pending_sci = [x for x in sci_issues if x.id not in decided_ids]
-    total_pending = len(pending_asr) + len(pending_sci)
+    total_pending = len(pending_sci)
 
     effective_state = compute_effective_workflow_state(lesson_dir)
     recorded_state = info.get("fase_corrente", "non_inizializzata")
 
-    phases = ["prepare", "outline", "rewrite", "review_asr", "review_science", "build"]
+    phases = ["prepare", "outline", "rewrite", "review", "build"]
     phase_statuses = {}
 
     print(f"\n📊 STATO WORKFLOW RT 2.0: {os.path.abspath(lesson_dir)}")
@@ -470,11 +423,6 @@ def cmd_status(args):
         print("=" * 60)
         print("🔍 REPORT DIAGNOSTICO DETTAGLIATO ISSUE & DECISION LEDGER")
         print("=" * 60)
-        print(f"ASR Issues ({len(asr_issues)} totali):")
-        print(f"  GREEN (auto-applicate):     {asr_green}")
-        print(f"  YELLOW (coda di revisione): {asr_yellow}")
-        print(f"  RED (ascolto richiesto):    {asr_red}")
-        print()
         print(f"Science Issues ({len(sci_issues)} totali):")
         print(f"  ERR_DOCENTE:                {sci_docente}")
         print(f"  ERR_RECONSTRUCTION:         {sci_reconstruction}")
@@ -488,9 +436,9 @@ def cmd_status(args):
         print(f"  user/manual:                {dec_user}")
         print()
         print(f"Stato di Risoluzione:")
-        print(f"  Totale issue rilevate:      {len(asr_issues) + len(sci_issues)}")
+        print(f"  Totale issue rilevate:      {len(sci_issues)}")
         print(f"  Decisioni archiviate:       {len(decisions)}")
-        print(f"  Anomalie pendenti:          {total_pending} (ASR: {len(pending_asr)}, Science: {len(pending_sci)})")
+        print(f"  Anomalie pendenti:          {total_pending} (Science: {len(pending_sci)})")
         print("=" * 60 + "\n")
     
     res = {
@@ -501,7 +449,6 @@ def cmd_status(args):
         "data": info.get("data"),
         "titolo": info.get("titolo"),
         "segment_count": manifest.segment_count if manifest else 0,
-        "asr_issues_total": len(asr_issues),
         "science_issues_total": len(sci_issues),
         "decisions_recorded": len(ledger.decisions),
         "pending_issues_total": total_pending,
@@ -509,10 +456,9 @@ def cmd_status(args):
     }
     if getattr(args, "issues", False):
         res["issues_breakdown"] = {
-            "asr": {"green": asr_green, "yellow": asr_yellow, "red": asr_red},
             "science": {"err_docente": sci_docente, "err_reconstruction": sci_reconstruction, "science_check": sci_check},
             "decisions": {"total": len(decisions), "accepted": dec_accepted, "rejected": dec_rejected, "edited": dec_edited, "auto_applied": dec_auto, "user": dec_user},
-            "pending": {"total": total_pending, "asr": len(pending_asr), "science": len(pending_sci)}
+            "pending": {"total": total_pending, "science": len(pending_sci)}
         }
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
@@ -607,26 +553,14 @@ def cmd_run(args):
         from rt.core.config import load_config as _load_cfg_for_channel
         channel = _load_cfg_for_channel().telegram.default_channel
 
-    if run_asr:
-        asr_res = run_review_asr(lesson_dir, force=force, force_mock=mock_mode)
-        asr_details = f"Review ASR già completata ({asr_res['total_issues']} issue note, 0 chiamate LLM)" if asr_res.get("skipped") else f"Issue ASR: {asr_res['total_issues']} (Verdi auto: {asr_res['green_auto_applied']}, Gialle: {asr_res['yellow_review_queue']}, Rosse: {asr_res['red_human_required']})"
-        _print_phase_action("review-asr", asr_res, step=next_step, total_steps=total_steps, description="Ambiguità fonetiche e Confidence Gating", details=asr_details)
-
-        auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
-        if not run_interactive_review(lesson_dir, "asr", channel=channel, auto_accept=auto_accept_val):
-            print(f"\n⏸  In attesa che la revisione ASR venga completata (Telegram, oppure esegui 'rt review-asr \"{lesson_dir}\"' da terminale). "
-                  f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
-            return
-        next_step += 1
-
     if run_sci:
-        sci_res = run_review_science(lesson_dir, force=force, force_mock=mock_mode)
+        sci_res = run_review(lesson_dir, force=force, force_mock=mock_mode)
         sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})"
-        _print_phase_action("review-science", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)
+        _print_phase_action("review", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)
 
         auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
         if not run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val):
-            print(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review-science \"{lesson_dir}\"' da terminale). "
+            print(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review \"{lesson_dir}\"' da terminale). "
                   f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
             return
         next_step += 1
@@ -638,7 +572,6 @@ def cmd_run(args):
         "File finali generati con successo:\n"
         f"  - Rielaborato: {bld_res['rielaborato']}\n"
         f"  - Pre-elaborato: {bld_res['pre_elaborato']}\n"
-        f"  - Revisioni ASR: {bld_res['revisioni_asr']}\n"
         f"  - Errori concettuali: {bld_res['errori_concettuali']}\n"
         f"  - Problemi scientifici: {bld_res['problemi_scientifici']}"
     )
@@ -730,10 +663,7 @@ def main():
     p_run.add_argument(
         "--with-review", nargs="?", const="all", choices=["all", "asr", "science"], default=None,
         dest="with_review",
-        help="Include anche la review nella run: senza valore o 'all' = ASR+scientifica, "
-             "'asr' = solo ASR, 'science' = solo scientifica. Default: nessuna (passi separati). "
-             "Nota: se usato senza valore esplicito, va messo DOPO l'input posizionale "
-             "(es. 'rt run cartella --with-review', non 'rt run --with-review cartella')."
+        help="Include anche la review nella run."
     )
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
@@ -771,34 +701,8 @@ def main():
     p_rew.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rew.set_defaults(func=cmd_rewrite)
 
-    # review-asr
-    p_rasr = subparsers.add_parser("review-asr", help="Analisi ambiguità ASR, confidence gating e revisione")
-    p_rasr.add_argument("lesson_dir", help="Directory della lezione")
-    p_rasr.add_argument("--force", action="store_true", help="Forza la riesecuzione della revisione ASR")
-    p_rasr.add_argument("--reset", action="store_true", help="Reimposta come pendenti le decisioni ASR esistenti senza rigenerare le issue (debug/test)")
-    p_rasr.add_argument("--mock", action="store_true", help="Usa mock deterministico")
-    p_rasr.add_argument(
-        "--auto-accept",
-        dest="auto_accept",
-        default=None,
-        help="Auto-accetta le proposte: senza argomenti o 'all' accetta tutto. Con 'yellow' auto-accetta le gialle, con 'red' auto-accetta le rosse."
-    )
-    p_rasr.add_argument(
-        "--history",
-        action="store_true",
-        help="Mostra anche le issue già decise per una eventuale rivalutazione (solo terminale)"
-    )
-    p_rasr.add_argument(
-        "--channel",
-        choices=["terminal", "telegram"],
-        default=None,
-        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
-    )
-    p_rasr.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
-    p_rasr.set_defaults(func=cmd_review_asr)
-
-    # review-science
-    p_rsci = subparsers.add_parser("review-science", help="Science critic indipendente e revisione")
+    # review
+    p_rsci = subparsers.add_parser("review", help="Science critic indipendente e revisione")
     p_rsci.add_argument("lesson_dir", help="Directory della lezione")
     p_rsci.add_argument("--force", action="store_true", help="Forza la riesecuzione della critica scientifica")
     p_rsci.add_argument("--reset", action="store_true", help="Reimposta come pendenti le decisioni scientifiche esistenti senza rigenerare le issue (debug/test)")
@@ -821,7 +725,7 @@ def main():
         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
     )
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
-    p_rsci.set_defaults(func=cmd_review_science)
+    p_rsci.set_defaults(func=cmd_review)
 
     # recall
     p_recall = subparsers.add_parser("recall", help="Sessione di active recall (quiz/mirata/vasta) su una lezione già rielaborata")

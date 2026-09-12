@@ -9,8 +9,7 @@ Verifica i 4 scenari fondamentali:
 
 import pytest
 from rt.core.models import (
-    ScienceIssue, ScienceType, ScienceSeverity,
-    ASRIssue, ASRLevel
+    ScienceIssue, ScienceType, ScienceSeverity
 )
 
 

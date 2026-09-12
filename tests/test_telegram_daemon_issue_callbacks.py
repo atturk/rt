@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from rt.telegram import registry, conversation_state as convo, issue_queue as tg_queue
 from rt.telegram.daemon import handle_callback, handle_text, _handle_issue_callback, _handle_start_review_callback
-from rt.core.models import ASRIssue, ASRLevel, ScienceIssue, ScienceType, ScienceSeverity, SegmentsData, Segment, Draft, DraftUnit
+from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, SegmentsData, Segment, Draft, DraftUnit
 from rt.pipeline.ledger import load_ledger
 
 
@@ -44,13 +44,6 @@ def _setup_test_lesson(lesson_dir: str):
     with open(os.path.join(lesson_dir, "draft.json"), "w", encoding="utf-8") as f:
         json.dump(draft.model_dump(mode="json"), f)
 
-    asr_issues = [
-        ASRIssue(id="asr_01", segment_id="seg_000001", source_text="orig", candidate="cand", confidence=0.8, level=ASRLevel.YELLOW, reason="mot"),
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
-
-
     sci_issues = [
         ScienceIssue(id="sci_01", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="errore", reason="mot", suggested_fix="fix esatto"),
     ]
@@ -82,10 +75,10 @@ def test_issue_callback_accept(tmp_path):
     state_dir = str(tmp_path / "state")
     _setup_test_lesson(lesson_dir)
 
-    tg_queue.create_queue(lesson_dir, ["asr_01"], {"asr_01": "asr"})
+    tg_queue.create_queue(lesson_dir, ["sci_01"], {"sci_01": "science"})
     short_id = registry.register_pending(
         lesson_dir, round_=0, kind="issue_review", state_dir=state_dir,
-        extra={"issue_id": "asr_01", "issue_type": "asr"}
+        extra={"issue_id": "sci_01", "issue_type": "science"}
     )
 
     update = _make_mock_callback_update(f"ia:{short_id}")
@@ -97,9 +90,9 @@ def test_issue_callback_accept(tmp_path):
 
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
-    assert ledger.decisions[0].issue_id == "asr_01"
+    assert ledger.decisions[0].issue_id == "sci_01"
     assert ledger.decisions[0].decision == "accepted"
-    assert ledger.decisions[0].resolved_text == "cand"
+    assert ledger.decisions[0].resolved_text == "fix esatto"
 
     queue = tg_queue.load_queue(lesson_dir)
     assert queue.current_index == 1
@@ -135,10 +128,10 @@ def test_issue_callback_skip(tmp_path):
     state_dir = str(tmp_path / "state")
     _setup_test_lesson(lesson_dir)
 
-    tg_queue.create_queue(lesson_dir, ["asr_01"], {"asr_01": "asr"})
+    tg_queue.create_queue(lesson_dir, ["sci_01"], {"sci_01": "science"})
     short_id = registry.register_pending(
         lesson_dir, round_=0, kind="issue_review", state_dir=state_dir,
-        extra={"issue_id": "asr_01", "issue_type": "asr"}
+        extra={"issue_id": "sci_01", "issue_type": "science"}
     )
 
     update = _make_mock_callback_update(f"is:{short_id}")
@@ -160,10 +153,10 @@ def test_issue_callback_edit_and_text_response(tmp_path):
     state_dir = str(tmp_path / "state")
     _setup_test_lesson(lesson_dir)
 
-    tg_queue.create_queue(lesson_dir, ["asr_01"], {"asr_01": "asr"})
+    tg_queue.create_queue(lesson_dir, ["sci_01"], {"sci_01": "science"})
     short_id = registry.register_pending(
         lesson_dir, round_=0, kind="issue_review", state_dir=state_dir,
-        extra={"issue_id": "asr_01", "issue_type": "asr"}
+        extra={"issue_id": "sci_01", "issue_type": "science"}
     )
 
     # 1. Clic su Modifica (ie)
@@ -176,7 +169,7 @@ def test_issue_callback_edit_and_text_response(tmp_path):
     awaiting = convo.get_awaiting_feedback(state_dir, 999)
     assert awaiting is not None
     assert awaiting["kind"] == "issue_edit"
-    assert awaiting["extra"]["issue_id"] == "asr_01"
+    assert awaiting["extra"]["issue_id"] == "sci_01"
 
     # 2. Utente invia testo correzione
     update_msg = MagicMock()
@@ -191,7 +184,7 @@ def test_issue_callback_edit_and_text_response(tmp_path):
 
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
-    assert ledger.decisions[0].issue_id == "asr_01"
+    assert ledger.decisions[0].issue_id == "sci_01"
     assert ledger.decisions[0].decision == "edited"
     assert ledger.decisions[0].resolved_text == "testo corretto manualmente"
 

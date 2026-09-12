@@ -15,7 +15,7 @@ from rt.telegram.config import TelegramConfig
 from rt.telegram.client import send_voice, TelegramAPIError
 from rt.telegram.audio_sent import get_sent_audio, record_sent_audio
 from rt.core.models import (
-    ASRIssue, ASRLevel, ScienceIssue, ScienceType, ScienceSeverity,
+    ScienceIssue, ScienceType, ScienceSeverity,
     SegmentsData, Segment, Draft, DraftUnit
 )
 from rt.core.manifest import init_or_update_manifest

@@ -99,10 +99,10 @@ Nel nostro sistema:
 
 ## 4. LLM Routing Engine, Multi-Provider Architecture e Telemetria
 
-Il sottosistema LLM di RT 2.0 disaccoppia interamente i 4 job cognitivi (`outline`, `rewrite`, `review_asr`, `review_science`) dai provider fisici e dalle credenziali attraverso un Routing Engine centrale, multi-provider e multi-modello:
+Il sottosistema LLM di RT 2.0 disaccoppia interamente i 3 job cognitivi (`outline`, `rewrite`, `review`) dai provider fisici e dalle credenziali attraverso un Routing Engine centrale, multi-provider e multi-modello:
 
 ```text
-RT Cognitive Jobs (outline, rewrite, review_asr, review_science)
+RT Cognitive Jobs (outline, rewrite, review)
                                ↓
                         LLMClient Gateway
                                ↓
@@ -146,7 +146,7 @@ RT Cognitive Jobs (outline, rewrite, review_asr, review_science)
    - `AuthenticationFailure`: HTTP 401/403 -> commuta su `fallback.auth` (cambio credenziale/provider esplicito senza riprovare la chiave invalida).
    - `OutputLimitFailure`: superamento limite rigido caratteri -> retry bounded same-route (fino a 2 tentativi extra con payload invariato per campionare un backend diverso), poi failover su `fallback.generic`.
    - `ReasoningRequiredFailure`: il modello selezionato (tipicamente dietro un router aggregatore come `openrouter/free`) impone il reasoning obbligatorio non configurato -> retry bounded sulla stessa route (fino a 2 tentativi extra), con escalation locale di `thinking=true` limitata all'ultimo tentativo e mai persistita in config; se anche questo fallisce, commuta su `fallback.generic` come qualunque altro errore non classificato.
-   - `SuspiciousFastResponseFailure`: risposta sintatticamente valida ma sospettosamente veloce da un modello free-tier (`< min_elapsed_seconds`, es. 5s per `review_asr` e `review_science`) -> scartata precauzionalmente con same-route retry ed escalation locale a `thinking=true` condivisa con `ReasoningRequiredFailure` (categoria "risposta a basso sforzo"); se esaurita, commuta su `fallback.generic`.
+   - `SuspiciousFastResponseFailure`: risposta sintatticamente valida ma sospettosamente veloce da un modello free-tier (`< min_elapsed_seconds`, es. 5s per `review`) -> scartata precauzionalmente con same-route retry ed escalation locale a `thinking=true` condivisa con `ReasoningRequiredFailure` (categoria "risposta a basso sforzo"); se esaurita, commuta su `fallback.generic`.
    - `ProviderServerFailure` / `NetworkFailure` / `SchemaFailure`: commutano su `fallback.generic`.
 
 4. **Loop Protection & Bounded Chains**:
@@ -173,8 +173,6 @@ RT Cognitive Jobs (outline, rewrite, review_asr, review_science)
 
 
 ---
-
-## 5. Grafo delle Dipendenze (DAG) e Semantica di Staleness
 
 Il workflow RT 2.0 formalizza una Directed Acyclic Graph (DAG) rigorosa definita in `UPSTREAM_DEPENDENCIES`:
 

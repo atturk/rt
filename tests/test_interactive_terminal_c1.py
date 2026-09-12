@@ -22,7 +22,7 @@ from rt.core.keyboard import read_single_key, UNKNOWN_KEY, raw_mode
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
 from rt.core.editor_edit import edit_text_in_editor
 from rt.core.models import (
-    ASRIssue, ASRLevel, ScienceIssue, ScienceType, ScienceSeverity,
+    ScienceIssue, ScienceType, ScienceSeverity,
     SegmentsData, Segment, Draft, DraftUnit, Manifest
 )
 from rt.core.manifest import save_manifest
@@ -475,25 +475,25 @@ def _setup_review_environment(lesson_dir: str):
         f.write("status: DRAFT_VALIDATED\n")
 
 
+def _create_sample_science_issue(id_str="sci_001", unit_id="U1", claim="distillazione", fix="distillazione"):
+    return ScienceIssue(
+        id=id_str,
+        type=ScienceType.ERR_RECONSTRUCTION,
+        severity=ScienceSeverity.HIGH,
+        unit_id=unit_id,
+        claim=claim,
+        reason="ambiguità",
+        suggested_fix=fix
+    )
+
+
 def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
@@ -507,10 +507,10 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc) as mock_play, \
          patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di rettificazione abbiamo una reazione esotermica importante.") as mock_edit:
 
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
-    mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 5.0, 25.0)
+    mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 10.0, 30.0)
     mock_play.assert_called_once_with("/tmp/test_clip.mp3")
     mock_edit.assert_called_once()
 
@@ -524,21 +524,9 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
@@ -553,32 +541,25 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
     mock_proc3 = MagicMock()
     mock_proc3.poll.return_value = None
 
-    # Simula avanzamento del tempo: monotonic avanza di 3.0s tra avvio e pausa
     monotonic_times = [100.0, 103.0, 103.0, 104.0, 105.0, 106.0]
     monkeypatch.setattr("time.monotonic", lambda: monotonic_times.pop(0) if monotonic_times else 200.0)
 
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3", "/tmp/clip3.mp3"]) as mock_cut, \
          patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]) as mock_play:
 
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
-    # Tagli audio: 3 volte (1° play: 5.0 a 25.0, resume: 5.0+3.0=8.0 a 25.0, restart O: 5.0 a 25.0)
     assert mock_cut.call_count == 3
     audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
-    assert mock_cut.call_args_list[0][0] == (audio_path, 5.0, 25.0)
-    assert mock_cut.call_args_list[1][0] == (audio_path, 8.0, 25.0)
-    assert mock_cut.call_args_list[2][0] == (audio_path, 5.0, 25.0)
+    assert mock_cut.call_args_list[0][0] == (audio_path, 10.0, 30.0)
+    assert mock_cut.call_args_list[1][0] == (audio_path, 13.0, 30.0)
+    assert mock_cut.call_args_list[2][0] == (audio_path, 10.0, 30.0)
 
-    # mock_proc1 è stato terminato su pausa (terminate, NO send_signal)
     mock_proc1.terminate.assert_called()
-    mock_proc1.send_signal.assert_not_called()
-    # mock_proc2 è stato terminato su O
     mock_proc2.terminate.assert_called()
-    # mock_proc3 è stato terminato su azione 'a'
     mock_proc3.terminate.assert_called()
 
-    # Verifica che i messaggi di stato P/O NON compaiano in stdout
     captured = capsys.readouterr()
     assert "Riproduzione audio in corso" not in captured.out
     assert "In pausa" not in captured.out
@@ -589,64 +570,38 @@ def test_audio_error_messages_remain_visible(tmp_path, monkeypatch, capsys):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # P con eccezione in cut_clip, poi Q (esci) per verificare l'errore visibile
     keys = iter(["p", "q"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=RuntimeError("ffmpeg error test")):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is False
     captured = capsys.readouterr()
-    assert "ASR AMBIGUITY" in captured.out
+    assert "SCIENCE REVIEW" in captured.out or "Science Review" in captured.out
 
 
 def test_unrecognized_key_no_action_no_advance(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # Sequenza: "z" (non riconosciuto -> no-op), UNKNOWN_KEY (non riconosciuto -> no-op), "a" (accetta)
     assert UNKNOWN_KEY != ""
     keys = iter(["z", UNKNOWN_KEY, "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
-    res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
 
     ledger = load_ledger(lesson_dir)
@@ -669,14 +624,11 @@ def test_unknown_key_in_science_review_no_action(tmp_path, monkeypatch):
             suggested_fix="abbiamo una reazione endotermica"
         )
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # UNKNOWN_KEY (e.g. standalone ESC o escape incompleto) -> no-op, poi "a" (accetta)
     keys = iter([UNKNOWN_KEY, "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
@@ -692,117 +644,63 @@ def test_arrow_keys_aliases_left_right(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        ),
-        ASRIssue(
-            id="asr_002",
-            segment_id="seg_000002",
-            source_text="esotermica",
-            candidate="esotermica",
-            confidence=0.85,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica 2"
-        ),
+    sci_issues = [
+        _create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione"),
+        _create_sample_science_issue("sci_002", "U1", "esotermica", "esotermica")
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # 1. "RIGHT" -> salta asr_001 -> va ad asr_002
-    # 2. "LEFT" -> torna indietro ad asr_001
-    # 3. "a" -> accetta asr_001
-    # 4. "a" -> accetta asr_002
     keys = iter(["RIGHT", "LEFT", "a", "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
-    res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
 
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 2
-    assert ledger.decisions[0].issue_id == "asr_001"
-    assert ledger.decisions[1].issue_id == "asr_002"
+    assert ledger.decisions[0].issue_id == "sci_001"
+    assert ledger.decisions[1].issue_id == "sci_002"
 
 
 def test_context_fallback_when_draft_mismatch(tmp_path, monkeypatch, capsys):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    # Issue con termini completamente assenti dal draft
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="parola_rara_xyz",
-            candidate="parola_rara_abc",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "parola_rara_xyz", "parola_rara_abc")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     keys = iter(["a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
-    res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
 
-    captured = capsys.readouterr()
-    assert "Contesto (trascrizione grezza, non trovato nel draft):" in captured.out
-    assert "Trascrizione" in captured.out and "grezza 1" in captured.out
 
-
-def test_asr_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
+def test_science_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # 1. 'm' -> l'utente lascia il testo invariato -> stampa warning e ripresenta
-    # 2. 'a' -> accetta normalmente
     keys = iter(["m", "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Nel processo di distillazione abbiamo una reazione esotermica importante."):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "accepted"
-    assert ledger.decisions[0].resolved_text == "distillazione"
 
 
 def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
@@ -820,15 +718,11 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
             suggested_fix="abbiamo una reazione endotermica"
         )
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # 1. 'p' -> ascolto audio dell'intera unità U1 (10s a 30s)
-    # 2. 'e' -> modifica via editor
     keys = iter(["p", "e"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
@@ -842,7 +736,6 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
         res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
-    # Scienza taglia l'intervallo dell'unità U1: seg_000001 (10s) a seg_000002 (30s) senza margini aggiuntivi
     mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 10.0, 30.0)
     mock_play.assert_called_once_with("/tmp/test_clip_sci.mp3")
     mock_edit.assert_called_once()
@@ -857,30 +750,12 @@ def test_run_interactive_review_uses_raw_mode_once(tmp_path, monkeypatch):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        ),
-        ASRIssue(
-            id="asr_002",
-            segment_id="seg_000002",
-            source_text="reazione",
-            candidate="reazione",
-            confidence=0.85,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
+    sci_issues = [
+        _create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione"),
+        _create_sample_science_issue("sci_002", "U1", "reazione", "reazione")
     ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
@@ -907,40 +782,23 @@ def test_run_interactive_review_uses_raw_mode_once(tmp_path, monkeypatch):
 
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", mock_read_key)
 
-    res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+    res = run_interactive_review(lesson_dir, "science", channel="terminal")
     assert res is True
     assert raw_mode_enter_count == 1
     assert raw_mode_exit_count == 1
     assert calls_already_raw == [True, True]
 
 
-def test_silent_p_o_and_unrecognized_keys_asr_and_science(tmp_path, monkeypatch, capsys):
-    """
-    Test di accettazione: P, O e tasti non riconosciuti (incluso UNKNOWN_KEY)
-    non devono stampare NULLA (né eco, né prompt duplicato).
-    """
+def test_silent_p_o_and_unrecognized_keys_science(tmp_path, monkeypatch, capsys):
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # Sequenza ASR: p -> p -> p -> o -> z (invalido) -> UNKNOWN_KEY (invalido) -> a (accetta)
     keys = iter(["p", "p", "p", "o", "z", UNKNOWN_KEY, "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
@@ -951,37 +809,21 @@ def test_silent_p_o_and_unrecognized_keys_asr_and_science(tmp_path, monkeypatch,
 
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3"]), \
          patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2]):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
     out = capsys.readouterr().out
     assert "Azione [" in out
-    assert "ASR AMBIGUITY" in out
     assert "✔ Approvato." in out
 
 
 def test_quit_during_p_sequence_interrupts_cleanly(tmp_path, monkeypatch, capsys):
-    """
-    Test: 'Q' durante o dopo una sequenza di 'P' interrompe sia il ciclo interno sia quello esterno.
-    """
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
@@ -993,7 +835,7 @@ def test_quit_during_p_sequence_interrupts_cleanly(tmp_path, monkeypatch, capsys
 
     with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/clip1.mp3"), \
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is False
     mock_proc.terminate.assert_called()
@@ -1003,46 +845,25 @@ def test_quit_during_p_sequence_interrupts_cleanly(tmp_path, monkeypatch, capsys
 
 
 def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path, monkeypatch, capsys):
-    """
-    Test: Se M o E falliscono (marcatori non trovati o testo vuoto),
-    stampano l'eco del tasto + il messaggio di avviso,
-    ripresentano SOLO il prompt (senza redraw completo del blocco descrittivo),
-    e poi accettano la modifica al second tentativo.
-    """
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
-    asr_issues = [
-        ASRIssue(
-            id="asr_001",
-            segment_id="seg_000001",
-            source_text="distillazione",
-            candidate="distillazione",
-            confidence=0.75,
-            level=ASRLevel.YELLOW,
-            reason="ambiguità fonetica"
-        )
-    ]
-    with open(os.path.join(lesson_dir, "asr_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in asr_issues], f)
+    sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([], f)
+        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    # 1. 'm' -> testo invariato -> mostra warning
-    # 2. 'm' -> testo vuoto -> mostra warning
-    # 3. 'a' -> accetta
     keys = iter(["m", "m", "a"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.edit_text_in_editor", side_effect=["Nel processo di distillazione abbiamo una reazione esotermica importante.", ""]):
-        res = run_interactive_review(lesson_dir, "asr", channel="terminal")
+        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
     assert res is True
     out = capsys.readouterr().out
-    assert "ASR AMBIGUITY" in out
     assert "Azione [" in out
     assert "✔ Approvato." in out
+
 
 

@@ -244,7 +244,7 @@ def test_audio_run_with_custom_dest_dir(tmp_path, capsys):
     assert state == WorkflowState.COMPLETED
 
     # Controllo validità delle fasi
-    for phase in ["prepare", "outline", "rewrite", "review_asr", "review_science", "build"]:
+    for phase in ["prepare", "outline", "rewrite", "review", "build"]:
         p_stat, reason = check_phase_status(expected_lesson_dir, phase)
         assert p_stat == PhaseStatus.VALID, f"Fase {phase} non è VALID: {reason}"
 

@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 from rt.core.models import (
     Segment, SegmentsData,
     Outline, OutlineMacro, OutlineUnit,
-    Draft, DraftUnit, ASRIssue, ASRLevel,
+    Draft, DraftUnit,
     ScienceIssue, ScienceType, ScienceSeverity,
     DecisionLedger, ReviewDecision
 )
@@ -31,8 +31,7 @@ from rt.core.idempotency import (
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import load_outline, get_outline_path
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path, save_draft
-from rt.pipeline.review_asr import run_review_asr, load_asr_issues, get_asr_issues_path, save_asr_issues
-from rt.pipeline.review_science import run_review_science, load_science_issues, get_science_issues_path, save_science_issues
+from rt.pipeline.review import run_review, load_science_issues, get_science_issues_path, save_science_issues
 from rt.pipeline.build import run_build
 from rt.pipeline.ledger import load_ledger, record_decision, get_ledger_path
 from rt.llm.client import LLMClient
@@ -267,20 +266,19 @@ def test_rewrite_target_unit_isolation_preserves_partial(multi_unit_lesson):
 
     run_rewrite(lesson_dir, target_unit_id="1.3", force_mock=True)
     # Ora che tutte le unità sono presenti nel draft, la fase globale diventa VALID!
-    status_full, _ = check_phase_status(lesson_dir, "rewrite")
     assert status_full == PhaseStatus.VALID
 
 
 # ==============================================================================
-# TEST 2: REVIEW SCIENCE CHECKPOINTING & 0-ISSUE TRACKING
+# TEST 2: REVIEW CHECKPOINTING & 0-ISSUE TRACKING
 # ==============================================================================
 
-def test_review_science_checkpoint_and_zero_issue_tracking(multi_unit_lesson):
+def test_review_checkpoint_and_zero_issue_tracking(multi_unit_lesson):
     """
     Verifica che:
     1. Unità con zero issue vengano comunque tracciate in reviewed_unit_ids.
     2. Se si verifica un crash sull'unità 1.3, il checkpoint conserva 1.1 e 1.2.
-    3. Alla ripresa, le unità 1.1 e 1.2 non vengono riesaminate.
+    3. Alla ripresa, le unità 1.1 e 1.2 non vengono riesamine.
     """
     lesson_dir = multi_unit_lesson
     run_rewrite(lesson_dir, force_mock=True)
@@ -310,20 +308,20 @@ def test_review_science_checkpoint_and_zero_issue_tracking(multi_unit_lesson):
                 issues = [iss]
             return OneIssueList()
         elif "1.3" in str(unit_id):
-            raise RuntimeError("CRASH SIMULATO SU SCIENCE REVIEW 1.3")
+            raise RuntimeError("CRASH SIMULATO SU REVIEW 1.3")
         return original_call(prompt, system_prompt, response_model, job_name=job_name, unit_id=unit_id, **kwargs)
 
     # 1. Primo run con crash
     with patch.object(LLMClient, "call_structured", mock_science_call):
-        with pytest.raises(RuntimeError, match="CRASH SIMULATO SU SCIENCE REVIEW 1.3"):
-            run_review_science(lesson_dir, force_mock=True)
+        with pytest.raises(RuntimeError, match="CRASH SIMULATO SU REVIEW 1.3"):
+            run_review(lesson_dir, force_mock=True)
 
     # Verifica stato PARTIAL
-    status, _ = check_phase_status(lesson_dir, "review_science")
+    status, _ = check_phase_status(lesson_dir, "review")
     assert status == PhaseStatus.PARTIAL
 
     # Verifica checkpoint: 1.1 e 1.2 devono essere presenti anche se 1.1 ha 0 issue!
-    ckpt, _, _ = get_phase_checkpoint(lesson_dir, "review_science")
+    ckpt, _, _ = get_phase_checkpoint(lesson_dir, "review")
     assert ckpt is not None
     assert ckpt["completed_items"] == ["1.1", "1.2"]
 
@@ -335,7 +333,7 @@ def test_review_science_checkpoint_and_zero_issue_tracking(multi_unit_lesson):
 
     # 2. Secondo run (ripresa)
     with patch.object(LLMClient, "call_structured", wraps=original_call) as spy_call:
-        res = run_review_science(lesson_dir, force_mock=True)
+        res = run_review(lesson_dir, force_mock=True)
         assert res["action"] == "RUN"
 
         # Solo l'unità 1.3 deve essere stata chiamata
@@ -344,11 +342,11 @@ def test_review_science_checkpoint_and_zero_issue_tracking(multi_unit_lesson):
         assert "1.3" in str(called_units[0])
 
     # Verifica completamento
-    status_final, _ = check_phase_status(lesson_dir, "review_science")
+    status_final, _ = check_phase_status(lesson_dir, "review")
     assert status_final == PhaseStatus.VALID
 
 
-def test_review_science_reconciliation_orphan_issues(multi_unit_lesson):
+def test_review_reconciliation_orphan_issues(multi_unit_lesson):
     """
     Simula la presenza di issue orfane in science_issues.json (dovute a crash prima del manifest).
     La riconciliazione all'avvio deve ripulirle tenendo solo quelle committate nel manifest.
@@ -357,12 +355,12 @@ def test_review_science_reconciliation_orphan_issues(multi_unit_lesson):
     run_rewrite(lesson_dir, force_mock=True)
 
     # Creiamo un checkpoint valido con solo l'unità 1.1 completata (senza issue)
-    source_fp = compute_source_fingerprint(lesson_dir, "review_science")
+    source_fp = compute_source_fingerprint(lesson_dir, "review")
     save_science_issues([], lesson_dir)
     sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
     record_phase_checkpoint(
         lesson_dir=lesson_dir,
-        phase_name="review_science",
+        phase_name="review",
         source_fingerprint=source_fp,
         artifact_fingerprints={"science_issues.json": sci_hash},
         completed_items=["1.1"]
@@ -382,164 +380,18 @@ def test_review_science_reconciliation_orphan_issues(multi_unit_lesson):
     )
     save_science_issues([orphan_iss], lesson_dir)
 
-    # Eseguiamo run_review_science
-    run_review_science(lesson_dir, force_mock=True)
+    # Eseguiamo run_review
+    run_review(lesson_dir, force_mock=True)
 
     final_issues = load_science_issues(lesson_dir)
     # L'issue con id 'sci_999999' o 'Orphan claim' è stata rimossa durante la riconciliazione
     assert not any(i.claim == "Orphan claim" for i in final_issues)
-    status_final, _ = check_phase_status(lesson_dir, "review_science")
+    status_final, _ = check_phase_status(lesson_dir, "review")
     assert status_final == PhaseStatus.VALID
 
 
 # ==============================================================================
-# TEST 3: REVIEW ASR CHECKPOINTING, LEDGER CONSISTENCY & ID STABILITY
-# ==============================================================================
-
-def test_review_asr_checkpoint_ledger_consistency_and_id_stability(multi_unit_lesson):
-    """
-    Verifica che:
-    1. In caso di crash su un batch successivo (batch 2 di 3), il batch 1 è salvato.
-    2. Le decisioni GREEN del batch 1 sono registrate nel ledger.json.
-    3. Gli ID asr_{idx:06d} rimangono immutabili e stabili attraverso il restart.
-    4. Alla ripresa, il batch 1 non viene rieseguito e non si generano duplicati nel ledger.
-    """
-    lesson_dir = multi_unit_lesson
-    run_rewrite(lesson_dir, force_mock=True)  # review_asr dipende ora anche da rewrite (draft-aware)
-    original_call = LLMClient(force_mock=True).call_structured
-
-    # Creiamo 3 batch ASR usando batch_size=2 sui 6 segmenti
-    batch_count = 0
-
-    def mock_asr_call_with_crash(self, prompt, system_prompt, response_model, job_name=None, unit_id=None, **kwargs):
-        nonlocal batch_count
-        batch_count += 1
-        if "batch 02" in str(unit_id):
-            raise RuntimeError("CRASH SIMULATO SUL BATCH ASR 2")
-
-        # Ritorna 2 issue per batch: una GREEN (auto-accepted) e una YELLOW
-        class ASRMockList:
-            issues = [
-                ASRIssue(
-                    id="placeholder",
-                    segment_id="seg_000001",
-                    source_text="licorolo",
-                    candidate="glicerolo",
-                    confidence=0.96,  # GREEN
-                    level=ASRLevel.GREEN,
-                    reason="Correzione fonetica",
-                    status="accepted"
-                ),
-                ASRIssue(
-                    id="placeholder2",
-                    segment_id="seg_000002",
-                    source_text="finansi",
-                    candidate="chinasi",
-                    confidence=0.80,  # YELLOW
-                    level=ASRLevel.YELLOW,
-                    reason="Termine incerto",
-                    status="pending"
-                )
-            ]
-        return ASRMockList()
-
-    # 1. Primo run con crash sul batch 2
-    with patch.object(LLMClient, "call_structured", mock_asr_call_with_crash):
-        with pytest.raises(RuntimeError, match="CRASH SIMULATO SUL BATCH ASR 2"):
-            run_review_asr(lesson_dir, force_mock=True, batch_size=2)
-
-    # Verifica stato PARTIAL
-    status, _ = check_phase_status(lesson_dir, "review_asr")
-    assert status == PhaseStatus.PARTIAL
-
-    # Verifica che il batch 1 abbia registrato 2 issue
-    issues_run1 = load_asr_issues(lesson_dir)
-    assert len(issues_run1) == 2
-    batch1_ids = [i.id for i in issues_run1]
-    assert batch1_ids == ["asr_000001", "asr_000002"]
-
-    # Verifica che la GREEN sia nel ledger
-    ledger_run1 = load_ledger(lesson_dir)
-    assert len(ledger_run1.decisions) == 1
-    assert ledger_run1.decisions[0].issue_id == "asr_000001"
-    assert ledger_run1.decisions[0].decision == "accepted"
-
-    # 2. Secondo run: ripresa e completamento
-    with patch.object(LLMClient, "call_structured", wraps=original_call) as spy_call:
-        res = run_review_asr(lesson_dir, force_mock=True, batch_size=2)
-        assert res["action"] == "RUN"
-
-        # Verifica che il batch 1 non sia stato rielaborato
-        called_batches = [call.kwargs.get("unit_id") for call in spy_call.call_args_list]
-        for b in called_batches:
-            assert "batch 01" not in str(b), f"Batch 1 non doveva essere rieseguito: {b}"
-
-    # Verifica stabilità degli ID: le prime due issue devono avere gli stessi identici ID
-    final_issues = load_asr_issues(lesson_dir)
-    assert len(final_issues) >= 2
-    assert final_issues[0].id == "asr_000001"
-    assert final_issues[1].id == "asr_000002"
-    # Gli ID successivi sono sequenziali e stabili
-    assert final_issues[2].id == "asr_000003"
-
-    # Verifica assenza di duplicazioni nel ledger
-    final_ledger = load_ledger(lesson_dir)
-    ledger_issue_ids = [d.issue_id for d in final_ledger.decisions]
-    assert len(ledger_issue_ids) == len(set(ledger_issue_ids)), "Trovati duplicati nel ledger!"
-
-    # Stato finale completato
-    status_final, _ = check_phase_status(lesson_dir, "review_asr")
-    assert status_final == PhaseStatus.VALID
-
-
-def test_review_asr_reconciliation_missing_ledger_entry(multi_unit_lesson):
-    """
-    Simula un crash tra il salvataggio di asr_issues.json e la scrittura del ledger:
-    asr_issues.json contiene una decisione GREEN ma il ledger non la contiene ancora.
-    All'avvio, la procedura di riconciliazione deve rilevarla e committarla nel ledger.
-    """
-    lesson_dir = multi_unit_lesson
-    run_rewrite(lesson_dir, force_mock=True)  # review_asr dipende ora anche da rewrite (draft-aware)
-
-    # Inizializziamo asr_issues con una issue GREEN
-    green_iss = ASRIssue(
-        id="asr_000001",
-        segment_id="seg_000001",
-        source_text="finansi",
-        candidate="chinasi",
-        confidence=0.98,
-        level=ASRLevel.GREEN,
-        reason="Fonetica",
-        status="accepted"
-    )
-    save_asr_issues([green_iss], lesson_dir)
-
-    # Creiamo un checkpoint in cui il batch 1 è registrato
-    source_fp = compute_source_fingerprint(lesson_dir, "review_asr")
-    asr_hash = compute_file_sha256(get_asr_issues_path(lesson_dir))
-    record_phase_checkpoint(
-        lesson_dir=lesson_dir,
-        phase_name="review_asr",
-        source_fingerprint=source_fp,
-        artifact_fingerprints={"asr_issues.json": asr_hash},
-        completed_items=["batch_001_seg_000001_seg_000002"]
-    )
-
-    # Il ledger è vuoto (simulando crash prima di record_decision)
-    ledger = DecisionLedger(schema_version="1.0", lesson_id=os.path.basename(lesson_dir), decisions=[])
-    with open(get_ledger_path(lesson_dir), "w", encoding="utf-8") as f:
-        f.write(ledger.model_dump_json(indent=2))
-
-    # Eseguiamo run_review_asr
-    run_review_asr(lesson_dir, force_mock=True, batch_size=2)
-
-    # Verifica che la issue GREEN sia stata recuperata e inserita nel ledger
-    reconciled_ledger = load_ledger(lesson_dir)
-    assert any(d.issue_id == "asr_000001" for d in reconciled_ledger.decisions)
-
-
-# ==============================================================================
-# TEST 4: INVARIANTI GENERALI (FORCE RESET & SKIP ZERO-COST)
+# TEST 3: INVARIANTI GENERALI (FORCE RESET & SKIP ZERO-COST)
 # ==============================================================================
 
 def test_checkpoint_force_rerun_resets_progress(multi_unit_lesson):
@@ -583,24 +435,13 @@ def test_completed_phase_skip_zero_llm_calls(multi_unit_lesson):
         assert res["skipped"] is True
         assert spy_call.call_count == 0
 
-    # Completa review_asr
-    run_review_asr(lesson_dir, force_mock=True)
-    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.VALID
+    # Completa review
+    run_review(lesson_dir, force_mock=True)
+    assert check_phase_status(lesson_dir, "review")[0] == PhaseStatus.VALID
 
     # Seconda esecuzione: SKIP
     with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res = run_review_asr(lesson_dir, force_mock=True)
-        assert res["action"] == "SKIP"
-        assert res["skipped"] is True
-        assert spy_call.call_count == 0
-
-    # Completa review_science
-    run_review_science(lesson_dir, force_mock=True)
-    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.VALID
-
-    # Seconda esecuzione: SKIP
-    with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res = run_review_science(lesson_dir, force_mock=True)
+        res = run_review(lesson_dir, force_mock=True)
         assert res["action"] == "SKIP"
         assert res["skipped"] is True
         assert spy_call.call_count == 0

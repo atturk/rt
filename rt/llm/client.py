@@ -1080,7 +1080,6 @@ class LLMClient:
         from rt.core.models import (
             Outline, OutlineMacro, OutlineUnit,
             Draft, DraftUnit,
-            ASRIssue, ASRLevel,
             ScienceIssue,
             RecallQuestion,
         )
@@ -1150,47 +1149,6 @@ class LLMClient:
                 content="La trattazione scientifica si apre con l'analisi sistematica dei meccanismi biochimici fondamentali."
             )
             return unit_data  # type: ignore
-
-        elif model_name == "ASRIssueList" or "ASRIssue" in model_name:
-            class ASRIssueList(BaseModel):
-                issues: list[ASRIssue] = []
-            self._mock_issue_calls["review_asr"] = self._mock_issue_calls.get("review_asr", 0) + 1
-            if self._mock_issue_calls["review_asr"] > 1:
-                return ASRIssueList(issues=[])  # type: ignore
-
-            seg_matches = re.findall(r"seg_\d{6}", prompt)
-            if not seg_matches:
-                seg_matches = ["seg_000001"]
-
-            # Mix di GREEN (auto-applicate), YELLOW e RED (10 issue totali, solo alla prima chiamata)
-            asr_specs = [
-                (ASRLevel.GREEN, 0.98, "accepted"),
-                (ASRLevel.YELLOW, 0.85, "pending"),
-                (ASRLevel.RED, 0.65, "pending"),
-                (ASRLevel.GREEN, 0.95, "accepted"),
-                (ASRLevel.YELLOW, 0.82, "pending"),
-                (ASRLevel.RED, 0.60, "pending"),
-                (ASRLevel.GREEN, 0.92, "accepted"),
-                (ASRLevel.YELLOW, 0.78, "pending"),
-                (ASRLevel.RED, 0.55, "pending"),
-                (ASRLevel.YELLOW, 0.80, "pending"),
-            ]
-            mock_issues = []
-            for i, (lvl, conf, st) in enumerate(asr_specs, start=1):
-                seg_id = seg_matches[(i - 1) % len(seg_matches)]
-                mock_issues.append(
-                    ASRIssue(
-                        id=f"asr_{i:06d}",
-                        segment_id=seg_id,
-                        source_text=f"[MOCK] trascrizione_errata_{i}",
-                        candidate=f"[MOCK] Correzione Trascrizione {i}",
-                        confidence=conf,
-                        level=lvl,
-                        reason=f"[MOCK] Motivazione fonetica per anomalia ASR #{i} ({lvl.value})",
-                        status=st
-                    )
-                )
-            return ASRIssueList(issues=mock_issues)  # type: ignore
 
         elif model_name == "ScienceIssueList" or "ScienceIssue" in model_name:
             from rt.core.models import ScienceType, ScienceSeverity

@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 from rt.core.models import (
     Segment, SegmentsData,
     Outline, OutlineMacro, OutlineUnit,
-    Draft, DraftUnit, ASRIssue, ASRLevel,
+    Draft, DraftUnit,
     ScienceIssue, ScienceType, ScienceSeverity,
     DecisionLedger, ReviewDecision
 )
@@ -32,8 +32,7 @@ from rt.core.idempotency import (
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, run_outline_revision, load_outline, get_outline_path
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
-from rt.pipeline.review_asr import run_review_asr, load_asr_issues, get_asr_issues_path
-from rt.pipeline.review_science import run_review_science, load_science_issues, get_science_issues_path
+from rt.pipeline.review import run_review, load_science_issues, get_science_issues_path
 from rt.pipeline.build import run_build
 from rt.pipeline.ledger import load_ledger, record_decision
 from rt.llm.client import LLMClient
@@ -87,7 +86,7 @@ La via prosegue con la beta-ossidazione mitocondriale degli acidi grassi.
 
 
 # ==============================================================================
-# TEST 1: TEST ECONOMICO ESPLICITO SUI 4 JOB LLM (Run1 > 0, Run2 = 0, Force > 0)
+# TEST 1: TEST ECONOMICO ESPLICITO SUI 3 JOB LLM (Run1 > 0, Run2 = 0, Force > 0)
 # ==============================================================================
 
 def test_economic_outline_phase(synthetic_lesson):
@@ -177,8 +176,8 @@ def test_economic_rewrite_phase(synthetic_lesson):
         assert len(GLOBAL_TELEMETRY.get_all(job="rewrite")) == call_count_first_run * 2
 
 
-def test_economic_review_asr_phase(synthetic_lesson):
-    """Verifica costo e chiamate su review-asr: 1a -> LLM > 0; 2a -> 0 LLM (SKIP); --force -> LLM > 0."""
+def test_economic_review_phase(synthetic_lesson):
+    """Verifica costo e chiamate su review: 1a -> LLM > 0; 2a -> 0 LLM (SKIP); --force -> LLM > 0."""
     lesson_dir = synthetic_lesson
     run_prepare(lesson_dir)
     run_outline(lesson_dir, force_mock=True)
@@ -188,56 +187,23 @@ def test_economic_review_asr_phase(synthetic_lesson):
 
     # 1. Prima esecuzione
     with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res1 = run_review_asr(lesson_dir, force_mock=True)
+        res1 = run_review(lesson_dir, force_mock=True)
         assert res1["action"] == "RUN"
         assert res1["skipped"] is False
         assert spy_call.call_count > 0
-        recorded_calls = len(GLOBAL_TELEMETRY.get_all(job="review_asr"))
+        recorded_calls = len(GLOBAL_TELEMETRY.get_all(job="review"))
 
     # 2. Seconda esecuzione
     with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res2 = run_review_asr(lesson_dir, force_mock=True)
+        res2 = run_review(lesson_dir, force_mock=True)
         assert res2["action"] == "SKIP"
         assert res2["skipped"] is True
         assert spy_call.call_count == 0
-        assert len(GLOBAL_TELEMETRY.get_all(job="review_asr")) == recorded_calls
+        assert len(GLOBAL_TELEMETRY.get_all(job="review")) == recorded_calls
 
     # 3. Force
     with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res3 = run_review_asr(lesson_dir, force=True, force_mock=True)
-        assert res3["action"] == "FORCE"
-        assert res3["skipped"] is False
-        assert spy_call.call_count > 0
-
-
-def test_economic_review_science_phase(synthetic_lesson):
-    """Verifica costo e chiamate su review-science: 1a -> LLM > 0; 2a -> 0 LLM (SKIP); --force -> LLM > 0."""
-    lesson_dir = synthetic_lesson
-    run_prepare(lesson_dir)
-    run_outline(lesson_dir, force_mock=True)
-    run_rewrite(lesson_dir, force_mock=True)
-
-    GLOBAL_TELEMETRY.clear()
-
-    # 1. Prima esecuzione
-    with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res1 = run_review_science(lesson_dir, force_mock=True)
-        assert res1["action"] == "RUN"
-        assert res1["skipped"] is False
-        assert spy_call.call_count > 0
-        recorded_calls = len(GLOBAL_TELEMETRY.get_all(job="review_science"))
-
-    # 2. Seconda esecuzione
-    with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res2 = run_review_science(lesson_dir, force_mock=True)
-        assert res2["action"] == "SKIP"
-        assert res2["skipped"] is True
-        assert spy_call.call_count == 0
-        assert len(GLOBAL_TELEMETRY.get_all(job="review_science")) == recorded_calls
-
-    # 3. Force
-    with patch.object(LLMClient, "call_structured", wraps=LLMClient(force_mock=True).call_structured) as spy_call:
-        res3 = run_review_science(lesson_dir, force=True, force_mock=True)
+        res3 = run_review(lesson_dir, force=True, force_mock=True)
         assert res3["action"] == "FORCE"
         assert res3["skipped"] is False
         assert spy_call.call_count > 0
@@ -334,18 +300,17 @@ def test_corrupt_artifact_triggers_regeneration(synthetic_lesson):
 # ==============================================================================
 
 def test_force_rerun_and_selective_downstream_invalidation(synthetic_lesson):
-    """Riesecuzione forzata di rewrite invalida science review, ASR review (draft-aware) e build,
+    """Riesecuzione forzata di rewrite invalida review e build,
     senza toccare prepare o outline."""
     lesson_dir = synthetic_lesson
     run_prepare(lesson_dir)
     run_outline(lesson_dir, force_mock=True)
     run_rewrite(lesson_dir, force_mock=True)
-    run_review_asr(lesson_dir, force_mock=True)
-    run_review_science(lesson_dir, force_mock=True)
+    run_review(lesson_dir, force_mock=True)
     run_build(lesson_dir)
 
     # Tutte le fasi devono essere VALID
-    for ph in ["prepare", "outline", "rewrite", "review_asr", "review_science", "build"]:
+    for ph in ["prepare", "outline", "rewrite", "review", "build"]:
         st, _ = check_phase_status(lesson_dir, ph)
         assert st == PhaseStatus.VALID, f"Fase {ph} doveva essere VALID!"
 
@@ -361,10 +326,8 @@ def test_force_rerun_and_selective_downstream_invalidation(synthetic_lesson):
     # - rewrite: è tornato VALID (appena rigenerato)
     assert check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID
 
-    # - review_asr, review_science e build: devono essere STALE! (review_asr dipende ora
-    #   anche dal draft, non solo dalla trascrizione grezza)
-    assert check_phase_status(lesson_dir, "review_asr")[0] == PhaseStatus.STALE
-    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.STALE
+    # - review e build: devono essere STALE!
+    assert check_phase_status(lesson_dir, "review")[0] == PhaseStatus.STALE
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.STALE
 
 
@@ -436,12 +399,7 @@ def test_partial_rewrite_single_unit(synthetic_lesson):
     # L'unità 1.2 è rimasta TOTALMENTE INVARIATA
     assert draft_after.units[1].content == u2_init_content
 
-    # review_science e build non sono mai stati eseguiti in questo test (nessuna chiamata a
-    # run_review_science()/run_build() sopra): non c'è nulla da invalidare, quindi restano
-    # MISSING (mai generati), non STALE — semantica corretta dal disaccoppiamento di
-    # review_asr/review_science dalla run di default (mark_downstream_stale() non marca più
-    # STALE una fase che non ha mai avuto un record nel manifest, vedi rt/core/idempotency.py).
-    assert check_phase_status(lesson_dir, "review_science")[0] == PhaseStatus.MISSING
+    assert check_phase_status(lesson_dir, "review")[0] == PhaseStatus.MISSING
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.MISSING
 
 
@@ -567,16 +525,15 @@ def test_content_hash_invalidation_and_provenance(synthetic_lesson):
     run_outline(lesson_dir, force_mock=True)
     run_rewrite(lesson_dir, force_mock=True)
 
-    # Test rerun di rewrite con --force prima di review_asr (stesso input -> draft.json identico)
+    # Test rerun di rewrite con --force prima di review (stesso input -> draft.json identico)
     run_rewrite(lesson_dir, force=True, force_mock=True)
 
-    run_review_asr(lesson_dir, force_mock=True)
-    run_review_science(lesson_dir, force_mock=True)
+    run_review(lesson_dir, force_mock=True)
     run_build(lesson_dir)
 
     # Verifica provenance nei phase_records
     manifest = load_manifest(lesson_dir)
-    for phase in ["outline", "rewrite", "review_asr", "review_science"]:
+    for phase in ["outline", "rewrite", "review"]:
         rec = manifest.phase_records.get(phase, {})
         assert "provider" in rec, f"Fase {phase} non contiene 'provider' nei metadata"
         assert "model" in rec, f"Fase {phase} non contiene 'model' nei metadata"
@@ -585,12 +542,13 @@ def test_content_hash_invalidation_and_provenance(synthetic_lesson):
     st_build, _ = check_phase_status(lesson_dir, "build")
     assert st_build == PhaseStatus.VALID
 
-    # Rerun con force=True su review_science (produce science_issues.json identico e non tocca ledger)
-    run_review_science(lesson_dir, force=True, force_mock=True)
+    # Rerun con force=True su review (produce science_issues.json identico e non tocca ledger)
+    run_review(lesson_dir, force=True, force_mock=True)
 
     # Poiché science_issues.json non è cambiato, build non deve essere STALE
     st_build_after, reason_build = check_phase_status(lesson_dir, "build")
     assert st_build_after == PhaseStatus.VALID, f"Expected VALID but got {st_build_after}: {reason_build}"
+
 
 
 

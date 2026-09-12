@@ -8,7 +8,7 @@ Verifica della classificazione e del grounding conservativo per il Science Criti
 """
 
 import pytest
-from rt.pipeline.review_science import disambiguate_science_issue, check_text_grounding_score
+from rt.pipeline.review import disambiguate_science_issue, check_text_grounding_score
 from rt.core.models import ScienceType
 
 
@@ -129,7 +129,7 @@ def test_paraphrase_without_exact_match_maintains_err_docente():
 
 
 def test_localize_claim_segment():
-    from rt.pipeline.review_science import _localize_claim_segment
+    from rt.pipeline.review import _localize_claim_segment
     from rt.core.models import Segment, DraftUnit
 
     seg1 = Segment(id="seg_000001", index=1, start_seconds=0.0, end_seconds=60.0, start_formatted="00:00", end_formatted="01:00", text_raw="Primo segmento.")

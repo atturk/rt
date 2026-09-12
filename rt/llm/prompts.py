@@ -1,20 +1,15 @@
 """
 rt.llm.prompts
-Prompt specializzati, istruzioni di sistema e contratti per i 4 job cognitivi LLM:
+Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 1. Outline (struttura gerarchica basata su segment_id)
 2. Rewrite (prosa accademica fluida con memoria contestuale e provenance)
-3. ASR Review (analisi fonetica e confidence gating GREEN/YELLOW/RED)
-4. Science Review (critic indipendente per docente, ricostruzione e plausibilità)
+3. Science Review (critic indipendente per docente, ricostruzione e plausibilità)
 """
 
 import json
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
-from rt.core.models import ASRIssue, ScienceIssue
-
-
-class ASRIssueList(BaseModel):
-    issues: List[ASRIssue] = []
+from rt.core.models import ScienceIssue
 
 
 class ScienceIssueList(BaseModel):
@@ -154,57 +149,8 @@ Genera l'oggetto JSON conforme allo schema DraftUnit con:
 - "content": "<prosa accademica rielaborata>"
 """
 
-
 # ----------------------------------------------------------------------
-# 3. ASR REVIEW JOB
-# ----------------------------------------------------------------------
-
-ASR_REVIEW_SYSTEM_PROMPT = """Sei un esperto di terminologia biomedica incaricato di individuare correzioni testuali plausibili in trascrizioni ASR di lezioni universitarie, basandoti sul contesto linguistico e scientifico del testo (non hai accesso all'audio originale).
-Il tuo compito è individuare e correggere ESCLUSIVAMENTE i termini tecnici, scientifici, biochimici, medici o enzimatici alterati o stravolti foneticamente dall'ASR (es. enzimi, metaboliti, molecole, vie metaboliche, cofattori, strutture biologiche).
-
-Riceverai DUE testi per lo stesso intervallo della lezione: la TRASCRIZIONE GREZZA ASR (quello che il riconoscimento vocale ha letteralmente sentito) e il DRAFT RIELABORATO corrispondente (quello che un altro modello ha già riscritto a partire dalla stessa trascrizione). Il modello di rielaborazione può aver già corretto, in tutto o in parte, alcune ambiguità fonetiche per conto proprio — oppure può averle lasciate intatte, o persino sostituite con un termine diverso ma comunque sbagliato.
-
-IMPORTANTE: il tuo compito riguarda SEMPRE E SOLO il testo COSÌ COME COMPARE ORA NEL DRAFT, non la trascrizione grezza in sé — è il draft che verrà corretto in base alle tue segnalazioni, non la trascrizione.
-- Se il draft ha già la forma corretta del termine tecnico (indipendentemente da cosa dicesse la trascrizione grezza), NON generare alcuna issue per quel punto: non c'è nulla da correggere.
-- Se il draft riporta ancora, verbatim o quasi, il termine fonéticamente alterato della trascrizione grezza, genera un'issue.
-- "source_text" deve essere il testo ESATTO così come compare ORA nel draft (non nella trascrizione grezza) — è il testo che verrà cercato e sostituito.
-
-REGOLE CATEGORICHE DI FILTRO (COSA IGNORARE):
-1. NON correggere disfluenze, intercalari o imperfezioni grammaticali del parlato comune (es. "vendono" vs "vengono", "del sangue" vs "nel sangue", ripetizioni o frasi spezzate). Queste vengono sanate automaticamente dalla fase di riscrittura accademica (Rewrite) — se il draft le ha già sanate, non c'è nulla da segnalare; se non l'ha fatto, non è comunque compito tuo.
-2. NON tentare di decifrare o tradurre allucinazioni ASR in lingua straniera o inglese dovute a pause o rumori di fondo (es. frasi sconnesse in inglese o intere righe prive di senso). Ignorale completamente.
-3. NON generare issue a raffica per frasi debolmente comprese: segnala SOLO termini dove vi sia un'evidente base fonetica o biochimica per la correzione.
-
-LIVELLI DI CONFIDENCE GATING:
-- GREEN: confidenza >= 0.95. Sei praticamente certo che il termine nel draft sia ancora errato e che la correzione proposta sia quella giusta (es. "glucosio se fosfato" -> "glucosio-6-fosfato", "ciclo di CRESS" -> "ciclo di Krebs").
-- YELLOW: confidenza 0.75 - 0.94. Ricostruzione scientifica altamente plausibile e coerente con il contesto biologico (es. "licorolo finansi" -> "glicerolo chinasi").
-- RED: confidenza < 0.75. Termini scientifici o dosaggi ambigui ad alto rischio dove il contesto non permette una risoluzione certa.
-
-Per ogni anomalia tecnica rilevata, specifica:
-- "id": ID progressivo (es. "asr_000001")
-- "segment_id": ID del segmento ASR corrispondente (per il collegamento all'unità didattica)
-- "source_text": testo ESATTO come compare ORA nel draft, breve frammento (non intere frasi)
-- "candidate": correzione scientifica proposta
-- "confidence": valore numerico 0.0 - 1.0
-- "level": "GREEN" | "YELLOW" | "RED"
-- "reason": breve spiegazione sintetica (max 1 riga)"""
-
-
-def build_asr_review_user_prompt(segments_with_context: str, draft_context: str = "") -> str:
-    draft_block = (
-        f"\n\nDRAFT RIELABORATO CORRISPONDENTE (unità didattiche che coprono questi segmenti):\n{draft_context}"
-        if draft_context else
-        "\n\n(Nessun draft disponibile per questo intervallo: valuta solo la trascrizione grezza.)"
-    )
-    return f"""Analizza i seguenti segmenti ASR (trascrizione grezza) ed estrai le sole anomalie fonetiche relative a termini biomedici e scientifici ANCORA PRESENTI nel draft rielaborato:
-
-TRASCRIZIONE GREZZA ASR:
-{segments_with_context}{draft_block}
-
-Restituisci un oggetto JSON conforme a ASRIssueList contenente la lista "issues" (lasciare la lista vuota se non sono presenti anomalie su termini tecnici ancora presenti nel draft)."""
-
-
-# ----------------------------------------------------------------------
-# 4. SCIENCE REVIEW JOB (SCIENCE CRITIC)
+# 3. SCIENCE REVIEW JOB (SCIENCE CRITIC)
 # ----------------------------------------------------------------------
 
 SCIENCE_REVIEW_SYSTEM_PROMPT = """Sei un revisore scientifico avversario indipendente di livello accademico.

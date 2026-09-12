@@ -1,7 +1,7 @@
 """
 Integration test per l'intera pipeline RT end-to-end.
 Simula:
-ASR source (JSON / MD) -> prepare -> outline -> rewrite -> review_asr -> review_science -> review_ledger -> build
+ASR source (JSON / MD) -> prepare -> outline -> rewrite -> review -> review_ledger -> build
 Verifica conformità totale dei timestamp, provenance e assenza di regressioni.
 """
 
@@ -11,8 +11,7 @@ import pytest
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
 from rt.pipeline.rewrite import run_rewrite, load_draft
-from rt.pipeline.review_asr import run_review_asr, load_asr_issues
-from rt.pipeline.review_science import run_review_science, load_science_issues
+from rt.pipeline.review import run_review, load_science_issues
 from rt.pipeline.ledger import record_decision, load_ledger
 from rt.pipeline.build import run_build
 from rt.core.segments import load_segments_json
@@ -102,20 +101,15 @@ def test_full_pipeline_end_to_end(temp_lesson_dir):
     assert len(draft.units[0].source_segment_ids) > 0
     assert "seg_000001" in draft.units[0].source_segment_ids
     
-    # 4. ASR REVIEW
-    asr_res = run_review_asr(lesson_dir, force_mock=True)
-    assert asr_res["status"] == "asr_review_completed"
-    assert os.path.isfile(asr_res["issues_path"])
+    # 4. REVIEW
+    rev_res = run_review(lesson_dir, force_mock=True)
+    assert rev_res["status"] == "review_completed"
+    assert os.path.isfile(rev_res["issues_path"])
     
-    # 5. SCIENCE REVIEW
-    sci_res = run_review_science(lesson_dir, force_mock=True)
-    assert sci_res["status"] == "science_review_completed"
-    assert os.path.isfile(sci_res["issues_path"])
-    
-    # 6. DECISION LEDGER (simula approvazione umana)
+    # 5. DECISION LEDGER (simula approvazione umana)
     record_decision(
         lesson_dir=lesson_dir,
-        issue_id="asr_000001",
+        issue_id="sci_000001",
         decision="accepted",
         resolved_text="glicerolo chinasi",
         resolved_by="human_test"
@@ -123,25 +117,25 @@ def test_full_pipeline_end_to_end(temp_lesson_dir):
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) >= 1
     
-    # 7. BUILD (deterministico)
+    # 6. BUILD (deterministico)
     build_res = run_build(lesson_dir, rename_folder=False)
     assert build_res["status"] == "completed"
     assert os.path.isfile(build_res["pre_elaborato"])
     assert os.path.isfile(build_res["rielaborato"])
-    assert os.path.isfile(build_res["revisioni_asr"])
     assert os.path.isfile(build_res["errori_concettuali"])
     assert os.path.isfile(build_res["problemi_scientifici"])
     
-    # 8. VERIFICA RIGOROSA DEL REQUISITO TIMESTAMP SUI FILE GENERATI
+    # 7. VERIFICA RIGOROSA DEL REQUISITO TIMESTAMP SUI FILE GENERATI
     with open(build_res["rielaborato"], "r", encoding="utf-8") as f:
         rielab_text = f.read()
         
     expected_ts = format_timestamp(segments_data.segments[0].start_seconds) # "00:02"
     assert f"### {unit1.id} {unit1.title}\n{expected_ts}" in rielab_text
     
-    # 9. IDEMPOTENZA DEL BUILD: una seconda esecuzione non corrompe nulla
+    # 8. IDEMPOTENZA DEL BUILD: una seconda esecuzione non corrompe nulla
     build_res_2 = run_build(lesson_dir, rename_folder=False)
     assert build_res_2["status"] == "completed"
     with open(build_res["rielaborato"], "r", encoding="utf-8") as f:
         rielab_text_2 = f.read()
     assert rielab_text == rielab_text_2
+
