@@ -10,9 +10,9 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 - **Timestamp Deterministici e Tracciabili**: Nessun timestamp arbitrario generato dall'LLM. Tutti i timecode nel Markdown derivano rigorosamente dai segmenti audio ASR (`seg_ID → start_seconds → MM:SS`).
 - **Provenienza Completa**: Ogni paragrafo rielaborato è collegato in modo bidirezionale ai segmenti sorgente (`source_segment_ids`).
-- **Routing Engine Multi-Provider & Dual-Key**:
-  - Supporto per DeepSeek, OpenRouter, Google Gemini Dual-Key (`google_1`, `google_2`) e Mock deterministico.
-  - Round-Robin deterministico e thread-safe tra Primary e Secondary.
+- **Routing Engine Multi-Provider & Round-Robin N-way**:
+  - Supporto per DeepSeek, OpenRouter, Google Gemini (con un numero arbitrario di account/chiavi, es. `google_1`...`google_9`) e Mock deterministico.
+  - Round-Robin deterministico e thread-safe su un numero arbitrario di route configurate (non solo 2).
   - Error-Aware Failover mirato per classe di fallimento (`timeout`, `rate_limit`, `safety`, `auth`, `generic`).
   - Loop Protection rigida (`visited_routes`) e Hard Cap globale (`max_attempts`).
   - Output Explosion Guard (limite rigido caratteri in streaming SSE).
@@ -93,6 +93,43 @@ Per testare offline senza consumare crediti API:
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi
 ./bin/rt status "cartella_lezione"            # Mostra lo stato di avanzamento
 ```
+
+### 4. Notifiche e Comandi via Telegram (opzionale)
+
+Le funzionalità Telegram (routing per topic in base alla materia, notifica di build completata,
+`/list`, `/recall <query>`, active recall via bot) richiedono un **processo persistente** distinto
+dalla pipeline `rt run`:
+
+```bash
+./bin/rt telegram-daemon
+```
+
+Senza questo processo in esecuzione continua, nessuna funzionalità Telegram funziona — anche se
+`config/general.yaml`/`.env` sono configurati correttamente (verifica prima con `./bin/rt config`,
+vedi sopra). Va lasciato attivo in un terminale/tab dedicato, con `tmux`/`screen`, oppure fatto
+ripartire automaticamente ad ogni accesso con un LaunchAgent macOS
+(`~/Library/LaunchAgents/com.rt.telegram-daemon.plist`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.rt.telegram-daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/percorso/assoluto/rt/bin/rt</string>
+        <string>telegram-daemon</string>
+    </array>
+    <key>WorkingDirectory</key><string>/percorso/assoluto/rt</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>/percorso/assoluto/rt/.rt_telegram/daemon.log</string>
+    <key>StandardErrorPath</key><string>/percorso/assoluto/rt/.rt_telegram/daemon.err.log</string>
+</dict>
+</plist>
+```
+poi caricalo con `launchctl load ~/Library/LaunchAgents/com.rt.telegram-daemon.plist`.
 
 ---
 
