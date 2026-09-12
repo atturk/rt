@@ -42,7 +42,12 @@ cleanup() {
         kill "$model_pid" 2>/dev/null || true
     fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# Un trap su INT/TERM che non chiama exit lascia bash RIPRENDERE lo script dopo
+# l'handler invece di interromperlo (comportamento bash documentato) — senza
+# questo exit esplicito, Ctrl+C durante l'attesa del download ucciderebbe solo
+# il download in background e l'installazione proseguirebbe come se nulla fosse.
+trap 'cleanup; echo ""; echo "${YELLOW}⚠️  Installazione interrotta dall'"'"'utente.${RESET}"; exit 130' INT TERM
 
 brew_install_quiet() {
     local pkg="$1"
