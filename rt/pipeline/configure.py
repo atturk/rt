@@ -14,7 +14,7 @@ import shutil
 import json
 import re
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Iterable, Set
 import yaml
 import requests
 import questionary
@@ -116,109 +116,138 @@ def _resolve_or_bootstrap_config_paths() -> Tuple[str, str]:
     return root_config, root_env
 
 
-def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Optional[str], Optional[str], List[str]]:
+def _load_model_profiles(general_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """
-    Guida l'utente nella configurazione del provider LLM principale, base_url, API key e modello,
-    aggiornando .env, config/general.yaml e tutti i file <job>.yaml.
-    Restituisce (provider, model, list_updated_jobs).
+    Legge general_data.get("model_profiles", {}), normalizza ignorando voci malformate.
     """
-    print("\n------------------------------------------------------------")
-    print("🤖 1. Configurazione Provider LLM principale")
-    print("------------------------------------------------------------")
+    profiles_raw = general_data.get("model_profiles")
+    if not isinstance(profiles_raw, dict):
+        return {}
 
-    # 1. Recupero valori correnti per pre-compilazione default
-    curr_provider = "deepseek"
-    curr_model = ""
-    curr_base_url = ""
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for name, p_data in profiles_raw.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if not isinstance(p_data, dict):
+            continue
+        provider = p_data.get("provider")
+        routes = p_data.get("routes")
+        if not isinstance(provider, str) or not provider.strip():
+            continue
+        if not isinstance(routes, list):
+            continue
 
+        valid_routes: List[Dict[str, Any]] = []
+        for r in routes:
+            if isinstance(r, dict) and "credential" in r and "model" in r:
+                valid_routes.append({
+                    "credential": str(r["credential"]),
+                    "model": str(r["model"]),
+                })
+
+        normalized[name.strip()] = {
+            "provider": provider.strip(),
+            "base_url": p_data.get("base_url") if isinstance(p_data.get("base_url"), str) and p_data.get("base_url").strip() else None,
+            "round_robin": bool(p_data.get("round_robin", False)),
+            "routes": valid_routes,
+        }
+    return normalized
+
+
+def _save_model_profiles(general_data: Dict[str, Any], profiles: Dict[str, Dict[str, Any]]) -> None:
+    """
+    Scrive general_data["model_profiles"] = profiles.
+    """
+    general_data["model_profiles"] = profiles
+
+
+def _suggest_profile_name(provider: str, model: str, existing_names: Iterable[str]) -> str:
+    """
+    Suggerisce un nome di profilo univoco sanitizzato (es. provider_model).
+    Se esiste già in existing_names, aggiunge _2, _3, ecc.
+    """
+    existing_set = set(existing_names) if existing_names else set()
+    raw = f"{provider}_{model}".lower()
+    sanitized = re.sub(r"[^a-z0-9_]+", "_", raw)
+    sanitized = re.sub(r"_+", "_", sanitized).strip("_")
+    if not sanitized:
+        sanitized = "profilo"
+
+    if sanitized not in existing_set:
+        return sanitized
+
+    idx = 2
+    while f"{sanitized}_{idx}" in existing_set:
+        idx += 1
+    return f"{sanitized}_{idx}"
+
+
+def _create_new_model_profile(
+    config_dir: str,
+    env_path: str,
+    general_data: Dict[str, Any],
+    default_name_hint: Optional[str] = None
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Contiene la logica interattiva per raccogliere provider, base_url, chiavi (singola o round-robin),
+    recupero modelli, pricing inline, e salvataggio credenziali, chiedendo un nome per il nuovo profilo.
+    Restituisce (profile_name, profile_dict).
+    """
     general_yaml_path = os.path.join(config_dir, "general.yaml")
-    general_data: Dict[str, Any] = {}
-    if os.path.isfile(general_yaml_path):
-        try:
-            with open(general_yaml_path, "r", encoding="utf-8") as f:
-                loaded = yaml.safe_load(f)
-                if isinstance(loaded, dict):
-                    general_data = loaded
-        except Exception:
-            pass
 
-    job_paths = find_job_yaml_paths(config_dir)
-    if job_paths:
-        first_job_path = next(iter(job_paths.values()))
-        try:
-            with open(first_job_path, "r", encoding="utf-8") as f:
-                jdata = yaml.safe_load(f)
-                if isinstance(jdata, dict) and "primary" in jdata and isinstance(jdata["primary"], dict):
-                    prim = jdata["primary"]
-                    if prim.get("provider"):
-                        curr_provider = prim["provider"]
-                    if prim.get("model"):
-                        curr_model = prim["model"]
-                    if prim.get("base_url"):
-                        curr_base_url = prim["base_url"]
-        except Exception:
-            pass
-
-    # 2. Selezione Provider
+    # 1. Selezione Provider
     allowed_providers = ["deepseek", "openrouter", "google", "openai_compatible"]
-    default_p = curr_provider if curr_provider in allowed_providers else "deepseek"
     provider = questionary.select(
-        "Provider LLM principale:",
+        "Provider LLM:",
         choices=allowed_providers,
-        default=default_p
+        default="deepseek"
     ).ask()
 
     if not provider:
-        print("Operazione annullata dall'utente.")
-        return None, None, []
+        return "", {}
 
-    # 3. Base URL
+    # 2. Base URL
     default_base = KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, "")
-    init_base = curr_base_url or default_base
 
     if provider == "openai_compatible":
         base_url = ""
         while not base_url:
             base_url = questionary.text(
                 "Base URL (es. https://api.together.xyz/v1 - obbligatorio):",
-                default=init_base
+                default=default_base
             ).ask()
             if base_url is None:
-                print("Operazione annullata dall'utente.")
-                return None, None, []
+                return "", {}
             base_url = base_url.strip()
             if not base_url:
                 print("⚠️  Il provider 'openai_compatible' richiede un Base URL non vuoto.")
     else:
         base_url_input = questionary.text(
             f"Base URL per {provider} (lascia vuoto per default '{default_base}'):",
-            default=init_base
+            default=""
         ).ask()
         if base_url_input is None:
-            print("Operazione annullata dall'utente.")
-            return None, None, []
+            return "", {}
         base_url_input = base_url_input.strip()
         if not base_url_input or base_url_input == default_base:
             base_url = None
         else:
             base_url = base_url_input
 
-    # 4. Round-Robin Multi-chiave o Singola API Key
+    # 3. Round-Robin Multi-chiave o Singola API Key
     multi_input = questionary.confirm(
         f"Vuoi configurare più chiavi API per {provider} in round-robin (per distribuire le richieste su più account/quote)?",
         default=False
     ).ask()
 
     if multi_input is None:
-        print("Operazione annullata dall'utente.")
-        return None, None, []
+        return "", {}
 
     is_multi = (multi_input is True)
     collected_keys: List[Tuple[str, str, str]] = []  # (cred_name, env_var_name, key_val)
     rr_action = "add"
 
     if is_multi:
-        # Rileva chiavi round-robin esistenti in general.yaml per questo provider
         existing_creds: List[Tuple[str, str, str]] = []
         creds = general_data.get("credentials")
         if isinstance(creds, list):
@@ -243,8 +272,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
             ).ask()
 
             if action_choice is None:
-                print("Operazione annullata dall'utente.")
-                return None, None, []
+                return "", {}
 
             if action_choice.startswith("⏭"):
                 rr_action = "keep"
@@ -264,8 +292,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
                 prompt_str = f"API key #{curr_idx} per {provider} (invio vuoto per terminare se hai già inserito tutte le chiavi):"
                 key_in = questionary.password(prompt_str).ask()
                 if key_in is None:
-                    print("Operazione annullata dall'utente.")
-                    return None, None, []
+                    return "", {}
                 key_val = key_in.strip()
                 if not key_val:
                     break
@@ -277,7 +304,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
                 is_multi = False
             else:
                 print("⚠️ Nessuna API key fornita. Operazione annullata.")
-                return None, None, []
+                return "", {}
 
     if not is_multi:
         if collected_keys:
@@ -291,8 +318,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
             ).ask()
 
             if api_key_input is None:
-                print("Operazione annullata dall'utente.")
-                return None, None, []
+                return "", {}
 
             api_key = api_key_input.strip() if api_key_input.strip() else existing_key
             cred_name = "google_1" if provider == "google" else f"{provider.lower()}_1"
@@ -350,7 +376,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
         cred_name = collected_keys[0][0]
         env_var_name = collected_keys[0][1]
 
-    # 5. Recupero Modelli
+    # 4. Recupero Modelli
     effective_base_url = base_url or default_base
     models_list: List[str] = []
 
@@ -373,16 +399,14 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
 
     if models_list:
         choices = models_list + [MANUAL_ENTRY]
-        default_model_choice = curr_model if curr_model in models_list else choices[0]
         selected_model = questionary.select(
             "Seleziona il modello LLM:",
             choices=choices,
-            default=default_model_choice
+            default=choices[0]
         ).ask()
 
         if selected_model is None:
-            print("Operazione annullata dall'utente.")
-            return None, None, []
+            return "", {}
 
         if selected_model != MANUAL_ENTRY:
             chosen_model = selected_model
@@ -391,107 +415,170 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
         if not models_list:
             print("ℹ️ Impossibile recuperare la lista modelli automaticamente.")
         manual_model = questionary.text(
-            "ID Modello (es. deepseek-chat, google/gemini-2.5-flash):",
-            default=curr_model
+            "ID Modello (es. deepseek-chat, google/gemini-2.5-flash):"
         ).ask()
         if not manual_model:
-            print("Operazione annullata dall'utente.")
-            return None, None, []
+            return "", {}
         chosen_model = manual_model.strip()
 
-    # 6. Aggiornamento di tutti i file <job>.yaml
-    updated_jobs: List[str] = []
-    for job_name, job_file in sorted(find_job_yaml_paths(config_dir).items()):
-        job_data: Dict[str, Any] = {}
-        if os.path.isfile(job_file):
-            try:
-                with open(job_file, "r", encoding="utf-8") as f:
-                    loaded_job = yaml.safe_load(f)
-                    if isinstance(loaded_job, dict):
-                        job_data = loaded_job
-            except Exception:
-                pass
+    # Pricing inline opzionale per questo modello
+    _configure_pricing_section(config_dir, provider, chosen_model)
 
-        if is_multi:
-            # Preserva i campi di tuning non-provider/model/credential/base_url
-            tuning_fields: Dict[str, Any] = {}
-            source_dict: Optional[Dict[str, Any]] = None
-            if "primary" in job_data and isinstance(job_data["primary"], dict):
-                source_dict = job_data["primary"]
-            elif "primary_routes" in job_data and isinstance(job_data["primary_routes"], list) and len(job_data["primary_routes"]) > 0:
-                if isinstance(job_data["primary_routes"][0], dict):
-                    source_dict = job_data["primary_routes"][0]
-
-            if source_dict:
-                for k in ("thinking", "reasoning_effort", "max_thinking_tokens", "max_tokens", "timeout_seconds", "provider_routing"):
-                    if k in source_dict:
-                        tuning_fields[k] = source_dict[k]
-
-            routes_list: List[Dict[str, Any]] = []
-            if rr_action == "add" and job_data.get("round_robin") is True and isinstance(job_data.get("primary_routes"), list):
-                existing_routes = list(job_data["primary_routes"])
-                existing_creds = {r.get("credential") for r in existing_routes if isinstance(r, dict)}
-                new_routes = []
-                for cn, ce, kv in collected_keys:
-                    if cn not in existing_creds:
-                        r_entry: Dict[str, Any] = {
-                            "provider": provider,
-                            "model": chosen_model,
-                            "credential": cn,
-                        }
-                        if base_url:
-                            r_entry["base_url"] = base_url
-                        r_entry.update(tuning_fields)
-                        new_routes.append(r_entry)
-                routes_list = existing_routes + new_routes
-            else:
-                for cn, ce, kv in collected_keys:
-                    r_entry: Dict[str, Any] = {
-                        "provider": provider,
-                        "model": chosen_model,
-                        "credential": cn,
-                    }
-                    if base_url:
-                        r_entry["base_url"] = base_url
-                    r_entry.update(tuning_fields)
-                    routes_list.append(r_entry)
-
-            job_data["round_robin"] = True
-            job_data["primary_routes"] = routes_list
-            job_data.pop("primary", None)
-            job_data.pop("secondary", None)
-
-        else:
-            if "primary" not in job_data or not isinstance(job_data["primary"], dict):
-                job_data["primary"] = {}
-
-            job_data["primary"]["provider"] = provider
-            job_data["primary"]["model"] = chosen_model
-            job_data["primary"]["credential"] = cred_name
-            job_data["primary"]["base_url"] = base_url
-            job_data.pop("primary_routes", None)
-            job_data["round_robin"] = False
-
-        _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
-        updated_jobs.append(job_name)
-
-    # 7. Riepilogo finale sezione LLM
-    if is_multi:
-        print(f"\n✅ Provider LLM configurato in round-robin su {len(collected_keys)} chiavi per {len(updated_jobs)} job!")
-        print(f"   Provider:    {provider}")
-        print(f"   Modello:     {chosen_model}")
-        print(f"   Credenziali: {', '.join(k[0] for k in collected_keys)}")
-        if base_url:
-            print(f"   Base URL:    {base_url}")
+    # Scelta nome del profilo
+    existing_profiles = _load_model_profiles(general_data)
+    if default_name_hint and default_name_hint not in existing_profiles:
+        suggested_name = default_name_hint
     else:
-        print(f"\n✅ Provider LLM configurato con successo per {len(updated_jobs)} job!")
-        print(f"   Provider:    {provider}")
-        print(f"   Modello:     {chosen_model}")
-        print(f"   Credenziale:  {cred_name} ({env_var_name})")
-        if base_url:
-            print(f"   Base URL:    {base_url}")
+        suggested_name = _suggest_profile_name(provider, chosen_model, existing_profiles.keys())
 
-    return provider, chosen_model, updated_jobs
+    while True:
+        profile_name_in = questionary.text(
+            "Nome per questo profilo modello (per riusarlo in altre fasi):",
+            default=suggested_name
+        ).ask()
+        if not profile_name_in or not profile_name_in.strip():
+            return "", {}
+        profile_name = profile_name_in.strip()
+        if profile_name in existing_profiles:
+            overwrite = questionary.confirm(
+                f"⚠️  Il profilo '{profile_name}' esiste già. Vuoi sovrascriverlo?",
+                default=False
+            ).ask()
+            if overwrite:
+                break
+            else:
+                suggested_name = _suggest_profile_name(provider, chosen_model, existing_profiles.keys())
+        else:
+            break
+
+    if is_multi:
+        routes = [{"credential": cn, "model": chosen_model} for cn, ce, kv in collected_keys]
+    else:
+        routes = [{"credential": cred_name, "model": chosen_model}]
+
+    profile_dict = {
+        "provider": provider,
+        "base_url": base_url,
+        "round_robin": is_multi,
+        "routes": routes,
+    }
+    return profile_name, profile_dict
+
+
+def _apply_profile_to_job(job_file: str, profile: Dict[str, Any]) -> None:
+    """
+    Applica un profilo modello a un file <job>.yaml preservando i campi di tuning non-provider/model/credential.
+    """
+    job_data: Dict[str, Any] = {}
+    if os.path.isfile(job_file):
+        try:
+            with open(job_file, "r", encoding="utf-8") as f:
+                loaded_job = yaml.safe_load(f)
+                if isinstance(loaded_job, dict):
+                    job_data = loaded_job
+        except Exception:
+            pass
+
+    tuning_fields: Dict[str, Any] = {}
+    source_dict: Optional[Dict[str, Any]] = None
+    if "primary" in job_data and isinstance(job_data["primary"], dict):
+        source_dict = job_data["primary"]
+    elif "primary_routes" in job_data and isinstance(job_data["primary_routes"], list) and len(job_data["primary_routes"]) > 0:
+        if isinstance(job_data["primary_routes"][0], dict):
+            source_dict = job_data["primary_routes"][0]
+
+    if source_dict:
+        for k in ("thinking", "reasoning_effort", "max_thinking_tokens", "max_tokens", "timeout_seconds", "provider_routing"):
+            if k in source_dict:
+                tuning_fields[k] = source_dict[k]
+
+    provider = profile["provider"]
+    base_url = profile.get("base_url")
+    is_multi = profile.get("round_robin", False)
+    routes_in = profile.get("routes", [])
+
+    if is_multi:
+        routes_list: List[Dict[str, Any]] = []
+        for r in routes_in:
+            r_entry: Dict[str, Any] = {
+                "provider": provider,
+                "model": r.get("model", ""),
+                "credential": r.get("credential", ""),
+            }
+            if base_url:
+                r_entry["base_url"] = base_url
+            r_entry.update(tuning_fields)
+            routes_list.append(r_entry)
+
+        job_data["round_robin"] = True
+        job_data["primary_routes"] = routes_list
+        job_data.pop("primary", None)
+        job_data.pop("secondary", None)
+    else:
+        first_r = routes_in[0] if routes_in else {"credential": f"{provider}_1", "model": ""}
+        prim: Dict[str, Any] = {
+            "provider": provider,
+            "model": first_r.get("model", ""),
+            "credential": first_r.get("credential", ""),
+        }
+        if base_url:
+            prim["base_url"] = base_url
+        prim.update(tuning_fields)
+
+        job_data["primary"] = prim
+        job_data.pop("primary_routes", None)
+        job_data.pop("secondary", None)
+        job_data["round_robin"] = False
+
+    _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
+
+
+def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str, str]:
+    """
+    Guida l'utente nella configurazione dei profili modello LLM per i vari job della pipeline.
+    Restituisce una mappa {job_name: profile_name}.
+    """
+    print("\n------------------------------------------------------------")
+    print("🤖 1. Configurazione Provider LLM")
+    print("------------------------------------------------------------")
+
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    general_data: Dict[str, Any] = {}
+    if os.path.isfile(general_yaml_path):
+        try:
+            with open(general_yaml_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    general_data = loaded
+        except Exception:
+            pass
+
+    profiles = _load_model_profiles(general_data)
+
+    if not profiles:
+        prof_name, prof_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint="generale")
+        if not prof_name:
+            print("Operazione annullata dall'utente.")
+            return {}
+        profiles[prof_name] = prof_dict
+        chosen_profile = prof_name
+    else:
+        if "generale" in profiles:
+            chosen_profile = "generale"
+        else:
+            chosen_profile = next(iter(profiles.keys()))
+
+    _save_model_profiles(general_data, profiles)
+    _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+
+    job_paths = find_job_yaml_paths(config_dir)
+    job_assignments: Dict[str, str] = {}
+    for job_name, job_file in sorted(job_paths.items()):
+        _apply_profile_to_job(job_file, profiles[chosen_profile])
+        job_assignments[job_name] = chosen_profile
+
+    print(f"\n✅ Provider LLM (profilo '{chosen_profile}') applicato a {len(job_assignments)} job!")
+    return job_assignments
 
 
 def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any]:
@@ -867,16 +954,19 @@ def run_config_wizard(interactive: bool = True) -> None:
     print("================================================------------")
 
     config_dir, env_path = _resolve_or_bootstrap_config_paths()
-    provider, model, updated_jobs = _configure_llm_provider_section(config_dir, env_path)
+    job_profiles = _configure_llm_provider_section(config_dir, env_path)
     tg_res = _configure_telegram_section(config_dir, env_path)
     stt_engine = _configure_stt_section(config_dir)
-    pricing_res = _configure_pricing_section(config_dir, provider, model)
 
     print("\n================================================------------")
     print("✅ Configurazione completata.")
     print("\nRiepilogo:")
-    prov_str = f"{provider} / {model}" if provider and model else "Non modificato"
-    print(f"- Provider LLM:   {prov_str} (applicato a {len(updated_jobs)} job)")
+    print("Modelli assegnati:")
+    if job_profiles:
+        for j_name, p_name in sorted(job_profiles.items()):
+            print(f"- {j_name}: {p_name}")
+    else:
+        print("- (nessun job aggiornato)")
 
     if tg_res and tg_res.get("configured"):
         t_cnt = tg_res.get("topics_count", 0)
@@ -885,13 +975,6 @@ def run_config_wizard(interactive: bool = True) -> None:
         print("- Telegram:       non configurato")
 
     print(f"- Motore STT:     {stt_engine}")
-
-    if pricing_res:
-        p_p = pricing_res.get("provider")
-        p_m = pricing_res.get("model")
-        print(f"- Pricing custom: impostato per {p_p}/{p_m}")
-    else:
-        print("- Pricing custom: non impostato")
 
     print("\nProssimi passi:")
     print("1. Verifica la configurazione con: ./bin/rt status <una_lezione_di_prova>")
