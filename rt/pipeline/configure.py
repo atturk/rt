@@ -1159,6 +1159,186 @@ def run_config_wizard(interactive: bool = True) -> None:
     print("================================================------------\n")
 
 
+def run_telegram_only() -> None:
+    """Configura direttamente solo la sezione Telegram."""
+    print("================================================------------")
+    print("⚙️  RT CONFIG — Configurazione Telegram")
+    print("================================================------------")
+    config_dir, env_path = _resolve_or_bootstrap_config_paths()
+    _configure_telegram_section(config_dir, env_path)
+
+
+def _edit_model_profile(
+    config_dir: str,
+    env_path: str,
+    general_yaml_path: str,
+    general_data: Dict[str, Any],
+    profiles: Dict[str, Dict[str, Any]],
+    profile_name: str
+) -> None:
+    """Permette di modificare o eliminare un singolo profilo modello."""
+    prof_dict = profiles.get(profile_name)
+    if not prof_dict:
+        return
+
+    provider = prof_dict.get("provider", "")
+    base_url = prof_dict.get("base_url")
+    is_rr = prof_dict.get("round_robin", False)
+    routes = prof_dict.get("routes", [])
+    model_name = routes[0].get("model", "") if routes else ""
+
+    print(f"\n--- Profilo: '{profile_name}' ---")
+    print(f"Provider: {provider}")
+    if base_url:
+        print(f"Base URL: {base_url}")
+    print(f"Modello:  {model_name}")
+    print(f"Modalità: {'Round-Robin (' + str(len(routes)) + ' chiavi)' if is_rr else 'Singola chiave (' + (routes[0].get('credential', '') if routes else '') + ')'}")
+
+    pricing_data = general_data.get("pricing", {}).get(provider, {}).get(model_name)
+    if pricing_data and isinstance(pricing_data, dict):
+        inp = pricing_data.get("input_per_million")
+        outp = pricing_data.get("output_per_million")
+        print(f"Pricing:  Input=${inp}/1M, Output=${outp}/1M")
+
+    while True:
+        action = questionary.select(
+            f"Operazione su profilo '{profile_name}':",
+            choices=[
+                "✏️ Rinomina profilo",
+                "🔧 Cambia provider/base URL/modello (riconfigura da capo questo profilo)",
+                "🔑 Aggiorna API key",
+                "💰 Modifica pricing",
+                "🗑️ Elimina profilo",
+                "⏭ Torna alla lista"
+            ]
+        ).ask()
+
+        if not action or action.startswith("⏭"):
+            break
+
+        if action.startswith("✏️"):
+            new_name_in = questionary.text("Nuovo nome per questo profilo:", default=profile_name).ask()
+            if not new_name_in or not new_name_in.strip():
+                continue
+            new_name = new_name_in.strip()
+            if new_name == profile_name:
+                continue
+            if new_name in profiles:
+                print(f"⚠️ Il profilo '{new_name}' esiste già.")
+                continue
+            profiles[new_name] = profiles.pop(profile_name)
+            _save_model_profiles(general_data, profiles)
+            _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+            print(f"✅ Profilo rinominato da '{profile_name}' a '{new_name}'.")
+            profile_name = new_name
+
+        elif action.startswith("🔧"):
+            p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint=profile_name)
+            if p_name:
+                if p_name != profile_name and profile_name in profiles:
+                    profiles.pop(profile_name)
+                profiles[p_name] = p_dict
+                _save_model_profiles(general_data, profiles)
+                _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+                print(f"✅ Profilo '{p_name}' aggiornato.")
+                break
+
+        elif action.startswith("🔑"):
+            if not routes:
+                print("⚠️ Nessuna credenziale associata a questo profilo.")
+                continue
+            for r in routes:
+                cred_name = r.get("credential", "")
+                env_var = None
+                for c in general_data.get("credentials", []):
+                    if isinstance(c, dict) and c.get("name") == cred_name:
+                        env_var = c.get("env_var")
+                        break
+                if not env_var:
+                    env_var = f"{provider.upper()}_API_KEY"
+
+                curr_val = os.environ.get(env_var, "")
+                new_key = questionary.password(
+                    f"Nuova API key per {cred_name} ({env_var}):",
+                    default=curr_val
+                ).ask()
+                if new_key and new_key.strip():
+                    _update_env_file(env_path, env_var, new_key.strip())
+                    os.environ[env_var] = new_key.strip()
+                    print(f"✅ API key per {env_var} aggiornata.")
+
+        elif action.startswith("💰"):
+            _configure_pricing_section(config_dir, provider, model_name)
+            if os.path.isfile(general_yaml_path):
+                try:
+                    with open(general_yaml_path, "r", encoding="utf-8") as f:
+                        loaded = yaml.safe_load(f)
+                        if isinstance(loaded, dict):
+                            general_data.update(loaded)
+                except Exception:
+                    pass
+
+        elif action.startswith("🗑️"):
+            print(f"⚠️ Attenzione: eliminando il profilo '{profile_name}', i file YAML dei job rimarranno invariati")
+            print("ma al prossimo 'rt config' non verranno più riconosciuti come profilo salvato.")
+            confirm_del = questionary.confirm(f"Sei sicuro di voler eliminare il profilo '{profile_name}'?", default=False).ask()
+            if confirm_del:
+                profiles.pop(profile_name, None)
+                _save_model_profiles(general_data, profiles)
+                _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+                print(f"✅ Profilo '{profile_name}' eliminato.")
+                break
+
+
+def run_models_management() -> None:
+    """Apre il menu di gestione dei profili modello salvati in config/general.yaml."""
+    print("================================================------------")
+    print("⚙️  RT CONFIG — Gestione Profili Modello")
+    print("================================================------------")
+    config_dir, env_path = _resolve_or_bootstrap_config_paths()
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+
+    while True:
+        general_data: Dict[str, Any] = {}
+        if os.path.isfile(general_yaml_path):
+            try:
+                with open(general_yaml_path, "r", encoding="utf-8") as f:
+                    loaded = yaml.safe_load(f)
+                    if isinstance(loaded, dict):
+                        general_data = loaded
+            except Exception:
+                pass
+
+        profiles = _load_model_profiles(general_data)
+        if not profiles:
+            print("Nessun profilo modello salvato. Usa 'rt config' per crearne uno.")
+            return
+
+        EXIT = "⏭ Esci"
+        NEW = "➕ Crea un nuovo profilo"
+        choices = sorted(profiles.keys()) + [NEW, EXIT]
+        choice = questionary.select(
+            "Profili modello salvati (seleziona per modificare):",
+            choices=choices
+        ).ask()
+
+        if choice is None or choice == EXIT:
+            return
+
+        if choice == NEW:
+            p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data)
+            if p_name:
+                profiles[p_name] = p_dict
+                _save_model_profiles(general_data, profiles)
+                _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+            continue
+
+        _edit_model_profile(config_dir, env_path, general_yaml_path, general_data, profiles, choice)
+
+
 def configure_config_parser(parser: Any) -> Any:
     """Configura l'argparse parser per rt config."""
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--models", action="store_true", help="Apre direttamente il menu di gestione dei profili modello salvati (senza attraversare l'intero wizard)")
+    group.add_argument("--telegram", action="store_true", help="Configura direttamente solo la sezione Telegram (senza attraversare l'intero wizard)")
     return parser

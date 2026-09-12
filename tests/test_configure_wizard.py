@@ -25,7 +25,10 @@ from rt.pipeline.configure import (
     _configure_telegram_section,
     _configure_stt_section,
     _configure_pricing_section,
-    run_config_wizard
+    run_config_wizard,
+    run_models_management,
+    run_telegram_only,
+    configure_config_parser,
 )
 from rt.core.config import load_config, find_job_yaml_paths
 
@@ -1417,5 +1420,210 @@ def test_text_fallback_with_confirm(tmp_path):
         name, prof = _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
 
     assert prof["routes"][0]["model"] == "deepseek-reasoner"
+
+
+def test_models_management_zero_profiles(tmp_path, monkeypatch):
+    """Verifica che run_models_management con zero profili esca senza cicli infiniti."""
+    fake_cwd = str(tmp_path / "workdir")
+    os.makedirs(fake_cwd, exist_ok=True)
+    monkeypatch.chdir(fake_cwd)
+    config_dir = os.path.join(fake_cwd, "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0", "model_profiles": {}}, f)
+
+    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, str(tmp_path / ".env"))):
+        run_models_management()
+
+
+def test_models_management_rename_profile(tmp_path):
+    """Verifica la rinominazione di un profilo salvato tramite il menu rt config --models."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "version": "2.0.0",
+            "model_profiles": {
+                "fast_profile": {
+                    "provider": "openrouter",
+                    "routes": [{"credential": "or_1", "model": "openai/gpt-4o"}]
+                }
+            }
+        }, f)
+
+    select_calls = 0
+    op_calls = 0
+
+    def mock_select(prompt, choices, default=None):
+        nonlocal select_calls, op_calls
+        m = MagicMock()
+        if "seleziona per modificare" in prompt:
+            select_calls += 1
+            m.ask.return_value = "fast_profile" if select_calls == 1 else "⏭ Esci"
+        elif "Operazione su profilo" in prompt:
+            op_calls += 1
+            m.ask.return_value = "✏️ Rinomina profilo" if op_calls == 1 else "⏭ Torna alla lista"
+        else:
+            m.ask.return_value = choices[0]
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        if "Nuovo nome" in prompt:
+            m.ask.return_value = "turbo_profile"
+        else:
+            m.ask.return_value = default or ""
+        return m
+
+    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text):
+        run_models_management()
+
+    with open(general_file, "r", encoding="utf-8") as f:
+        gdata = yaml.safe_load(f)
+
+    assert "fast_profile" not in gdata["model_profiles"]
+    assert "turbo_profile" in gdata["model_profiles"]
+    assert gdata["model_profiles"]["turbo_profile"]["provider"] == "openrouter"
+
+
+def test_models_management_delete_profile(tmp_path):
+    """Verifica l'eliminazione con conferma di un profilo dal menu rt config --models."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "version": "2.0.0",
+            "model_profiles": {
+                "to_delete": {
+                    "provider": "google",
+                    "routes": [{"credential": "g_1", "model": "gemini-flash"}]
+                }
+            }
+        }, f)
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "seleziona per modificare" in prompt:
+            m.ask.return_value = "to_delete"
+        elif "Operazione su profilo" in prompt:
+            m.ask.return_value = "🗑️ Elimina profilo"
+        else:
+            m.ask.return_value = choices[0]
+        return m
+
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        m.ask.return_value = True
+        return m
+
+    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.confirm", side_effect=mock_confirm):
+        run_models_management()
+
+    with open(general_file, "r", encoding="utf-8") as f:
+        gdata = yaml.safe_load(f)
+
+    assert "to_delete" not in gdata.get("model_profiles", {})
+
+
+def test_models_management_update_api_key(tmp_path):
+    """Verifica l'aggiornamento dell'API key di un profilo esistente nel file .env."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "version": "2.0.0",
+            "credentials": [{"name": "deepseek_1", "provider": "deepseek", "env_var": "DEEPSEEK_API_KEY"}],
+            "model_profiles": {
+                "ds_profile": {
+                    "provider": "deepseek",
+                    "routes": [{"credential": "deepseek_1", "model": "deepseek-chat"}]
+                }
+            }
+        }, f)
+
+    select_calls = 0
+    op_calls = 0
+
+    def mock_select(prompt, choices, default=None):
+        nonlocal select_calls, op_calls
+        m = MagicMock()
+        if "seleziona per modificare" in prompt:
+            select_calls += 1
+            m.ask.return_value = "ds_profile" if select_calls == 1 else "⏭ Esci"
+        elif "Operazione su profilo" in prompt:
+            op_calls += 1
+            m.ask.return_value = "🔑 Aggiorna API key" if op_calls == 1 else "⏭ Torna alla lista"
+        else:
+            m.ask.return_value = choices[0]
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "sk-new-secret-key-999"
+        return m
+
+    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.password", side_effect=mock_password):
+        run_models_management()
+
+    with open(env_file, "r", encoding="utf-8") as f:
+        env_content = f.read()
+
+    assert "DEEPSEEK_API_KEY=sk-new-secret-key-999" in env_content
+
+
+def test_run_telegram_only(tmp_path):
+    """Verifica che rt config --telegram invochi la sezione Telegram senza toccare profili o file job.yaml."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    outline_job = os.path.join(config_dir, "outline.yaml")
+    job_content = "primary:\n  provider: google\n  model: gemini\n"
+    with open(outline_job, "w", encoding="utf-8") as f:
+        f.write(job_content)
+
+    mock_tg = MagicMock(return_value={"configured": True})
+
+    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+         patch("rt.pipeline.configure._configure_telegram_section", mock_tg):
+        run_telegram_only()
+
+    mock_tg.assert_called_once_with(config_dir, env_file)
+
+    # Il file job non dev'essere modificato
+    with open(outline_job, "r", encoding="utf-8") as f:
+        assert f.read() == job_content
+
+
+def test_configure_config_parser_mutually_exclusive():
+    """Verifica che --models e --telegram siano mutuamente esclusivi nel CLI parser."""
+    import argparse
+    parser = argparse.ArgumentParser()
+    configure_config_parser(parser)
+
+    args_models = parser.parse_args(["--models"])
+    assert args_models.models is True
+    assert args_models.telegram is False
+
+    args_telegram = parser.parse_args(["--telegram"])
+    assert args_telegram.models is False
+    assert args_telegram.telegram is True
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--models", "--telegram"])
+
 
 
