@@ -1042,10 +1042,11 @@ def test_skip_option_and_no_forced_bootstrap(tmp_path):
     with patch("questionary.select", side_effect=mock_select):
         res = _configure_llm_provider_section(config_dir, env_file)
 
-    # Scelte al primo avvio: soltanto SKIP_LABEL e NEW_PROFILE (nessun profilo pre-creato)
     assert any("outline" in p for p in prompt_choices)
     outline_key = [p for p in prompt_choices if "outline" in p][0]
-    assert prompt_choices[outline_key] == ["⏭ Lascia vuoto per ora", "➕ Configura un nuovo modello per questa fase"]
+    opts = prompt_choices[outline_key]
+    assert "⏭ Lascia vuoto per ora" in opts
+    assert "➕ Configura un nuovo modello per questa fase" in opts
 
     assert res["outline"] == "(non configurato)"
     with open(outline_file, "r", encoding="utf-8") as f:

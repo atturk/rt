@@ -691,16 +691,16 @@ def _find_matching_profile(job_data: Dict[str, Any], profiles: Dict[str, Dict[st
 
 def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str, str]:
     """
-    Guida l'utente nella configurazione dei profili modello LLM per ciascuna fase della pipeline.
+    Guida l'utente nella configurazione dei profili modello LLM per ciascuna fase della pipeline
+    attraverso una schermata a blocchi navigabili (avanti/indietro) e conferma finale.
     Restituisce una mappa {job_name: profile_name_o_descrizione}.
     """
     print("\n------------------------------------------------------------")
-    print("🤖 1. Configurazione Provider LLM per ciascuna fase")
+    print("🤖 Configurazione Provider LLM per ciascuna fase")
     print("------------------------------------------------------------")
     print("Ora configuriamo il modello LLM da usare per ciascuna fase della pipeline.")
-    print("Puoi configurarne uno e riusarlo ovunque, oppure uno diverso per fase (es. un modello")
-    print("più potente per l'outline, uno economico in round-robin per il rewrite, ecc.).")
-    print("Per ogni fase puoi anche scegliere di lasciarla non configurata per ora.\n")
+    print("Puoi navigare liberamente tra le fasi con le opzioni di navigazione.")
+    print("Le modifiche verranno salvate su disco SOLO dopo la conferma finale.\n")
 
     general_yaml_path = os.path.join(config_dir, "general.yaml")
     general_data: Dict[str, Any] = {}
@@ -728,9 +728,17 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
         if jn not in known_jobs:
             grouped_jobs.append((jn, [jn]))
 
+    if not grouped_jobs:
+        print("⚠️ Nessun file job YAML trovato per la configurazione dei modelli.")
+        return {}
+
     job_assignments: Dict[str, str] = {}
     SKIP_LABEL = "⏭ Lascia vuoto per ora"
     NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
+    keep_label = "🔧 Mantieni configurazione attuale (non riconosciuta come profilo salvato)"
+
+    pending_selections: Dict[str, str] = {}
+    group_info: Dict[str, Tuple[List[str], bool, Optional[str]]] = {}
 
     for group_label, group_jobs in grouped_jobs:
         first_job_name = group_jobs[0]
@@ -747,66 +755,153 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
 
         current_match = _find_matching_profile(job_data, profiles)
         has_unrecognized = (current_match is None and _job_has_real_config(job_data))
+        group_info[group_label] = (group_jobs, has_unrecognized, current_match)
 
-        choices: List[str] = []
-        default_choice: Optional[str] = None
-        keep_label = "🔧 Mantieni configurazione attuale (non riconosciuta come profilo salvato)"
+        if current_match:
+            pending_selections[group_label] = current_match
+        elif has_unrecognized:
+            pending_selections[group_label] = keep_label
+        else:
+            pending_selections[group_label] = SKIP_LABEL
 
+    curr_idx = 0
+    total_groups = len(grouped_jobs)
+
+    while True:
+        if curr_idx >= total_groups:
+            print("\n================================================------------")
+            print("📋 RIEPILOGO ASSEGNAZIONI FASI")
+            print("================================================------------")
+            for idx, (gl, gjobs) in enumerate(grouped_jobs, start=1):
+                sel = pending_selections.get(gl, SKIP_LABEL)
+                status_icon = "✅" if sel != SKIP_LABEL else "⏳"
+                print(f" {status_icon} [{idx}/{total_groups}] {gl}: {sel}")
+            print("================================================------------")
+
+            confirm_action = questionary.select(
+                "Come desideri procedere?",
+                choices=[
+                    "✅ Conferma e applica configurazione",
+                    "✏️ Modifica una fase specificata",
+                    "⬅️ Torna alla navigazione a blocchi",
+                    "❌ Annulla configurazione modelli"
+                ]
+            ).ask()
+
+            if not confirm_action or confirm_action.startswith("❌"):
+                print("Configurazione LLM interrotta dall'utente.")
+                return {}
+
+            if confirm_action.startswith("✏️"):
+                phase_choice = questionary.select(
+                    "Seleziona la fase da modificare:",
+                    choices=[gl for gl, _ in grouped_jobs]
+                ).ask()
+                if phase_choice:
+                    for i, (gl, _) in enumerate(grouped_jobs):
+                        if gl == phase_choice:
+                            curr_idx = i
+                            break
+                continue
+
+            if confirm_action.startswith("⬅️"):
+                curr_idx = total_groups - 1
+                continue
+
+            if confirm_action.startswith("✅"):
+                for gl, group_jobs in grouped_jobs:
+                    selection = pending_selections.get(gl, SKIP_LABEL)
+                    g_jobs, g_has_unrec, g_match = group_info[gl]
+                    if g_has_unrec and selection == keep_label:
+                        for jn in group_jobs:
+                            job_assignments[jn] = "(configurazione attuale mantenuta)"
+                    elif selection == SKIP_LABEL:
+                        for jn in group_jobs:
+                            job_assignments[jn] = "(non configurato)"
+                    else:
+                        for jn in group_jobs:
+                            job_file = job_paths[jn]
+                            _apply_profile_to_job(job_file, profiles[selection])
+                            job_assignments[jn] = selection
+
+                _save_model_profiles(general_data, profiles)
+                _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+                print(f"\n✅ Assegnazione modelli completata per {len(job_assignments)} job!")
+                return job_assignments
+
+        if curr_idx < 0:
+            curr_idx = 0
+
+        group_label, group_jobs = grouped_jobs[curr_idx]
+        g_jobs, has_unrecognized, current_match = group_info[group_label]
+
+        print(f"\n--- FASE [{curr_idx + 1}/{total_groups}]: {group_label} ---")
+        status_line = []
+        for i, (gl, _) in enumerate(grouped_jobs):
+            sel = pending_selections.get(gl, SKIP_LABEL)
+            st = "✅" if sel != SKIP_LABEL else "⏳"
+            marker = f"[{gl} {st}]" if i == curr_idx else f"{gl} {st}"
+            status_line.append(marker)
+        print("Avanzamento: " + " | ".join(status_line))
+
+        choices = []
         if has_unrecognized:
             choices.append(keep_label)
-            default_choice = keep_label
-
         choices.append(SKIP_LABEL)
         choices.extend(sorted(profiles.keys()))
         choices.append(NEW_PROFILE)
 
-        if default_choice is None:
-            if current_match and current_match in choices:
-                default_choice = current_match
-            elif profiles:
-                default_choice = sorted(profiles.keys())[0]
-            else:
-                default_choice = NEW_PROFILE
+        if curr_idx > 0:
+            choices.append("⬅️ Fase precedente")
+        if curr_idx < total_groups - 1:
+            choices.append("➡️ Fase successiva")
+        choices.append("📋 Vai al riepilogo e conferma")
+
+        curr_selection = pending_selections.get(group_label)
+        if curr_selection and curr_selection != SKIP_LABEL and curr_selection in choices:
+            default_choice = curr_selection
+        elif current_match and current_match in choices:
+            default_choice = current_match
+        elif has_unrecognized and keep_label in choices:
+            default_choice = keep_label
+        elif profiles and sorted(profiles.keys())[0] in choices:
+            default_choice = sorted(profiles.keys())[0]
+        elif NEW_PROFILE in choices:
+            default_choice = NEW_PROFILE
+        else:
+            default_choice = choices[0] if choices else None
 
         selection = questionary.select(
-            f"Modello per '{group_label}':",
+            f"Modello per '{group_label}' [{curr_idx + 1}/{total_groups}]:",
             choices=choices,
             default=default_choice
         ).ask()
 
         if selection is None:
             print("Configurazione LLM interrotta dall'utente.")
-            break
+            return {}
 
-        if has_unrecognized and selection == keep_label:
-            for jn in group_jobs:
-                job_assignments[jn] = "(configurazione attuale mantenuta)"
+        if selection == "⬅️ Fase precedente":
+            curr_idx -= 1
             continue
-
-        if selection == SKIP_LABEL:
-            for jn in group_jobs:
-                job_assignments[jn] = "(non configurato)"
+        elif selection == "➡️ Fase successiva":
+            curr_idx += 1
             continue
-
-        if selection == NEW_PROFILE:
+        elif selection == "📋 Vai al riepilogo e conferma":
+            curr_idx = total_groups
+            continue
+        elif selection == NEW_PROFILE:
             p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint=group_jobs[0])
             if not p_name:
                 print("Creazione nuovo profilo annullata.")
-                break
+                continue
             profiles[p_name] = p_dict
             _save_model_profiles(general_data, profiles)
-            selection = p_name
-
-        for jn in group_jobs:
-            job_file = job_paths[jn]
-            _apply_profile_to_job(job_file, profiles[selection])
-            job_assignments[jn] = selection
-
-    _save_model_profiles(general_data, profiles)
-    _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
-
-    print(f"\n✅ Assegnazione modelli completata per {len(job_assignments)} job!")
-    return job_assignments
+            pending_selections[group_label] = p_name
+            curr_idx += 1
+        else:
+            pending_selections[group_label] = selection
+            curr_idx += 1
 
 
 def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any]:
@@ -815,7 +910,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
     Restituisce un dizionario con l'esito della configurazione.
     """
     print("\n------------------------------------------------------------")
-    print("✈️  2. Configurazione Telegram (Notifiche e Topic per Materia)")
+    print("✈️  Configurazione Telegram (Notifiche e Topic per Materia)")
     print("------------------------------------------------------------")
 
     confirm = questionary.confirm("Configurare Telegram ora?", default=True).ask()
@@ -1027,7 +1122,7 @@ def _configure_stt_section(config_dir: str) -> str:
     Guida l'utente nella configurazione del motore STT per l'active recall vocale.
     """
     print("\n------------------------------------------------------------")
-    print("🎙️  3. Configurazione Motore STT (Active Recall Vocale)")
+    print("🎙️  Configurazione Motore STT (Active Recall Vocale)")
     print("------------------------------------------------------------")
 
     general_yaml_path = os.path.join(config_dir, "general.yaml")
@@ -1083,12 +1178,8 @@ def _configure_pricing_section(config_dir: str, provider: Optional[str], model: 
     """
     Guida l'utente nella configurazione opzionale di un listino prezzi custom in config/general.yaml.
     """
-    print("\n------------------------------------------------------------")
-    print("💰 4. Configurazione Pricing Custom (Opzionale)")
-    print("------------------------------------------------------------")
-
     confirm = questionary.confirm(
-        "Configurare un listino prezzi custom per il provider/modello scelto? (opzionale, RT ha già stime interne)",
+        "Vuoi configurare un listino prezzi custom per questo modello? (opzionale, RT ha già stime interne)",
         default=False
     ).ask()
 
