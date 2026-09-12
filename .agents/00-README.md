@@ -26,17 +26,23 @@ bare, caso comune), e il menu `questionary` della scelta STT non veniva mai dise
 call site lo invocava dentro `$(...)`, trasformando in una pipe lo stdout ereditato dal
 sottoprocesso python. Il lavoro corrente da eseguire è **32-34**, tutti su `rt/pipeline/configure.py`
 a valle di un primo vero test del wizard sull'Air: **32** rimuove il bootstrap "generale"
-obbligatorio (si va dritti al loop per-fase), raggruppa i 5 job di recall e i 2 di immagini in
-una domanda ciascuno, aggiunge "lascia vuoto per ora", sistema due messaggi fuorvianti — **33**
-sostituisce la lista modelli con `questionary.autocomplete` (ricerca testuale dinamica) e
-aggiunge conferma+possibilità di tornare indietro sulla selezione — **34** aggiunge
-`rt config --models` (gestione/modifica profili salvati) e `rt config --telegram` (salta dritto
-alla sezione Telegram).
+obbligatorio, raggruppa i 5 job di recall e i 2 di immagini in una domanda ciascuno, aggiunge
+"lascia vuoto per ora", i due messaggi fuorvianti sono stati sistemati. Task 33: lista modelli
+ora con `questionary.autocomplete` (ricerca testuale dinamica) + conferma con possibilità di
+tornare indietro. Task 34: `rt config --models` (gestione/modifica profili salvati: rinomina,
+riconfigura, API key, pricing, eliminazione) e `rt config --telegram` (salta dritto alla sezione
+Telegram) — entrambi verificati anche con test funzionali diretti (rename+delete di un profilo
+reale, mutua esclusività dei due flag). **Non ci sono task attivi al momento** — attenzione: il
+resoconto testuale di Antigravity per questo giro conteneva nomi di job di recall/immagini
+completamente inventati (es. "recall_topics", "recall_persons") che NON esistono nel codice
+reale (verificato: il diff usa correttamente `recall_quiz`/`recall_mirata`/ecc. e
+`image_description`/`image_unit_judge`) — promemoria a non fidarsi mai del testo del
+walkthrough, nemmeno per dettagli apparentemente innocui come nomi di variabili citati nel
+resoconto.
 
 ## Ordine di esecuzione
 
-32 va fatto per primo (ridisegna la struttura su cui si appoggiano 33 e 34). 33 e 34 sono
-indipendenti tra loro, ordine libero dopo il 32.
+Nessun task attivo al momento.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
