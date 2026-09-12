@@ -4,15 +4,19 @@ I file numerati in questa cartella sono già il piano di implementazione complet
 essere eseguito: NON produrre un tuo piano di implementazione separato prima di iniziare.
 Leggi ogni file di task e implementa direttamente quanto descritto.
 
-**Stato**: 01-17 sono già stati implementati, revisionati (con alcuni fix di hardening
+**Stato**: 01-18 sono già stati implementati, revisionati (con alcuni fix di hardening
 applicati direttamente in revisione) e pushati in round precedenti — non rifarli, non toccare
-quel codice se non indicato esplicitamente dal task 18. Il lavoro corrente da eseguire è **18**
-(un solo task stavolta): uno script `install.sh` per automatizzare l'installazione, indipendente
-da tutto il resto (nessun codice Python toccato).
+quel codice se non indicato esplicitamente da un task attivo. Il lavoro corrente da eseguire è
+**19-22**: 19 sostituisce MacWhisper con `macparakeet-cli` (gratuito) come motore ASR; 20-21-22
+costruiscono insieme il nuovo comando `rt config` (wizard interattivo di configurazione guidata:
+provider LLM, Telegram con discovery live di gruppo/topic, motore STT, pricing opzionale).
 
 ## Ordine di esecuzione
 
-Un solo task attivo (**18**), nessun ordine da rispettare con altri.
+19 è indipendente e può essere eseguito in qualsiasi momento rispetto a 20-22 (non tocca lo
+stesso codice, a parte il nome del motore STT di default che 22 legge da 19 se già completato).
+20 → 21 → 22 vanno eseguiti IN ORDINE: 21 estende la funzione creata da 20, 22 estende quella
+di 20+21 — non sono indipendenti tra loro.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
@@ -32,9 +36,11 @@ lavoro — ma non serve fermarsi ad aspettare conferma tra un task e l'altro.
 Riferimento: piano approvato per i task 01-12 in
 `/Users/attilioturco/.claude/plans/ok-adesso-vorrei-fare-reactive-spark.md`; piano approvato
 per i task 13-17 (feature "add-images") in
-`/Users/attilioturco/.claude/plans/discutiamo-prima-il-punto-flickering-chipmunk.md` (il Task
-18 non ha un piano separato, è autosufficiente — decisione presa direttamente in chat: RT
-resta un checkout git auto-contenuto, niente packaging pip/pipx).
+`/Users/attilioturco/.claude/plans/discutiamo-prima-il-punto-flickering-chipmunk.md` (i task
+18-22 non hanno un piano separato, sono autosufficienti — decisioni prese direttamente in chat:
+RT resta un checkout git auto-contenuto niente packaging pip/pipx per il 18; sostituzione
+MacWhisper→macparakeet-cli e design del wizard `rt config` con discovery live Telegram invece
+del link-paste, per motivazioni spiegate nei task 19-22 stessi).
 
 Quando tutti i task sono completati (o se ti sei fermato bloccato su un task), segnalalo in
 chat con un riepilogo breve per task: file toccati, output dei test, e — importante — cosa
