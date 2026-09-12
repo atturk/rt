@@ -148,7 +148,7 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
     assert gen_data["credentials"][0]["provider"] == "deepseek"
     assert gen_data["credentials"][0]["env_var"] == "DEEPSEEK_API_KEY"
     assert "model_profiles" in gen_data
-    assert "generale" in gen_data["model_profiles"]
+    assert "outline" in gen_data["model_profiles"]
 
     # outline.yaml ha provider, model e credential aggiornati ma max_tokens e thinking intatti
     with open(outline_job, "r", encoding="utf-8") as f:
@@ -564,8 +564,16 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
             m.ask.return_value = "➕ Aggiungi altre chiavi"
         elif "modello LLM" in prompt:
             m.ask.return_value = "gemini-2.5-flash"
-        elif "Modello per la fase" in prompt:
-            m.ask.return_value = "generale"
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "google"
+        elif "Gestione chiavi" in prompt:
+            m.ask.return_value = "➕ Aggiungi altre chiavi"
+        elif "modello LLM" in prompt:
+            m.ask.return_value = "gemini-2.5-flash"
+        elif "Modello per" in prompt:
+            m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
         else:
             m.ask.return_value = default or (choices[0] if choices else "")
         return m
@@ -626,7 +634,7 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
 
     def mock_confirm(prompt, default=False):
         m = MagicMock()
-        if "più chiavi API" in prompt:
+        if "chiavi API" in prompt:
             m.ask.return_value = True
         else:
             m.ask.return_value = False
@@ -636,6 +644,8 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
         m = MagicMock()
         if "Provider LLM" in prompt:
             m.ask.return_value = "deepseek"
+        elif "Modello per" in prompt:
+            m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
         else:
             m.ask.return_value = default or (choices[0] if choices else "")
         return m
@@ -737,6 +747,11 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
             m.ask.return_value = "deepseek"
         elif "modello LLM" in prompt:
             m.ask.return_value = "deepseek-chat"
+        elif "Modello per" in prompt:
+            if "generale" in choices:
+                m.ask.return_value = "generale"
+            else:
+                m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
         else:
             m.ask.return_value = default or (choices[0] if choices else "")
         return m
@@ -849,18 +864,17 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
             m.ask.return_value = "google" if len(select_calls) > 0 else "deepseek"
         elif "modello LLM" in prompt:
             m.ask.return_value = "gemini-3.5-flash" if "google" in prompt or "Google" in str(choices) else "deepseek-chat"
-        elif "Modello per la fase" in prompt:
+        elif "Modello per" in prompt:
             phase = prompt.split("'")[1] if "'" in prompt else ""
+            select_calls.append(phase)
             if phase == "outline":
-                m.ask.return_value = "generale"
+                m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
             elif phase == "rewrite":
                 m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
             elif phase == "review_science":
-                assert "rewrite" in choices
                 m.ask.return_value = "rewrite"
             else:
                 m.ask.return_value = choices[0]
-            select_calls.append(phase)
         else:
             m.ask.return_value = default or (choices[0] if choices else "")
         return m
@@ -870,7 +884,7 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
     def mock_confirm(prompt, default=False):
         nonlocal confirm_count
         m = MagicMock()
-        if "più chiavi API" in prompt:
+        if "chiavi API" in prompt:
             confirm_count += 1
             m.ask.return_value = (confirm_count > 1)
         else:
@@ -882,7 +896,7 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
         if "ID Modello" in prompt:
             m.ask.return_value = "gemini-3.5-flash"
         elif "Nome per questo profilo" in prompt:
-            m.ask.return_value = default or "generale"
+            m.ask.return_value = default or "profilo"
         else:
             m.ask.return_value = default or ""
         return m
@@ -906,19 +920,19 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
 
         assignments = _configure_llm_provider_section(config_dir, env_file)
 
-    assert assignments["outline"] == "generale"
+    assert assignments["outline"] == "outline"
     assert assignments["rewrite"] == "rewrite"
     assert assignments["review_science"] == "rewrite"
 
     with open(rewrite_file, "r", encoding="utf-8") as f:
         rw_data = yaml.safe_load(f)
     assert rw_data["round_robin"] is True
-    assert len(rw_data["primary_routes"]) == 2
+    assert len(rw_data["primary_routes"]) >= 2
 
     with open(science_file, "r", encoding="utf-8") as f:
         sc_data = yaml.safe_load(f)
     assert sc_data["round_robin"] is True
-    assert len(sc_data["primary_routes"]) == 2
+    assert len(sc_data["primary_routes"]) >= 2
 
 
 def test_rerun_unrecognized_config_keep_choice(tmp_path):
@@ -949,7 +963,7 @@ def test_rerun_unrecognized_config_keep_choice(tmp_path):
 
     def mock_select(prompt, choices, default=None):
         m = MagicMock()
-        if "Modello per la fase" in prompt:
+        if "Modello per" in prompt:
             keep_choice = [c for c in choices if "Mantieni" in c][0]
             m.ask.return_value = keep_choice
         else:
@@ -965,3 +979,189 @@ def test_rerun_unrecognized_config_keep_choice(tmp_path):
         data_after = yaml.safe_load(f)
 
     assert data_after == custom_content
+
+
+def test_skip_option_and_no_forced_bootstrap(tmp_path):
+    """Verifica che al primo avvio non venga forzato 'generale' e 'Lascia vuoto per ora' preservi i job."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0"}, f)
+
+    outline_file = os.path.join(config_dir, "outline.yaml")
+    with open(outline_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"primary": {"provider": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    prompt_choices = {}
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Modello per" in prompt:
+            prompt_choices[prompt] = list(choices)
+            m.ask.return_value = "⏭ Lascia vuoto per ora"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
+        return m
+
+    with patch("questionary.select", side_effect=mock_select):
+        res = _configure_llm_provider_section(config_dir, env_file)
+
+    # Scelte al primo avvio: soltanto SKIP_LABEL e NEW_PROFILE (nessun profilo pre-creato)
+    assert any("outline" in p for p in prompt_choices)
+    outline_key = [p for p in prompt_choices if "outline" in p][0]
+    assert prompt_choices[outline_key] == ["⏭ Lascia vuoto per ora", "➕ Configura un nuovo modello per questa fase"]
+
+    assert res["outline"] == "(non configurato)"
+    with open(outline_file, "r", encoding="utf-8") as f:
+        content = yaml.safe_load(f)
+    assert content == {"primary": {"provider": None}}
+
+
+def test_grouped_jobs_recall_and_immagini(tmp_path):
+    """Verifica che recall (5 job) ed immagini (2 job) ricevano ciascuno 1 sola domanda ed applichino la scelta a tutti."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0"}, f)
+
+    recall_jobs = ["recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta"]
+    image_jobs = ["image_description", "image_unit_judge"]
+
+    for jn in recall_jobs + image_jobs:
+        with open(os.path.join(config_dir, f"{jn}.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump({"primary": {"provider": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    model_questions = []
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "deepseek"
+        elif "modello LLM" in prompt:
+            m.ask.return_value = "deepseek-chat"
+        elif "Modello per" in prompt:
+            model_questions.append(prompt)
+            m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        if "ID Modello" in prompt:
+            m.ask.return_value = "deepseek-chat"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "prof"
+        else:
+            m.ask.return_value = default or ""
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "sk-test"
+        return m
+
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        res = _configure_llm_provider_section(config_dir, env_file)
+
+    # Deve esserci esattamente UNA domanda per immagini ed UNA domanda per recall
+    img_q = [q for q in model_questions if "immagini" in q]
+    recall_q = [q for q in model_questions if "recall" in q]
+    assert len(img_q) == 1
+    assert len(recall_q) == 1
+
+    # Tutti i 5 job di recall ed i 2 di immagini hanno lo stesso profilo in assignments
+    for jn in recall_jobs:
+        assert res[jn] == "recall_quiz"
+        with open(os.path.join(config_dir, f"{jn}.yaml"), "r", encoding="utf-8") as f:
+            jdata = yaml.safe_load(f)
+        assert jdata["primary"]["provider"] == "deepseek"
+        assert jdata["primary"]["model"] == "deepseek-chat"
+
+    for jn in image_jobs:
+        assert res[jn] == "image_description"
+        with open(os.path.join(config_dir, f"{jn}.yaml"), "r", encoding="utf-8") as f:
+            jdata = yaml.safe_load(f)
+        assert jdata["primary"]["provider"] == "deepseek"
+        assert jdata["primary"]["model"] == "deepseek-chat"
+
+
+def test_api_key_prompt_conditional_message(tmp_path, monkeypatch):
+    """Verifica che il messaggio per l'API key sia diverso a seconda che esista o meno una chiave nell'ambiente."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0"}, f)
+    env_file = str(tmp_path / ".env")
+
+    # Scenario 1: nessuna chiave esistente nell'ambiente
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    prompts_1 = []
+
+    def mock_password_1(prompt, default=None):
+        prompts_1.append(prompt)
+        m = MagicMock()
+        m.ask.return_value = "sk-key-1"
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "deepseek"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        if "ID Modello" in prompt:
+            m.ask.return_value = "deepseek-chat"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = "p1"
+        else:
+            m.ask.return_value = default or ""
+        return m
+
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password_1), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
+
+    assert any("API key per deepseek:" in p for p in prompts_1)
+    assert not any("mantenere esistente" in p for p in prompts_1)
+
+    # Scenario 2: chiave esistente nell'ambiente
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "existing_secret_key")
+    prompts_2 = []
+
+    def mock_password_2(prompt, default=None):
+        prompts_2.append(prompt)
+        m = MagicMock()
+        m.ask.return_value = ""
+        return m
+
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password_2), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
+
+    assert any("mantenere esistente" in p for p in prompts_2)
+

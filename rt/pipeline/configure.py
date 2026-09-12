@@ -236,7 +236,7 @@ def _create_new_model_profile(
 
     # 3. Round-Robin Multi-chiave o Singola API Key
     multi_input = questionary.confirm(
-        f"Vuoi configurare più chiavi API per {provider} in round-robin (per distribuire le richieste su più account/quote)?",
+        f"Vuoi configurare più chiavi API per {provider}?",
         default=False
     ).ask()
 
@@ -312,8 +312,13 @@ def _create_new_model_profile(
         else:
             env_var_name = f"{provider.upper()}_API_KEY"
             existing_key = os.environ.get(env_var_name, "")
+            prompt_msg = (
+                f"API key per {provider} (lascia vuoto per mantenere esistente):"
+                if existing_key
+                else f"API key per {provider}:"
+            )
             api_key_input = questionary.password(
-                f"API key per {provider} (lascia vuoto per mantenere esistente):",
+                prompt_msg,
                 default=existing_key
             ).ask()
 
@@ -533,10 +538,13 @@ def _apply_profile_to_job(job_file: str, profile: Dict[str, Any]) -> None:
     _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
 
 
-_JOB_DISPLAY_ORDER = [
-    "outline", "rewrite", "review_asr", "review_science",
-    "image_description", "image_unit_judge",
-    "recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta",
+_JOB_GROUPS: List[Tuple[str, List[str]]] = [
+    ("outline", ["outline"]),
+    ("rewrite", ["rewrite"]),
+    ("review_asr", ["review_asr"]),
+    ("review_science", ["review_science"]),
+    ("immagini (descrizione slide/foto + assegnazione a sezione)", ["image_description", "image_unit_judge"]),
+    ("recall (quiz, domande mirate/vaste, valutazioni)", ["recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta"]),
 ]
 
 
@@ -628,6 +636,10 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
     print("\n------------------------------------------------------------")
     print("🤖 1. Configurazione Provider LLM per ciascuna fase")
     print("------------------------------------------------------------")
+    print("Ora configuriamo il modello LLM da usare per ciascuna fase della pipeline.")
+    print("Puoi configurarne uno e riusarlo ovunque, oppure uno diverso per fase (es. un modello")
+    print("più potente per l'outline, uno economico in round-robin per il rewrite, ecc.).")
+    print("Per ogni fase puoi anche scegliere di lasciarla non configurata per ora.\n")
 
     general_yaml_path = os.path.join(config_dir, "general.yaml")
     general_data: Dict[str, Any] = {}
@@ -642,31 +654,30 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
 
     profiles = _load_model_profiles(general_data)
 
-    if not profiles:
-        prof_name, prof_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint="generale")
-        if not prof_name:
-            print("Operazione annullata dall'utente.")
-            return {}
-        profiles[prof_name] = prof_dict
-        _save_model_profiles(general_data, profiles)
-
     job_paths = find_job_yaml_paths(config_dir)
-    ordered_job_names: List[str] = []
-    for jn in _JOB_DISPLAY_ORDER:
-        if jn in job_paths:
-            ordered_job_names.append(jn)
-    for jn in sorted(job_paths.keys()):
-        if jn not in ordered_job_names:
-            ordered_job_names.append(jn)
+    known_jobs: Set[str] = set()
+    grouped_jobs: List[Tuple[str, List[str]]] = []
+    for label, group_j_names in _JOB_GROUPS:
+        present = [jn for jn in group_j_names if jn in job_paths]
+        if present:
+            grouped_jobs.append((label, present))
+            known_jobs.update(present)
 
-    ordered_jobs: List[Tuple[str, str]] = [(jn, job_paths[jn]) for jn in ordered_job_names]
+    for jn in sorted(job_paths.keys()):
+        if jn not in known_jobs:
+            grouped_jobs.append((jn, [jn]))
 
     job_assignments: Dict[str, str] = {}
-    for job_name, job_file in ordered_jobs:
+    SKIP_LABEL = "⏭ Lascia vuoto per ora"
+    NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
+
+    for group_label, group_jobs in grouped_jobs:
+        first_job_name = group_jobs[0]
+        first_job_file = job_paths[first_job_name]
         job_data: Dict[str, Any] = {}
-        if os.path.isfile(job_file):
+        if os.path.isfile(first_job_file):
             try:
-                with open(job_file, "r", encoding="utf-8") as f:
+                with open(first_job_file, "r", encoding="utf-8") as f:
                     loaded_job = yaml.safe_load(f)
                     if isinstance(loaded_job, dict):
                         job_data = loaded_job
@@ -684,20 +695,20 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
             choices.append(keep_label)
             default_choice = keep_label
 
+        choices.append(SKIP_LABEL)
         choices.extend(sorted(profiles.keys()))
-        NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
         choices.append(NEW_PROFILE)
 
         if default_choice is None:
-            if current_match:
+            if current_match and current_match in choices:
                 default_choice = current_match
-            elif "generale" in profiles:
-                default_choice = "generale"
+            elif profiles:
+                default_choice = sorted(profiles.keys())[0]
             else:
-                default_choice = choices[0]
+                default_choice = NEW_PROFILE
 
         selection = questionary.select(
-            f"Modello per la fase '{job_name}':",
+            f"Modello per '{group_label}':",
             choices=choices,
             default=default_choice
         ).ask()
@@ -707,11 +718,17 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
             break
 
         if has_unrecognized and selection == keep_label:
-            job_assignments[job_name] = "(configurazione attuale mantenuta)"
+            for jn in group_jobs:
+                job_assignments[jn] = "(configurazione attuale mantenuta)"
+            continue
+
+        if selection == SKIP_LABEL:
+            for jn in group_jobs:
+                job_assignments[jn] = "(non configurato)"
             continue
 
         if selection == NEW_PROFILE:
-            p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint=job_name)
+            p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint=group_jobs[0])
             if not p_name:
                 print("Creazione nuovo profilo annullata.")
                 break
@@ -719,8 +736,10 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
             _save_model_profiles(general_data, profiles)
             selection = p_name
 
-        _apply_profile_to_job(job_file, profiles[selection])
-        job_assignments[job_name] = selection
+        for jn in group_jobs:
+            job_file = job_paths[jn]
+            _apply_profile_to_job(job_file, profiles[selection])
+            job_assignments[jn] = selection
 
     _save_model_profiles(general_data, profiles)
     _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
