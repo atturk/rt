@@ -114,7 +114,7 @@ def test_run_review_default_vs_asr_llm(tmp_path):
     def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
         prompts_received.append((unit_id, prompt))
         # For unit 1.1, return an ERR_ASR_LLM issue
-        if "1.1" in unit_id:
+        if "(1.1:" in unit_id:
             iss = ScienceIssue(
                 id="sci_temp",
                 type=ScienceType.ERR_ASR_LLM,
@@ -134,8 +134,8 @@ def test_run_review_default_vs_asr_llm(tmp_path):
     assert res_llm["asr_llm_issues"] == 1
 
     # Check prompt contents: unit 1.1 prompt received ASR risk context, unit 1.2 prompt did not
-    u1_prompts = [p for uid, p in prompts_received if "1.1" in uid]
-    u2_prompts = [p for uid, p in prompts_received if "1.2" in uid]
+    u1_prompts = [p for uid, p in prompts_received if "(1.1:" in uid]
+    u2_prompts = [p for uid, p in prompts_received if "(1.2:" in uid]
     assert len(u1_prompts) == 1
     assert "SEGMENTO A RISCHIO ASR RILEVATO STATISTICAMENTE IN QUESTA UNITÀ" in u1_prompts[0]
     assert len(u2_prompts) == 1
