@@ -9,18 +9,14 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. Il lavoro corrente da eseguire è **23-25**: 23 è la
-pulizia di codice morto residuo (fallback su file mai scritto da `macparakeet-cli`) e testo di
-help/errore non aggiornato dopo la migrazione a `macparakeet-cli`, emersa durante la revisione
-dei task 19-22; 24-25 generalizzano il round-robin da 2 a N route (l'utente vuole poter
-alternare un numero arbitrario di chiavi API, es. 9, non solo 2) — 24 nel motore
-(`rt/llm/router.py`/`rt/core/config.py`), 25 nel wizard `rt config` per configurarle senza
-editare YAML a mano.
+indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-25 sono
+tutti completati, revisionati (inclusa verifica end-to-end reale: round-robin a 5 chiavi
+generato dal wizard e poi eseguito davvero da `RoutingEngine`, ciclo confermato corretto) e
+pushati. Aspetta nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
 
 ## Ordine di esecuzione
 
-23 è indipendente e può essere eseguito in qualsiasi momento. 24 → 25 vanno eseguiti IN
-ORDINE (25 genera configurazione YAML che dipende dal comportamento implementato in 24).
+Nessun task attivo al momento.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
