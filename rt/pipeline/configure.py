@@ -20,6 +20,19 @@ import requests
 import questionary
 
 from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, _default_project_root
+from rt.pipeline.setup import clean_input_path
+
+
+def _is_placeholder_or_invalid_bot_token(token: str) -> bool:
+    """Verifica se il token è vuoto, il valore di esempio di .env.example o ha un formato non valido."""
+    if not token or not token.strip():
+        return True
+    t = token.strip()
+    if t == "123456:ABC-your-bot-token":
+        return True
+    if not re.match(r"^\d+:[A-Za-z0-9_-]{30,}$", t):
+        return True
+    return False
 
 
 def parse_telegram_topic_link(link: str) -> Optional[Tuple[int, int]]:
@@ -312,6 +325,8 @@ def _create_new_model_profile(
         else:
             env_var_name = f"{provider.upper()}_API_KEY"
             existing_key = os.environ.get(env_var_name, "")
+            if existing_key:
+                print(f"\nTrovata una chiave già configurata per {provider}.")
             prompt_msg = (
                 f"API key per {provider} (lascia vuoto per mantenere esistente):"
                 if existing_key
@@ -384,20 +399,49 @@ def _create_new_model_profile(
     # 4. Recupero Modelli
     effective_base_url = base_url or default_base
     models_list: List[str] = []
+    fetch_error_reason: Optional[str] = None
 
     if api_key and effective_base_url:
-        try:
-            target_url = effective_base_url.rstrip("/") + "/models"
-            headers = {"Authorization": f"Bearer {api_key}"}
-            resp = requests.get(target_url, headers=headers, timeout=8)
-            if resp.status_code == 200:
-                body = resp.json()
-                if isinstance(body, dict) and "data" in body and isinstance(body["data"], list):
-                    for item in body["data"]:
-                        if isinstance(item, dict) and "id" in item and isinstance(item["id"], str):
-                            models_list.append(item["id"])
-        except Exception:
-            pass
+        if provider == "google":
+            try:
+                native_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                resp = requests.get(native_url, timeout=8)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    if isinstance(body, dict) and "models" in body and isinstance(body["models"], list):
+                        for item in body["models"]:
+                            if isinstance(item, dict) and "name" in item and isinstance(item["name"], str):
+                                m_name = item["name"]
+                                if m_name.startswith("models/"):
+                                    m_name = m_name[len("models/"):]
+                                models_list.append(m_name)
+                else:
+                    fetch_error_reason = f"HTTP {resp.status_code} da endpoint nativo Google models"
+            except Exception as ex:
+                fetch_error_reason = f"Errore di rete ({type(ex).__name__}: {ex})"
+
+        if not models_list:
+            try:
+                target_url = effective_base_url.rstrip("/") + "/models"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                resp = requests.get(target_url, headers=headers, timeout=8)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    if isinstance(body, dict) and "data" in body and isinstance(body["data"], list):
+                        for item in body["data"]:
+                            if isinstance(item, dict) and "id" in item and isinstance(item["id"], str):
+                                models_list.append(item["id"])
+                    if not models_list:
+                        fetch_error_reason = "Risposta 200 ma nessun modello trovato nella struttura 'data'"
+                else:
+                    fetch_error_reason = f"HTTP {resp.status_code} su {target_url}"
+            except Exception as ex:
+                fetch_error_reason = f"Errore di rete ({type(ex).__name__}: {ex})"
+    else:
+        if not api_key:
+            fetch_error_reason = "Nessuna API key configurata o inserita per questo provider"
+        elif not effective_base_url:
+            fetch_error_reason = "Nessun Base URL specificato per questo provider"
 
     chosen_model = ""
     while True:
@@ -405,7 +449,7 @@ def _create_new_model_profile(
             model_in = questionary.autocomplete(
                 "Seleziona o digita il modello LLM:",
                 choices=models_list,
-                default=models_list[0],
+                default="",
                 ignore_case=True,
                 match_middle=True,
                 validate=lambda v: bool(v and v.strip()) or "Inserisci un ID modello valido"
@@ -414,7 +458,10 @@ def _create_new_model_profile(
                 return "", {}
             chosen_model = model_in.strip()
         else:
-            print("ℹ️ Impossibile recuperare la lista modelli automaticamente.")
+            if fetch_error_reason:
+                print(f"ℹ️ Impossibile recuperare la lista modelli automaticamente: {fetch_error_reason}")
+            else:
+                print("ℹ️ Impossibile recuperare la lista modelli automaticamente.")
             manual_model = questionary.text(
                 "ID Modello (es. deepseek-chat, google/gemini-2.5-flash):",
                 validate=lambda v: bool(v and v.strip()) or "Inserisci un ID modello valido"
@@ -773,6 +820,8 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
 
     # 1. Bot Token
     existing_token = os.environ.get("RT_TELEGRAM_BOT_TOKEN", "")
+    if _is_placeholder_or_invalid_bot_token(existing_token):
+        existing_token = ""
     bot_token = ""
     if existing_token:
         masked = existing_token[:6] + "..." if len(existing_token) > 6 else existing_token
@@ -945,7 +994,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
     ).ask()
 
     if lessons_root_in is not None:
-        clean_root = os.path.expanduser(lessons_root_in.strip())
+        clean_root = clean_input_path(lessons_root_in)
         if clean_root and not os.path.isdir(clean_root):
             print(f"⚠️  Avviso: la cartella '{clean_root}' non esiste attualmente su questo sistema.")
         if clean_root:
