@@ -16,11 +16,18 @@ empirico diretto — verifica sempre empiricamente prima di escludere una versio
 lavoro corrente da eseguire è **30**: sostituisce il prompt testuale `read -rp [S/n]`
 (introdotto nel Task 29) con un menu `questionary` in stile `rt config`, con un piccolo bootstrap
 anticipato del venv (solo `questionary`, per non perdere il parallelismo del download introdotto
-nel Task 28) e fallback al prompt testuale se il bootstrap fallisce.
+nel Task 28) e fallback al prompt testuale se il bootstrap fallisce. **31**: a fine
+installazione, se il terminale è interattivo, sostituisce la shell corrente con una fresca
+(`exec "$SHELL" -l`, verificato empiricamente in questa sessione che legge davvero il profilo
+appena aggiornato) così `rt` è subito disponibile senza aprire un nuovo terminale — aggiorna
+anche il riepilogo finale per usare `rt` invece di `./bin/rt` ovunque, dato che a quel punto è
+vero.
 
 ## Ordine di esecuzione
 
-Un solo task attivo (**30**), indipendente da tutto il resto.
+30 e 31 sono indipendenti tra loro (toccano parti diverse di `install.sh`: 30 il prompt
+interattivo in fase 1, 31 il finale dello script) — implementali in ordine numerico per
+semplicità, ma nessuno dipende dall'altro.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
