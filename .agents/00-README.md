@@ -18,15 +18,25 @@ lavoro corrente da eseguire è **30**: sostituisce il prompt testuale `read -rp 
 anticipato del venv (solo `questionary`, per non perdere il parallelismo del download introdotto
 nel Task 28) e fallback al prompt testuale se il bootstrap fallisce. Task 31 completato (a fine
 installazione, se il terminale è interattivo, sostituisce la shell corrente con una fresca via
-`exec "$SHELL" -l`, riepilogo finale con `rt` invece di `./bin/rt`). Entrambi revisionati con
-test reali via pseudo-terminale (menu `questionary` con navigazione a frecce, fallback su import
-fallita, exec-refresh end-to-end con verifica che il PATH risulti davvero attivo nella shell
-risultante) — un solo fix di pulizia applicato direttamente (ridichiarazione ridondante di
-`VENV_DIR`). **Non ci sono task attivi al momento.**
+`exec "$SHELL" -l`, riepilogo finale con `rt` invece di `./bin/rt`). `install.sh` ora funziona
+end-to-end su un MacBook Air reale (verificato) — inclusi due fix diretti trovati in revisione:
+`bin/rt` confrontava il realpath dell'eseguibile invece di `sys.prefix` per capire se rieseguirsi
+nel venv (mai scattava quando l'interprete che crea il venv è lo stesso risolto da `python3`
+bare, caso comune), e il menu `questionary` della scelta STT non veniva mai disegnato perché il
+call site lo invocava dentro `$(...)`, trasformando in una pipe lo stdout ereditato dal
+sottoprocesso python. Il lavoro corrente da eseguire è **32-34**, tutti su `rt/pipeline/configure.py`
+a valle di un primo vero test del wizard sull'Air: **32** rimuove il bootstrap "generale"
+obbligatorio (si va dritti al loop per-fase), raggruppa i 5 job di recall e i 2 di immagini in
+una domanda ciascuno, aggiunge "lascia vuoto per ora", sistema due messaggi fuorvianti — **33**
+sostituisce la lista modelli con `questionary.autocomplete` (ricerca testuale dinamica) e
+aggiunge conferma+possibilità di tornare indietro sulla selezione — **34** aggiunge
+`rt config --models` (gestione/modifica profili salvati) e `rt config --telegram` (salta dritto
+alla sezione Telegram).
 
 ## Ordine di esecuzione
 
-Nessun task attivo al momento.
+32 va fatto per primo (ridisegna la struttura su cui si appoggiano 33 e 34). 33 e 34 sono
+indipendenti tra loro, ordine libero dopo il 32.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
