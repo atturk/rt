@@ -127,9 +127,12 @@ RT Cognitive Jobs (outline, rewrite, review_asr, review_science)
 
 ### Caratteristiche Chiave:
 
-1. **Scheduling Policy (Primary vs Round-Robin)**:
-   - Ciascun job può definire una route `primary` e una route `secondary`.
-   - Con `round_robin: true`, le chiamate successive dello stesso job alternano in modo deterministico e thread-safe tra primary e secondary (utile per distribuire il carico tra due progetti Google Gemini con quote indipendenti).
+1. **Scheduling Policy (Primary vs Round-Robin N-way)**:
+   - Ciascun job può definire una singola route `primary` (+ opzionale `secondary`), oppure una lista
+     `primary_routes` di N route (es. 9 chiavi per lo stesso provider).
+   - Con `round_robin: true`, le chiamate successive dello stesso job alternano in modo deterministico
+     e thread-safe su tutte le route configurate, in ordine ciclico (utile per distribuire il carico
+     tra più account/progetti con quote indipendenti — vedi `docs/CONFIGURATION_REFERENCE.md`).
 
 2. **Google Dual-Key (Due Progetti Indipendenti)**:
    - Supporto nativo per due account/progetti Google distinti (`google_1` mappato su `GOOGLE_API_KEY_1`, `google_2` mappato su `GOOGLE_API_KEY_2`).
