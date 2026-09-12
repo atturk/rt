@@ -298,18 +298,23 @@ def _create_new_model_profile(
                 collected_keys = list(existing_creds)
 
         if rr_action != "keep":
+            batch_prompt = (
+                f"Incolla una o più API key per {provider}, separate da virgola "
+                f"(invio vuoto per terminare se hai già inserito tutte le chiavi):"
+            )
             while True:
-                curr_idx = len(collected_keys) + 1
-                cn = "google_1" if (provider == "google" and curr_idx == 1) else f"{provider.lower()}_{curr_idx}"
-                ce = f"{provider.upper()}_API_KEY_{curr_idx}"
-                prompt_str = f"API key #{curr_idx} per {provider} (invio vuoto per terminare se hai già inserito tutte le chiavi):"
-                key_in = questionary.password(prompt_str).ask()
-                if key_in is None:
+                batch_in = questionary.password(batch_prompt).ask()
+                if batch_in is None:
                     return "", {}
-                key_val = key_in.strip()
-                if not key_val:
+                raw_keys = [k.strip() for k in batch_in.split(",") if k.strip()]
+                if not raw_keys:
                     break
-                collected_keys.append((cn, ce, key_val))
+                for key_val in raw_keys:
+                    curr_idx = len(collected_keys) + 1
+                    cn = "google_1" if (provider == "google" and curr_idx == 1) else f"{provider.lower()}_{curr_idx}"
+                    ce = f"{provider.upper()}_API_KEY_{curr_idx}"
+                    collected_keys.append((cn, ce, key_val))
+                print(f"✅ {len(raw_keys)} chiave/i aggiunta/e (totale: {len(collected_keys)}).")
 
         if len(collected_keys) < 2:
             if len(collected_keys) == 1:
