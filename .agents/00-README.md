@@ -9,18 +9,15 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. 01-25 sono completati, revisionati e pushati (inclusa
-rimozione di `rt_setup.py`/`rt/SKILL.md`, codice/doc morti emersi da un audit di portabilità).
-Il lavoro corrente da eseguire è **26-27**: sostituiscono il comportamento "un provider per
-tutti i job" del wizard `rt config` con una libreria di **profili modello riutilizzabili**
-(l'utente usa davvero modelli diversi per fase — outline, rewrite in round-robin pesante,
-review_science, recall, immagini — e vuole poterli configurare e riusare per singola fase,
-non tutti uguali). 26 estrae le fondamenta (libreria profili + creazione/applicazione), 27
-implementa la vera selezione per-fase con rilevamento del profilo già assegnato ai rerun.
+indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-27 sono
+completati, revisionati (inclusa una simulazione end-to-end reale a 4 fasi/4 provider diversi,
+lo scenario che l'utente usa davvero) e pushati. Un bug reale di sincronizzazione nel controllo
+di unicità dei nomi profilo (`model_profiles`) è stato trovato in revisione e corretto
+direttamente. Aspetta nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
 
 ## Ordine di esecuzione
 
-26 → 27 vanno eseguiti IN ORDINE (27 dipende dalle funzioni estratte in 26).
+Nessun task attivo al momento.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
