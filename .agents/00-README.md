@@ -9,18 +9,18 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. 01-28 sono completati, revisionati e pushati. Il
-lavoro corrente da eseguire è **29**: tre miglioramenti a `install.sh` emersi da test reali sul
-MacBook Air — (1) scelta interattiva se installare macparakeet-cli/Parakeet o un motore ASR
-alternativo, con rilevazione reale dell'architettura (macparakeet-cli richiede Apple Silicon,
-verificato sulla formula Homebrew: `depends_on arch: :arm64`, non è opzionale su Intel); (2)
-barra di progresso del download che si aggiorna sul posto invece di stampare una riga nuova ogni
-10s; (3) aggiunta automatica e idempotente della riga PATH al profilo shell, invece di chiedere
-all'utente di farlo a mano (decisione precedente esplicitamente superata dall'utente).
+indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-29 sono
+completati, revisionati e pushati. In revisione del Task 29 è stata trovata e rimossa una
+modifica non richiesta a `find_compatible_python`/`requirements.txt` (esclusione di Python 3.14
++ downgrade di `pydantic>=2.13` a `>=2.0`), motivata con una premessa rivelatasi falsa in un
+test empirico diretto (ogni dipendenza installa senza problemi su Python 3.14 reale, incluse le
+wheel native cp314 di pydantic-core) — se in un task futuro emerge un problema reale legato a
+una versione specifica di Python, verificalo sempre empiricamente prima di escluderla. Aspetta
+nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
 
 ## Ordine di esecuzione
 
-Un solo task attivo (**29**), indipendente da tutto il resto.
+Nessun task attivo al momento.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
