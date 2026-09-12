@@ -685,6 +685,9 @@ def cmd_config(args: argparse.Namespace) -> None:
     elif getattr(args, "telegram", False):
         from rt.pipeline.configure import run_telegram_only
         run_telegram_only()
+    elif getattr(args, "topics", False):
+        from rt.pipeline.configure import run_topics_management
+        run_topics_management()
     else:
         from rt.pipeline.configure import run_config_wizard
         run_config_wizard()
