@@ -115,6 +115,7 @@ class ScienceType(str, Enum):
     ERR_RECONSTRUCTION = "ERR_RECONSTRUCTION"# Errore o allucinazione introdotta dall'LLM durante la rielaborazione
     SCIENCE_CHECK = "SCIENCE_CHECK"          # Affermazione plausibile che merita verifica scientifica o controllo fonti
     ERR_ASR_ST = "ERR_ASR_ST"                # Segmento ASR con confidenza significativamente degradata (statistico)
+    ERR_ASR_LLM = "ERR_ASR_LLM"              # Segmento ASR con confidenza degradata e sospetto confermato da LLM
 
 
 class ScienceSeverity(str, Enum):

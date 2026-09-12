@@ -10,7 +10,7 @@ import re
 import subprocess
 import time
 from typing import List, Optional
-from rt.core.models import ScienceIssue
+from rt.core.models import ScienceIssue, ScienceType
 from rt.telegram import issue_queue as tg_queue
 from rt.core.keyboard import read_single_key, raw_mode
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
