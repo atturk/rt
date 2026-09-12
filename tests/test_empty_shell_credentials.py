@@ -196,7 +196,7 @@ def test_cli_cmd_run_reports_all_missing_jobs(tmp_path, monkeypatch, capsys):
         cmd_run(args)
     assert exc.value.code == 1
     captured = capsys.readouterr()
-    assert "I seguenti job non hanno un provider configurato: review" in captured.err
+    assert "Il job 'review' non ha alcun provider configurato" in captured.err
 
 
 def test_cli_commands_bypass_when_mock_flag(tmp_path, monkeypatch):

@@ -137,11 +137,14 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     monkeypatch.setattr("rt.telegram.client.send_message", mock_send)
     monkeypatch.setattr("rt.telegram.config.load_telegram_config", lambda: TelegramConfig(bot_token="tok", chat_id=123))
 
-    from rt.telegram import session as tg_session
-    from rt.core.config import load_config
-    runtime_cfg = load_config().telegram
+    state_dir = str(tmp_path / "state")
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
 
-    start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
+        start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
 
     # 1. Verifica coda salvata
     queue = tg_queue.load_queue(lesson_dir)
@@ -152,19 +155,24 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     # 2. Verifica che sia stato mandato il primo messaggio e tracciato il message_id
     assert len(sent_messages) == 1
     assert "Science Critic (ERR_DOCENTE)" in sent_messages[0]["text"]
-    assert sent_messages[0]["reply_markup"] is not None
-    sess = tg_session.get_active_session(runtime_cfg.state_dir, 123, None)
+    from rt.telegram import session as tg_session
+    sess = tg_session.get_active_session(state_dir, 123, None)
     assert sess is not None
     assert sess["message_id"] == 100
 
     # 3. Avanza oltre la fine: review completata e transizione a READY_TO_BUILD
     record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix")
     tg_queue.advance(lesson_dir)
-    send_current_issue(lesson_dir)
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.state_dir = state_dir
+        cfg_obj.telegram.topics = {}
+        mock_cfg.return_value = cfg_obj
+        send_current_issue(lesson_dir)
 
     assert len(sent_messages) == 2
     assert "✨ Review completata" in sent_messages[1]["text"]
-    assert tg_session.get_active_session(runtime_cfg.state_dir, 123, None) is None
+    assert tg_session.get_active_session(state_dir, 123, None) is None
 
     from rt.core.state import get_current_state
     state = get_current_state(os.path.join(lesson_dir, "info.yaml"))

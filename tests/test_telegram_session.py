@@ -417,7 +417,7 @@ def test_start_review_via_telegram_busy_different_activity(tmp_path, monkeypatch
         mock_cfg.return_value = cfg_obj
 
         with patch("rt.telegram.issue_queue.create_queue", wraps=tg_queue.create_queue) as mock_create_queue:
-            start_review_via_telegram(lesson_dir, asr_issues, [])
+            start_review_via_telegram(lesson_dir, sci_to_review=sci_issues)
             # Coda non creata
             assert mock_create_queue.call_count == 0
             # Ha inviato messaggio "occupato"

@@ -67,14 +67,12 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
     assert os.path.isfile(lesson_path(lesson_dir, "segments.json"))
     assert os.path.isfile(lesson_path(lesson_dir, "outline.json"))
     assert os.path.isfile(lesson_path(lesson_dir, "draft.json"))
-    assert os.path.isfile(lesson_path(lesson_dir, "asr_issues.json"))
     assert os.path.isfile(lesson_path(lesson_dir, "science_issues.json"))
     assert os.path.isfile(lesson_path(lesson_dir, "review_decisions.json"))
 
     # 3. Artefatti finali di build
     assert os.path.isfile(lesson_path(lesson_dir, "pre-elaborato.md"))
     assert os.path.isfile(lesson_path(lesson_dir, "rielaborato.md"))
-    assert os.path.isfile(os.path.join(lesson_dir, "Revisioni ASR.md"))
     assert os.path.isfile(os.path.join(lesson_dir, "Errori concettuali.md"))
     assert os.path.isfile(os.path.join(lesson_dir, "Problemi scientifici.md"))
 
@@ -229,7 +227,6 @@ def test_audio_run_with_custom_dest_dir(tmp_path, capsys):
         "segments.json",
         "outline.json",
         "draft.json",
-        "asr_issues.json",
         "science_issues.json",
         "review_decisions.json",
         "pre-elaborato.md",

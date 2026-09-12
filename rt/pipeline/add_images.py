@@ -356,6 +356,7 @@ def run_add_images(
     draft = load_draft(lesson_dir)
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     science_issues = load_science_issues(lesson_dir)
+    ledger = load_ledger(lesson_dir)
 
     resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
 

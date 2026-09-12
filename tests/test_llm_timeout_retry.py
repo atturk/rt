@@ -492,8 +492,8 @@ def test_i_idle_read_timeout_triggers_read_timeout_and_retries(monkeypatch):
     """
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-idle-timeout-test")
     client = LLMClient(force_mock=False)
-    client.config.llm["review_science"].timeout_seconds = 300
-    client.config.llm["review_science"].provider = "deepseek"
+    client.config.llm["review"].timeout_seconds = 300
+    client.config.llm["review"].provider = "deepseek"
     client.config.retry.max_timeout_retries = 1
     client.config.retry.timeout_backoff_seconds = 0.01
 
@@ -532,7 +532,7 @@ def test_i_idle_read_timeout_triggers_read_timeout_and_retries(monkeypatch):
             prompt="Test prompt",
             system_prompt="Test system",
             response_model=MockItem,
-            job_name="review_science",
+            job_name="review",
             show_monitor=False
         )
 
@@ -544,7 +544,7 @@ def test_i_idle_read_timeout_triggers_read_timeout_and_retries(monkeypatch):
         assert t <= 45.0
         assert t >= 44.0
 
-    records = GLOBAL_TELEMETRY.get_all(job="review_science")
+    records = GLOBAL_TELEMETRY.get_all(job="review")
     assert len(records) == 2
     assert records[0].status == "timeout"
     assert records[0].error_class == "timeout"
@@ -672,8 +672,8 @@ def test_l_stream_req_timeout_clamped_to_small_rem_sec_when_near_deadline(monkey
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-small-rem-sec")
     client = LLMClient(force_mock=False)
     # Job configurato con timeout_seconds=5 e idle_read_timeout=45.0
-    client.config.llm["review_asr"].timeout_seconds = 5
-    client.config.llm["review_asr"].provider = "deepseek"
+    client.config.llm["review"].timeout_seconds = 5
+    client.config.llm["review"].provider = "deepseek"
     client.config.retry.idle_read_timeout_seconds = 45.0
 
     mock_resp = MagicMock()
@@ -688,7 +688,7 @@ def test_l_stream_req_timeout_clamped_to_small_rem_sec_when_near_deadline(monkey
             prompt="test",
             system_prompt="test",
             response_model=MockItem,
-            job_name="review_asr",
+            job_name="review",
             show_monitor=False
         )
 

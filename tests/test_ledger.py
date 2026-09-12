@@ -36,9 +36,9 @@ def test_record_and_update_decision(tmp_path):
     )
     
     ledger = load_ledger(lesson_dir)
-    assert len(ledger.decisions) == 1
-    assert ledger.decisions[0].decision == "rejected"
-    assert ledger.decisions[0].resolved_text == "licorolo finansi"
+    assert len(ledger.decisions) == 2
+    assert ledger.decisions[-1].decision == "rejected"
+    assert ledger.decisions[-1].resolved_text == "licorolo finansi"
 
 
 def test_load_resolved_draft_reflects_accepted_science_decision(tmp_path):

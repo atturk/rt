@@ -179,6 +179,13 @@ def apply_decisions_to_draft(
             if iss_id in sci_by_id:
                 s_iss = sci_by_id[iss_id]
                 if s_iss.unit_id == unit.unit_id or (s_iss.segment_id and s_iss.segment_id in unit.source_segment_ids):
+                    if s_iss.type in (ScienceType.ERR_ASR_ST, getattr(ScienceType, "ERR_ASR_LLM", "ERR_ASR_LLM")):
+                        if dec.decision == "accepted":
+                            continue
+                        elif dec.decision == "edited" and dec.resolved_text:
+                            content = fix_mojibake(dec.resolved_text)
+                            continue
+
                     raw_resolved = dec.resolved_text
                     resolved = sanitize_suggested_fix(raw_resolved) if dec.decision == "accepted" else (fix_mojibake(raw_resolved) if raw_resolved else None)
                     if dec.decision in ("accepted", "edited") and resolved:

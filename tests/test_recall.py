@@ -538,7 +538,7 @@ class TestRecallUsesResolvedDraft:
 
     def _accept_science_decision_on_unit_1(self, lesson_dir):
         from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
-        from rt.pipeline.review_science import get_science_issues_path
+        from rt.pipeline.review import get_science_issues_path
         from rt.pipeline.ledger import record_decision
 
         sci_issue = ScienceIssue(

@@ -138,7 +138,7 @@ def send_current_issue(lesson_dir: str) -> None:
     from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt
     from rt.core.config import load_config
     from rt.core.state import transition_to, WorkflowState
-    from rt.pipeline.ledger import find_asr_issue_by_id, find_science_issue_by_id
+    from rt.pipeline.ledger import find_science_issue_by_id
 
     queue = tg_queue.load_queue(lesson_dir)
     if queue is None:
@@ -167,16 +167,14 @@ def send_current_issue(lesson_dir: str) -> None:
 
     issue_id = queue.issue_ids[queue.current_index]
     issue_type = queue.issue_types[issue_id]
-    issue = find_asr_issue_by_id(lesson_dir, issue_id) if issue_type == "asr" else find_science_issue_by_id(lesson_dir, issue_id)
+    issue = find_science_issue_by_id(lesson_dir, issue_id)
     if issue is None:
         # issue non più trovata (caso limite, es. rigenerata nel frattempo): salta.
         tg_queue.advance(lesson_dir)
         return send_current_issue(lesson_dir)
 
     ctx = _prepare_issue_context(lesson_dir, issue, issue_type)
-    text = (tg_fmt.render_asr_issue_text(issue, ctx["unit_info"], ctx["timecode"], ctx["listen_range"], ctx["sentence"])
-            if issue_type == "asr" else
-            tg_fmt.render_science_issue_text(issue, ctx["unit_info"], ctx["timecode"]))
+    text = tg_fmt.render_science_issue_text(issue, ctx["unit_info"], ctx["timecode"])
 
     try:
         tg_cfg = load_telegram_config()
@@ -245,19 +243,7 @@ def send_current_issue(lesson_dir: str) -> None:
 
 
 
-def should_auto_accept_asr(iss: ASRIssue, auto_accept: Optional[str]) -> bool:
-    """Valuta se auto-accettare una anomalia ASR in base ai flag CLI."""
-    if not auto_accept:
-        return False
-    from rt.core.models import ASRLevel
-    mode = str(auto_accept).lower()
-    if mode in ("all", "true"):
-        return True
-    if mode == "yellow":
-        return iss.level == ASRLevel.YELLOW
-    if mode == "red":
-        return iss.level == ASRLevel.RED
-    return False
+
 
 
 def should_auto_accept_science(iss: ScienceIssue, auto_accept: Optional[str]) -> bool:
@@ -270,45 +256,7 @@ def should_auto_accept_science(iss: ScienceIssue, auto_accept: Optional[str]) ->
     return False
 
 
-def _build_asr_panel(
-    idx: int,
-    total_count: int,
-    iss: ASRIssue,
-    tc: str,
-    listen: str,
-    unit_info: str,
-    sentence: str,
-    seg,
-    decisions_map: dict,
-    last_status: Optional[str] = None
-):
-    from rich.panel import Panel
-    from rich.text import Text
-    from rt.core.encoding import fix_mojibake
 
-    lines = [
-        f"[{idx + 1}/{total_count}] ASR AMBIGUITY ({iss.level.value}) - ID: {iss.id}"
-    ]
-    if unit_info != "N/D":
-        lines.append(f"  📚 Unità:         {fix_mojibake(unit_info)}")
-    lines.append(f"  ⏱ Timecode:      {tc}  (Ascolto audio: {listen})")
-    lines.append(f"  🎙 ASR originale: \"{fix_mojibake(iss.source_text)}\"")
-    lines.append(f"  💡 Proposta AI:   \"{fix_mojibake(iss.candidate)}\" (confidenza: {iss.confidence:.2f})")
-    lines.append(f"  📝 Motivazione:   {fix_mojibake(iss.reason)}")
-    if sentence:
-        lines.append(f"  📖 Contesto:      \"{fix_mojibake(sentence)}\"")
-    elif seg and seg.text_raw:
-        lines.append(f"  📖 Contesto (trascrizione grezza, non trovato nel draft): \"{fix_mojibake(seg.text_raw)}\"")
-    if iss.id in decisions_map:
-        d = decisions_map[iss.id]
-        lines.append(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
-
-    if last_status:
-        lines.append(f"\n  {last_status}")
-
-    lines.append("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
-    content = "\n".join(lines)
-    return Panel(Text(content), title=f"ASR Review [{idx + 1}/{total_count}]", border_style="blue")
 
 
 def _build_science_panel(
@@ -324,14 +272,28 @@ def _build_science_panel(
     from rich.panel import Panel
     from rich.text import Text
     from rt.core.encoding import fix_mojibake
+    from rt.core.models import ScienceType
 
-    lines = [
-        f"[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss.type.value}) - ID: {iss.id}"
-    ]
+    iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+    is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+
+    if is_asr_risk:
+        header_title = "🎙️ RISCHIO ASR (statistico)" if iss.type == ScienceType.ERR_ASR_ST else "🎙️ RISCHIO ASR (validato LLM)"
+        lines = [
+            f"[{idx + 1}/{total_count}] {header_title} - ID: {iss.id}"
+        ]
+    else:
+        lines = [
+            f"[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss_type_str}) - ID: {iss.id}"
+        ]
+
     if sci_unit_info != "N/D":
         lines.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
     lines.append(f"  ⏱ Timecode (stima): {tc}")
-    lines.append(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
+    if is_asr_risk:
+        lines.append(f"  🎙️ Segmento raw sospetto: \"{fix_mojibake(iss.claim)}\"")
+    else:
+        lines.append(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
     lines.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
     if iss.suggested_fix:
         lines.append(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
@@ -350,7 +312,10 @@ def _build_science_panel(
     if last_status:
         lines.append(f"\n  {last_status}")
 
-    lines.append("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
+    if is_asr_risk:
+        lines.append("\n  Azione [M=Accetta / E=Modifica / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
+    else:
+        lines.append("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
     content = "\n".join(lines)
     return Panel(Text(content), title=f"Science Review [{idx + 1}/{total_count}]", border_style="magenta")
 
@@ -722,7 +687,28 @@ def run_interactive_review(
                         raw_key = read_single_key(already_raw=is_raw)
                         choice = raw_key.strip().lower()
 
-                        if choice in ("a", "accetta", "applica", ""):
+                        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (getattr(iss.type, "value", str(iss.type)) == "ERR_ASR_LLM")
+
+                        if is_asr_risk and choice in ("a", "applica"):
+                            last_status = "⚠️ Scelta 'A' non valida per issue ASR. Usa M=Accetta o E=Modifica."
+                            panel = _build_science_panel(
+                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
+                            )
+                            live.update(panel, refresh=True)
+                            continue
+
+                        if is_asr_risk and choice in ("m", "accetta", "mantieni", ""):
+                            _stop_audio()
+                            record_decision(lesson_dir, iss.id, "accepted", resolved_text=sci_unit.content if sci_unit else None)
+                            decided_this_session.add(iss.id)
+                            last_status = "✔ Testo dell'unità accettato."
+                            panel = _build_science_panel(
+                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
+                            )
+                            live.update(panel, refresh=True)
+                            idx += 1
+                            break
+                        elif not is_asr_risk and choice in ("a", "accetta", "applica", ""):
                             _stop_audio()
                             clean_fix = sanitize_suggested_fix(iss.suggested_fix)
                             record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
@@ -734,7 +720,7 @@ def run_interactive_review(
                             live.update(panel, refresh=True)
                             idx += 1
                             break
-                        elif choice in ("m", "mantieni", "rifiuta", "r"):
+                        elif not is_asr_risk and choice in ("m", "mantieni", "rifiuta", "r"):
                             _stop_audio()
                             record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
                             decided_this_session.add(iss.id)
@@ -747,10 +733,16 @@ def run_interactive_review(
                             break
                         elif choice in ("e", "modifica"):
                             _stop_audio()
-                            initial_editor_content = (
-                                "# Modifica liberamente il testo qui sotto, sostituirà l'affermazione originale.\n\n"
-                                f"{iss.claim}\n"
-                            )
+                            if is_asr_risk:
+                                initial_editor_content = (
+                                    "# Questa è l'intera unità come riscritta. Modificala liberamente per farla combaciare con l'audio: sostituirà l'intero contenuto dell'unità.\n\n"
+                                    f"{(sci_unit.content if sci_unit else iss.claim)}\n"
+                                )
+                            else:
+                                initial_editor_content = (
+                                    "# Modifica liberamente il testo qui sotto, sostituirà l'affermazione originale.\n\n"
+                                    f"{iss.claim}\n"
+                                )
                             live.stop()
                             edited_res = edit_text_in_editor(initial_editor_content)
                             live.start()

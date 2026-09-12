@@ -37,9 +37,6 @@ retry:
   max_timeout_retries: 2
   timeout_backoff_seconds: 3.5
   idle_read_timeout_seconds: 50.0
-thresholds:
-  green: 0.96
-  yellow: 0.80
 """
     (config_dir / "general.yaml").write_text(general_content, encoding="utf-8")
 
@@ -76,9 +73,6 @@ retry:
   max_timeout_retries: 2
   timeout_backoff_seconds: 3.5
   idle_read_timeout_seconds: 50.0
-thresholds:
-  green: 0.96
-  yellow: 0.80
 jobs:
   outline:
     max_attempts: 4
@@ -115,8 +109,6 @@ jobs:
     assert cfg_split.show_monitor_verbose is True
     assert cfg_split.retry.max_timeout_retries == 2
     assert cfg_split.retry.timeout_backoff_seconds == 3.5
-    assert cfg_split.thresholds.green == 0.96
-    assert cfg_split.thresholds.yellow == 0.80
     assert "outline" in cfg_split.jobs
     assert "rewrite" in cfg_split.jobs
     assert cfg_split.jobs["outline"].primary.model == "deepseek-v4-flash"
@@ -386,15 +378,14 @@ def test_cli_commands_exit_when_no_config_dir_and_not_mock(tmp_path, monkeypatch
     cmd_review_science, cmd_run): verificare SystemExit(1) e messaggio su stderr se config/ manca.
     """
     import argparse
-    from rt.cli import cmd_outline, cmd_rewrite, cmd_review_asr, cmd_review_science, cmd_run
+    from rt.cli import cmd_outline, cmd_rewrite, cmd_review, cmd_run
 
     monkeypatch.chdir(tmp_path)
 
     cli_commands = [
         (cmd_outline, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
         (cmd_rewrite, argparse.Namespace(lesson_dir=str(tmp_path), unit=None, force=False, mock=False)),
-        (cmd_review_asr, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
-        (cmd_review_science, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
+        (cmd_review, argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=False)),
         (cmd_run, argparse.Namespace(input=str(tmp_path), force=False, mock=False, date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False)),
     ]
 
@@ -411,10 +402,10 @@ def test_cli_commands_exit_when_no_config_dir_and_not_mock(tmp_path, monkeypatch
 
 def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch):
     """
-    12. Verificare che con --mock i 5 comandi procedano oltre il controllo di config mancante.
+    12. Verificare che con --mock i comandi procedano oltre il controllo di config mancante.
     """
     import argparse
-    from rt.cli import cmd_outline, cmd_rewrite, cmd_review_asr, cmd_review_science, cmd_run
+    from rt.cli import cmd_outline, cmd_rewrite, cmd_review, cmd_run
 
     monkeypatch.chdir(tmp_path)
 
@@ -427,9 +418,6 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
         "total_units": 1,
         "processed_units": 1,
         "total_issues": 0,
-        "green_auto_applied": 0,
-        "yellow_review_queue": 0,
-        "red_human_required": 0,
         "findings_count": 0,
         "critical_issues": 0,
         "pedagogical_notes": 0,
@@ -443,8 +431,7 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
          patch("rt.cli.run_outline", return_value=dummy_res), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli.run_rewrite", return_value=dummy_res), \
-         patch("rt.cli.run_review_asr", return_value=dummy_res), \
-         patch("rt.cli.run_review_science", return_value=dummy_res), \
+         patch("rt.cli.run_review", return_value=dummy_res), \
          patch("rt.pipeline.setup.run_setup", return_value={"lesson_dir": str(tmp_path)}), \
          patch("rt.pipeline.setup.is_audio_file", return_value=False), \
          patch("rt.cli.run_build", return_value={"status": "OK", "skipped": True}), \
@@ -453,8 +440,7 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
         # None of these should raise SystemExit(1) due to missing config
         cmd_outline(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
         cmd_rewrite(argparse.Namespace(lesson_dir=str(tmp_path), unit=None, force=False, mock=True))
-        cmd_review_asr(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
-        cmd_review_science(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
+        cmd_review(argparse.Namespace(lesson_dir=str(tmp_path), force=False, mock=True))
         cmd_run(argparse.Namespace(
             input=str(tmp_path), force=False, mock=True, with_review=True, auto_accept=True, rename=False,
             date=None, materia=None, argomenti=None, dest_dir=None, model=None, skip_transcribe=False

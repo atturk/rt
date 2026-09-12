@@ -474,18 +474,16 @@ def cmd_run(args):
     first_input = raw_inputs[0] if raw_inputs else ""
     force = getattr(args, "force", False)
     mock_mode = getattr(args, "mock", False)
-    run_asr, run_sci = _normalize_with_review(getattr(args, "with_review", None))
+    with_review = bool(getattr(args, "with_review", True))
 
     if not mock_mode:
         required = ["outline", "rewrite"]
-        if run_asr:
-            required.append("review_asr")
-        if run_sci:
-            required.append("review_science")
+        if with_review:
+            required.append("review")
         _ensure_config_ready(required)
 
     is_audio_input = any(is_audio_file(x) for x in raw_inputs)
-    total_steps = (6 if is_audio_input else 4) + int(run_asr) + int(run_sci)
+    total_steps = (6 if is_audio_input else 4) + int(with_review)
 
     if is_audio_input:
         print("\n" + "=" * 60)
@@ -553,7 +551,7 @@ def cmd_run(args):
         from rt.core.config import load_config as _load_cfg_for_channel
         channel = _load_cfg_for_channel().telegram.default_channel
 
-    if run_sci:
+    if with_review:
         sci_res = run_review(lesson_dir, force=force, force_mock=mock_mode)
         sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})"
         _print_phase_action("review", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)

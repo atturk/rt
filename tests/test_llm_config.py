@@ -27,13 +27,13 @@ def test_config_defaults_and_yaml_parsing():
     assert cfg.version == "2.0.0"
     assert cfg.mock_llm is False
 
-    for job_name in ["outline", "rewrite", "review_asr", "review_science"]:
+    for job_name in ["outline", "rewrite", "review"]:
         job_cfg = cfg.llm.get(job_name)
         assert job_cfg is not None, f"Job {job_name} non configurato!"
         assert job_cfg.primary.provider is None
         assert job_cfg.primary.model is None
         assert job_cfg.primary.is_configured is False
-        expected_effort = "high" if job_name in ("rewrite", "review_science") else "low"
+        expected_effort = "high" if job_name in ("rewrite", "review") else "low"
 
         assert job_cfg.reasoning_effort == expected_effort
         assert job_cfg.temperature is None, "In thinking mode temperature non deve influenzare il sampling"

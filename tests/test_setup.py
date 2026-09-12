@@ -378,8 +378,7 @@ def test_full_pipeline_with_empty_argomenti_e2e_mock(tmp_path):
     from rt.pipeline.prepare import run_prepare
     from rt.pipeline.outline import run_outline
     from rt.pipeline.rewrite import run_rewrite
-    from rt.pipeline.review_asr import run_review_asr
-    from rt.pipeline.review_science import run_review_science
+    from rt.pipeline.review import run_review
     from rt.pipeline.build import run_build
 
     dest_dir = str(tmp_path)

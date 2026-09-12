@@ -266,6 +266,7 @@ def test_rewrite_target_unit_isolation_preserves_partial(multi_unit_lesson):
 
     run_rewrite(lesson_dir, target_unit_id="1.3", force_mock=True)
     # Ora che tutte le unità sono presenti nel draft, la fase globale diventa VALID!
+    status_full, _ = check_phase_status(lesson_dir, "rewrite")
     assert status_full == PhaseStatus.VALID
 
 

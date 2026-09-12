@@ -497,7 +497,7 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    keys = iter(["p", "m"])
+    keys = iter(["p", "e"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc = MagicMock()
@@ -691,7 +691,7 @@ def test_science_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
-    keys = iter(["m", "a"])
+    keys = iter(["m"])
     monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Nel processo di distillazione abbiamo una reazione esotermica importante."):
@@ -700,7 +700,7 @@ def test_science_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
     assert res is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
-    assert ledger.decisions[0].decision == "accepted"
+    assert ledger.decisions[0].decision == "rejected"
 
 
 def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
@@ -814,7 +814,7 @@ def test_silent_p_o_and_unrecognized_keys_science(tmp_path, monkeypatch, capsys)
     assert res is True
     out = capsys.readouterr().out
     assert "Azione [" in out
-    assert "✔ Approvato." in out
+    assert "✔ Correzione scientifica applicata." in out
 
 
 def test_quit_during_p_sequence_interrupts_cleanly(tmp_path, monkeypatch, capsys):
@@ -863,7 +863,7 @@ def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path, monkeypatch, ca
     assert res is True
     out = capsys.readouterr().out
     assert "Azione [" in out
-    assert "✔ Approvato." in out
+    assert "✔ Formulazione originale mantenuta." in out
 
 
 
