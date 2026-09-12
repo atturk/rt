@@ -12,8 +12,17 @@ if os.path.basename(script_dir) == "bin":
 else:
     project_root = script_dir
 
-venv_python = os.path.join(project_root, ".venv", "bin", "python3")
-if os.path.isfile(venv_python) and os.path.realpath(sys.executable) != os.path.realpath(venv_python):
+venv_dir = os.path.join(project_root, ".venv")
+venv_python = os.path.join(venv_dir, "bin", "python3")
+# Confronta sys.prefix (che riflette il venv REALMENTE attivo per questo interprete), non
+# sys.executable: .venv/bin/python3 è quasi sempre un symlink al Python base che lo ha creato,
+# quindi il suo realpath COINCIDE con quello del Python di sistema invocato bare — un confronto
+# per realpath dell'eseguibile non distinguerebbe mai i due casi e non farebbe mai scattare il
+# re-exec, anche quando serve davvero (bug reale riscontrato: 'rt' invocato via PATH eseguiva
+# sys.executable di sistema, con sys.path del sistema anziché quello isolato del venv, fallendo
+# su ModuleNotFoundError per i pacchetti installati solo in .venv).
+in_target_venv = os.path.realpath(sys.prefix) == os.path.realpath(venv_dir)
+if os.path.isfile(venv_python) and not in_target_venv:
     # Riesegue questo stesso script con l'interprete del venv locale, così 'rt' funziona
     # anche invocato via PATH senza aver attivato il venv a mano in quella shell (es. dopo
     # aver seguito le istruzioni di install.sh, che aggiungono bin/ al PATH ma non attivano
