@@ -197,7 +197,13 @@ def test_run_setup_on_progress_callback(tmp_path):
 
     def fake_transcribe_run(cmd, label):
         payload = json.dumps({"transcriptSegments": [{"id": "s1", "startMs": 0, "endMs": 1000, "text": "Test"}], "rawTranscript": "Test"})
-        return subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr="")
+        if "--output-dir" in cmd:
+            out_idx = cmd.index("--output-dir") + 1
+            out_dir = cmd[out_idx]
+            os.makedirs(out_dir, exist_ok=True)
+            with open(os.path.join(out_dir, "fake_output.json"), "w", encoding="utf-8") as f:
+                f.write(payload)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     with patch("shutil.which", return_value="/usr/local/bin/macparakeet-cli"):
         with patch("rt.pipeline.setup._run_transcribe_with_spinner", side_effect=fake_transcribe_run):
@@ -225,18 +231,14 @@ def test_run_transcribe_with_spinner_polling():
     from rt.pipeline.setup import _run_transcribe_with_spinner
 
     mock_proc = MagicMock()
-    # poll() restituisce None (running) la prima volta, poi 0 (terminato)
-    mock_proc.poll.side_effect = [None, 0]
-    mock_proc.communicate.return_value = ("fake stdout", "fake stderr")
+    mock_proc.poll.side_effect = [None, 0, 0]
+    mock_proc.stdout.readline.side_effect = ["Transcribing... 50%\n", "", ""]
     mock_proc.returncode = 0
 
     with patch("subprocess.Popen", return_value=mock_proc):
-        with patch("time.sleep"):  # velocizza il test
-            res = _run_transcribe_with_spinner(["echo", "hello"], "Test label")
+        res = _run_transcribe_with_spinner(["echo", "hello"], "Test label")
 
     assert res.returncode == 0
-    assert res.stdout == "fake stdout"
-    assert res.stderr == "fake stderr"
     assert res.args == ["echo", "hello"]
 
 
@@ -258,7 +260,13 @@ def test_macparakeet_single_run_per_audio(tmp_path):
     def fake_transcribe_run(cmd, label):
         calls.append(cmd)
         payload = json.dumps({"transcriptSegments": [{"id": "s1", "startMs": 0, "endMs": 1000, "text": "Test"}], "rawTranscript": "Test"})
-        return subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr="")
+        if "--output-dir" in cmd:
+            out_idx = cmd.index("--output-dir") + 1
+            out_dir = cmd[out_idx]
+            os.makedirs(out_dir, exist_ok=True)
+            with open(os.path.join(out_dir, "fake_output.json"), "w", encoding="utf-8") as f:
+                f.write(payload)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     with patch("shutil.which", return_value="/usr/local/bin/macparakeet-cli"):
         with patch("rt.pipeline.setup._run_transcribe_with_spinner", side_effect=fake_transcribe_run) as mock_mw:

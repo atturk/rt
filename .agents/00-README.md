@@ -42,7 +42,9 @@ resoconto.
 
 ## Ordine di esecuzione
 
-Nessun task attivo al momento.
+1. **Task 35** (indipendente, priorità massima — bug bloccante).
+2. **Task 36 → Task 37 → Task 38** in quest'ordine (stesso file, `rt/pipeline/configure.py`).
+3. **Task 39** (indipendente, può essere eseguito in qualunque momento rispetto agli altri).
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
@@ -67,6 +69,58 @@ per i task 13-17 (feature "add-images") in
 RT resta un checkout git auto-contenuto niente packaging pip/pipx per il 18; sostituzione
 MacWhisper→macparakeet-cli e design del wizard `rt config` con discovery live Telegram invece
 del link-paste, per motivazioni spiegate nei task 19-22 stessi).
+
+## Aggiornamento — primo giro di test reale end-to-end (installazione → run) su MacBook Air
+
+L'utente ha eseguito il primo giro di test reale completo (installazione da zero, `rt config`,
+`rt run` su una lezione audio reale di 86 minuti) e riportato una serie di bug e richieste UX,
+ora tradotti nei Task 35-39 (dettagli completi in ciascun file). Un fix testuale minore
+(riepilogo "prossimi passi" a fine `install.sh`) è stato applicato direttamente in chat, non è
+un task Antigravity.
+
+**Task 35 (CRITICO, priorità massima)**: `rt run`/`rt setup` si bloccano indefinitamente e non
+completano MAI la trascrizione su una lezione di durata reale. Causa: il comando
+`macparakeet-cli transcribe` viene invocato senza `--output-dir`, quindi scrive l'intero JSON
+(centinaia di KB per lezioni lunghe, include `wordTimestamps` per ogni parola) su stdout; il
+codice fa polling su `proc.poll()` senza mai leggere lo stdout finché il processo non termina →
+deadlock sul buffer del pipe (64KB) non appena l'output lo supera. Include anche: fix
+`--no-diarize` mancante, fix drag-and-drop con virgola nel nome file (`\,` non gestito), barra
+di progresso leggibile, e preservazione del dato di confidenza per-parola (`wordTimestamps`)
+oggi scartato — campo `confidence` per-segmento sempre `None` per l'export macparakeet-cli,
+mai popolato dalla migrazione MacWhisper→macparakeet-cli del Task 19.
+
+**Task 36**: 5 bug puntuali in `rt/pipeline/configure.py` trovati nello stesso giro di test:
+campo selezione modello pre-riempito col primo risultato del fetch invece di partire vuoto;
+nessun avviso "chiave già presente" nel percorso a chiave singola (presente solo per
+round-robin); il placeholder `RT_TELEGRAM_BOT_TOKEN=123456:ABC-your-bot-token` di
+`.env.example` (copiato verbatim in `.env` al bootstrap) viene trattato come token reale già
+configurato; fetch della lista modelli con errore generico non diagnosticabile (verificare in
+particolare se l'endpoint OpenAI-compatibile di Google supporta `/models`); nessuna pulizia di
+virgolette sul path `lessons_root` incollato (riusa `clean_input_path` già esistente in
+`setup.py`, non duplicare la logica).
+
+**Task 37**: inserimento chiavi API round-robin in batch (separate da virgola) invece di un
+prompt per chiave (13 prompt separati per 13 chiavi, riprodotto empiricamente).
+
+**Task 38**: redesign della schermata di assegnazione modello-per-fase come blocchi/card
+navigabili liberamente avanti/indietro (stile "science-review", riusando il pattern già
+esistente in `issue_review.py::run_interactive_review` — `rich.Live` + `read_single_key` con
+supporto nativo LEFT/RIGHT/back già in `rt/core/keyboard.py`), con intestazione di stato per
+fase e schermata finale "Conferma"/"Modifica" (oggi il wizard scrive su disco e stampa un
+riepilogo statico non modificabile subito dopo l'ultima domanda). Sposta anche la sezione
+"Pricing Custom" da intestazione a riquadro a semplice domanda inline (oggi appare fuori
+sequenza logica, essendo invocata dentro la sezione "1." nonostante il numero "4.").
+
+**Task 39**: la discovery live Telegram, se fallisce, entra SEMPRE ed incondizionatamente
+nell'inserimento manuale via link, senza poter ritentare la discovery né annullare — va
+sostituito con un menu di scelta. Rimuove anche un ID di canale reale usato come esempio nei
+prompt (sostituito con un ID fittizio). Aggiunge `rt config --topics` per gestire (listare,
+rinominare, rimuovere, modificare) i topic già configurati senza rifare l'intera sezione
+Telegram, sullo stesso pattern di `--models`/`--telegram` già esistenti.
+
+**Nota per Antigravity**: i Task 36, 37 e 38 toccano tutti `rt/pipeline/configure.py`.
+Eseguili in quest'ordine (36 → 37 → 38) per isolare i commit per causa e ridurre conflitti di
+merge, come indicato nell'intestazione di ciascun file.
 
 Quando tutti i task sono completati (o se ti sei fermato bloccato su un task), segnalalo in
 chat con un riepilogo breve per task: file toccati, output dei test, e — importante — cosa
