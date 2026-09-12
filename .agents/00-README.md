@@ -4,19 +4,18 @@ I file numerati in questa cartella sono già il piano di implementazione complet
 essere eseguito: NON produrre un tuo piano di implementazione separato prima di iniziare.
 Leggi ogni file di task e implementa direttamente quanto descritto.
 
-**Stato**: 01-18 sono già stati implementati, revisionati (con alcuni fix di hardening
-applicati direttamente in revisione) e pushati in round precedenti — non rifarli, non toccare
-quel codice se non indicato esplicitamente da un task attivo. Il lavoro corrente da eseguire è
-**19-22**: 19 sostituisce MacWhisper con `macparakeet-cli` (gratuito) come motore ASR; 20-21-22
-costruiscono insieme il nuovo comando `rt config` (wizard interattivo di configurazione guidata:
-provider LLM, Telegram con discovery live di gruppo/topic, motore STT, pricing opzionale).
+**Stato**: 01-22 sono già stati implementati e revisionati (con diversi fix applicati
+direttamente in revisione: due bug reali di risoluzione credenziali/token già configurati che
+impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
+discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
+migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
+indicato esplicitamente da un task attivo. Il lavoro corrente da eseguire è **23**: pulizia di
+codice morto residuo (fallback su file mai scritto da `macparakeet-cli`) e testo di help/errore
+non aggiornato dopo la migrazione a `macparakeet-cli`, emersi durante la revisione dei task 19-22.
 
 ## Ordine di esecuzione
 
-19 è indipendente e può essere eseguito in qualsiasi momento rispetto a 20-22 (non tocca lo
-stesso codice, a parte il nome del motore STT di default che 22 legge da 19 se già completato).
-20 → 21 → 22 vanno eseguiti IN ORDINE: 21 estende la funzione creata da 20, 22 estende quella
-di 20+21 — non sono indipendenti tra loro.
+Un solo task attivo (**23**), indipendente da tutto il resto.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
