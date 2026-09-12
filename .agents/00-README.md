@@ -9,17 +9,15 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. 01-27 sono completati, revisionati e pushati. Diversi
-fix mirati a `install.sh` sono stati applicati direttamente durante test reali su un MacBook Air
-(output del download del modello nascosto da `&>/dev/null`, auto-update Homebrew rumoroso,
-prompt interattivo per `micro` rimosso). Il lavoro corrente da eseguire è **28**: ristrutturazione
-UX più ampia di `install.sh` (colori, log pulito su file invece che a schermo, sovrapposizione in
-parallelo del download del modello con la parte Python — sicura perché non coinvolge comandi
-`brew` concorrenti — cleanup su interruzione, tempo totale nel riepilogo finale).
+indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-28 sono
+completati, revisionati (inclusa verifica reale via pseudo-terminale del comportamento su
+Ctrl+C, con un fix diretto sulla gestione dell'interruzione) e pushati. Molti fix mirati a
+`install.sh` sono stati applicati direttamente durante test reali ripetuti su un MacBook Air.
+Aspetta nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
 
 ## Ordine di esecuzione
 
-Un solo task attivo (**28**), indipendente da tutto il resto.
+Nessun task attivo al momento.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
