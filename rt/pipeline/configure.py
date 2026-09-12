@@ -4,7 +4,8 @@ Wizard interattivo di configurazione guidata per il progetto RT.
 Gestisce la configurazione di:
 - Provider LLM (DeepSeek, OpenRouter, Google Gemini, OpenAI Compatible) e credenziali.
 - Telegram (bot token, chat ID, discovery live topic, lessons_root).
-- STT e Pricing (estesi nel task 22).
+- STT (motore trascrizione risposte vocali).
+- Pricing custom opzionale.
 """
 
 import os
@@ -35,6 +36,14 @@ def parse_telegram_topic_link(link: str) -> Optional[Tuple[int, int]]:
     topic_id = int(m.group(2))
     chat_id = int(f"-100{channel_num}")
     return chat_id, topic_id
+
+
+def _is_valid_float(val: str) -> bool:
+    try:
+        f = float(val.strip())
+        return f >= 0.0
+    except Exception:
+        return False
 
 
 def _atomic_write_text(file_path: str, content: str) -> None:
@@ -106,10 +115,11 @@ def _resolve_or_bootstrap_config_paths() -> Tuple[str, str]:
     return root_config, root_env
 
 
-def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
+def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Optional[str], Optional[str], List[str]]:
     """
     Guida l'utente nella configurazione del provider LLM principale, base_url, API key e modello,
     aggiornando .env, config/general.yaml e tutti i file <job>.yaml.
+    Restituisce (provider, model, list_updated_jobs).
     """
     print("\n------------------------------------------------------------")
     print("🤖 1. Configurazione Provider LLM principale")
@@ -159,7 +169,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
 
     if not provider:
         print("Operazione annullata dall'utente.")
-        return
+        return None, None, []
 
     # 3. Base URL
     default_base = KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, "")
@@ -174,7 +184,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
             ).ask()
             if base_url is None:
                 print("Operazione annullata dall'utente.")
-                return
+                return None, None, []
             base_url = base_url.strip()
             if not base_url:
                 print("⚠️  Il provider 'openai_compatible' richiede un Base URL non vuoto.")
@@ -185,7 +195,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
         ).ask()
         if base_url_input is None:
             print("Operazione annullata dall'utente.")
-            return
+            return None, None, []
         base_url_input = base_url_input.strip()
         if not base_url_input or base_url_input == default_base:
             base_url = None
@@ -202,7 +212,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
 
     if api_key_input is None:
         print("Operazione annullata dall'utente.")
-        return
+        return None, None, []
 
     api_key = api_key_input.strip() if api_key_input.strip() else existing_key
 
@@ -268,7 +278,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
 
         if selected_model is None:
             print("Operazione annullata dall'utente.")
-            return
+            return None, None, []
 
         if selected_model != MANUAL_ENTRY:
             chosen_model = selected_model
@@ -282,7 +292,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
         ).ask()
         if not manual_model:
             print("Operazione annullata dall'utente.")
-            return
+            return None, None, []
         chosen_model = manual_model.strip()
 
     # 6. Aggiornamento di tutti i file <job>.yaml
@@ -317,10 +327,13 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
     if base_url:
         print(f"   Base URL:    {base_url}")
 
+    return provider, chosen_model, updated_jobs
 
-def _configure_telegram_section(config_dir: str, env_path: str) -> None:
+
+def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any]:
     """
     Guida l'utente nella configurazione di Telegram (Bot Token, Chat ID, discovery live/link topic, lessons_root).
+    Restituisce un dizionario con l'esito della configurazione.
     """
     print("\n------------------------------------------------------------")
     print("✈️  2. Configurazione Telegram (Notifiche e Topic per Materia)")
@@ -329,7 +342,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> None:
     confirm = questionary.confirm("Configurare Telegram ora?", default=True).ask()
     if not confirm:
         print("⏭  Sezione Telegram saltata.")
-        return
+        return {"configured": False}
 
     # 1. Bot Token
     existing_token = get_api_key("RT_TELEGRAM_BOT_TOKEN") or ""
@@ -347,7 +360,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> None:
         token_input = questionary.password("Bot Token Telegram:").ask()
         if not token_input or not token_input.strip():
             print("⚠️  Bot token non inserito, sezione Telegram interrotta.")
-            return
+            return {"configured": False}
         bot_token = token_input.strip()
         _update_env_file(env_path, "RT_TELEGRAM_BOT_TOKEN", bot_token)
 
@@ -520,18 +533,206 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> None:
     if misc_topic_id:
         print(f"   Topic Varie (misc_topic_id): {misc_topic_id}")
 
+    return {
+        "configured": True,
+        "chat_id": detected_chat_id,
+        "topics_count": len(existing_topics)
+    }
+
+
+def _configure_stt_section(config_dir: str) -> str:
+    """
+    Guida l'utente nella configurazione del motore STT per l'active recall vocale.
+    """
+    print("\n------------------------------------------------------------")
+    print("🎙️  3. Configurazione Motore STT (Active Recall Vocale)")
+    print("------------------------------------------------------------")
+
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    general_data: Dict[str, Any] = {}
+    curr_stt = "macparakeet"
+
+    if os.path.isfile(general_yaml_path):
+        try:
+            with open(general_yaml_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    general_data = loaded
+                    curr_stt = general_data.get("telegram", {}).get("recall", {}).get("stt_engine", "macparakeet")
+        except Exception:
+            pass
+
+    allowed_stt = ["macparakeet", "macwhisper", "api"]
+    default_stt = curr_stt if curr_stt in allowed_stt else "macparakeet"
+
+    stt_choice = ""
+    while not stt_choice:
+        choice = questionary.select(
+            "Motore STT per trascrizione risposte vocali (active recall):",
+            choices=allowed_stt,
+            default=default_stt
+        ).ask()
+
+        if choice is None:
+            print("Operazione annullata dall'utente.")
+            return default_stt
+
+        if choice == "api":
+            print("⚠️  Il motore 'api' non è ancora implementato in RT (solleverà NotImplementedError durante il recall vocale).")
+            confirm = questionary.confirm("Vuoi impostare comunque 'api'?", default=False).ask()
+            if confirm:
+                stt_choice = "api"
+        else:
+            stt_choice = choice
+
+    if "telegram" not in general_data or not isinstance(general_data["telegram"], dict):
+        general_data["telegram"] = {}
+    if "recall" not in general_data["telegram"] or not isinstance(general_data["telegram"]["recall"], dict):
+        general_data["telegram"]["recall"] = {}
+
+    general_data["telegram"]["recall"]["stt_engine"] = stt_choice
+    _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+
+    print(f"✅ Motore STT impostato su: '{stt_choice}'")
+    return stt_choice
+
+
+def _configure_pricing_section(config_dir: str, provider: Optional[str], model: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Guida l'utente nella configurazione opzionale di un listino prezzi custom in config/general.yaml.
+    """
+    print("\n------------------------------------------------------------")
+    print("💰 4. Configurazione Pricing Custom (Opzionale)")
+    print("------------------------------------------------------------")
+
+    confirm = questionary.confirm(
+        "Configurare un listino prezzi custom per il provider/modello scelto? (opzionale, RT ha già stime interne)",
+        default=False
+    ).ask()
+
+    if not confirm:
+        print("⏭  Sezione Pricing custom saltata.")
+        return None
+
+    if not provider:
+        p_in = questionary.text("Nome provider per pricing (es. deepseek):").ask()
+        provider = p_in.strip() if p_in else None
+    if not model:
+        m_in = questionary.text("Nome modello per pricing (es. deepseek-chat):").ask()
+        model = m_in.strip() if m_in else None
+
+    if not provider or not model:
+        print("⚠️  Provider o modello mancante, sezione pricing saltata.")
+        return None
+
+    provider = provider.strip()
+    model = model.strip()
+
+    inp_str = questionary.text(
+        "Costo Input per 1M token in USD (es. 0.14):",
+        validate=lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"
+    ).ask()
+
+    if inp_str is None:
+        return None
+
+    out_str = questionary.text(
+        "Costo Output per 1M token in USD (es. 0.28):",
+        validate=lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"
+    ).ask()
+
+    if out_str is None:
+        return None
+
+    reasoning_cost: Optional[float] = None
+    has_reasoning = questionary.confirm(
+        "Il modello ha un costo di reasoning separato dall'output?",
+        default=False
+    ).ask()
+
+    if has_reasoning:
+        reas_str = questionary.text(
+            "Costo Reasoning per 1M token in USD (es. 0.55):",
+            validate=lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"
+        ).ask()
+        if reas_str and reas_str.strip():
+            reasoning_cost = float(reas_str.strip())
+
+    inp_val = float(inp_str.strip())
+    out_val = float(out_str.strip())
+
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    general_data: Dict[str, Any] = {}
+    if os.path.isfile(general_yaml_path):
+        try:
+            with open(general_yaml_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    general_data = loaded
+        except Exception:
+            pass
+
+    pricing_map = general_data.get("pricing")
+    if not isinstance(pricing_map, dict):
+        pricing_map = {}
+
+    if provider not in pricing_map or not isinstance(pricing_map[provider], dict):
+        pricing_map[provider] = {}
+
+    p_item: Dict[str, Any] = {
+        "input_per_million": inp_val,
+        "output_per_million": out_val,
+    }
+    if reasoning_cost is not None:
+        p_item["reasoning_per_million"] = reasoning_cost
+
+    pricing_map[provider][model] = p_item
+    general_data["pricing"] = pricing_map
+
+    _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+
+    print(f"✅ Pricing custom salvato per {provider}/{model}: input=${inp_val}/1M, output=${out_val}/1M")
+    return {"provider": provider, "model": model, "pricing": p_item}
+
 
 def run_config_wizard(interactive: bool = True) -> None:
     """Esegue il wizard interattivo rt config."""
-    print("================================----------------------------")
+    print("================================================------------")
     print("⚙️  RT CONFIG — Wizard di configurazione guidata")
-    print("================================----------------------------")
+    print("================================================------------")
 
     config_dir, env_path = _resolve_or_bootstrap_config_paths()
-    _configure_llm_provider_section(config_dir, env_path)
-    _configure_telegram_section(config_dir, env_path)
+    provider, model, updated_jobs = _configure_llm_provider_section(config_dir, env_path)
+    tg_res = _configure_telegram_section(config_dir, env_path)
+    stt_engine = _configure_stt_section(config_dir)
+    pricing_res = _configure_pricing_section(config_dir, provider, model)
 
-    print("\n✨ Configurazione completata!")
+    print("\n================================================------------")
+    print("✅ Configurazione completata.")
+    print("\nRiepilogo:")
+    prov_str = f"{provider} / {model}" if provider and model else "Non modificato"
+    print(f"- Provider LLM:   {prov_str} (applicato a {len(updated_jobs)} job)")
+
+    if tg_res and tg_res.get("configured"):
+        t_cnt = tg_res.get("topics_count", 0)
+        print(f"- Telegram:       configurato ({t_cnt} topic mappati)")
+    else:
+        print("- Telegram:       non configurato")
+
+    print(f"- Motore STT:     {stt_engine}")
+
+    if pricing_res:
+        p_p = pricing_res.get("provider")
+        p_m = pricing_res.get("model")
+        print(f"- Pricing custom: impostato per {p_p}/{p_m}")
+    else:
+        print("- Pricing custom: non impostato")
+
+    print("\nProssimi passi:")
+    print("1. Verifica la configurazione con: ./bin/rt status <una_lezione_di_prova>")
+    print("2. Prova una pipeline di test senza costi con: ./bin/rt run <cartella_lezione> --mock")
+    print("3. Puoi rilanciare 'rt config' in qualsiasi momento per modificare una singola sezione.")
+    print("================================================------------\n")
 
 
 def configure_config_parser(parser: Any) -> Any:

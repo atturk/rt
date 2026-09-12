@@ -2,7 +2,9 @@
 
 I file YAML in `config.example/` costituiscono un **guscio vuoto out-of-the-box**: non assumono alcun provider o credenziale preimpostata nel codice. Questo documento spiega la struttura dei file, come dichiarare esplicitamente le credenziali e i modelli, e come configurare le route opzionali avanzate (dual-key round-robin, fallback mirati).
 
-Per iniziare: copia l'intera cartella in `config/` e personalizza i file al suo interno — `config/` è ignorata da git per proteggere le tue impostazioni locali.
+> **💡 Configurazione Automatica**: È possibile generare e aggiornare la configurazione in modo interattivo eseguendo `./bin/rt config`. Il wizard ti guiderà nella scelta del provider LLM, API key, topic Telegram, motore STT e listino prezzi custom.
+
+Per iniziare manualmente: copia l'intera cartella in `config/` e personalizza i file al suo interno — `config/` è ignorata da git per proteggere le tue impostazioni locali.
 ```bash
 cp -r config.example config
 ```
