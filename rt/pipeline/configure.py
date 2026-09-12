@@ -3,19 +3,38 @@ rt.pipeline.configure
 Wizard interattivo di configurazione guidata per il progetto RT.
 Gestisce la configurazione di:
 - Provider LLM (DeepSeek, OpenRouter, Google Gemini, OpenAI Compatible) e credenziali.
-- Telegram, STT e Pricing (estesi nei task successivi 21-22).
+- Telegram (bot token, chat ID, discovery live topic, lessons_root).
+- STT e Pricing (estesi nel task 22).
 """
 
 import os
 import sys
 import shutil
 import json
+import re
 from typing import Dict, Any, List, Optional, Tuple
 import yaml
 import requests
 import questionary
 
 from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, _default_project_root, get_api_key
+
+
+def parse_telegram_topic_link(link: str) -> Optional[Tuple[int, int]]:
+    """
+    Parsa un link a un messaggio Telegram di un supergruppo/forum (es. 'https://t.me/c/4490473926/541/679')
+    e restituisce (chat_id, message_thread_id) come tuple di int, con prefisso -100 sul chat_id.
+    Ritorna None se il formato non è valido.
+    """
+    if not link or not isinstance(link, str):
+        return None
+    m = re.search(r"t\.me/c/(\d+)/(\d+)", link.strip())
+    if not m:
+        return None
+    channel_num = m.group(1)
+    topic_id = int(m.group(2))
+    chat_id = int(f"-100{channel_num}")
+    return chat_id, topic_id
 
 
 def _atomic_write_text(file_path: str, content: str) -> None:
@@ -299,6 +318,209 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> None:
         print(f"   Base URL:    {base_url}")
 
 
+def _configure_telegram_section(config_dir: str, env_path: str) -> None:
+    """
+    Guida l'utente nella configurazione di Telegram (Bot Token, Chat ID, discovery live/link topic, lessons_root).
+    """
+    print("\n------------------------------------------------------------")
+    print("✈️  2. Configurazione Telegram (Notifiche e Topic per Materia)")
+    print("------------------------------------------------------------")
+
+    confirm = questionary.confirm("Configurare Telegram ora?", default=True).ask()
+    if not confirm:
+        print("⏭  Sezione Telegram saltata.")
+        return
+
+    # 1. Bot Token
+    existing_token = get_api_key("RT_TELEGRAM_BOT_TOKEN") or ""
+    bot_token = ""
+    if existing_token:
+        masked = existing_token[:6] + "..." if len(existing_token) > 6 else existing_token
+        change = questionary.confirm(f"Bot token Telegram già presente ({masked}). Vuoi modificarlo?", default=False).ask()
+        if not change:
+            bot_token = existing_token
+
+    if not bot_token:
+        print("\nℹ️  Per creare un bot Telegram:")
+        print("   1. Apri Telegram e cerca @BotFather")
+        print("   2. Invia /newbot e segui le istruzioni per ottenere il Bot Token")
+        token_input = questionary.password("Bot Token Telegram:").ask()
+        if not token_input or not token_input.strip():
+            print("⚠️  Bot token non inserito, sezione Telegram interrotta.")
+            return
+        bot_token = token_input.strip()
+        _update_env_file(env_path, "RT_TELEGRAM_BOT_TOKEN", bot_token)
+
+    # 2. Discovery Gruppo / Topic
+    mode = questionary.select(
+        "Come vuoi configurare gruppo e topic Telegram?",
+        choices=[
+            "📡 Discovery live (manda un messaggio nel gruppo/topic dal telefono)",
+            "🔗 Incolla link topic (manuale)",
+            "⏭ Salta questa parte"
+        ]
+    ).ask()
+
+    detected_chat_id: Optional[int] = None
+    topics_map: Dict[str, int] = {}
+    misc_topic_id: Optional[int] = None
+
+    if mode and mode.startswith("📡"):
+        print("\n--- 📡 Discovery Live Topic ---")
+        print("ISTRUZIONI:")
+        print("1. Assicurati che il bot sia stato aggiunto al tuo gruppo Telegram.")
+        print("2. Assicurati che il bot sia Amministratore o che Group Privacy sia disattivata (@BotFather -> /mybots -> Bot Settings -> Group Privacy -> Turn off).")
+        print("3. Invia ORA dal tuo telefono un messaggio in ciascun topic che vuoi mappare.")
+
+        last_offset = 0
+        mapped_threads = set()
+        stop_discovery = False
+
+        print("\nListening per messaggi Telegram (Ctrl+C per terminare il polling)...")
+        try:
+            for _ in range(15):
+                if stop_discovery:
+                    break
+                try:
+                    resp = requests.get(
+                        f"https://api.telegram.org/bot{bot_token}/getUpdates",
+                        params={"offset": last_offset, "timeout": 2},
+                        timeout=5
+                    )
+                    if resp.status_code == 409:
+                        print("⚠️  Conflitto 409: sembra che 'rt telegram-daemon' sia già attivo per questo bot. Fermalo prima di proseguire.")
+                        break
+                    elif resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("ok") and isinstance(data.get("result"), list):
+                            for update in data["result"]:
+                                last_offset = max(last_offset, update.get("update_id", 0) + 1)
+                                msg = update.get("message") or update.get("channel_post")
+                                if not msg or not isinstance(msg, dict):
+                                    continue
+                                chat = msg.get("chat", {})
+                                chat_id = chat.get("id")
+                                if not chat_id:
+                                    continue
+
+                                if detected_chat_id is None:
+                                    detected_chat_id = chat_id
+                                    chat_title = chat.get("title", f"Chat {chat_id}")
+                                    print(f"\n📌 Gruppo rilevato: {chat_title} (ID: {chat_id})")
+                                elif chat_id != detected_chat_id:
+                                    print(f"⚠️  Messaggio ignorato da un altro chat ({chat_id})")
+                                    continue
+
+                                thread_id = msg.get("message_thread_id")
+                                if thread_id in mapped_threads:
+                                    continue
+                                mapped_threads.add(thread_id)
+
+                                snippet = str(msg.get("text", "")).strip()[:30]
+                                topic_label = f"Topic ID {thread_id}" if thread_id is not None else "Topic 'Generale' (radice)"
+                                print(f"\n📩 Nuovo messaggio rilevato in {topic_label}: '{snippet}'")
+
+                                mat = questionary.text(
+                                    f"Materia per {topic_label} (es. BIOCHIMICA, o 'varie' per Generale/Varie, invio per saltare):"
+                                ).ask()
+                                if mat and mat.strip():
+                                    mat_clean = mat.strip().upper()
+                                    if mat_clean in ("VARIE", "GENERALE") or thread_id is None:
+                                        if thread_id is not None:
+                                            misc_topic_id = thread_id
+                                    else:
+                                        topics_map[mat_clean] = thread_id
+
+                                cont = questionary.confirm("Continuare l'ascolto per altri topic?", default=True).ask()
+                                if not cont:
+                                    stop_discovery = True
+                                    break
+                except Exception:
+                    pass
+        except KeyboardInterrupt:
+            print("\nPolling interrotto dall'utente.")
+
+    if (mode and mode.startswith("🔗")) or (not topics_map and not detected_chat_id and mode and not mode.startswith("⏭")):
+        if mode and mode.startswith("📡") and not topics_map:
+            print("\n⚠️  Nessun messaggio rilevato via discovery live.")
+            print("Verifica che il bot sia nel gruppo e che abbia i permessi di lettura messaggi.")
+
+        print("\n--- 🔗 Inserimento Manuale via Link Topic ---")
+        while True:
+            link = questionary.text(
+                "Incolla il link a un messaggio del topic (es. https://t.me/c/4490473926/541/679) [invio per terminare]:"
+            ).ask()
+            if not link or not link.strip():
+                break
+            parsed = parse_telegram_topic_link(link)
+            if not parsed:
+                print("❌ Formato link non valido. Esempio atteso: https://t.me/c/4490473926/541/679")
+                continue
+
+            chat_id, topic_id = parsed
+            detected_chat_id = chat_id
+            print(f"✔ Rilevato Chat ID: {chat_id}, Topic ID: {topic_id}")
+            mat = questionary.text(f"Materia per Topic ID {topic_id} (es. BIOCHIMICA, o 'varie' per Varie):").ask()
+            if mat and mat.strip():
+                mat_clean = mat.strip().upper()
+                if mat_clean in ("VARIE", "GENERALE"):
+                    misc_topic_id = topic_id
+                else:
+                    topics_map[mat_clean] = topic_id
+
+    # Aggiorna .env con RT_TELEGRAM_CHAT_ID se rilevato
+    if detected_chat_id:
+        _update_env_file(env_path, "RT_TELEGRAM_CHAT_ID", str(detected_chat_id))
+
+    # Aggiorna config/general.yaml
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    general_data: Dict[str, Any] = {}
+    if os.path.isfile(general_yaml_path):
+        try:
+            with open(general_yaml_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    general_data = loaded
+        except Exception:
+            pass
+
+    if "telegram" not in general_data or not isinstance(general_data["telegram"], dict):
+        general_data["telegram"] = {}
+
+    existing_topics = general_data["telegram"].get("topics", {})
+    if not isinstance(existing_topics, dict):
+        existing_topics = {}
+
+    existing_topics.update(topics_map)
+    general_data["telegram"]["topics"] = existing_topics
+    if misc_topic_id is not None:
+        general_data["telegram"]["misc_topic_id"] = misc_topic_id
+
+    # lessons_root
+    curr_lessons_root = general_data["telegram"].get("lessons_root", "")
+    lessons_root_in = questionary.text(
+        "Percorso assoluto cartella lezioni (lessons_root per Telegram /list e /recall):",
+        default=curr_lessons_root
+    ).ask()
+
+    if lessons_root_in is not None:
+        clean_root = os.path.expanduser(lessons_root_in.strip())
+        if clean_root and not os.path.isdir(clean_root):
+            print(f"⚠️  Avviso: la cartella '{clean_root}' non esiste attualmente su questo sistema.")
+        if clean_root:
+            general_data["telegram"]["lessons_root"] = clean_root
+
+    _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+
+    print("\n✅ Configurazione Telegram salvata in config/general.yaml e .env!")
+    if detected_chat_id:
+        print(f"   Chat ID: {detected_chat_id}")
+    if existing_topics:
+        print(f"   Topics mappati ({len(existing_topics)}): {existing_topics}")
+    if misc_topic_id:
+        print(f"   Topic Varie (misc_topic_id): {misc_topic_id}")
+
+
 def run_config_wizard(interactive: bool = True) -> None:
     """Esegue il wizard interattivo rt config."""
     print("================================----------------------------")
@@ -307,6 +529,7 @@ def run_config_wizard(interactive: bool = True) -> None:
 
     config_dir, env_path = _resolve_or_bootstrap_config_paths()
     _configure_llm_provider_section(config_dir, env_path)
+    _configure_telegram_section(config_dir, env_path)
 
     print("\n✨ Configurazione completata!")
 

@@ -191,3 +191,101 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
     assert job_data["primary"]["model"] == "anthropic/claude-3.5-sonnet"
     assert job_data["primary"]["credential"] == "openrouter_1"
     assert job_data["primary"]["max_tokens"] == 4096
+
+
+def test_parse_telegram_topic_link():
+    """Verifica il parsing dei link a messaggi/topic Telegram."""
+    from rt.pipeline.configure import parse_telegram_topic_link
+
+    # Link valido con message_id
+    res1 = parse_telegram_topic_link("https://t.me/c/4490473926/541/679")
+    assert res1 == (-1004490473926, 541)
+
+    # Link valido senza message_id
+    res2 = parse_telegram_topic_link("t.me/c/123456789/42")
+    assert res2 == (-100123456789, 42)
+
+    # Link non valido
+    assert parse_telegram_topic_link("https://t.me/somechannel/123") is None
+    assert parse_telegram_topic_link("invalido") is None
+    assert parse_telegram_topic_link("") is None
+
+
+def test_configure_telegram_section_skip(tmp_path):
+    """Verifica che saltare la sezione Telegram non lasci modifiche inattese."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    from rt.pipeline.configure import _configure_telegram_section
+
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)):
+        _configure_telegram_section(config_dir, env_file)
+
+    assert not os.path.isfile(env_file)
+
+
+def test_configure_telegram_section_manual_link_flow(tmp_path):
+    """Verifica il flusso di inserimento manuale del link topic Telegram."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"telegram": {"topics": {"PATOLOGIA": 10}}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    from rt.pipeline.configure import _configure_telegram_section
+
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        m.ask.return_value = True
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "🔗 Incolla link topic (manuale)"
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "123456:BOT_TOKEN_TEST"
+        return m
+
+    text_calls = []
+
+    def mock_text(prompt, default=None):
+        m = MagicMock()
+        if "Incolla il link" in prompt:
+            # Primo link, poi stringa vuota per terminare
+            val = "https://t.me/c/4490473926/541/679" if len(text_calls) == 0 else ""
+            text_calls.append(val)
+            m.ask.return_value = val
+        elif "Materia per Topic ID" in prompt:
+            m.ask.return_value = "BIOCHIMICA"
+        elif "lessons_root" in prompt:
+            m.ask.return_value = str(tmp_path / "lezioni")
+        else:
+            m.ask.return_value = ""
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("questionary.text", side_effect=mock_text):
+
+        _configure_telegram_section(config_dir, env_file)
+
+    # Verifica .env
+    with open(env_file, "r", encoding="utf-8") as f:
+        env_content = f.read()
+    assert "RT_TELEGRAM_BOT_TOKEN=123456:BOT_TOKEN_TEST" in env_content
+    assert "RT_TELEGRAM_CHAT_ID=-1004490473926" in env_content
+
+    # Verifica general.yaml (merge con PATOLOGIA pre-esistente)
+    with open(general_file, "r", encoding="utf-8") as f:
+        gen_data = yaml.safe_load(f)
+    assert gen_data["telegram"]["topics"]["PATOLOGIA"] == 10
+    assert gen_data["telegram"]["topics"]["BIOCHIMICA"] == 541
+    assert gen_data["telegram"]["lessons_root"] == str(tmp_path / "lezioni")
+
