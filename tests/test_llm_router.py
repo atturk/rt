@@ -144,6 +144,42 @@ def test_round_robin_disabled(monkeypatch):
     assert client.router.select_initial_route("outline").route.route_id == "google_p1"
 
 
+def test_round_robin_5_way_cycling(monkeypatch):
+    """Verifica che round_robin con 5 primary_routes cicli su tutte e 5 le route in ordine."""
+    for i in range(1, 6):
+        monkeypatch.setenv(f"GOOGLE_API_KEY_{i}", f"key{i}")
+        GLOBAL_CREDENTIALS.register(CredentialRef(name=f"google_{i}", provider="google", env_var=f"GOOGLE_API_KEY_{i}"))
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.jobs["rewrite"] = JobRoutingConfig(
+        max_attempts=5,
+        round_robin=True,
+        primary_routes=[
+            RouteConfig(route_id=f"google_r{i}", provider="google", credential=f"google_{i}", model="gemini-2.5-flash")
+            for i in range(1, 6)
+        ]
+    )
+
+    expected_ids = [f"google_r{i}" for i in range(1, 6)] * 2 + ["google_r1", "google_r2"]
+    actual_ids = [client.router.select_initial_route("rewrite").route.route_id for _ in range(12)]
+    assert actual_ids == expected_ids
+
+
+def test_round_robin_single_route_validation_error(monkeypatch):
+    """Verifica che primary_routes con un solo elemento e round_robin: true sollevi ValueError."""
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key1")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    with pytest.raises(ValueError, match="round_robin è abilitato ma è disponibile una sola route"):
+        JobRoutingConfig(
+            round_robin=True,
+            primary_routes=[
+                RouteConfig(route_id="google_p1", provider="google", credential="google_1", model="gemini-2.0-flash")
+            ]
+        )
+
+
 def test_loop_protection_prevents_routing_cycles(monkeypatch):
     """Verifica che visited_routes impedisca di tornare su una route già visitata generando loop infiniti."""
     client = LLMClient(force_mock=False)
