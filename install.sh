@@ -339,19 +339,15 @@ echo "${GREEN}${BOLD}✅ Installazione completata in ${SECONDS}s.${RESET}"
 echo ""
 echo "Prossimi passi:"
 if [ -t 0 ] && [ -t 1 ]; then
-    echo "1. Esegui la configurazione guidata interattiva:"
-    echo "     rt config"
-    echo "   (Oppure modifica manualmente config/general.yaml e .env, vedi docs/CONFIGURATION_REFERENCE.md)."
-    echo "2. ✅ 'rt' è disponibile da qualunque cartella (riga aggiunta a ${display_profile})."
-    echo "3. Verifica con: rt -h"
-    echo "4. Prova una pipeline di test senza costi con: rt run <cartella_lezione> --mock"
+    echo "1. Verifica l'installazione con: rt -h"
+    echo "2. Configura RT con: rt config"
+    echo "3. Prova una pipeline di test senza costi con: rt run <cartella_lezione> --mock"
+    echo "4. Documentazione: https://github.com/atturk/rt"
 else
-    echo "1. Esegui la configurazione guidata interattiva:"
-    echo "     ./bin/rt config"
-    echo "   (Oppure modifica manualmente config/general.yaml e .env, vedi docs/CONFIGURATION_REFERENCE.md)."
-    echo "2. ✅ 'rt' è già disponibile da qualunque cartella (riga aggiunta a ${display_profile}) — apri un nuovo terminale o esegui \`source ${display_profile}\` per usarlo subito in questa sessione."
-    echo "3. Verifica con: ./bin/rt -h"
-    echo "4. Prova una pipeline di test senza costi con: ./bin/rt run <cartella_lezione> --mock"
+    echo "1. Verifica l'installazione con: ./bin/rt -h"
+    echo "2. Configura RT con: ./bin/rt config"
+    echo "3. Prova una pipeline di test senza costi con: ./bin/rt run <cartella_lezione> --mock"
+    echo "4. Documentazione: https://github.com/atturk/rt"
 fi
 
 if [ "$INSTALL_PARAKEET" = false ]; then

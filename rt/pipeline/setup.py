@@ -8,6 +8,7 @@ import os
 import sys
 import re
 import shutil
+import tempfile
 import json
 import subprocess
 import datetime
@@ -52,7 +53,7 @@ def clean_input_path(raw_path: str) -> str:
     p = raw_path.strip()
     if (p.startswith('"') and p.endswith('"')) or (p.startswith("'") and p.endswith("'")):
         p = p[1:-1]
-    p = p.replace(r"\ ", " ").replace(r"\(", "(").replace(r"\)", ")").replace(r"\[", "[").replace(r"\]", "]")
+    p = p.replace(r"\ ", " ").replace(r"\(", "(").replace(r"\)", ")").replace(r"\[", "[").replace(r"\]", "]").replace(r"\,", ",")
     return os.path.expanduser(p.strip())
 
 
@@ -283,15 +284,34 @@ def generate_deterministic_mock_asr(
 
 def _run_transcribe_with_spinner(cmd: List[str], label: str) -> subprocess.CompletedProcess:
     console = Console()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1
+    )
     start = time.monotonic()
+    last_status_text = label
     with console.status(f"[cyan]{label}...", spinner="dots") as status:
-        while proc.poll() is None:
-            elapsed = int(time.monotonic() - start)
-            status.update(f"[cyan]{label}... ({elapsed}s)")
-            time.sleep(0.5)
-    stdout, stderr = proc.communicate()
-    return subprocess.CompletedProcess(cmd, proc.returncode, stdout=stdout, stderr=stderr)
+        if proc.stdout:
+            while True:
+                line = proc.stdout.readline()
+                if not line and proc.poll() is not None:
+                    break
+                if line:
+                    line_str = line.strip()
+                    if line_str:
+                        match = re.search(r"(\d+)%", line_str)
+                        if match:
+                            pct = match.group(1)
+                            last_status_text = f"{label} ({pct}%)"
+                        else:
+                            last_status_text = f"{label} - {line_str}"
+                    elapsed = int(time.monotonic() - start)
+                    status.update(f"[cyan]{last_status_text} ({elapsed}s)")
+    proc.wait()
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout="", stderr="")
 
 
 def run_setup(
@@ -449,56 +469,90 @@ def run_setup(
 
         # Se sono presenti file audio multipli, gestiamo la concatenazione deterministica con offset cumulativo
         all_segments_combined = []
+        all_word_timestamps_combined = []
         cumulative_offset_ms = 0.0
+        cumulative_word_offset = 0
         combined_text_parts = []
 
-        for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
-            aud_abs = os.path.abspath(aud_file)
+        temp_dir = tempfile.mkdtemp(prefix="rt_macparakeet_")
+        try:
+            for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
+                aud_abs = os.path.abspath(aud_file)
+                temp_audio_dir = os.path.join(temp_dir, f"audio_{audio_idx}")
+                os.makedirs(temp_audio_dir, exist_ok=True)
 
-            cmd_json = [
-                parakeet_bin, "transcribe",
-                "--format", "json",
-            ]
-            if model:
-                model_param = model.replace("parakeet-", "") if model.startswith("parakeet-") else model
-                cmd_json.extend(["--parakeet-model", model_param])
-            cmd_json.append(aud_abs)
+                cmd_json = [
+                    parakeet_bin, "transcribe",
+                    "--format", "json",
+                    "--no-diarize",
+                    "--output-dir", temp_audio_dir,
+                ]
+                if model:
+                    model_param = model.replace("parakeet-", "") if model.startswith("parakeet-") else model
+                    cmd_json.extend(["--parakeet-model", model_param])
+                cmd_json.append(aud_abs)
 
-            # HARD-FAIL CHECK: se macparakeet-cli fallisce, il setup si interrompe immediatamente
-            res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
-            
-            raw_data = None
-            if res_json.stdout and res_json.stdout.strip():
-                try:
-                    raw_data = json.loads(res_json.stdout)
-                except Exception:
-                    pass
+                # HARD-FAIL CHECK: se macparakeet-cli fallisce, il setup si interrompe immediatamente
+                res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
+                
+                json_files = [f for f in os.listdir(temp_audio_dir) if f.endswith(".json")] if os.path.exists(temp_audio_dir) else []
+                raw_data = None
+                if json_files:
+                    json_file_path = os.path.join(temp_audio_dir, json_files[0])
+                    try:
+                        with open(json_file_path, "r", encoding="utf-8") as f:
+                            raw_data = json.load(f)
+                    except Exception:
+                        raw_data = None
 
-            if res_json.returncode != 0 or raw_data is None:
-                raise SetupError(
-                    f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
-                    f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip()}"
-                )
+                if res_json.returncode != 0 or raw_data is None:
+                    raise SetupError(
+                        f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
+                        f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip() if res_json.stderr else ''}"
+                    )
 
-            segs = raw_data.get("transcriptSegments", raw_data.get("segments", []))
-            max_seg_end = 0.0
-            for s in segs:
-                s_copy = dict(s)
-                start_val = float(s_copy.get("startMs", s_copy.get("start", 0)))
-                end_val = float(s_copy.get("endMs", s_copy.get("end", 0)))
-                s_copy["startMs"] = start_val + cumulative_offset_ms
-                s_copy["endMs"] = end_val + cumulative_offset_ms
-                s_copy["start"] = s_copy["startMs"]
-                s_copy["end"] = s_copy["endMs"]
-                all_segments_combined.append(s_copy)
-                if s_copy["endMs"] > max_seg_end:
-                    max_seg_end = s_copy["endMs"]
+                word_ts = raw_data.get("wordTimestamps", [])
+                if isinstance(word_ts, list):
+                    for wt in word_ts:
+                        if isinstance(wt, dict):
+                            wt_copy = dict(wt)
+                            if "startMs" in wt_copy and isinstance(wt_copy["startMs"], (int, float)):
+                                wt_copy["startMs"] = float(wt_copy["startMs"]) + cumulative_offset_ms
+                            if "endMs" in wt_copy and isinstance(wt_copy["endMs"], (int, float)):
+                                wt_copy["endMs"] = float(wt_copy["endMs"]) + cumulative_offset_ms
+                            all_word_timestamps_combined.append(wt_copy)
 
-            raw_txt = raw_data.get("rawTranscript", raw_data.get("text"))
-            if raw_txt:
-                combined_text_parts.append(raw_txt)
+                segs = raw_data.get("transcriptSegments", raw_data.get("segments", []))
+                max_seg_end = 0.0
+                for s in segs:
+                    s_copy = dict(s)
+                    start_val = float(s_copy.get("startMs", s_copy.get("start", 0)))
+                    end_val = float(s_copy.get("endMs", s_copy.get("end", 0)))
+                    s_copy["startMs"] = start_val + cumulative_offset_ms
+                    s_copy["endMs"] = end_val + cumulative_offset_ms
+                    s_copy["start"] = s_copy["startMs"]
+                    s_copy["end"] = s_copy["endMs"]
+                    if "wordRange" in s_copy and isinstance(s_copy["wordRange"], dict) and cumulative_word_offset > 0:
+                        wr = dict(s_copy["wordRange"])
+                        if "startIndex" in wr and isinstance(wr["startIndex"], int):
+                            wr["startIndex"] += cumulative_word_offset
+                        if "endIndexExclusive" in wr and isinstance(wr["endIndexExclusive"], int):
+                            wr["endIndexExclusive"] += cumulative_word_offset
+                        s_copy["wordRange"] = wr
+                    all_segments_combined.append(s_copy)
+                    if s_copy["endMs"] > max_seg_end:
+                        max_seg_end = s_copy["endMs"]
 
-            cumulative_offset_ms = max_seg_end
+                if isinstance(word_ts, list):
+                    cumulative_word_offset += len(word_ts)
+
+                raw_txt = raw_data.get("rawTranscript", raw_data.get("text"))
+                if raw_txt:
+                    combined_text_parts.append(raw_txt)
+
+                cumulative_offset_ms = max_seg_end
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         # Salvataggio deterministico unificato del JSON primario
         final_mw_payload = {
@@ -508,6 +562,8 @@ def run_setup(
             "segments": all_segments_combined,
             "language": "it"
         }
+        if all_word_timestamps_combined:
+            final_mw_payload["wordTimestamps"] = all_word_timestamps_combined
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(final_mw_payload, f, ensure_ascii=False, indent=2)
 

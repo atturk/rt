@@ -46,6 +46,8 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
     
     parsed_segments: List[Segment] = []
     
+    word_timestamps = data.get("wordTimestamps", []) if isinstance(data, dict) and isinstance(data.get("wordTimestamps"), list) else []
+
     for i, item in enumerate(raw_list, start=1):
         seg_id = make_segment_id(i)
         
@@ -62,6 +64,19 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
             text = fix_mojibake(str(item.get("text", "")).strip())
             speaker = item.get("speakerLabel") or item.get("speakerId") or item.get("speaker")
             
+            conf_val = item.get("confidence")
+            if conf_val is None and word_timestamps and "wordRange" in item and isinstance(item["wordRange"], dict):
+                w_range = item["wordRange"]
+                s_idx = w_range.get("startIndex")
+                e_idx = w_range.get("endIndexExclusive")
+                if isinstance(s_idx, int) and isinstance(e_idx, int) and 0 <= s_idx < e_idx <= len(word_timestamps):
+                    word_confs = [
+                        w["confidence"] for w in word_timestamps[s_idx:e_idx]
+                        if isinstance(w, dict) and isinstance(w.get("confidence"), (int, float))
+                    ]
+                    if word_confs:
+                        conf_val = round(sum(word_confs) / len(word_confs), 4)
+
             parsed_segments.append(Segment(
                 id=seg_id,
                 index=i,
@@ -72,7 +87,7 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
                 text_raw=text,
                 source_file=os.path.basename(json_path),
                 speaker=speaker,
-                confidence=item.get("confidence")
+                confidence=conf_val
             ))
 
         # Caso 1: MacWhisper (start ed end in millisecondi)
