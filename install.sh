@@ -61,6 +61,28 @@ brew_install_quiet() {
     fi
 }
 
+show_download_progress() {
+    local pid="$1"
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    local start_ts=$SECONDS
+    local spin_len=${#spin}
+    while kill -0 "$pid" 2>/dev/null; do
+        local elapsed=$((SECONDS - start_ts))
+        local status
+        status="$(grep -oE '[0-9]+% \([0-9]+/[0-9]+\)' "$LOG_FILE" 2>/dev/null | tail -1 || true)"
+        local spin_char="${spin:i:1}"
+        i=$(( (i + 1) % spin_len ))
+        if [ -n "$status" ]; then
+            printf "\r   %s Download modello Parakeet: %s (%ss)\033[K" "$spin_char" "$status" "$elapsed"
+        else
+            printf "\r   %s Download modello Parakeet in corso... (%ss)\033[K" "$spin_char" "$elapsed"
+        fi
+        sleep 0.3
+    done
+    printf "\r\033[K"
+}
+
 # 1. Prerequisiti di sistema
 echo "${CYAN}${BOLD}[1/5] Prerequisiti di sistema${RESET}"
 
@@ -72,9 +94,9 @@ if ! command -v brew &>/dev/null; then
 fi
 
 find_compatible_python() {
-    for py in python3 python3.13 python3.12 python3.11 python3.10; do
+    for py in python3.13 python3.12 python3.11 python3.10 python3; do
         if command -v "$py" &>/dev/null; then
-            if "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' &>/dev/null; then
+            if "$py" -c 'import sys; sys.exit(0 if (3, 10) <= sys.version_info < (3, 14) else 1)' &>/dev/null; then
                 echo "$py"
                 return 0
             fi
@@ -99,25 +121,54 @@ fi
 PYTHON_VER="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')"
 echo "ℹ️ Utilizzo di Python $PYTHON_VER ($PYTHON_BIN)"
 
+IS_APPLE_SILICON=false
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+    IS_APPLE_SILICON=true
+fi
+
+INSTALL_PARAKEET=false
+if [ "$IS_APPLE_SILICON" = true ]; then
+    if [ ! -t 0 ]; then
+        INSTALL_PARAKEET=true
+    else
+        echo "💡 macparakeet-cli + Parakeet v3 è il motore ASR consigliato (gratuito, locale e veloce su Apple Silicon)."
+        read -rp "   Vuoi installare macparakeet-cli e scaricare il modello Parakeet? [S/n] " choice
+        case "$choice" in
+            [Nn]* ) INSTALL_PARAKEET=false ;;
+            * ) INSTALL_PARAKEET=true ;;
+        esac
+    fi
+else
+    echo "ℹ️ macparakeet-cli richiede Apple Silicon (M1 o successivo), non disponibile su questo Mac."
+    echo "   Configura un motore ASR alternativo, vedi docs/ALTERNATIVE_TRANSCRIPTION.md."
+    INSTALL_PARAKEET=false
+fi
+
 if command -v ffmpeg &>/dev/null; then
     echo "ℹ️ ffmpeg è già installato."
 else
     brew_install_quiet ffmpeg "ffmpeg"
 fi
 
-if command -v macparakeet-cli &>/dev/null; then
-    echo "ℹ️ macparakeet-cli è già installato."
-else
-    brew_install_quiet moona3k/tap/macparakeet-cli "macparakeet-cli"
+if [ "$INSTALL_PARAKEET" = true ]; then
+    if command -v macparakeet-cli &>/dev/null; then
+        echo "ℹ️ macparakeet-cli è già installato."
+    else
+        brew_install_quiet moona3k/tap/macparakeet-cli "macparakeet-cli"
+    fi
 fi
 echo ""
 
 # 2. Download modello Parakeet (in background)
 echo "${CYAN}${BOLD}[2/5] Download modello Parakeet (in background)${RESET}"
-echo "📥 Avvio scaricamento modello Parakeet v3 (~465MB)..."
-macparakeet-cli models download parakeet-v3 >>"$LOG_FILE" 2>&1 &
-model_pid=$!
-echo "ℹ️ Download avviato in background (PID $model_pid). Proseguo con le altre fasi."
+if [ "$INSTALL_PARAKEET" = true ]; then
+    echo "📥 Avvio scaricamento modello Parakeet v3 (~465MB)..."
+    macparakeet-cli models download parakeet-v3 >>"$LOG_FILE" 2>&1 &
+    model_pid=$!
+    echo "ℹ️ Download avviato in background (PID $model_pid). Proseguo con le altre fasi."
+else
+    echo "ℹ️ Download del modello Parakeet saltato."
+fi
 echo ""
 
 # 3. Ambiente virtuale Python
@@ -168,6 +219,29 @@ fi
 echo "⚙️ Impostazione permessi di esecuzione su bin/rt..."
 chmod +x "${REPO_DIR}/bin/rt"
 echo "${GREEN}✅ Permessi impostati.${RESET}"
+
+if [ -z "${SHELL_PROFILE:-}" ]; then
+    case "${SHELL:-}" in
+        */zsh) SHELL_PROFILE="$HOME/.zshrc" ;;
+        */bash) SHELL_PROFILE="$HOME/.bash_profile" ;;
+        *) SHELL_PROFILE="$HOME/.zshrc" ;;
+    esac
+fi
+
+display_profile="${SHELL_PROFILE/#$HOME/\~}"
+path_line="export PATH=\"${REPO_DIR}/bin:\$PATH\""
+if [ -f "$SHELL_PROFILE" ] && grep -Fq "${REPO_DIR}/bin" "$SHELL_PROFILE"; then
+    echo "ℹ️ PATH è già configurato in ${display_profile}."
+else
+    echo "⚙️ Aggiunta di bin/ al PATH in ${display_profile}..."
+    mkdir -p "$(dirname "$SHELL_PROFILE")"
+    {
+        echo ""
+        echo "# Aggiunto da RT install.sh"
+        echo "$path_line"
+    } >> "$SHELL_PROFILE"
+    echo "${GREEN}✅ PATH aggiornato in ${display_profile}.${RESET}"
+fi
 echo ""
 
 # 5. Verifica finale
@@ -176,12 +250,7 @@ echo "${CYAN}${BOLD}[5/5] Verifica finale${RESET}"
 if [ -n "$model_pid" ]; then
     if kill -0 "$model_pid" 2>/dev/null; then
         echo "⏳ In attesa del completamento del download del modello Parakeet v3..."
-        elapsed=0
-        while kill -0 "$model_pid" 2>/dev/null; do
-            sleep 10
-            elapsed=$((elapsed + 10))
-            echo "   ⏳ ancora in corso (${elapsed}s)..."
-        done
+        show_download_progress "$model_pid"
     fi
 
     if wait "$model_pid" 2>/dev/null; then
@@ -208,7 +277,11 @@ echo "Prossimi passi:"
 echo "1. Esegui la configurazione guidata interattiva:"
 echo "     ./bin/rt config"
 echo "   (Oppure modifica manualmente config/general.yaml e .env, vedi docs/CONFIGURATION_REFERENCE.md)."
-echo "2. Per usare 'rt' da qualunque cartella, aggiungi questa riga al tuo ~/.zshrc:"
-echo "     export PATH=\"${REPO_DIR}/bin:\$PATH\""
+echo "2. ✅ 'rt' è già disponibile da qualunque cartella (riga aggiunta a ${display_profile}) — apri un nuovo terminale o esegui \`source ${display_profile}\` per usarlo subito in questa sessione."
 echo "3. Verifica con: ./bin/rt -h"
 echo "4. Prova una pipeline di test senza costi con: ./bin/rt run <cartella_lezione> --mock"
+if [ "$INSTALL_PARAKEET" = false ]; then
+    echo ""
+    echo "ℹ️ Motore ASR Parakeet non installato. Per configurare un motore ASR alternativo, vedi docs/ALTERNATIVE_TRANSCRIPTION.md."
+fi
+
