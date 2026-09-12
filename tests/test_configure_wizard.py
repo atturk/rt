@@ -14,6 +14,11 @@ import requests
 from rt.pipeline.configure import (
     _resolve_or_bootstrap_config_paths,
     _update_env_file,
+    _load_model_profiles,
+    _save_model_profiles,
+    _suggest_profile_name,
+    _create_new_model_profile,
+    _apply_profile_to_job,
     _configure_llm_provider_section,
     _configure_telegram_section,
     _configure_stt_section,
@@ -96,10 +101,14 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
             m.ask.return_value = "deepseek-reasoner"
         return m
 
-    def mock_text(prompt, default=None):
+    def mock_text(prompt, default=None, **kwargs):
         m = MagicMock()
         if "Base URL" in prompt:
             m.ask.return_value = ""  # Usa default
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
         return m
 
     def mock_password(prompt, default=None):
@@ -127,13 +136,15 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
         env_content = f.read()
     assert "DEEPSEEK_API_KEY=sk-deepseek-secret-123" in env_content
 
-    # general.yaml contiene credenziale deepseek_1
+    # general.yaml contiene credenziale deepseek_1 e model_profiles
     with open(general_file, "r", encoding="utf-8") as f:
         gen_data = yaml.safe_load(f)
     assert len(gen_data["credentials"]) == 1
     assert gen_data["credentials"][0]["name"] == "deepseek_1"
     assert gen_data["credentials"][0]["provider"] == "deepseek"
     assert gen_data["credentials"][0]["env_var"] == "DEEPSEEK_API_KEY"
+    assert "model_profiles" in gen_data
+    assert "generale" in gen_data["model_profiles"]
 
     # outline.yaml ha provider, model e credential aggiornati ma max_tokens e thinking intatti
     with open(outline_job, "r", encoding="utf-8") as f:
@@ -167,12 +178,16 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
             m.ask.return_value = "openrouter"
         return m
 
-    def mock_text(prompt, default=None):
+    def mock_text(prompt, default=None, **kwargs):
         m = MagicMock()
         if "Base URL" in prompt:
             m.ask.return_value = ""
         elif "ID Modello" in prompt:
             m.ask.return_value = "anthropic/claude-3.5-sonnet"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
         return m
 
     def mock_password(prompt, default=None):
@@ -400,10 +415,9 @@ def test_run_config_wizard_full_flow(tmp_path, monkeypatch):
         f.write("version: '2.0.0'\ncredentials: []\n")
 
     with patch("rt.pipeline.configure._default_project_root", return_value=fake_root), \
-         patch("rt.pipeline.configure._configure_llm_provider_section", return_value=("deepseek", "deepseek-reasoner", ["outline.yaml"])), \
+         patch("rt.pipeline.configure._configure_llm_provider_section", return_value={"outline": "generale"}), \
          patch("rt.pipeline.configure._configure_telegram_section", return_value={"configured": True, "topics_count": 2}), \
-         patch("rt.pipeline.configure._configure_stt_section", return_value="macparakeet"), \
-         patch("rt.pipeline.configure._configure_pricing_section", return_value={"provider": "deepseek", "model": "deepseek-reasoner"}):
+         patch("rt.pipeline.configure._configure_stt_section", return_value="macparakeet"):
 
         run_config_wizard()
 
@@ -428,6 +442,8 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
         m = MagicMock()
         if "più chiavi API" in prompt:
             m.ask.return_value = True
+        else:
+            m.ask.return_value = False
         return m
 
     def mock_select(prompt, choices, default=None):
@@ -438,12 +454,16 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
             m.ask.return_value = "gemini-2.5-flash"
         return m
 
-    def mock_text(prompt, default=None):
+    def mock_text(prompt, default=None, **kwargs):
         m = MagicMock()
         if "Base URL" in prompt:
             m.ask.return_value = ""
         elif "ID Modello" in prompt:
             m.ask.return_value = "gemini-2.5-flash"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
         return m
 
     passwords = ["key-google-1", "key-google-2", "key-google-3", ""]
@@ -524,6 +544,8 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
         m = MagicMock()
         if "più chiavi API" in prompt:
             m.ask.return_value = True
+        else:
+            m.ask.return_value = False
         return m
 
     def mock_select(prompt, choices, default=None):
@@ -536,12 +558,16 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
             m.ask.return_value = "gemini-2.5-flash"
         return m
 
-    def mock_text(prompt, default=None):
+    def mock_text(prompt, default=None, **kwargs):
         m = MagicMock()
         if "Base URL" in prompt:
             m.ask.return_value = ""
         elif "ID Modello" in prompt:
             m.ask.return_value = "gemini-2.5-flash"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
         return m
 
     passwords = ["k4", ""]
@@ -590,6 +616,8 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
         m = MagicMock()
         if "più chiavi API" in prompt:
             m.ask.return_value = True
+        else:
+            m.ask.return_value = False
         return m
 
     def mock_select(prompt, choices, default=None):
@@ -598,12 +626,16 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
             m.ask.return_value = "deepseek"
         return m
 
-    def mock_text(prompt, default=None):
+    def mock_text(prompt, default=None, **kwargs):
         m = MagicMock()
         if "Base URL" in prompt:
             m.ask.return_value = ""
         elif "ID Modello" in prompt:
             m.ask.return_value = "deepseek-chat"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
         return m
 
     passwords = ["sk-only-one", ""]
@@ -634,5 +666,99 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
     assert job_data["primary"]["model"] == "deepseek-chat"
     assert job_data["primary"]["credential"] == "deepseek_1"
     assert job_data.get("round_robin") is False
+
+
+def test_suggest_profile_name_sanitization_and_uniqueness():
+    """Verifica la sanitizzazione e la generazione di nomi univoci per i profili modello."""
+    s1 = _suggest_profile_name("openrouter", "openai/gpt-5.6-luna", [])
+    assert s1 == "openrouter_openai_gpt_5_6_luna"
+
+    s2 = _suggest_profile_name("openrouter", "openai/gpt-5.6-luna", ["openrouter_openai_gpt_5_6_luna"])
+    assert s2 == "openrouter_openai_gpt_5_6_luna_2"
+
+    s3 = _suggest_profile_name("google", "gemini-3.5-flash", ["google_gemini_3_5_flash", "google_gemini_3_5_flash_2"])
+    assert s3 == "google_gemini_3_5_flash_3"
+
+
+def test_load_and_save_model_profiles():
+    """Verifica il caricamento, la normalizzazione ed il salvataggio dei profili modello."""
+    gen_data = {
+        "model_profiles": {
+            "generale": {
+                "provider": "openrouter",
+                "base_url": "https://openrouter.ai/api/v1",
+                "round_robin": False,
+                "routes": [{"credential": "openrouter_1", "model": "openai/gpt-5"}]
+            },
+            "malformed": "non_a_dict"
+        }
+    }
+
+    profiles = _load_model_profiles(gen_data)
+    assert "generale" in profiles
+    assert "malformed" not in profiles
+    assert profiles["generale"]["provider"] == "openrouter"
+
+    _save_model_profiles(gen_data, profiles)
+    assert gen_data["model_profiles"] == profiles
+
+
+def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
+    """Verifica che il primo avvio crei il profilo 'generale' e che il rerun lo riusi."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0", "credentials": []}, f)
+
+    job_file = os.path.join(config_dir, "outline.yaml")
+    with open(job_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"primary": {"provider": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "deepseek"
+        elif "modello LLM" in prompt:
+            m.ask.return_value = "deepseek-chat"
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        if "ID Modello" in prompt:
+            m.ask.return_value = "deepseek-chat"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "sk-deepseek-test"
+        return m
+
+    # Primo avvio
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        res1 = _configure_llm_provider_section(config_dir, env_file)
+
+    assert res1 == {"outline": "generale"}
+
+    with open(general_file, "r", encoding="utf-8") as f:
+        gen_data = yaml.safe_load(f)
+
+    assert "model_profiles" in gen_data
+    assert "generale" in gen_data["model_profiles"]
+
+    # Rerun: non deve chiedere credenziali da zero ma riusare "generale"
+    res2 = _configure_llm_provider_section(config_dir, env_path=env_file)
+    assert res2 == {"outline": "generale"}
 
 
