@@ -134,12 +134,17 @@ if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
 fi
 
 ask_stt_choice() {
-    local script
+    local script answer_file
     script="$(mktemp "${TMPDIR:-/tmp}/rt_install_ask.XXXXXX.py" 2>/dev/null)" || script=""
     if [ -z "$script" ]; then
         return 1
     fi
-    cat > "$script" <<'PYEOF'
+    answer_file="$(mktemp "${TMPDIR:-/tmp}/rt_install_answer.XXXXXX" 2>/dev/null)" || answer_file=""
+    if [ -z "$answer_file" ]; then
+        rm -f "$script"
+        return 1
+    fi
+    cat > "$script" <<PYEOF
 import questionary
 
 RECOMMENDED = "🎙️  Sì, installa macparakeet-cli e Parakeet v3 (consigliato: gratuito, locale, veloce su Apple Silicon)"
@@ -151,12 +156,27 @@ answer = questionary.select(
     default=RECOMMENDED,
 ).ask()
 
-print("yes" if answer == RECOMMENDED else "no")
+with open(r"$answer_file", "w") as f:
+    f.write("yes" if answer == RECOMMENDED else "no")
 PYEOF
-    local result
-    result="$("${VENV_DIR}/bin/python" "$script" 2>>"$LOG_FILE" | tail -n 1)" || result=""
-    rm -f "$script"
-    echo "$result"
+    # Non reindirizzare mai lo stdout né di questa funzione né dell'invocazione python: anche
+    # avvolgere SOLO la chiamata alla funzione in "$(...)" al call site (come si faceva prima)
+    # trasforma comunque lo stdout ereditato dal sottoprocesso python in una pipe — bastava
+    # rimuovere il "| tail -1" interno a QUESTA funzione per non essere sufficiente, il problema
+    # si ripresentava un livello più in alto. questionary/prompt_toolkit ha bisogno di un vero
+    # terminale su stdout per disegnare il menu interattivo: se stdout finisce in una pipe o in
+    # un file, il menu non viene mai disegnato ma il processo resta comunque in attesa di un
+    # tasto su stdin — lo script sembra bloccato senza alcun prompt visibile (bug reale
+    # riscontrato: invio "alla cieca" selezionava sempre l'opzione di default). Per questo la
+    # funzione NON usa "echo"/valore di ritorno via stdout: scrive il risultato nella variabile
+    # globale ASK_STT_RESULT, e il chiamante non deve MAI invocarla dentro "$(...)".
+    if ! "${VENV_DIR}/bin/python" "$script" 2>>"$LOG_FILE"; then
+        rm -f "$script" "$answer_file"
+        return 1
+    fi
+    ASK_STT_RESULT=""
+    [ -f "$answer_file" ] && ASK_STT_RESULT="$(cat "$answer_file")"
+    rm -f "$script" "$answer_file"
 }
 
 INSTALL_PARAKEET=false
@@ -164,7 +184,11 @@ if [ "$IS_APPLE_SILICON" = true ]; then
     if [ ! -t 0 ]; then
         INSTALL_PARAKEET=true
     else
-        choice="$(ask_stt_choice 2>>"$LOG_FILE" || true)"
+        ASK_STT_RESULT=""
+        choice=""
+        if ask_stt_choice 2>>"$LOG_FILE"; then
+            choice="$ASK_STT_RESULT"
+        fi
         if [ "$choice" = "yes" ]; then
             INSTALL_PARAKEET=true
         elif [ "$choice" = "no" ]; then
