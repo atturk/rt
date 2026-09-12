@@ -838,7 +838,7 @@ async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAU
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Risposta vocale a una domanda di recall: scarica, trascrive con MacWhisper, valuta."""
+    """Risposta vocale a una domanda di recall: scarica, trascrive con macparakeet, valuta."""
     state_dir = context.bot_data["state_dir"]
     chat_id = update.effective_chat.id
     thread_id = update.effective_message.message_thread_id if update.effective_message else None

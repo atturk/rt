@@ -109,12 +109,12 @@ Struttura JSON già pienamente conforme allo schema interno `Segment`. È il for
 
 Ecco come elaborare una lezione con un motore di trascrizione esterno:
 
-### 1. Setup della Lezione senza MacWhisper
+### 1. Setup della Lezione senza macparakeet-cli
 Esegui `rt setup` con il flag `--skip-transcribe`:
 ```bash
 ./bin/rt setup --skip-transcribe "percorso/audio.m4a" -d "2026-09-07" -m "Biochimica" -a "Prof. Rossi"
 ```
-Questo comando crea la cartella della lezione, copia il file audio e inizializza `info.yaml`, senza tentare di invocare MacWhisper.
+Questo comando crea la cartella della lezione, copia il file audio e inizializza `info.yaml`, senza tentare di invocare macparakeet-cli.
 
 ### 2. Trascrizione ed Esportazione
 Trascrivi il file audio con il motore preferito (es. script Python locale con `faster-whisper`, API cloud Deepgram, ecc.) ed esporta il risultato convertito nel formato Caso 3 (o Caso 1/2).
