@@ -11,7 +11,7 @@ Ogni lezione possiede un file `info.yaml` e un `manifest.json` che ne tracciano 
 ```mermaid
 stateDiagram-v2
     [*] --> METADATA_ONLY: rt setup --skip-transcribe
-    [*] --> SETUP_COMPLETED: Audio e trascrizione da rt setup / rt_setup.py
+    [*] --> SETUP_COMPLETED: Audio e trascrizione da rt setup
     METADATA_ONLY --> SETUP_COMPLETED: Trascrizione ASR completata
     SETUP_COMPLETED --> PREPARED: rt prepare
     PREPARED --> OUTLINE_VALIDATED: rt outline
@@ -42,7 +42,7 @@ stateDiagram-v2
 ## 2. Dettaglio delle Fasi
 
 ### Fase 1: Setup & Audio Ingest (`rt setup` / `rt run <audio>`)
-- Modulo unificato `rt/pipeline/setup.py` con wrapper retrocompatibile `rt_setup.py`.
+- Modulo unificato `rt/pipeline/setup.py`.
 - Riceve uno o più file audio (.m4a, .wav, .mp3...), la data, la materia e gli argomenti.
 - In caso di file multipli, calcola l'offset cumulativo in millisecondi in modo deterministico e preserva la monotonicità temporale.
 - Invoca `macparakeet-cli` per generare `trascritto grezzo.json` (Source of Truth assoluta) e `trascritto grezzo.md`.

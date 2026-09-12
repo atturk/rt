@@ -1,6 +1,6 @@
 """
-Unit e integration test per rt_setup.py e la corretta comparsa progressiva degli artefatti.
-Verifica che rt_setup crei ESCLUSIVAMENTE i file sorgente e non artefatti di revisione/elaborazione.
+Unit e integration test per 'rt setup' e la corretta comparsa progressiva degli artefatti.
+Verifica che il setup crei ESCLUSIVAMENTE i file sorgente e non artefatti di revisione/elaborazione.
 """
 
 import os
@@ -24,10 +24,11 @@ def test_rt_setup_clean_initialization(tmp_path):
     with open(audio_file, "wb") as f:
         f.write(b"fake audio stream content")
         
-    # 2. Eseguiamo rt_setup.py via subprocess con --skip-transcribe
+    # 2. Eseguiamo 'rt setup' via subprocess con --skip-transcribe
     cmd = [
         "python3",
-        "rt_setup.py",
+        "bin/rt",
+        "setup",
         audio_file,
         "-d", "2026-09-05",
         "-m", "IMMUNOLOGIA",
@@ -36,14 +37,14 @@ def test_rt_setup_clean_initialization(tmp_path):
         "--skip-transcribe"
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
-    assert res.returncode == 0, f"rt_setup.py fallito: {res.stderr}"
+    assert res.returncode == 0, f"'rt setup' fallito: {res.stderr}"
     
     folder_name = "[2026-09-05] IMMUNOLOGIA - Risposta innata e complemento"
     lecture_dir = os.path.join(dest_dir, folder_name)
     assert os.path.isdir(lecture_dir)
     
-    # Per il test inseriamo anche trascritto grezzo.json (come prodotto da MacWhisper: sempre
-    # scritto alla radice da rt_setup.py/MacWhisper stesso, non passa da lesson_path())
+    # Per il test inseriamo anche trascritto grezzo.json (come prodotto da macparakeet-cli: sempre
+    # scritto alla radice da 'rt setup' stesso, non passa da lesson_path())
     json_path = os.path.join(lecture_dir, "trascritto grezzo.json")
     raw_mw_json = {
         "segments": [

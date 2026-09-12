@@ -1,7 +1,7 @@
 """
 rt.pipeline.setup
 Modulo unificato per l'ingest di file audio, trascrizione macparakeet-cli ASR e inizializzazione lezione.
-Fornisce funzioni riusabili sia per la CLI nativa (`rt setup`, `rt run <audio>`) sia per il wrapper `rt_setup.py`.
+Fornisce funzioni riusabili per la CLI nativa (`rt setup`, `rt run <audio>`).
 """
 
 import os
