@@ -15,6 +15,9 @@ from rt.pipeline.configure import (
     _resolve_or_bootstrap_config_paths,
     _update_env_file,
     _configure_llm_provider_section,
+    _configure_telegram_section,
+    _configure_stt_section,
+    _configure_pricing_section,
     run_config_wizard
 )
 from rt.core.config import load_config, find_job_yaml_paths
@@ -288,4 +291,118 @@ def test_configure_telegram_section_manual_link_flow(tmp_path):
     assert gen_data["telegram"]["topics"]["PATOLOGIA"] == 10
     assert gen_data["telegram"]["topics"]["BIOCHIMICA"] == 541
     assert gen_data["telegram"]["lessons_root"] == str(tmp_path / "lezioni")
+
+
+def test_configure_stt_section_macparakeet(tmp_path):
+    """Verifica l'impostazione del motore STT su macparakeet."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"telegram": {"recall": {"stt_engine": "macwhisper"}}}, f)
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "macparakeet"
+        return m
+
+    with patch("questionary.select", side_effect=mock_select):
+        res = _configure_stt_section(config_dir)
+
+    assert res == "macparakeet"
+    with open(general_file, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    assert data["telegram"]["recall"]["stt_engine"] == "macparakeet"
+
+
+def test_configure_stt_section_api_warning(tmp_path):
+    """Verifica l'impostazione del motore STT su api con conferma avviso."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "api"
+        return m
+
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        m.ask.return_value = True
+        return m
+
+    with patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.confirm", side_effect=mock_confirm):
+        res = _configure_stt_section(config_dir)
+
+    assert res == "api"
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    assert data["telegram"]["recall"]["stt_engine"] == "api"
+
+
+def test_configure_pricing_section(tmp_path):
+    """Verifica la scrittura di un listino prezzi custom in general.yaml."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0"}, f)
+
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        if "costo di reasoning" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = True
+        return m
+
+    def mock_text(prompt, validate=None):
+        m = MagicMock()
+        if "Costo Input" in prompt:
+            m.ask.return_value = "0.14"
+        elif "Costo Output" in prompt:
+            m.ask.return_value = "0.28"
+        elif "Costo Reasoning" in prompt:
+            m.ask.return_value = "0.55"
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.text", side_effect=mock_text):
+        res = _configure_pricing_section(config_dir, "deepseek", "deepseek-reasoner")
+
+    assert res is not None
+    assert res["provider"] == "deepseek"
+    assert res["model"] == "deepseek-reasoner"
+    assert res["pricing"]["input_per_million"] == 0.14
+    assert res["pricing"]["output_per_million"] == 0.28
+    assert res["pricing"]["reasoning_per_million"] == 0.55
+
+    with open(general_file, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    assert data["pricing"]["deepseek"]["deepseek-reasoner"]["input_per_million"] == 0.14
+    assert data["pricing"]["deepseek"]["deepseek-reasoner"]["output_per_million"] == 0.28
+    assert data["pricing"]["deepseek"]["deepseek-reasoner"]["reasoning_per_million"] == 0.55
+
+
+def test_run_config_wizard_full_flow(tmp_path, monkeypatch):
+    """Verifica che run_config_wizard sia eseguibile e completi senza sollevare eccezioni."""
+    fake_cwd = str(tmp_path / "workdir")
+    os.makedirs(fake_cwd, exist_ok=True)
+    monkeypatch.chdir(fake_cwd)
+
+    fake_root = str(tmp_path / "repo")
+    example_dir = os.path.join(fake_root, "config.example")
+    os.makedirs(example_dir, exist_ok=True)
+    with open(os.path.join(example_dir, "general.yaml"), "w", encoding="utf-8") as f:
+        f.write("version: '2.0.0'\ncredentials: []\n")
+
+    with patch("rt.pipeline.configure._default_project_root", return_value=fake_root), \
+         patch("rt.pipeline.configure._configure_llm_provider_section", return_value=("deepseek", "deepseek-reasoner", ["outline.yaml"])), \
+         patch("rt.pipeline.configure._configure_telegram_section", return_value={"configured": True, "topics_count": 2}), \
+         patch("rt.pipeline.configure._configure_stt_section", return_value="macparakeet"), \
+         patch("rt.pipeline.configure._configure_pricing_section", return_value={"provider": "deepseek", "model": "deepseek-reasoner"}):
+
+        run_config_wizard()
+
 

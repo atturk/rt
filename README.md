@@ -56,6 +56,12 @@ cp .env.example .env
 ```
 
 Configurazione dei job e dei modelli:
+
+Per una configurazione guidata e interattiva:
+```bash
+./bin/rt config
+```
+In alternativa, per configurare manualmente:
 ```bash
 cp -r config.example config
 # Modifica config/general.yaml e i singoli file per-job config/<job>.yaml
