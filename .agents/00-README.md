@@ -9,15 +9,17 @@ direttamente in revisione: due bug reali di risoluzione credenziali/token già c
 impedivano il pre-riempimento dei prompt su una riesecuzione di `rt config`, un timeout della
 discovery Telegram troppo corto rispetto alla specifica, rimozione di alias morti lasciati dalla
 migrazione MacWhisper→macparakeet-cli) e pushati — non rifarli, non toccare quel codice se non
-indicato esplicitamente da un task attivo. **Non ci sono task attivi al momento** — 01-27 sono
-completati, revisionati (inclusa una simulazione end-to-end reale a 4 fasi/4 provider diversi,
-lo scenario che l'utente usa davvero) e pushati. Un bug reale di sincronizzazione nel controllo
-di unicità dei nomi profilo (`model_profiles`) è stato trovato in revisione e corretto
-direttamente. Aspetta nuove istruzioni prima di aggiungere altro lavoro in questa cartella.
+indicato esplicitamente da un task attivo. 01-27 sono completati, revisionati e pushati. Diversi
+fix mirati a `install.sh` sono stati applicati direttamente durante test reali su un MacBook Air
+(output del download del modello nascosto da `&>/dev/null`, auto-update Homebrew rumoroso,
+prompt interattivo per `micro` rimosso). Il lavoro corrente da eseguire è **28**: ristrutturazione
+UX più ampia di `install.sh` (colori, log pulito su file invece che a schermo, sovrapposizione in
+parallelo del download del modello con la parte Python — sicura perché non coinvolge comandi
+`brew` concorrenti — cleanup su interruzione, tempo totale nel riepilogo finale).
 
 ## Ordine di esecuzione
 
-Nessun task attivo al momento.
+Un solo task attivo (**28**), indipendente da tutto il resto.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
