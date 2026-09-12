@@ -13,12 +13,13 @@ import sys
 import shutil
 import json
 import re
+import time
 from typing import Dict, Any, List, Optional, Tuple
 import yaml
 import requests
 import questionary
 
-from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, _default_project_root, get_api_key
+from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, _default_project_root
 
 
 def parse_telegram_topic_link(link: str) -> Optional[Tuple[int, int]]:
@@ -204,7 +205,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
 
     # 4. API Key
     env_var_name = f"{provider.upper()}_API_KEY"
-    existing_key = get_api_key(env_var_name) or get_api_key(provider) or ""
+    existing_key = os.environ.get(env_var_name, "")
     api_key_input = questionary.password(
         f"API key per {provider} (lascia vuoto per mantenere esistente):",
         default=existing_key
@@ -345,7 +346,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
         return {"configured": False}
 
     # 1. Bot Token
-    existing_token = get_api_key("RT_TELEGRAM_BOT_TOKEN") or ""
+    existing_token = os.environ.get("RT_TELEGRAM_BOT_TOKEN", "")
     bot_token = ""
     if existing_token:
         masked = existing_token[:6] + "..." if len(existing_token) > 6 else existing_token
@@ -389,16 +390,17 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
         mapped_threads = set()
         stop_discovery = False
 
-        print("\nListening per messaggi Telegram (Ctrl+C per terminare il polling)...")
+        print("\nListening per messaggi Telegram per al massimo 3 minuti (Ctrl+C per terminare prima)...")
+        deadline = time.monotonic() + 180
         try:
-            for _ in range(15):
+            while time.monotonic() < deadline:
                 if stop_discovery:
                     break
                 try:
                     resp = requests.get(
                         f"https://api.telegram.org/bot{bot_token}/getUpdates",
-                        params={"offset": last_offset, "timeout": 2},
-                        timeout=5
+                        params={"offset": last_offset, "timeout": 15},
+                        timeout=20
                     )
                     if resp.status_code == 409:
                         print("⚠️  Conflitto 409: sembra che 'rt telegram-daemon' sia già attivo per questo bot. Fermalo prima di proseguire.")
@@ -562,7 +564,7 @@ def _configure_stt_section(config_dir: str) -> str:
         except Exception:
             pass
 
-    allowed_stt = ["macparakeet", "macwhisper", "api"]
+    allowed_stt = ["macparakeet", "api"]
     default_stt = curr_stt if curr_stt in allowed_stt else "macparakeet"
 
     stt_choice = ""

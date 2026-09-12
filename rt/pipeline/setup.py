@@ -71,10 +71,6 @@ def find_macparakeet_binary() -> str:
     return ""
 
 
-# Alias retrocompatibile
-find_mw_binary = find_macparakeet_binary
-
-
 def prompt_clean(message: str, default: str = "") -> str:
     """Prompt interattivo formattato per terminale."""
     if not sys.stdin.isatty():
@@ -296,10 +292,6 @@ def _run_transcribe_with_spinner(cmd: List[str], label: str) -> subprocess.Compl
             time.sleep(0.5)
     stdout, stderr = proc.communicate()
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout=stdout, stderr=stderr)
-
-
-# Alias per retrocompatibilità
-_run_mw_with_spinner = _run_transcribe_with_spinner
 
 
 def run_setup(
