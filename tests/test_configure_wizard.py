@@ -114,7 +114,8 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
         "data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]
     }
 
-    with patch("questionary.select", side_effect=mock_select), \
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+         patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
          patch("requests.get", return_value=mock_resp):
@@ -180,7 +181,8 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
         return m
 
     # Mock HTTP failure (timeout / ConnectionError)
-    with patch("questionary.select", side_effect=mock_select), \
+    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+         patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
@@ -404,5 +406,233 @@ def test_run_config_wizard_full_flow(tmp_path, monkeypatch):
          patch("rt.pipeline.configure._configure_pricing_section", return_value={"provider": "deepseek", "model": "deepseek-reasoner"}):
 
         run_config_wizard()
+
+
+def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
+    """Verifica la configurazione da zero con 3 chiavi round-robin per lo stesso provider."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        f.write("version: '2.0.0'\ncredentials: []\n")
+
+    outline_job = os.path.join(config_dir, "outline.yaml")
+    with open(outline_job, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "primary": {"provider": None, "model": None, "max_tokens": 8192, "thinking": True}
+        }, f)
+
+    env_file = str(tmp_path / ".env")
+
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        if "più chiavi API" in prompt:
+            m.ask.return_value = True
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "google"
+        elif "modello LLM" in prompt:
+            m.ask.return_value = "gemini-2.5-flash"
+        return m
+
+    def mock_text(prompt, default=None):
+        m = MagicMock()
+        if "Base URL" in prompt:
+            m.ask.return_value = ""
+        elif "ID Modello" in prompt:
+            m.ask.return_value = "gemini-2.5-flash"
+        return m
+
+    passwords = ["key-google-1", "key-google-2", "key-google-3", ""]
+    pass_idx = 0
+
+    def mock_password(prompt, default=None):
+        nonlocal pass_idx
+        m = MagicMock()
+        val = passwords[pass_idx] if pass_idx < len(passwords) else ""
+        pass_idx += 1
+        m.ask.return_value = val
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        _configure_llm_provider_section(config_dir, env_file)
+
+    # 1. .env ha le 3 chiavi
+    with open(env_file, "r", encoding="utf-8") as f:
+        env_content = f.read()
+    assert "GOOGLE_API_KEY_1=key-google-1" in env_content
+    assert "GOOGLE_API_KEY_2=key-google-2" in env_content
+    assert "GOOGLE_API_KEY_3=key-google-3" in env_content
+
+    # 2. general.yaml ha le 3 credenziali
+    with open(general_file, "r", encoding="utf-8") as f:
+        gen_data = yaml.safe_load(f)
+    assert len(gen_data["credentials"]) == 3
+    assert [c["name"] for c in gen_data["credentials"]] == ["google_1", "google_2", "google_3"]
+
+    # 3. outline.yaml ha round_robin: true e primary_routes con 3 elementi e tuning preservato
+    with open(outline_job, "r", encoding="utf-8") as f:
+        job_data = yaml.safe_load(f)
+    assert job_data["round_robin"] is True
+    assert len(job_data["primary_routes"]) == 3
+    for idx, route in enumerate(job_data["primary_routes"], start=1):
+        assert route["provider"] == "google"
+        assert route["model"] == "gemini-2.5-flash"
+        assert route["credential"] == f"google_{idx}"
+        assert route["max_tokens"] == 8192
+        assert route["thinking"] is True
+
+
+def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeypatch):
+    """Verifica che una riesecuzione con aggiunta di una 4ª chiave appenda la route a quelle esistenti."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "version": "2.0.0",
+            "credentials": [
+                {"name": f"google_{i}", "provider": "google", "env_var": f"GOOGLE_API_KEY_{i}"}
+                for i in range(1, 4)
+            ]
+        }, f)
+
+    outline_job = os.path.join(config_dir, "outline.yaml")
+    with open(outline_job, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "round_robin": True,
+            "primary_routes": [
+                {"provider": "google", "model": "gemini-2.5-flash", "credential": f"google_{i}", "max_tokens": 8192}
+                for i in range(1, 4)
+            ]
+        }, f)
+
+    env_file = str(tmp_path / ".env")
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "k1")
+    monkeypatch.setenv("GOOGLE_API_KEY_2", "k2")
+    monkeypatch.setenv("GOOGLE_API_KEY_3", "k3")
+
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        if "più chiavi API" in prompt:
+            m.ask.return_value = True
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "google"
+        elif "Gestione chiavi" in prompt:
+            m.ask.return_value = "➕ Aggiungi altre chiavi"
+        elif "modello LLM" in prompt:
+            m.ask.return_value = "gemini-2.5-flash"
+        return m
+
+    def mock_text(prompt, default=None):
+        m = MagicMock()
+        if "Base URL" in prompt:
+            m.ask.return_value = ""
+        elif "ID Modello" in prompt:
+            m.ask.return_value = "gemini-2.5-flash"
+        return m
+
+    passwords = ["k4", ""]
+    pass_idx = 0
+
+    def mock_password(prompt, default=None):
+        nonlocal pass_idx
+        m = MagicMock()
+        val = passwords[pass_idx] if pass_idx < len(passwords) else ""
+        pass_idx += 1
+        m.ask.return_value = val
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        _configure_llm_provider_section(config_dir, env_file)
+
+    with open(outline_job, "r", encoding="utf-8") as f:
+        job_data = yaml.safe_load(f)
+
+    assert job_data["round_robin"] is True
+    assert len(job_data["primary_routes"]) == 4
+    assert [r["credential"] for r in job_data["primary_routes"]] == ["google_1", "google_2", "google_3", "google_4"]
+    assert job_data["primary_routes"][3]["max_tokens"] == 8192
+
+
+def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
+    """Verifica che inserire 1 sola chiave nel flusso multi provochi il fallback alla configurazione singola."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        f.write("version: '2.0.0'\ncredentials: []\n")
+
+    outline_job = os.path.join(config_dir, "outline.yaml")
+    with open(outline_job, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"primary": {"provider": None, "model": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        if "più chiavi API" in prompt:
+            m.ask.return_value = True
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "deepseek"
+        return m
+
+    def mock_text(prompt, default=None):
+        m = MagicMock()
+        if "Base URL" in prompt:
+            m.ask.return_value = ""
+        elif "ID Modello" in prompt:
+            m.ask.return_value = "deepseek-chat"
+        return m
+
+    passwords = ["sk-only-one", ""]
+    pass_idx = 0
+
+    def mock_password(prompt, default=None):
+        nonlocal pass_idx
+        m = MagicMock()
+        val = passwords[pass_idx] if pass_idx < len(passwords) else ""
+        pass_idx += 1
+        m.ask.return_value = val
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        _configure_llm_provider_section(config_dir, env_file)
+
+    with open(outline_job, "r", encoding="utf-8") as f:
+        job_data = yaml.safe_load(f)
+
+    # Invece di primary_routes, ha il blocco primary singolo e round_robin è False
+    assert "primary_routes" not in job_data
+    assert job_data["primary"]["provider"] == "deepseek"
+    assert job_data["primary"]["model"] == "deepseek-chat"
+    assert job_data["primary"]["credential"] == "deepseek_1"
+    assert job_data.get("round_robin") is False
 
 

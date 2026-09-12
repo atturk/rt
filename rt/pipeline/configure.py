@@ -203,49 +203,152 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
         else:
             base_url = base_url_input
 
-    # 4. API Key
-    env_var_name = f"{provider.upper()}_API_KEY"
-    existing_key = os.environ.get(env_var_name, "")
-    api_key_input = questionary.password(
-        f"API key per {provider} (lascia vuoto per mantenere esistente):",
-        default=existing_key
+    # 4. Round-Robin Multi-chiave o Singola API Key
+    multi_input = questionary.confirm(
+        f"Vuoi configurare più chiavi API per {provider} in round-robin (per distribuire le richieste su più account/quote)?",
+        default=False
     ).ask()
 
-    if api_key_input is None:
+    if multi_input is None:
         print("Operazione annullata dall'utente.")
         return None, None, []
 
-    api_key = api_key_input.strip() if api_key_input.strip() else existing_key
+    is_multi = (multi_input is True)
+    collected_keys: List[Tuple[str, str, str]] = []  # (cred_name, env_var_name, key_val)
+    rr_action = "add"
 
-    cred_name = "google_1" if provider == "google" else f"{provider.lower()}_1"
+    if is_multi:
+        # Rileva chiavi round-robin esistenti in general.yaml per questo provider
+        existing_creds: List[Tuple[str, str, str]] = []
+        creds = general_data.get("credentials")
+        if isinstance(creds, list):
+            for c in creds:
+                if isinstance(c, dict) and c.get("provider") == provider:
+                    cn = c.get("name", "")
+                    ce = c.get("env_var", "")
+                    val = os.environ.get(ce, "")
+                    if cn and ce:
+                        existing_creds.append((cn, ce, val))
 
-    if api_key:
-        # Aggiorna .env
-        _update_env_file(env_path, env_var_name, api_key)
+        if existing_creds:
+            print(f"\nTrovate {len(existing_creds)} chiavi round-robin già configurate per {provider}.")
+            action_choice = questionary.select(
+                f"Gestione chiavi round-robin per {provider}:",
+                choices=[
+                    "➕ Aggiungi altre chiavi",
+                    "🔄 Sostituisci tutte le chiavi da zero",
+                    "⏭ Mantieni le chiavi esistenti"
+                ],
+                default="➕ Aggiungi altre chiavi"
+            ).ask()
 
-        # Aggiorna credentials in config/general.yaml
+            if action_choice is None:
+                print("Operazione annullata dall'utente.")
+                return None, None, []
+
+            if action_choice.startswith("⏭"):
+                rr_action = "keep"
+                collected_keys = list(existing_creds)
+            elif action_choice.startswith("🔄"):
+                rr_action = "replace"
+                collected_keys = []
+            else:
+                rr_action = "add"
+                collected_keys = list(existing_creds)
+
+        if rr_action != "keep":
+            while True:
+                curr_idx = len(collected_keys) + 1
+                cn = "google_1" if (provider == "google" and curr_idx == 1) else f"{provider.lower()}_{curr_idx}"
+                ce = f"{provider.upper()}_API_KEY_{curr_idx}"
+                prompt_str = f"API key #{curr_idx} per {provider} (invio vuoto per terminare se hai già inserito tutte le chiavi):"
+                key_in = questionary.password(prompt_str).ask()
+                if key_in is None:
+                    print("Operazione annullata dall'utente.")
+                    return None, None, []
+                key_val = key_in.strip()
+                if not key_val:
+                    break
+                collected_keys.append((cn, ce, key_val))
+
+        if len(collected_keys) < 2:
+            if len(collected_keys) == 1:
+                print("\n⚠️ Avviso: Inserita una sola chiave. Il round-robin richiede almeno 2 chiavi. Procedo con configurazione singola (round_robin: false).")
+                is_multi = False
+            else:
+                print("⚠️ Nessuna API key fornita. Operazione annullata.")
+                return None, None, []
+
+    if not is_multi:
+        if collected_keys:
+            cred_name, env_var_name, api_key = collected_keys[0]
+        else:
+            env_var_name = f"{provider.upper()}_API_KEY"
+            existing_key = os.environ.get(env_var_name, "")
+            api_key_input = questionary.password(
+                f"API key per {provider} (lascia vuoto per mantenere esistente):",
+                default=existing_key
+            ).ask()
+
+            if api_key_input is None:
+                print("Operazione annullata dall'utente.")
+                return None, None, []
+
+            api_key = api_key_input.strip() if api_key_input.strip() else existing_key
+            cred_name = "google_1" if provider == "google" else f"{provider.lower()}_1"
+
+        if api_key:
+            _update_env_file(env_path, env_var_name, api_key)
+            creds = general_data.get("credentials")
+            if not isinstance(creds, list):
+                creds = []
+
+            found_cred = False
+            for c in creds:
+                if isinstance(c, dict) and (c.get("name") == cred_name or c.get("env_var") == env_var_name):
+                    c["name"] = cred_name
+                    c["provider"] = provider
+                    c["env_var"] = env_var_name
+                    found_cred = True
+                    break
+
+            if not found_cred:
+                creds.append({
+                    "name": cred_name,
+                    "provider": provider,
+                    "env_var": env_var_name
+                })
+
+            general_data["credentials"] = creds
+            _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+    else:
         creds = general_data.get("credentials")
         if not isinstance(creds, list):
             creds = []
 
-        found_cred = False
-        for c in creds:
-            if isinstance(c, dict) and (c.get("name") == cred_name or c.get("env_var") == env_var_name):
-                c["name"] = cred_name
-                c["provider"] = provider
-                c["env_var"] = env_var_name
-                found_cred = True
-                break
-
-        if not found_cred:
-            creds.append({
-                "name": cred_name,
-                "provider": provider,
-                "env_var": env_var_name
-            })
+        for cn, ce, key_val in collected_keys:
+            if key_val:
+                _update_env_file(env_path, ce, key_val)
+            found_c = False
+            for c in creds:
+                if isinstance(c, dict) and (c.get("name") == cn or c.get("env_var") == ce):
+                    c["name"] = cn
+                    c["provider"] = provider
+                    c["env_var"] = ce
+                    found_c = True
+                    break
+            if not found_c:
+                creds.append({
+                    "name": cn,
+                    "provider": provider,
+                    "env_var": ce
+                })
 
         general_data["credentials"] = creds
         _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+        api_key = collected_keys[0][2]
+        cred_name = collected_keys[0][0]
+        env_var_name = collected_keys[0][1]
 
     # 5. Recupero Modelli
     effective_base_url = base_url or default_base
@@ -309,24 +412,84 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Tuple[Opt
             except Exception:
                 pass
 
-        if "primary" not in job_data or not isinstance(job_data["primary"], dict):
-            job_data["primary"] = {}
+        if is_multi:
+            # Preserva i campi di tuning non-provider/model/credential/base_url
+            tuning_fields: Dict[str, Any] = {}
+            source_dict: Optional[Dict[str, Any]] = None
+            if "primary" in job_data and isinstance(job_data["primary"], dict):
+                source_dict = job_data["primary"]
+            elif "primary_routes" in job_data and isinstance(job_data["primary_routes"], list) and len(job_data["primary_routes"]) > 0:
+                if isinstance(job_data["primary_routes"][0], dict):
+                    source_dict = job_data["primary_routes"][0]
 
-        job_data["primary"]["provider"] = provider
-        job_data["primary"]["model"] = chosen_model
-        job_data["primary"]["credential"] = cred_name
-        job_data["primary"]["base_url"] = base_url
+            if source_dict:
+                for k in ("thinking", "reasoning_effort", "max_thinking_tokens", "max_tokens", "timeout_seconds", "provider_routing"):
+                    if k in source_dict:
+                        tuning_fields[k] = source_dict[k]
+
+            routes_list: List[Dict[str, Any]] = []
+            if rr_action == "add" and job_data.get("round_robin") is True and isinstance(job_data.get("primary_routes"), list):
+                existing_routes = list(job_data["primary_routes"])
+                existing_creds = {r.get("credential") for r in existing_routes if isinstance(r, dict)}
+                new_routes = []
+                for cn, ce, kv in collected_keys:
+                    if cn not in existing_creds:
+                        r_entry: Dict[str, Any] = {
+                            "provider": provider,
+                            "model": chosen_model,
+                            "credential": cn,
+                        }
+                        if base_url:
+                            r_entry["base_url"] = base_url
+                        r_entry.update(tuning_fields)
+                        new_routes.append(r_entry)
+                routes_list = existing_routes + new_routes
+            else:
+                for cn, ce, kv in collected_keys:
+                    r_entry: Dict[str, Any] = {
+                        "provider": provider,
+                        "model": chosen_model,
+                        "credential": cn,
+                    }
+                    if base_url:
+                        r_entry["base_url"] = base_url
+                    r_entry.update(tuning_fields)
+                    routes_list.append(r_entry)
+
+            job_data["round_robin"] = True
+            job_data["primary_routes"] = routes_list
+            job_data.pop("primary", None)
+            job_data.pop("secondary", None)
+
+        else:
+            if "primary" not in job_data or not isinstance(job_data["primary"], dict):
+                job_data["primary"] = {}
+
+            job_data["primary"]["provider"] = provider
+            job_data["primary"]["model"] = chosen_model
+            job_data["primary"]["credential"] = cred_name
+            job_data["primary"]["base_url"] = base_url
+            job_data.pop("primary_routes", None)
+            job_data["round_robin"] = False
 
         _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
         updated_jobs.append(job_name)
 
     # 7. Riepilogo finale sezione LLM
-    print(f"\n✅ Provider LLM configurato con successo per {len(updated_jobs)} job!")
-    print(f"   Provider:    {provider}")
-    print(f"   Modello:     {chosen_model}")
-    print(f"   Credenziale:  {cred_name} ({env_var_name})")
-    if base_url:
-        print(f"   Base URL:    {base_url}")
+    if is_multi:
+        print(f"\n✅ Provider LLM configurato in round-robin su {len(collected_keys)} chiavi per {len(updated_jobs)} job!")
+        print(f"   Provider:    {provider}")
+        print(f"   Modello:     {chosen_model}")
+        print(f"   Credenziali: {', '.join(k[0] for k in collected_keys)}")
+        if base_url:
+            print(f"   Base URL:    {base_url}")
+    else:
+        print(f"\n✅ Provider LLM configurato con successo per {len(updated_jobs)} job!")
+        print(f"   Provider:    {provider}")
+        print(f"   Modello:     {chosen_model}")
+        print(f"   Credenziale:  {cred_name} ({env_var_name})")
+        if base_url:
+            print(f"   Base URL:    {base_url}")
 
     return provider, chosen_model, updated_jobs
 
