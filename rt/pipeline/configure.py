@@ -648,6 +648,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
             print("Operazione annullata dall'utente.")
             return {}
         profiles[prof_name] = prof_dict
+        _save_model_profiles(general_data, profiles)
 
     job_paths = find_job_yaml_paths(config_dir)
     ordered_job_names: List[str] = []
@@ -715,6 +716,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                 print("Creazione nuovo profilo annullata.")
                 break
             profiles[p_name] = p_dict
+            _save_model_profiles(general_data, profiles)
             selection = p_name
 
         _apply_profile_to_job(job_file, profiles[selection])
