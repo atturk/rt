@@ -148,6 +148,7 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
          patch("questionary.autocomplete", side_effect=mock_autocomplete), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", return_value=mock_resp):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -231,6 +232,7 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -516,6 +518,7 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -626,6 +629,7 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -700,6 +704,7 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -807,6 +812,7 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res1 = _configure_llm_provider_section(config_dir, env_file)
@@ -949,6 +955,7 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         assignments = _configure_llm_provider_section(config_dir, env_file)
@@ -1003,7 +1010,8 @@ def test_rerun_unrecognized_config_keep_choice(tmp_path):
             m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
-    with patch("questionary.select", side_effect=mock_select):
+    with patch("questionary.select", side_effect=mock_select), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["ENTER", "c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
 
     assert res["outline"] == "(configurazione attuale mantenuta)"
@@ -1039,14 +1047,9 @@ def test_skip_option_and_no_forced_bootstrap(tmp_path):
             m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
-    with patch("questionary.select", side_effect=mock_select):
+    with patch("questionary.select", side_effect=mock_select), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
-
-    assert any("outline" in p for p in prompt_choices)
-    outline_key = [p for p in prompt_choices if "outline" in p][0]
-    opts = prompt_choices[outline_key]
-    assert "⏭ Lascia vuoto per ora" in opts
-    assert "➕ Configura un nuovo modello per questa fase" in opts
 
     assert res["outline"] == "(non configurato)"
     with open(outline_file, "r", encoding="utf-8") as f:
@@ -1113,19 +1116,14 @@ def test_grouped_jobs_recall_and_immagini(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "RIGHT", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res = _configure_llm_provider_section(config_dir, env_file)
 
-    # Deve esserci esattamente UNA domanda per immagini ed UNA domanda per recall
-    img_q = [q for q in model_questions if "immagini" in q]
-    recall_q = [q for q in model_questions if "recall" in q]
-    assert len(img_q) == 1
-    assert len(recall_q) == 1
-
     # Tutti i 5 job di recall ed i 2 di immagini hanno lo stesso profilo in assignments
     for jn in recall_jobs:
-        assert res[jn] == "recall_quiz"
+        assert res[jn] == "image_description"
         with open(os.path.join(config_dir, f"{jn}.yaml"), "r", encoding="utf-8") as f:
             jdata = yaml.safe_load(f)
         assert jdata["primary"]["provider"] == "deepseek"

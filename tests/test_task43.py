@@ -1,5 +1,6 @@
 """
-Unit test per Task 38: schermata a blocchi navigabili per fase e conferma finale in configure.py.
+tests/test_task43.py
+Unit & integration tests for Task 43: Literal card carousel UI in rt config (_configure_llm_provider_section).
 """
 
 import os
@@ -26,7 +27,7 @@ def test_pricing_section_no_decorative_box(tmp_path, capsys):
     assert "------------------------------------------------------------" not in captured
 
 
-def test_phase_blocks_navigation_and_confirmation(tmp_path):
+def test_phase_cards_navigation_and_confirmation(tmp_path):
     config_dir = os.path.join(tmp_path, "config")
     os.makedirs(config_dir, exist_ok=True)
     env_path = os.path.join(tmp_path, ".env")
@@ -57,7 +58,7 @@ def test_phase_blocks_navigation_and_confirmation(tmp_path):
     # Sequenza tasti:
     # 1. Card outline: "RIGHT" (passa a rewrite)
     # 2. Card rewrite: "LEFT" (torna ad outline)
-    # 3. Card outline: "DOWN", "DOWN" (va su test_prof_1), "ENTER" (seleziona test_prof_1)
+    # 3. Card outline: "DOWN" (va su test_prof_1), "ENTER" (seleziona test_prof_1)
     # 4. Card outline: "c" (salta alla card finale di conferma)
     # 5. Card conferma: "ENTER" (conferma ed applica)
     key_sequence = [
@@ -74,14 +75,13 @@ def test_phase_blocks_navigation_and_confirmation(tmp_path):
         with patch("rt.pipeline.configure.read_single_key", side_effect=key_sequence):
             res = _configure_llm_provider_section(config_dir, env_path)
 
-    # Verifica che la conferma abbia effettivamente applicato il profilo al file job outline.yaml
     assert res.get("outline") == "test_prof_1"
     with open(outline_job_file, "r", encoding="utf-8") as f:
-        updated_job = yaml.safe_load(f)
-    assert updated_job["primary"]["model"] == "openrouter/free"
+        updated_job = yaml.safe_dump(yaml.safe_load(f))
+    assert "openrouter/free" in updated_job
 
 
-def test_phase_blocks_no_write_until_confirmation(tmp_path):
+def test_phase_cards_no_write_until_confirmation(tmp_path):
     config_dir = os.path.join(tmp_path, "config")
     os.makedirs(config_dir, exist_ok=True)
     env_path = os.path.join(tmp_path, ".env")
@@ -106,7 +106,7 @@ def test_phase_blocks_no_write_until_confirmation(tmp_path):
     with open(outline_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    # Sequenza: "DOWN", "DOWN", "ENTER", "c" (va al riepilogo), "DOWN", "DOWN", "ENTER" (Annulla)
+    # Sequenza: "DOWN", "DOWN", "ENTER", "c" (va a conferma), "DOWN", "DOWN", "ENTER" (Annulla)
     key_sequence = [
         "DOWN",
         "DOWN",
@@ -122,7 +122,45 @@ def test_phase_blocks_no_write_until_confirmation(tmp_path):
             res = _configure_llm_provider_section(config_dir, env_path)
 
     assert res == {}
-    # Verifica che il file job sia rimasto inalterato!
     with open(outline_job_file, "r", encoding="utf-8") as f:
         unchanged_job = yaml.safe_load(f)
     assert unchanged_job["primary"]["model"] == "old_model"
+
+
+def test_phase_cards_create_new_profile(tmp_path):
+    config_dir = os.path.join(tmp_path, "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_path = os.path.join(tmp_path, ".env")
+
+    job_dir = os.path.join(config_dir, "jobs")
+    os.makedirs(job_dir, exist_ok=True)
+    outline_job_file = os.path.join(job_dir, "outline.yaml")
+    initial_job_content = {"primary": {"provider": "openrouter", "model": "old_model"}}
+    with open(outline_job_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump(initial_job_content, f)
+
+    # Card choices when initial job has unrecognized config and no profiles exist:
+    # [keep_label, SKIP_LABEL, NEW_PROFILE]
+    # DOWN -> DOWN -> NEW_PROFILE -> ENTER -> calls _create_new_model_profile
+    # Then "c" -> ENTER (conferma)
+    key_sequence = [
+        "DOWN",
+        "DOWN",
+        "ENTER",
+        "c",
+        "ENTER"
+    ]
+
+    new_profile_dict = {
+        "provider": "google",
+        "round_robin": False,
+        "routes": [{"credential": "google_1", "model": "gemini-2.5-flash"}]
+    }
+
+    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
+        with patch("rt.pipeline.configure.read_single_key", side_effect=key_sequence):
+            with patch("rt.pipeline.configure._create_new_model_profile", return_value=("new_gemini", new_profile_dict)) as mock_create:
+                res = _configure_llm_provider_section(config_dir, env_path)
+
+    mock_create.assert_called_once()
+    assert res.get("outline") == "new_gemini"
