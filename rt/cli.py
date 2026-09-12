@@ -2,6 +2,7 @@
 rt.cli
 CLI unificata per il workflow accademico RT.
 Comandi disponibili:
+  rt config             (wizard interattivo di configurazione guidata)
   rt run                <cartella> [--mock]
   rt setup              --audio <file> --date <YYYY-MM-DD> --materia <nome>
   rt prepare            <cartella>
@@ -677,6 +678,11 @@ class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
         return super()._format_action(action)
 
 
+def cmd_config(args: argparse.Namespace) -> None:
+    from rt.pipeline.configure import run_config_wizard
+    run_config_wizard()
+
+
 def main():
     load_env_file(override=True)
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
@@ -693,6 +699,12 @@ def main():
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # config
+    p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
+    from rt.pipeline.configure import configure_config_parser
+    configure_config_parser(p_cfg)
+    p_cfg.set_defaults(func=cmd_config)
 
     # run
     p_run = subparsers.add_parser("run", help="Esegue l'intera pipeline end-to-end (accetta file audio o cartella lezione)")
