@@ -19,6 +19,8 @@ from rt.pipeline.configure import (
     _suggest_profile_name,
     _create_new_model_profile,
     _apply_profile_to_job,
+    _job_has_real_config,
+    _find_matching_profile,
     _configure_llm_provider_section,
     _configure_telegram_section,
     _configure_stt_section,
@@ -99,6 +101,8 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
             m.ask.return_value = "deepseek"
         elif "modello LLM" in prompt:
             m.ask.return_value = "deepseek-reasoner"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
     def mock_text(prompt, default=None, **kwargs):
@@ -176,6 +180,8 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
         m = MagicMock()
         if "Provider LLM" in prompt:
             m.ask.return_value = "openrouter"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
     def mock_text(prompt, default=None, **kwargs):
@@ -452,6 +458,8 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
             m.ask.return_value = "google"
         elif "modello LLM" in prompt:
             m.ask.return_value = "gemini-2.5-flash"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
     def mock_text(prompt, default=None, **kwargs):
@@ -556,6 +564,10 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
             m.ask.return_value = "➕ Aggiungi altre chiavi"
         elif "modello LLM" in prompt:
             m.ask.return_value = "gemini-2.5-flash"
+        elif "Modello per la fase" in prompt:
+            m.ask.return_value = "generale"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
     def mock_text(prompt, default=None, **kwargs):
@@ -565,7 +577,7 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
         elif "ID Modello" in prompt:
             m.ask.return_value = "gemini-2.5-flash"
         elif "Nome per questo profilo" in prompt:
-            m.ask.return_value = default or "generale"
+            m.ask.return_value = "generale"
         else:
             m.ask.return_value = default or ""
         return m
@@ -624,6 +636,8 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
         m = MagicMock()
         if "Provider LLM" in prompt:
             m.ask.return_value = "deepseek"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
     def mock_text(prompt, default=None, **kwargs):
@@ -633,7 +647,7 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
         elif "ID Modello" in prompt:
             m.ask.return_value = "deepseek-chat"
         elif "Nome per questo profilo" in prompt:
-            m.ask.return_value = default or "generale"
+            m.ask.return_value = "generale"
         else:
             m.ask.return_value = default or ""
         return m
@@ -723,6 +737,8 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
             m.ask.return_value = "deepseek"
         elif "modello LLM" in prompt:
             m.ask.return_value = "deepseek-chat"
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
         return m
 
     def mock_text(prompt, default=None, **kwargs):
@@ -730,7 +746,7 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
         if "ID Modello" in prompt:
             m.ask.return_value = "deepseek-chat"
         elif "Nome per questo profilo" in prompt:
-            m.ask.return_value = default or "generale"
+            m.ask.return_value = "generale"
         else:
             m.ask.return_value = default or ""
         return m
@@ -740,7 +756,7 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
         m.ask.return_value = "sk-deepseek-test"
         return m
 
-    # Primo avvio
+    # Primo avvio e Rerun
     with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
@@ -748,6 +764,7 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res1 = _configure_llm_provider_section(config_dir, env_file)
+        res2 = _configure_llm_provider_section(config_dir, env_path=env_file)
 
     assert res1 == {"outline": "generale"}
 
@@ -756,9 +773,195 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
 
     assert "model_profiles" in gen_data
     assert "generale" in gen_data["model_profiles"]
-
-    # Rerun: non deve chiedere credenziali da zero ma riusare "generale"
-    res2 = _configure_llm_provider_section(config_dir, env_path=env_file)
     assert res2 == {"outline": "generale"}
 
 
+def test_find_matching_profile_exact_match_and_mismatches():
+    """Verifica la corrispondenza esatta dei profili noti rispetto alla configurazione YAML dei job."""
+    profiles = {
+        "generale": {
+            "provider": "openrouter",
+            "base_url": None,
+            "round_robin": False,
+            "routes": [{"credential": "openrouter_1", "model": "openai/gpt-5.6-luna"}]
+        },
+        "rewrite_rr": {
+            "provider": "google",
+            "base_url": None,
+            "round_robin": True,
+            "routes": [
+                {"credential": "google_1", "model": "gemini-3.5-flash"},
+                {"credential": "google_2", "model": "gemini-3.5-flash"}
+            ]
+        }
+    }
+
+    # Job vuoto -> None
+    assert _find_matching_profile({"primary": {"provider": None}}, profiles) is None
+
+    # Match esatto singola chiave
+    job_single = {
+        "round_robin": False,
+        "primary": {"provider": "openrouter", "model": "openai/gpt-5.6-luna", "credential": "openrouter_1"}
+    }
+    assert _find_matching_profile(job_single, profiles) == "generale"
+
+    # Match esatto round robin
+    job_rr = {
+        "round_robin": True,
+        "primary_routes": [
+            {"provider": "google", "model": "gemini-3.5-flash", "credential": "google_1"},
+            {"provider": "google", "model": "gemini-3.5-flash", "credential": "google_2"}
+        ]
+    }
+    assert _find_matching_profile(job_rr, profiles) == "rewrite_rr"
+
+    # Mismatch modello -> None
+    job_diff_model = {
+        "round_robin": False,
+        "primary": {"provider": "openrouter", "model": "anthropic/claude-3", "credential": "openrouter_1"}
+    }
+    assert _find_matching_profile(job_diff_model, profiles) is None
+
+
+def test_per_phase_model_selection_and_reuse(tmp_path):
+    """Verifica la selezione per-fase ed il riuso immediato di un profilo creato al volo."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"version": "2.0.0", "credentials": []}, f)
+
+    outline_file = os.path.join(config_dir, "outline.yaml")
+    rewrite_file = os.path.join(config_dir, "rewrite.yaml")
+    science_file = os.path.join(config_dir, "review_science.yaml")
+    for fp in (outline_file, rewrite_file, science_file):
+        with open(fp, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"primary": {"provider": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    select_calls = []
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "google" if len(select_calls) > 0 else "deepseek"
+        elif "modello LLM" in prompt:
+            m.ask.return_value = "gemini-3.5-flash" if "google" in prompt or "Google" in str(choices) else "deepseek-chat"
+        elif "Modello per la fase" in prompt:
+            phase = prompt.split("'")[1] if "'" in prompt else ""
+            if phase == "outline":
+                m.ask.return_value = "generale"
+            elif phase == "rewrite":
+                m.ask.return_value = "➕ Configura un nuovo modello per questa fase"
+            elif phase == "review_science":
+                assert "rewrite" in choices
+                m.ask.return_value = "rewrite"
+            else:
+                m.ask.return_value = choices[0]
+            select_calls.append(phase)
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
+        return m
+
+    confirm_count = 0
+
+    def mock_confirm(prompt, default=False):
+        nonlocal confirm_count
+        m = MagicMock()
+        if "più chiavi API" in prompt:
+            confirm_count += 1
+            m.ask.return_value = (confirm_count > 1)
+        else:
+            m.ask.return_value = False
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        if "ID Modello" in prompt:
+            m.ask.return_value = "gemini-3.5-flash"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = default or "generale"
+        else:
+            m.ask.return_value = default or ""
+        return m
+
+    passwords = ["sk-deepseek-1", "gkey1", "gkey2", ""]
+    pass_idx = 0
+
+    def mock_password(prompt, default=None):
+        nonlocal pass_idx
+        m = MagicMock()
+        val = passwords[pass_idx] if pass_idx < len(passwords) else "secret"
+        pass_idx += 1
+        m.ask.return_value = val
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        assignments = _configure_llm_provider_section(config_dir, env_file)
+
+    assert assignments["outline"] == "generale"
+    assert assignments["rewrite"] == "rewrite"
+    assert assignments["review_science"] == "rewrite"
+
+    with open(rewrite_file, "r", encoding="utf-8") as f:
+        rw_data = yaml.safe_load(f)
+    assert rw_data["round_robin"] is True
+    assert len(rw_data["primary_routes"]) == 2
+
+    with open(science_file, "r", encoding="utf-8") as f:
+        sc_data = yaml.safe_load(f)
+    assert sc_data["round_robin"] is True
+    assert len(sc_data["primary_routes"]) == 2
+
+
+def test_rerun_unrecognized_config_keep_choice(tmp_path):
+    """Verifica che la scelta 'Mantieni configurazione attuale' preservi intatto il file YAML del job."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump({
+            "version": "2.0.0",
+            "model_profiles": {
+                "generale": {
+                    "provider": "openrouter",
+                    "routes": [{"credential": "or_1", "model": "gpt-4"}]
+                }
+            }
+        }, f)
+
+    outline_file = os.path.join(config_dir, "outline.yaml")
+    custom_content = {
+        "round_robin": False,
+        "primary": {"provider": "custom_provider", "model": "custom_model_v9", "credential": "custom_cred"}
+    }
+    with open(outline_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump(custom_content, f)
+
+    env_file = str(tmp_path / ".env")
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        if "Modello per la fase" in prompt:
+            keep_choice = [c for c in choices if "Mantieni" in c][0]
+            m.ask.return_value = keep_choice
+        else:
+            m.ask.return_value = default or (choices[0] if choices else "")
+        return m
+
+    with patch("questionary.select", side_effect=mock_select):
+        res = _configure_llm_provider_section(config_dir, env_file)
+
+    assert res["outline"] == "(configurazione attuale mantenuta)"
+
+    with open(outline_file, "r", encoding="utf-8") as f:
+        data_after = yaml.safe_load(f)
+
+    assert data_after == custom_content
