@@ -16,18 +16,17 @@ empirico diretto — verifica sempre empiricamente prima di escludere una versio
 lavoro corrente da eseguire è **30**: sostituisce il prompt testuale `read -rp [S/n]`
 (introdotto nel Task 29) con un menu `questionary` in stile `rt config`, con un piccolo bootstrap
 anticipato del venv (solo `questionary`, per non perdere il parallelismo del download introdotto
-nel Task 28) e fallback al prompt testuale se il bootstrap fallisce. **31**: a fine
-installazione, se il terminale è interattivo, sostituisce la shell corrente con una fresca
-(`exec "$SHELL" -l`, verificato empiricamente in questa sessione che legge davvero il profilo
-appena aggiornato) così `rt` è subito disponibile senza aprire un nuovo terminale — aggiorna
-anche il riepilogo finale per usare `rt` invece di `./bin/rt` ovunque, dato che a quel punto è
-vero.
+nel Task 28) e fallback al prompt testuale se il bootstrap fallisce. Task 31 completato (a fine
+installazione, se il terminale è interattivo, sostituisce la shell corrente con una fresca via
+`exec "$SHELL" -l`, riepilogo finale con `rt` invece di `./bin/rt`). Entrambi revisionati con
+test reali via pseudo-terminale (menu `questionary` con navigazione a frecce, fallback su import
+fallita, exec-refresh end-to-end con verifica che il PATH risulti davvero attivo nella shell
+risultante) — un solo fix di pulizia applicato direttamente (ridichiarazione ridondante di
+`VENV_DIR`). **Non ci sono task attivi al momento.**
 
 ## Ordine di esecuzione
 
-30 e 31 sono indipendenti tra loro (toccano parti diverse di `install.sh`: 30 il prompt
-interattivo in fase 1, 31 il finale dello script) — implementali in ordine numerico per
-semplicità, ma nessuno dipende dall'altro.
+Nessun task attivo al momento.
 
 ## Dopo OGNI task numerato (obbligatorio, non solo alla fine)
 
