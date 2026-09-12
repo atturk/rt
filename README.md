@@ -22,7 +22,7 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
   - **RED**: termini ad alto rischio o incerti (richiesta conferma d'ascolto).
 - **Critic Scientifico Indipendente**: Distingue chiaramente tra lapsus del docente (`ERR_DOCENTE`), allucinazioni del modello (`ERR_RECONSTRUCTION`) e controlli di plausibilità (`SCIENCE_CHECK`).
 - **Human Decision Ledger**: Persistenza di tutte le decisioni in `review_decisions.json`. Riproducibile e idempotente.
-- **Retrocompatibilità Totale**: Supporta sia le trascrizioni storiche Markdown sia i nuovi export JSON nativi di MacWhisper.
+- **Retrocompatibilità Totale**: Supporta sia le trascrizioni storiche Markdown/MacWhisper sia gli export JSON nativi di `macparakeet-cli` (motore ASR di default).
 
 ---
 

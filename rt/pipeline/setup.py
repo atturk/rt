@@ -25,7 +25,7 @@ RED = "\033[1;31m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-DEFAULT_MODEL = "parakeet-pro:nvidia_parakeet-v3"
+DEFAULT_MODEL = "parakeet-v3"
 SUPPORTED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4b", ".wma"}
 
 
@@ -56,20 +56,23 @@ def clean_input_path(raw_path: str) -> str:
     return os.path.expanduser(p.strip())
 
 
-def find_mw_binary() -> str:
-    """Individua il binario mw (MacWhisper CLI)."""
-    which_mw = shutil.which("mw")
-    if which_mw:
-        return which_mw
+def find_macparakeet_binary() -> str:
+    """Individua il binario macparakeet-cli."""
+    which_bin = shutil.which("macparakeet-cli")
+    if which_bin:
+        return which_bin
     candidates = [
-        "/usr/local/bin/mw",
-        "/opt/homebrew/bin/mw",
-        "/Applications/MacWhisper.app/Contents/MacOS/mw",
+        "/usr/local/bin/macparakeet-cli",
+        "/opt/homebrew/bin/macparakeet-cli",
     ]
     for c in candidates:
         if os.path.exists(c) and os.access(c, os.X_OK):
             return c
     return ""
+
+
+# Alias retrocompatibile
+find_mw_binary = find_macparakeet_binary
 
 
 def prompt_clean(message: str, default: str = "") -> str:
@@ -282,7 +285,7 @@ def generate_deterministic_mock_asr(
     return json_path, md_path
 
 
-def _run_mw_with_spinner(cmd: List[str], label: str) -> subprocess.CompletedProcess:
+def _run_transcribe_with_spinner(cmd: List[str], label: str) -> subprocess.CompletedProcess:
     console = Console()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     start = time.monotonic()
@@ -293,6 +296,10 @@ def _run_mw_with_spinner(cmd: List[str], label: str) -> subprocess.CompletedProc
             time.sleep(0.5)
     stdout, stderr = proc.communicate()
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout=stdout, stderr=stderr)
+
+
+# Alias per retrocompatibilità
+_run_mw_with_spinner = _run_transcribe_with_spinner
 
 
 def run_setup(
@@ -312,7 +319,7 @@ def run_setup(
     Esegue l'ingest audio e il setup strutturato della lezione.
     Garantisce:
     - Controllo cartella esistente e protezione dati (review_decisions.json non viene mai distrutto)
-    - Hard-fail se MacWhisper o l'export ASR fallisce
+    - Hard-fail se macparakeet-cli o l'export ASR fallisce
     - Inizializzazione pulita dei soli artefatti necessari (audio, info.yaml, trascritto grezzo.json, trascritto grezzo.md)
     - Gestione coerente di --skip-transcribe (stato METADATA_ONLY)
     - Supporto a file audio singolo o lista di file audio (concatenazione deterministica con offset temporale cumulativo)
@@ -439,14 +446,14 @@ def run_setup(
         current_status = "pronto_per_rielaborazione"
 
     elif not skip_transcribe:
-        mw_bin = find_mw_binary()
-        if not mw_bin:
+        parakeet_bin = find_macparakeet_binary()
+        if not parakeet_bin:
             raise SetupError(
-                "MacWhisper CLI ('mw') non trovato. Assicurati che MacWhisper sia installato in /Applications/MacWhisper.app."
+                "macparakeet-cli non trovato. Assicurati che sia installato con 'brew install moona3k/tap/macparakeet-cli'."
             )
 
         if on_progress:
-            on_progress("\n[2/9] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
+            on_progress("\n[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)...")
 
         # Se sono presenti file audio multipli, gestiamo la concatenazione deterministica con offset cumulativo
         all_segments_combined = []
@@ -458,41 +465,56 @@ def run_setup(
             tmp_json = os.path.join(target_folder_path, f".tmp_mw_{audio_idx}.json")
 
             cmd_json = [
-                mw_bin, "transcribe",
-                "--model", model,
+                parakeet_bin, "transcribe",
                 "--format", "json",
-                "--overwrite",
-                "-o", tmp_json,
-                aud_abs
             ]
+            if model:
+                model_param = model.replace("parakeet-", "") if model.startswith("parakeet-") else model
+                cmd_json.extend(["--parakeet-model", model_param])
+            cmd_json.append(aud_abs)
 
-            # HARD-FAIL CHECK (Parte O): se MacWhisper fallisce, il setup si interrompe immediatamente
-            res_json = _run_mw_with_spinner(cmd_json, "Trascrizione MacWhisper (JSON)")
-            if res_json.returncode != 0 or not os.path.isfile(tmp_json) or os.path.getsize(tmp_json) == 0:
-                # Pulizia parziale di emergenza
+            # HARD-FAIL CHECK: se macparakeet-cli fallisce, il setup si interrompe immediatamente
+            res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
+            
+            raw_data = None
+            if res_json.stdout and res_json.stdout.strip():
+                try:
+                    raw_data = json.loads(res_json.stdout)
+                except Exception:
+                    pass
+
+            if raw_data is None and os.path.isfile(tmp_json) and os.path.getsize(tmp_json) > 0:
+                try:
+                    with open(tmp_json, "r", encoding="utf-8") as f:
+                        raw_data = json.load(f)
+                except Exception:
+                    pass
+
+            if res_json.returncode != 0 or raw_data is None:
                 if os.path.isfile(tmp_json):
                     os.remove(tmp_json)
                 raise SetupError(
-                    f"Trascrizione MacWhisper JSON fallita per '{os.path.basename(aud_file)}' "
+                    f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
                     f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip()}"
                 )
 
-            # Parsing segmenti parziali per calcolo offset cumulativo deterministico (Parte L)
-            with open(tmp_json, "r", encoding="utf-8") as f:
-                raw_data = json.load(f)
-
-            segs = raw_data.get("segments", [])
+            segs = raw_data.get("transcriptSegments", raw_data.get("segments", []))
             max_seg_end = 0.0
             for s in segs:
                 s_copy = dict(s)
-                s_copy["start"] = float(s_copy.get("start", 0)) + cumulative_offset_ms
-                s_copy["end"] = float(s_copy.get("end", 0)) + cumulative_offset_ms
+                start_val = float(s_copy.get("startMs", s_copy.get("start", 0)))
+                end_val = float(s_copy.get("endMs", s_copy.get("end", 0)))
+                s_copy["startMs"] = start_val + cumulative_offset_ms
+                s_copy["endMs"] = end_val + cumulative_offset_ms
+                s_copy["start"] = s_copy["startMs"]
+                s_copy["end"] = s_copy["endMs"]
                 all_segments_combined.append(s_copy)
-                if s_copy["end"] > max_seg_end:
-                    max_seg_end = s_copy["end"]
+                if s_copy["endMs"] > max_seg_end:
+                    max_seg_end = s_copy["endMs"]
 
-            if raw_data.get("text"):
-                combined_text_parts.append(raw_data["text"])
+            raw_txt = raw_data.get("rawTranscript", raw_data.get("text"))
+            if raw_txt:
+                combined_text_parts.append(raw_txt)
 
             cumulative_offset_ms = max_seg_end
             if os.path.isfile(tmp_json):
@@ -500,7 +522,9 @@ def run_setup(
 
         # Salvataggio deterministico unificato del JSON primario
         final_mw_payload = {
+            "rawTranscript": " ".join(combined_text_parts),
             "text": " ".join(combined_text_parts),
+            "transcriptSegments": all_segments_combined,
             "segments": all_segments_combined,
             "language": "it"
         }
@@ -523,8 +547,8 @@ stato: pronto_per_rielaborazione
 """
         md_body_lines = []
         for s in all_segments_combined:
-            st_ms = float(s.get("start", 0))
-            en_ms = float(s.get("end", 0))
+            st_ms = float(s.get("startMs", s.get("start", 0)))
+            en_ms = float(s.get("endMs", s.get("end", 0)))
             tc = f"{int(st_ms//60000):02d}:{int((st_ms%60000)//1000):02d} - {int(en_ms//60000):02d}:{int((en_ms%60000)//1000):02d}"
             md_body_lines.append(f"**[{tc}]** {s.get('text', '').strip()}\n")
 
@@ -595,7 +619,7 @@ def configure_setup_parser(parser: Any) -> Any:
     parser.add_argument("-m", "--materia", help="Nome della materia (es. BIOCHIMICA, BIOINFORMATICA)")
     parser.add_argument("-a", "--argomenti", help="Argomenti trattati (es. 'Trigliceridi e beta-ossidazione')")
     parser.add_argument("-o", "--dest-dir", help="Directory base di destinazione")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello MacWhisper (default: {DEFAULT_MODEL})")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello macparakeet-cli (default: {DEFAULT_MODEL})")
     parser.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
     parser.add_argument("--force", action="store_true", help="Forza la riscrittura della cartella se già esistente")
     parser.add_argument("--mock", action="store_true", help="Usa mock deterministico ASR per test offline")

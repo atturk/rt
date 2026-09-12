@@ -33,7 +33,9 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
     
     raw_list: List[Dict[str, Any]] = []
     if isinstance(data, dict):
-        if "segments" in data and isinstance(data["segments"], list):
+        if "transcriptSegments" in data and isinstance(data["transcriptSegments"], list):
+            raw_list = data["transcriptSegments"]
+        elif "segments" in data and isinstance(data["segments"], list):
             raw_list = data["segments"]
         else:
             raise ValueError(f"Formato JSON non riconosciuto in '{json_path}'")
@@ -47,8 +49,34 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
     for i, item in enumerate(raw_list, start=1):
         seg_id = make_segment_id(i)
         
+        # Caso 4: macparakeet-cli (startMs ed endMs in millisecondi)
+        if "startMs" in item and "endMs" in item and isinstance(item["startMs"], (int, float)):
+            start_val = float(item["startMs"])
+            end_val = float(item["endMs"])
+            start_sec = round(start_val / 1000.0, 3)
+            end_sec = round(end_val / 1000.0, 3)
+            
+            if end_sec <= start_sec:
+                end_sec = start_sec + 1.0 # Fallback minimo
+            
+            text = fix_mojibake(str(item.get("text", "")).strip())
+            speaker = item.get("speakerLabel") or item.get("speakerId") or item.get("speaker")
+            
+            parsed_segments.append(Segment(
+                id=seg_id,
+                index=i,
+                start_seconds=start_sec,
+                end_seconds=end_sec,
+                start_formatted=format_timestamp(start_sec),
+                end_formatted=format_timestamp(end_sec),
+                text_raw=text,
+                source_file=os.path.basename(json_path),
+                speaker=speaker,
+                confidence=item.get("confidence")
+            ))
+
         # Caso 1: MacWhisper (start ed end in millisecondi)
-        if "start" in item and "end" in item and isinstance(item["start"], (int, float)):
+        elif "start" in item and "end" in item and isinstance(item["start"], (int, float)):
             # MacWhisper esporta sempre start/end in millisecondi (es. 2720 per 2.72s)
             start_val = float(item["start"])
             end_val = float(item["end"])

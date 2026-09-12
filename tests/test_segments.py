@@ -56,6 +56,44 @@ def test_parse_segments_from_macwhisper_json(tmp_path):
     assert segments[1].start_formatted == "00:09"
 
 
+def test_parse_segments_from_macparakeet_json(tmp_path):
+    parakeet_data = {
+        "rawTranscript": "Buongiorno a tutti. Oggi parliamo di biochimica.",
+        "transcriptSegments": [
+            {
+                "id": "uuid-p1",
+                "startMs": 0,
+                "endMs": 1500,
+                "text": "Buongiorno a tutti.",
+                "speakerLabel": "Speaker 1"
+            },
+            {
+                "id": "uuid-p2",
+                "startMs": 1500,
+                "endMs": 4200,
+                "text": "Oggi parliamo di biochimica.",
+                "speakerLabel": "Speaker 1"
+            }
+        ]
+    }
+    json_file = str(tmp_path / "macparakeet_export.json")
+    with open(json_file, "w", encoding="utf-8") as f:
+        json.dump(parakeet_data, f)
+
+    segments = parse_segments_from_json(json_file)
+    assert len(segments) == 2
+    assert segments[0].id == "seg_000001"
+    assert segments[0].start_seconds == 0.0
+    assert segments[0].end_seconds == 1.5
+    assert segments[0].speaker == "Speaker 1"
+    assert segments[0].text_raw == "Buongiorno a tutti."
+
+    assert segments[1].id == "seg_000002"
+    assert segments[1].start_seconds == 1.5
+    assert segments[1].end_seconds == 4.2
+    assert segments[1].text_raw == "Oggi parliamo di biochimica."
+
+
 def test_parse_segments_from_macwhisper_json_sub_500ms(tmp_path):
     """Verifica che segmenti che iniziano/finiscono sotto i 500ms vengano convertiti correttamente da ms a secondi."""
     mw_data = {

@@ -18,7 +18,7 @@ python3 -m rt.cli --help
 ### Dipendenze di sistema (macOS)
 
 - **ffmpeg**: ritaglio/riproduzione clip audio durante la review (`rt/core/audio_clip.py`). `brew install ffmpeg`.
-- **MacWhisper** (CLI `mw`, versione 13.20+): trascrizione ASR delle lezioni (`rt/pipeline/setup.py::find_mw_binary()`). Richiede l'app installata in `/Applications/MacWhisper.app` con la CLI abilitata.
+- **macparakeet-cli**: trascrizione ASR delle lezioni (`rt/pipeline/setup.py::find_macparakeet_binary()`). Installato automaticamente da `./install.sh` via Homebrew (`brew install moona3k/tap/macparakeet-cli`).
 - **micro** (consigliato al posto di `nano`): editor per le correzioni testuali durante la review interattiva (`rt/core/editor_edit.py`), navigazione a frecce/mouse e scorciatoie standard (`Ctrl+S` salva, `Ctrl+Q` esce) invece dei comandi di `nano`. `brew install micro`, poi `export EDITOR=micro` nel proprio shell profile. Se `$EDITOR` non è impostata, il fallback resta `nano`.
 
 ---

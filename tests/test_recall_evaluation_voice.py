@@ -139,34 +139,32 @@ class TestDownloadVoice:
 # ---------------------------------------------------------------------------
 
 class TestTranscribeVoiceAnswer:
-    def test_transcribes_via_mw(self, tmp_path):
+    def test_transcribes_via_macparakeet(self, tmp_path):
         audio_path = str(tmp_path / "voice.oga")
         with open(audio_path, "wb") as f:
             f.write(b"FAKE_AUDIO")
 
         def fake_run(cmd, stdout=None, stderr=None, text=None):
-            out_path = cmd[cmd.index("-o") + 1]
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump({"segments": [{"text": "Ciao "}, {"text": "mondo."}]}, f)
-            return MagicMock(returncode=0, stderr="")
+            payload = json.dumps({"transcriptSegments": [{"text": "Ciao "}, {"text": "mondo."}], "rawTranscript": "Ciao mondo."})
+            return MagicMock(returncode=0, stdout=payload, stderr="")
 
-        with patch("rt.pipeline.setup.find_mw_binary", return_value="/usr/local/bin/mw"), \
+        with patch("rt.pipeline.setup.find_macparakeet_binary", return_value="/usr/local/bin/macparakeet-cli"), \
              patch("subprocess.run", side_effect=fake_run) as mock_run:
-            text = transcribe_voice_answer(audio_path, stt_engine="macwhisper")
+            text = transcribe_voice_answer(audio_path, stt_engine="macparakeet")
 
         assert text == "Ciao mondo."
         cmd_used = mock_run.call_args[0][0]
-        assert cmd_used[0] == "/usr/local/bin/mw"
+        assert cmd_used[0] == "/usr/local/bin/macparakeet-cli"
         assert cmd_used[1] == "transcribe"
         assert "--format" in cmd_used and "json" in cmd_used
         assert audio_path in cmd_used
 
-    def test_raises_when_mw_not_found(self, tmp_path):
+    def test_raises_when_macparakeet_not_found(self, tmp_path):
         audio_path = str(tmp_path / "voice.oga")
         with open(audio_path, "wb") as f:
             f.write(b"FAKE_AUDIO")
 
-        with patch("rt.pipeline.setup.find_mw_binary", return_value=""):
+        with patch("rt.pipeline.setup.find_macparakeet_binary", return_value=""):
             with pytest.raises(RuntimeError):
                 transcribe_voice_answer(audio_path)
 

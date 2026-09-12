@@ -51,6 +51,14 @@ else
     echo "ℹ️ ffmpeg è già installato."
 fi
 
+if command -v macparakeet-cli &>/dev/null; then
+    echo "ℹ️ macparakeet-cli è già installato."
+else
+    echo "🍺 Installazione di macparakeet-cli via Homebrew..."
+    brew install moona3k/tap/macparakeet-cli
+fi
+macparakeet-cli models download parakeet-v3 &>/dev/null || true
+
 if command -v micro &>/dev/null; then
     echo "ℹ️ Editor 'micro' già installato."
 else

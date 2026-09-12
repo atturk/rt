@@ -244,7 +244,7 @@ class TelegramRuntimeConfig(BaseModel):
         reserve_targets: Dict[str, int] = Field(default_factory=lambda: {"mirata": 4, "quiz": 6, "vasta": 2})
         refill_threshold: int = 3
         refill_batch_size: int = 4
-        stt_engine: str = Field(default="macwhisper", description="'macwhisper' | 'api'")
+        stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'api'")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 
 
