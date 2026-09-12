@@ -58,7 +58,15 @@ else
     brew install moona3k/tap/macparakeet-cli
 fi
 echo "📥 Scaricamento modello Parakeet v3 (~465MB, può richiedere qualche minuto)..."
-if macparakeet-cli models download parakeet-v3; then
+macparakeet-cli models download parakeet-v3 &
+download_pid=$!
+elapsed=0
+while kill -0 "$download_pid" 2>/dev/null; do
+    sleep 10
+    elapsed=$((elapsed + 10))
+    echo "   ⏳ ancora in corso (${elapsed}s)..."
+done
+if wait "$download_pid"; then
     echo "✅ Modello Parakeet v3 pronto."
 else
     echo "⚠️  Download del modello fallito (verrà ritentato automaticamente alla prima trascrizione reale)."
