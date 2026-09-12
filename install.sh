@@ -121,22 +121,63 @@ fi
 PYTHON_VER="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')"
 echo "ℹ️ Utilizzo di Python $PYTHON_VER ($PYTHON_BIN)"
 
+VENV_DIR="${REPO_DIR}/.venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "⚙️ Creazione dell'ambiente virtuale .venv..."
+    "$PYTHON_BIN" -m venv "$VENV_DIR" >>"$LOG_FILE" 2>&1 || true
+fi
+"${VENV_DIR}/bin/pip" install --quiet questionary >>"$LOG_FILE" 2>&1 || true
+
 IS_APPLE_SILICON=false
 if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
     IS_APPLE_SILICON=true
 fi
+
+ask_stt_choice() {
+    local script
+    script="$(mktemp "${TMPDIR:-/tmp}/rt_install_ask.XXXXXX.py" 2>/dev/null)" || script=""
+    if [ -z "$script" ]; then
+        return 1
+    fi
+    cat > "$script" <<'PYEOF'
+import questionary
+
+RECOMMENDED = "🎙️  Sì, installa macparakeet-cli e Parakeet v3 (consigliato: gratuito, locale, veloce su Apple Silicon)"
+ALTERNATIVE = "🔧 No, configurerò un motore ASR alternativo"
+
+answer = questionary.select(
+    "Motore ASR per la trascrizione delle lezioni:",
+    choices=[RECOMMENDED, ALTERNATIVE],
+    default=RECOMMENDED,
+).ask()
+
+print("yes" if answer == RECOMMENDED else "no")
+PYEOF
+    local result
+    result="$("${VENV_DIR}/bin/python" "$script" 2>>"$LOG_FILE" | tail -n 1)" || result=""
+    rm -f "$script"
+    echo "$result"
+}
 
 INSTALL_PARAKEET=false
 if [ "$IS_APPLE_SILICON" = true ]; then
     if [ ! -t 0 ]; then
         INSTALL_PARAKEET=true
     else
-        echo "💡 macparakeet-cli + Parakeet v3 è il motore ASR consigliato (gratuito, locale e veloce su Apple Silicon)."
-        read -rp "   Vuoi installare macparakeet-cli e scaricare il modello Parakeet? [S/n] " choice
-        case "$choice" in
-            [Nn]* ) INSTALL_PARAKEET=false ;;
-            * ) INSTALL_PARAKEET=true ;;
-        esac
+        choice="$(ask_stt_choice 2>>"$LOG_FILE" || true)"
+        if [ "$choice" = "yes" ]; then
+            INSTALL_PARAKEET=true
+        elif [ "$choice" = "no" ]; then
+            INSTALL_PARAKEET=false
+        else
+            echo "⚠️  Prompt interattivo avanzato non disponibile, uso il prompt testuale semplice."
+            echo "💡 macparakeet-cli + Parakeet v3 è il motore ASR consigliato (gratuito, locale e veloce su Apple Silicon)."
+            read -rp "   Vuoi installare macparakeet-cli e scaricare il modello Parakeet? [S/n] " choice_text
+            case "$choice_text" in
+                [Nn]* ) INSTALL_PARAKEET=false ;;
+                * ) INSTALL_PARAKEET=true ;;
+            esac
+        fi
     fi
 else
     echo "ℹ️ macparakeet-cli richiede Apple Silicon (M1 o successivo), non disponibile su questo Mac."
