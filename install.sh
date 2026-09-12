@@ -3,6 +3,11 @@ set -euo pipefail
 
 # RT 2.0 — Script di installazione automatizzata per macOS
 
+# Silenzia l'auto-update di Homebrew per la durata di questo script (output più
+# pulito e installazioni più veloci/deterministiche) — non tocca la config globale
+# dell'utente, vale solo per i comandi brew lanciati da qui.
+export HOMEBREW_NO_AUTO_UPDATE=1
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
