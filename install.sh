@@ -220,7 +220,6 @@ else
     brew_install_quiet micro "micro"
 fi
 
-VENV_DIR="${REPO_DIR}/.venv"
 if [ -d "$VENV_DIR" ]; then
     echo "ℹ️ venv già presente, riuso."
 else
