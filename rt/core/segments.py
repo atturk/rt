@@ -1,7 +1,7 @@
 """
 rt.core.segments
 Gestione fondamentale dei segmenti ASR (Source of Truth).
-Supporta sia l'export JSON nativo di MacWhisper sia il parsing di trascritto grezzo.md.
+Supporta l'export JSON di macparakeet-cli (predefinito) e MacWhisper (storico) sia il parsing di trascritto grezzo.md.
 """
 
 from typing import List, Tuple, Dict, Any, Optional

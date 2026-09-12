@@ -388,7 +388,7 @@ def cmd_build(args):
 
 
 def cmd_setup(args):
-    """Setup nativo per l'ingest di file audio, trascrizione MacWhisper e metadati."""
+    """Setup nativo per l'ingest di file audio, trascrizione macparakeet-cli e metadati."""
     from rt.pipeline.setup import run_setup, SetupError, DEFAULT_MODEL
     try:
         res = run_setup(
@@ -713,7 +713,7 @@ def main():
     p_run.add_argument("-m", "--materia", help="Nome della materia (se input è audio)")
     p_run.add_argument("-a", "--argomenti", help="Argomenti trattati (se input è audio)")
     p_run.add_argument("-o", "--dest-dir", help="Directory base di destinazione per nuova lezione")
-    p_run.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello MacWhisper per trascrizione (default: {DEFAULT_MODEL})")
+    p_run.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello macparakeet-cli per trascrizione (default: {DEFAULT_MODEL})")
     p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
     p_run.add_argument("--force", action="store_true", help="Forza l'intera pipeline ignorando i risultati precedenti")
     p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
@@ -733,7 +733,7 @@ def main():
     p_run.set_defaults(func=cmd_run)
 
     # setup
-    p_set = subparsers.add_parser("setup", help="Esegue l'ingest di file audio, trascrizione MacWhisper e metadati")
+    p_set = subparsers.add_parser("setup", help="Esegue l'ingest di file audio, trascrizione macparakeet-cli e metadati")
     configure_setup_parser(p_set)
     p_set.set_defaults(func=cmd_setup)
 

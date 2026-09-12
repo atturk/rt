@@ -1,6 +1,6 @@
 """
 rt.pipeline.setup
-Modulo unificato per l'ingest di file audio, trascrizione MacWhisper ASR e inizializzazione lezione.
+Modulo unificato per l'ingest di file audio, trascrizione macparakeet-cli ASR e inizializzazione lezione.
 Fornisce funzioni riusabili sia per la CLI nativa (`rt setup`, `rt run <audio>`) sia per il wrapper `rt_setup.py`.
 """
 
@@ -203,7 +203,7 @@ def generate_deterministic_mock_asr(
 ) -> Tuple[str, str]:
     """
     Genera una trascrizione ASR mock deterministica offline a costo zero,
-    senza invocare MacWhisper, adatta a validare l'intera pipeline E2E.
+    senza invocare macparakeet-cli, adatta a validare l'intera pipeline E2E.
     """
     json_path = os.path.join(target_folder, "trascritto grezzo.json")
     md_path = os.path.join(target_folder, "trascritto grezzo.md")
@@ -454,7 +454,6 @@ def run_setup(
 
         for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
             aud_abs = os.path.abspath(aud_file)
-            tmp_json = os.path.join(target_folder_path, f".tmp_mw_{audio_idx}.json")
 
             cmd_json = [
                 parakeet_bin, "transcribe",
@@ -475,16 +474,7 @@ def run_setup(
                 except Exception:
                     pass
 
-            if raw_data is None and os.path.isfile(tmp_json) and os.path.getsize(tmp_json) > 0:
-                try:
-                    with open(tmp_json, "r", encoding="utf-8") as f:
-                        raw_data = json.load(f)
-                except Exception:
-                    pass
-
             if res_json.returncode != 0 or raw_data is None:
-                if os.path.isfile(tmp_json):
-                    os.remove(tmp_json)
                 raise SetupError(
                     f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
                     f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip()}"
@@ -509,8 +499,6 @@ def run_setup(
                 combined_text_parts.append(raw_txt)
 
             cumulative_offset_ms = max_seg_end
-            if os.path.isfile(tmp_json):
-                os.remove(tmp_json)
 
         # Salvataggio deterministico unificato del JSON primario
         final_mw_payload = {
@@ -621,7 +609,7 @@ def configure_setup_parser(parser: Any) -> Any:
 def main():
     import argparse
     parser = argparse.ArgumentParser(
-        description="Workflow accademico RT: Setup cartella, trascrizione MacWhisper e metadati YAML."
+        description="Workflow accademico RT: Setup cartella, trascrizione macparakeet-cli e metadati YAML."
     )
     configure_setup_parser(parser)
     args = parser.parse_args()

@@ -45,7 +45,7 @@ La suite di test è collocata nella cartella `tests/` ed è suddivisa in 25 file
 - `test_renderer.py`: **test vincolo timestamp** (verifica che il timestamp derivi dal segmento e fallisca se manomesso).
 - `test_science.py`: classificazione nei 4 scenari scientifici (`ERR_DOCENTE`, `ERR_RECONSTRUCTION`, `SCIENCE_CHECK`).
 - `test_science_grounding.py`: ancoraggio epistemico al trascritto ASR e mitigazione allucinazioni.
-- `test_segments.py`: parser MacWhisper, intervalli temporali e finestra di contesto scorrevole ~90s.
+- `test_segments.py`: parser ASR (macparakeet-cli e MacWhisper legacy), intervalli temporali e finestra di contesto scorrevole ~90s.
 - `test_setup.py`: setup cartella, mock deterministico ASR e inizializzazione info.yaml.
 - `test_source_truth_json.py`: integrità e immutabilità del trascritto grezzo sorgente.
 - `test_telemetry.py`: telemetria unificata, aggregazione breakdown per job/provider e persistenza disco.
