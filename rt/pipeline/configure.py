@@ -400,31 +400,40 @@ def _create_new_model_profile(
             pass
 
     chosen_model = ""
-    MANUAL_ENTRY = "✍️ Inserisci manualmente"
-
-    if models_list:
-        choices = models_list + [MANUAL_ENTRY]
-        selected_model = questionary.select(
-            "Seleziona il modello LLM:",
-            choices=choices,
-            default=choices[0]
-        ).ask()
-
-        if selected_model is None:
-            return "", {}
-
-        if selected_model != MANUAL_ENTRY:
-            chosen_model = selected_model
-
-    if not chosen_model:
-        if not models_list:
+    while True:
+        if models_list:
+            model_in = questionary.autocomplete(
+                "Seleziona o digita il modello LLM:",
+                choices=models_list,
+                default=models_list[0],
+                ignore_case=True,
+                match_middle=True,
+                validate=lambda v: bool(v and v.strip()) or "Inserisci un ID modello valido"
+            ).ask()
+            if model_in is None:
+                return "", {}
+            chosen_model = model_in.strip()
+        else:
             print("ℹ️ Impossibile recuperare la lista modelli automaticamente.")
-        manual_model = questionary.text(
-            "ID Modello (es. deepseek-chat, google/gemini-2.5-flash):"
-        ).ask()
-        if not manual_model:
+            manual_model = questionary.text(
+                "ID Modello (es. deepseek-chat, google/gemini-2.5-flash):",
+                validate=lambda v: bool(v and v.strip()) or "Inserisci un ID modello valido"
+            ).ask()
+            if manual_model is None:
+                return "", {}
+            chosen_model = manual_model.strip()
+
+        if not chosen_model:
             return "", {}
-        chosen_model = manual_model.strip()
+
+        confirm_model = questionary.confirm(
+            f"Hai selezionato '{chosen_model}' — confermi?",
+            default=True
+        ).ask()
+        if confirm_model is None:
+            return "", {}
+        if confirm_model:
+            break
 
     # Pricing inline opzionale per questo modello
     _configure_pricing_section(config_dir, provider, chosen_model)

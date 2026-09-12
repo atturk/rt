@@ -120,6 +120,19 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
         m.ask.return_value = "sk-deepseek-secret-123"
         return m
 
+    def mock_autocomplete(prompt, choices, default=None, **kwargs):
+        m = MagicMock()
+        m.ask.return_value = "deepseek-reasoner"
+        return m
+
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
     # Mock HTTP response per /models
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -127,8 +140,9 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
         "data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]
     }
 
-    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+    with patch("questionary.confirm", side_effect=mock_confirm), \
          patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.autocomplete", side_effect=mock_autocomplete), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
          patch("requests.get", return_value=mock_resp):
@@ -201,8 +215,16 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
         m.ask.return_value = "sk-or-test"
         return m
 
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
     # Mock HTTP failure (timeout / ConnectionError)
-    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+    with patch("questionary.confirm", side_effect=mock_confirm), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
@@ -446,7 +468,9 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
 
     def mock_confirm(prompt, default=False):
         m = MagicMock()
-        if "più chiavi API" in prompt:
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        elif "chiavi API" in prompt:
             m.ask.return_value = True
         else:
             m.ask.return_value = False
@@ -550,20 +574,14 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
 
     def mock_confirm(prompt, default=False):
         m = MagicMock()
-        if "più chiavi API" in prompt:
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        elif "chiavi API" in prompt:
             m.ask.return_value = True
         else:
             m.ask.return_value = False
         return m
 
-    def mock_select(prompt, choices, default=None):
-        m = MagicMock()
-        if "Provider LLM" in prompt:
-            m.ask.return_value = "google"
-        elif "Gestione chiavi" in prompt:
-            m.ask.return_value = "➕ Aggiungi altre chiavi"
-        elif "modello LLM" in prompt:
-            m.ask.return_value = "gemini-2.5-flash"
     def mock_select(prompt, choices, default=None):
         m = MagicMock()
         if "Provider LLM" in prompt:
@@ -634,7 +652,9 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
 
     def mock_confirm(prompt, default=False):
         m = MagicMock()
-        if "chiavi API" in prompt:
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        elif "chiavi API" in prompt:
             m.ask.return_value = True
         else:
             m.ask.return_value = False
@@ -771,8 +791,16 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
         m.ask.return_value = "sk-deepseek-test"
         return m
 
+    def mock_confirm(prompt, default=False):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
     # Primo avvio e Rerun
-    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+    with patch("questionary.confirm", side_effect=mock_confirm), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
@@ -884,7 +912,9 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
     def mock_confirm(prompt, default=False):
         nonlocal confirm_count
         m = MagicMock()
-        if "chiavi API" in prompt:
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        elif "chiavi API" in prompt:
             confirm_count += 1
             m.ask.return_value = (confirm_count > 1)
         else:
@@ -1067,7 +1097,15 @@ def test_grouped_jobs_recall_and_immagini(tmp_path):
         m.ask.return_value = "sk-test"
         return m
 
-    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
@@ -1134,7 +1172,15 @@ def test_api_key_prompt_conditional_message(tmp_path, monkeypatch):
             m.ask.return_value = default or ""
         return m
 
-    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password_1), \
@@ -1155,7 +1201,7 @@ def test_api_key_prompt_conditional_message(tmp_path, monkeypatch):
         m.ask.return_value = ""
         return m
 
-    with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)), \
+    with patch("questionary.confirm", side_effect=mock_confirm), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password_2), \
@@ -1164,4 +1210,212 @@ def test_api_key_prompt_conditional_message(tmp_path, monkeypatch):
         _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
 
     assert any("mantenere esistente" in p for p in prompts_2)
+
+
+def test_autocomplete_selection_and_confirm_yes(tmp_path):
+    """Verifica selezione con autocomplete da lista HTTP e conferma positiva."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"data": [{"id": "model-a"}, {"id": "model-b"}]}
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "deepseek"
+        return m
+
+    def mock_autocomplete(prompt, choices, default=None, **kwargs):
+        m = MagicMock()
+        assert choices == ["model-a", "model-b"]
+        m.ask.return_value = "model-b"
+        return m
+
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        m.ask.return_value = default or "prof1"
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "key123"
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.autocomplete", side_effect=mock_autocomplete), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", return_value=mock_resp):
+
+        name, prof = _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
+
+    assert name == "deepseek_model_b"
+    assert prof["routes"][0]["model"] == "model-b"
+
+
+def test_autocomplete_rejection_and_reselection(tmp_path):
+    """Verifica che il rifiuto della conferma permetta di riselezionare un altro modello."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"data": [{"id": "model-a"}, {"id": "model-b"}]}
+
+    auto_calls = 0
+
+    def mock_autocomplete(prompt, choices, default=None, **kwargs):
+        nonlocal auto_calls
+        auto_calls += 1
+        m = MagicMock()
+        m.ask.return_value = "model-a" if auto_calls == 1 else "model-b"
+        return m
+
+    confirm_calls = 0
+
+    def mock_confirm(prompt, default=True):
+        nonlocal confirm_calls
+        m = MagicMock()
+        if "confermi" in prompt:
+            confirm_calls += 1
+            # Primo giro rifiuta, secondo giro accetta
+            m.ask.return_value = (confirm_calls > 1)
+        else:
+            m.ask.return_value = False
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "deepseek"
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        m.ask.return_value = default or "prof2"
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "key123"
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.autocomplete", side_effect=mock_autocomplete), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", return_value=mock_resp):
+
+        name, prof = _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
+
+    assert auto_calls == 2
+    assert confirm_calls == 2
+    assert prof["routes"][0]["model"] == "model-b"
+
+
+def test_autocomplete_custom_free_text_accepted(tmp_path):
+    """Verifica che un testo libero digitato in autocomplete venga accettato come modello valido."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"data": [{"id": "model-a"}]}
+
+    def mock_autocomplete(prompt, choices, default=None, **kwargs):
+        m = MagicMock()
+        # Testo personalizzato non in choices
+        m.ask.return_value = "my-org/custom-model-x"
+        return m
+
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "deepseek"
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        m.ask.return_value = default or "prof3"
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "key123"
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.autocomplete", side_effect=mock_autocomplete), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", return_value=mock_resp):
+
+        name, prof = _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
+
+    assert prof["routes"][0]["model"] == "my-org/custom-model-x"
+
+
+def test_text_fallback_with_confirm(tmp_path):
+    """Verifica che in assenza di lista modelli il prompt text libero funzioni con conferma."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    def mock_select(prompt, choices, default=None):
+        m = MagicMock()
+        m.ask.return_value = "deepseek"
+        return m
+
+    def mock_text(prompt, default=None, **kwargs):
+        m = MagicMock()
+        if "ID Modello" in prompt:
+            m.ask.return_value = "deepseek-reasoner"
+        else:
+            m.ask.return_value = default or "prof4"
+        return m
+
+    def mock_confirm(prompt, default=True):
+        m = MagicMock()
+        if "confermi" in prompt:
+            m.ask.return_value = True
+        else:
+            m.ask.return_value = False
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        m.ask.return_value = "key123"
+        return m
+
+    with patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("requests.get", side_effect=requests.RequestException("Timeout")):
+
+        name, prof = _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
+
+    assert prof["routes"][0]["model"] == "deepseek-reasoner"
+
 
