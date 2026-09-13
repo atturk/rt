@@ -176,6 +176,21 @@ def _save_model_profiles(general_data: Dict[str, Any], profiles: Dict[str, Dict[
     general_data["model_profiles"] = profiles
 
 
+def _format_profile_display(profile_name: Optional[str], profiles: Dict[str, Any]) -> str:
+    """
+    Formatta il nome del profilo aggiungendo '(N chiavi API)' se è configurato in round-robin con N route (N >= 2).
+    """
+    if not profile_name:
+        return "(non impostato)"
+    prof_data = profiles.get(profile_name)
+    if isinstance(prof_data, dict) and prof_data.get("round_robin") is True:
+        routes = prof_data.get("routes", [])
+        n_keys = len(routes) if isinstance(routes, list) else 0
+        if n_keys > 1:
+            return f"{profile_name} ({n_keys} chiavi API)"
+    return profile_name
+
+
 def _suggest_profile_name(provider: str, model: str, existing_names: Iterable[str]) -> str:
     """
     Suggerisce un nome di profilo univoco sanitizzato (es. provider_model).
@@ -924,6 +939,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
     print("🤖 Configurazione Provider LLM per ciascuna fase")
     print("------------------------------------------------------------")
     print("Ora configuriamo il modello LLM da usare per ciascuna fase della pipeline.")
+    print("Nota: solo il ruolo 'Primario' è obbligatorio, i 5 ruoli di 'Fallback' sono tutti facoltativi/opzionali.")
     print("Usa le frecce SINISTRA/DESTRA per spostarti tra le card di ciascuna fase.")
     print("Le modifiche verranno salvate su disco SOLO dopo la conferma finale.\n")
 
@@ -1024,8 +1040,8 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                         pmap = pending_selections.get(gl, {})
                         prim = pmap.get("primary")
                         status_icon = "✅" if prim else "⏳"
-                        prim_str = prim if prim else "(nessun primario)"
-                        fb_parts = [f"{k}->{v}" for k, v in pmap.items() if k != "primary" and v]
+                        prim_str = _format_profile_display(prim, profiles) if prim else "(nessun primario)"
+                        fb_parts = [f"{k}->{_format_profile_display(v, profiles)}" for k, v in pmap.items() if k != "primary" and v]
                         fb_str = f" [FB: {', '.join(fb_parts)}]" if fb_parts else ""
                         lines.append(f" {status_icon} [{idx}/{total_groups}] {gl}: {prim_str}{fb_str}")
                     lines.append("-" * 50)
@@ -1144,24 +1160,26 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                         status_line.append(marker)
                     status_bar = "Avanzamento: " + " | ".join(status_line)
 
-                    role_display_names = [
-                        ("primary", "Primario:            "),
-                        ("timeout", "Fallback timeout:    "),
-                        ("rate_limit", "Fallback rate-limit: "),
-                        ("safety", "Fallback safety:     "),
-                        ("auth", "Fallback auth:       "),
-                        ("generic", "Fallback generico:   "),
-                    ]
-
                     lines = [
                         status_bar,
                         "",
                         f"Configurazione ruoli per la fase '{group_label}' (inclusi {len(group_jobs)} job: {', '.join(group_jobs)}):",
+                        "",
                     ]
-                    for r_key, r_title in role_display_names:
+                    prim_val = phase_map.get("primary")
+                    prim_display = _format_profile_display(prim_val, profiles) if prim_val else "(non impostato — obbligatorio)"
+                    lines.append(f"  ⭐ Primario (obbligatorio):    {prim_display}")
+                    lines.append("  🛡️  Fallback (tutti opzionali):")
+                    for r_key, r_title in [
+                        ("timeout", "Fallback timeout:       "),
+                        ("rate_limit", "Fallback rate-limit:    "),
+                        ("safety", "Fallback safety:        "),
+                        ("auth", "Fallback auth:          "),
+                        ("generic", "Fallback generico:      "),
+                    ]:
                         val = phase_map.get(r_key)
-                        val_str = val if val else "(non impostato)"
-                        lines.append(f"  {r_title} {val_str}")
+                        val_str = _format_profile_display(val, profiles) if val else "(non impostato)"
+                        lines.append(f"     {r_title} {val_str}")
                     lines.append("")
                     lines.append("Opzioni disponibili:")
                     for opt_i, opt_text in enumerate(choices):
@@ -1713,8 +1731,19 @@ def run_config_wizard(interactive: bool = True) -> None:
     print("\nRiepilogo:")
     print("Modelli assegnati:")
     if job_profiles:
+        general_yaml_path = os.path.join(config_dir, "general.yaml")
+        general_data_summary: Dict[str, Any] = {}
+        if os.path.isfile(general_yaml_path):
+            try:
+                with open(general_yaml_path, "r", encoding="utf-8") as f:
+                    loaded = yaml.safe_load(f)
+                    if isinstance(loaded, dict):
+                        general_data_summary = loaded
+            except Exception:
+                pass
+        profiles_summary = _load_model_profiles(general_data_summary)
         for j_name, p_name in sorted(job_profiles.items()):
-            print(f"- {j_name}: {p_name}")
+            print(f"- {j_name}: {_format_profile_display(p_name, profiles_summary)}")
     else:
         print("- (nessun job aggiornato)")
 

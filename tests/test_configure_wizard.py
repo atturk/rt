@@ -26,6 +26,7 @@ from rt.pipeline.configure import (
     _configure_stt_section,
     _configure_pricing_section,
     _get_next_free_credential_index,
+    _format_profile_display,
     run_config_wizard,
     run_models_management,
     run_telegram_only,
@@ -1817,5 +1818,57 @@ def test_create_separate_round_robin_pool_avoids_collision(tmp_path, monkeypatch
     assert "GOOGLE_API_KEY_4=key-new-4" in env_content
     assert "GOOGLE_API_KEY_5=key-new-5" in env_content
     assert "GOOGLE_API_KEY_6=key-new-6" in env_content
+
+
+# ======================================================================
+# TASK 57: CAROUSEL POLISH (OPTIONAL FALLBACKS & ROUND-ROBIN KEY COUNT)
+# ======================================================================
+
+def test_format_profile_display():
+    """Verifica che _format_profile_display mostri (N chiavi API) solo per profili round-robin."""
+    profiles = {
+        "single_key_prof": {
+            "provider": "google",
+            "round_robin": False,
+            "routes": [{"credential": "google_1", "model": "gemini-2.0-flash"}]
+        },
+        "multi_key_prof": {
+            "provider": "google",
+            "round_robin": True,
+            "routes": [
+                {"credential": "google_1", "model": "gemini-2.0-flash"},
+                {"credential": "google_2", "model": "gemini-2.0-flash"},
+                {"credential": "google_3", "model": "gemini-2.0-flash"},
+            ]
+        }
+    }
+
+    assert _format_profile_display("single_key_prof", profiles) == "single_key_prof"
+    assert _format_profile_display("multi_key_prof", profiles) == "multi_key_prof (3 chiavi API)"
+    assert _format_profile_display(None, profiles) == "(non impostato)"
+    assert _format_profile_display("non_existent", profiles) == "non_existent"
+
+
+def test_configure_llm_intro_text_mentions_optional_fallbacks(capsys, tmp_path):
+    """Verifica che il testo introduttivo chiarisca esplicitamente che i fallback sono opzionali."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        f.write("version: '2.0.0'\ncredentials: []\n")
+
+    outline_job = os.path.join(config_dir, "outline.yaml")
+    with open(outline_job, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"primary": {"provider": None, "model": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    with patch("rt.pipeline.configure.read_single_key", side_effect=["q"]):
+        _configure_llm_provider_section(config_dir, env_file)
+
+    captured = capsys.readouterr().out
+    assert "opzionali" in captured.lower() or "facoltativi" in captured.lower()
+    assert "obbligatorio" in captured.lower()
+
 
 
