@@ -88,8 +88,10 @@ def test_no_sigstop_sigcont_in_issue_review():
     assert "signal" not in src
 
 
-def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     """Test 1 & 2 & 3: Play -> Pausa (terminate), Pausa -> Ripresa (seek), Riavvio O (reset)."""
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
@@ -108,11 +110,6 @@ def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    keys = iter(["p", "p", "p", "o", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
     mock_proc1 = MagicMock()
     mock_proc1.poll.return_value = None
     mock_proc2 = MagicMock()
@@ -120,16 +117,21 @@ def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     mock_proc3 = MagicMock()
     mock_proc3.poll.return_value = None
 
-    # Simula 4.5s di riproduzione prima della pausa
-    monotonic_times = [100.0, 104.5, 104.5, 106.0, 107.0, 108.0]
-    monkeypatch.setattr("time.monotonic", lambda: monotonic_times.pop(0) if monotonic_times else 200.0)
-
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/c1.mp3", "/tmp/c2.mp3", "/tmp/c3.mp3"]) as mock_cut, \
          patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]):
 
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        monotonic_times = [100.0, 104.5, 104.5, 106.0, 107.0, 108.0]
+        app._get_time = lambda: monotonic_times.pop(0) if monotonic_times else 200.0
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("o")
+            await pilot.press("a")
 
-    assert res is True
+
+    assert app.return_value is True
     assert mock_cut.call_count == 3
     audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
     # 1° Play: 5.0 a 25.0
@@ -143,8 +145,10 @@ def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     mock_proc1.send_signal.assert_not_called()
 
 
-def test_science_clip_claim_vs_unit_fallback(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_science_clip_claim_vs_unit_fallback(tmp_path):
     """Test 4: Science review P usa iss.segment_id ± 5s come primario, fallback a unità se non risolvibile."""
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
@@ -162,19 +166,18 @@ def test_science_clip_claim_vs_unit_fallback(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([sci_issue_with_seg.model_dump(mode="json")], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    keys = iter(["p", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
     with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/c_sci1.mp3") as mock_cut, \
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
 
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[sci_issue_with_seg])
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("a")
 
-    assert res is True
+    assert app.return_value is True
     audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
     # Range primario basato su seg_000001 (10s-20s -> ±5s: 5.0s a 25.0s)
     mock_cut.assert_called_once_with(audio_path, 5.0, 25.0)
@@ -193,21 +196,23 @@ def test_science_clip_claim_vs_unit_fallback(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([sci_issue_fallback.model_dump(mode="json")], f)
 
-    keys2 = iter(["p", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys2))
-
     with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/c_sci2.mp3") as mock_cut2, \
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
 
-        res2 = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app2 = IssueReviewApp(lesson_dir=lesson_dir, to_review=[sci_issue_fallback])
+        async with app2.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("a")
 
-    assert res2 is True
+    assert app2.return_value is True
     # Fallback sull'unità intera U1 (seg_000001 start=10.0s a seg_000002 end=30.0s)
     mock_cut2.assert_called_once_with(audio_path, 10.0, 30.0)
 
 
-def test_redraw_in_place_ansi_sequences(tmp_path, monkeypatch, capsys):
-    """Test 5: Tra due blocchi successivi compaiono le sequenze ANSI \\x1b[{N}A\\x1b[0J."""
+@pytest.mark.anyio
+async def test_redraw_in_place_ansi_sequences(tmp_path):
+    """Test 5: Verifica rendering pannelli Textual per Science Review."""
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
@@ -236,18 +241,17 @@ def test_redraw_in_place_ansi_sequences(tmp_path, monkeypatch, capsys):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        p1 = app._render_panel()
+        assert "Science Review [1/2]" in str(p1.title)
+        await pilot.press("a")
+        p2 = app._render_panel()
+        assert "Science Review [2/2]" in str(p2.title)
+        await pilot.press("a")
 
-    keys = iter(["a", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
+    assert app.return_value is True
 
-    res = run_interactive_review(lesson_dir, "science", channel="terminal")
-    assert res is True
-
-    captured = capsys.readouterr()
-    raw_out = captured.out
-    # Verifica che il pannello Rich compaia nell'output renderizzato
-    assert "REVISIONE INTERATTIVA SCIENCE" in raw_out
 
 
 def test_cli_json_flag_and_stdout(capsys):

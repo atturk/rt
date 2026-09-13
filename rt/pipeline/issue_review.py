@@ -9,13 +9,23 @@ import os
 import re
 import subprocess
 import time
-from typing import List, Optional
+from typing import List, Optional, Set, Dict, Any
+from rich.panel import Panel
+from rich.text import Text
+from textual.app import App, ComposeResult, SuspendNotSupported
+from textual.widgets import Static
+
 from rt.core.models import ScienceIssue, ScienceType
 from rt.telegram import issue_queue as tg_queue
-from rt.core.keyboard import read_single_key, raw_mode
 from rt.core.audio_clip import resolve_audio_path, cut_clip, play_clip_background
 from rt.core.editor_edit import edit_text_in_editor
 from rt.core.lesson_paths import lesson_path
+from rt.pipeline.ledger import (
+    load_ledger,
+    record_decision,
+    revert_last_decision,
+    sanitize_suggested_fix,
+)
 
 
 def start_review_via_telegram(
@@ -164,7 +174,6 @@ def send_current_issue(lesson_dir: str) -> None:
                 pass
         return
 
-
     issue_id = queue.issue_ids[queue.current_index]
     issue_type = queue.issue_types[issue_id]
     issue = find_science_issue_by_id(lesson_dir, issue_id)
@@ -179,7 +188,7 @@ def send_current_issue(lesson_dir: str) -> None:
     try:
         tg_cfg = load_telegram_config()
     except TelegramConfigError:
-        print(f"⚠️  Telegram non configurato: impossibile inviare l'issue. Usa 'rt review-{issue_type} \"<cartella>\"' da terminale.")
+        print(f"⚠️  Telegram non configurato: impossibile inviare l'issue. Usa 'rt review \"<cartella>\"' da terminale.")
         return
 
     runtime_cfg = load_config().telegram
@@ -242,10 +251,6 @@ def send_current_issue(lesson_dir: str) -> None:
                         pass
 
 
-
-
-
-
 def should_auto_accept_science(iss: ScienceIssue, auto_accept: Optional[str]) -> bool:
     """Valuta se auto-accettare una critica scientifica in base ai flag CLI."""
     if not auto_accept:
@@ -254,9 +259,6 @@ def should_auto_accept_science(iss: ScienceIssue, auto_accept: Optional[str]) ->
     if mode in ("all", "true"):
         return True
     return False
-
-
-
 
 
 def _build_science_panel(
@@ -268,11 +270,8 @@ def _build_science_panel(
     sci_unit,
     decisions_map: dict,
     last_status: Optional[str] = None
-):
-    from rich.panel import Panel
-    from rich.text import Text
+) -> Panel:
     from rt.core.encoding import fix_mojibake
-    from rt.core.models import ScienceType
 
     iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
     is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
@@ -320,6 +319,363 @@ def _build_science_panel(
     return Panel(Text(content), title=f"Science Review [{idx + 1}/{total_count}]", border_style="magenta")
 
 
+class IssueReviewApp(App):
+    """Schermata interattiva Textual per la revisione delle issue ASR / Science."""
+    BINDINGS = [
+        ("a", "approve_or_accept", "Accetta / Applica"),
+        ("m", "keep_or_accept_unit", "Mantieni / Accetta ASR"),
+        ("r", "reject", "Rifiuta"),
+        ("e", "edit", "Modifica"),
+        ("p", "toggle_audio", "Play / Pausa audio"),
+        ("o", "restart_audio", "Riavvia audio"),
+        ("b,left,up,k", "back", "Indietro"),
+        ("s,right,down,j", "skip", "Salta"),
+        ("q,escape", "quit", "Esci"),
+    ]
+
+    def __init__(
+        self,
+        lesson_dir: str,
+        to_review: List[ScienceIssue],
+        issue_type: str = "science",
+        history: bool = False,
+    ):
+        super().__init__()
+        self.lesson_dir = lesson_dir
+        self.to_review: List[ScienceIssue] = to_review
+        self.issue_type = issue_type
+        self.history = history
+        self.idx: int = 0
+        self.decided_this_session: Set[str] = set()
+        self.last_status: Optional[str] = None
+        self.interrupted: bool = False
+
+        from rt.core.segments import load_segments_json
+        from rt.pipeline.rewrite import load_draft, get_draft_path
+
+        seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+        self.seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
+
+        draft_path = get_draft_path(lesson_dir)
+        self.draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
+
+        self.seg_to_unit: Dict[str, Any] = {}
+        self.unit_by_id: Dict[str, Any] = {}
+        if self.draft:
+            for u in self.draft.units:
+                self.unit_by_id[u.unit_id] = u
+                for sid in u.source_segment_ids:
+                    self.seg_to_unit[sid] = u
+
+        self.current_audio_proc: Optional[subprocess.Popen] = None
+        self.audio_paused: bool = False
+        self.audio_range_start: Optional[float] = None
+        self.audio_range_end: Optional[float] = None
+        self.audio_elapsed: float = 0.0
+        self.audio_resumed_at: float = 0.0
+        self.temp_audio_clips: List[str] = []
+
+    def _get_time(self) -> float:
+        return time.monotonic()
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._render_panel(), id="panel_view")
+
+    def on_mount(self) -> None:
+        self.set_interval(0.2, self._check_audio_proc)
+
+    def on_unmount(self) -> None:
+        self._stop_audio()
+        for clip in self.temp_audio_clips:
+            if os.path.exists(clip):
+                try:
+                    os.remove(clip)
+                except Exception:
+                    pass
+
+    def _stop_audio(self) -> None:
+        if self.current_audio_proc is not None and self.current_audio_proc.poll() is None:
+            try:
+                self.current_audio_proc.terminate()
+            except Exception:
+                pass
+        self.current_audio_proc = None
+        self.audio_paused = False
+        self.audio_range_start = None
+        self.audio_range_end = None
+        self.audio_elapsed = 0.0
+        self.audio_resumed_at = 0.0
+
+    def _check_audio_proc(self) -> None:
+        if self.current_audio_proc is not None and self.current_audio_proc.poll() is not None:
+            self.current_audio_proc = None
+            self.audio_paused = False
+            self.audio_range_start = None
+            self.audio_range_end = None
+            self.audio_elapsed = 0.0
+            self.audio_resumed_at = 0.0
+
+    def _render_panel(self) -> Panel:
+        if self.idx >= len(self.to_review):
+            return Panel(Text("✨ Tutte le issue sono state revisionate."), title="Revisione completata", border_style="green")
+
+        iss = self.to_review[self.idx]
+        ledger = load_ledger(self.lesson_dir)
+        decisions_map = {d.issue_id: d for d in ledger.decisions}
+
+        seg = self.seg_by_id.get(iss.segment_id) if iss.segment_id else None
+        tc = seg.start_formatted if seg else "N/D"
+
+        sci_unit = None
+        if iss.unit_id and iss.unit_id in self.unit_by_id:
+            sci_unit = self.unit_by_id[iss.unit_id]
+        elif iss.segment_id and iss.segment_id in self.seg_to_unit:
+            sci_unit = self.seg_to_unit[iss.segment_id]
+
+        sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
+
+        return _build_science_panel(
+            self.idx,
+            len(self.to_review),
+            iss,
+            tc,
+            sci_unit_info,
+            sci_unit,
+            decisions_map,
+            self.last_status,
+        )
+
+    def _update_display(self) -> None:
+        try:
+            widget = self.query_one("#panel_view", Static)
+            widget.update(self._render_panel())
+        except Exception:
+            pass
+
+    def action_approve_or_accept(self) -> None:
+        if self.idx >= len(self.to_review):
+            return
+        iss = self.to_review[self.idx]
+        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        if is_asr_risk:
+            self.last_status = "⚠️ Scelta 'A' non valida per issue ASR. Usa M=Accetta o E=Modifica."
+            self._update_display()
+            return
+        self._stop_audio()
+        clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+        record_decision(self.lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
+        self.decided_this_session.add(iss.id)
+        self.last_status = "✔ Correzione scientifica applicata."
+        self.idx += 1
+        if self.idx >= len(self.to_review):
+            self.exit(True)
+        else:
+            self._update_display()
+
+    def action_keep_or_accept_unit(self) -> None:
+        if self.idx >= len(self.to_review):
+            return
+        iss = self.to_review[self.idx]
+        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        self._stop_audio()
+        if is_asr_risk:
+            sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
+            record_decision(self.lesson_dir, iss.id, "accepted", resolved_text=sci_unit.content if sci_unit else None)
+            self.decided_this_session.add(iss.id)
+            self.last_status = "✔ Testo dell'unità accettato."
+        else:
+            record_decision(self.lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
+            self.decided_this_session.add(iss.id)
+            self.last_status = "✔ Formulazione originale mantenuta."
+        self.idx += 1
+        if self.idx >= len(self.to_review):
+            self.exit(True)
+        else:
+            self._update_display()
+
+    def action_reject(self) -> None:
+        if self.idx >= len(self.to_review):
+            return
+        iss = self.to_review[self.idx]
+        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        if is_asr_risk:
+            return
+        self.action_keep_or_accept_unit()
+
+    def _do_edit_interaction(self, initial_content: str) -> str:
+        return edit_text_in_editor(initial_content)
+
+    def action_edit(self) -> None:
+        if self.idx >= len(self.to_review):
+            return
+        iss = self.to_review[self.idx]
+        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        self._stop_audio()
+        sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
+
+        if is_asr_risk:
+            initial_editor_content = (
+                "# Questa è l'intera unità come riscritta. Modificala liberamente per farla combaciare con l'audio: sostituirà l'intero contenuto dell'unità.\n\n"
+                f"{(sci_unit.content if sci_unit else iss.claim)}\n"
+            )
+        else:
+            initial_editor_content = (
+                "# Modifica liberamente il testo qui sotto, sostituirà l'affermazione originale.\n\n"
+                f"{iss.claim}\n"
+            )
+
+        edited_res = ""
+        try:
+            with self.suspend():
+                edited_res = self._do_edit_interaction(initial_editor_content)
+        except SuspendNotSupported:
+            edited_res = self._do_edit_interaction(initial_editor_content)
+
+        lines = [line for line in (edited_res or "").splitlines() if not line.strip().startswith("#")]
+        resolved = "\n".join(lines).strip()
+        if resolved:
+            record_decision(self.lesson_dir, iss.id, "edited", resolved_text=resolved)
+            self.decided_this_session.add(iss.id)
+            self.last_status = f"✏ Modificato in: \"{resolved}\""
+            self.idx += 1
+            if self.idx >= len(self.to_review):
+                self.exit(True)
+            else:
+                self._update_display()
+        else:
+            self.last_status = "⚠️ Nessuna modifica inserita."
+            self._update_display()
+
+    def action_toggle_audio(self) -> None:
+        if self.idx >= len(self.to_review):
+            return
+        iss = self.to_review[self.idx]
+        if not self.audio_paused:
+            if self.current_audio_proc is not None and self.current_audio_proc.poll() is None:
+                self.audio_elapsed += self._get_time() - self.audio_resumed_at
+                try:
+                    self.current_audio_proc.terminate()
+                except Exception:
+                    pass
+                self.current_audio_proc = None
+                self.audio_paused = True
+            else:
+                audio_path = resolve_audio_path(self.lesson_dir)
+                start_s, end_s = None, None
+                if iss.segment_id and iss.segment_id in self.seg_by_id:
+                    s_seg = self.seg_by_id[iss.segment_id]
+                    start_s = max(0.0, s_seg.start_seconds - 5.0)
+                    end_s = s_seg.end_seconds + 5.0
+                else:
+                    sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
+                    if sci_unit:
+                        start_seg = self.seg_by_id.get(sci_unit.start_segment_id)
+                        end_seg = self.seg_by_id.get(sci_unit.end_segment_id)
+                        if start_seg and end_seg:
+                            start_s = start_seg.start_seconds
+                            end_s = end_seg.end_seconds
+
+                if not audio_path or start_s is None or end_s is None:
+                    self.last_status = "⚠️ File audio originale o intervallo non disponibile."
+                else:
+                    self.audio_range_start = start_s
+                    self.audio_range_end = end_s
+                    self.audio_elapsed = 0.0
+                    try:
+                        clip_path = cut_clip(audio_path, self.audio_range_start, self.audio_range_end)
+                        self.temp_audio_clips.append(clip_path)
+                        self.current_audio_proc = play_clip_background(clip_path)
+                        self.audio_resumed_at = self._get_time()
+                        self.audio_paused = False
+                    except Exception as e:
+                        self.last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
+        else:
+            audio_path = resolve_audio_path(self.lesson_dir)
+            if not audio_path or self.audio_range_start is None or self.audio_range_end is None:
+                self.last_status = "⚠️ File audio originale o intervallo non disponibile."
+            else:
+                new_start = self.audio_range_start + self.audio_elapsed
+                try:
+                    clip_path = cut_clip(audio_path, new_start, self.audio_range_end)
+                    self.temp_audio_clips.append(clip_path)
+                    self.current_audio_proc = play_clip_background(clip_path)
+                    self.audio_resumed_at = self._get_time()
+                    self.audio_paused = False
+                except Exception as e:
+                    self.last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
+
+        self._update_display()
+
+    def action_restart_audio(self) -> None:
+        if self.idx >= len(self.to_review):
+            return
+        iss = self.to_review[self.idx]
+        self._stop_audio()
+        audio_path = resolve_audio_path(self.lesson_dir)
+        start_s, end_s = None, None
+        if iss.segment_id and iss.segment_id in self.seg_by_id:
+            s_seg = self.seg_by_id[iss.segment_id]
+            start_s = max(0.0, s_seg.start_seconds - 5.0)
+            end_s = s_seg.end_seconds + 5.0
+        else:
+            sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
+            if sci_unit:
+                start_seg = self.seg_by_id.get(sci_unit.start_segment_id)
+                end_seg = self.seg_by_id.get(sci_unit.end_segment_id)
+                if start_seg and end_seg:
+                    start_s = start_seg.start_seconds
+                    end_s = end_seg.end_seconds
+
+        if not audio_path or start_s is None or end_s is None:
+            self.last_status = "⚠️ File audio originale o intervallo non disponibile."
+        else:
+            self.audio_range_start = start_s
+            self.audio_range_end = end_s
+            self.audio_elapsed = 0.0
+            try:
+                clip_path = cut_clip(audio_path, self.audio_range_start, self.audio_range_end)
+                self.temp_audio_clips.append(clip_path)
+                self.current_audio_proc = play_clip_background(clip_path)
+                self.audio_resumed_at = self._get_time()
+                self.audio_paused = False
+            except Exception as e:
+                self.last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
+
+        self._update_display()
+
+    def action_back(self) -> None:
+        self._stop_audio()
+        if self.idx == 0:
+            self.last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
+        else:
+            self.idx -= 1
+            prev_iss = self.to_review[self.idx]
+            if prev_iss.id in self.decided_this_session:
+                revert_last_decision(self.lesson_dir, prev_iss.id)
+                self.decided_this_session.discard(prev_iss.id)
+            self.last_status = f"◀️ Tornato all'issue precedente ({prev_iss.id})."
+        self._update_display()
+
+    def action_skip(self) -> None:
+        self._stop_audio()
+        self.last_status = "⏭ Saltato."
+        self.idx += 1
+        if self.idx >= len(self.to_review):
+            self.exit(True)
+        else:
+            self._update_display()
+
+    def action_quit(self) -> None:
+        self._stop_audio()
+        self.interrupted = True
+        self.exit(False)
+
+
+
 def run_interactive_review(
     lesson_dir: str,
     issue_type: str,
@@ -333,19 +689,11 @@ def run_interactive_review(
     Ritorna True se la revisione di questo tipo è completa e pronta per il build, False altrimenti.
     """
     import sys
-    from rich.console import Console
-    from rich.live import Live
-    from rt.core.encoding import fix_mojibake
     from rt.core.state import transition_to, WorkflowState
-    from rt.core.segments import load_segments_json
-    from rt.pipeline.rewrite import load_draft, get_draft_path
     from rt.pipeline.ledger import (
         get_pending_issues,
-        load_ledger,
         record_decision,
-        revert_last_decision,
         sanitize_suggested_fix,
-        extract_context_sentence,
     )
     from rt.pipeline.review import load_science_issues
 
@@ -401,510 +749,16 @@ def run_interactive_review(
         print(f"Esegui 'rt review \"{lesson_dir}\"' per completare la revisione (da un terminale interattivo, o con --channel telegram).")
         return False
 
-    # 5. Sessione interattiva da terminale con indice mobile
-    print(f"\n🔍 REVISIONE INTERATTIVA {issue_type.upper()} ({len(to_review)} casi{' [modalità history]' if history else ' pendenti'})")
-    print("=" * 60)
+    # 5. Sessione interattiva da terminale con Textual App
+    app = IssueReviewApp(
+        lesson_dir=lesson_dir,
+        to_review=to_review,
+        issue_type=issue_type,
+        history=history,
+    )
+    completed = app.run()
 
-    seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    seg_by_id = {s.id: s for s in seg_data.segments}
-
-    draft_path = get_draft_path(lesson_dir)
-    draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
-
-    seg_to_unit = {}
-    unit_by_id = {}
-    if draft:
-        for u in draft.units:
-            unit_by_id[u.unit_id] = u
-            for sid in u.source_segment_ids:
-                seg_to_unit[sid] = u
-
-    idx = 0
-    total_count = len(to_review)
-    interrupted = False
-    decided_this_session = set()
-    current_audio_proc: Optional[subprocess.Popen] = None
-    audio_paused: bool = False
-    audio_range_start: Optional[float] = None
-    audio_range_end: Optional[float] = None
-    audio_elapsed: float = 0.0
-    audio_resumed_at: float = 0.0
-    temp_audio_clips: List[str] = []
-    last_status: Optional[str] = None
-    console = Console()
-
-    def _stop_audio():
-        nonlocal current_audio_proc, audio_paused, audio_range_start, audio_range_end, audio_elapsed, audio_resumed_at
-        if current_audio_proc is not None and current_audio_proc.poll() is None:
-            try:
-                current_audio_proc.terminate()
-            except Exception:
-                pass
-        current_audio_proc = None
-        audio_paused = False
-        audio_range_start = None
-        audio_range_end = None
-        audio_elapsed = 0.0
-        audio_resumed_at = 0.0
-
-    try:
-        with raw_mode() as is_raw, Live(console=console, auto_refresh=False, transient=False, vertical_overflow="visible") as live:
-            while idx < total_count:
-                iss = to_review[idx]
-                ledger = load_ledger(lesson_dir)
-                decisions_map = {d.issue_id: d for d in ledger.decisions}
-
-                if issue_type == "asr":
-                    seg = seg_by_id.get(iss.segment_id)
-                    tc = seg.start_formatted if seg else "N/D"
-                    listen = f"{seg.start_formatted} - {seg.end_formatted}" if seg else "N/D"
-
-                    target_unit = seg_to_unit.get(iss.segment_id)
-                    unit_info = f"{target_unit.unit_id} - {target_unit.title}" if target_unit else "N/D"
-
-                    sentence = ""
-                    sentence_clean = ""
-                    if target_unit:
-                        sentence = extract_context_sentence(target_unit.content, iss.candidate, iss.source_text)
-                        sentence_clean = extract_context_sentence(target_unit.content, iss.candidate, iss.source_text, highlight=False)
-                    if not sentence and draft:
-                        for u in draft.units:
-                            if target_unit and u.unit_id == target_unit.unit_id:
-                                continue
-                            s_found = extract_context_sentence(u.content, iss.candidate, iss.source_text)
-                            if s_found:
-                                sentence = s_found
-                                sentence_clean = extract_context_sentence(u.content, iss.candidate, iss.source_text, highlight=False)
-                                unit_info = f"{u.unit_id} - {u.title}"
-                                target_unit = u
-                                break
-
-                    panel = _build_asr_panel(
-                        idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                    )
-                    live.update(panel, refresh=True)
-
-                    while True:
-                        raw_key = read_single_key(already_raw=is_raw)
-                        choice = raw_key.strip().lower()
-
-                        if choice in ("a", "accetta", ""):
-                            _stop_audio()
-                            record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.candidate)
-                            decided_this_session.add(iss.id)
-                            last_status = "✔ Approvato."
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif choice in ("r", "rifiuta"):
-                            _stop_audio()
-                            record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.source_text)
-                            decided_this_session.add(iss.id)
-                            last_status = "❌ Rifiutato (mantenuto testo originale)."
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif choice in ("m", "modifica"):
-                            _stop_audio()
-                            if sentence_clean:
-                                ctx_text = sentence_clean
-                                orig_context = sentence_clean
-                                header_comment = "# Modifica liberamente la frase qui sotto. Sostituirà l'intera frase nel documento finale.\n\n"
-                            elif target_unit and target_unit.content:
-                                ctx_text = target_unit.content
-                                orig_context = target_unit.content
-                                header_comment = "# Termine non trovato letteralmente nel draft (probabilmente già riformulato diversamente). Modifica liberamente il testo dell'intera unità qui sotto: sostituirà l'intero paragrafo nel documento finale.\n\n"
-                            else:
-                                ctx_text = seg.text_raw if seg and seg.text_raw else (iss.source_text if iss.source_text else iss.candidate)
-                                orig_context = None
-                                header_comment = "# Trascrizione grezza (nessuna unità draft associata). Modifica il testo qui sotto (NON verrà applicata al documento finale).\n\n"
-
-                            initial_editor_content = f"{header_comment}{ctx_text}\n"
-                            live.stop()
-                            edited_res = edit_text_in_editor(initial_editor_content)
-                            live.start()
-                            lines = [line for line in edited_res.splitlines() if not line.strip().startswith("#")]
-                            resolved = "\n".join(lines).strip()
-                            ctx_clean = ctx_text.strip()
-
-                            if resolved == ctx_clean:
-                                last_status = "⚠️ Nessuna modifica rilevata."
-                                panel = _build_asr_panel(
-                                    idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                                )
-                                live.update(panel, refresh=True)
-                                break
-                            elif not resolved:
-                                last_status = "⚠️ Testo vuoto, nessuna modifica applicata."
-                                panel = _build_asr_panel(
-                                    idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                                )
-                                live.update(panel, refresh=True)
-                                break
-                            else:
-                                record_decision(lesson_dir, iss.id, "edited", resolved_text=resolved, original_context=orig_context)
-                                decided_this_session.add(iss.id)
-                                last_status = f"✏ Modificato in: \"{resolved}\""
-                                panel = _build_asr_panel(
-                                    idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                                )
-                                live.update(panel, refresh=True)
-                                idx += 1
-                                break
-                        elif choice in ("p", "play", "audio"):
-                            if not audio_paused:
-                                if current_audio_proc is not None and current_audio_proc.poll() is None:
-                                    audio_elapsed += time.monotonic() - audio_resumed_at
-                                    try:
-                                        current_audio_proc.terminate()
-                                    except Exception:
-                                        pass
-                                    current_audio_proc = None
-                                    audio_paused = True
-                                else:
-                                    audio_path = resolve_audio_path(lesson_dir)
-                                    seg = seg_by_id.get(iss.segment_id)
-                                    if not audio_path or not seg:
-                                        last_status = "⚠️ File audio originale o timecode non disponibile."
-                                    else:
-                                        audio_range_start = max(0.0, seg.start_seconds - 5.0)
-                                        audio_range_end = seg.end_seconds + 5.0
-                                        audio_elapsed = 0.0
-                                        try:
-                                            clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
-                                            temp_audio_clips.append(clip_path)
-                                            current_audio_proc = play_clip_background(clip_path)
-                                            audio_resumed_at = time.monotonic()
-                                            audio_paused = False
-                                        except Exception as e:
-                                            last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-                            else:
-                                audio_path = resolve_audio_path(lesson_dir)
-                                if not audio_path or audio_range_start is None or audio_range_end is None:
-                                    last_status = "⚠️ File audio originale o timecode non disponibile."
-                                else:
-                                    new_start = audio_range_start + audio_elapsed
-                                    try:
-                                        clip_path = cut_clip(audio_path, new_start, audio_range_end)
-                                        temp_audio_clips.append(clip_path)
-                                        current_audio_proc = play_clip_background(clip_path)
-                                        audio_resumed_at = time.monotonic()
-                                        audio_paused = False
-                                    except Exception as e:
-                                        last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            continue
-                        elif choice in ("o", "riavvia", "restart"):
-                            _stop_audio()
-                            audio_path = resolve_audio_path(lesson_dir)
-                            seg = seg_by_id.get(iss.segment_id)
-                            if not audio_path or not seg:
-                                last_status = "⚠️ File audio originale o timecode non disponibile."
-                            else:
-                                audio_range_start = max(0.0, seg.start_seconds - 5.0)
-                                audio_range_end = seg.end_seconds + 5.0
-                                audio_elapsed = 0.0
-                                try:
-                                    clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
-                                    temp_audio_clips.append(clip_path)
-                                    current_audio_proc = play_clip_background(clip_path)
-                                    audio_resumed_at = time.monotonic()
-                                    audio_paused = False
-                                except Exception as e:
-                                    last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            continue
-                        elif choice in ("b", "indietro", "back", "left"):
-                            _stop_audio()
-                            if idx == 0:
-                                last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
-                            else:
-                                idx -= 1
-                                prev_iss = to_review[idx]
-                                if prev_iss.id in decided_this_session:
-                                    revert_last_decision(lesson_dir, prev_iss.id)
-                                    decided_this_session.discard(prev_iss.id)
-                                last_status = f"◀️ Tornato all'issue precedente ({prev_iss.id})."
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            break
-                        elif choice in ("s", "salta", "skip", "right"):
-                            _stop_audio()
-                            last_status = "⏭ Saltato."
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif choice in ("q", "esci", "quit"):
-                            _stop_audio()
-                            last_status = "⏹ Revisione interrotta. I progressi finora sono stati salvati."
-                            panel = _build_asr_panel(
-                                idx, total_count, iss, tc, listen, unit_info, sentence, seg, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            interrupted = True
-                            break
-                        else:
-                            continue
-
-                    if interrupted:
-                        break
-
-                else:  # science
-                    seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
-                    tc = seg.start_formatted if seg else "N/D"
-
-                    sci_unit = None
-                    if iss.unit_id and iss.unit_id in unit_by_id:
-                        sci_unit = unit_by_id[iss.unit_id]
-                    elif iss.segment_id and iss.segment_id in seg_to_unit:
-                        sci_unit = seg_to_unit[iss.segment_id]
-
-                    sci_unit_info = f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else (iss.unit_id or "N/D")
-
-                    panel = _build_science_panel(
-                        idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                    )
-                    live.update(panel, refresh=True)
-
-                    while True:
-                        raw_key = read_single_key(already_raw=is_raw)
-                        choice = raw_key.strip().lower()
-
-                        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (getattr(iss.type, "value", str(iss.type)) == "ERR_ASR_LLM")
-
-                        if is_asr_risk and choice in ("a", "applica"):
-                            last_status = "⚠️ Scelta 'A' non valida per issue ASR. Usa M=Accetta o E=Modifica."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            continue
-
-                        if is_asr_risk and choice in ("m", "accetta", "mantieni", ""):
-                            _stop_audio()
-                            record_decision(lesson_dir, iss.id, "accepted", resolved_text=sci_unit.content if sci_unit else None)
-                            decided_this_session.add(iss.id)
-                            last_status = "✔ Testo dell'unità accettato."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif not is_asr_risk and choice in ("a", "accetta", "applica", ""):
-                            _stop_audio()
-                            clean_fix = sanitize_suggested_fix(iss.suggested_fix)
-                            record_decision(lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
-                            decided_this_session.add(iss.id)
-                            last_status = "✔ Correzione scientifica applicata."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif not is_asr_risk and choice in ("m", "mantieni", "rifiuta", "r"):
-                            _stop_audio()
-                            record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
-                            decided_this_session.add(iss.id)
-                            last_status = "✔ Formulazione originale mantenuta."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif choice in ("e", "modifica"):
-                            _stop_audio()
-                            if is_asr_risk:
-                                initial_editor_content = (
-                                    "# Questa è l'intera unità come riscritta. Modificala liberamente per farla combaciare con l'audio: sostituirà l'intero contenuto dell'unità.\n\n"
-                                    f"{(sci_unit.content if sci_unit else iss.claim)}\n"
-                                )
-                            else:
-                                initial_editor_content = (
-                                    "# Modifica liberamente il testo qui sotto, sostituirà l'affermazione originale.\n\n"
-                                    f"{iss.claim}\n"
-                                )
-                            live.stop()
-                            edited_res = edit_text_in_editor(initial_editor_content)
-                            live.start()
-                            lines = [line for line in edited_res.splitlines() if not line.strip().startswith("#")]
-                            resolved = "\n".join(lines).strip()
-                            if resolved:
-                                record_decision(lesson_dir, iss.id, "edited", resolved_text=resolved)
-                                decided_this_session.add(iss.id)
-                                last_status = f"✏ Modificato in: \"{resolved}\""
-                                panel = _build_science_panel(
-                                    idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                                )
-                                live.update(panel, refresh=True)
-                                idx += 1
-                                break
-                            else:
-                                last_status = "⚠️ Nessuna modifica inserita."
-                                panel = _build_science_panel(
-                                    idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                                )
-                                live.update(panel, refresh=True)
-                                break
-                        elif choice in ("p", "play", "audio"):
-                            if not audio_paused:
-                                if current_audio_proc is not None and current_audio_proc.poll() is None:
-                                    audio_elapsed += time.monotonic() - audio_resumed_at
-                                    try:
-                                        current_audio_proc.terminate()
-                                    except Exception:
-                                        pass
-                                    current_audio_proc = None
-                                    audio_paused = True
-                                else:
-                                    audio_path = resolve_audio_path(lesson_dir)
-                                    start_s, end_s = None, None
-                                    if iss.segment_id and iss.segment_id in seg_by_id:
-                                        s_seg = seg_by_id[iss.segment_id]
-                                        start_s = max(0.0, s_seg.start_seconds - 5.0)
-                                        end_s = s_seg.end_seconds + 5.0
-                                    elif sci_unit:
-                                        start_seg = seg_by_id.get(sci_unit.start_segment_id)
-                                        end_seg = seg_by_id.get(sci_unit.end_segment_id)
-                                        if start_seg and end_seg:
-                                            start_s = start_seg.start_seconds
-                                            end_s = end_seg.end_seconds
-
-                                    if not audio_path or start_s is None or end_s is None:
-                                        last_status = "⚠️ File audio originale o intervallo non disponibile."
-                                    else:
-                                        audio_range_start = start_s
-                                        audio_range_end = end_s
-                                        audio_elapsed = 0.0
-                                        try:
-                                            clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
-                                            temp_audio_clips.append(clip_path)
-                                            current_audio_proc = play_clip_background(clip_path)
-                                            audio_resumed_at = time.monotonic()
-                                            audio_paused = False
-                                        except Exception as e:
-                                            last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-                            else:
-                                audio_path = resolve_audio_path(lesson_dir)
-                                if not audio_path or audio_range_start is None or audio_range_end is None:
-                                    last_status = "⚠️ File audio originale o intervallo non disponibile."
-                                else:
-                                    new_start = audio_range_start + audio_elapsed
-                                    try:
-                                        clip_path = cut_clip(audio_path, new_start, audio_range_end)
-                                        temp_audio_clips.append(clip_path)
-                                        current_audio_proc = play_clip_background(clip_path)
-                                        audio_resumed_at = time.monotonic()
-                                        audio_paused = False
-                                    except Exception as e:
-                                        last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            continue
-                        elif choice in ("o", "riavvia", "restart"):
-                            _stop_audio()
-                            audio_path = resolve_audio_path(lesson_dir)
-                            start_s, end_s = None, None
-                            if iss.segment_id and iss.segment_id in seg_by_id:
-                                s_seg = seg_by_id[iss.segment_id]
-                                start_s = max(0.0, s_seg.start_seconds - 5.0)
-                                end_s = s_seg.end_seconds + 5.0
-                            elif sci_unit:
-                                start_seg = seg_by_id.get(sci_unit.start_segment_id)
-                                end_seg = seg_by_id.get(sci_unit.end_segment_id)
-                                if start_seg and end_seg:
-                                    start_s = start_seg.start_seconds
-                                    end_s = end_seg.end_seconds
-
-                            if not audio_path or start_s is None or end_s is None:
-                                last_status = "⚠️ File audio originale o intervallo non disponibile."
-                            else:
-                                audio_range_start = start_s
-                                audio_range_end = end_s
-                                audio_elapsed = 0.0
-                                try:
-                                    clip_path = cut_clip(audio_path, audio_range_start, audio_range_end)
-                                    temp_audio_clips.append(clip_path)
-                                    current_audio_proc = play_clip_background(clip_path)
-                                    audio_resumed_at = time.monotonic()
-                                    audio_paused = False
-                                except Exception as e:
-                                    last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            continue
-                        elif choice in ("b", "indietro", "back", "left"):
-                            _stop_audio()
-                            if idx == 0:
-                                last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
-                            else:
-                                idx -= 1
-                                prev_iss = to_review[idx]
-                                if prev_iss.id in decided_this_session:
-                                    revert_last_decision(lesson_dir, prev_iss.id)
-                                    decided_this_session.discard(prev_iss.id)
-                                last_status = f"◀️ Tornato all'issue precedente ({prev_iss.id})."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            break
-                        elif choice in ("s", "salta", "skip", "right"):
-                            _stop_audio()
-                            last_status = "⏭ Saltato."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            idx += 1
-                            break
-                        elif choice in ("q", "esci", "quit"):
-                            _stop_audio()
-                            last_status = "⏹ Revisione interrotta. I progressi finora sono stati salvati."
-                            panel = _build_science_panel(
-                                idx, total_count, iss, tc, sci_unit_info, sci_unit, decisions_map, last_status
-                            )
-                            live.update(panel, refresh=True)
-                            interrupted = True
-                            break
-                        else:
-                            continue
-
-                    if interrupted:
-                        break
-    finally:
-        _stop_audio()
-        for clip in temp_audio_clips:
-            if os.path.exists(clip):
-                try:
-                    os.remove(clip)
-                except Exception:
-                    pass
-
-    if interrupted:
+    if not completed:
         return False
 
     rem_asr, rem_sci = get_pending_issues(lesson_dir)
@@ -918,3 +772,5 @@ def run_interactive_review(
         print("\n✨ Revisione completata. Esegui 'rt build <cartella>' per finalizzare.")
 
     return True
+
+
