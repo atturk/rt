@@ -302,5 +302,10 @@ def _confirm_via_terminal(lesson_dir: str, force_mock: bool) -> None:
 
     # Modalità interattiva TTY con Textual App
     app = OutlineReviewApp(lesson_dir=lesson_dir, force_mock=force_mock)
-    app.run()
+    approved = app.run()
+    if not approved:
+        # L'utente ha chiuso la app senza approvare (es. Ctrl+Q, binding di default
+        # di Textual): tratta come un'interruzione volontaria, non come un'approvazione
+        # silenziosa — riusa il gestore KeyboardInterrupt già presente in cli.py::main().
+        raise KeyboardInterrupt()
     print("✔ Outline approvata.")
