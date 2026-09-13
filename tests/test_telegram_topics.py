@@ -158,4 +158,68 @@ def test_notify_build_completed_missing_config_silent(tmp_path, monkeypatch):
         notify_build_completed(lesson_dir, {"rielaborato": "test.md"}, "Lezione 1")
 
 
+import asyncio
+
+
+def test_handle_list_command_empty_lessons_root(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from rt.telegram.daemon import handle_list_command
+
+    empty_root = str(tmp_path / "empty_lessons")
+    os.makedirs(empty_root, exist_ok=True)
+
+    update = MagicMock()
+    update.effective_message.message_thread_id = None
+    update.effective_message.reply_text = AsyncMock()
+
+    context = MagicMock()
+    context.bot_data = {"state_dir": str(tmp_path / "state")}
+
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg = MagicMock()
+        cfg.telegram.lessons_root = empty_root
+        cfg.telegram.topics = {"BIOCHIMICA": 42}
+        mock_cfg.return_value = cfg
+
+        asyncio.run(handle_list_command(update, context))
+
+    update.effective_message.reply_text.assert_called_once()
+    reply = update.effective_message.reply_text.call_args[0][0]
+    assert f"Nessuna lezione trovata in '{empty_root}'" in reply
+    assert "rt config" in reply
+
+
+def test_handle_list_command_different_topic(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from rt.telegram.daemon import handle_list_command
+
+    root_dir = str(tmp_path / "lessons")
+    l1 = os.path.join(root_dir, "lesson_bio")
+    os.makedirs(l1, exist_ok=True)
+    with open(os.path.join(l1, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write("materia: BIOCHIMICA\ndata: '2026-09-08'\n")
+
+    update = MagicMock()
+    update.effective_message.message_thread_id = 99  # Topic per ANATOMIA
+    update.effective_message.reply_text = AsyncMock()
+
+    context = MagicMock()
+    context.bot_data = {"state_dir": str(tmp_path / "state")}
+
+    with patch("rt.core.config.load_config") as mock_cfg:
+        cfg = MagicMock()
+        cfg.telegram.lessons_root = root_dir
+        cfg.telegram.topics = {"BIOCHIMICA": 42, "ANATOMIA": 99}
+        mock_cfg.return_value = cfg
+
+        asyncio.run(handle_list_command(update, context))
+
+    update.effective_message.reply_text.assert_called_once()
+    reply = update.effective_message.reply_text.call_args[0][0]
+    assert "Nessuna lezione trovata per la materia di questo topic" in reply
+    assert "1 lezioni totali in altri topic/materie" in reply
+
+
+
+
 
