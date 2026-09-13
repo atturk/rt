@@ -47,6 +47,7 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         "gemini-3.6-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-3.5-flash-lite": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-2.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
+        "gemini-2.5-pro": ModelPricing(input_per_million=1.25, output_per_million=5.00),
         "gemini-2.0-flash": ModelPricing(input_per_million=0.10, output_per_million=0.40),
         "gemini-2.0-flash-lite": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-1.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
