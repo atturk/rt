@@ -135,6 +135,7 @@ class JobFallbackConfig(BaseModel):
     safety: Optional[RouteConfig] = None
     auth: Optional[RouteConfig] = None
     generic: Optional[RouteConfig] = None
+    cooldown_seconds: int = 30
 
 
 class JobRoutingConfig(BaseModel):
