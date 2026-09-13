@@ -162,11 +162,12 @@ d'implementazione ancora (in attesa di conferma utente su alcuni, altri già chi
   incluso RT — nessun task.
 - **Companion audio player esterno per la review** (Allegato 1 lungo dell'utente): ricerca fatta,
   `mpv` è il candidato forte — frecce già mappate a seek, `[`/`]`/`{`/`}` già mappati a velocità
-  ±10%/dimezza-raddoppia, `--geometry` per posizionare la finestra, lanciabile come subprocess e
-  rilevabile alla chiusura con `.poll()` senza bisogno del socket IPC per i bisogni base. Design
-  completo (posizionamento esatto della finestra, esatta logica apri/chiudi legata al tasto P e
-  alle azioni nel terminale) da rifinire con l'utente prima di scrivere il task — è la parte più
-  grande e nuova di questo giro, vedi sotto.
+  ±10%/dimezza-raddoppia, `--geometry` per posizionare la finestra. Design rifinito con l'utente:
+  posizione rilevata via AppleScript con fallback sull'ultima posizione di chiusura (richiede il
+  socket IPC di mpv per persisterla, non solo `.poll()`), auto-chiusura su A/R/I/S ma non su M →
+  Task 75. Contestualmente, l'utente ha chiesto di uniformare le lettere della card di review
+  (A=Accetta, R=Rifiuta, M=Modifica, I=Indietro) su ENTRAMBI i rami (Science Critic e RISCHIO
+  ASR) → ripiegato nel Task 74, che già toccava l'action bar per il redesign visivo.
 
 ## Task da fare, in ordine
 
@@ -183,18 +184,23 @@ d'implementazione ancora (in attesa di conferma utente su alcuni, altri già chi
 5. **73** — Abilita `concurrent_updates(True)` nel demone Telegram (causa reale del "freeze"
    percepito durante generazione/eval) insieme al locking del recall bank, oggi assente, per
    evitare race condition una volta abilitata la concorrenza.
-6. **74** — Redesign della card di review scientifica: niente più timecode, claim evidenziato in
-   rosso inline nel testo dell'unità, correzione proposta in verde subito sotto (stile diff),
-   mini legenda sotto la critica. Mockup approvato dall'utente in
-   `/Users/attilioturco/Desktop/rt_review_card_mockup.py` (rosso semplice, non barrato).
+6. **74** — Redesign della card di review scientifica (ramo Science Critic): niente più timecode,
+   claim con prefisso "- " in rosso inline nel testo dell'unità, correzione proposta con prefisso
+   "+ " in verde subito sotto (stile diff), mini legenda con sole emoji sotto la critica. Mockup
+   approvato dall'utente in `/Users/attilioturco/Desktop/rt_review_card_mockup.py`. Include anche
+   la ridenominazione dei tasti (decisa con l'utente, si applica a ENTRAMBI i rami Science
+   Critic/RISCHIO ASR): A=Accetta, R=Rifiuta, M=Modifica (era E), I=Indietro (era B), S/Q
+   invariati — P/O non toccati, riservati al Task 75.
+7. **75** — Player companion `mpv` per la review scientifica al posto del play in-terminale
+   (tasto P): riproduce l'intera unità (non solo ±5s), si apre affianco al terminale (posizione
+   rilevata via AppleScript, fallback sull'ultima posizione di chiusura persistita), seek/velocità
+   nativi di mpv, auto-chiusura su A/R/I/S ma non su M, riusa il clip cachato già usato dal
+   bottone 🔊 di Telegram. Va dopo il Task 74 (riusa lo schema di tasti definito lì).
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
-- **Companion audio player (mpv) per la review scientifica**: ricerca fatta (mpv è un buon
-  candidato: frecce già mappate a seek, `[`/`]`/`{`/`}` a velocità, `--geometry` per posizionare
-  la finestra), ma il design esatto (posizionamento finestra, logica apri/chiudi legata al tasto
-  P e alle azioni nel terminale) va rifinito con l'utente prima di scrivere il task — sostituirà
-  interamente il player in-terminale e i tasti P/O attuali in `issue_review.py`.
+Nessuna al momento: tutti i punti del giro precedente sono stati decisi (vedi "Stato" sopra e i
+Task 72-75).
 
 ## Dopo ogni task numerato (obbligatorio, non solo alla fine)
 
