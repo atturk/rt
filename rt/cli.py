@@ -340,6 +340,18 @@ def normalize_review_cli_args(argv: List[str]) -> List[str]:
     return new_argv
 
 
+def _prompt_and_launch_daemon_if_needed():
+    if not sys.stdin.isatty():
+        return
+    from rt.telegram.daemon_status import is_daemon_running, launch_daemon_in_terminal
+    if is_daemon_running():
+        return
+    import questionary
+    answer = questionary.confirm("Vuoi avviare il demone Telegram ora?", default=True).ask()
+    if answer:
+        launch_daemon_in_terminal()
+
+
 def cmd_build(args):
     force = getattr(args, "force", False)
     res = run_build(args.lesson_dir, force=force, rename_folder=args.rename)
@@ -350,6 +362,8 @@ def cmd_build(args):
     final_dir = res.get("lesson_dir") or args.lesson_dir
     from rt.telegram.notify import notify_build_completed
     notify_build_completed(final_dir, res, lesson_title=_get_lesson_title_for_notify(final_dir))
+    _prompt_and_launch_daemon_if_needed()
+
 
 
 def cmd_setup(args):
@@ -593,6 +607,8 @@ def cmd_run(args):
         from rt.telegram.notify import notify_build_completed
         final_dir = bld_res.get("lesson_dir") or lesson_dir
         notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
+        _prompt_and_launch_daemon_if_needed()
+
 
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     summary = GLOBAL_TELEMETRY.get_summary()
