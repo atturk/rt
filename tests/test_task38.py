@@ -8,8 +8,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from rt.pipeline.configure import (
-    _configure_llm_provider_section,
-    _configure_pricing_section
+    _configure_pricing_section,
+    _build_configure_roles_app,
 )
 
 
@@ -26,7 +26,8 @@ def test_pricing_section_no_decorative_box(tmp_path, capsys):
     assert "------------------------------------------------------------" not in captured
 
 
-def test_phase_blocks_navigation_and_confirmation(tmp_path):
+@pytest.mark.anyio
+async def test_phase_blocks_navigation_and_confirmation(tmp_path):
     config_dir = os.path.join(tmp_path, "config")
     os.makedirs(config_dir, exist_ok=True)
     env_path = os.path.join(tmp_path, ".env")
@@ -54,34 +55,33 @@ def test_phase_blocks_navigation_and_confirmation(tmp_path):
     with open(rewrite_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    # Sequenza tasti:
-    # 1. Card outline: "RIGHT" (passa a rewrite)
-    # 2. Card rewrite: "LEFT" (torna ad outline)
-    # 3. Card outline: "DOWN", "DOWN" (va su test_prof_1), "ENTER" (seleziona test_prof_1)
-    # 4. Card outline: "c" (salta alla card finale di conferma)
-    # 5. Card conferma: "ENTER" (conferma ed applica)
-    key_sequence = [
-        "RIGHT",
-        "LEFT",
-        "DOWN",
-        "DOWN",
-        "ENTER",
-        "c",
-        "ENTER"
-    ]
-
     with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
-        with patch("rt.pipeline.configure.read_single_key", side_effect=key_sequence):
-            res = _configure_llm_provider_section(config_dir, env_path)
+        app = _build_configure_roles_app(config_dir, env_path)
+        assert app is not None
+        async with app.run_test() as pilot:
+            # 1. Card outline: "RIGHT" (passa a rewrite)
+            await pilot.press("right")
+            # 2. Card rewrite: "LEFT" (torna ad outline)
+            await pilot.press("left")
+            # 3. Card outline: "DOWN", "DOWN" (va su test_prof_1), "ENTER" (seleziona test_prof_1)
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("enter")
+            # 4. Card outline: "c" (salta alla card finale di conferma)
+            await pilot.press("c")
+            # 5. Card conferma: "ENTER" (conferma ed applica)
+            await pilot.press("enter")
 
     # Verifica che la conferma abbia effettivamente applicato il profilo al file job outline.yaml
-    assert res.get("outline") == "test_prof_1"
+    assert app.result_assignments is not None
+    assert app.result_assignments.get("outline") == "test_prof_1"
     with open(outline_job_file, "r", encoding="utf-8") as f:
         updated_job = yaml.safe_load(f)
     assert updated_job["primary"]["model"] == "openrouter/free"
 
 
-def test_phase_blocks_no_write_until_confirmation(tmp_path):
+@pytest.mark.anyio
+async def test_phase_blocks_no_write_until_confirmation(tmp_path):
     config_dir = os.path.join(tmp_path, "config")
     os.makedirs(config_dir, exist_ok=True)
     env_path = os.path.join(tmp_path, ".env")
@@ -106,22 +106,20 @@ def test_phase_blocks_no_write_until_confirmation(tmp_path):
     with open(outline_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    # Sequenza: "DOWN", "DOWN", "ENTER", "c" (va al riepilogo), "DOWN", "DOWN", "ENTER" (Annulla)
-    key_sequence = [
-        "DOWN",
-        "DOWN",
-        "ENTER",
-        "c",
-        "DOWN",
-        "DOWN",
-        "ENTER"
-    ]
-
     with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
-        with patch("rt.pipeline.configure.read_single_key", side_effect=key_sequence):
-            res = _configure_llm_provider_section(config_dir, env_path)
+        app = _build_configure_roles_app(config_dir, env_path)
+        assert app is not None
+        async with app.run_test() as pilot:
+            # Sequenza: "DOWN", "DOWN", "ENTER", "c" (va al riepilogo), "DOWN", "DOWN", "ENTER" (Annulla)
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.press("c")
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("enter")
 
-    assert res == {}
+    assert app.result_assignments is None
     # Verifica che il file job sia rimasto inalterato!
     with open(outline_job_file, "r", encoding="utf-8") as f:
         unchanged_job = yaml.safe_load(f)

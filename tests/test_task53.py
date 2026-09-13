@@ -95,8 +95,11 @@ def test_same_profile_can_be_assigned_to_multiple_fallback_slots():
     assert phase_map["rate_limit"] == "openrouter_glm"
 
 
-def test_confirm_and_apply_writes_fallback_block_to_job_yaml(tmp_path):
+@pytest.mark.anyio
+async def test_confirm_and_apply_writes_fallback_block_to_job_yaml(tmp_path):
     """Verifica che Conferma e applica scriva sia primary sia fallback: nel file YAML del job."""
+    from rt.pipeline.configure import _build_configure_roles_app
+
     config_dir = os.path.join(tmp_path, "config")
     os.makedirs(config_dir, exist_ok=True)
     env_path = os.path.join(tmp_path, ".env")
@@ -130,38 +133,30 @@ def test_confirm_and_apply_writes_fallback_block_to_job_yaml(tmp_path):
     with open(outline_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job, f)
 
-    # Sequenza:
-    # 1. Card outline:
-    #    - Seleziona prof_google (DOWN, DOWN, ENTER) -> Assegna Primario
-    #    - Seleziona prof_openrouter (ENTER) -> Assegna Fallback: rate-limit
-    #    - 'c' -> vai a conferma
-    # 2. Card conferma:
-    #    - ENTER -> Applica
-    key_sequence = [
-        # Seleziona prof_google (indice 2)
-        "DOWN",
-        "DOWN",
-        "ENTER",
-        # In nuova lista scelte, cursore è su prof_openrouter (indice 2)
-        "ENTER",
-        # Salta a conferma
-        "c",
-        # Conferma
-        "ENTER"
-    ]
-
     select_roles = [
         "Primario",
         "Fallback: rate-limit (429)",
     ]
 
     with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=key_sequence), \
          patch("questionary.select") as mock_q:
         mock_q.return_value.ask.side_effect = select_roles
-        res = _configure_llm_provider_section(config_dir, env_path)
+        app = _build_configure_roles_app(config_dir, env_path)
+        assert app is not None
+        async with app.run_test() as pilot:
+            # Seleziona prof_google (indice 2)
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("enter")
+            # In nuova lista scelte, cursore è su prof_openrouter (indice 2)
+            await pilot.press("enter")
+            # Salta a conferma
+            await pilot.press("c")
+            # Conferma
+            await pilot.press("enter")
 
-    assert res.get("outline") == "prof_google"
+    assert app.result_assignments is not None
+    assert app.result_assignments.get("outline") == "prof_google"
     with open(outline_job_file, "r", encoding="utf-8") as f:
         saved_job = yaml.safe_load(f)
 
