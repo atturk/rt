@@ -156,8 +156,8 @@ class TestStartRecallViaTelegram:
         types_present = {q.type for q in bank.questions}
         assert types_present == {RecallQuestionType.QUIZ, RecallQuestionType.MIRATA, RecallQuestionType.VASTA}
         # Il poll nativo con la tastiera "Non lo so"/"Skip" allegata direttamente
-    def test_start_recall_via_telegram_sends_generating_notification_before_batch(self, tmp_path):
-        """Verifica che start_recall_via_telegram invii la notifica di generazione prima di creare il batch iniziale (Task 51)."""
+    def test_start_recall_via_telegram_sends_generating_notification_and_deletes_after_first_question(self, tmp_path):
+        """Verifica che start_recall_via_telegram invii la notifica di generazione prima del batch ed elimini il messaggio dopo l'invio della prima domanda (Task 51 & 58)."""
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -172,8 +172,13 @@ class TestStartRecallViaTelegram:
         def fake_batch(ld, **kwargs):
             events.append(("ensure_initial_batch", ld))
 
+        def fake_delete(cfg_, mid):
+            events.append(("delete_message", mid))
+            return True
+
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.send_message", side_effect=fake_send), \
+             patch("rt.telegram.client.delete_message", side_effect=fake_delete), \
              patch("rt.pipeline.recall_session._ensure_initial_batch", side_effect=fake_batch), \
              patch("rt.pipeline.recall_session.send_current_recall_question"), \
              patch("rt.core.config.load_config") as mock_cfg:
@@ -184,10 +189,33 @@ class TestStartRecallViaTelegram:
 
             start_recall_via_telegram(lesson_dir, force_mock=True)
 
-        assert len(events) == 2
+        assert len(events) == 3
         assert events[0][0] == "send_message"
         assert "generando le domande" in events[0][1]
         assert events[1][0] == "ensure_initial_batch"
+        assert events[2] == ("delete_message", 100)
+
+    def test_start_recall_via_telegram_delete_failure_does_not_raise(self, tmp_path):
+        """Verifica che un eventuale fallimento di delete_message non sollevi eccezioni (Task 58)."""
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        cfg = TelegramConfig(bot_token="TOK", chat_id=999)
+
+        with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
+             patch("rt.telegram.client.send_message", return_value={"message_id": 105}), \
+             patch("rt.telegram.client.delete_message", side_effect=Exception("Message already deleted")), \
+             patch("rt.pipeline.recall_session._ensure_initial_batch"), \
+             patch("rt.pipeline.recall_session.send_current_recall_question"), \
+             patch("rt.core.config.load_config") as mock_cfg:
+            cfg_obj = MagicMock()
+            cfg_obj.telegram.state_dir = state_dir
+            cfg_obj.telegram.topics = {}
+            mock_cfg.return_value = cfg_obj
+
+            # Non deve sollevare eccezioni
+            start_recall_via_telegram(lesson_dir, force_mock=True)
 
 
     def test_double_session_guard(self, tmp_path):
