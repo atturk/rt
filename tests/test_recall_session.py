@@ -786,6 +786,56 @@ class TestPostAnswerCallbacks:
         # rut non deve rimuovere la tastiera del messaggio con cui è stato invocato.
         assert not update.callback_query.edit_message_reply_markup.called
 
+    def test_rut_after_session_closed_does_not_reintroduce_skip_button(self, tmp_path):
+        """Dopo /quit (nessuna sessione attiva), premere 📖 non deve far ricomparire ⏭️:
+        la tastiera ricostruita deve essere quella persistente (solo 📖/🔊)."""
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "evaluation_text": "Esito commento", "message_id": 999},
+        )
+        update = _make_mock_callback_update(f"rut:{short_id}")
+        context = _make_mock_context(state_dir)
+        context.bot.edit_message_text = AsyncMock()
+
+        # Nessuna tg_session.start_session chiamata: nessuna sessione attiva, come dopo /quit.
+        asyncio.run(handle_callback(update, context))
+
+        _, kwargs = context.bot.edit_message_text.call_args
+        callback_data_values = [b["callback_data"] for row in kwargs["reply_markup"]["inline_keyboard"] for b in row]
+        assert not any(cd.startswith("rnx:") for cd in callback_data_values)
+        assert any(cd.startswith("rut:") for cd in callback_data_values)
+        assert any(cd.startswith("rua:") for cd in callback_data_values)
+
+    def test_rut_with_active_session_keeps_skip_button(self, tmp_path):
+        """Durante una sessione di recall attiva, 📖 deve continuare a mostrare anche ⏭️."""
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+        from rt.telegram import session as tg_session
+        tg_session.start_session(state_dir, 12345, None, "recall", lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={"question_id": "recall_000002", "evaluation_text": "Esito commento", "message_id": 999},
+        )
+        update = _make_mock_callback_update(f"rut:{short_id}")
+        context = _make_mock_context(state_dir)
+        context.bot.edit_message_text = AsyncMock()
+
+        asyncio.run(handle_callback(update, context))
+
+        _, kwargs = context.bot.edit_message_text.call_args
+        callback_data_values = [b["callback_data"] for row in kwargs["reply_markup"]["inline_keyboard"] for b in row]
+        assert any(cd.startswith("rnx:") for cd in callback_data_values)
+
     def test_rua_calls_send_unit_audio_and_keeps_keyboard(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")

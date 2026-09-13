@@ -1622,7 +1622,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
             chat_id, topic_id = parsed
             detected_chat_id = chat_id
             print(f"✔ Rilevato Chat ID: {chat_id}, Topic ID: {topic_id}")
-            mat = questionary.text(f"Materia per Topic ID {topic_id} (o 'varie' per Varie):").ask()
+            mat = questionary.text(f"Materia per Topic ID {topic_id}:").ask()
             if mat and mat.strip():
                 mat_clean = mat.strip().upper()
                 if mat_clean in ("VARIE", "GENERALE"):
