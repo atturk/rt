@@ -469,6 +469,14 @@ def cmd_status(args):
         print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
+def cmd_cost(args: argparse.Namespace) -> None:
+    from rt.pipeline.cost import compute_lesson_cost, render_cost_report
+    cost_data = compute_lesson_cost(args.lesson_dir)
+    split = getattr(args, "split", False)
+    if getattr(args, "json", False):
+        print(json.dumps(cost_data, ensure_ascii=False, indent=2))
+    else:
+        print(render_cost_report(cost_data, split=split))
 
 
 def cmd_run(args):
@@ -657,6 +665,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         "  build               Finalizzazione deterministica dei Markdown\n"
         "  add-images          Integra slide/foto o immagini web nel documento finale\n\n"
         "Comandi diagnostici:\n"
+        "  cost                Mostra il costo stimato cumulativo di una lezione\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n\n"
         "Opzioni generali:\n"
@@ -828,6 +837,13 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_vdr = subparsers.add_parser("validate-draft", help=argparse.SUPPRESS, description="Valida il draft rielaborato")
     p_vdr.add_argument("lesson_dir", help="Directory della lezione")
     p_vdr.set_defaults(func=cmd_validate_draft)
+
+    # cost
+    p_cost = subparsers.add_parser("cost", help=argparse.SUPPRESS, description="Mostra il costo stimato cumulativo di una lezione")
+    p_cost.add_argument("lesson_dir", help="Directory della lezione")
+    p_cost.add_argument("--split", action="store_true", help="Mostra il dettaglio completo per fase, unità e singoli tentativi")
+    p_cost.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
+    p_cost.set_defaults(func=cmd_cost)
 
     normalized_argv = normalize_review_cli_args(raw_args)
     args = parser.parse_args(normalized_argv)
