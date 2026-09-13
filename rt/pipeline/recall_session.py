@@ -613,14 +613,15 @@ class StaleRecallApp(App[None]):
         if self.idx >= len(self.stale_questions):
             return
         q = self.stale_questions[self.idx]
-        from rt.pipeline.recall import load_recall_bank, save_recall_bank, _compute_units_fingerprint
+        from rt.pipeline.recall import load_recall_bank, save_recall_bank, _compute_units_fingerprint, recall_bank_lock
         old_fp = q.content_fingerprint
         cur_fp = _compute_units_fingerprint(self.lesson_dir, q.unit_ids)
-        b = load_recall_bank(self.lesson_dir)
-        bq = next((item for item in b.questions if item.id == q.id), None)
-        if bq:
-            bq.content_fingerprint = cur_fp
-            save_recall_bank(b, self.lesson_dir)
+        with recall_bank_lock(self.lesson_dir):
+            b = load_recall_bank(self.lesson_dir)
+            bq = next((item for item in b.questions if item.id == q.id), None)
+            if bq:
+                bq.content_fingerprint = cur_fp
+                save_recall_bank(b, self.lesson_dir)
         self.history_stack.append(("kept", q.id, old_fp))
         self.kept_count += 1
         self.last_status = f"✔ Mantenuta domanda {q.id} (fingerprint aggiornato)."
@@ -634,13 +635,14 @@ class StaleRecallApp(App[None]):
         if self.idx >= len(self.stale_questions):
             return
         q = self.stale_questions[self.idx]
-        from rt.pipeline.recall import load_recall_bank, save_recall_bank
-        b = load_recall_bank(self.lesson_dir)
-        q_to_del = next((item for item in b.questions if item.id == q.id), None)
-        a_to_del = [a for a in b.answers if a.question_id == q.id]
-        b.questions = [item for item in b.questions if item.id != q.id]
-        b.answers = [a for a in b.answers if a.question_id != q.id]
-        save_recall_bank(b, self.lesson_dir)
+        from rt.pipeline.recall import load_recall_bank, save_recall_bank, recall_bank_lock
+        with recall_bank_lock(self.lesson_dir):
+            b = load_recall_bank(self.lesson_dir)
+            q_to_del = next((item for item in b.questions if item.id == q.id), None)
+            a_to_del = [a for a in b.answers if a.question_id == q.id]
+            b.questions = [item for item in b.questions if item.id != q.id]
+            b.answers = [a for a in b.answers if a.question_id != q.id]
+            save_recall_bank(b, self.lesson_dir)
         self.history_stack.append(("deleted", q_to_del or q, a_to_del))
         self.deleted_count += 1
         self.last_status = f"🗑 Eliminata domanda {q.id} e relative risposte."
@@ -668,28 +670,30 @@ class StaleRecallApp(App[None]):
             self.last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
             self._update_view()
             return
-        from rt.pipeline.recall import load_recall_bank, save_recall_bank
+        from rt.pipeline.recall import load_recall_bank, save_recall_bank, recall_bank_lock
         self.idx -= 1
         action_type, hist_q, hist_extra = self.history_stack.pop()
-        b = load_recall_bank(self.lesson_dir)
-        if action_type == "kept":
-            bq = next((item for item in b.questions if item.id == hist_q), None)
-            if bq:
-                bq.content_fingerprint = hist_extra
+        with recall_bank_lock(self.lesson_dir):
+            b = load_recall_bank(self.lesson_dir)
+            if action_type == "kept":
+                bq = next((item for item in b.questions if item.id == hist_q), None)
+                if bq:
+                    bq.content_fingerprint = hist_extra
+                    save_recall_bank(b, self.lesson_dir)
+                self.kept_count -= 1
+            elif action_type == "deleted":
+                if not any(item.id == hist_q.id for item in b.questions):
+                    b.questions.append(hist_q)
+                for a in hist_extra:
+                    b.answers.append(a)
                 save_recall_bank(b, self.lesson_dir)
-            self.kept_count -= 1
-        elif action_type == "deleted":
-            if not any(item.id == hist_q.id for item in b.questions):
-                b.questions.append(hist_q)
-            for a in hist_extra:
-                b.answers.append(a)
-            save_recall_bank(b, self.lesson_dir)
-            self.deleted_count -= 1
-        elif action_type == "skipped":
-            self.skipped_count -= 1
+                self.deleted_count -= 1
+            elif action_type == "skipped":
+                self.skipped_count -= 1
         prev_q = self.stale_questions[self.idx]
         self.last_status = f"◀️ Tornato alla domanda precedente ({prev_q.id})."
         self._update_view()
+
 
     def action_quit_session(self) -> None:
         self.last_status = "⏹ Revisione interrotta."

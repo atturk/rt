@@ -1066,7 +1066,7 @@ def run_daemon(state_dir: str = None) -> None:
         runtime_cfg = load_config().telegram
         resolved_state_dir = state_dir or runtime_cfg.state_dir
 
-        application = Application.builder().token(cfg.bot_token).build()
+        application = Application.builder().token(cfg.bot_token).concurrent_updates(True).build()
         application.bot_data["state_dir"] = resolved_state_dir
 
         application.add_handler(CommandHandler("quit", handle_quit))
