@@ -4,6 +4,7 @@ Gestione ritaglio e riproduzione audio in background durante la revisione intera
 """
 
 import os
+import json
 import shutil
 import tempfile
 import subprocess
@@ -90,19 +91,78 @@ def play_clip_background(clip_path: str) -> subprocess.Popen:
     )
 
 
-def resolve_unit_time_range(unit, segments: List) -> Tuple[float, float]:
-    """Risolve l'intervallo temporale (start_s, end_s) di una DraftUnit nel file audio della lezione.
+def get_terminal_bounds() -> Optional[Tuple[int, int, int, int]]:
+    """Rileva le coordinate (x1, y1, x2, y2) della finestra attiva di Terminal.app via AppleScript."""
+    try:
+        script = 'tell application "Terminal" to get bounds of front window'
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=1.0)
+        if res.returncode == 0 and res.stdout.strip():
+            parts = [int(p.strip()) for p in res.stdout.strip().split(",")]
+            if len(parts) == 4:
+                return (parts[0], parts[1], parts[2], parts[3])
+    except Exception:
+        pass
+    return None
 
-    Mappa start_segment_id / end_segment_id sui Segment corrispondenti tramite il loro .id.
-    Solleva ValueError se uno dei segmenti non è trovato.
-    Usato dal recall (bottone 🔊) e centralizza la stessa logica già presente in issue_review.py,
-    evitando ulteriori duplicazioni inline.
-    """
-    seg_by_id = {s.id: s for s in segments}
-    start_seg = seg_by_id.get(unit.start_segment_id)
-    end_seg = seg_by_id.get(unit.end_segment_id)
-    if start_seg is None:
-        raise ValueError(f"Segmento '{unit.start_segment_id}' non trovato per l'unità '{unit.unit_id}'.")
-    if end_seg is None:
-        raise ValueError(f"Segmento '{unit.end_segment_id}' non trovato per l'unità '{unit.unit_id}'.")
-    return start_seg.start_seconds, end_seg.end_seconds
+
+def get_mpv_last_position_path() -> str:
+    return os.path.expanduser("~/.rt/mpv_last_position.json")
+
+
+def load_last_mpv_geometry() -> str:
+    path = get_mpv_last_position_path()
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if "geometry" in data and data["geometry"]:
+                return data["geometry"]
+        except Exception:
+            pass
+    return "+800+50"
+
+
+def save_last_mpv_geometry(geometry: str) -> None:
+    path = get_mpv_last_position_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"geometry": geometry}, f)
+    except Exception:
+        pass
+
+
+def calculate_mpv_geometry() -> str:
+    bounds = get_terminal_bounds()
+    if bounds:
+        x1, y1, x2, y2 = bounds
+        h = max(320, min(y2 - y1, 540))
+        geom = f"480x{h}+{x2}+{y1}"
+        save_last_mpv_geometry(geom)
+        return geom
+    return load_last_mpv_geometry()
+
+
+def get_or_create_unit_clip(lesson_dir: str, unit, segments: List) -> Optional[str]:
+    from rt.core.lesson_paths import lesson_path
+    audio_path = resolve_audio_path(lesson_dir)
+    if not audio_path:
+        return None
+    clips_dir = lesson_path(lesson_dir, "recall_audio_clips")
+    os.makedirs(clips_dir, exist_ok=True)
+    ext = os.path.splitext(audio_path)[1] or ".mp3"
+    clip_path = os.path.join(clips_dir, f"{unit.unit_id}{ext}")
+    if not os.path.isfile(clip_path):
+        start_s, end_s = resolve_unit_time_range(unit, segments)
+        tmp_clip = cut_clip(audio_path, start_s, end_s)
+        shutil.move(tmp_clip, clip_path)
+    return clip_path
+
+
+def resolve_unit_time_range(unit, segments: List) -> Tuple[float, float]:
+    """Risolve l'intervallo temporale (start_s, end_s) di una DraftUnit nel file audio della lezione."""
+    start_seg = next((s for s in segments if s.id == unit.start_segment_id), None)
+    end_seg = next((s for s in segments if s.id == unit.end_segment_id), None)
+    if not start_seg or not end_seg:
+        raise ValueError(f"Segmenti per l'unità '{unit.unit_id}' non trovati (start: {unit.start_segment_id}, end: {unit.end_segment_id}).")
+    return (float(start_seg.start_seconds), float(end_seg.end_seconds))

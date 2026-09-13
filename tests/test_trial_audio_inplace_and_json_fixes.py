@@ -117,96 +117,70 @@ async def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     mock_proc3 = MagicMock()
     mock_proc3.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/c1.mp3", "/tmp/c2.mp3", "/tmp/c3.mp3"]) as mock_cut, \
-         patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]):
+    mock_proc1 = MagicMock()
+    mock_proc1.poll.return_value = None
+    mock_proc2 = MagicMock()
+    mock_proc2.poll.return_value = None
+
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/c1.mp3"), \
+         patch("subprocess.Popen", side_effect=[mock_proc1, mock_proc2]) as mock_popen:
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
-        monotonic_times = [100.0, 104.5, 104.5, 106.0, 107.0, 108.0]
-        app._get_time = lambda: monotonic_times.pop(0) if monotonic_times else 200.0
         async with app.run_test() as pilot:
             await pilot.press("p")
             await pilot.press("p")
             await pilot.press("p")
-            await pilot.press("o")
             await pilot.press("a")
 
-
     assert app.return_value is True
-    assert mock_cut.call_count == 3
-    audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
-    # 1° Play: 5.0 a 25.0
-    assert mock_cut.call_args_list[0][0] == (audio_path, 5.0, 25.0)
-    # Resume dopo 4.5s: 5.0 + 4.5 = 9.5 a 25.0
-    assert mock_cut.call_args_list[1][0] == (audio_path, 9.5, 25.0)
-    # Restart O: 5.0 a 25.0
-    assert mock_cut.call_args_list[2][0] == (audio_path, 5.0, 25.0)
-
+    assert mock_popen.call_count == 2
     mock_proc1.terminate.assert_called_once()
-    mock_proc1.send_signal.assert_not_called()
+    mock_proc2.terminate.assert_called_once()
 
 
 @pytest.mark.anyio
-async def test_science_clip_claim_vs_unit_fallback(tmp_path):
-    """Test 4: Science review P usa iss.segment_id ± 5s come primario, fallback a unità se non risolvibile."""
+async def test_science_clip_unit_playback(tmp_path):
+    """Test 4: Science review P riproduce l'intera unità con mpv."""
     from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
-    # 1. Caso normale: segment_id risolvibile (seg_000001: 10s-20s -> 5s-25s)
-    sci_issue_with_seg = ScienceIssue(
+    sci_issue = ScienceIssue(
         id="sci_001",
         type=ScienceType.ERR_RECONSTRUCTION,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
-        segment_id="seg_000001",
         claim="abbiamo una reazione termica",
         reason="in realtà è atermica",
         suggested_fix="abbiamo una reazione atermica"
     )
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([sci_issue_with_seg.model_dump(mode="json")], f)
+        json.dump([sci_issue.model_dump(mode="json")], f)
 
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/c_sci1.mp3") as mock_cut, \
-         patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
+    dummy_clip = os.path.join(lesson_dir, "audio.mp3")
 
-        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[sci_issue_with_seg])
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.cut_clip", return_value=dummy_clip) as mock_cut, \
+         patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[sci_issue])
         async with app.run_test() as pilot:
             await pilot.press("p")
             await pilot.press("a")
 
     assert app.return_value is True
     audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
-    # Range primario basato su seg_000001 (10s-20s -> ±5s: 5.0s a 25.0s)
-    mock_cut.assert_called_once_with(audio_path, 5.0, 25.0)
+    # Riproduce l'intera unità U1 (seg_000001 start=10.0s a seg_000002 end=30.0s)
+    mock_cut.assert_called_once_with(audio_path, 10.0, 30.0)
+    mock_popen.assert_called_once()
+    mock_proc.terminate.assert_called_once()
 
-    # 2. Caso fallback: segment_id inesistente/non in seg_by_id -> fallback a intera unità U1 (10.0s a 30.0s)
-    sci_issue_fallback = ScienceIssue(
-        id="sci_002",
-        type=ScienceType.ERR_RECONSTRUCTION,
-        severity=ScienceSeverity.HIGH,
-        unit_id="U1",
-        segment_id="seg_999999_non_esistente",
-        claim="abbiamo una reazione termica",
-        reason="in realtà è atermica",
-        suggested_fix="abbiamo una reazione atermica"
-    )
-    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([sci_issue_fallback.model_dump(mode="json")], f)
-
-    with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/c_sci2.mp3") as mock_cut2, \
-         patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
-
-        app2 = IssueReviewApp(lesson_dir=lesson_dir, to_review=[sci_issue_fallback])
-        async with app2.run_test() as pilot:
-            await pilot.press("p")
-            await pilot.press("a")
-
-    assert app2.return_value is True
-    # Fallback sull'unità intera U1 (seg_000001 start=10.0s a seg_000002 end=30.0s)
-    mock_cut2.assert_called_once_with(audio_path, 10.0, 30.0)
 
 
 @pytest.mark.anyio
