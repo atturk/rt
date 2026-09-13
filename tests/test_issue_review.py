@@ -223,7 +223,9 @@ def test_telegram_callback_indietro(tmp_path, monkeypatch):
     assert len(ledger.decisions) == 0
 
 
-def test_interactive_terminal_backward_navigation(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_interactive_terminal_backward_navigation(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
@@ -234,20 +236,24 @@ def test_interactive_terminal_backward_navigation(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        await pilot.press("b")
+        await pilot.press("a")
+        await pilot.press("b")
+        await pilot.press("r")
+        await pilot.press("a")
 
-    inputs = iter(["b", "a", "b", "r", "a"])
-    with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
-
-    assert res is True
+    assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     decisions_map = {d.issue_id: d for d in ledger.decisions}
     assert decisions_map["sci_1"].decision == "rejected"
     assert decisions_map["sci_2"].decision == "accepted"
 
 
-def test_history_mode_terminal_and_telegram(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_history_mode_terminal_and_telegram(tmp_path, capsys):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
@@ -266,18 +272,20 @@ def test_history_mode_terminal_and_telegram(tmp_path, monkeypatch, capsys):
     assert "⚠️  La modalità --history è disponibile solo da terminale" in out
 
     # 2. Terminal con history -> mostra issue già decisa e ri-decisione aggiunge nuova voce
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    with patch("builtins.input", side_effect=["r"]):
-        res_term = run_interactive_review(lesson_dir, "science", channel="terminal", history=True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues, history=True)
+    async with app.run_test() as pilot:
+        await pilot.press("r")
 
-    assert res_term is True
+    assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 2
     assert ledger.decisions[0].decision == "accepted"
     assert ledger.decisions[1].decision == "rejected"
 
 
-def test_history_mode_backward_science_does_not_revert_untouched_historical_decision(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_history_mode_backward_science_does_not_revert_untouched_historical_decision(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
@@ -290,13 +298,13 @@ def test_history_mode_backward_science_does_not_revert_untouched_historical_deci
 
     record_decision(lesson_dir, "sci_1", "accepted", resolved_text="fix 1")
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues, history=True)
+    async with app.run_test() as pilot:
+        await pilot.press("s")
+        await pilot.press("b")
+        await pilot.press("q")
 
-    inputs = iter(["s", "b", "q"])
-    with patch("builtins.input", side_effect=lambda prompt="": next(inputs)):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal", history=True)
-
-    assert res is False
+    assert app.return_value is False
     ledger_after = load_ledger(lesson_dir)
     assert len(ledger_after.decisions) == 1
     assert ledger_after.decisions[0].issue_id == "sci_1"

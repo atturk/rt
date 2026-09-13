@@ -487,18 +487,15 @@ def _create_sample_science_issue(id_str="sci_001", unit_id="U1", claim="distilla
     )
 
 
-def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_asr_interactive_p_and_m_keys(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
     sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    keys = iter(["p", "e"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
@@ -507,9 +504,12 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc) as mock_play, \
          patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di rettificazione abbiamo una reazione esotermica importante.") as mock_edit:
 
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("e")
 
-    assert res is True
+    assert app.return_value is True
     mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 10.0, 30.0)
     mock_play.assert_called_once_with("/tmp/test_clip.mp3")
     mock_edit.assert_called_once()
@@ -520,19 +520,15 @@ def test_asr_interactive_p_and_m_keys(tmp_path, monkeypatch):
     assert ledger.decisions[0].resolved_text == "Nel processo di rettificazione abbiamo una reazione esotermica importante."
 
 
-def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
     sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    # Sequenza: P (avvia) -> P (pausa terminate) -> P (riprendi con seek) -> O (riavvia da capo) -> A (accetta e ferma audio)
-    keys = iter(["p", "p", "p", "o", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc1 = MagicMock()
     mock_proc1.poll.return_value = None
@@ -541,15 +537,21 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
     mock_proc3 = MagicMock()
     mock_proc3.poll.return_value = None
 
-    monotonic_times = [100.0, 103.0, 103.0, 104.0, 105.0, 106.0]
-    monkeypatch.setattr("time.monotonic", lambda: monotonic_times.pop(0) if monotonic_times else 200.0)
-
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3", "/tmp/clip3.mp3"]) as mock_cut, \
          patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]) as mock_play:
 
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        monotonic_times = [100.0, 103.0, 103.0, 104.0, 105.0, 106.0]
+        app._get_time = lambda: monotonic_times.pop(0) if monotonic_times else 200.0
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("o")
+            await pilot.press("a")
 
-    assert res is True
+
+    assert app.return_value is True
     assert mock_cut.call_count == 3
     audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
     assert mock_cut.call_args_list[0][0] == (audio_path, 10.0, 30.0)
@@ -560,34 +562,31 @@ def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch, ca
     mock_proc2.terminate.assert_called()
     mock_proc3.terminate.assert_called()
 
-    captured = capsys.readouterr()
-    assert "Riproduzione audio in corso" not in captured.out
-    assert "In pausa" not in captured.out
-    assert "Ripreso" not in captured.out
 
-
-def test_audio_error_messages_remain_visible(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_audio_error_messages_remain_visible(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
     sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    keys = iter(["p", "q"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=RuntimeError("ffmpeg error test")):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            assert app.last_status is not None
+            assert "ffmpeg error test" in app.last_status
+            await pilot.press("q")
 
-    assert res is False
-    captured = capsys.readouterr()
-    assert "SCIENCE REVIEW" in captured.out or "Science Review" in captured.out
+    assert app.return_value is False
 
 
-def test_unrecognized_key_no_action_no_advance(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_unrecognized_key_no_action_no_advance(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -595,21 +594,21 @@ def test_unrecognized_key_no_action_no_advance(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        await pilot.press("z")
+        assert app.idx == 0
+        await pilot.press("a")
 
-    assert UNKNOWN_KEY != ""
-    keys = iter(["z", UNKNOWN_KEY, "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
-    res = run_interactive_review(lesson_dir, "science", channel="terminal")
-    assert res is True
-
+    assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "accepted"
 
 
-def test_unknown_key_in_science_review_no_action(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_unknown_key_in_science_review_no_action(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -627,20 +626,21 @@ def test_unknown_key_in_science_review_no_action(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        await pilot.press("x")
+        assert app.idx == 0
+        await pilot.press("a")
 
-    keys = iter([UNKNOWN_KEY, "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
-    res = run_interactive_review(lesson_dir, "science", channel="terminal")
-    assert res is True
-
+    assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "accepted"
 
 
-def test_arrow_keys_aliases_left_right(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_arrow_keys_aliases_left_right(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -651,21 +651,25 @@ def test_arrow_keys_aliases_left_right(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        await pilot.press("right")
+        assert app.idx == 1
+        await pilot.press("left")
+        assert app.idx == 0
+        await pilot.press("a")
+        await pilot.press("a")
 
-    keys = iter(["RIGHT", "LEFT", "a", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
-    res = run_interactive_review(lesson_dir, "science", channel="terminal")
-    assert res is True
-
+    assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 2
     assert ledger.decisions[0].issue_id == "sci_001"
     assert ledger.decisions[1].issue_id == "sci_002"
 
 
-def test_context_fallback_when_draft_mismatch(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_context_fallback_when_draft_mismatch(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -673,15 +677,16 @@ def test_context_fallback_when_draft_mismatch(tmp_path, monkeypatch, capsys):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    keys = iter(["a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        await pilot.press("a")
 
-    res = run_interactive_review(lesson_dir, "science", channel="terminal")
-    assert res is True
+    assert app.return_value is True
 
 
-def test_science_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_science_interactive_m_missing_markers_retries(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -689,21 +694,19 @@ def test_science_interactive_m_missing_markers_retries(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+    async with app.run_test() as pilot:
+        await pilot.press("m")
 
-    keys = iter(["m"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
-    with patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Nel processo di distillazione abbiamo una reazione esotermica importante."):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
-
-    assert res is True
+    assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "rejected"
 
 
-def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_science_interactive_p_and_e_keys(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -721,11 +724,6 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    keys = iter(["p", "e"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
-
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
@@ -733,9 +731,12 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc) as mock_play, \
          patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento iniziale\nabbiamo una reazione endotermica controllata") as mock_edit:
 
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("e")
 
-    assert res is True
+    assert app.return_value is True
     mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 10.0, 30.0)
     mock_play.assert_called_once_with("/tmp/test_clip_sci.mp3")
     mock_edit.assert_called_once()
@@ -746,61 +747,15 @@ def test_science_interactive_p_and_e_keys(tmp_path, monkeypatch):
     assert ledger.decisions[0].resolved_text == "abbiamo una reazione endotermica controllata"
 
 
-def test_run_interactive_review_uses_raw_mode_once(tmp_path, monkeypatch):
-    lesson_dir = str(tmp_path)
-    _setup_review_environment(lesson_dir)
-
-    sci_issues = [
-        _create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione"),
-        _create_sample_science_issue("sci_002", "U1", "reazione", "reazione")
-    ]
-    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
-        json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    raw_mode_enter_count = 0
-    raw_mode_exit_count = 0
-
-    import contextlib
-    @contextlib.contextmanager
-    def mock_raw_mode():
-        nonlocal raw_mode_enter_count, raw_mode_exit_count
-        raw_mode_enter_count += 1
-        try:
-            yield True
-        finally:
-            raw_mode_exit_count += 1
-
-    monkeypatch.setattr("rt.pipeline.issue_review.raw_mode", mock_raw_mode)
-
-    calls_already_raw = []
-    keys = iter(["a", "a"])
-    def mock_read_key(already_raw=False):
-        calls_already_raw.append(already_raw)
-        return next(keys)
-
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", mock_read_key)
-
-    res = run_interactive_review(lesson_dir, "science", channel="terminal")
-    assert res is True
-    assert raw_mode_enter_count == 1
-    assert raw_mode_exit_count == 1
-    assert calls_already_raw == [True, True]
-
-
-def test_silent_p_o_and_unrecognized_keys_science(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_silent_p_o_and_unrecognized_keys_science(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
     sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    keys = iter(["p", "p", "p", "o", "z", UNKNOWN_KEY, "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc1 = MagicMock()
     mock_proc1.poll.return_value = None
@@ -809,42 +764,46 @@ def test_silent_p_o_and_unrecognized_keys_science(tmp_path, monkeypatch, capsys)
 
     with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3"]), \
          patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2]):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("o")
+            await pilot.press("z")
+            await pilot.press("a")
 
-    assert res is True
-    out = capsys.readouterr().out
-    assert "Azione [" in out
-    assert "✔ Correzione scientifica applicata." in out
+    assert app.return_value is True
 
 
-def test_quit_during_p_sequence_interrupts_cleanly(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_quit_during_p_sequence_interrupts_cleanly(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
     sci_issues = [_create_sample_science_issue("sci_001", "U1", "distillazione", "distillazione")]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-
-    keys = iter(["p", "p", "q"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
 
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
     with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/clip1.mp3"), \
          patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        async with app.run_test() as pilot:
+            await pilot.press("p")
+            await pilot.press("p")
+            await pilot.press("q")
 
-    assert res is False
+    assert app.return_value is False
     mock_proc.terminate.assert_called()
-    out = capsys.readouterr().out
-    assert "⏹ Revisione interrotta. I progressi finora sono stati salvati." in out
-    assert "Azione [" in out
 
 
-def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path, monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path):
+    from rt.pipeline.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -852,18 +811,53 @@ def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path, monkeypatch, ca
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    with patch("rt.pipeline.issue_review.edit_text_in_editor", side_effect=["", "Nel processo di distillazione abbiamo una reazione esotermica importante."]):
+        app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
+        async with app.run_test() as pilot:
+            await pilot.press("e")  # Returns empty -> warning, does not advance
+            assert app.idx == 0
+            assert "Nessuna modifica" in (app.last_status or "")
+            await pilot.press("e")  # Returns edited text -> advances
+            assert app.idx == 1
 
-    keys = iter(["m", "m", "a"])
-    monkeypatch.setattr("rt.pipeline.issue_review.read_single_key", lambda *a, **kw: next(keys))
+    assert app.return_value is True
 
-    with patch("rt.pipeline.issue_review.edit_text_in_editor", side_effect=["Nel processo di distillazione abbiamo una reazione esotermica importante.", ""]):
-        res = run_interactive_review(lesson_dir, "science", channel="terminal")
 
-    assert res is True
-    out = capsys.readouterr().out
-    assert "Azione [" in out
-    assert "✔ Formulazione originale mantenuta." in out
+@pytest.mark.anyio
+async def test_asr_risk_issue_actions(tmp_path):
+    """Testa i comandi specifici per issue di tipo ERR_ASR_ST."""
+    from rt.pipeline.issue_review import IssueReviewApp
+    lesson_dir = str(tmp_path)
+    _setup_review_environment(lesson_dir)
+
+    asr_risk_issue = ScienceIssue(
+        id="asr_001",
+        type=ScienceType.ERR_ASR_ST,
+        severity=ScienceSeverity.HIGH,
+        unit_id="U1",
+        segment_id="seg_000001",
+        claim="segmento raw sospetto",
+        reason="confidenza bassa",
+        suggested_fix=None,
+    )
+    with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
+        json.dump([asr_risk_issue.model_dump(mode="json")], f)
+
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[asr_risk_issue])
+    async with app.run_test() as pilot:
+        # Premere 'a' deve mostrare errore e non avanzare
+        await pilot.press("a")
+        assert app.idx == 0
+        assert "non valida per issue ASR" in (app.last_status or "")
+        # Premere 'm' accetta il testo dell'unità
+        await pilot.press("m")
+        assert app.idx == 1
+
+    assert app.return_value is True
+    ledger = load_ledger(lesson_dir)
+    assert len(ledger.decisions) == 1
+    assert ledger.decisions[0].decision == "accepted"
+
 
 
 
