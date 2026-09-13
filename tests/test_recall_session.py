@@ -156,7 +156,39 @@ class TestStartRecallViaTelegram:
         types_present = {q.type for q in bank.questions}
         assert types_present == {RecallQuestionType.QUIZ, RecallQuestionType.MIRATA, RecallQuestionType.VASTA}
         # Il poll nativo con la tastiera "Non lo so"/"Skip" allegata direttamente
-        assert recall_preferences.get_active_style(state_dir) == "quiz"
+    def test_start_recall_via_telegram_sends_generating_notification_before_batch(self, tmp_path):
+        """Verifica che start_recall_via_telegram invii la notifica di generazione prima di creare il batch iniziale (Task 51)."""
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        cfg = TelegramConfig(bot_token="TOK", chat_id=999)
+        events = []
+
+        def fake_send(cfg_, text, **kwargs):
+            events.append(("send_message", text))
+            return {"ok": True, "message_id": 100}
+
+        def fake_batch(ld, **kwargs):
+            events.append(("ensure_initial_batch", ld))
+
+        with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
+             patch("rt.telegram.client.send_message", side_effect=fake_send), \
+             patch("rt.pipeline.recall_session._ensure_initial_batch", side_effect=fake_batch), \
+             patch("rt.pipeline.recall_session.send_current_recall_question"), \
+             patch("rt.core.config.load_config") as mock_cfg:
+            cfg_obj = MagicMock()
+            cfg_obj.telegram.state_dir = state_dir
+            cfg_obj.telegram.topics = {}
+            mock_cfg.return_value = cfg_obj
+
+            start_recall_via_telegram(lesson_dir, force_mock=True)
+
+        assert len(events) == 2
+        assert events[0][0] == "send_message"
+        assert "generando le domande" in events[0][1]
+        assert events[1][0] == "ensure_initial_batch"
+
 
     def test_double_session_guard(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")

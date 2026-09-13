@@ -213,6 +213,12 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: 
         tg_session.start_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, "recall", lesson_dir)
         if style:
             recall_preferences.set_active_style(runtime_cfg.state_dir, style)
+
+        tg_client.send_message(
+            tg_cfg,
+            text="⏳ Sto generando le domande per il recall, ti avviso appena il primo batch è pronto.",
+            message_thread_id=thread_id,
+        )
     except TelegramConfigError:
         print("⚠️  Telegram non configurato: impossibile avviare il recall su Telegram. Usa --channel terminal.")
         return
