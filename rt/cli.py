@@ -625,10 +625,23 @@ def cmd_config(args: argparse.Namespace) -> None:
         run_config_wizard()
 
 
-def main():
+def main(argv: Optional[List[str]] = None) -> None:
+    raw_args = sys.argv[1:] if argv is None else argv
+    if raw_args and raw_args[0] in ("-v", "--version"):
+        from rt.core.version import run_version
+        run_version(_default_project_root())
+        sys.exit(0)
+    elif raw_args and raw_args[0] in ("-u", "--update"):
+        from rt.core.version import run_update
+        run_update(_default_project_root())
+        sys.exit(0)
+
     load_env_file(override=True)
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
     epilog_text = (
+        "Opzioni generali:\n"
+        "  -v, --version       Mostra la versione corrente e verifica aggiornamenti\n"
+        "  -u, --update        Aggiorna RT all'ultima versione disponibile\n\n"
         "Comandi diagnostici (uso avanzato):\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato"
@@ -793,7 +806,7 @@ def main():
     p_vdr.add_argument("lesson_dir", help="Directory della lezione")
     p_vdr.set_defaults(func=cmd_validate_draft)
 
-    normalized_argv = normalize_review_cli_args(sys.argv[1:])
+    normalized_argv = normalize_review_cli_args(raw_args)
     args = parser.parse_args(normalized_argv)
     from rt.llm.errors import LLMFailure
     from pydantic import ValidationError
