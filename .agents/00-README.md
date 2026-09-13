@@ -105,15 +105,41 @@ coerenza ed eliminare il RuntimeWarning residuo lì, non toccato da Antigravity 
 (fix diretto, `<commit successivo>`). `rt/core/keyboard.py` rimosso, zero riferimenti residui
 (verificato con grep indipendente). Migrazione a Textual COMPLETA su tutte e 4 le schermate.
 
+Rilasciato tag v3.1.0 (git) per permettere l'aggiornamento via `rt -u` sulle altre installazioni.
+
+Quarto giro di test reale (MacBook Air, indagine via SSH sui log reali). Fix diretti applicati e
+pushati: voce Telegram in active recall salvata con estensione `.oga` non riconosciuta da
+macparakeet-cli (serve `.ogg`, stesso contenitore); bottone 📖 dopo `/quit` ricostruiva la
+tastiera includendo ⏭️ (skip) anche ad attività chiusa, ora verifica se la sessione è ancora
+attiva; testo ridondante rimosso da un prompt materia Telegram; Ctrl+C durante lo streaming LLM
+NON deve più attivare il fallback (era trattato come un errore qualunque, arrivava a provare
+altre route invece di fermarsi subito) — rimossa anche `UserAbortedFailure`, rimasta orfana.
+
+**Scoperta importante durante l'indagine (via log reali `llm_debug.log` sull'Air)**: il Task 63
+(esaurisci il pool round-robin prima del fallback) interagisce male con `max_attempts` quando il
+pool è più grande del cap configurato — es. `review.yaml` reale con 6 chiavi round-robin e
+`max_attempts: 3`: un errore sistemico (503 "high demand" su Google, non isolato a una chiave)
+esaurisce il cap SOLO ciclando 3 delle 6 chiavi del pool, senza mai raggiungere il
+`fallback.generic` configurato — confermato riga per riga nel log reale. Portato all'utente come
+punto da decidere (vedi sotto), non ancora un task.
+
 ## Task da fare, in ordine
 
-Nessuno al momento. Tutti i task fino al 68 sono completati e verificati (vedi "Stato" sopra) —
-in attesa di nuovi round di test reale da parte dell'utente per far emergere i prossimi.
+1. **69** — In fase di build, sposta (non copia) la cartella lezione in `lessons_root` se
+   configurato: oggi non esiste alcuna logica che lo fa (verificato leggendo il codice, non un
+   fix precedente rotto), la cartella lezione resta sempre accanto all'audio sorgente.
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
-Nessuna al momento: i tre punti del giro precedente sono stati tutti decisi (vedi "Stato" sopra e
-i Task 63-68).
+- **Interazione `max_attempts` / esaurimento pool round-robin (Task 63)**: vedi "Stato" sopra —
+  serve decidere come `max_attempts` debba comportarsi rispetto alla dimensione del pool
+  round-robin, altrimenti un pool grande con un cap piccolo può impedire strutturalmente di
+  raggiungere mai il fallback dedicato.
+- **Nuovo comando `rt cost <cartella>` / `--split`**: tracciamento del costo cumulativo di TUTTE
+  le fasi/job fino al momento della richiesta (inclusa la generazione delle domande di recall,
+  oggi forse non loggata) — richiede decisioni di design su formato di storage/persistenza del
+  log dei costi prima di scrivere il task. Domande fatte all'utente in chat, in attesa di
+  risposta.
 
 ## Dopo ogni task numerato (obbligatorio, non solo alla fine)
 
