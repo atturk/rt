@@ -859,6 +859,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                                     if gl == phase_choice:
                                         curr_idx = i
                                         break
+                            console.clear()
                             live.start()
                         elif chosen_opt == 2:  # Annulla
                             live.stop()
@@ -936,6 +937,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                                 profiles[p_name] = p_dict
                                 _save_model_profiles(general_data, profiles)
                                 pending_selections[group_label] = p_name
+                            console.clear()
                             live.start()
                         else:
                             pending_selections[group_label] = selected_choice

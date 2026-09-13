@@ -1628,11 +1628,33 @@ def test_configure_config_parser_mutually_exclusive():
     assert args_models.telegram is False
 
     args_telegram = parser.parse_args(["--telegram"])
-    assert args_telegram.models is False
     assert args_telegram.telegram is True
+    assert args_telegram.models is False
 
     with pytest.raises(SystemExit):
         parser.parse_args(["--models", "--telegram"])
 
 
+def test_configure_llm_provider_section_clears_console_on_new_profile(tmp_path):
+    """Verifica che console.clear() venga invocato dopo _create_new_model_profile nel carosello rt config (Task 46)."""
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    general_file = os.path.join(config_dir, "general.yaml")
+    with open(general_file, "w", encoding="utf-8") as f:
+        f.write("version: '2.0.0'\ncredentials: []\n")
+
+    outline_job = os.path.join(config_dir, "outline.yaml")
+    with open(outline_job, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"primary": {"provider": None, "model": None}}, f)
+
+    env_file = str(tmp_path / ".env")
+
+    mock_clear = MagicMock()
+
+    with patch("rich.console.Console.clear", mock_clear), \
+         patch("rt.pipeline.configure._create_new_model_profile", return_value=("p_new", {"provider": "google"})), \
+         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]):
+        _configure_llm_provider_section(config_dir, env_file)
+
+    mock_clear.assert_called()
 
