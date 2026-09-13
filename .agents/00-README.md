@@ -180,17 +180,21 @@ d'implementazione ancora (in attesa di conferma utente su alcuni, altri già chi
    `_state/llm_debug.log` (dato già esistente), overview vs dettaglio massimo per fase/unità.
 4. **72** — Dopo il build, rileva in modo affidabile (PID file) se il demone Telegram è già
    attivo; se non lo è, chiedi conferma e avvialo in automatico in una nuova finestra Terminal.
+5. **73** — Abilita `concurrent_updates(True)` nel demone Telegram (causa reale del "freeze"
+   percepito durante generazione/eval) insieme al locking del recall bank, oggi assente, per
+   evitare race condition una volta abilitata la concorrenza.
+6. **74** — Redesign della card di review scientifica: niente più timecode, claim evidenziato in
+   rosso inline nel testo dell'unità, correzione proposta in verde subito sotto (stile diff),
+   mini legenda sotto la critica. Mockup approvato dall'utente in
+   `/Users/attilioturco/Desktop/rt_review_card_mockup.py` (rosso semplice, non barrato).
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
-- **Bot Telegram "freezato" durante generazione**: confermare l'approccio
-  `concurrent_updates(True)` + locking del recall bank (vedi "Stato" sopra) invece
-  dell'idea originale a sottoprocesso/altro terminale.
-- **Companion audio player (mpv) per la review scientifica**: design da rifinire con l'utente
-  (posizionamento finestra, esatta logica apri/chiudi) prima di scrivere il task — sostituirebbe
+- **Companion audio player (mpv) per la review scientifica**: ricerca fatta (mpv è un buon
+  candidato: frecce già mappate a seek, `[`/`]`/`{`/`}` a velocità, `--geometry` per posizionare
+  la finestra), ma il design esatto (posizionamento finestra, logica apri/chiudi legata al tasto
+  P e alle azioni nel terminale) va rifinito con l'utente prima di scrivere il task — sostituirà
   interamente il player in-terminale e i tasti P/O attuali in `issue_review.py`.
-- **Redesign della card di review** (Allegato 2): mockup costruito e inviato all'utente per
-  valutazione visiva prima di implementare per davvero — in attesa di conferma/modifiche.
 
 ## Dopo ogni task numerato (obbligatorio, non solo alla fine)
 
