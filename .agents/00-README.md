@@ -120,26 +120,32 @@ altre route invece di fermarsi subito) — rimossa anche `UserAbortedFailure`, r
 pool è più grande del cap configurato — es. `review.yaml` reale con 6 chiavi round-robin e
 `max_attempts: 3`: un errore sistemico (503 "high demand" su Google, non isolato a una chiave)
 esaurisce il cap SOLO ciclando 3 delle 6 chiavi del pool, senza mai raggiungere il
-`fallback.generic` configurato — confermato riga per riga nel log reale. Portato all'utente come
-punto da decidere (vedi sotto), non ancora un task.
+`fallback.generic` configurato — confermato riga per riga nel log reale. Deciso con l'utente: il
+cap effettivo si alza automaticamente per i job round-robin, senza bisogno di toccare la config a
+mano → Task 70.
+
+Deciso anche il design di `rt cost` (nuovo comando diagnostico, "niche"): nessuna nuova
+infrastruttura di logging necessaria, `_state/llm_debug.log` (già scritto in append per OGNI
+chiamata LLM di OGNI fase, incluse generazione/valutazione domande di recall — verificato nel
+codice) è già la fonte dati completa. `rt cost` (overview) somma tutto incluse le chiamate fallite
+con costo parziale non nullo (l'utente vuole vedere anche lo spreco reale); `rt cost --split`
+(debug dei costi) mostra il dettaglio massimo per fase e per unità → Task 71.
 
 ## Task da fare, in ordine
 
 1. **69** — In fase di build, sposta (non copia) la cartella lezione in `lessons_root` se
    configurato: oggi non esiste alcuna logica che lo fa (verificato leggendo il codice, non un
    fix precedente rotto), la cartella lezione resta sempre accanto all'audio sorgente.
+2. **70** — `max_attempts` deve alzarsi automaticamente per i job round-robin (almeno dimensione
+   pool + 1) così il fallback dedicato viene sempre raggiunto anche con un errore sistemico che
+   colpisce l'intero pool, senza richiedere modifiche manuali alla config.
+3. **71** — Nuovo comando diagnostico `rt cost <cartella> [--split]`: legge e somma
+   `_state/llm_debug.log` (dato già esistente), overview vs dettaglio massimo per fase/unità.
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
-- **Interazione `max_attempts` / esaurimento pool round-robin (Task 63)**: vedi "Stato" sopra —
-  serve decidere come `max_attempts` debba comportarsi rispetto alla dimensione del pool
-  round-robin, altrimenti un pool grande con un cap piccolo può impedire strutturalmente di
-  raggiungere mai il fallback dedicato.
-- **Nuovo comando `rt cost <cartella>` / `--split`**: tracciamento del costo cumulativo di TUTTE
-  le fasi/job fino al momento della richiesta (inclusa la generazione delle domande di recall,
-  oggi forse non loggata) — richiede decisioni di design su formato di storage/persistenza del
-  log dei costi prima di scrivere il task. Domande fatte all'utente in chat, in attesa di
-  risposta.
+Nessuna al momento: entrambi i punti del giro precedente sono stati decisi (vedi "Stato" sopra e
+i Task 70-71).
 
 ## Dopo ogni task numerato (obbligatorio, non solo alla fine)
 
