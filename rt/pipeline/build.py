@@ -9,6 +9,7 @@ segments[unit.start_segment_id].start_seconds -> format_timestamp().
 
 import os
 import re
+import shutil
 from typing import Dict, List, Optional, Any
 from rt.core.models import (
     Outline, Draft, SegmentsData, Segment,
@@ -270,6 +271,52 @@ def _atomic_write_text(filepath: str, content: str) -> None:
     os.replace(tmp_path, filepath)
 
 
+def _move_to_lessons_root_if_configured(current_dir: str) -> str:
+    """
+    Se lessons_root è configurato in general.yaml, sposta la cartella lezione
+    in lessons_root (se non vi si trova già e se non vi sono collisioni).
+    """
+    from rt.core.config import load_config
+    try:
+        cfg = load_config()
+        lessons_root = cfg.telegram.lessons_root if cfg and cfg.telegram else None
+    except Exception:
+        lessons_root = None
+
+    if not lessons_root or not str(lessons_root).strip():
+        return current_dir
+
+    lessons_root_path = os.path.abspath(str(lessons_root).strip())
+    abs_current = os.path.abspath(current_dir)
+    dest_path = os.path.join(lessons_root_path, os.path.basename(abs_current))
+    abs_dest = os.path.abspath(dest_path)
+
+    if abs_current == abs_dest or os.path.dirname(abs_current) == lessons_root_path:
+        return current_dir
+
+    if os.path.exists(abs_dest):
+        print(
+            f"⚠️  Impossibile spostare la cartella in '{dest_path}': "
+            f"esiste già un'altra cartella con quel nome in '{lessons_root_path}'. "
+            f"La lezione resta in '{abs_current}'."
+        )
+        return current_dir
+
+    os.makedirs(lessons_root_path, exist_ok=True)
+    shutil.move(abs_current, dest_path)
+    print(f"📦 Cartella spostata in: '{dest_path}'")
+
+    try:
+        from rt.core.manifest import load_manifest, save_manifest
+        m = load_manifest(dest_path)
+        if m:
+            save_manifest(m, lesson_dir=dest_path)
+    except Exception:
+        pass
+
+    return dest_path
+
+
 def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False) -> Dict[str, Any]:
     """
     Esegue la finalizzazione deterministica della lezione.
@@ -305,18 +352,20 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "build")
     if phase_status == PhaseStatus.VALID and not force and os.path.isfile(named_filepath):
+        current_dir = _move_to_lessons_root_if_configured(lesson_dir)
+        named_filepath = os.path.join(current_dir, named_filename)
         return {
             "status": "completed",
             "action": "SKIP",
             "skipped": True,
             "reason": reason,
-            "lesson_dir": lesson_dir,
-            "pre_elaborato": lesson_path(lesson_dir, "pre-elaborato.md"),
-            "rielaborato": lesson_path(lesson_dir, "rielaborato.md"),
+            "lesson_dir": current_dir,
+            "pre_elaborato": lesson_path(current_dir, "pre-elaborato.md"),
+            "rielaborato": lesson_path(current_dir, "rielaborato.md"),
             "named_file": named_filepath,
-            "errori_concettuali": lesson_path(lesson_dir, "Errori concettuali.md"),
-            "problemi_scientifici": lesson_path(lesson_dir, "Problemi scientifici.md"),
-            "telemetry_summary": lesson_path(lesson_dir, "telemetry_summary.json")
+            "errori_concettuali": lesson_path(current_dir, "Errori concettuali.md"),
+            "problemi_scientifici": lesson_path(current_dir, "Problemi scientifici.md"),
+            "telemetry_summary": lesson_path(current_dir, "telemetry_summary.json")
         }
 
     action = "FORCE" if force else "RUN"
@@ -383,6 +432,13 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
             print(f"📁 Cartella rinominata: '{os.path.basename(abs_lesson_dir)}' -> '{folder_target_name}'")
             yaml_path = lesson_path(current_dir, "info.yaml")
             named_filepath = os.path.join(current_dir, named_filename)
+
+    # Spostamento in lessons_root se configurato
+    old_current_dir = current_dir
+    current_dir = _move_to_lessons_root_if_configured(current_dir)
+    if current_dir != old_current_dir:
+        yaml_path = lesson_path(current_dir, "info.yaml")
+        named_filepath = os.path.join(current_dir, named_filename)
 
     # 7. Registrazione fingerprint build
     source_fp = compute_source_fingerprint(current_dir, "build")
