@@ -64,6 +64,7 @@ def test_cli_help_no_uso_avanzato_and_clean_headers(capsys):
 
     assert "(uso avanzato)" not in out
     assert "Comandi diagnostici:" in out
+    assert "cost" in out
     assert "validate-outline" in out
     assert "validate-draft" in out
 
@@ -81,7 +82,7 @@ def test_cli_help_examples_section(capsys):
 
 
 def test_subcommand_help_still_works(capsys):
-    for subcmd in ["setup", "prepare", "outline", "rewrite", "build", "add-images", "validate-outline", "validate-draft"]:
+    for subcmd in ["setup", "prepare", "outline", "rewrite", "build", "add-images", "validate-outline", "validate-draft", "cost"]:
         with pytest.raises(SystemExit) as exc_info:
             main([subcmd, "-h"])
         assert exc_info.value.code == 0
