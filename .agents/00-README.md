@@ -89,30 +89,26 @@ proseguire a REWRITE come se il primario avesse premuto A — corretto (ora soll
 confermato con test manuale reale** (`rt run ... --mock`, più cicli M→feedback→outline
 rigenerata): nessuna duplicazione visiva, Ctrl+Q interrompe correttamente senza approvare —
 l'ipotesi centrale della migrazione (causa del bug di duplicazione = accoppiata rich.Live+parsing
-ANSI manuale) è confermata. Via libera ai Task 65-68. Osservazione minore non bloccante: in uso
-reale (non solo nei test) `questionary.text()` dentro `app.suspend()` fallisce sempre
-silenziosamente e cade sul semplice `input()` di riserva (RuntimeWarning visibile in console) —
-funzionalmente innocuo, ma codice morto silenzioso da tenere d'occhio nel Task 65 (stesso
-meccanismo `suspend()` usato anche per l'editor esterno).
+ANSI manuale) è confermata.
+
+Task 65-68 implementati da Antigravity, verificati riga per riga: 692/692 test (calo di 5 dal
+totale precedente, corretto — sono gli unici test dedicati a `read_single_key`/`raw_mode` rimossi
+col Task 68, nessun'altra copertura persa). Qualità alta: sia `issue_review.py` (Task 65) sia il
+carosello di `configure.py` (Task 66) gestiscono correttamente l'uscita senza approvazione
+(`action_quit` esplicito con `exit(False)`/flag di stato dedicato, verificato anche l'esatto
+binding vincente per `ctrl+c`/`ctrl+q` con un test empirico) — meglio del pilota originale del
+Task 64, che avevo dovuto correggere a parte. L'osservazione lasciata in sospeso sul fallimento
+silenzioso di `questionary.text()` dentro `app.suspend()` è stata risolta correttamente nel
+Task 66 con un thread dedicato (`_run_in_thread`, `ThreadPoolExecutor`) che evita il conflitto con
+l'event loop di Textual — portato lo stesso fix anche in `outline_review.py` (Task 64) per
+coerenza ed eliminare il RuntimeWarning residuo lì, non toccato da Antigravity in questo giro
+(fix diretto, `<commit successivo>`). `rt/core/keyboard.py` rimosso, zero riferimenti residui
+(verificato con grep indipendente). Migrazione a Textual COMPLETA su tutte e 4 le schermate.
 
 ## Task da fare, in ordine
 
-Task 63, 55-59, 61-62 e 64 completati (vedi "Stato" sopra) — restano solo i 4 rimanenti della
-migrazione Textual, CONFERMATI dall'utente con test manuale reale, via libera a procedere senza
-ulteriori pause di conferma:
-
-1. **65** — Migra `issue_review.py` a Textual — la più complessa delle 4: audio in background +
-   editor esterno via `App.suspend()`.
-2. **66** — Migra il carosello ruoli-fase di `configure.py` a Textual — il file più grande, va
-   per ultimo tra le 4 schermate.
-3. **67** — Migra la pulizia "stale" di `recall_session.py` a Textual (indipendente dal 66).
-4. **68** — Rimuovi `rt/core/keyboard.py`, orfano dopo che 65-67 sono TUTTI completati.
-
-Tutti indipendenti tra loro salvo l'ordine 65/66/67→68 segnalato nei singoli file. Nel Task 66,
-verifica anche l'osservazione minore lasciata in "Stato" sopra su `questionary.text()` dentro
-`app.suspend()` (rilevante lì perché il carosello di `configure.py` usa `questionary` per
-NEW_PROFILE/REMOVE_LABEL sotto `suspend()` — il Task 65 usa `suspend()` solo per un subprocess
-editor esterno, non per `questionary`, probabilmente non affetto dallo stesso problema).
+Nessuno al momento. Tutti i task fino al 68 sono completati e verificati (vedi "Stato" sopra) —
+in attesa di nuovi round di test reale da parte dell'utente per far emergere i prossimi.
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 

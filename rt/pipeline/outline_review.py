@@ -244,13 +244,22 @@ class OutlineReviewApp(App):
         self.exit(True)
 
     def _do_modify_interaction(self) -> None:
-        feedback = ""
-        try:
-            import questionary
-            res = questionary.text("Descrivi le modifiche desiderate:").ask()
-            feedback = (res or "").strip()
-        except Exception:
-            feedback = input("\nDescrivi le modifiche desiderate: ").strip()
+        import concurrent.futures
+
+        def _ask_feedback() -> str:
+            try:
+                import questionary
+                res = questionary.text("Descrivi le modifiche desiderate:").ask()
+                return (res or "").strip()
+            except Exception:
+                return input("\nDescrivi le modifiche desiderate: ").strip()
+
+        # questionary/prompt_toolkit prova a creare un proprio event loop asyncio: eseguito nel
+        # thread dell'event loop di Textual (anche sotto suspend()) fallisce silenziosamente e
+        # cade sempre sul fallback input() — un thread dedicato senza loop già in esecuzione
+        # evita il conflitto (stesso pattern di _run_in_thread in rt/pipeline/configure.py).
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            feedback = executor.submit(_ask_feedback).result()
 
         if not feedback:
             print("Nessun feedback inserito, outline mantenuta invariata.")
