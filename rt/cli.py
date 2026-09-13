@@ -604,13 +604,19 @@ def cmd_telegram_daemon(args):
 
 
 class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    def _format_usage(self, usage, actions, groups, prefix):
+        if usage is None and any(isinstance(a, argparse._SubParsersAction) for a in actions):
+            prefix = prefix if prefix is not None else "usage: "
+            return f"{prefix}rt <comando> [opzioni]\n\n"
+        return super()._format_usage(usage, actions, groups, prefix)
+
     def _format_action(self, action):
         if isinstance(action, argparse._SubParsersAction):
-            orig_subactions = action._get_subactions
-            action._get_subactions = lambda: [a for a in orig_subactions() if a.help != argparse.SUPPRESS]
-            res = super()._format_action(action)
-            action._get_subactions = orig_subactions
-            return res
+            parts = []
+            for subaction in self._iter_indented_subactions(action):
+                if subaction.help != argparse.SUPPRESS:
+                    parts.append(self._format_action(subaction))
+            return self._join_parts(parts)
         return super()._format_action(action)
 
 
@@ -643,29 +649,41 @@ def main(argv: Optional[List[str]] = None) -> None:
     load_env_file(override=True)
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
     epilog_text = (
+        "Fasi della pipeline:\n"
+        "  setup               Esegue l'ingest di file audio, trascrizione macparakeet-cli e metadati\n"
+        "  prepare             Valida cartella ed estrae segmenti temporali\n"
+        "  outline             Genera outline strutturata con LLM\n"
+        "  rewrite             Rielabora le unità didattiche a finestre con provenance\n"
+        "  build               Finalizzazione deterministica dei Markdown\n"
+        "  add-images          Integra slide/foto o immagini web nel documento finale\n\n"
+        "Comandi diagnostici:\n"
+        "  validate-outline    Valida deterministicamente l'outline\n"
+        "  validate-draft      Valida il draft rielaborato\n\n"
         "Opzioni generali:\n"
         "  -v, --version       Mostra la versione corrente e verifica aggiornamenti\n"
         "  -u, --update        Aggiorna RT all'ultima versione disponibile\n\n"
-        "Comandi diagnostici (uso avanzato):\n"
-        "  validate-outline    Valida deterministicamente l'outline\n"
-        "  validate-draft      Valida il draft rielaborato"
+        "Esempi:\n"
+        "  rt run lezione.m4a              Pipeline completa da un file audio\n"
+        "  rt run <cartella_lezione>       Riprende una lezione già iniziata\n"
+        "  rt review <cartella_lezione>    Critica scientifica indipendente\n"
+        "  rt recall <cartella_lezione>    Sessione di active recall da terminale"
     )
     parser = argparse.ArgumentParser(
         prog="rt",
-        description="Academic Lecture Transcription & Reconstruction Workflow",
+        description="Workflow per Rielaborazione Trascritti e Active Recall",
         epilog=epilog_text,
         formatter_class=RTHelpFormatter
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True, title="Comandi principali")
 
-    # config
+    # 1. config
     p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
     from rt.pipeline.configure import configure_config_parser
     configure_config_parser(p_cfg)
     p_cfg.set_defaults(func=cmd_config)
 
-    # run
+    # 2. run
     p_run = subparsers.add_parser("run", help="Esegue l'intera pipeline end-to-end (accetta file audio o cartella lezione)")
     p_run.add_argument("input", nargs="+", help="File audio (.m4a, .wav...) o cartella lezione esistente")
     p_run.add_argument("-d", "--date", help="Data della lezione (se input è audio)")
@@ -688,36 +706,7 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_run.set_defaults(func=cmd_run)
 
-    # setup
-    p_set = subparsers.add_parser("setup", help="Esegue l'ingest di file audio, trascrizione macparakeet-cli e metadati")
-    configure_setup_parser(p_set)
-    p_set.set_defaults(func=cmd_setup)
-
-    # prepare
-    p_prep = subparsers.add_parser("prepare", help="Valida cartella ed estrae segmenti temporali")
-    p_prep.add_argument("lesson_dir", help="Directory della lezione")
-    p_prep.add_argument("--force", action="store_true", help="Forza la ripreparazione ignorando gli artefatti esistenti")
-    p_prep.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
-    p_prep.set_defaults(func=cmd_prepare)
-
-    # outline
-    p_out = subparsers.add_parser("outline", help="Genera outline strutturata con LLM")
-    p_out.add_argument("lesson_dir", help="Directory della lezione")
-    p_out.add_argument("--force", action="store_true", help="Forza la rigenerazione dell'outline")
-    p_out.add_argument("--mock", action="store_true", help="Usa mock deterministico")
-    p_out.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
-    p_out.set_defaults(func=cmd_outline)
-
-    # rewrite
-    p_rew = subparsers.add_parser("rewrite", help="Rielabora le unità didattiche a finestre con provenance")
-    p_rew.add_argument("lesson_dir", help="Directory della lezione")
-    p_rew.add_argument("--unit", help="ID specifica unità da rielaborare")
-    p_rew.add_argument("--force", action="store_true", help="Forza la rielaborazione (o la sola unità indicata)")
-    p_rew.add_argument("--mock", action="store_true", help="Usa mock deterministico")
-    p_rew.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
-    p_rew.set_defaults(func=cmd_rewrite)
-
-    # review
+    # 3. review
     p_rsci = subparsers.add_parser("review", help="Science critic indipendente e revisione")
     p_rsci.add_argument("lesson_dir", help="Directory della lezione")
     p_rsci.add_argument("--force", action="store_true", help="Forza la riesecuzione della critica scientifica")
@@ -748,7 +737,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.set_defaults(func=cmd_review)
 
-    # recall
+    # 4. recall
     p_recall = subparsers.add_parser("recall", help="Sessione di active recall (quiz/mirata/vasta) su una lezione già rielaborata")
     p_recall.add_argument("lesson_dir", help="Directory della lezione")
     p_recall.add_argument("--order", choices=["sequenziale", "alternato", "casuale"], default="alternato",
@@ -766,8 +755,50 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)
 
+    # 5. status
+    p_stat = subparsers.add_parser("status", help="Mostra lo stato della lezione")
+    p_stat.add_argument("lesson_dir", help="Directory della lezione")
+    p_stat.add_argument("--issues", action="store_true", help="Mostra report diagnostico dettagliato delle issue e del ledger")
+    p_stat.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo dello stato")
+    p_stat.set_defaults(func=cmd_status)
+
+    # 6. telegram-daemon
+    p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
+    p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
+    p_tgd.set_defaults(func=cmd_telegram_daemon)
+
+    # Fasi della pipeline (help=argparse.SUPPRESS, documentati in epilog)
+    # setup
+    p_set = subparsers.add_parser("setup", help=argparse.SUPPRESS, description="Esegue l'ingest di file audio, trascrizione macparakeet-cli e metadati")
+    configure_setup_parser(p_set)
+    p_set.set_defaults(func=cmd_setup)
+
+    # prepare
+    p_prep = subparsers.add_parser("prepare", help=argparse.SUPPRESS, description="Valida cartella ed estrae segmenti temporali")
+    p_prep.add_argument("lesson_dir", help="Directory della lezione")
+    p_prep.add_argument("--force", action="store_true", help="Forza la ripreparazione ignorando gli artefatti esistenti")
+    p_prep.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
+    p_prep.set_defaults(func=cmd_prepare)
+
+    # outline
+    p_out = subparsers.add_parser("outline", help=argparse.SUPPRESS, description="Genera outline strutturata con LLM")
+    p_out.add_argument("lesson_dir", help="Directory della lezione")
+    p_out.add_argument("--force", action="store_true", help="Forza la rigenerazione dell'outline")
+    p_out.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_out.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
+    p_out.set_defaults(func=cmd_outline)
+
+    # rewrite
+    p_rew = subparsers.add_parser("rewrite", help=argparse.SUPPRESS, description="Rielabora le unità didattiche a finestre con provenance")
+    p_rew.add_argument("lesson_dir", help="Directory della lezione")
+    p_rew.add_argument("--unit", help="ID specifica unità da rielaborare")
+    p_rew.add_argument("--force", action="store_true", help="Forza la rielaborazione (o la sola unità indicata)")
+    p_rew.add_argument("--mock", action="store_true", help="Usa mock deterministico")
+    p_rew.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
+    p_rew.set_defaults(func=cmd_rewrite)
+
     # build
-    p_bld = subparsers.add_parser("build", help="Finalizzazione deterministica dei Markdown")
+    p_bld = subparsers.add_parser("build", help=argparse.SUPPRESS, description="Finalizzazione deterministica dei Markdown")
     p_bld.add_argument("lesson_dir", help="Directory della lezione")
     p_bld.add_argument("--force", action="store_true", help="Forza la rigenerazione di tutti i Markdown")
     p_bld.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
@@ -776,7 +807,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_bld.set_defaults(func=cmd_build)
 
     # add-images
-    p_addimg = subparsers.add_parser("add-images", help="Integra slide/foto (o immagini trovate sul web) nel documento finale, per macro-sezione")
+    p_addimg = subparsers.add_parser("add-images", help=argparse.SUPPRESS, description="Integra slide/foto (o immagini trovate sul web) nel documento finale, per macro-sezione")
     p_addimg.add_argument("lesson_dir", help="Directory della lezione")
     p_addimg.add_argument("-i", "--input", default=None, help="Percorso a un file PDF di slide o una cartella di foto")
     p_addimg.add_argument(
@@ -788,25 +819,13 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_addimg.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM/vision reale)")
     p_addimg.set_defaults(func=cmd_add_images)
 
-    # status
-    p_stat = subparsers.add_parser("status", help="Mostra lo stato della lezione")
-    p_stat.add_argument("lesson_dir", help="Directory della lezione")
-    p_stat.add_argument("--issues", action="store_true", help="Mostra report diagnostico dettagliato delle issue e del ledger")
-    p_stat.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo dello stato")
-    p_stat.set_defaults(func=cmd_status)
-
-    # telegram-daemon
-    p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
-    p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
-    p_tgd.set_defaults(func=cmd_telegram_daemon)
-
     # validate-outline
-    p_vout = subparsers.add_parser("validate-outline", help=argparse.SUPPRESS)
+    p_vout = subparsers.add_parser("validate-outline", help=argparse.SUPPRESS, description="Valida deterministicamente l'outline")
     p_vout.add_argument("lesson_dir", help="Directory della lezione")
     p_vout.set_defaults(func=cmd_validate_outline)
 
     # validate-draft
-    p_vdr = subparsers.add_parser("validate-draft", help=argparse.SUPPRESS)
+    p_vdr = subparsers.add_parser("validate-draft", help=argparse.SUPPRESS, description="Valida il draft rielaborato")
     p_vdr.add_argument("lesson_dir", help="Directory della lezione")
     p_vdr.set_defaults(func=cmd_validate_draft)
 
