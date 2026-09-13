@@ -27,7 +27,6 @@ from rt.llm.monitor import LiveTerminalMonitor
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.errors import (
     LLMFailure,
-    UserAbortedFailure,
     TimeoutFailure,
     RateLimitFailure,
     SafetyFailure,
@@ -889,18 +888,15 @@ class LLMClient:
                         return validated_obj
 
                     except KeyboardInterrupt:
+                        # Interruzione volontaria dell'utente: il fallback esiste per gli ERRORI,
+                        # non per sostituirsi alla volontà esplicita di fermarsi — propaga senza
+                        # tentare altre route (gestito a monte da cli.py::main()).
                         if 'response' in locals() and hasattr(response, "close"):
                             try:
                                 response.close()
                             except Exception:
                                 pass
-                        print("\n⚠ Interrotto dall'utente durante lo streaming — passo alla route di fallback (se disponibile)...")
-                        attempt_exception = UserAbortedFailure(
-                            "Tentativo interrotto manualmente dall'utente (Ctrl+C) durante lo streaming.",
-                            provider=provider_name,
-                            model=model_name
-                        )
-                        break
+                        raise
                     except Exception as e:
                         attempt_exception = e
                         if 'content_parts' in locals() and content_parts and not raw_content:

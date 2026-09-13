@@ -17,7 +17,6 @@ from pydantic import BaseModel
 
 from rt.llm.monitor import LiveTerminalMonitor
 from rt.llm.client import LLMClient
-from rt.llm.errors import UserAbortedFailure, LLMFailure
 from rt.llm.telemetry import GLOBAL_TELEMETRY, LLMTelemetryRecord
 from rt.llm.router import RoutingEngine
 from rt.core.config import RTConfig, RouteConfig, JobRoutingConfig
@@ -191,10 +190,11 @@ def test_monitor_retry_reason_tag():
     assert "retry:reasoning_required" in rendered_text
 
 
-def test_keyboard_interrupt_during_stream_triggers_failover(monkeypatch):
+def test_keyboard_interrupt_during_stream_propagates_without_failover(monkeypatch):
     """
-    Verifica che una KeyboardInterrupt sollevata durante lo streaming attivi
-    il failover cross-route (se configurato) invece di uccidere il processo.
+    Il fallback esiste per gli ERRORI, non per sostituirsi alla volontà esplicita
+    dell'utente di interrompere: una KeyboardInterrupt durante lo streaming deve
+    propagare così com'è, SENZA tentare alcuna route di fallback.
     """
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
@@ -225,7 +225,10 @@ def test_keyboard_interrupt_during_stream_triggers_failover(monkeypatch):
     client.config = cfg
     client.router = RoutingEngine(cfg)
 
+    openrouter_called = False
+
     def fake_post(*args, **kwargs):
+        nonlocal openrouter_called
         url = args[0] if args else kwargs.get("url", "")
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -239,7 +242,7 @@ def test_keyboard_interrupt_during_stream_triggers_failover(monkeypatch):
 
             mock_resp.iter_lines = interrupted_lines
         else:
-            # OpenRouter (fallback), risponde con successo
+            openrouter_called = True
             payload_json = json.dumps({"name": "test_ok", "value": 42})
             sse_line = f'data: {{"choices": [{{"delta": {{"content": {json.dumps(payload_json)}}}}}]}}\n\n'.encode("utf-8")
 
@@ -252,19 +255,19 @@ def test_keyboard_interrupt_during_stream_triggers_failover(monkeypatch):
         return mock_resp
 
     with patch("requests.post", side_effect=fake_post):
-        res = client.call_structured(
-            prompt="Hello",
-            system_prompt="Test",
-            response_model=SimpleItem,
-            job_name="general"
-        )
+        with pytest.raises(KeyboardInterrupt):
+            client.call_structured(
+                prompt="Hello",
+                system_prompt="Test",
+                response_model=SimpleItem,
+                job_name="general"
+            )
 
-    assert res.name == "test_ok"
-    assert res.value == 42
+    assert not openrouter_called
 
 
-def test_keyboard_interrupt_without_fallback_raises_user_aborted(monkeypatch):
-    """Verifica che senza route di fallback residua, KeyboardInterrupt sollevi UserAbortedFailure."""
+def test_keyboard_interrupt_without_fallback_propagates(monkeypatch):
+    """Anche senza alcun fallback configurato, KeyboardInterrupt deve propagare così com'è."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
 
     cfg = RTConfig(
@@ -298,15 +301,13 @@ def test_keyboard_interrupt_without_fallback_raises_user_aborted(monkeypatch):
         return mock_resp
 
     with patch("requests.post", side_effect=fake_post):
-        with pytest.raises(UserAbortedFailure) as exc_info:
+        with pytest.raises(KeyboardInterrupt):
             client.call_structured(
                 prompt="Hello",
                 system_prompt="Test",
                 response_model=SimpleItem,
                 job_name="general"
             )
-
-    assert exc_info.value.failure_class == "user_aborted"
 
 
 def test_append_debug_log_on_success_and_failure(tmp_path, monkeypatch):
