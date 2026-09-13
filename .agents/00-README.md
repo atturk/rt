@@ -131,6 +131,43 @@ codice) è già la fonte dati completa. `rt cost` (overview) somma tutto incluse
 con costo parziale non nullo (l'utente vuole vedere anche lo spreco reale); `rt cost --split`
 (debug dei costi) mostra il dettaglio massimo per fase e per unità → Task 71.
 
+Rilasciato tag v3.1.1. Quinto giro di test reale. Indagati 4 punti senza scrivere codice
+d'implementazione ancora (in attesa di conferma utente su alcuni, altri già chiariti):
+
+- **Terminale del demone Telegram "freezato" durante generazione/eval**: causa individuata —
+  `Application.builder()` in `rt/telegram/daemon.py` (riga ~1066) non imposta
+  `.concurrent_updates(True)`, quindi python-telegram-bot processa UN update alla volta: mentre
+  l'esecutore in background genera le domande (già correttamente su `run_in_executor`, non è un
+  problema di thread bloccanti), qualunque altro comando/bottone in arrivo resta in coda finché
+  l'handler corrente non termina — sembra un freeze del bot, non lo è per davvero. Trovato però un
+  rischio reale se si abilita la concorrenza senza altri interventi: `rt/pipeline/recall.py::
+  load_recall_bank`/`save_recall_bank` (il ban delle domande/risposte) non ha alcun locking,
+  mentre `registry.py`/`session.py` ce l'hanno già — abilitare `concurrent_updates=True` da solo
+  introdurrebbe un rischio di race condition (letture-modifiche-scritture concorrenti sullo stesso
+  file). Proposta migliore dell'idea originale dell'utente (subprocess/altro terminale): abilitare
+  la concorrenza nativa di PTB + aggiungere lo stesso locking già usato altrove attorno al
+  ciclo lettura-modifica-scrittura del recall bank. Portato all'utente per conferma prima di
+  taskare (vedi sotto).
+- **Impossibile selezionare testo nel terminale durante le schermate Textual**: NON è un bug RT,
+  confermato con ricerca — Terminal.app (a differenza di iTerm2/Warp) non supporta la sequenza
+  OSC 52 che Textual usa per il copia-incolla nativo, e la cattura del mouse da parte di un'app
+  TUI impedisce comunque la selezione nativa del terminale. Workaround noto: tenere premuto
+  **Shift** durante la selezione per bypassare la cattura mouse dell'app TUI e usare la selezione
+  nativa di Terminal.app. Nessun codice da cambiare — comunicato all'utente, nessun task.
+- **Editor "pico" invece di "micro" nonostante `micro` installato**: NON è un bug — `rt/core/
+  editor_edit.py` legge `$EDITOR` (fallback `nano` se non impostata, mai "pico" per scelta di RT)
+  e rispetta fedelmente quello che l'utente ha configurato nella propria shell. "pico" arriva
+  dall'ambiente dell'utente (`$EDITOR` probabilmente impostata a `pico` in qualche dotfile legacy),
+  non da RT. Comunicato: basta `export EDITOR=micro` nel proprio shell profile per usarlo ovunque,
+  incluso RT — nessun task.
+- **Companion audio player esterno per la review** (Allegato 1 lungo dell'utente): ricerca fatta,
+  `mpv` è il candidato forte — frecce già mappate a seek, `[`/`]`/`{`/`}` già mappati a velocità
+  ±10%/dimezza-raddoppia, `--geometry` per posizionare la finestra, lanciabile come subprocess e
+  rilevabile alla chiusura con `.poll()` senza bisogno del socket IPC per i bisogni base. Design
+  completo (posizionamento esatto della finestra, esatta logica apri/chiudi legata al tasto P e
+  alle azioni nel terminale) da rifinire con l'utente prima di scrivere il task — è la parte più
+  grande e nuova di questo giro, vedi sotto.
+
 ## Task da fare, in ordine
 
 1. **69** — In fase di build, sposta (non copia) la cartella lezione in `lessons_root` se
@@ -141,11 +178,19 @@ con costo parziale non nullo (l'utente vuole vedere anche lo spreco reale); `rt 
    colpisce l'intero pool, senza richiedere modifiche manuali alla config.
 3. **71** — Nuovo comando diagnostico `rt cost <cartella> [--split]`: legge e somma
    `_state/llm_debug.log` (dato già esistente), overview vs dettaglio massimo per fase/unità.
+4. **72** — Dopo il build, rileva in modo affidabile (PID file) se il demone Telegram è già
+   attivo; se non lo è, chiedi conferma e avvialo in automatico in una nuova finestra Terminal.
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
-Nessuna al momento: entrambi i punti del giro precedente sono stati decisi (vedi "Stato" sopra e
-i Task 70-71).
+- **Bot Telegram "freezato" durante generazione**: confermare l'approccio
+  `concurrent_updates(True)` + locking del recall bank (vedi "Stato" sopra) invece
+  dell'idea originale a sottoprocesso/altro terminale.
+- **Companion audio player (mpv) per la review scientifica**: design da rifinire con l'utente
+  (posizionamento finestra, esatta logica apri/chiudi) prima di scrivere il task — sostituirebbe
+  interamente il player in-terminale e i tasti P/O attuali in `issue_review.py`.
+- **Redesign della card di review** (Allegato 2): mockup costruito e inviato all'utente per
+  valutazione visiva prima di implementare per davvero — in attesa di conferma/modifiche.
 
 ## Dopo ogni task numerato (obbligatorio, non solo alla fine)
 
