@@ -35,6 +35,15 @@ def get_recall_bank_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "recall_questions.json")
 
 
+def get_recall_bank_lock_path(lesson_dir: str) -> str:
+    return get_recall_bank_path(lesson_dir) + ".lock"
+
+
+def recall_bank_lock(lesson_dir: str, retries: int = 30, backoff: float = 0.1, stale_sec: float = 30.0):
+    from rt.core.filelock import file_lock
+    return file_lock(get_recall_bank_lock_path(lesson_dir), retries=retries, backoff=backoff, stale_sec=stale_sec)
+
+
 def load_recall_bank(lesson_dir: str) -> RecallBank:
     path = get_recall_bank_path(lesson_dir)
     if not os.path.isfile(path):
@@ -51,6 +60,7 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
     path = get_recall_bank_path(lesson_dir)
     data = bank.model_dump(mode="json")
     _atomic_write(path, data)
+
 
 # -----------------------------------------------------------------------
 # Reserve count utilities
@@ -101,52 +111,53 @@ def get_next_pending_question(
 
     Marca la domanda restituita come ASKED e salva il bank.
     """
-    bank = load_recall_bank(lesson_dir)
-    pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
-    if not pending:
-        return None
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
+        if not pending:
+            return None
 
-    # Applica exclude_id solo se ci sono altre opzioni disponibili
-    if exclude_id:
-        filtered = [q for q in pending if q.id != exclude_id]
-        if filtered:
-            pending = filtered
-        # else: exclude_id è l'unica pending → viene comunque riproposta (fallback)
+        # Applica exclude_id solo se ci sono altre opzioni disponibili
+        if exclude_id:
+            filtered = [q for q in pending if q.id != exclude_id]
+            if filtered:
+                pending = filtered
+            # else: exclude_id è l'unica pending → viene comunque riproposta (fallback)
 
-    selected: Optional[RecallQuestion] = None
+        selected: Optional[RecallQuestion] = None
 
-    if order == "sequenziale":
-        pending.sort(key=lambda q: (q.unit_ids[0], q.created_at))
-        selected = pending[0]
-
-    elif order == "alternato":
-        unit_ids_sorted = sorted({q.unit_ids[0] for q in pending})
-        if unit_cursor and unit_cursor in unit_ids_sorted:
-            idx = (unit_ids_sorted.index(unit_cursor) + 1) % len(unit_ids_sorted)
-        else:
-            idx = 0
-        target_unit = unit_ids_sorted[idx]
-        for q in pending:
-            if q.unit_ids[0] == target_unit:
-                selected = q
-                break
-        if not selected:
+        if order == "sequenziale":
+            pending.sort(key=lambda q: (q.unit_ids[0], q.created_at))
             selected = pending[0]
 
-    elif order == "casuale":
-        selected = _random.choice(pending)
+        elif order == "alternato":
+            unit_ids_sorted = sorted({q.unit_ids[0] for q in pending})
+            if unit_cursor and unit_cursor in unit_ids_sorted:
+                idx = (unit_ids_sorted.index(unit_cursor) + 1) % len(unit_ids_sorted)
+            else:
+                idx = 0
+            target_unit = unit_ids_sorted[idx]
+            for q in pending:
+                if q.unit_ids[0] == target_unit:
+                    selected = q
+                    break
+            if not selected:
+                selected = pending[0]
 
-    else:
-        selected = pending[0]
+        elif order == "casuale":
+            selected = _random.choice(pending)
 
-    if selected:
-        for q in bank.questions:
-            if q.id == selected.id:
-                q.status = RecallQuestionStatus.ASKED
-                break
-        save_recall_bank(bank, lesson_dir)
+        else:
+            selected = pending[0]
 
-    return selected
+        if selected:
+            for q in bank.questions:
+                if q.id == selected.id:
+                    q.status = RecallQuestionStatus.ASKED
+                    break
+            save_recall_bank(bank, lesson_dir)
+
+        return selected
 
 # -----------------------------------------------------------------------
 # Answer / vote recording
@@ -161,30 +172,31 @@ def record_recall_answer(
     vote: Optional[str] = None,
 ) -> RecallAnswer:
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
-    bank = load_recall_bank(lesson_dir)
-    for q in bank.questions:
-        if q.id == question_id:
-            q.status = RecallQuestionStatus.ANSWERED
-            break
-    existing = next((a for a in bank.answers if a.question_id == question_id), None)
-    if existing:
-        existing.answer_text = answer_text
-        existing.is_voice = is_voice
-        existing.evaluation = evaluation
-        existing.vote = vote
-        existing.answered_at = datetime.now().isoformat()
-        ans = existing
-    else:
-        ans = RecallAnswer(
-            question_id=question_id,
-            answer_text=answer_text,
-            is_voice=is_voice,
-            evaluation=evaluation,
-            vote=vote,
-        )
-        bank.answers.append(ans)
-    save_recall_bank(bank, lesson_dir)
-    return ans
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        for q in bank.questions:
+            if q.id == question_id:
+                q.status = RecallQuestionStatus.ANSWERED
+                break
+        existing = next((a for a in bank.answers if a.question_id == question_id), None)
+        if existing:
+            existing.answer_text = answer_text
+            existing.is_voice = is_voice
+            existing.evaluation = evaluation
+            existing.vote = vote
+            existing.answered_at = datetime.now().isoformat()
+            ans = existing
+        else:
+            ans = RecallAnswer(
+                question_id=question_id,
+                answer_text=answer_text,
+                is_voice=is_voice,
+                evaluation=evaluation,
+                vote=vote,
+            )
+            bank.answers.append(ans)
+        save_recall_bank(bank, lesson_dir)
+        return ans
 
 
 def skip_recall_question(lesson_dir: str, question_id: str) -> None:
@@ -194,13 +206,14 @@ def skip_recall_question(lesson_dir: str, question_id: str) -> None:
     o se non esiste nel bank. Centralizzata qui così sia il daemon che il terminale
     riusano la stessa logica senza duplicarla.
     """
-    bank = load_recall_bank(lesson_dir)
-    for q in bank.questions:
-        if q.id == question_id:
-            if q.status == RecallQuestionStatus.ASKED:
-                q.status = RecallQuestionStatus.PENDING
-                save_recall_bank(bank, lesson_dir)
-            return
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        for q in bank.questions:
+            if q.id == question_id:
+                if q.status == RecallQuestionStatus.ASKED:
+                    q.status = RecallQuestionStatus.PENDING
+                    save_recall_bank(bank, lesson_dir)
+                return
 
 
 def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
@@ -210,14 +223,16 @@ def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
     (answer_text='', is_voice=False) per portare il voto; D3/D2 la completeranno
     quando arriva la risposta vera.
     """
-    bank = load_recall_bank(lesson_dir)
-    answer = next((a for a in bank.answers if a.question_id == question_id), None)
-    if not answer:
-        answer = RecallAnswer(question_id=question_id, answer_text="", is_voice=False, vote=vote)
-        bank.answers.append(answer)
-    else:
-        answer.vote = vote
-    save_recall_bank(bank, lesson_dir)
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        answer = next((a for a in bank.answers if a.question_id == question_id), None)
+        if not answer:
+            answer = RecallAnswer(question_id=question_id, answer_text="", is_voice=False, vote=vote)
+            bank.answers.append(answer)
+        else:
+            answer.vote = vote
+        save_recall_bank(bank, lesson_dir)
+
 
 # -----------------------------------------------------------------------
 # Global few-shot storage  (<state_dir>/recall_fewshot.json)
@@ -455,11 +470,15 @@ def generate_recall_batch(
         generated.type = qtype
         generated.unit_ids = [units[i].unit_id for i in group_idxs]
         generated.content_fingerprint = _compute_units_fingerprint(lesson_dir, generated.unit_ids)
-        bank.questions.append(generated)
         new_questions.append(generated)
 
-    save_recall_bank(bank, lesson_dir)
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        for gen in new_questions:
+            bank.questions.append(gen)
+        save_recall_bank(bank, lesson_dir)
     return new_questions
+
 
 # -----------------------------------------------------------------------
 # Valutazione LLM delle risposte a domande mirate/vaste (Fase D3)
@@ -546,14 +565,16 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
 def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = None) -> int:
     """Rimuove dal recall bank le domande (e le relative risposte) del tipo specificato,
     o tutte se qtype è None. Ritorna il numero di domande rimosse."""
-    bank = load_recall_bank(lesson_dir)
-    if qtype is None:
-        removed_ids = {q.id for q in bank.questions}
-        bank.questions = []
-    else:
-        removed_ids = {q.id for q in bank.questions if q.type == qtype}
-        bank.questions = [q for q in bank.questions if q.type != qtype]
-    bank.answers = [a for a in bank.answers if a.question_id not in removed_ids]
-    if removed_ids:
-        save_recall_bank(bank, lesson_dir)
-    return len(removed_ids)
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        if qtype is None:
+            removed_ids = {q.id for q in bank.questions}
+            bank.questions = []
+        else:
+            removed_ids = {q.id for q in bank.questions if q.type == qtype}
+            bank.questions = [q for q in bank.questions if q.type != qtype]
+        bank.answers = [a for a in bank.answers if a.question_id not in removed_ids]
+        if removed_ids:
+            save_recall_bank(bank, lesson_dir)
+        return len(removed_ids)
+
