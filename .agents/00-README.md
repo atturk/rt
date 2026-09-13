@@ -169,38 +169,27 @@ d'implementazione ancora (in attesa di conferma utente su alcuni, altri già chi
   (A=Accetta, R=Rifiuta, M=Modifica, I=Indietro) su ENTRAMBI i rami (Science Critic e RISCHIO
   ASR) → ripiegato nel Task 74, che già toccava l'action bar per il redesign visivo.
 
+Task 72-75 implementati da Antigravity, verificati riga per riga: 740/740 test. Resoconto con due
+invenzioni pure (una legenda a 4 colori mai chiesta per il Task 74, un meccanismo di lock
+`fcntl.flock` mai usato per il Task 73) — il codice reale era corretto in entrambi i casi, solo la
+prosa del walkthrough era inventata: sempre verificare il diff, mai fidarsi del resoconto. Nessun
+bug trovato in questo giro. Rilasciato tag v3.1.2.
+
+Scoperto un buco rimasto aperto da un giro precedente: `rt config --theme` (tema chiaro/scuro,
+Task 60 originale) era stato eliminato quando si è deciso di migrare a Textual "perché lo
+avrebbe risolto gratis", ma nessun task successivo ha mai collegato per davvero il sistema di temi
+nativo di Textual (`App.theme`/`available_themes`, verificato presente e ricco — `textual-dark`/
+`-light`, `solarized-*`, `nord`, `dracula`, ecc.) a un comando persistente → Task 76.
+
 ## Task da fare, in ordine
 
-1. **69** — In fase di build, sposta (non copia) la cartella lezione in `lessons_root` se
-   configurato: oggi non esiste alcuna logica che lo fa (verificato leggendo il codice, non un
-   fix precedente rotto), la cartella lezione resta sempre accanto all'audio sorgente.
-2. **70** — `max_attempts` deve alzarsi automaticamente per i job round-robin (almeno dimensione
-   pool + 1) così il fallback dedicato viene sempre raggiunto anche con un errore sistemico che
-   colpisce l'intero pool, senza richiedere modifiche manuali alla config.
-3. **71** — Nuovo comando diagnostico `rt cost <cartella> [--split]`: legge e somma
-   `_state/llm_debug.log` (dato già esistente), overview vs dettaglio massimo per fase/unità.
-4. **72** — Dopo il build, rileva in modo affidabile (PID file) se il demone Telegram è già
-   attivo; se non lo è, chiedi conferma e avvialo in automatico in una nuova finestra Terminal.
-5. **73** — Abilita `concurrent_updates(True)` nel demone Telegram (causa reale del "freeze"
-   percepito durante generazione/eval) insieme al locking del recall bank, oggi assente, per
-   evitare race condition una volta abilitata la concorrenza.
-6. **74** — Redesign della card di review scientifica (ramo Science Critic): niente più timecode,
-   claim con prefisso "- " in rosso inline nel testo dell'unità, correzione proposta con prefisso
-   "+ " in verde subito sotto (stile diff), mini legenda con sole emoji sotto la critica. Mockup
-   approvato dall'utente in `/Users/attilioturco/Desktop/rt_review_card_mockup.py`. Include anche
-   la ridenominazione dei tasti (decisa con l'utente, si applica a ENTRAMBI i rami Science
-   Critic/RISCHIO ASR): A=Accetta, R=Rifiuta, M=Modifica (era E), I=Indietro (era B), S/Q
-   invariati — P/O non toccati, riservati al Task 75.
-7. **75** — Player companion `mpv` per la review scientifica al posto del play in-terminale
-   (tasto P): riproduce l'intera unità (non solo ±5s), si apre affianco al terminale (posizione
-   rilevata via AppleScript, fallback sull'ultima posizione di chiusura persistita), seek/velocità
-   nativi di mpv, auto-chiusura su A/R/I/S ma non su M, riusa il clip cachato già usato dal
-   bottone 🔊 di Telegram. Va dopo il Task 74 (riusa lo schema di tasti definito lì).
+1. **76** — Collega il sistema di temi nativo di Textual a `rt config --theme` (scuro/chiaro),
+   rimasto in sospeso dalla migrazione a Textual — nessun CSS/palette custom da scrivere, usa
+   `App.theme` su tutte e 4 le schermate.
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
-Nessuna al momento: tutti i punti del giro precedente sono stati decisi (vedi "Stato" sopra e i
-Task 72-75).
+Nessuna al momento.
 
 ## Dopo ogni task numerato (obbligatorio, non solo alla fine)
 
