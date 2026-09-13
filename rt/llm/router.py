@@ -137,7 +137,7 @@ class RoutingEngine:
         clean_name = job_name.lower().strip()
 
         # 1. Bounded execution cap
-        if current_attempt >= job_cfg.max_attempts:
+        if current_attempt >= job_cfg.effective_max_attempts:
             return None
 
         # Identifica classe e tag di errore

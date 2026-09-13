@@ -1121,5 +1121,160 @@ def test_consecutive_fallback_cooldown_is_per_job(monkeypatch):
         assert res_rewrite.title == "Fallback OK"
 
 
+# ======================================================================
+# TASK 70: MAX_ATTEMPTS SCALES WITH ROUND-ROBIN POOL SIZE
+# ======================================================================
+
+def test_effective_max_attempts_property():
+    """Verifica il calcolo di effective_max_attempts su JobRoutingConfig."""
+    # Singolo primario senza round-robin -> effective_max_attempts == max_attempts
+    single_cfg = JobRoutingConfig(
+        max_attempts=3,
+        primary=RouteConfig(route_id="r1", provider="google", credential="google_1", model="gemini-2.0-flash")
+    )
+    assert single_cfg.effective_max_attempts == 3
+
+    # Pool round-robin di 6 chiavi con max_attempts=3 -> effective_max_attempts == 7 (6 + 1)
+    routes_6 = [
+        RouteConfig(route_id=f"r{i}", provider="google", credential="google_1", model="gemini-2.0-flash")
+        for i in range(6)
+    ]
+    rr_cfg_6 = JobRoutingConfig(
+        max_attempts=3,
+        round_robin=True,
+        primary_routes=routes_6
+    )
+    assert rr_cfg_6.effective_max_attempts == 7
+
+    # Pool round-robin di 2 chiavi con max_attempts=5 -> effective_max_attempts == 5 (max(5, 3))
+    rr_cfg_2 = JobRoutingConfig(
+        max_attempts=5,
+        round_robin=True,
+        primary_routes=routes_6[:2]
+    )
+    assert rr_cfg_2.effective_max_attempts == 5
+
+
+def test_round_robin_6_routes_with_max_attempts_3_reaches_fallback(monkeypatch):
+    """
+    Test scenario reale Task 70:
+    Pool round-robin di 6 chiavi con max_attempts: 3 configurato.
+    Un errore sistemico (es. 503 ProviderServerFailure o 429) colpisce TUTTE e 6 le chiavi.
+    Il router deve esaurire tutte e 6 le chiavi e poi raggiungere con successo il fallback.generic.
+    """
+    for i in range(1, 7):
+        monkeypatch.setenv(f"GOOGLE_API_KEY_{i}", f"key-google-{i}")
+        GLOBAL_CREDENTIALS.register(CredentialRef(name=f"google_{i}", provider="google", env_var=f"GOOGLE_API_KEY_{i}"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    routes_6 = [
+        RouteConfig(route_id=f"r_google_{i}", provider="google", credential=f"google_{i}", model="gemini-2.5-flash")
+        for i in range(1, 7)
+    ]
+    client.config.jobs["review"] = JobRoutingConfig(
+        max_attempts=3,
+        round_robin=True,
+        primary_routes=routes_6,
+        fallback=JobFallbackConfig(
+            generic=RouteConfig(route_id="r_fallback_generic", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct")
+        )
+    )
+
+    call_log = []
+
+    def mock_post(url, **kwargs):
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        if "key-openrouter" in auth_hdr:
+            call_log.append("openrouter_generic")
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.encoding = "utf-8"
+            valid_json = json.dumps({"title": "Review OK", "summary": "Reached Generic Fallback"})
+            resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+            return resp
+        else:
+            # Trova quale chiave google ha fallito
+            for i in range(1, 7):
+                if f"key-google-{i}" in auth_hdr:
+                    call_log.append(f"google_{i}")
+                    break
+            resp = MagicMock()
+            resp.status_code = 503
+            resp.encoding = "utf-8"
+            resp.content = b'{"error": {"message": "503 High Demand / Systemic"}}'
+            resp.text = '{"error": {"message": "503 High Demand / Systemic"}}'
+            return resp
+
+    with patch("requests.post", side_effect=mock_post):
+        res = client.call_structured(
+            prompt="Prompt review",
+            system_prompt="System review",
+            response_model=DummyItem,
+            job_name="review",
+            unit_id="unit_rev_1"
+        )
+
+    assert res.title == "Review OK"
+    # Tutte e 6 le chiavi devono essere state tentate prima del fallback generico (7 tentativi in totale)
+    assert len(call_log) == 7
+    assert call_log[-1] == "openrouter_generic"
+    for i in range(1, 7):
+        assert f"google_{i}" in call_log
+
+
+def test_override_provider_forces_single_attempt_without_boost(monkeypatch):
+    """
+    Verifica che con override_provider / override_credential, max_global_attempts
+    resti esattamente 1, senza applicare il boost di effective_max_attempts.
+    """
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    routes_6 = [
+        RouteConfig(route_id=f"r_google_{i}", provider="google", credential="google_1", model="gemini-2.0-flash")
+        for i in range(1, 7)
+    ]
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=3,
+        round_robin=True,
+        primary_routes=routes_6,
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct")
+        )
+    )
+
+    call_count = 0
+
+    def mock_post(url, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        resp.status_code = 429
+        resp.encoding = "utf-8"
+        resp.content = b'{"error": {"message": "429"}}'
+        resp.text = '{"error": {"message": "429"}}'
+        return resp
+
+    with patch("requests.post", side_effect=mock_post):
+        with pytest.raises(RateLimitFailure):
+            client.call_structured(
+                prompt="Prompt override",
+                system_prompt="System override",
+                response_model=DummyItem,
+                job_name="outline",
+                unit_id="unit_ov_1",
+                override_provider="google"
+            )
+
+    # Esattamente 1 solo tentativo con override_provider
+    assert call_count == 1
+
+
+
 
 
