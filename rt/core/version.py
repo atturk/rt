@@ -61,7 +61,9 @@ def get_latest_remote_version(project_root: str, timeout: float = 5.0) -> Option
     """
     Esegue `git ls-remote --tags origin` per elencare i tag disponibili sul remote,
     estrae e ordina semanticamente le versioni, e ritorna la più recente (es. '2.4.0').
-    Ritorna None in caso di offline, errore o timeout.
+    Ritorna None in caso di offline, errore o timeout. Ritorna stringa vuota "" (non None)
+    se il comando riesce ma il remote non ha ancora nessun tag pubblicato: è uno stato
+    diverso da un problema di connessione e va comunicato diversamente all'utente.
     """
     try:
         res = subprocess.run(
@@ -95,7 +97,7 @@ def get_latest_remote_version(project_root: str, timeout: float = 5.0) -> Option
                 candidates.append((parsed, format_version(tag)))
 
         if not candidates:
-            return None
+            return ""
 
         candidates.sort(key=lambda x: x[0])
         return candidates[-1][1]
@@ -113,6 +115,9 @@ def run_version(project_root: str) -> None:
 
     if latest_ver is None:
         print(f"RT versione {current_ver} (impossibile verificare aggiornamenti — controlla la connessione)")
+        return
+    if latest_ver == "":
+        print(f"RT versione {current_ver} (nessuna versione pubblicata ancora sul repository)")
         return
 
     curr_parsed = parse_semver(current_ver)
