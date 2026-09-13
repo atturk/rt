@@ -38,7 +38,12 @@ def format_unit_reference(lesson_dir: str, question) -> str:
     return "".join(parts)
 
 
-def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] = None) -> List[int]:
+def send_unit_audio(
+    lesson_dir: str,
+    question,
+    message_thread_id: Optional[int] = None,
+    reply_to_message_id: Optional[int] = None,
+) -> List[int]:
     """Manda via sendAudio (stile 'file musicale', non sendVoice) il clip di ciascuna unità
     didattica della domanda. Il clip viene ritagliato una sola volta e messo in cache in
     <lesson_dir>/recall_audio_clips/<unit_id><ext> (stessa estensione del file audio originale,
@@ -77,7 +82,13 @@ def send_unit_audio(lesson_dir: str, question, message_thread_id: Optional[int] 
             start_s, end_s = resolve_unit_time_range(u, segments)
             tmp_clip = cut_clip(audio_path, start_s, end_s)
             shutil.move(tmp_clip, clip_path)
-        res = send_audio(tg_cfg, clip_path, title=f"{u.unit_id} - {u.title}", message_thread_id=message_thread_id)
+        res = send_audio(
+            tg_cfg,
+            clip_path,
+            title=f"{u.unit_id} - {u.title}",
+            message_thread_id=message_thread_id,
+            reply_to_message_id=reply_to_message_id,
+        )
         msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
         if isinstance(msg_id, int):
             sent_msg_ids.append(msg_id)
