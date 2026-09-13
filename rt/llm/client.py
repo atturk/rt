@@ -328,7 +328,8 @@ class LLMClient:
                     job_name=job_name,
                     failure=auth_fail,
                     visited_route_ids=visited_route_ids,
-                    current_attempt=route_attempt
+                    current_attempt=route_attempt,
+                    execution_id=execution_id
                 )
                 if next_exec_route:
                     parent_attempt = call_attempt
@@ -879,6 +880,12 @@ class LLMClient:
                             monitor.on_usage(final_usage, cost_est)
                         monitor.finish(success=True)
 
+                        used_dedicated_fallback = (
+                            current_fallback_reason is not None
+                            and not current_fallback_reason.endswith("_alternative_configured")
+                        )
+                        self.router.record_success(job_name, used_fallback=used_dedicated_fallback)
+
                         return validated_obj
 
                     except KeyboardInterrupt:
@@ -1053,7 +1060,8 @@ class LLMClient:
                     job_name=job_name,
                     failure=last_failure,
                     visited_route_ids=visited_route_ids,
-                    current_attempt=route_attempt
+                    current_attempt=route_attempt,
+                    execution_id=execution_id
                 )
                 if next_exec_route:
                     # Aggiorna telemetria precedente con metadata del fallback

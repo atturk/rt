@@ -747,5 +747,379 @@ def test_unconfigured_job_without_default_raises_value_error_in_llm_client():
         client._get_job_routing_config("nonexistent")
 
 
+# ======================================================================
+# 7. TASK 63: ROUND-ROBIN POOL EXHAUSTION & PER-JOB FALLBACK COOLDOWN
+# ======================================================================
+
+def test_round_robin_pool_exhaustion_before_dedicated_fallback(monkeypatch):
+    """
+    Verifica che con un pool di 3 route round-robin, un 429 provi tutte le route del pool
+    prima di scalare alla route di fallback dedicata (OpenRouter).
+    """
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
+    monkeypatch.setenv("GOOGLE_API_KEY_2", "key-g2")
+    monkeypatch.setenv("GOOGLE_API_KEY_3", "key-g3")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=5,
+        round_robin=True,
+        primary_routes=[
+            RouteConfig(route_id="r_google_1", provider="google", credential="google_1", model="gemini-2.0-flash"),
+            RouteConfig(route_id="r_google_2", provider="google", credential="google_2", model="gemini-2.0-flash"),
+            RouteConfig(route_id="r_google_3", provider="google", credential="google_3", model="gemini-2.0-flash"),
+        ],
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct")
+        )
+    )
+
+    routes_called = []
+
+    def mock_post(url, **kwargs):
+        resp = MagicMock()
+        resp.encoding = "utf-8"
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        
+        if "key-g1" in auth_hdr:
+            routes_called.append("g1")
+            resp.status_code = 429
+            resp.content = b'{"error": {"message": "Resource exhausted"}}'
+            resp.text = resp.content.decode("utf-8")
+        elif "key-g2" in auth_hdr:
+            routes_called.append("g2")
+            resp.status_code = 429
+            resp.content = b'{"error": {"message": "Resource exhausted"}}'
+            resp.text = resp.content.decode("utf-8")
+        elif "key-g3" in auth_hdr:
+            routes_called.append("g3")
+            resp.status_code = 429
+            resp.content = b'{"error": {"message": "Resource exhausted"}}'
+            resp.text = resp.content.decode("utf-8")
+        else:
+            routes_called.append("openrouter")
+            resp.status_code = 200
+            valid_json = json.dumps({"title": "Successo Finale", "summary": "Dopo 3 chiavi round-robin"})
+            chunks = [
+                f'data: {{"id": "req_or", "choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}], "usage": {{"total_tokens": 40}}}}\n\n'.encode("utf-8")
+            ]
+            resp.iter_lines.return_value = chunks
+        return resp
+
+    with patch("requests.post", side_effect=mock_post):
+        res = client.call_structured(
+            prompt="Test prompt",
+            system_prompt="Test sys",
+            response_model=DummyItem,
+            job_name="outline",
+            unit_id="unit_pool_exhaust"
+        )
+
+    assert res.title == "Successo Finale"
+    assert routes_called == ["g1", "g2", "g3", "openrouter"]
+
+    records = [r for r in GLOBAL_TELEMETRY.get_all() if r.unit_id == "unit_pool_exhaust"]
+    assert len(records) == 4
+    # Tentativo 1 (g1): fallback alla prossima route configurata del pool (g2), non a openrouter
+    assert records[0].credential_ref == "google_1"
+    assert records[0].fallback_to_credential == "google_2"
+    # Tentativo 2 (g2): fallback a g3
+    assert records[1].credential_ref == "google_2"
+    assert records[1].fallback_to_credential == "google_3"
+    # Tentativo 3 (g3): pool esaurito, scala a openrouter
+    assert records[2].credential_ref == "google_3"
+    assert records[2].fallback_to_provider == "openrouter"
+    # Tentativo 4 (openrouter): successo
+    assert records[3].provider == "openrouter"
+    assert records[3].status == "success"
+
+
+def test_subsequent_call_returns_to_normal_round_robin(monkeypatch):
+    """
+    Verifica che dopo che una catena ha usato il fallback con successo, la chiamata successiva
+    riparta dal round-robin normale e non resti ancorata al fallback.
+    """
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
+    monkeypatch.setenv("GOOGLE_API_KEY_2", "key-g2")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=3,
+        round_robin=True,
+        primary_routes=[
+            RouteConfig(route_id="r_google_1", provider="google", credential="google_1", model="gemini-2.0-flash"),
+            RouteConfig(route_id="r_google_2", provider="google", credential="google_2", model="gemini-2.0-flash"),
+        ],
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct")
+        )
+    )
+
+    # Catena 1 usa fallback perché sia g1 sia g2 danno 429
+    call_log = []
+    def mock_post_chain1(url, **kwargs):
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        if "key-openrouter" in auth_hdr:
+            call_log.append("openrouter")
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.encoding = "utf-8"
+            valid_json = json.dumps({"title": "Chain 1 OK", "summary": "Fallback OK"})
+            resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+            return resp
+        else:
+            call_log.append("google")
+            resp = MagicMock()
+            resp.status_code = 429
+            resp.encoding = "utf-8"
+            resp.content = b'{"error": {"message": "429"}}'
+            resp.text = '{"error": {"message": "429"}}'
+            return resp
+
+    with patch("requests.post", side_effect=mock_post_chain1):
+        res1 = client.call_structured(
+            prompt="Prompt 1",
+            system_prompt="Sys 1",
+            response_model=DummyItem,
+            job_name="outline",
+            unit_id="unit_chain_1"
+        )
+    assert res1.title == "Chain 1 OK"
+    assert call_log == ["google", "google", "openrouter"]
+
+    # Catena 2: round-robin ora funziona normalmente (Google restituisce 200)
+    call_log.clear()
+    def mock_post_chain2(url, **kwargs):
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        call_log.append("google" if "key-g" in auth_hdr else "other")
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.encoding = "utf-8"
+        valid_json = json.dumps({"title": "Chain 2 OK", "summary": "RR OK"})
+        resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+        return resp
+
+    with patch("requests.post", side_effect=mock_post_chain2):
+        res2 = client.call_structured(
+            prompt="Prompt 2",
+            system_prompt="Sys 2",
+            response_model=DummyItem,
+            job_name="outline",
+            unit_id="unit_chain_2"
+        )
+    assert res2.title == "Chain 2 OK"
+    # La catena 2 è partita subito da Google (round-robin), non da openrouter!
+    assert call_log == ["google"]
+
+
+def test_consecutive_fallback_cooldown_activation_and_expiry(monkeypatch):
+    """
+    Verifica che:
+    1. Due fallback consecutivi attivino il cooldown.
+    2. La terza catena fallisca immediatamente senza usare il fallback durante il cooldown.
+    3. Scaduto il cooldown (mock temporale), il fallback torni disponibile.
+    """
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=2,
+        primary_routes=[
+            RouteConfig(route_id="r_google_1", provider="google", credential="google_1", model="gemini-2.0-flash")
+        ],
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct"),
+            cooldown_seconds=30
+        )
+    )
+
+    current_simulated_time = 1000.0
+
+    def mock_time_monotonic():
+        return current_simulated_time
+
+    def mock_post(url, **kwargs):
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        if "key-g1" in auth_hdr:
+            resp = MagicMock()
+            resp.status_code = 429
+            resp.encoding = "utf-8"
+            resp.content = b'{"error": {"message": "429"}}'
+            resp.text = '{"error": {"message": "429"}}'
+            return resp
+        else:
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.encoding = "utf-8"
+            valid_json = json.dumps({"title": "Fallback OK", "summary": "OpenRouter OK"})
+            resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+            return resp
+
+    with patch("time.monotonic", side_effect=mock_time_monotonic), patch("requests.post", side_effect=mock_post):
+        # Catena 1: 1° fallback consecutivo -> OK
+        res1 = client.call_structured(prompt="P1", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u1")
+        assert res1.title == "Fallback OK"
+        assert client.router._consecutive_fallbacks["outline"] == 1
+
+        # Catena 2: 2° fallback consecutivo -> OK, ma attiva cooldown fino a 1000 + 30 = 1030
+        res2 = client.call_structured(prompt="P2", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u2")
+        assert res2.title == "Fallback OK"
+        assert client.router._consecutive_fallbacks["outline"] == 2
+        assert client.router._cooldown_until["outline"] == 1030.0
+
+        # Catena 3: a t=1010s (durante cooldown), Google da 429, fallback rifiutato -> solleva RateLimitFailure
+        current_simulated_time = 1010.0
+        with pytest.raises(RateLimitFailure):
+            client.call_structured(prompt="P3", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u3")
+
+        # Catena 4: a t=1035s (cooldown scaduto), Google da 429, fallback nuovamente disponibile -> OK!
+        current_simulated_time = 1035.0
+        res4 = client.call_structured(prompt="P4", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u4")
+        assert res4.title == "Fallback OK"
+        assert client.router._consecutive_fallbacks["outline"] == 1
+
+
+def test_consecutive_fallback_counter_resets_on_clean_success(monkeypatch):
+    """
+    Verifica che una catena risolta con successo senza ricorrere al fallback resetti
+    il contatore di fallback consecutivi a 0.
+    """
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=2,
+        primary_routes=[
+            RouteConfig(route_id="r_google_1", provider="google", credential="google_1", model="gemini-2.0-flash")
+        ],
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct"),
+            cooldown_seconds=30
+        )
+    )
+
+    should_google_succeed = False
+
+    def mock_post(url, **kwargs):
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        if "key-g1" in auth_hdr:
+            if not should_google_succeed:
+                resp = MagicMock()
+                resp.status_code = 429
+                resp.encoding = "utf-8"
+                resp.content = b'{"error": {"message": "429"}}'
+                resp.text = '{"error": {"message": "429"}}'
+                return resp
+            else:
+                resp = MagicMock()
+                resp.status_code = 200
+                resp.encoding = "utf-8"
+                valid_json = json.dumps({"title": "Google Clean OK", "summary": "Success"})
+                resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+                return resp
+        else:
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.encoding = "utf-8"
+            valid_json = json.dumps({"title": "Fallback OK", "summary": "OpenRouter"})
+            resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+            return resp
+
+    with patch("requests.post", side_effect=mock_post):
+        # 1. Fallback 1 -> contatore = 1
+        res1 = client.call_structured(prompt="P1", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u1")
+        assert res1.title == "Fallback OK"
+        assert client.router._consecutive_fallbacks["outline"] == 1
+
+        # 2. Successo pulito su Google -> contatore resettato a 0
+        should_google_succeed = True
+        res2 = client.call_structured(prompt="P2", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u2")
+        assert res2.title == "Google Clean OK"
+        assert client.router._consecutive_fallbacks["outline"] == 0
+
+        # 3. Altro fallback -> contatore = 1 (NON 2, quindi nessun cooldown!)
+        should_google_succeed = False
+        res3 = client.call_structured(prompt="P3", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u3")
+        assert res3.title == "Fallback OK"
+        assert client.router._consecutive_fallbacks["outline"] == 1
+
+
+def test_consecutive_fallback_cooldown_is_per_job(monkeypatch):
+    """
+    Verifica che il cooldown sia per-job: il blocco su 'outline' non impedisce
+    il fallback su 'rewrite'.
+    """
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
+    GLOBAL_CREDENTIALS.reload_from_env()
+
+    client = LLMClient(force_mock=False)
+    client.config.jobs["outline"] = JobRoutingConfig(
+        max_attempts=2,
+        primary_routes=[
+            RouteConfig(route_id="r_google_1", provider="google", credential="google_1", model="gemini-2.0-flash")
+        ],
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct"),
+            cooldown_seconds=30
+        )
+    )
+    client.config.jobs["rewrite"] = JobRoutingConfig(
+        max_attempts=2,
+        primary_routes=[
+            RouteConfig(route_id="r_google_1", provider="google", credential="google_1", model="gemini-2.0-flash")
+        ],
+        fallback=JobFallbackConfig(
+            rate_limit=RouteConfig(route_id="r_openrouter", provider="openrouter", credential="openrouter", model="meta-llama/llama-3.3-70b-instruct"),
+            cooldown_seconds=30
+        )
+    )
+
+    def mock_post(url, **kwargs):
+        headers = kwargs.get("headers", {})
+        auth_hdr = headers.get("Authorization", "") or headers.get("x-goog-api-key", "")
+        if "key-g1" in auth_hdr:
+            resp = MagicMock()
+            resp.status_code = 429
+            resp.encoding = "utf-8"
+            resp.content = b'{"error": {"message": "429"}}'
+            resp.text = '{"error": {"message": "429"}}'
+            return resp
+        else:
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.encoding = "utf-8"
+            valid_json = json.dumps({"title": "Fallback OK", "summary": "OpenRouter"})
+            resp.iter_lines.return_value = [f'data: {{"choices": [{{"delta": {{"content": {json.dumps(valid_json)}}}, "finish_reason": "stop"}}]}}\n\n'.encode("utf-8")]
+            return resp
+
+    with patch("requests.post", side_effect=mock_post):
+        # Outline: 2 fallback consecutivi -> cooldown su outline
+        client.call_structured(prompt="P1", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u1")
+        client.call_structured(prompt="P2", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u2")
+        assert client.router._cooldown_until["outline"] > 0
+
+        # Outline fallisce per cooldown
+        with pytest.raises(RateLimitFailure):
+            client.call_structured(prompt="P3", system_prompt="S", response_model=DummyItem, job_name="outline", unit_id="u3")
+
+        # Rewrite è un job diverso: usa tranquillamente il proprio fallback!
+        res_rewrite = client.call_structured(prompt="P4", system_prompt="S", response_model=DummyItem, job_name="rewrite", unit_id="u4")
+        assert res_rewrite.title == "Fallback OK"
+
+
 
 
