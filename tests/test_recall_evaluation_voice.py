@@ -145,8 +145,14 @@ class TestTranscribeVoiceAnswer:
             f.write(b"FAKE_AUDIO")
 
         def fake_run(cmd, stdout=None, stderr=None, text=None):
-            payload = json.dumps({"transcriptSegments": [{"text": "Ciao "}, {"text": "mondo."}], "rawTranscript": "Ciao mondo."})
-            return MagicMock(returncode=0, stdout=payload, stderr="")
+            assert "--output-dir" in cmd
+            assert "--no-diarize" in cmd
+            out_dir = cmd[cmd.index("--output-dir") + 1]
+            json_path = os.path.join(out_dir, "output.json")
+            payload = {"transcriptSegments": [{"text": "Ciao "}, {"text": "mondo."}], "rawTranscript": "Ciao mondo."}
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            return MagicMock(returncode=0, stdout="", stderr="")
 
         with patch("rt.pipeline.setup.find_macparakeet_binary", return_value="/usr/local/bin/macparakeet-cli"), \
              patch("subprocess.run", side_effect=fake_run) as mock_run:
@@ -157,7 +163,9 @@ class TestTranscribeVoiceAnswer:
         assert cmd_used[0] == "/usr/local/bin/macparakeet-cli"
         assert cmd_used[1] == "transcribe"
         assert "--format" in cmd_used and "json" in cmd_used
-        assert audio_path in cmd_used
+        assert "--no-diarize" in cmd_used
+        assert "--output-dir" in cmd_used
+        assert os.path.abspath(audio_path) in cmd_used
 
     def test_raises_when_macparakeet_not_found(self, tmp_path):
         audio_path = str(tmp_path / "voice.oga")
