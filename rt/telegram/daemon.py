@@ -563,6 +563,12 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
     thread_id = entry.get("message_thread_id")
     loop = asyncio.get_running_loop()
 
+    # Se la sessione di recall è già stata chiusa (/quit), 🗣/📖 devono ricostruire la
+    # tastiera persistente (senza ⏭️): altrimenti il bottone "avanza" riappare su un'attività
+    # già terminata, per cui non ha più senso (bisogna ricominciare con /recall).
+    active_session = tg_session.get_active_session(state_dir, update.effective_chat.id, thread_id)
+    session_active = active_session is not None and active_session.get("kind") == "recall"
+
     if action == "rtt":
         await update.callback_query.answer()
         transcript = entry.get("transcript")
@@ -593,7 +599,10 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         )
 
         msg_id = entry.get("message_id") or (update.effective_message.message_id if update.effective_message else None)
-        keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=True)
+        keyboard = (
+            tg_fmt.build_post_answer_keyboard(short_id, has_transcript=True)
+            if session_active else tg_fmt.build_persistent_recall_keyboard(short_id)
+        )
         if msg_id is not None:
             try:
                 await context.bot.edit_message_text(
@@ -653,7 +662,10 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         )
 
         msg_id = entry.get("message_id") or (update.effective_message.message_id if update.effective_message else None)
-        keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=(transcript is not None))
+        keyboard = (
+            tg_fmt.build_post_answer_keyboard(short_id, has_transcript=(transcript is not None))
+            if session_active else tg_fmt.build_persistent_recall_keyboard(short_id)
+        )
         if msg_id is not None:
             try:
                 await context.bot.edit_message_text(
@@ -967,7 +979,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     import tempfile
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".oga")
+    # macparakeet-cli riconosce i formati supportati dall'estensione del file, non dal contenuto:
+    # ".oga" (usata da Telegram per le note vocali) non è tra quelli riconosciuti, ".ogg" sì —
+    # stesso identico contenitore Ogg/Opus, cambia solo l'estensione.
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".ogg")
     os.close(tmp_fd)
     try:
         from rt.telegram.config import load_telegram_config
