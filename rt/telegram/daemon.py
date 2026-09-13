@@ -1059,24 +1059,30 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 def run_daemon(state_dir: str = None) -> None:
-    cfg = load_telegram_config()
-    runtime_cfg = load_config().telegram
-    resolved_state_dir = state_dir or runtime_cfg.state_dir
+    from rt.telegram.daemon_status import write_daemon_pid, remove_daemon_pid
+    write_daemon_pid()
+    try:
+        cfg = load_telegram_config()
+        runtime_cfg = load_config().telegram
+        resolved_state_dir = state_dir or runtime_cfg.state_dir
 
-    application = Application.builder().token(cfg.bot_token).build()
-    application.bot_data["state_dir"] = resolved_state_dir
+        application = Application.builder().token(cfg.bot_token).build()
+        application.bot_data["state_dir"] = resolved_state_dir
 
-    application.add_handler(CommandHandler("quit", handle_quit))
-    application.add_handler(CommandHandler("status", handle_status))
-    application.add_handler(CommandHandler("stile", handle_stile))
-    application.add_handler(CommandHandler("list", handle_list_command))
-    application.add_handler(CommandHandler("recall", handle_recall_command))
-    application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    application.add_handler(PollAnswerHandler(handle_poll_answer))
-    application.add_handler(MessageReactionHandler(handle_message_reaction))
-    application.job_queue.run_repeating(_write_heartbeat, interval=15, first=0)
+        application.add_handler(CommandHandler("quit", handle_quit))
+        application.add_handler(CommandHandler("status", handle_status))
+        application.add_handler(CommandHandler("stile", handle_stile))
+        application.add_handler(CommandHandler("list", handle_list_command))
+        application.add_handler(CommandHandler("recall", handle_recall_command))
+        application.add_handler(CallbackQueryHandler(handle_callback))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+        application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+        application.add_handler(PollAnswerHandler(handle_poll_answer))
+        application.add_handler(MessageReactionHandler(handle_message_reaction))
+        application.job_queue.run_repeating(_write_heartbeat, interval=15, first=0)
 
-    print(f"🤖 RT Telegram daemon in ascolto (state_dir='{resolved_state_dir}')...", file=sys.stderr)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+        print(f"🤖 RT Telegram daemon in ascolto (state_dir='{resolved_state_dir}')...", file=sys.stderr)
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    finally:
+        remove_daemon_pid()
+
