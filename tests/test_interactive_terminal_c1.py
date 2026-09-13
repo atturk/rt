@@ -257,18 +257,20 @@ async def test_asr_interactive_p_and_m_keys(tmp_path):
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/test_clip.mp3") as mock_cut, \
-         patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc) as mock_play, \
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/test_clip.mp3"), \
+         patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
          patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di rettificazione abbiamo una reazione esotermica importante.") as mock_edit:
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
             await pilot.press("p")
-            await pilot.press("e")
+            await pilot.press("m")
 
     assert app.return_value is True
-    mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 10.0, 30.0)
-    mock_play.assert_called_once_with("/tmp/test_clip.mp3")
+    mock_popen.assert_called_once()
+    assert "mpv" in mock_popen.call_args[0][0][0]
     mock_edit.assert_called_once()
 
     ledger = load_ledger(lesson_dir)
@@ -291,33 +293,23 @@ async def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypat
     mock_proc1.poll.return_value = None
     mock_proc2 = MagicMock()
     mock_proc2.poll.return_value = None
-    mock_proc3 = MagicMock()
-    mock_proc3.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3", "/tmp/clip3.mp3"]) as mock_cut, \
-         patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2, mock_proc3]) as mock_play:
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/clip1.mp3"), \
+         patch("subprocess.Popen", side_effect=[mock_proc1, mock_proc2]) as mock_popen:
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
-        monotonic_times = [100.0, 103.0, 103.0, 104.0, 105.0, 106.0]
-        app._get_time = lambda: monotonic_times.pop(0) if monotonic_times else 200.0
         async with app.run_test() as pilot:
-            await pilot.press("p")
-            await pilot.press("p")
-            await pilot.press("p")
-            await pilot.press("o")
-            await pilot.press("a")
-
+            await pilot.press("p")  # Apre mpv
+            await pilot.press("p")  # Chiude mpv
+            await pilot.press("p")  # Riapre mpv
+            await pilot.press("a")  # Auto-chiude mpv e accetta
 
     assert app.return_value is True
-    assert mock_cut.call_count == 3
-    audio_path = os.path.abspath(os.path.join(lesson_dir, "audio.mp3"))
-    assert mock_cut.call_args_list[0][0] == (audio_path, 10.0, 30.0)
-    assert mock_cut.call_args_list[1][0] == (audio_path, 13.0, 30.0)
-    assert mock_cut.call_args_list[2][0] == (audio_path, 10.0, 30.0)
-
-    mock_proc1.terminate.assert_called()
-    mock_proc2.terminate.assert_called()
-    mock_proc3.terminate.assert_called()
+    assert mock_popen.call_count == 2
+    mock_proc1.terminate.assert_called_once()
+    mock_proc2.terminate.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -330,13 +322,17 @@ async def test_audio_error_messages_remain_visible(tmp_path):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    with patch("rt.pipeline.issue_review.cut_clip", side_effect=RuntimeError("ffmpeg error test")):
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", side_effect=RuntimeError("clip error test")):
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
             await pilot.press("p")
             assert app.last_status is not None
-            assert "ffmpeg error test" in app.last_status
+            assert "clip error test" in app.last_status
             await pilot.press("q")
+
+    assert app.return_value is False
+
 
     assert app.return_value is False
 
@@ -453,7 +449,7 @@ async def test_science_interactive_m_missing_markers_retries(tmp_path):
 
     app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
     async with app.run_test() as pilot:
-        await pilot.press("m")
+        await pilot.press("r")
 
     assert app.return_value is True
     ledger = load_ledger(lesson_dir)
@@ -484,18 +480,20 @@ async def test_science_interactive_p_and_e_keys(tmp_path):
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/test_clip_sci.mp3") as mock_cut, \
-         patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc) as mock_play, \
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/test_clip_sci.mp3"), \
+         patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
          patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento iniziale\nabbiamo una reazione endotermica controllata") as mock_edit:
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
             await pilot.press("p")
-            await pilot.press("e")
+            await pilot.press("m")
 
     assert app.return_value is True
-    mock_cut.assert_called_once_with(os.path.abspath(os.path.join(lesson_dir, "audio.mp3")), 10.0, 30.0)
-    mock_play.assert_called_once_with("/tmp/test_clip_sci.mp3")
+    mock_popen.assert_called_once()
+    assert "mpv" in mock_popen.call_args[0][0][0]
     mock_edit.assert_called_once()
 
     ledger = load_ledger(lesson_dir)
@@ -519,18 +517,22 @@ async def test_silent_p_o_and_unrecognized_keys_science(tmp_path):
     mock_proc2 = MagicMock()
     mock_proc2.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", side_effect=["/tmp/clip1.mp3", "/tmp/clip2.mp3"]), \
-         patch("rt.pipeline.issue_review.play_clip_background", side_effect=[mock_proc1, mock_proc2]):
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/clip1.mp3"), \
+         patch("subprocess.Popen", side_effect=[mock_proc1, mock_proc2]) as mock_popen:
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
             await pilot.press("p")
             await pilot.press("p")
             await pilot.press("p")
-            await pilot.press("o")
             await pilot.press("z")
             await pilot.press("a")
 
     assert app.return_value is True
+    assert mock_popen.call_count == 2
+    mock_proc1.terminate.assert_called_once()
+    mock_proc2.terminate.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -546,16 +548,17 @@ async def test_quit_during_p_sequence_interrupts_cleanly(tmp_path):
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
-    with patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/clip1.mp3"), \
-         patch("rt.pipeline.issue_review.play_clip_background", return_value=mock_proc):
+    with patch("shutil.which", return_value="/opt/homebrew/bin/mpv"), \
+         patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
+         patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/clip1.mp3"), \
+         patch("subprocess.Popen", return_value=mock_proc):
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
-            await pilot.press("p")
             await pilot.press("p")
             await pilot.press("q")
 
     assert app.return_value is False
-    mock_proc.terminate.assert_called()
+    mock_proc.terminate.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -571,10 +574,10 @@ async def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path):
     with patch("rt.pipeline.issue_review.edit_text_in_editor", side_effect=["", "Nel processo di distillazione abbiamo una reazione esotermica importante."]):
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
-            await pilot.press("e")  # Returns empty -> warning, does not advance
+            await pilot.press("m")  # Returns empty -> warning, does not advance
             assert app.idx == 0
             assert "Nessuna modifica" in (app.last_status or "")
-            await pilot.press("e")  # Returns edited text -> advances
+            await pilot.press("m")  # Returns edited text -> advances
             assert app.idx == 1
 
     assert app.return_value is True
@@ -602,18 +605,15 @@ async def test_asr_risk_issue_actions(tmp_path):
 
     app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[asr_risk_issue])
     async with app.run_test() as pilot:
-        # Premere 'a' deve mostrare errore e non avanzare
+        # Premere 'a' per issue ASR accetta il testo dell'unità
         await pilot.press("a")
-        assert app.idx == 0
-        assert "non valida per issue ASR" in (app.last_status or "")
-        # Premere 'm' accetta il testo dell'unità
-        await pilot.press("m")
         assert app.idx == 1
 
     assert app.return_value is True
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].decision == "accepted"
+
 
 
 

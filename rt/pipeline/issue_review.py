@@ -7,6 +7,8 @@ click/risposta (vedi rt/telegram/daemon.py).
 """
 import os
 import re
+import json
+import shutil
 import subprocess
 import time
 from typing import List, Optional, Set, Dict, Any
@@ -345,9 +347,9 @@ def _build_science_panel(
         out.append(f"\n  {last_status}\n")
 
     if is_asr_risk:
-        out.append("\n  Azione [A=Accetta / M=Modifica / P=Play audio / O=Riavvia audio / I=Indietro / S=Salta / Q=Esci]: ")
+        out.append("\n  Azione [A=Accetta / M=Modifica / P=Player audio / I=Indietro / S=Salta / Q=Esci]: ")
     else:
-        out.append("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica / P=Play audio / O=Riavvia audio / I=Indietro / S=Salta / Q=Esci]: ")
+        out.append("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica / P=Player audio / I=Indietro / S=Salta / Q=Esci]: ")
 
     return Panel(out, title=f"Science Review [{idx + 1}/{total_count}]", border_style="magenta")
 
@@ -358,8 +360,7 @@ class IssueReviewApp(App):
         ("a", "approve_or_accept", "Accetta"),
         ("r", "reject", "Rifiuta"),
         ("m", "edit", "Modifica"),
-        ("p", "toggle_audio", "Play / Pausa audio"),
-        ("o", "restart_audio", "Riavvia audio"),
+        ("p", "toggle_audio", "Player audio"),
         ("i,b,left,up,k", "back", "Indietro"),
         ("s,right,down,j", "skip", "Salta"),
         ("q,escape", "quit", "Esci"),
@@ -385,7 +386,8 @@ class IssueReviewApp(App):
         from rt.core.segments import load_segments_json
         from rt.pipeline.rewrite import load_draft, get_draft_path
 
-        seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+        seg_path = lesson_path(lesson_dir, "segments.json")
+        seg_data = load_segments_json(seg_path) if os.path.isfile(seg_path) else None
         self.seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
 
         draft_path = get_draft_path(lesson_dir)
@@ -399,16 +401,8 @@ class IssueReviewApp(App):
                 for sid in u.source_segment_ids:
                     self.seg_to_unit[sid] = u
 
-        self.current_audio_proc: Optional[subprocess.Popen] = None
-        self.audio_paused: bool = False
-        self.audio_range_start: Optional[float] = None
-        self.audio_range_end: Optional[float] = None
-        self.audio_elapsed: float = 0.0
-        self.audio_resumed_at: float = 0.0
-        self.temp_audio_clips: List[str] = []
-
-    def _get_time(self) -> float:
-        return time.monotonic()
+        self.mpv_proc: Optional[subprocess.Popen] = None
+        self.mpv_socket_path: Optional[str] = None
 
     def compose(self) -> ComposeResult:
         yield Static(self._render_panel(), id="panel_view")
@@ -418,34 +412,25 @@ class IssueReviewApp(App):
 
     def on_unmount(self) -> None:
         self._stop_audio()
-        for clip in self.temp_audio_clips:
-            if os.path.exists(clip):
-                try:
-                    os.remove(clip)
-                except Exception:
-                    pass
 
     def _stop_audio(self) -> None:
-        if self.current_audio_proc is not None and self.current_audio_proc.poll() is None:
+        if self.mpv_proc is not None:
+            if self.mpv_proc.poll() is None:
+                try:
+                    self.mpv_proc.terminate()
+                except Exception:
+                    pass
+            self.mpv_proc = None
+        if self.mpv_socket_path and os.path.exists(self.mpv_socket_path):
             try:
-                self.current_audio_proc.terminate()
+                os.remove(self.mpv_socket_path)
             except Exception:
                 pass
-        self.current_audio_proc = None
-        self.audio_paused = False
-        self.audio_range_start = None
-        self.audio_range_end = None
-        self.audio_elapsed = 0.0
-        self.audio_resumed_at = 0.0
+            self.mpv_socket_path = None
 
     def _check_audio_proc(self) -> None:
-        if self.current_audio_proc is not None and self.current_audio_proc.poll() is not None:
-            self.current_audio_proc = None
-            self.audio_paused = False
-            self.audio_range_start = None
-            self.audio_range_end = None
-            self.audio_elapsed = 0.0
-            self.audio_resumed_at = 0.0
+        if self.mpv_proc is not None and self.mpv_proc.poll() is not None:
+            self.mpv_proc = None
 
     def _render_panel(self) -> Panel:
         if self.idx >= len(self.to_review):
@@ -525,7 +510,6 @@ class IssueReviewApp(App):
         else:
             self._update_display()
 
-
     def _do_edit_interaction(self, initial_content: str) -> str:
         return edit_text_in_editor(initial_content)
 
@@ -535,7 +519,6 @@ class IssueReviewApp(App):
         iss = self.to_review[self.idx]
         iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
         is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
-        self._stop_audio()
         sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
 
         if is_asr_risk:
@@ -575,96 +558,64 @@ class IssueReviewApp(App):
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
-        if not self.audio_paused:
-            if self.current_audio_proc is not None and self.current_audio_proc.poll() is None:
-                self.audio_elapsed += self._get_time() - self.audio_resumed_at
-                try:
-                    self.current_audio_proc.terminate()
-                except Exception:
-                    pass
-                self.current_audio_proc = None
-                self.audio_paused = True
-            else:
-                audio_path = resolve_audio_path(self.lesson_dir)
-                start_s, end_s = None, None
-                if iss.segment_id and iss.segment_id in self.seg_by_id:
-                    s_seg = self.seg_by_id[iss.segment_id]
-                    start_s = max(0.0, s_seg.start_seconds - 5.0)
-                    end_s = s_seg.end_seconds + 5.0
-                else:
-                    sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
-                    if sci_unit:
-                        start_seg = self.seg_by_id.get(sci_unit.start_segment_id)
-                        end_seg = self.seg_by_id.get(sci_unit.end_segment_id)
-                        if start_seg and end_seg:
-                            start_s = start_seg.start_seconds
-                            end_s = end_seg.end_seconds
 
-                if not audio_path or start_s is None or end_s is None:
-                    self.last_status = "⚠️ File audio originale o intervallo non disponibile."
-                else:
-                    self.audio_range_start = start_s
-                    self.audio_range_end = end_s
-                    self.audio_elapsed = 0.0
-                    try:
-                        clip_path = cut_clip(audio_path, self.audio_range_start, self.audio_range_end)
-                        self.temp_audio_clips.append(clip_path)
-                        self.current_audio_proc = play_clip_background(clip_path)
-                        self.audio_resumed_at = self._get_time()
-                        self.audio_paused = False
-                    except Exception as e:
-                        self.last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-        else:
-            audio_path = resolve_audio_path(self.lesson_dir)
-            if not audio_path or self.audio_range_start is None or self.audio_range_end is None:
-                self.last_status = "⚠️ File audio originale o intervallo non disponibile."
-            else:
-                new_start = self.audio_range_start + self.audio_elapsed
-                try:
-                    clip_path = cut_clip(audio_path, new_start, self.audio_range_end)
-                    self.temp_audio_clips.append(clip_path)
-                    self.current_audio_proc = play_clip_background(clip_path)
-                    self.audio_resumed_at = self._get_time()
-                    self.audio_paused = False
-                except Exception as e:
-                    self.last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
-
-        self._update_display()
-
-    def action_restart_audio(self) -> None:
-        if self.idx >= len(self.to_review):
+        if self.mpv_proc is not None and self.mpv_proc.poll() is None:
+            self._stop_audio()
+            self.last_status = "⏹ Player audio chiuso."
+            self._update_display()
             return
-        iss = self.to_review[self.idx]
-        self._stop_audio()
-        audio_path = resolve_audio_path(self.lesson_dir)
-        start_s, end_s = None, None
-        if iss.segment_id and iss.segment_id in self.seg_by_id:
-            s_seg = self.seg_by_id[iss.segment_id]
-            start_s = max(0.0, s_seg.start_seconds - 5.0)
-            end_s = s_seg.end_seconds + 5.0
-        else:
-            sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
-            if sci_unit:
-                start_seg = self.seg_by_id.get(sci_unit.start_segment_id)
-                end_seg = self.seg_by_id.get(sci_unit.end_segment_id)
-                if start_seg and end_seg:
-                    start_s = start_seg.start_seconds
-                    end_s = end_seg.end_seconds
 
-        if not audio_path or start_s is None or end_s is None:
-            self.last_status = "⚠️ File audio originale o intervallo non disponibile."
-        else:
-            self.audio_range_start = start_s
-            self.audio_range_end = end_s
-            self.audio_elapsed = 0.0
-            try:
-                clip_path = cut_clip(audio_path, self.audio_range_start, self.audio_range_end)
-                self.temp_audio_clips.append(clip_path)
-                self.current_audio_proc = play_clip_background(clip_path)
-                self.audio_resumed_at = self._get_time()
-                self.audio_paused = False
-            except Exception as e:
-                self.last_status = f"⚠️ Impossibile riprodurre l'audio: {e}"
+        if not shutil.which("mpv"):
+            self.last_status = "⚠️ Installa mpv con 'brew install mpv' per usare il player companion."
+            self._update_display()
+            return
+
+        sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
+        if not sci_unit:
+            self.last_status = "⚠️ Unità non associata all'issue."
+            self._update_display()
+            return
+
+        from rt.core.audio_clip import get_or_create_unit_clip, calculate_mpv_geometry
+        from rt.core.segments import load_segments_json
+        seg_path = lesson_path(self.lesson_dir, "segments.json")
+        seg_data = load_segments_json(seg_path) if os.path.isfile(seg_path) else None
+        segments = seg_data.segments if seg_data else []
+
+        try:
+            clip_path = get_or_create_unit_clip(self.lesson_dir, sci_unit, segments)
+        except Exception as e:
+            self.last_status = f"⚠️ Errore ritaglio clip audio: {e}"
+            self._update_display()
+            return
+
+        if not clip_path:
+            self.last_status = "⚠️ File audio originale o clip non disponibile."
+            self._update_display()
+            return
+
+        geometry = calculate_mpv_geometry()
+        import uuid
+        self.mpv_socket_path = f"/tmp/rt_mpv_{os.getpid()}_{uuid.uuid4().hex[:8]}.sock"
+
+        cmd = [
+            "mpv",
+            f"--input-ipc-server={self.mpv_socket_path}",
+            f"--geometry={geometry}",
+            f"--title=RT Review: {sci_unit.unit_id} - {sci_unit.title}",
+            "--force-window=yes",
+            clip_path,
+        ]
+
+        try:
+            self.mpv_proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.last_status = f"▶️ Player audio aperto per unità {sci_unit.unit_id}."
+        except Exception as e:
+            self.last_status = f"⚠️ Impossibile avviare mpv: {e}"
 
         self._update_display()
 
@@ -692,8 +643,10 @@ class IssueReviewApp(App):
 
     def action_quit(self) -> None:
         self._stop_audio()
+        self.last_status = "⏹ Revisione interrotta."
         self.interrupted = True
         self.exit(False)
+
 
 
 
