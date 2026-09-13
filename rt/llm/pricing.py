@@ -49,11 +49,53 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         "gemini-2.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-2.0-flash": ModelPricing(input_per_million=0.10, output_per_million=0.40),
         "gemini-2.0-flash-lite": ModelPricing(input_per_million=0.075, output_per_million=0.30),
-        "gemini-2.5-pro": ModelPricing(input_per_million=1.25, output_per_million=5.00),
         "gemini-1.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-1.5-pro": ModelPricing(input_per_million=1.25, output_per_million=5.00),
     }
 }
+
+
+# Cache in-memory per processo per i prezzi recuperati dinamicamente da OpenRouter
+_OPENROUTER_DYNAMIC_CACHE: Dict[str, Optional[ModelPricing]] = {}
+_OPENROUTER_DYNAMIC_FETCHED: bool = False
+
+
+def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
+    """
+    Recupera dinamicamente il pricing da https://openrouter.ai/api/v1/models con cache in-memory.
+    Non solleva eccezioni in caso di errore di rete / timeout, ma restituisce None.
+    """
+    global _OPENROUTER_DYNAMIC_FETCHED
+    mod_clean = model_name.lower().strip().lstrip("~")
+
+    if mod_clean in _OPENROUTER_DYNAMIC_CACHE:
+        return _OPENROUTER_DYNAMIC_CACHE[mod_clean]
+
+    if not _OPENROUTER_DYNAMIC_FETCHED:
+        _OPENROUTER_DYNAMIC_FETCHED = True
+        try:
+            import requests
+            resp = requests.get("https://openrouter.ai/api/v1/models", timeout=4)
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                for item in data:
+                    if isinstance(item, dict) and "id" in item and "pricing" in item:
+                        mid = str(item["id"]).lower().strip()
+                        p_info = item["pricing"]
+                        if isinstance(p_info, dict):
+                            try:
+                                p_in = float(p_info.get("prompt", 0)) * 1_000_000.0
+                                p_out = float(p_info.get("completion", 0)) * 1_000_000.0
+                                _OPENROUTER_DYNAMIC_CACHE[mid] = ModelPricing(
+                                    input_per_million=round(p_in, 6),
+                                    output_per_million=round(p_out, 6)
+                                )
+                            except (ValueError, TypeError):
+                                pass
+        except Exception:
+            pass
+
+    return _OPENROUTER_DYNAMIC_CACHE.get(mod_clean)
 
 
 def calculate_cost(
@@ -106,6 +148,10 @@ def calculate_cost(
                     if k_tokens == query_tokens:
                         pricing = v
                         break
+
+    # 3. Se provider è openrouter e non trovato in tabella statica, tenta fetch dinamico da API OpenRouter
+    if pricing is None and prov_clean == "openrouter":
+        pricing = _get_dynamic_openrouter_pricing(mod_clean)
 
     # Se non trovato ma il provider è deepseek/openrouter con modello deepseek generico, usa fallback conservativo
     if pricing is None:
