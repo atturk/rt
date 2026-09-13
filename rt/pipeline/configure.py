@@ -95,6 +95,7 @@ def _update_env_file(env_path: str, key: str, value: str) -> None:
         new_lines.append(f"{key}={value}\n")
 
     _atomic_write_text(env_path, "".join(new_lines))
+    os.environ[key] = value
 
 
 def _resolve_or_bootstrap_config_paths() -> Tuple[str, str]:
@@ -604,8 +605,8 @@ _JOB_GROUPS: List[Tuple[str, List[str]]] = [
     ("outline", ["outline"]),
     ("rewrite", ["rewrite"]),
     ("review", ["review"]),
-    ("immagini (descrizione slide/foto + assegnazione a sezione)", ["image_description", "image_unit_judge"]),
-    ("recall (quiz, domande mirate/vaste, valutazioni)", ["recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta"]),
+    ("immagini", ["image_description", "image_unit_judge"]),
+    ("recall", ["recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta"]),
 ]
 
 

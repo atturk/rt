@@ -79,6 +79,16 @@ def test_update_env_file_preserves_other_keys(tmp_path):
     assert "OPENROUTER_API_KEY=or_key_123" in content2
 
 
+def test_update_env_file_updates_os_environ(tmp_path, monkeypatch):
+    """Verifica che _update_env_file aggiorni os.environ nel processo corrente SENZA dover ricaricare il file."""
+    env_file = str(tmp_path / ".env")
+    monkeypatch.delenv("TEST_KEY_TASK44", raising=False)
+    assert "TEST_KEY_TASK44" not in os.environ
+    _update_env_file(env_file, "TEST_KEY_TASK44", "abc123_val")
+    assert os.environ.get("TEST_KEY_TASK44") == "abc123_val"
+
+
+
 def test_configure_llm_provider_section_success_http_models(tmp_path):
     """Verifica la configurazione del provider LLM con recupero HTTP dei modelli riuscito."""
     config_dir = str(tmp_path / "config")
