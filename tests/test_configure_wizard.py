@@ -25,6 +25,7 @@ from rt.pipeline.configure import (
     _configure_telegram_section,
     _configure_stt_section,
     _configure_pricing_section,
+    _get_next_free_credential_index,
     run_config_wizard,
     run_models_management,
     run_telegram_only,
@@ -1662,4 +1663,159 @@ def test_configure_llm_provider_section_clears_console_on_new_profile(tmp_path):
         _configure_llm_provider_section(config_dir, env_file)
 
     mock_clear.assert_called()
+
+
+# ======================================================================
+# TASK 56: ROUND-ROBIN SEPARATE POOL CREDENTIAL COLLISION PREVENTION
+# ======================================================================
+
+def test_get_next_free_credential_index():
+    """Verifica il calcolo corretto dell'indice libero di credenziale per un provider."""
+    # 1. Nessuna credenziale registrata -> 1
+    assert _get_next_free_credential_index({"credentials": []}, "google") == 1
+
+    # 2. Credenziali sequenziali google_1, google_2, google_3 -> 4
+    gen_data = {
+        "credentials": [
+            {"name": "google_1", "provider": "google", "env_var": "GOOGLE_API_KEY_1"},
+            {"name": "google_2", "provider": "google", "env_var": "GOOGLE_API_KEY_2"},
+            {"name": "google_3", "provider": "google", "env_var": "GOOGLE_API_KEY_3"},
+            {"name": "deepseek_1", "provider": "deepseek", "env_var": "DEEPSEEK_API_KEY"},
+        ]
+    }
+    assert _get_next_free_credential_index(gen_data, "google") == 4
+    assert _get_next_free_credential_index(gen_data, "deepseek") == 2
+    assert _get_next_free_credential_index(gen_data, "openrouter") == 1
+
+    # 3. Credenziali non sequenziali (es. google_1, google_3 -> buco all'indice 2)
+    gen_data_gap = {
+        "credentials": [
+            {"name": "google_1", "provider": "google", "env_var": "GOOGLE_API_KEY_1"},
+            {"name": "google_3", "provider": "google", "env_var": "GOOGLE_API_KEY_3"},
+        ]
+    }
+    assert _get_next_free_credential_index(gen_data_gap, "google") == 2
+
+    # 4. Con collected_keys parzialmente accumulate
+    collected = [("google_2", "GOOGLE_API_KEY_2", "key-2")]
+    assert _get_next_free_credential_index(gen_data_gap, "google", collected_keys=collected) == 4
+
+
+def test_create_separate_round_robin_pool_avoids_collision(tmp_path, monkeypatch):
+    """
+    Verifica che creando un secondo pool round-robin con l'opzione 'pool separato',
+    le chiavi del primo pool non vengano sovrascritte e il secondo pool usi indici nuovi (google_4..6).
+    """
+    config_dir = str(tmp_path / "config")
+    os.makedirs(config_dir, exist_ok=True)
+    env_file = str(tmp_path / ".env")
+
+    # Stato iniziale: profilo A con google_1, google_2, google_3
+    initial_general = {
+        "version": "2.0.0",
+        "credentials": [
+            {"name": "google_1", "provider": "google", "env_var": "GOOGLE_API_KEY_1"},
+            {"name": "google_2", "provider": "google", "env_var": "GOOGLE_API_KEY_2"},
+            {"name": "google_3", "provider": "google", "env_var": "GOOGLE_API_KEY_3"},
+        ],
+        "models": {
+            "google_pool_a": {
+                "provider": "google",
+                "round_robin": True,
+                "routes": [
+                    {"credential": "google_1", "model": "gemini-2.0-flash"},
+                    {"credential": "google_2", "model": "gemini-2.0-flash"},
+                    {"credential": "google_3", "model": "gemini-2.0-flash"},
+                ]
+            }
+        }
+    }
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    with open(general_yaml_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(initial_general, f)
+
+    with open(env_file, "w", encoding="utf-8") as f:
+        f.write("GOOGLE_API_KEY_1=key-old-1\nGOOGLE_API_KEY_2=key-old-2\nGOOGLE_API_KEY_3=key-old-3\n")
+
+    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-old-1")
+    monkeypatch.setenv("GOOGLE_API_KEY_2", "key-old-2")
+    monkeypatch.setenv("GOOGLE_API_KEY_3", "key-old-3")
+
+    # Creazione profilo B con opzione "🆕 Crea un pool separato"
+    def mock_select(prompt, choices=None, default=None):
+        m = MagicMock()
+        if "Provider LLM" in prompt:
+            m.ask.return_value = "google"
+        elif "Gestione chiavi round-robin" in prompt:
+            m.ask.return_value = "🆕 Crea un pool separato (nuove chiavi indipendenti, non condivise con altri profili)"
+        return m
+
+    def mock_confirm(prompt, default=None):
+        m = MagicMock()
+        if "più chiavi API" in prompt:
+            m.ask.return_value = True
+        elif "Hai selezionato" in prompt:
+            m.ask.return_value = True
+        elif "Vuoi configurare un listino prezzi" in prompt or "Costo rilevato" in prompt:
+            m.ask.return_value = False
+        else:
+            m.ask.return_value = True
+        return m
+
+    def mock_password(prompt, default=None):
+        m = MagicMock()
+        # Incolla 3 nuove chiavi separate da virgola, poi invio vuoto
+        if not hasattr(mock_password, "called"):
+            mock_password.called = True
+            m.ask.return_value = "key-new-4, key-new-5, key-new-6"
+        else:
+            m.ask.return_value = ""
+        return m
+
+    def mock_text(prompt, default="", validate=None):
+        m = MagicMock()
+        if "Base URL" in prompt:
+            m.ask.return_value = ""
+        elif "ID Modello" in prompt:
+            m.ask.return_value = "gemini-2.5-flash"
+        elif "Nome per questo profilo" in prompt:
+            m.ask.return_value = "google_pool_b"
+        return m
+
+    with patch("questionary.select", side_effect=mock_select), \
+         patch("questionary.confirm", side_effect=mock_confirm), \
+         patch("questionary.password", side_effect=mock_password), \
+         patch("questionary.text", side_effect=mock_text), \
+         patch("requests.get", side_effect=Exception("offline")):
+        p_name, p_dict = _create_new_model_profile(config_dir, env_file, initial_general)
+
+    assert p_name == "google_pool_b"
+    assert p_dict["round_robin"] is True
+    # Le rotte di B devono usare google_4, google_5, google_6
+    route_creds = [r["credential"] for r in p_dict["routes"]]
+    assert route_creds == ["google_4", "google_5", "google_6"]
+
+    # Verifica persistenza in general.yaml: contiene sia google_1..3 che google_4..6
+    with open(general_yaml_path, "r", encoding="utf-8") as f:
+        saved_gen = yaml.safe_load(f)
+
+    cred_names = [c["name"] for c in saved_gen["credentials"]]
+    assert "google_1" in cred_names
+    assert "google_2" in cred_names
+    assert "google_3" in cred_names
+    assert "google_4" in cred_names
+    assert "google_5" in cred_names
+    assert "google_6" in cred_names
+
+    # Verifica che nel .env le vecchie chiavi siano intatte
+    with open(env_file, "r", encoding="utf-8") as f:
+        env_content = f.read()
+
+    assert "GOOGLE_API_KEY_1=key-old-1" in env_content
+    assert "GOOGLE_API_KEY_2=key-old-2" in env_content
+    assert "GOOGLE_API_KEY_3=key-old-3" in env_content
+    assert "GOOGLE_API_KEY_4=key-new-4" in env_content
+    assert "GOOGLE_API_KEY_5=key-new-5" in env_content
+    assert "GOOGLE_API_KEY_6=key-new-6" in env_content
+
 

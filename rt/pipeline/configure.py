@@ -216,6 +216,38 @@ FALLBACK_ROLE_MAP: Dict[str, str] = {
 }
 
 
+def _get_next_free_credential_index(
+    general_data: Dict[str, Any],
+    provider: str,
+    collected_keys: Optional[List[Tuple[str, str, str]]] = None
+) -> int:
+    """
+    Calcola il primo indice numerico univoco libero >= 1 per il provider specificato,
+    considerando tutte le credenziali già registrate in general_data e quelle già raccolte.
+    """
+    used_indices: Set[int] = set()
+    prov_clean = provider.lower().strip()
+    creds = general_data.get("credentials", [])
+    if isinstance(creds, list):
+        for c in creds:
+            if isinstance(c, dict) and str(c.get("provider", "")).lower().strip() == prov_clean:
+                cn = str(c.get("name", ""))
+                parts = cn.split("_")
+                if len(parts) >= 2 and parts[-1].isdigit():
+                    used_indices.add(int(parts[-1]))
+
+    if collected_keys:
+        for cn, ce, _ in collected_keys:
+            parts = cn.split("_")
+            if len(parts) >= 2 and parts[-1].isdigit():
+                used_indices.add(int(parts[-1]))
+
+    idx = 1
+    while idx in used_indices:
+        idx += 1
+    return idx
+
+
 def _create_new_model_profile(
     config_dir: str,
     env_path: str,
@@ -304,7 +336,8 @@ def _create_new_model_profile(
                 f"Gestione chiavi round-robin per {provider}:",
                 choices=[
                     "➕ Aggiungi altre chiavi",
-                    "🔄 Sostituisci tutte le chiavi da zero",
+                    "🆕 Crea un pool separato (nuove chiavi indipendenti, non condivise con altri profili)",
+                    "🔄 Sostituisci le chiavi di questo pool con altre nuove",
                     "⏭ Mantieni le chiavi esistenti"
                 ],
                 default="➕ Aggiungi altre chiavi"
@@ -316,6 +349,9 @@ def _create_new_model_profile(
             if action_choice.startswith("⏭"):
                 rr_action = "keep"
                 collected_keys = list(existing_creds)
+            elif action_choice.startswith("🆕"):
+                rr_action = "separate_pool"
+                collected_keys = []
             elif action_choice.startswith("🔄"):
                 rr_action = "replace"
                 collected_keys = []
@@ -336,7 +372,10 @@ def _create_new_model_profile(
                 if not raw_keys:
                     break
                 for key_val in raw_keys:
-                    curr_idx = len(collected_keys) + 1
+                    if rr_action == "replace":
+                        curr_idx = len(collected_keys) + 1
+                    else:
+                        curr_idx = _get_next_free_credential_index(general_data, provider, collected_keys)
                     cn = "google_1" if (provider == "google" and curr_idx == 1) else f"{provider.lower()}_{curr_idx}"
                     ce = f"{provider.upper()}_API_KEY_{curr_idx}"
                     collected_keys.append((cn, ce, key_val))
