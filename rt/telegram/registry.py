@@ -10,7 +10,7 @@ import json
 import time
 import hashlib
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 def _registry_path(state_dir: str) -> str:
@@ -145,3 +145,27 @@ def prune_registry(state_dir: str, max_age_days: int = 7) -> None:
         _save_registry(state_dir, data)
     finally:
         _release_lock(state_dir)
+
+
+def register_list_message(message_id: int, lesson_dirs: List[str], state_dir: str, message_thread_id: Optional[int] = None) -> None:
+    """Registra l'elenco ordinato di lesson_dirs mostrato nel messaggio /list con message_id."""
+    key = f"list_msg_{message_id}"
+    register_with_key(
+        key=key,
+        lesson_dir=lesson_dirs[0] if lesson_dirs else "",
+        kind="list_message",
+        state_dir=state_dir,
+        message_thread_id=message_thread_id,
+        extra={"lesson_dirs": [os.path.abspath(d) for d in lesson_dirs]}
+    )
+
+
+def resolve_list_message(message_id: int, state_dir: str) -> Optional[List[str]]:
+    """Recupera l'elenco ordinato di lesson_dirs associato al messaggio /list con message_id."""
+    key = f"list_msg_{message_id}"
+    entry = resolve_pending(key, state_dir)
+    if entry and entry.get("kind") == "list_message":
+        dirs = entry.get("lesson_dirs")
+        if isinstance(dirs, list):
+            return list(dirs)
+    return None

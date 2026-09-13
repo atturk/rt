@@ -188,11 +188,18 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     text = render_lesson_list_text(scoped, show_materia=show_materia)
-    await _send_with_retry(lambda: update.effective_message.reply_text(
+    sent_msg = await _send_with_retry(lambda: update.effective_message.reply_text(
         text,
         message_thread_id=thread_id,
         parse_mode="HTML"
     ))
+    if sent_msg and hasattr(sent_msg, "message_id"):
+        registry.register_list_message(
+            message_id=sent_msg.message_id,
+            lesson_dirs=[e.lesson_dir for e in scoped],
+            state_dir=state_dir,
+            message_thread_id=thread_id,
+        )
 
 
 async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -201,6 +208,26 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
     state_dir = context.bot_data["state_dir"]
     chat_id = update.effective_chat.id
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
+
+    # Controllo se è una reply a un messaggio di /list
+    reply_msg = update.effective_message.reply_to_message if update.effective_message else None
+    if reply_msg and hasattr(reply_msg, "message_id"):
+        list_dirs = registry.resolve_list_message(reply_msg.message_id, state_dir)
+        if list_dirs is not None:
+            if context.args and len(context.args) == 1 and context.args[0].isdigit():
+                idx_1based = int(context.args[0])
+                if 1 <= idx_1based <= len(list_dirs):
+                    target_lesson_dir = list_dirs[idx_1based - 1]
+                    loop = asyncio.get_running_loop()
+                    from rt.pipeline.recall_session import start_recall_via_telegram
+                    await loop.run_in_executor(None, start_recall_via_telegram, target_lesson_dir, "alternato", None, False)
+                    return
+                else:
+                    await _send_with_retry(lambda: update.effective_message.reply_text(
+                        f"⚠️ Posizione {idx_1based} non valida: la lista contiene {len(list_dirs)} lezioni (valori ammessi: 1-{len(list_dirs)}).",
+                        message_thread_id=thread_id,
+                    ))
+                    return
 
     from rt.core.config import load_config
     from rt.telegram.config import reverse_resolve_materia
