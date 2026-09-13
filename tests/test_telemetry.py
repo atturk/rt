@@ -630,3 +630,64 @@ def test_build_writes_telemetry_summary_file(tmp_path):
     assert "by_provider" in data
 
 
+def test_llm_debug_log_includes_credential_ref_and_route_id(tmp_path):
+    """Verifica che llm_debug.log registri credential_ref, route_id e failure_class (Task 52)."""
+    lesson_dir = str(tmp_path / "lesson_debug")
+    os.makedirs(lesson_dir, exist_ok=True)
+
+    logged_entries = []
+
+    def fake_append(ld, entry):
+        logged_entries.append(entry)
+
+    client = LLMClient()
+
+    # 1. Chiamata con successo
+    mock_resp_success = MagicMock()
+    mock_resp_success.status_code = 200
+    mock_resp_success.iter_lines.return_value = [
+        'data: {"id": "req_succ", "choices": [{"delta": {"content": "{\\"ok\\": true}"}, "finish_reason": "stop"}]}'.encode("utf-8"),
+        b"data: [DONE]"
+    ]
+
+    with patch("rt.llm.client._append_debug_log", side_effect=fake_append), \
+         patch("requests.post", return_value=mock_resp_success):
+        res = client.call_structured(
+            prompt="test",
+            system_prompt="sys",
+            response_model=SampleResponseModel,
+            job_name="outline",
+            lesson_dir=lesson_dir,
+            show_monitor=False,
+        )
+
+    assert res.ok is True
+    assert len(logged_entries) == 1
+    assert "credential_ref" in logged_entries[0]
+    assert "route_id" in logged_entries[0]
+    assert logged_entries[0]["status"] == "success"
+
+    # 2. Chiamata con errore 429
+    logged_entries.clear()
+    mock_resp_err = MagicMock()
+    mock_resp_err.status_code = 429
+    mock_resp_err.text = json.dumps({"error": {"message": "Rate limit exceeded"}})
+
+    with patch("rt.llm.client._append_debug_log", side_effect=fake_append), \
+         patch("requests.post", return_value=mock_resp_err):
+        with pytest.raises(LLMError):
+            client.call_structured(
+                prompt="test",
+                system_prompt="sys",
+                response_model=SampleResponseModel,
+                job_name="outline",
+                lesson_dir=lesson_dir,
+                show_monitor=False,
+            )
+
+    assert len(logged_entries) >= 1
+    assert "credential_ref" in logged_entries[0]
+    assert "route_id" in logged_entries[0]
+    assert "failure_class" in logged_entries[0]
+    assert logged_entries[0]["status"] in ("error", "timeout")
+
