@@ -170,8 +170,19 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         show_materia = True
 
     if not scoped:
+        if not entries:
+            msg = (
+                f"Nessuna lezione trovata in '{runtime_cfg.lessons_root}'. "
+                "Se hai appena creato una lezione altrove, verifica che sia dentro questa cartella "
+                "(configurabile con 'rt config' o 'rt config --telegram'), oppure spostala/copiala lì."
+            )
+        else:
+            msg = (
+                "Nessuna lezione trovata per la materia di questo topic. "
+                f"Ci sono {len(entries)} lezioni totali in altri topic/materie."
+            )
         await _send_with_retry(lambda: update.effective_message.reply_text(
-            "Nessuna lezione trovata per questo topic.",
+            msg,
             message_thread_id=thread_id,
         ))
         return
