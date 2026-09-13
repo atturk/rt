@@ -197,16 +197,39 @@ def _suggest_profile_name(provider: str, model: str, existing_names: Iterable[st
     return f"{sanitized}_{idx}"
 
 
+FALLBACK_ROLES: List[Tuple[str, str]] = [
+    ("primary", "Primario"),
+    ("timeout", "Fallback: timeout"),
+    ("rate_limit", "Fallback: rate-limit (429)"),
+    ("safety", "Fallback: errore di safety"),
+    ("auth", "Fallback: errore di autenticazione"),
+    ("generic", "Fallback: generico (qualunque altro errore)"),
+]
+
+FALLBACK_ROLE_MAP: Dict[str, str] = {
+    "Primario": "primary",
+    "Fallback: timeout": "timeout",
+    "Fallback: rate-limit (429)": "rate_limit",
+    "Fallback: errore di safety": "safety",
+    "Fallback: errore di autenticazione": "auth",
+    "Fallback: generico (qualunque altro errore)": "generic",
+}
+
+
 def _create_new_model_profile(
     config_dir: str,
     env_path: str,
     general_data: Dict[str, Any],
-    default_name_hint: Optional[str] = None
-) -> Tuple[str, Dict[str, Any]]:
+    default_name_hint: Optional[str] = None,
+    ask_role: bool = False,
+    group_label: Optional[str] = None,
+    current_phase_assignments: Optional[Dict[str, Optional[str]]] = None
+) -> Any:
     """
     Contiene la logica interattiva per raccogliere provider, base_url, chiavi (singola o round-robin),
     recupero modelli, pricing inline, e salvataggio credenziali, chiedendo un nome per il nuovo profilo.
-    Restituisce (profile_name, profile_dict).
+    Restituisce (profile_name, profile_dict) se ask_role=False,
+    oppure (profile_name, profile_dict, role_name_o_None) se ask_role=True.
     """
     general_yaml_path = os.path.join(config_dir, "general.yaml")
 
@@ -219,7 +242,7 @@ def _create_new_model_profile(
     ).ask()
 
     if not provider:
-        return "", {}
+        return ("", {}, None) if ask_role else ("", {})
 
     # 2. Base URL
     default_base = KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, "")
@@ -232,7 +255,7 @@ def _create_new_model_profile(
                 default=default_base
             ).ask()
             if base_url is None:
-                return "", {}
+                return ("", {}, None) if ask_role else ("", {})
             base_url = base_url.strip()
             if not base_url:
                 print("⚠️  Il provider 'openai_compatible' richiede un Base URL non vuoto.")
@@ -242,12 +265,13 @@ def _create_new_model_profile(
             default=""
         ).ask()
         if base_url_input is None:
-            return "", {}
+            return ("", {}, None) if ask_role else ("", {})
         base_url_input = base_url_input.strip()
         if not base_url_input or base_url_input == default_base:
             base_url = None
         else:
             base_url = base_url_input
+
 
     # 3. Round-Robin Multi-chiave o Singola API Key
     multi_input = questionary.confirm(
@@ -530,6 +554,39 @@ def _create_new_model_profile(
         "round_robin": is_multi,
         "routes": routes,
     }
+
+    if ask_role and group_label is not None and current_phase_assignments is not None:
+        role_choices = [label for _, label in FALLBACK_ROLES] + ["❌ Annulla"]
+        while True:
+            try:
+                chosen = questionary.select(
+                    f"Come vuoi usare il nuovo profilo '{profile_name}' per la fase '{group_label}'?",
+                    choices=role_choices,
+                    default="Primario"
+                ).ask()
+            except (EOFError, Exception):
+                chosen = "Primario"
+
+            if not chosen or chosen == "❌ Annulla":
+                return profile_name, profile_dict, None
+            rk = FALLBACK_ROLE_MAP.get(chosen)
+            if not rk:
+                return profile_name, profile_dict, None
+            if rk == "primary":
+                conflicting = [k for k in ("timeout", "rate_limit", "safety", "auth", "generic") if current_phase_assignments.get(k) == profile_name]
+                if conflicting:
+                    print(f"\n⚠️  Il profilo '{profile_name}' è già assegnato come fallback ({', '.join(conflicting)}) per questa fase.")
+                    print("   Un modello non può essere contemporaneamente Primario e Fallback nella stessa fase.\n")
+                    continue
+            else:
+                if current_phase_assignments.get("primary") == profile_name:
+                    print(f"\n⚠️  Il profilo '{profile_name}' è già assegnato come Primario per questa fase.")
+                    print("   Un modello non può essere contemporaneamente Primario e Fallback nella stessa fase.\n")
+                    continue
+            return profile_name, profile_dict, rk
+
+    if ask_role:
+        return profile_name, profile_dict, None
     return profile_name, profile_dict
 
 
@@ -599,6 +656,115 @@ def _apply_profile_to_job(job_file: str, profile: Dict[str, Any]) -> None:
         job_data["round_robin"] = False
 
     _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
+
+
+def _apply_fallback_to_job(job_file: str, slot: str, profile: Optional[Dict[str, Any]]) -> None:
+    """
+    Applica o rimuove un profilo modello per uno specifico slot di fallback in <job>.yaml.
+    Se il profilo è round-robin, assegna la prima route del profilo allo slot di fallback.
+    """
+    job_data: Dict[str, Any] = {}
+    if os.path.isfile(job_file):
+        try:
+            with open(job_file, "r", encoding="utf-8") as f:
+                loaded_job = yaml.safe_load(f)
+                if isinstance(loaded_job, dict):
+                    job_data = loaded_job
+        except Exception:
+            pass
+
+    if profile is None:
+        if "fallback" in job_data and isinstance(job_data["fallback"], dict):
+            job_data["fallback"].pop(slot, None)
+            if not job_data["fallback"]:
+                job_data.pop("fallback", None)
+    else:
+        provider = profile["provider"]
+        base_url = profile.get("base_url")
+        routes_in = profile.get("routes", [])
+        first_r = routes_in[0] if routes_in else {"credential": f"{provider}_1", "model": ""}
+        fb_entry: Dict[str, Any] = {
+            "provider": provider,
+            "model": first_r.get("model", ""),
+            "credential": first_r.get("credential", ""),
+        }
+        if base_url:
+            fb_entry["base_url"] = base_url
+
+        if "fallback" not in job_data or not isinstance(job_data["fallback"], dict):
+            job_data["fallback"] = {}
+        job_data["fallback"][slot] = fb_entry
+
+    _atomic_write_text(job_file, yaml.safe_dump(job_data, sort_keys=False, allow_unicode=True))
+
+
+def _find_matching_profile_for_single_route(route_dict: Dict[str, Any], profiles: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """
+    Trova il profilo modello corrispondente a un singolo blocco route (es. fallback slot).
+    """
+    if not isinstance(route_dict, dict):
+        return None
+    r_prov = route_dict.get("provider")
+    r_mod = route_dict.get("model")
+    r_cred = route_dict.get("credential")
+    r_base = route_dict.get("base_url")
+    if not r_prov:
+        return None
+
+    norm_r_base = r_base.strip() if isinstance(r_base, str) and r_base.strip() else None
+
+    for prof_name, prof_data in profiles.items():
+        if prof_data.get("provider") != r_prov:
+            continue
+        prof_base = prof_data.get("base_url")
+        norm_prof_base = prof_base.strip() if isinstance(prof_base, str) and prof_base.strip() else None
+        if norm_prof_base != norm_r_base:
+            continue
+        for r in prof_data.get("routes", []):
+            if isinstance(r, dict) and r.get("credential") == r_cred and r.get("model") == r_mod:
+                return prof_name
+    return None
+
+
+def _ask_and_assign_role(profile_name: str, group_label: str, phase_map: Dict[str, Optional[str]]) -> bool:
+    """
+    Chiede all'utente il ruolo con cui usare profile_name per la fase group_label.
+    Valida il vincolo di mutua esclusione tra Primario e Fallback per la stessa fase.
+    """
+    role_choices = [label for _, label in FALLBACK_ROLES] + ["❌ Annulla"]
+
+    while True:
+        try:
+            chosen = questionary.select(
+                f"Come vuoi usare '{profile_name}' per la fase '{group_label}'?",
+                choices=role_choices,
+                default="Primario"
+            ).ask()
+        except (EOFError, Exception):
+            chosen = "Primario"
+
+        if not chosen or chosen == "❌ Annulla":
+            return False
+
+        role_key = FALLBACK_ROLE_MAP.get(chosen)
+        if not role_key:
+            return False
+
+        if role_key == "primary":
+            conflicting_fbs = [k for k in ("timeout", "rate_limit", "safety", "auth", "generic") if phase_map.get(k) == profile_name]
+            if conflicting_fbs:
+                print(f"\n⚠️  Il profilo '{profile_name}' è già assegnato come fallback ({', '.join(conflicting_fbs)}) per questa fase.")
+                print("   Un modello non può essere contemporaneamente Primario e Fallback nella stessa fase.\n")
+                continue
+        else:
+            if phase_map.get("primary") == profile_name:
+                print(f"\n⚠️  Il profilo '{profile_name}' è già assegnato come Primario per questa fase.")
+                print("   Un modello non può essere contemporaneamente Primario e Fallback nella stessa fase.\n")
+                continue
+
+        phase_map[role_key] = profile_name
+        print(f"✅ Assegnato '{profile_name}' come {chosen} per '{group_label}'.")
+        return True
 
 
 _JOB_GROUPS: List[Tuple[str, List[str]]] = [
@@ -741,9 +907,10 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
     job_assignments: Dict[str, str] = {}
     SKIP_LABEL = "⏭ Lascia vuoto per ora"
     NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
+    REMOVE_LABEL = "🗑 Rimuovi un'assegnazione"
     keep_label = "🔧 Mantieni configurazione attuale (non riconosciuta come profilo salvato)"
 
-    pending_selections: Dict[str, str] = {}
+    pending_selections: Dict[str, Dict[str, Optional[str]]] = {}
     group_info: Dict[str, Tuple[List[str], bool, Optional[str]]] = {}
 
     for group_label, group_jobs in grouped_jobs:
@@ -763,12 +930,28 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
         has_unrecognized = (current_match is None and _job_has_real_config(job_data))
         group_info[group_label] = (group_jobs, has_unrecognized, current_match)
 
+        phase_map: Dict[str, Optional[str]] = {
+            "primary": None,
+            "timeout": None,
+            "rate_limit": None,
+            "safety": None,
+            "auth": None,
+            "generic": None,
+        }
+
         if current_match:
-            pending_selections[group_label] = current_match
+            phase_map["primary"] = current_match
         elif has_unrecognized:
-            pending_selections[group_label] = keep_label
-        else:
-            pending_selections[group_label] = SKIP_LABEL
+            phase_map["primary"] = keep_label
+
+        fb_data = job_data.get("fallback")
+        if isinstance(fb_data, dict):
+            for slot in ("timeout", "rate_limit", "safety", "auth", "generic"):
+                if slot in fb_data and isinstance(fb_data[slot], dict):
+                    fb_match = _find_matching_profile_for_single_route(fb_data[slot], profiles)
+                    phase_map[slot] = fb_match
+
+        pending_selections[group_label] = phase_map
 
     curr_idx = 0
     total_groups = len(grouped_jobs)
@@ -785,9 +968,13 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                         "-" * 50,
                     ]
                     for idx, (gl, gjobs) in enumerate(grouped_jobs, start=1):
-                        sel = pending_selections.get(gl, SKIP_LABEL)
-                        status_icon = "✅" if sel != SKIP_LABEL else "⏳"
-                        lines.append(f" {status_icon} [{idx}/{total_groups}] {gl}: {sel}")
+                        pmap = pending_selections.get(gl, {})
+                        prim = pmap.get("primary")
+                        status_icon = "✅" if prim else "⏳"
+                        prim_str = prim if prim else "(nessun primario)"
+                        fb_parts = [f"{k}->{v}" for k, v in pmap.items() if k != "primary" and v]
+                        fb_str = f" [FB: {', '.join(fb_parts)}]" if fb_parts else ""
+                        lines.append(f" {status_icon} [{idx}/{total_groups}] {gl}: {prim_str}{fb_str}")
                     lines.append("-" * 50)
                     lines.append("\nCome desideri procedere?\n")
 
@@ -830,19 +1017,23 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                         if chosen_opt == 0:  # Conferma e applica
                             live.stop()
                             for gl, group_jobs in grouped_jobs:
-                                selection = pending_selections.get(gl, SKIP_LABEL)
+                                pmap = pending_selections.get(gl, {})
+                                primary_sel = pmap.get("primary")
                                 g_jobs, g_has_unrec, g_match = group_info[gl]
-                                if g_has_unrec and selection == keep_label:
-                                    for jn in group_jobs:
+                                for jn in group_jobs:
+                                    job_file = job_paths[jn]
+                                    if g_has_unrec and primary_sel == keep_label:
                                         job_assignments[jn] = "(configurazione attuale mantenuta)"
-                                elif selection == SKIP_LABEL:
-                                    for jn in group_jobs:
+                                    elif not primary_sel or primary_sel == SKIP_LABEL:
                                         job_assignments[jn] = "(non configurato)"
-                                else:
-                                    for jn in group_jobs:
-                                        job_file = job_paths[jn]
-                                        _apply_profile_to_job(job_file, profiles[selection])
-                                        job_assignments[jn] = selection
+                                    else:
+                                        _apply_profile_to_job(job_file, profiles[primary_sel])
+                                        job_assignments[jn] = primary_sel
+
+                                    for slot in ("timeout", "rate_limit", "safety", "auth", "generic"):
+                                        fb_prof_name = pmap.get(slot)
+                                        fb_prof_dict = profiles.get(fb_prof_name) if fb_prof_name else None
+                                        _apply_fallback_to_job(job_file, slot, fb_prof_dict)
 
                             _save_model_profiles(general_data, profiles)
                             _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
@@ -850,10 +1041,13 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                             return job_assignments
                         elif chosen_opt == 1:  # Modifica una fase
                             live.stop()
-                            phase_choice = questionary.select(
-                                "Seleziona la fase da modificare:",
-                                choices=[gl for gl, _ in grouped_jobs]
-                            ).ask()
+                            try:
+                                phase_choice = questionary.select(
+                                    "Seleziona la fase da modificare:",
+                                    choices=[gl for gl, _ in grouped_jobs]
+                                ).ask()
+                            except (EOFError, Exception):
+                                phase_choice = None
                             if phase_choice:
                                 for i, (gl, _) in enumerate(grouped_jobs):
                                     if gl == phase_choice:
@@ -872,13 +1066,18 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
 
                     group_label, group_jobs = grouped_jobs[curr_idx]
                     g_jobs, has_unrecognized, current_match = group_info[group_label]
+                    phase_map = pending_selections.get(group_label, {})
 
                     choices = []
-                    if has_unrecognized:
+                    if has_unrecognized and phase_map.get("primary") == keep_label:
                         choices.append(keep_label)
                     choices.append(SKIP_LABEL)
                     choices.extend(sorted(profiles.keys()))
                     choices.append(NEW_PROFILE)
+
+                    has_assigned_roles = any(phase_map.get(r) for r in ("primary", "timeout", "rate_limit", "safety", "auth", "generic"))
+                    if has_assigned_roles:
+                        choices.append(REMOVE_LABEL)
 
                     opt_idx = option_indices.get(curr_idx, 0)
                     if opt_idx >= len(choices):
@@ -886,20 +1085,32 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
 
                     status_line = []
                     for i, (gl, _) in enumerate(grouped_jobs):
-                        sel = pending_selections.get(gl, SKIP_LABEL)
-                        st = "✅" if sel != SKIP_LABEL else "⏳"
+                        prim = pending_selections.get(gl, {}).get("primary")
+                        st = "✅" if prim else "⏳"
                         marker = f"[{gl} {st}]" if i == curr_idx else f"{gl} {st}"
                         status_line.append(marker)
                     status_bar = "Avanzamento: " + " | ".join(status_line)
 
+                    role_display_names = [
+                        ("primary", "Primario:            "),
+                        ("timeout", "Fallback timeout:    "),
+                        ("rate_limit", "Fallback rate-limit: "),
+                        ("safety", "Fallback safety:     "),
+                        ("auth", "Fallback auth:       "),
+                        ("generic", "Fallback generico:   "),
+                    ]
+
                     lines = [
                         status_bar,
                         "",
-                        f"Seleziona il modello da assegnare a questa fase (inclusi {len(group_jobs)} job: {', '.join(group_jobs)}):",
-                        f"Assegnazione attuale: {pending_selections.get(group_label, SKIP_LABEL)}",
-                        "",
-                        "Opzioni disponibili:"
+                        f"Configurazione ruoli per la fase '{group_label}' (inclusi {len(group_jobs)} job: {', '.join(group_jobs)}):",
                     ]
+                    for r_key, r_title in role_display_names:
+                        val = phase_map.get(r_key)
+                        val_str = val if val else "(non impostato)"
+                        lines.append(f"  {r_title} {val_str}")
+                    lines.append("")
+                    lines.append("Opzioni disponibili:")
                     for opt_i, opt_text in enumerate(choices):
                         pointer = "▶ " if opt_i == opt_idx else "  "
                         lines.append(f"  {pointer}{opt_text}")
@@ -930,17 +1141,72 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                         return {}
                     elif k in ("enter", "return", "\r", "\n", " ", ""):
                         selected_choice = choices[opt_idx]
-                        if selected_choice == NEW_PROFILE:
+                        if selected_choice == keep_label:
+                            pending_selections[group_label]["primary"] = keep_label
+                        elif selected_choice == SKIP_LABEL:
+                            for r in ("primary", "timeout", "rate_limit", "safety", "auth", "generic"):
+                                pending_selections[group_label][r] = None
+                        elif selected_choice == REMOVE_LABEL:
                             live.stop()
-                            p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data, default_name_hint=group_jobs[0])
+                            role_titles = [
+                                ("primary", "Primario"),
+                                ("timeout", "Fallback timeout"),
+                                ("rate_limit", "Fallback rate-limit"),
+                                ("safety", "Fallback safety"),
+                                ("auth", "Fallback auth"),
+                                ("generic", "Fallback generico"),
+                            ]
+                            occupied_roles = [(rk, f"{rt}: {phase_map[rk]}") for rk, rt in role_titles if phase_map.get(rk)]
+                            if occupied_roles:
+                                try:
+                                    del_choice = questionary.select(
+                                        f"Quale assegnazione vuoi rimuovere per la fase '{group_label}'?",
+                                        choices=[lbl for _, lbl in occupied_roles] + ["❌ Annulla"],
+                                        default=occupied_roles[0][1]
+                                    ).ask()
+                                except (EOFError, Exception):
+                                    del_choice = None
+                                if del_choice and del_choice != "❌ Annulla":
+                                    for rk, lbl in occupied_roles:
+                                        if lbl == del_choice:
+                                            pending_selections[group_label][rk] = None
+                                            print(f"✅ Rimossa assegnazione {rk} per '{group_label}'.")
+                                            break
+                            console.clear()
+                            live.start()
+                        elif selected_choice == NEW_PROFILE:
+                            live.stop()
+                            res_create = _create_new_model_profile(
+                                config_dir, env_path, general_data,
+                                default_name_hint=group_jobs[0],
+                                ask_role=True,
+                                group_label=group_label,
+                                current_phase_assignments=pending_selections[group_label]
+                            )
+                            p_name = ""
+                            p_dict = {}
+                            p_role = None
+                            if isinstance(res_create, tuple):
+                                if len(res_create) == 3:
+                                    p_name, p_dict, p_role = res_create
+                                elif len(res_create) == 2:
+                                    p_name, p_dict = res_create
                             if p_name:
                                 profiles[p_name] = p_dict
                                 _save_model_profiles(general_data, profiles)
-                                pending_selections[group_label] = p_name
+                                if p_role:
+                                    pending_selections[group_label][p_role] = p_name
+                                elif p_role is None and len(res_create) == 2:
+                                    _ask_and_assign_role(p_name, group_label, pending_selections[group_label])
                             console.clear()
                             live.start()
                         else:
-                            pending_selections[group_label] = selected_choice
+                            live.stop()
+                            _ask_and_assign_role(selected_choice, group_label, pending_selections[group_label])
+                            console.clear()
+                            live.start()
+
+
 
 
 def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any]:
