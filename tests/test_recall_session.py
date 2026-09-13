@@ -76,6 +76,7 @@ def _make_mock_callback_update(data: str, chat_id: int = 12345):
     update = MagicMock()
     query = MagicMock()
     query.data = data
+    query.message.message_id = 999
     query.answer = AsyncMock()
     query.edit_message_reply_markup = AsyncMock()
     update.callback_query = query
@@ -398,8 +399,8 @@ class TestSendUnitAudio:
         cfg = TelegramConfig(bot_token="TOK", chat_id=999)
         sent = []
 
-        def fake_send_audio(cfg_, audio_path_, title, performer=None, message_thread_id=None):
-            sent.append({"audio_path": audio_path_, "title": title})
+        def fake_send_audio(cfg_, audio_path_, title, performer=None, message_thread_id=None, reply_to_message_id=None, **kwargs):
+            sent.append({"audio_path": audio_path_, "title": title, "reply_to_message_id": reply_to_message_id})
             return {"ok": True}
 
         from rt.pipeline.recall_session import send_unit_audio
@@ -1158,28 +1159,40 @@ class TestTask11PersistentUnitAudioButtons:
         update = _make_mock_callback_update(f"rut:{short_id}")
         context = _make_mock_context(state_dir)
         context.bot.send_message = AsyncMock(return_value={"message_id": 501})
-        context.bot.delete_message = AsyncMock()
+        context.bot.edit_message_text = AsyncMock()
 
-        # 1st click: sends unit text message
+        # 1st click: sends unit text message with reply_to_message_id
         asyncio.run(handle_callback(update, context))
         assert context.bot.send_message.called
+        _, kwargs = context.bot.send_message.call_args
+        assert kwargs.get("reply_to_message_id") == 999
         entry = registry.resolve_pending(short_id, state_dir)
         assert entry.get("unit_text_message_id") == 501
+        assert entry.get("unit_text_visible") is True
 
-        # 2nd click: deletes unit text message
+        # 2nd click: edits unit text in place to hide it (no new send_message)
         context.bot.send_message.reset_mock()
         asyncio.run(handle_callback(update, context))
         assert not context.bot.send_message.called
-        context.bot.delete_message.assert_called_once_with(chat_id=12345, message_id=501)
+        context.bot.edit_message_text.assert_called_once()
+        _, kwargs_edit = context.bot.edit_message_text.call_args
+        assert kwargs_edit.get("message_id") == 501
+        assert "nascosto" in kwargs_edit.get("text")
         entry = registry.resolve_pending(short_id, state_dir)
-        assert entry.get("unit_text_message_id") is None
+        assert entry.get("unit_text_visible") is False
+        assert entry.get("unit_text_message_id") == 501
 
-        # 3rd click: resends unit text message
-        context.bot.send_message.return_value = {"message_id": 502}
+        # 3rd click: edits unit text in place to show it again (no new send_message)
+        context.bot.edit_message_text.reset_mock()
         asyncio.run(handle_callback(update, context))
-        assert context.bot.send_message.called
+        assert not context.bot.send_message.called
+        context.bot.edit_message_text.assert_called_once()
+        _, kwargs_edit2 = context.bot.edit_message_text.call_args
+        assert kwargs_edit2.get("message_id") == 501
+        assert "Unità 1.1" in kwargs_edit2.get("text")
         entry = registry.resolve_pending(short_id, state_dir)
-        assert entry.get("unit_text_message_id") == 502
+        assert entry.get("unit_text_visible") is True
+        assert entry.get("unit_text_message_id") == 501
 
     def test_rua_toggle_send_delete_list(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")

@@ -192,6 +192,7 @@ def send_audio(
     title: str,
     performer: Optional[str] = None,
     message_thread_id: Optional[int] = None,
+    reply_to_message_id: Optional[int] = None,
     timeout: float = 60.0,
     max_retries: int = 1,
 ) -> Dict[str, Any]:
@@ -204,6 +205,8 @@ def send_audio(
         data["performer"] = performer
     if message_thread_id is not None:
         data["message_thread_id"] = message_thread_id
+    if reply_to_message_id is not None:
+        data["reply_to_message_id"] = reply_to_message_id
 
     with open(audio_path, "rb") as f:
         return _execute_request(

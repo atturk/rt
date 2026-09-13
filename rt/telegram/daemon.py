@@ -568,25 +568,57 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         await update.callback_query.answer("Domanda non più disponibile.", show_alert=True)
         return
 
+    orig_msg_id = update.callback_query.message.message_id if update.callback_query and update.callback_query.message else None
+
     if action == "rut":
         await update.callback_query.answer()
         existing_id = entry.get("unit_text_message_id")
+        is_visible = entry.get("unit_text_visible", True)
+
         if existing_id:
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=existing_id)
-            except Exception:
-                pass
-            registry.update_pending(short_id, {"unit_text_message_id": None}, state_dir)
-            return
+            if is_visible:
+                # Nascondi testo in place
+                hidden_text = "📖 <i>(testo unità nascosto — premi di nuovo 📖 per visualizzarlo)</i>"
+                try:
+                    await _send_with_retry(lambda: context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=existing_id,
+                        text=hidden_text,
+                        parse_mode="HTML",
+                    ))
+                    registry.update_pending(short_id, {"unit_text_visible": False}, state_dir)
+                    return
+                except Exception:
+                    pass
+            else:
+                # Mostra di nuovo testo in place
+                from rt.pipeline.recall_session import format_unit_reference
+                text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
+                text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
+                try:
+                    await _send_with_retry(lambda: context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=existing_id,
+                        text=text,
+                    ))
+                    registry.update_pending(short_id, {"unit_text_visible": True}, state_dir)
+                    return
+                except Exception:
+                    pass
+
+        # Prima volta (o fallback se messaggio non esisteva / edit fallito)
         from rt.pipeline.recall_session import format_unit_reference
         text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
         text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
         res = await _send_with_retry(lambda: context.bot.send_message(
-            chat_id=update.effective_chat.id, text=text, message_thread_id=thread_id,
+            chat_id=update.effective_chat.id,
+            text=text,
+            message_thread_id=thread_id,
+            reply_to_message_id=orig_msg_id,
         ))
         msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
         if isinstance(msg_id, int):
-            registry.update_pending(short_id, {"unit_text_message_id": msg_id}, state_dir)
+            registry.update_pending(short_id, {"unit_text_message_id": msg_id, "unit_text_visible": True}, state_dir)
         return
 
     if action == "rua":
@@ -603,12 +635,15 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         await update.callback_query.answer("🔊 Preparo l'audio...")
         from rt.pipeline.recall_session import send_unit_audio
         try:
-            sent_ids = await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id)
+            sent_ids = await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id, orig_msg_id)
             if sent_ids:
                 registry.update_pending(short_id, {"audio_message_ids": [i for i in sent_ids if isinstance(i, int)]}, state_dir)
         except Exception as e:
             await _send_with_retry(lambda: context.bot.send_message(
-                chat_id=update.effective_chat.id, text=f"⚠️ Impossibile inviare l'audio: {e}", message_thread_id=thread_id,
+                chat_id=update.effective_chat.id,
+                text=f"⚠️ Impossibile inviare l'audio: {e}",
+                message_thread_id=thread_id,
+                reply_to_message_id=orig_msg_id,
             ))
         return
 
