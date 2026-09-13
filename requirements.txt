@@ -6,3 +6,4 @@ rich>=13.0
 questionary>=2.0
 python-telegram-bot[job-queue]>=21.0
 PyMuPDF
+textual>=0.80.0
