@@ -147,22 +147,80 @@ def test_build_outline_tree_diff():
     assert tree is not None
 
 
-def test_interactive_tty_live_and_arrow_navigation(synthetic_outline_lesson):
-    """Verifica che _confirm_via_terminal in TTY usi rich.Live e gestisca RIGHT (espandi), LEFT (collassa), Spazio e A."""
+@pytest.mark.anyio
+async def test_textual_app_navigation_and_actions(synthetic_outline_lesson):
+    """Verifica la navigazione, espansione, collasso e approvazione con Textual run_test()."""
+    from rt.pipeline.outline_review import OutlineReviewApp
+
     lesson_dir = synthetic_outline_lesson
+    app = OutlineReviewApp(lesson_dir=lesson_dir, force_mock=True)
 
-    # Simuliamo stdin.isatty() = True
-    keys = ["RIGHT", "LEFT", " ", "A"]
+    async with app.run_test() as pilot:
+        # Stato iniziale
+        assert app.selected_index == 0
+        initial_expanded = set(app.expanded_macros)
 
-    mock_live = MagicMock()
+        # Navigazione DOWN / UP
+        all_macros = app._get_all_macros()
+        if len(all_macros) > 1:
+            await pilot.press("down")
+            assert app.selected_index == 1
+            await pilot.press("up")
+            assert app.selected_index == 0
+            await pilot.press("j")
+            assert app.selected_index == 1
+            await pilot.press("k")
+            assert app.selected_index == 0
 
+        # Collasso LEFT e espansione RIGHT
+        target_id = all_macros[0]
+        await pilot.press("left")
+        assert target_id not in app.expanded_macros
+        await pilot.press("right")
+        assert target_id in app.expanded_macros
+
+        # Toggle con Spazio / Invio
+        await pilot.press("space")
+        assert target_id not in app.expanded_macros
+        await pilot.press("enter")
+        assert target_id in app.expanded_macros
+
+        # Approvazione 'a'
+        await pilot.press("a")
+        assert app.return_value is True
+
+
+@pytest.mark.anyio
+async def test_textual_app_modify_cycle(synthetic_outline_lesson):
+    """Verifica che premere 'm' esegua la revisione dell'outline e aggiorni lo stato senza errori."""
+    from rt.pipeline.outline_review import OutlineReviewApp
+
+    lesson_dir = synthetic_outline_lesson
+    app = OutlineReviewApp(lesson_dir=lesson_dir, force_mock=True)
+
+    with patch("builtins.input", side_effect=["Aggiungi dettagli lipasi", "Altro feedback"]):
+        async with app.run_test() as pilot:
+            with patch("rt.pipeline.outline_review.run_outline_revision", wraps=__import__("rt.pipeline.outline", fromlist=["run_outline_revision"]).run_outline_revision) as mock_rev:
+                # 1° ciclo di modifica
+                await pilot.press("m")
+                assert mock_rev.call_count == 1
+                assert app.previous_outline is not None
+
+                # 2° ciclo di modifica consecutivo
+                await pilot.press("m")
+                assert mock_rev.call_count == 2
+
+                # Approva ed esci
+                await pilot.press("a")
+                assert app.return_value is True
+
+
+def test_confirm_via_terminal_tty_invokes_app(synthetic_outline_lesson):
+    """Verifica che in ambiente TTY venga istanziata ed eseguita OutlineReviewApp."""
+    lesson_dir = synthetic_outline_lesson
     with patch("sys.stdin.isatty", return_value=True), \
-         patch("rt.pipeline.outline_review.read_single_key", side_effect=keys), \
-         patch("rt.pipeline.outline_review.Live") as mock_live_cls:
-        mock_live_cls.return_value.__enter__.return_value = mock_live
+         patch("rt.pipeline.outline_review.OutlineReviewApp.run") as mock_app_run:
         confirm_or_revise_outline(lesson_dir, force_mock=True)
+        mock_app_run.assert_called_once()
 
-    # Verifica che Live.update sia stato chiamato ad ogni tasto
-    assert mock_live.update.call_count >= 4
-    assert mock_live.stop.called
 

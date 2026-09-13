@@ -5,15 +5,14 @@ Nessuna conferma per singola unità di rewrite: una volta approvata l'outline,
 il resto della pipeline procede automaticamente.
 """
 import sys
-from typing import Optional, Set
-from rich.console import Console
-from rich.live import Live
+from typing import Optional, Set, List
 from rich.panel import Panel
 from rich.tree import Tree
 from rich.text import Text
+from textual.app import App, ComposeResult, SuspendNotSupported
+from textual.widgets import Static
 
 from rt.core.idempotency import check_phase_status, PhaseStatus
-from rt.core.keyboard import read_single_key, raw_mode
 from rt.core.models import Outline
 from rt.pipeline.outline import load_outline, run_outline_revision
 from rt.telegram import formatting as tg_fmt
@@ -144,6 +143,135 @@ def build_outline_tree(
     return tree
 
 
+class OutlineReviewApp(App):
+    """Schermata interattiva Textual per l'outline review."""
+    BINDINGS = [
+        ("up,k,w", "cursor_up", "Su"),
+        ("down,j,s", "cursor_down", "Giù"),
+        ("right", "expand", "Espandi"),
+        ("left", "collapse", "Collassa"),
+        ("enter,space", "toggle", "Espandi/Collassa"),
+        ("a", "approve", "Approva"),
+        ("m", "modify", "Modifica"),
+    ]
+
+    def __init__(self, lesson_dir: str, force_mock: bool = False):
+        super().__init__()
+        self.lesson_dir = lesson_dir
+        self.force_mock = force_mock
+        self.outline: Outline = load_outline(lesson_dir)
+        self.previous_outline: Optional[Outline] = None
+        self.selected_index: int = 0
+        self.expanded_macros: Set[str] = set()
+        if len(self.outline.macro_sections) <= 4:
+            self.expanded_macros = {m.id for m in self.outline.macro_sections}
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._render_panel(), id="tree_view")
+
+    def _get_all_macros(self) -> List[str]:
+        all_macros = [m.id for m in self.outline.macro_sections]
+        if self.previous_outline:
+            curr_map = {m.id: m for m in self.outline.macro_sections}
+            for old_m in self.previous_outline.macro_sections:
+                if old_m.id not in curr_map:
+                    all_macros.append(old_m.id)
+        return all_macros
+
+    def _render_panel(self) -> Panel:
+        all_macros = self._get_all_macros()
+        if not all_macros:
+            self.selected_index = 0
+        else:
+            self.selected_index = max(0, min(self.selected_index, len(all_macros) - 1))
+
+        tree = build_outline_tree(
+            outline=self.outline,
+            previous_outline=self.previous_outline,
+            expanded_macros=self.expanded_macros,
+            selected_macro_index=self.selected_index,
+        )
+        return Panel(
+            tree,
+            title="📋 OUTLINE REVIEW",
+            subtitle="[A]pprova | [M]odifica | [↑↓/←→] Naviga | [Invio/Spazio] Espandi-Collassa",
+            border_style="cyan",
+        )
+
+    def _update_display(self) -> None:
+        try:
+            widget = self.query_one("#tree_view", Static)
+            widget.update(self._render_panel())
+        except Exception:
+            pass
+
+    def action_cursor_up(self) -> None:
+        if self.selected_index > 0:
+            self.selected_index -= 1
+            self._update_display()
+
+    def action_cursor_down(self) -> None:
+        all_macros = self._get_all_macros()
+        if self.selected_index < len(all_macros) - 1:
+            self.selected_index += 1
+            self._update_display()
+
+    def action_expand(self) -> None:
+        all_macros = self._get_all_macros()
+        if all_macros and 0 <= self.selected_index < len(all_macros):
+            target_id = all_macros[self.selected_index]
+            self.expanded_macros.add(target_id)
+            self._update_display()
+
+    def action_collapse(self) -> None:
+        all_macros = self._get_all_macros()
+        if all_macros and 0 <= self.selected_index < len(all_macros):
+            target_id = all_macros[self.selected_index]
+            self.expanded_macros.discard(target_id)
+            self._update_display()
+
+    def action_toggle(self) -> None:
+        all_macros = self._get_all_macros()
+        if all_macros and 0 <= self.selected_index < len(all_macros):
+            target_id = all_macros[self.selected_index]
+            if target_id in self.expanded_macros:
+                self.expanded_macros.remove(target_id)
+            else:
+                self.expanded_macros.add(target_id)
+            self._update_display()
+
+    def action_approve(self) -> None:
+        self.exit(True)
+
+    def _do_modify_interaction(self) -> None:
+        feedback = ""
+        try:
+            import questionary
+            res = questionary.text("Descrivi le modifiche desiderate:").ask()
+            feedback = (res or "").strip()
+        except Exception:
+            feedback = input("\nDescrivi le modifiche desiderate: ").strip()
+
+        if not feedback:
+            print("Nessun feedback inserito, outline mantenuta invariata.")
+            return
+
+        print("⏳ Rigenerazione outline in corso...")
+        self.previous_outline = load_outline(self.lesson_dir)
+        run_outline_revision(self.lesson_dir, feedback=feedback, force_mock=self.force_mock)
+        self.outline = load_outline(self.lesson_dir)
+        self.selected_index = 0
+        self.expanded_macros.update({m.id for m in self.outline.macro_sections})
+
+    def action_modify(self) -> None:
+        try:
+            with self.suspend():
+                self._do_modify_interaction()
+        except SuspendNotSupported:
+            self._do_modify_interaction()
+        self._update_display()
+
+
 def _confirm_via_terminal(lesson_dir: str, force_mock: bool) -> None:
     previous_outline: Optional[Outline] = None
 
@@ -172,94 +300,7 @@ def _confirm_via_terminal(lesson_dir: str, force_mock: bool) -> None:
             else:
                 print("Scelta non valida.")
 
-    # Modalità interattiva TTY con Rich Tree e keyboard navigation
-    outline = load_outline(lesson_dir)
-    selected_index = 0
-    expanded_macros: Set[str] = set()
-
-    if len(outline.macro_sections) <= 4:
-        expanded_macros = {m.id for m in outline.macro_sections}
-
-    console = Console()
-
-    with raw_mode() as is_raw:
-        with Live(console=console, auto_refresh=False, transient=False) as live:
-            while True:
-                all_macros = [m.id for m in outline.macro_sections]
-                if previous_outline:
-                    curr_map = {m.id: m for m in outline.macro_sections}
-                    for old_m in previous_outline.macro_sections:
-                        if old_m.id not in curr_map:
-                            all_macros.append(old_m.id)
-
-                if not all_macros:
-                    selected_index = 0
-                else:
-                    selected_index = max(0, min(selected_index, len(all_macros) - 1))
-
-                tree = build_outline_tree(
-                    outline=outline,
-                    previous_outline=previous_outline,
-                    expanded_macros=expanded_macros,
-                    selected_macro_index=selected_index,
-                )
-
-                panel = Panel(
-                    tree,
-                    title="📋 OUTLINE REVIEW",
-                    subtitle="[A]pprova | [M]odifica | [↑↓/←→] Naviga | [Invio/Spazio] Espandi-Collassa",
-                    border_style="cyan",
-                )
-                live.update(panel, refresh=True)
-
-                key = read_single_key(already_raw=is_raw)
-                choice = key.strip().lower()
-
-                if key == "UP" or choice in ("k", "w"):
-                    if selected_index > 0:
-                        selected_index -= 1
-                elif key == "DOWN" or choice in ("j", "s"):
-                    if selected_index < len(all_macros) - 1:
-                        selected_index += 1
-                elif key == "RIGHT":
-                    if all_macros:
-                        target_id = all_macros[selected_index]
-                        expanded_macros.add(target_id)
-                elif key == "LEFT":
-                    if all_macros:
-                        target_id = all_macros[selected_index]
-                        expanded_macros.discard(target_id)
-                elif key in ("", " ") or choice in ("enter", "\r", "\n"):
-                    if all_macros:
-                        target_id = all_macros[selected_index]
-                        if target_id in expanded_macros:
-                            expanded_macros.remove(target_id)
-                        else:
-                            expanded_macros.add(target_id)
-                elif choice in ("a", "approva"):
-                    live.stop()
-                    print("✔ Outline approvata.")
-                    return
-                elif choice in ("m", "modifiche"):
-                    live.stop()
-                    feedback = ""
-                    try:
-                        import questionary
-                        feedback = questionary.text("Descrivi le modifiche desiderate:").ask()
-                    except Exception:
-                        feedback = input("\nDescrivi le modifiche desiderate: ").strip()
-
-                    if not feedback:
-                        print("Nessun feedback inserito, outline mantenuta invariata.")
-                        console.clear()
-                        live.start()
-                        continue
-
-                    print("⏳ Rigenerazione outline in corso...")
-                    previous_outline = load_outline(lesson_dir)
-                    run_outline_revision(lesson_dir, feedback=feedback, force_mock=force_mock)
-                    outline = load_outline(lesson_dir)
-                    selected_index = 0
-                    expanded_macros.update({m.id for m in outline.macro_sections})
-                    console.clear()
-                    live.start()
+    # Modalità interattiva TTY con Textual App
+    app = OutlineReviewApp(lesson_dir=lesson_dir, force_mock=force_mock)
+    app.run()
+    print("✔ Outline approvata.")
