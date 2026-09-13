@@ -47,17 +47,17 @@ def test_reverse_resolve_materia():
     assert reverse_resolve_materia(None, topics) is None
 
 
-def test_notify_build_completed_with_topic(tmp_path, monkeypatch):
+def test_notify_build_completed_with_dedicated_topic(tmp_path, monkeypatch):
     from unittest.mock import patch, MagicMock
     from rt.telegram.notify import notify_build_completed
 
     monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
     monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
 
-    lesson_dir = str(tmp_path / "lesson_notify")
+    lesson_dir = str(tmp_path / "lesson_notify_dedicated")
     os.makedirs(lesson_dir, exist_ok=True)
     with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
-        f.write("materia: BIOCHIMICA\n")
+        f.write("materia: BIOCHIMICA\ndata: '2026-09-08'\nargomenti: Lipidi e membrane\n")
 
     with patch("rt.core.config.load_config") as mock_cfg, \
          patch("rt.telegram.client.send_message") as mock_send:
@@ -67,10 +67,81 @@ def test_notify_build_completed_with_topic(tmp_path, monkeypatch):
         cfg_obj.telegram.state_dir = str(tmp_path / "state")
         mock_cfg.return_value = cfg_obj
 
-        notify_build_completed(lesson_dir, {"rielaborato": "test.md"}, "Lezione 1")
+        notify_build_completed(lesson_dir, {"rielaborato": "/abs/path/rielaborato.md"}, "Lezione 1")
         mock_send.assert_called_once()
         _, kwargs = mock_send.call_args
         assert kwargs.get("message_thread_id") == 42
+        text = kwargs.get("text")
+        assert "Lezione pronta" in text
+        assert "2026-09-08" in text
+        assert "Lipidi e membrane" in text
+        assert "/list" in text
+        # Topic dedicato -> la materia BIOCHIMICA non deve apparire
+        assert "BIOCHIMICA" not in text
+        assert "rielaborato.md" not in text
+
+
+def test_notify_build_completed_with_generic_topic(tmp_path, monkeypatch):
+    from unittest.mock import patch, MagicMock
+    from rt.telegram.notify import notify_build_completed
+
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
+
+    lesson_dir = str(tmp_path / "lesson_notify_generic")
+    os.makedirs(lesson_dir, exist_ok=True)
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write("materia: FARMACOLOGIA\ndata: '2026-09-09'\nargomenti: Farmacocinetica\n")
+
+    with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.telegram.client.send_message") as mock_send:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.topics = {"BIOCHIMICA": 42}  # FARMACOLOGIA non in mappa -> generico
+        cfg_obj.telegram.misc_topic_id = 99
+        cfg_obj.telegram.state_dir = str(tmp_path / "state")
+        mock_cfg.return_value = cfg_obj
+
+        notify_build_completed(lesson_dir, {"rielaborato": "/abs/path/rielaborato.md"}, "Lezione 2")
+        mock_send.assert_called_once()
+        _, kwargs = mock_send.call_args
+        assert kwargs.get("message_thread_id") == 99
+        text = kwargs.get("text")
+        assert "Lezione pronta" in text
+        assert "2026-09-09" in text
+        assert "Farmacocinetica" in text
+        # Topic generico -> la materia FARMACOLOGIA DEVE apparire
+        assert "FARMACOLOGIA" in text
+        assert "/list" in text
+        assert "rielaborato.md" not in text
+
+
+def test_notify_build_completed_no_argomenti(tmp_path, monkeypatch):
+    from unittest.mock import patch, MagicMock
+    from rt.telegram.notify import notify_build_completed
+
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
+
+    lesson_dir = str(tmp_path / "lesson_no_args")
+    os.makedirs(lesson_dir, exist_ok=True)
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write("materia: BIOCHIMICA\ndata: '2026-09-10'\n")
+
+    with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.telegram.client.send_message") as mock_send:
+        cfg_obj = MagicMock()
+        cfg_obj.telegram.topics = {"BIOCHIMICA": 42}
+        cfg_obj.telegram.misc_topic_id = None
+        cfg_obj.telegram.state_dir = str(tmp_path / "state")
+        mock_cfg.return_value = cfg_obj
+
+        notify_build_completed(lesson_dir, {}, "Lezione 3")
+        mock_send.assert_called_once()
+        _, kwargs = mock_send.call_args
+        text = kwargs.get("text")
+        assert "📌" not in text
+        assert "2026-09-10" in text
+        assert "/list" in text
 
 
 def test_notify_build_completed_missing_config_silent(tmp_path, monkeypatch):
@@ -85,5 +156,6 @@ def test_notify_build_completed_missing_config_silent(tmp_path, monkeypatch):
         mock_cfg.side_effect = TelegramConfigError("no token")
         # Deve terminare in modo silenzioso senza sollevare eccezioni
         notify_build_completed(lesson_dir, {"rielaborato": "test.md"}, "Lezione 1")
+
 
 
