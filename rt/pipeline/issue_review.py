@@ -276,59 +276,91 @@ def _build_science_panel(
     iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
     is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
 
+    out = Text()
+
     if is_asr_risk:
         header_title = "🎙️ RISCHIO ASR (statistico)" if iss.type == ScienceType.ERR_ASR_ST else "🎙️ RISCHIO ASR (validato LLM)"
-        lines = [
-            f"[{idx + 1}/{total_count}] {header_title} - ID: {iss.id}"
-        ]
+        out.append(f"[{idx + 1}/{total_count}] {header_title} - ID: {iss.id}\n")
+        if sci_unit_info != "N/D":
+            out.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}\n")
+        out.append(f"  ⏱ Timecode (stima): {tc}\n")
+        out.append(f"  🎙️ Segmento raw sospetto: \"{fix_mojibake(iss.claim)}\"\n")
+        out.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}\n")
+        if iss.suggested_fix:
+            out.append(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"\n")
+        if iss.diplomatic_question:
+            out.append(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"\n")
+        if sci_unit and sci_unit.content:
+            out.append(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):\n")
+            out.append("  " + "-" * 56 + "\n")
+            for line in fix_mojibake(sci_unit.content).strip().split("\n"):
+                out.append(f"  {line}\n")
+            out.append("  " + "-" * 56 + "\n")
     else:
-        lines = [
-            f"[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss_type_str}) - ID: {iss.id}"
-        ]
+        out.append(f"[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss_type_str}) - ID: {iss.id}\n")
+        if sci_unit_info != "N/D":
+            out.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}\n")
 
-    if sci_unit_info != "N/D":
-        lines.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}")
-    lines.append(f"  ⏱ Timecode (stima): {tc}")
-    if is_asr_risk:
-        lines.append(f"  🎙️ Segmento raw sospetto: \"{fix_mojibake(iss.claim)}\"")
-    else:
-        lines.append(f"  ⚠️ Affermazione: \"{fix_mojibake(iss.claim)}\"")
-    lines.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}")
-    if iss.suggested_fix:
-        lines.append(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"")
-    if iss.diplomatic_question:
-        lines.append(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"")
-    if sci_unit and sci_unit.content:
-        lines.append(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):")
-        lines.append("  " + "-" * 56)
-        for line in fix_mojibake(sci_unit.content).strip().split("\n"):
-            lines.append(f"  {line}")
-        lines.append("  " + "-" * 56)
+        unit_text = fix_mojibake(sci_unit.content).strip() if (sci_unit and getattr(sci_unit, "content", None)) else None
+        claim_clean = fix_mojibake(iss.claim or "").strip()
+        has_fix = bool(iss.suggested_fix and iss.suggested_fix.strip())
+        fix_clean = fix_mojibake(iss.suggested_fix.strip()) if has_fix else ""
+
+        pos = unit_text.find(claim_clean) if (unit_text and claim_clean) else -1
+        if unit_text and pos != -1:
+            prefix = unit_text[:pos]
+            matched_claim = unit_text[pos:pos+len(claim_clean)]
+            suffix = unit_text[pos+len(claim_clean):]
+
+            out.append("\n  ")
+            out.append(prefix)
+            out.append("- ", style="bold red")
+            out.append(matched_claim, style="red")
+            out.append(suffix)
+            out.append("\n")
+            if has_fix:
+                out.append("  ")
+                out.append("+ ", style="bold green")
+                out.append(fix_clean, style="green")
+                out.append("\n")
+        else:
+            if unit_text:
+                out.append(f"\n  {unit_text}\n")
+            out.append(f"\n  ⚠️ Affermazione: \"{claim_clean}\"\n")
+            if has_fix:
+                out.append(f"  💡 Correzione:   \"{fix_clean}\"\n")
+
+        out.append(f"\n  🔬 Critica:      {fix_mojibake(iss.reason)}\n")
+        if iss.diplomatic_question:
+            out.append(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"\n")
+
+        if has_fix:
+            out.append("  🔴 = claim attuale · 🟢 = correzione suggerita\n")
+
     if iss.id in decisions_map:
         d = decisions_map[iss.id]
-        lines.append(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"")
+        out.append(f"  📌 Ultima decisione: [{d.decision.upper()}] \"{fix_mojibake(d.resolved_text or '')}\"\n")
 
     if last_status:
-        lines.append(f"\n  {last_status}")
+        out.append(f"\n  {last_status}\n")
 
     if is_asr_risk:
-        lines.append("\n  Azione [M=Accetta / E=Modifica / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
+        out.append("\n  Azione [A=Accetta / M=Modifica / P=Play audio / O=Riavvia audio / I=Indietro / S=Salta / Q=Esci]: ")
     else:
-        lines.append("\n  Azione [A=Applica correzione / M=Mantieni claim / E=Modifica testo / P=Play audio / O=Riavvia audio / B=Indietro / S=Salta / Q=Esci]: ")
-    content = "\n".join(lines)
-    return Panel(Text(content), title=f"Science Review [{idx + 1}/{total_count}]", border_style="magenta")
+        out.append("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica / P=Play audio / O=Riavvia audio / I=Indietro / S=Salta / Q=Esci]: ")
+
+    return Panel(out, title=f"Science Review [{idx + 1}/{total_count}]", border_style="magenta")
 
 
 class IssueReviewApp(App):
     """Schermata interattiva Textual per la revisione delle issue ASR / Science."""
     BINDINGS = [
-        ("a", "approve_or_accept", "Accetta / Applica"),
-        ("m", "keep_or_accept_unit", "Mantieni / Accetta ASR"),
+        ("a", "approve_or_accept", "Accetta"),
         ("r", "reject", "Rifiuta"),
-        ("e", "edit", "Modifica"),
+        ("m", "edit", "Modifica"),
         ("p", "toggle_audio", "Play / Pausa audio"),
         ("o", "restart_audio", "Riavvia audio"),
-        ("b,left,up,k", "back", "Indietro"),
+        ("i,b,left,up,k", "back", "Indietro"),
         ("s,right,down,j", "skip", "Salta"),
         ("q,escape", "quit", "Esci"),
     ]
@@ -458,27 +490,6 @@ class IssueReviewApp(App):
         iss = self.to_review[self.idx]
         iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
         is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
-        if is_asr_risk:
-            self.last_status = "⚠️ Scelta 'A' non valida per issue ASR. Usa M=Accetta o E=Modifica."
-            self._update_display()
-            return
-        self._stop_audio()
-        clean_fix = sanitize_suggested_fix(iss.suggested_fix)
-        record_decision(self.lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
-        self.decided_this_session.add(iss.id)
-        self.last_status = "✔ Correzione scientifica applicata."
-        self.idx += 1
-        if self.idx >= len(self.to_review):
-            self.exit(True)
-        else:
-            self._update_display()
-
-    def action_keep_or_accept_unit(self) -> None:
-        if self.idx >= len(self.to_review):
-            return
-        iss = self.to_review[self.idx]
-        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
-        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
         self._stop_audio()
         if is_asr_risk:
             sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
@@ -486,9 +497,10 @@ class IssueReviewApp(App):
             self.decided_this_session.add(iss.id)
             self.last_status = "✔ Testo dell'unità accettato."
         else:
-            record_decision(self.lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
+            clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+            record_decision(self.lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
             self.decided_this_session.add(iss.id)
-            self.last_status = "✔ Formulazione originale mantenuta."
+            self.last_status = "✔ Correzione scientifica applicata."
         self.idx += 1
         if self.idx >= len(self.to_review):
             self.exit(True)
@@ -503,7 +515,16 @@ class IssueReviewApp(App):
         is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
         if is_asr_risk:
             return
-        self.action_keep_or_accept_unit()
+        self._stop_audio()
+        record_decision(self.lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
+        self.decided_this_session.add(iss.id)
+        self.last_status = "✔ Formulazione originale mantenuta."
+        self.idx += 1
+        if self.idx >= len(self.to_review):
+            self.exit(True)
+        else:
+            self._update_display()
+
 
     def _do_edit_interaction(self, initial_content: str) -> str:
         return edit_text_in_editor(initial_content)

@@ -292,6 +292,6 @@ def test_tui_science_panel_err_asr_st():
 
     panel_text = str(panel.renderable)
     assert "🎙️ RISCHIO ASR (statistico)" in panel_text
-    assert "🎙️ Segmento raw sospetto:" in panel_text
-    assert "A=Applica correzione" not in panel_text
-    assert "M=Accetta" in panel_text
+    assert "A=Accetta" in panel_text
+    assert "M=Modifica" in panel_text
+
