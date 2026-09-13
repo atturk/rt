@@ -1025,7 +1025,7 @@ class TestRecallTerminalSession:
         save_recall_bank(bank, lesson_dir)
 
         keys = iter(["b", "q"])  # sceglie l'opzione B (corretta), poi esce
-        with patch("rt.core.keyboard.read_single_key", lambda already_raw=False: next(keys)), \
+        with patch("builtins.input", lambda: next(keys)), \
              patch("sys.stdin") as mock_stdin, \
              patch("rt.core.config.load_config") as mock_cfg:
             mock_stdin.isatty.return_value = True
@@ -1050,7 +1050,7 @@ class TestRecallTerminalSession:
         save_recall_bank(bank, lesson_dir)
 
         keys = iter(["r", "q"])
-        with patch("rt.core.keyboard.read_single_key", lambda already_raw=False: next(keys)), \
+        with patch("builtins.input", lambda: next(keys)), \
              patch("rt.core.editor_edit.edit_text_in_editor", return_value="# commento\nLa mia risposta scritta nell'editor."), \
              patch("sys.stdin") as mock_stdin, \
              patch("rt.core.config.load_config") as mock_cfg:
@@ -1397,7 +1397,11 @@ class TestTask12StaleRecallCheck:
         out = capsys.readouterr().out
         assert "C'è già una sessione Telegram attiva" in out
 
-    def test_check_interactive_mantieni_and_elimina_and_undo(self, tmp_path, monkeypatch):
+    @pytest.mark.anyio
+    async def test_check_interactive_mantieni_and_elimina_and_undo(self, tmp_path):
+        from rt.pipeline.recall_session import StaleRecallApp
+        from rt.pipeline.recall import _compute_units_fingerprint
+
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -1411,15 +1415,21 @@ class TestTask12StaleRecallCheck:
         bank = RecallBank(questions=[q1, q2], answers=[a2])
         save_recall_bank(bank, lesson_dir)
 
-        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        stale = [
+            q for q in bank.questions
+            if q.content_fingerprint and _compute_units_fingerprint(lesson_dir, q.unit_ids) != q.content_fingerprint
+        ]
+        assert len(stale) == 2
 
-        inputs = iter(["m", "e"])
-        with patch("rt.core.keyboard.read_single_key", side_effect=lambda **kwargs: next(inputs)):
-            from rt.pipeline.recall_session import run_stale_recall_check
-            run_stale_recall_check(lesson_dir, state_dir=state_dir)
+        app = StaleRecallApp(lesson_dir=lesson_dir, stale_questions=stale)
+        async with app.run_test() as pilot:
+            await pilot.press("m")
+            await pilot.press("e")
+
+        assert app.kept_count == 1
+        assert app.deleted_count == 1
 
         b_after = load_recall_bank(lesson_dir)
-        from rt.pipeline.recall import _compute_units_fingerprint
         fp1 = _compute_units_fingerprint(lesson_dir, ["1.1"])
         q1_after = next((q for q in b_after.questions if q.id == "recall_000001"), None)
         assert q1_after is not None
@@ -1429,12 +1439,23 @@ class TestTask12StaleRecallCheck:
         assert q2_after is None
         assert len(b_after.answers) == 0
 
+        # Test Undo flow: "m", "b", "e", "b", "s", "q"
         q1_b = _make_mirata_question("recall_000001", unit_id="1.1")
         q1_b.content_fingerprint = "old_fp_1"
         save_recall_bank(RecallBank(questions=[q1_b, q2], answers=[a2]), lesson_dir)
-        inputs_undo = iter(["m", "b", "e", "b", "s", "q"])
-        with patch("rt.core.keyboard.read_single_key", side_effect=lambda **kwargs: next(inputs_undo)):
-            run_stale_recall_check(lesson_dir, state_dir=state_dir)
+        b2 = load_recall_bank(lesson_dir)
+        stale_2 = [
+            q for q in b2.questions
+            if q.content_fingerprint and _compute_units_fingerprint(lesson_dir, q.unit_ids) != q.content_fingerprint
+        ]
+        app_undo = StaleRecallApp(lesson_dir=lesson_dir, stale_questions=stale_2)
+        async with app_undo.run_test() as pilot:
+            await pilot.press("m")
+            await pilot.press("b")
+            await pilot.press("e")
+            await pilot.press("b")
+            await pilot.press("s")
+            await pilot.press("q")
 
         b_undo = load_recall_bank(lesson_dir)
         q1_undo = next((q for q in b_undo.questions if q.id == "recall_000001"), None)
@@ -1442,4 +1463,20 @@ class TestTask12StaleRecallCheck:
         assert q1_undo is not None and q1_undo.content_fingerprint == "old_fp_1"
         assert q2_undo is not None
         assert len(b_undo.answers) == 1
+
+    def test_run_stale_recall_check_non_interactive(self, tmp_path, monkeypatch, capsys):
+        from rt.pipeline.recall_session import run_stale_recall_check
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+
+        q1 = _make_mirata_question("recall_000001", unit_id="1.1")
+        q1.content_fingerprint = "old_fp_1"
+        save_recall_bank(RecallBank(questions=[q1]), lesson_dir)
+
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+        run_stale_recall_check(lesson_dir, state_dir=state_dir)
+        out = capsys.readouterr().out
+        assert "HUMAN REVIEW REQUIRED" in out
+
 

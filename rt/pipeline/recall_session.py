@@ -9,8 +9,13 @@ import os
 import json
 import sys
 import shutil
-from typing import Optional, List
+from typing import Optional, List, Tuple, Any, Dict
 
+from textual.app import App, ComposeResult
+from textual.widgets import Static
+from rich.panel import Panel
+from rich.text import Text
+from rt.core.encoding import fix_mojibake
 from rt.core.models import RecallQuestionType
 from rt.core.lesson_paths import lesson_path
 
@@ -408,7 +413,6 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
 # -----------------------------------------------------------------------
 
 def run_recall_terminal_session(lesson_dir: str, order: str = "alternato", style: Optional[str] = None, force_mock: bool = False) -> None:
-    from rt.core.keyboard import read_single_key, raw_mode
     from rt.core.editor_edit import edit_text_in_editor
     from rt.core.config import load_config
     from rt.telegram import recall_preferences
@@ -439,97 +443,258 @@ def run_recall_terminal_session(lesson_dir: str, order: str = "alternato", style
     interrupted = False
 
     try:
-        with raw_mode() as is_raw:
-            while not interrupted:
+        while not interrupted:
+            question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
+            if question is None:
+                examples = load_fewshot_examples(qtype, state_dir=state_dir)
+                generate_recall_batch(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, examples, force_mock=force_mock)
                 question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
-                if question is None:
-                    examples = load_fewshot_examples(qtype, state_dir=state_dir)
-                    generate_recall_batch(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, examples, force_mock=force_mock)
-                    question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
-                exclude_id = None
-                if question is None:
-                    print(f"\n✨ Nessuna domanda '{active_style}' disponibile al momento. Cambia stile o riprova più tardi.")
+            exclude_id = None
+            if question is None:
+                print(f"\n✨ Nessuna domanda '{active_style}' disponibile al momento. Cambia stile o riprova più tardi.")
+                break
+
+            if order == "alternato":
+                unit_cursor = question.unit_ids[0]
+
+            print(f"\n[{question.type.value.upper()}] Unità: {', '.join(question.unit_ids)}")
+            print(f"  {question.question_text}")
+            letters = ["A", "B", "C", "D"]
+            if question.type == RecallQuestionType.QUIZ and question.options:
+                for i, opt in enumerate(question.options):
+                    print(f"  {letters[i]}) {opt}")
+
+            if question.type == RecallQuestionType.QUIZ:
+                print("\n  Azione [A/B/C/D=Scegli / 1=👍 / 2=👎 / 3=⚡ / S=Salta / Q=Esci]: ", end="", flush=True)
+            else:
+                print("\n  Azione [R=Rispondi (editor) / 1=👍 / 2=👎 / 3=⚡ / S=Salta / Q=Esci]: ", end="", flush=True)
+
+            while True:
+                try:
+                    raw_key = input()
+                except (EOFError, KeyboardInterrupt):
+                    interrupted = True
                     break
+                choice = raw_key.strip().lower()
 
-                if order == "alternato":
-                    unit_cursor = question.unit_ids[0]
-
-                print(f"\n[{question.type.value.upper()}] Unità: {', '.join(question.unit_ids)}")
-                print(f"  {question.question_text}")
-                letters = ["A", "B", "C", "D"]
-                if question.type == RecallQuestionType.QUIZ and question.options:
-                    for i, opt in enumerate(question.options):
-                        print(f"  {letters[i]}) {opt}")
-
-                if question.type == RecallQuestionType.QUIZ:
-                    print("\n  Azione [A/B/C/D=Scegli / 1=👍 / 2=👎 / 3=⚡ / S=Salta / Q=Esci]: ", end="", flush=True)
+                if question.type == RecallQuestionType.QUIZ and choice in ("a", "b", "c", "d"):
+                    idx_choice = "abcd".index(choice)
+                    is_correct = (question.correct_index == idx_choice)
+                    record_recall_answer(
+                        lesson_dir, question.id, question.options[idx_choice],
+                        is_voice=False, evaluation=question.pregenerated_material,
+                    )
+                    esito = "✔ Corretto!" if is_correct else "❌ Sbagliato."
+                    print(f"  {esito}")
+                    if question.pregenerated_material:
+                        print(f"  {question.pregenerated_material}")
+                    break
+                elif choice in ("r", "rispondi") and question.type != RecallQuestionType.QUIZ:
+                    initial = f"# Scrivi qui la tua risposta. La riga con # viene ignorata.\n# Domanda: {question.question_text}\n\n"
+                    edited = edit_text_in_editor(initial)
+                    lines = [l for l in edited.splitlines() if not l.strip().startswith("#")]
+                    answer_text = "\n".join(lines).strip()
+                    if not answer_text:
+                        print("  ⚠️ Nessuna risposta inserita.")
+                        continue
+                    print("  ⏳ Valutazione in corso...")
+                    evaluation = evaluate_recall_answer(lesson_dir, question.id, answer_text, force_mock=force_mock)
+                    record_recall_answer(lesson_dir, question.id, answer_text, is_voice=False, evaluation=evaluation)
+                    print(f"\n{evaluation}\n")
+                    break
+                elif choice == "1":
+                    record_recall_vote(lesson_dir, question.id, "up")
+                    record_fewshot_vote(question.type, question.question_text, "up", state_dir=state_dir)
+                    continue
+                elif choice == "2":
+                    record_recall_vote(lesson_dir, question.id, "down")
+                    record_fewshot_vote(question.type, question.question_text, "down", state_dir=state_dir)
+                    continue
+                elif choice == "3":
+                    record_recall_vote(lesson_dir, question.id, "lightning")
+                    record_fewshot_vote(question.type, question.question_text, "lightning", state_dir=state_dir)
+                    continue
+                elif choice in ("s", "salta", "skip"):
+                    print("  ⏭ Saltato.")
+                    skip_recall_question(lesson_dir, question.id)
+                    exclude_id = question.id
+                    break
+                elif choice in ("q", "esci", "quit"):
+                    print("  ⏹ Sessione di recall interrotta.")
+                    interrupted = True
+                    break
                 else:
-                    print("\n  Azione [R=Rispondi (editor) / 1=👍 / 2=👎 / 3=⚡ / S=Salta / Q=Esci]: ", end="", flush=True)
+                    continue
 
-                while True:
-                    raw_key = read_single_key(already_raw=is_raw)
-                    choice = raw_key.strip().lower()
-
-                    if question.type == RecallQuestionType.QUIZ and choice in ("a", "b", "c", "d"):
-                        print(raw_key)
-                        idx_choice = "abcd".index(choice)
-                        is_correct = (question.correct_index == idx_choice)
-                        record_recall_answer(
-                            lesson_dir, question.id, question.options[idx_choice],
-                            is_voice=False, evaluation=question.pregenerated_material,
-                        )
-                        esito = "✔ Corretto!" if is_correct else "❌ Sbagliato."
-                        print(f"  {esito}")
-                        if question.pregenerated_material:
-                            print(f"  {question.pregenerated_material}")
-                        break
-                    elif choice in ("r", "rispondi") and question.type != RecallQuestionType.QUIZ:
-                        print(raw_key)
-                        initial = f"# Scrivi qui la tua risposta. La riga con # viene ignorata.\n# Domanda: {question.question_text}\n\n"
-                        edited = edit_text_in_editor(initial)
-                        lines = [l for l in edited.splitlines() if not l.strip().startswith("#")]
-                        answer_text = "\n".join(lines).strip()
-                        if not answer_text:
-                            print("  ⚠️ Nessuna risposta inserita.")
-                            continue
-                        print("  ⏳ Valutazione in corso...")
-                        evaluation = evaluate_recall_answer(lesson_dir, question.id, answer_text, force_mock=force_mock)
-                        record_recall_answer(lesson_dir, question.id, answer_text, is_voice=False, evaluation=evaluation)
-                        print(f"\n{evaluation}\n")
-                        break
-                    elif choice == "1":
-                        record_recall_vote(lesson_dir, question.id, "up")
-                        record_fewshot_vote(question.type, question.question_text, "up", state_dir=state_dir)
-                        continue
-                    elif choice == "2":
-                        record_recall_vote(lesson_dir, question.id, "down")
-                        record_fewshot_vote(question.type, question.question_text, "down", state_dir=state_dir)
-                        continue
-                    elif choice == "3":
-                        record_recall_vote(lesson_dir, question.id, "lightning")
-                        record_fewshot_vote(question.type, question.question_text, "lightning", state_dir=state_dir)
-                        continue
-                    elif choice in ("s", "salta", "skip"):
-                        print(raw_key)
-                        print("  ⏭ Saltato.")
-                        skip_recall_question(lesson_dir, question.id)
-                        exclude_id = question.id
-                        break
-                    elif choice in ("q", "esci", "quit"):
-                        print(raw_key)
-                        print("  ⏹ Sessione di recall interrotta.")
-                        interrupted = True
-                        break
-                    else:
-                        continue
-
-                # Rifornimento proattivo se sotto soglia
-                remaining = get_reserve_count(lesson_dir, qtype)
-                if remaining < cfg.telegram.recall.refill_threshold:
-                    examples = load_fewshot_examples(qtype, state_dir=state_dir)
-                    generate_recall_batch(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, examples, force_mock=force_mock)
+            # Rifornimento proattivo se sotto soglia
+            remaining = get_reserve_count(lesson_dir, qtype)
+            if remaining < cfg.telegram.recall.refill_threshold:
+                examples = load_fewshot_examples(qtype, state_dir=state_dir)
+                generate_recall_batch(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, examples, force_mock=force_mock)
     except KeyboardInterrupt:
         print("\n  ⏹ Sessione di recall interrotta.")
+
+
+class StaleRecallApp(App[None]):
+    """Textual App per la revisione interattiva delle domande stale di active recall."""
+
+    BINDINGS = [
+        ("m", "keep", "Mantieni"),
+        ("e", "delete", "Elimina"),
+        ("s", "skip", "Salta"),
+        ("right", "skip", "Salta"),
+        ("b", "back", "Indietro"),
+        ("left", "back", "Indietro"),
+        ("q", "quit_session", "Esci"),
+        ("ctrl+q", "quit_session", "Esci"),
+        ("ctrl+c", "quit_session", "Esci"),
+    ]
+
+    def __init__(self, lesson_dir: str, stale_questions: List[Any]) -> None:
+        super().__init__()
+        self.lesson_dir = lesson_dir
+        self.stale_questions = stale_questions
+        self.idx: int = 0
+        self.history_stack: List[Tuple[str, Any, Any]] = []
+        self.kept_count: int = 0
+        self.deleted_count: int = 0
+        self.skipped_count: int = 0
+        self.last_status: Optional[str] = None
+        self.interrupted: bool = False
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="stale_view")
+
+    def on_mount(self) -> None:
+        self._update_view()
+
+    def _render_panel(self) -> Panel:
+        if self.idx >= len(self.stale_questions):
+            return Panel(Text("Revisione completata."), title="Stale Recall Check", border_style="green")
+        q = self.stale_questions[self.idx]
+        from rt.pipeline.recall import load_recall_bank
+        bank = load_recall_bank(self.lesson_dir)
+        total_count = len(self.stale_questions)
+
+        lines = [
+            f"[{self.idx + 1}/{total_count}] STALE RECALL QUESTION ({q.type.value.upper()}) - ID: {q.id}",
+            f"  📚 Unità: {', '.join(q.unit_ids)}",
+            f"  📌 Stato: {q.status.value}",
+            f"  ❓ Domanda: \"{fix_mojibake(q.question_text)}\"",
+        ]
+        if q.type == RecallQuestionType.QUIZ and q.options:
+            lines.append("  📝 Opzioni:")
+            for opt in q.options:
+                lines.append(f"    - {fix_mojibake(opt)}")
+        if q.pregenerated_material:
+            lines.append(f"  💡 Spiegazione: {fix_mojibake(q.pregenerated_material)}")
+        answers = [a for a in bank.answers if a.question_id == q.id]
+        if answers:
+            last_ans = answers[-1]
+            lines.append(f"  💬 Ultima risposta registrata: \"{fix_mojibake(last_ans.answer_text)}\"")
+            if last_ans.evaluation:
+                lines.append(f"  ⭐ Ultima valutazione: {fix_mojibake(last_ans.evaluation)}")
+
+        if self.last_status:
+            lines.append(f"\n  {self.last_status}")
+
+        lines.append("\n  Azione [M=Mantieni (aggiorna fingerprint) / E=Elimina domanda+risposte / S=Salta / B=Indietro / Q=Esci]: ")
+        content = "\n".join(lines)
+        return Panel(Text(content), title=f"Stale Recall Check [{self.idx + 1}/{total_count}]", border_style="yellow")
+
+    def _update_view(self) -> None:
+        try:
+            widget = self.query_one("#stale_view", Static)
+            widget.update(self._render_panel())
+        except Exception:
+            pass
+
+    def action_keep(self) -> None:
+        if self.idx >= len(self.stale_questions):
+            return
+        q = self.stale_questions[self.idx]
+        from rt.pipeline.recall import load_recall_bank, save_recall_bank, _compute_units_fingerprint
+        old_fp = q.content_fingerprint
+        cur_fp = _compute_units_fingerprint(self.lesson_dir, q.unit_ids)
+        b = load_recall_bank(self.lesson_dir)
+        bq = next((item for item in b.questions if item.id == q.id), None)
+        if bq:
+            bq.content_fingerprint = cur_fp
+            save_recall_bank(b, self.lesson_dir)
+        self.history_stack.append(("kept", q.id, old_fp))
+        self.kept_count += 1
+        self.last_status = f"✔ Mantenuta domanda {q.id} (fingerprint aggiornato)."
+        self.idx += 1
+        if self.idx >= len(self.stale_questions):
+            self.exit()
+        else:
+            self._update_view()
+
+    def action_delete(self) -> None:
+        if self.idx >= len(self.stale_questions):
+            return
+        q = self.stale_questions[self.idx]
+        from rt.pipeline.recall import load_recall_bank, save_recall_bank
+        b = load_recall_bank(self.lesson_dir)
+        q_to_del = next((item for item in b.questions if item.id == q.id), None)
+        a_to_del = [a for a in b.answers if a.question_id == q.id]
+        b.questions = [item for item in b.questions if item.id != q.id]
+        b.answers = [a for a in b.answers if a.question_id != q.id]
+        save_recall_bank(b, self.lesson_dir)
+        self.history_stack.append(("deleted", q_to_del or q, a_to_del))
+        self.deleted_count += 1
+        self.last_status = f"🗑 Eliminata domanda {q.id} e relative risposte."
+        self.idx += 1
+        if self.idx >= len(self.stale_questions):
+            self.exit()
+        else:
+            self._update_view()
+
+    def action_skip(self) -> None:
+        if self.idx >= len(self.stale_questions):
+            return
+        q = self.stale_questions[self.idx]
+        self.history_stack.append(("skipped", q.id, None))
+        self.skipped_count += 1
+        self.last_status = "⏭ Saltato."
+        self.idx += 1
+        if self.idx >= len(self.stale_questions):
+            self.exit()
+        else:
+            self._update_view()
+
+    def action_back(self) -> None:
+        if self.idx == 0:
+            self.last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
+            self._update_view()
+            return
+        from rt.pipeline.recall import load_recall_bank, save_recall_bank
+        self.idx -= 1
+        action_type, hist_q, hist_extra = self.history_stack.pop()
+        b = load_recall_bank(self.lesson_dir)
+        if action_type == "kept":
+            bq = next((item for item in b.questions if item.id == hist_q), None)
+            if bq:
+                bq.content_fingerprint = hist_extra
+                save_recall_bank(b, self.lesson_dir)
+            self.kept_count -= 1
+        elif action_type == "deleted":
+            if not any(item.id == hist_q.id for item in b.questions):
+                b.questions.append(hist_q)
+            for a in hist_extra:
+                b.answers.append(a)
+            save_recall_bank(b, self.lesson_dir)
+            self.deleted_count -= 1
+        elif action_type == "skipped":
+            self.skipped_count -= 1
+        prev_q = self.stale_questions[self.idx]
+        self.last_status = f"◀️ Tornato alla domanda precedente ({prev_q.id})."
+        self._update_view()
+
+    def action_quit_session(self) -> None:
+        self.last_status = "⏹ Revisione interrotta."
+        self.interrupted = True
+        self.exit()
 
 
 def run_stale_recall_check(lesson_dir: str, state_dir: Optional[str] = None) -> None:
@@ -544,7 +709,7 @@ def run_stale_recall_check(lesson_dir: str, state_dir: Optional[str] = None) -> 
         print("ℹ️ C'è già una sessione Telegram attiva di recall per questa lezione. Usa /quit su Telegram per chiuderla prima di eseguire --check.")
         return
 
-    from rt.pipeline.recall import load_recall_bank, save_recall_bank, _compute_units_fingerprint
+    from rt.pipeline.recall import load_recall_bank, _compute_units_fingerprint
     bank = load_recall_bank(lesson_dir)
     stale_questions = []
     for q in bank.questions:
@@ -564,131 +729,10 @@ def run_stale_recall_check(lesson_dir: str, state_dir: Optional[str] = None) -> 
     print(f"\n🔍 REVISIONE DOMANDE STALE ({len(stale_questions)} da rivedere)")
     print("=" * 60)
 
-    from rich.console import Console
-    from rich.live import Live
-    from rich.panel import Panel
-    from rich.text import Text
-    from rt.core.keyboard import read_single_key, raw_mode
-    from rt.core.encoding import fix_mojibake
-
-    console = Console()
-    total_count = len(stale_questions)
-    idx = 0
-    history_stack = []
-    kept_count = 0
-    deleted_count = 0
-    skipped_count = 0
-    last_status: Optional[str] = None
-    interrupted = False
-
-    def _build_stale_panel(idx: int, total_count: int, q, bank, last_status: Optional[str] = None):
-        lines = [
-            f"[{idx + 1}/{total_count}] STALE RECALL QUESTION ({q.type.value.upper()}) - ID: {q.id}",
-            f"  📚 Unità: {', '.join(q.unit_ids)}",
-            f"  📌 Stato: {q.status.value}",
-            f"  ❓ Domanda: \"{fix_mojibake(q.question_text)}\"",
-        ]
-        if q.type == RecallQuestionType.QUIZ and q.options:
-            lines.append("  📝 Opzioni:")
-            for opt in q.options:
-                lines.append(f"    - {fix_mojibake(opt)}")
-        if q.pregenerated_material:
-            lines.append(f"  💡 Spiegazione: {fix_mojibake(q.pregenerated_material)}")
-        answers = [a for a in bank.answers if a.question_id == q.id]
-        if answers:
-            last_ans = answers[-1]
-            lines.append(f"  💬 Ultima risposta registrata: \"{fix_mojibake(last_ans.answer_text)}\"")
-            if last_ans.evaluation:
-                lines.append(f"  ⭐ Ultima valutazione: {fix_mojibake(last_ans.evaluation)}")
-
-        if last_status:
-            lines.append(f"\n  {last_status}")
-
-        lines.append("\n  Azione [M=Mantieni (aggiorna fingerprint) / E=Elimina domanda+risposte / S=Salta / B=Indietro / Q=Esci]: ")
-        content = "\n".join(lines)
-        return Panel(Text(content), title=f"Stale Recall Check [{idx + 1}/{total_count}]", border_style="yellow")
-
+    app = StaleRecallApp(lesson_dir=lesson_dir, stale_questions=stale_questions)
     try:
-        with raw_mode() as is_raw, Live(console=console, auto_refresh=False, transient=False, vertical_overflow="visible") as live:
-            while idx < total_count:
-                q = stale_questions[idx]
-                bank = load_recall_bank(lesson_dir)
-                panel = _build_stale_panel(idx, total_count, q, bank, last_status)
-                live.update(panel, refresh=True)
-
-                while True:
-                    raw_key = read_single_key(already_raw=is_raw)
-                    choice = raw_key.strip().lower()
-
-                    if choice in ("m", "mantieni"):
-                        old_fp = q.content_fingerprint
-                        cur_fp = _compute_units_fingerprint(lesson_dir, q.unit_ids)
-                        b = load_recall_bank(lesson_dir)
-                        bq = next((item for item in b.questions if item.id == q.id), None)
-                        if bq:
-                            bq.content_fingerprint = cur_fp
-                            save_recall_bank(b, lesson_dir)
-                        history_stack.append(("kept", q.id, old_fp))
-                        kept_count += 1
-                        last_status = f"✔ Mantenuta domanda {q.id} (fingerprint aggiornato)."
-                        idx += 1
-                        break
-                    elif choice in ("e", "elimina"):
-                        b = load_recall_bank(lesson_dir)
-                        q_to_del = next((item for item in b.questions if item.id == q.id), None)
-                        a_to_del = [a for a in b.answers if a.question_id == q.id]
-                        b.questions = [item for item in b.questions if item.id != q.id]
-                        b.answers = [a for a in b.answers if a.question_id != q.id]
-                        save_recall_bank(b, lesson_dir)
-                        history_stack.append(("deleted", q_to_del or q, a_to_del))
-                        deleted_count += 1
-                        last_status = f"🗑 Eliminata domanda {q.id} e relative risposte."
-                        idx += 1
-                        break
-                    elif choice in ("s", "salta", "skip", "right", "RIGHT"):
-                        history_stack.append(("skipped", q.id, None))
-                        skipped_count += 1
-                        last_status = "⏭ Saltato."
-                        idx += 1
-                        break
-                    elif choice in ("b", "indietro", "back", "left", "LEFT"):
-                        if idx == 0:
-                            last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
-                            panel = _build_stale_panel(idx, total_count, q, bank, last_status)
-                            live.update(panel, refresh=True)
-                            continue
-                        else:
-                            idx -= 1
-                            action_type, hist_q, hist_extra = history_stack.pop()
-                            b = load_recall_bank(lesson_dir)
-                            if action_type == "kept":
-                                bq = next((item for item in b.questions if item.id == hist_q), None)
-                                if bq:
-                                    bq.content_fingerprint = hist_extra
-                                    save_recall_bank(b, lesson_dir)
-                                kept_count -= 1
-                            elif action_type == "deleted":
-                                if not any(item.id == hist_q.id for item in b.questions):
-                                    b.questions.append(hist_q)
-                                for a in hist_extra:
-                                    b.answers.append(a)
-                                save_recall_bank(b, lesson_dir)
-                                deleted_count -= 1
-                            elif action_type == "skipped":
-                                skipped_count -= 1
-                            prev_q = stale_questions[idx]
-                            last_status = f"◀️ Tornato alla domanda precedente ({prev_q.id})."
-                            break
-                    elif choice in ("q", "esci", "quit"):
-                        last_status = "⏹ Revisione interrotta."
-                        interrupted = True
-                        break
-                    else:
-                        continue
-
-                if interrupted:
-                    break
+        app.run()
     except KeyboardInterrupt:
         print("\n  ⏹ Sessione interrotta.")
 
-    print(f"\n📊 Riepilogo revisione stale: {kept_count} mantenute, {deleted_count} eliminate, {skipped_count} saltate.")
+    print(f"\n📊 Riepilogo revisione stale: {app.kept_count} mantenute, {app.deleted_count} eliminate, {app.skipped_count} saltate.")
