@@ -145,3 +145,24 @@ def test_build_outline_tree_diff():
         selected_macro_index=0
     )
     assert tree is not None
+
+
+def test_interactive_tty_live_and_arrow_navigation(synthetic_outline_lesson):
+    """Verifica che _confirm_via_terminal in TTY usi rich.Live e gestisca RIGHT (espandi), LEFT (collassa), Spazio e A."""
+    lesson_dir = synthetic_outline_lesson
+
+    # Simuliamo stdin.isatty() = True
+    keys = ["RIGHT", "LEFT", " ", "A"]
+
+    mock_live = MagicMock()
+
+    with patch("sys.stdin.isatty", return_value=True), \
+         patch("rt.pipeline.outline_review.read_single_key", side_effect=keys), \
+         patch("rt.pipeline.outline_review.Live") as mock_live_cls:
+        mock_live_cls.return_value.__enter__.return_value = mock_live
+        confirm_or_revise_outline(lesson_dir, force_mock=True)
+
+    # Verifica che Live.update sia stato chiamato ad ogni tasto
+    assert mock_live.update.call_count >= 4
+    assert mock_live.stop.called
+
