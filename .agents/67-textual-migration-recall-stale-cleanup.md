@@ -1,9 +1,10 @@
 # Task 67 — Migra la pulizia domande "stale" di `recall_session.py` da `rich.Live` a Textual
 
-Fa parte della migrazione a Textual iniziata col Task 64 (pilota su `outline_review.py`). **Esegui
-questo task solo dopo che i Task 64 e 65 sono stati completati e verificati** (può precedere o
-seguire il Task 66, sono indipendenti). Nel progetto RT (/Users/attilioturco/Desktop/trt),
-implementa direttamente, senza produrre un piano preliminare.
+Fa parte della migrazione a Textual iniziata col Task 64 (pilota su `outline_review.py`), già
+completato, verificato e confermato dall'utente con test manuale reale — nessuna pausa di
+conferma richiesta. Esegui questo task dopo il Task 65 (può precedere o seguire il Task 66, sono
+indipendenti). Nel progetto RT (/Users/attilioturco/Desktop/trt), implementa direttamente, senza
+produrre un piano preliminare.
 
 ## Contesto
 

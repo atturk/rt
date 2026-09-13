@@ -1,11 +1,29 @@
 # Task 66 — Migra il carosello ruoli-fase di `rt config` (`configure.py`) da `rich.Live` a Textual
 
-Fa parte della migrazione a Textual iniziata col Task 64 (pilota su `outline_review.py`). **Esegui
-questo task solo dopo che i Task 64 e 65 sono stati completati e verificati** — è il file più
-grande e delicato dei 4 (1968 righe totali, il cuore di `rt config`), va affrontato per ultimo tra
-le 4 schermate, quando il pattern Textual è già consolidato e collaudato sui casi più semplici. Nel
-progetto RT (/Users/attilioturco/Desktop/trt), implementa direttamente, senza produrre un piano
-preliminare.
+Fa parte della migrazione a Textual iniziata col Task 64 (pilota su `outline_review.py`), già
+completato, verificato e confermato dall'utente con test manuale reale (nessuna duplicazione
+visiva, Ctrl+Q interrompe correttamente) — nessuna pausa di conferma richiesta. Esegui questo task
+dopo il Task 65 (è il file più grande e delicato dei 4, 1968 righe totali, il cuore di
+`rt config`, va affrontato per ultimo tra le 4 schermate, quando il pattern Textual è già
+consolidato e collaudato sui casi più semplici). Nel progetto RT (/Users/attilioturco/Desktop/trt),
+implementa direttamente, senza produrre un piano preliminare.
+
+**Nota da verificare per prima cosa**: nel Task 64 (pilota), in uso REALE (non solo nei test),
+`questionary.text(...).ask()` dentro `app.suspend()` fallisce sempre silenziosamente
+(`RuntimeWarning: coroutine 'Application.run_async' was never awaited`) e cade sul fallback
+`input()` a causa di un `except Exception` troppo ampio — funzionalmente innocuo lì (il fallback
+funziona), ma qui il carosello usa `questionary` MOLTO più pesantemente sotto `suspend()`
+(`NEW_PROFILE` chiama `_create_new_model_profile`, che ha ~15+ prompt `questionary.text/select/
+confirm/autocomplete` in sequenza — se ciascuno di questi fallisse silenziosamente e cadesse su un
+`input()` di riserva improvvisato, l'esperienza utente peggiorerebbe sensibilmente, es. perdita di
+autocomplete/validazione). Prima di scrivere il resto del task: riproduci il problema, capisci la
+causa esatta (verosimilmente `questionary`/`prompt_toolkit` prova a creare un proprio event loop
+asyncio mentre quello di Textual è già in esecuzione, anche sotto `suspend()`), e verifica se
+`_create_new_model_profile` funziona correttamente sotto `App.suspend()` in questo file prima di
+procedere — se necessario, cerca il modo corretto di eseguire `questionary` dentro `suspend()`
+(es. un nuovo event loop dedicato, o un'esecuzione sincrona bypassando l'integrazione asyncio di
+`prompt_toolkit`) invece di accontentarti del fallback silenzioso. Segnala il risultato di questa
+verifica nel riepilogo finale in ogni caso, anche se non è un problema.
 
 ## Contesto
 

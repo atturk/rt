@@ -1,10 +1,10 @@
 # Task 65 — Migra `issue_review.py` da `rich.Live` a Textual
 
-Fa parte della migrazione a Textual iniziata col Task 64 (pilota su `outline_review.py`). **Esegui
-questo task solo dopo che il Task 64 è stato completato, verificato E l'utente ha confermato in
-chat di voler proseguire** — non partire da questo file se il pilota non è ancora stato approvato.
-Nel progetto RT (/Users/attilioturco/Desktop/trt), implementa direttamente, senza produrre un
-piano preliminare.
+Fa parte della migrazione a Textual iniziata col Task 64 (pilota su `outline_review.py`). Il
+Task 64 è stato completato, verificato E confermato dall'utente con test manuale reale (nessuna
+duplicazione visiva, Ctrl+Q interrompe correttamente) — procedi direttamente, nessuna pausa di
+conferma richiesta per questo task. Nel progetto RT (/Users/attilioturco/Desktop/trt), implementa
+direttamente, senza produrre un piano preliminare.
 
 ## Contesto
 

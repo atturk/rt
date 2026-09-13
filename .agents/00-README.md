@@ -79,44 +79,40 @@ scattare il fallback, tornare subito al round-robin dopo un uso, cooldown config
 30s — solo al secondo fallback consecutivo) → Task 63, vera macchina a stati in
 `rt/llm/router.py`.
 
+Task 63, 55-59, 61-62 e 64 (pilota Textual) implementati da Antigravity, verificati riga per
+riga (non solo dal resoconto): 697/697 test. Due bug reali trovati in revisione e corretti a
+parte (`1fea616`, non da Antigravity): il Task 55 aveva cancellato per errore la voce di pricing
+statico `gemini-2.5-pro`; il Task 64 scartava il valore di ritorno di `OutlineReviewApp.run()`,
+per cui uscire con Ctrl+Q (binding di default di Textual) faceva stampare "Outline approvata" e
+proseguire a REWRITE come se il primario avesse premuto A — corretto (ora solleva
+`KeyboardInterrupt`, gestito dal blocco già esistente in `cli.py::main()`). **Pilota Textual
+confermato con test manuale reale** (`rt run ... --mock`, più cicli M→feedback→outline
+rigenerata): nessuna duplicazione visiva, Ctrl+Q interrompe correttamente senza approvare —
+l'ipotesi centrale della migrazione (causa del bug di duplicazione = accoppiata rich.Live+parsing
+ANSI manuale) è confermata. Via libera ai Task 65-68. Osservazione minore non bloccante: in uso
+reale (non solo nei test) `questionary.text()` dentro `app.suspend()` fallisce sempre
+silenziosamente e cade sul semplice `input()` di riserva (RuntimeWarning visibile in console) —
+funzionalmente innocuo, ma codice morto silenzioso da tenere d'occhio nel Task 65 (stesso
+meccanismo `suspend()` usato anche per l'editor esterno).
+
 ## Task da fare, in ordine
 
-1. **63** — Il fallback deve esaurire il pool round-robin prima di scattare (oggi un SINGOLO 429
-   su round-robin salta subito a `fallback.rate_limit`), tornare al round-robin dopo un uso, e
-   applicare un cooldown (default 30s, configurabile) solo al secondo fallback consecutivo.
-   Richiede stato persistente per job in `RoutingEngine` (`rt/llm/router.py`).
-2. **55** — Pricing OpenRouter sempre "pending": nessun codice interroga il campo `pricing`
-   dell'endpoint `/models` di OpenRouter (a differenza di Google, che matcha una tabella
-   statica). Rileva il prezzo reale in fase di configurazione e mostralo invece di chiedere
-   genericamente "vuoi configurare un pricing custom?".
-3. **56** (CRITICO) — Creare un secondo pool round-robin "separato" per lo stesso provider può
-   silenziosamente sovrascrivere le chiavi di un profilo già esistente (stessi identificatori
-   `google_1`/`google_2`/... rigenerati da zero). Rischio reale di corruzione configurazione.
-4. **57** — Chiarire che solo il Primario è obbligatorio nel carosello (i 5 fallback sono
-   sempre opzionali) + mostrare il numero di chiavi round-robin nel riepilogo finale.
-5. **58** — Il messaggio "sto generando le domande" (Task 51) deve auto-cancellarsi quando
-   arriva la prima domanda, invece di restare a floodare la chat.
-6. **59** — `/recall <N>` in risposta diretta al messaggio di `/list` deve usare N come
-   posizione nella lista mostrata, non come ricerca testuale per data/titolo.
-7. **61** — Riorganizza `rt -h`: italiano, "Comandi principali" (config/run/review/recall/
-   status/telegram-daemon) separati dalle sottofasi della pipeline e dai comandi diagnostici,
-   niente ridondanza tra `usage:` e l'elenco sotto, aggiunta sezione Esempi.
-8. **62** — Bottone 📖 (unità testuale in active recall): piega il testo nello stesso messaggio
-   del commento (come già fa il bottone 🗣 trascritto, stesso pattern da riusare) invece di un
-   messaggio satellite — il bottone 🔊 audio resta invariato (vincolo reale dell'API Telegram:
-   non si può aggiungere un allegato audio a un messaggio di solo testo via modifica).
-9. **64** (PILOTA Textual) — Migra `outline_review.py` da `rich.Live` a Textual. Fermarsi dopo
-   questo task e attendere conferma in chat prima di proseguire.
-10. **65** — Migra `issue_review.py` a Textual (solo dopo conferma sul Task 64) — la più
-    complessa delle 4: audio in background + editor esterno via `App.suspend()`.
-11. **66** — Migra il carosello ruoli-fase di `configure.py` a Textual (solo dopo Task 64/65) —
-    il file più grande, va per ultimo tra le 4 schermate.
-12. **67** — Migra la pulizia "stale" di `recall_session.py` a Textual (solo dopo Task 64/65,
-    indipendente da 66).
-13. **68** — Rimuovi `rt/core/keyboard.py`, orfano dopo che 64-67 sono TUTTI completati.
+Task 63, 55-59, 61-62 e 64 completati (vedi "Stato" sopra) — restano solo i 4 rimanenti della
+migrazione Textual, CONFERMATI dall'utente con test manuale reale, via libera a procedere senza
+ulteriori pause di conferma:
 
-Tutti indipendenti tra loro salvo dove segnalato diversamente nei singoli file (in particolare la
-sequenza 64→65/66/67→68 della migrazione Textual, con pausa di conferma dopo il 64).
+1. **65** — Migra `issue_review.py` a Textual — la più complessa delle 4: audio in background +
+   editor esterno via `App.suspend()`.
+2. **66** — Migra il carosello ruoli-fase di `configure.py` a Textual — il file più grande, va
+   per ultimo tra le 4 schermate.
+3. **67** — Migra la pulizia "stale" di `recall_session.py` a Textual (indipendente dal 66).
+4. **68** — Rimuovi `rt/core/keyboard.py`, orfano dopo che 65-67 sono TUTTI completati.
+
+Tutti indipendenti tra loro salvo l'ordine 65/66/67→68 segnalato nei singoli file. Nel Task 66,
+verifica anche l'osservazione minore lasciata in "Stato" sopra su `questionary.text()` dentro
+`app.suspend()` (rilevante lì perché il carosello di `configure.py` usa `questionary` per
+NEW_PROFILE/REMOVE_LABEL sotto `suspend()` — il Task 65 usa `suspend()` solo per un subprocess
+editor esterno, non per `questionary`, probabilmente non affetto dallo stesso problema).
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
