@@ -7,10 +7,12 @@ from typing import Dict, Any
 
 
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
+    import os
     from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
     from rt.telegram.client import send_message
     from rt.telegram.formatting import escape_html
     from rt.core.config import load_config
+    from rt.core.state import read_info_yaml
 
     try:
         cfg = load_telegram_config()
@@ -20,11 +22,34 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
     try:
         runtime_cfg = load_config().telegram
         message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
-        text = (
-            f"✅ <b>Build completata</b>\n"
-            f"{escape_html(lesson_title)}\n"
-            f"📄 {escape_html(str(build_result.get('rielaborato', '')))}"
-        )
+
+        info_path = os.path.join(lesson_dir, "info.yaml")
+        info = {}
+        if os.path.exists(info_path):
+            try:
+                info = read_info_yaml(info_path)
+            except Exception:
+                info = {}
+
+        data = str(info.get("data", "")).strip()
+        materia = str(info.get("materia", "")).strip()
+        argomenti = str(info.get("argomenti", "")).strip()
+
+        mapped_materie = {k.strip().upper() for k in (runtime_cfg.topics or {}).keys()}
+        is_generic_topic = (not materia) or (materia.upper() not in mapped_materie)
+
+        lines = ["✅ <b>Lezione pronta</b>"]
+        if data:
+            lines.append(f"📅 {escape_html(data)}")
+        if argomenti:
+            lines.append(f"📌 {escape_html(argomenti)}")
+        if is_generic_topic and materia:
+            lines.append(f"📚 {escape_html(materia)}")
+
+        lines.append("")
+        lines.append("Usa /list per vedere tutte le lezioni disponibili.")
+
+        text = "\n".join(lines)
         send_message(cfg, text=text, message_thread_id=message_thread_id)
 
         from rt.telegram.last_lesson import record_last_lesson
