@@ -473,7 +473,7 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
         await update.callback_query.answer("Domanda non più disponibile.", show_alert=True)
         return
 
-    await update.callback_query.answer()
+    await update.callback_query.answer("💡 Genero la spiegazione...")
     try:
         await update.callback_query.edit_message_reply_markup(reply_markup=None)
     except Exception:

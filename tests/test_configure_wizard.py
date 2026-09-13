@@ -176,7 +176,7 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
     assert gen_data["credentials"][0]["provider"] == "deepseek"
     assert gen_data["credentials"][0]["env_var"] == "DEEPSEEK_API_KEY"
     assert "model_profiles" in gen_data
-    assert "outline" in gen_data["model_profiles"]
+    assert "deepseek_deepseek-reasoner" in gen_data["model_profiles"]
 
     # outline.yaml ha provider, model e credential aggiornati ma max_tokens e thinking intatti
     with open(outline_job, "r", encoding="utf-8") as f:
@@ -326,7 +326,7 @@ def test_configure_telegram_section_manual_link_flow(tmp_path):
             m.ask.return_value = val
         elif "Materia per Topic ID" in prompt:
             m.ask.return_value = "BIOCHIMICA"
-        elif "lessons_root" in prompt:
+        elif "Percorso assoluto cartella lezioni" in prompt:
             m.ask.return_value = str(tmp_path / "lezioni")
         else:
             m.ask.return_value = ""
@@ -731,15 +731,20 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
 
 
 def test_suggest_profile_name_sanitization_and_uniqueness():
-    """Verifica la sanitizzazione e la generazione di nomi univoci per i profili modello."""
+    """Verifica la sanitizzazione e la generazione di nomi univoci per i profili modello.
+
+    Trattini e punti nel model id vengono preservati (schema provider_casa_modello, es.
+    'openrouter_openai_gpt-5.6-luna'): solo '/' e altri separatori non validi collassano in
+    '_'. Vedi indagine reale: il nome generato in precedenza appiattiva anche trattini/punti,
+    rendendo il nome del modello illeggibile."""
     s1 = _suggest_profile_name("openrouter", "openai/gpt-5.6-luna", [])
-    assert s1 == "openrouter_openai_gpt_5_6_luna"
+    assert s1 == "openrouter_openai_gpt-5.6-luna"
 
-    s2 = _suggest_profile_name("openrouter", "openai/gpt-5.6-luna", ["openrouter_openai_gpt_5_6_luna"])
-    assert s2 == "openrouter_openai_gpt_5_6_luna_2"
+    s2 = _suggest_profile_name("openrouter", "openai/gpt-5.6-luna", ["openrouter_openai_gpt-5.6-luna"])
+    assert s2 == "openrouter_openai_gpt-5.6-luna_2"
 
-    s3 = _suggest_profile_name("google", "gemini-3.5-flash", ["google_gemini_3_5_flash", "google_gemini_3_5_flash_2"])
-    assert s3 == "google_gemini_3_5_flash_3"
+    s3 = _suggest_profile_name("google", "gemini-3.5-flash", ["google_gemini-3.5-flash", "google_gemini-3.5-flash_2"])
+    assert s3 == "google_gemini-3.5-flash_3"
 
 
 def test_load_and_save_model_profiles():
@@ -970,9 +975,9 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
 
         assignments = _configure_llm_provider_section(config_dir, env_file)
 
-    assert assignments["outline"] == "outline"
-    assert assignments["rewrite"] == "rewrite"
-    assert assignments["review_science"] == "rewrite"
+    assert assignments["outline"] == "deepseek_gemini-3.5-flash"
+    assert assignments["rewrite"] == "deepseek_gemini-3.5-flash_2"
+    assert assignments["review_science"] == "deepseek_gemini-3.5-flash_2"
 
     with open(rewrite_file, "r", encoding="utf-8") as f:
         rw_data = yaml.safe_load(f)
@@ -1133,14 +1138,14 @@ def test_grouped_jobs_recall_and_immagini(tmp_path):
 
     # Tutti i 5 job di recall ed i 2 di immagini hanno lo stesso profilo in assignments
     for jn in recall_jobs:
-        assert res[jn] == "image_description"
+        assert res[jn] == "deepseek_deepseek-chat"
         with open(os.path.join(config_dir, f"{jn}.yaml"), "r", encoding="utf-8") as f:
             jdata = yaml.safe_load(f)
         assert jdata["primary"]["provider"] == "deepseek"
         assert jdata["primary"]["model"] == "deepseek-chat"
 
     for jn in image_jobs:
-        assert res[jn] == "image_description"
+        assert res[jn] == "deepseek_deepseek-chat"
         with open(os.path.join(config_dir, f"{jn}.yaml"), "r", encoding="utf-8") as f:
             jdata = yaml.safe_load(f)
         assert jdata["primary"]["provider"] == "deepseek"
@@ -1272,7 +1277,7 @@ def test_autocomplete_selection_and_confirm_yes(tmp_path):
 
         name, prof = _create_new_model_profile(config_dir, env_file, {"version": "2.0.0"})
 
-    assert name == "deepseek_model_b"
+    assert name == "deepseek_model-b"
     assert prof["routes"][0]["model"] == "model-b"
 
 

@@ -339,13 +339,13 @@ echo "${GREEN}${BOLD}✅ Installazione completata in ${SECONDS}s.${RESET}"
 echo ""
 echo "Prossimi passi:"
 if [ -t 0 ] && [ -t 1 ]; then
-    echo "1. Verifica l'installazione con: rt -h"
-    echo "2. Configura RT con: rt config"
+    echo "1. Verifica l'installazione con: rt -v"
+    echo "2. Scopri i comandi principali con: rt -h"
     echo "3. Prova una pipeline di test senza costi con: rt run <cartella_lezione> --mock"
     echo "4. Documentazione: https://github.com/atturk/rt"
 else
-    echo "1. Verifica l'installazione con: ./bin/rt -h"
-    echo "2. Configura RT con: ./bin/rt config"
+    echo "1. Verifica l'installazione con: ./bin/rt -v"
+    echo "2. Scopri i comandi principali con: ./bin/rt -h"
     echo "3. Prova una pipeline di test senza costi con: ./bin/rt run <cartella_lezione> --mock"
     echo "4. Documentazione: https://github.com/atturk/rt"
 fi
@@ -357,8 +357,6 @@ fi
 
 if [ -t 0 ] && [ -t 1 ]; then
     exec_shell="${SHELL:-/bin/zsh}"
-    echo ""
-    echo "🔄 Aggiorno questa sessione di terminale (rt sarà subito disponibile)..."
     exec "$exec_shell" -l
 fi
 
