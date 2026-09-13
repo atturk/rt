@@ -428,6 +428,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.answer()
 
 
+def _render_post_answer_text(
+    eval_text: str,
+    transcript: Optional[str] = None,
+    transcript_visible: bool = False,
+    unit_text: Optional[str] = None,
+    unit_text_visible: bool = False,
+) -> str:
+    parts = []
+    if transcript_visible and transcript:
+        parts.append(f"🗣 Trascritto: \"{transcript}\"")
+    parts.append(eval_text)
+    if unit_text_visible and unit_text:
+        parts.append(f"📖 {unit_text.strip()}")
+    return "\n\n".join(parts)
+
+
 async def _send_post_answer_result(
     context: ContextTypes.DEFAULT_TYPE, chat_id: int, thread_id, lesson_dir: str,
     question_id: str, esito_text: str, state_dir: str, transcript: Optional[str] = None,
@@ -444,7 +460,7 @@ async def _send_post_answer_result(
             "transcript": transcript,
             "transcript_visible": False,
             "evaluation_text": esito_text,
-            "unit_text_message_id": None,
+            "unit_text_visible": False,
             "audio_message_ids": [],
             "message_id": None,
         },
@@ -555,11 +571,26 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         visible = not entry.get("transcript_visible", False)
         registry.update_pending(short_id, {"transcript_visible": visible}, state_dir)
 
+        unit_text = entry.get("unit_text")
+        unit_text_visible = entry.get("unit_text_visible", False)
+        if unit_text_visible and not unit_text:
+            from rt.pipeline.recall import load_recall_bank
+            from rt.pipeline.recall_session import format_unit_reference
+            bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
+            question = next((q for q in bank.questions if q.id == question_id), None)
+            if question:
+                raw_text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
+                unit_text = raw_text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
+                registry.update_pending(short_id, {"unit_text": unit_text}, state_dir)
+
         eval_text = entry.get("evaluation_text", "")
-        if visible:
-            new_text = f"🗣 Trascritto: \"{transcript}\"\n\n{eval_text}"
-        else:
-            new_text = eval_text
+        new_text = _render_post_answer_text(
+            eval_text=eval_text,
+            transcript=transcript,
+            transcript_visible=visible,
+            unit_text=unit_text,
+            unit_text_visible=unit_text_visible,
+        )
 
         msg_id = entry.get("message_id") or (update.effective_message.message_id if update.effective_message else None)
         keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=True)
@@ -599,53 +630,40 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
 
     if action == "rut":
         await update.callback_query.answer()
-        existing_id = entry.get("unit_text_message_id")
-        is_visible = entry.get("unit_text_visible", True)
+        visible = not entry.get("unit_text_visible", False)
+        unit_text = entry.get("unit_text")
+        if visible and not unit_text:
+            from rt.pipeline.recall_session import format_unit_reference
+            raw_text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
+            unit_text = raw_text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
+            registry.update_pending(short_id, {"unit_text": unit_text, "unit_text_visible": True}, state_dir)
+        else:
+            registry.update_pending(short_id, {"unit_text_visible": visible}, state_dir)
 
-        if existing_id:
-            if is_visible:
-                # Nascondi testo in place
-                hidden_text = "📖 <i>(testo unità nascosto — premi di nuovo 📖 per visualizzarlo)</i>"
-                try:
-                    await _send_with_retry(lambda: context.bot.edit_message_text(
-                        chat_id=update.effective_chat.id,
-                        message_id=existing_id,
-                        text=hidden_text,
-                        parse_mode="HTML",
-                    ))
-                    registry.update_pending(short_id, {"unit_text_visible": False}, state_dir)
-                    return
-                except Exception:
-                    pass
-            else:
-                # Mostra di nuovo testo in place
-                from rt.pipeline.recall_session import format_unit_reference
-                text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
-                text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
-                try:
-                    await _send_with_retry(lambda: context.bot.edit_message_text(
-                        chat_id=update.effective_chat.id,
-                        message_id=existing_id,
-                        text=text,
-                    ))
-                    registry.update_pending(short_id, {"unit_text_visible": True}, state_dir)
-                    return
-                except Exception:
-                    pass
+        eval_text = entry.get("evaluation_text", "")
+        transcript = entry.get("transcript")
+        transcript_visible = entry.get("transcript_visible", False)
 
-        # Prima volta (o fallback se messaggio non esisteva / edit fallito)
-        from rt.pipeline.recall_session import format_unit_reference
-        text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
-        text = text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
-        res = await _send_with_retry(lambda: context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            message_thread_id=thread_id,
-            reply_to_message_id=orig_msg_id,
-        ))
-        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
-        if isinstance(msg_id, int):
-            registry.update_pending(short_id, {"unit_text_message_id": msg_id, "unit_text_visible": True}, state_dir)
+        new_text = _render_post_answer_text(
+            eval_text=eval_text,
+            transcript=transcript,
+            transcript_visible=transcript_visible,
+            unit_text=unit_text,
+            unit_text_visible=visible,
+        )
+
+        msg_id = entry.get("message_id") or (update.effective_message.message_id if update.effective_message else None)
+        keyboard = tg_fmt.build_post_answer_keyboard(short_id, has_transcript=(transcript is not None))
+        if msg_id is not None:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=msg_id,
+                    text=new_text,
+                    reply_markup=keyboard,
+                )
+            except Exception:
+                pass
         return
 
     if action == "rua":

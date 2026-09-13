@@ -760,7 +760,7 @@ class TestPostAnswerCallbacks:
             reply_markup=build_persistent_recall_keyboard(short_id)
         )
 
-    def test_rut_sends_unit_text_and_keeps_keyboard(self, tmp_path):
+    def test_rut_edits_main_message_and_keeps_keyboard(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -769,15 +769,18 @@ class TestPostAnswerCallbacks:
 
         short_id = registry.register_pending(
             lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
-            extra={"question_id": "recall_000002"},
+            extra={"question_id": "recall_000002", "evaluation_text": "Esito commento", "message_id": 999},
         )
         update = _make_mock_callback_update(f"rut:{short_id}")
         context = _make_mock_context(state_dir)
+        context.bot.edit_message_text = AsyncMock()
 
         asyncio.run(handle_callback(update, context))
 
-        assert context.bot.send_message.called
-        _, kwargs = context.bot.send_message.call_args
+        assert not context.bot.send_message.called
+        context.bot.edit_message_text.assert_called_once()
+        _, kwargs = context.bot.edit_message_text.call_args
+        assert kwargs.get("message_id") == 999
         assert "Unità 1.1" in kwargs["text"]
         assert "Contenuto unita 1" in kwargs["text"]
         # rut non deve rimuovere la tastiera del messaggio con cui è stato invocato.
@@ -1125,7 +1128,7 @@ class TestTask10TelegramFloodingAndCleanup:
 
         short_id = registry.register_pending(
             lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
-            extra={"question_id": "recall_000002", "unit_text_message_id": 101, "audio_message_ids": [102]},
+            extra={"question_id": "recall_000002", "unit_text_visible": False, "audio_message_ids": [102]},
         )
         update = _make_mock_callback_update(f"rnx:{short_id}")
         context = _make_mock_context(state_dir)
@@ -1205,7 +1208,7 @@ class TestTask10TelegramFloodingAndCleanup:
 
 
 class TestTask11PersistentUnitAudioButtons:
-    def test_rut_toggle_send_delete_resend(self, tmp_path):
+    def test_rut_toggle_folds_unit_text_into_main_message(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)
@@ -1214,45 +1217,91 @@ class TestTask11PersistentUnitAudioButtons:
 
         short_id = registry.register_pending(
             lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
-            extra={"question_id": "recall_000002", "unit_text_message_id": None, "audio_message_ids": []},
+            extra={
+                "question_id": "recall_000002",
+                "evaluation_text": "Esito: 10/10",
+                "unit_text_visible": False,
+                "audio_message_ids": [],
+                "message_id": 888,
+            },
         )
         update = _make_mock_callback_update(f"rut:{short_id}")
         context = _make_mock_context(state_dir)
-        context.bot.send_message = AsyncMock(return_value={"message_id": 501})
+        context.bot.send_message = AsyncMock()
         context.bot.edit_message_text = AsyncMock()
 
-        # 1st click: sends unit text message with reply_to_message_id
-        asyncio.run(handle_callback(update, context))
-        assert context.bot.send_message.called
-        _, kwargs = context.bot.send_message.call_args
-        assert kwargs.get("reply_to_message_id") == 999
-        entry = registry.resolve_pending(short_id, state_dir)
-        assert entry.get("unit_text_message_id") == 501
-        assert entry.get("unit_text_visible") is True
-
-        # 2nd click: edits unit text in place to hide it (no new send_message)
-        context.bot.send_message.reset_mock()
+        # 1st click: edits main message in place (never sends a new message)
         asyncio.run(handle_callback(update, context))
         assert not context.bot.send_message.called
         context.bot.edit_message_text.assert_called_once()
-        _, kwargs_edit = context.bot.edit_message_text.call_args
-        assert kwargs_edit.get("message_id") == 501
-        assert "nascosto" in kwargs_edit.get("text")
+        _, kwargs_edit1 = context.bot.edit_message_text.call_args
+        assert kwargs_edit1.get("message_id") == 888
+        assert "Esito: 10/10" in kwargs_edit1.get("text")
+        assert "📖" in kwargs_edit1.get("text")
+        assert "Unità 1.1" in kwargs_edit1.get("text")
         entry = registry.resolve_pending(short_id, state_dir)
-        assert entry.get("unit_text_visible") is False
-        assert entry.get("unit_text_message_id") == 501
+        assert entry.get("unit_text_visible") is True
 
-        # 3rd click: edits unit text in place to show it again (no new send_message)
+        # 2nd click: edits main message in place to hide unit text
         context.bot.edit_message_text.reset_mock()
         asyncio.run(handle_callback(update, context))
         assert not context.bot.send_message.called
         context.bot.edit_message_text.assert_called_once()
         _, kwargs_edit2 = context.bot.edit_message_text.call_args
-        assert kwargs_edit2.get("message_id") == 501
-        assert "Unità 1.1" in kwargs_edit2.get("text")
+        assert kwargs_edit2.get("message_id") == 888
+        assert kwargs_edit2.get("text") == "Esito: 10/10"
+        entry = registry.resolve_pending(short_id, state_dir)
+        assert entry.get("unit_text_visible") is False
+
+        # 3rd click: shows unit text again
+        context.bot.edit_message_text.reset_mock()
+        asyncio.run(handle_callback(update, context))
+        context.bot.edit_message_text.assert_called_once()
+        _, kwargs_edit3 = context.bot.edit_message_text.call_args
+        assert "Unità 1.1" in kwargs_edit3.get("text")
         entry = registry.resolve_pending(short_id, state_dir)
         assert entry.get("unit_text_visible") is True
-        assert entry.get("unit_text_message_id") == 501
+
+    def test_rtt_and_rut_simultaneous_visibility(self, tmp_path):
+        lesson_dir = str(tmp_path / "lesson")
+        state_dir = str(tmp_path / "state")
+        _setup_lesson(lesson_dir)
+        bank = RecallBank(questions=[_make_mirata_question()])
+        save_recall_bank(bank, lesson_dir)
+
+        short_id = registry.register_pending(
+            lesson_dir, round_=0, kind="recall_post_answer", state_dir=state_dir,
+            extra={
+                "question_id": "recall_000002",
+                "transcript": "Risposta vocale utente",
+                "transcript_visible": False,
+                "evaluation_text": "Esito: 9/10",
+                "unit_text_visible": False,
+                "audio_message_ids": [],
+                "message_id": 888,
+            },
+        )
+        context = _make_mock_context(state_dir)
+        context.bot.edit_message_text = AsyncMock()
+
+        # Click 🗣 (rtt) -> mostra trascritto
+        update_rtt = _make_mock_callback_update(f"rtt:{short_id}")
+        asyncio.run(handle_callback(update_rtt, context))
+        _, kwargs_rtt = context.bot.edit_message_text.call_args
+        assert "🗣 Trascritto: \"Risposta vocale utente\"" in kwargs_rtt.get("text")
+        assert "Esito: 9/10" in kwargs_rtt.get("text")
+        assert "📖" not in kwargs_rtt.get("text")
+
+        # Click 📖 (rut) -> mostra ANCHE il testo dell'unità
+        context.bot.edit_message_text.reset_mock()
+        update_rut = _make_mock_callback_update(f"rut:{short_id}")
+        asyncio.run(handle_callback(update_rut, context))
+        _, kwargs_both = context.bot.edit_message_text.call_args
+        text_both = kwargs_both.get("text")
+        assert "🗣 Trascritto: \"Risposta vocale utente\"" in text_both
+        assert "Esito: 9/10" in text_both
+        assert "📖" in text_both
+        assert "Unità 1.1" in text_both
 
     def test_rua_toggle_send_delete_list(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")
