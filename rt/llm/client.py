@@ -244,7 +244,7 @@ class LLMClient:
 
         # Parametri globali di catena
         visited_route_ids: Set[str] = set()
-        max_global_attempts = 1 if (override_provider or override_credential) else job_routing_cfg.max_attempts
+        max_global_attempts = 1 if (override_provider or override_credential) else job_routing_cfg.effective_max_attempts
         max_output_chars = job_routing_cfg.max_output_chars or 45000
 
         route_attempt = 1
