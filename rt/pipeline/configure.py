@@ -451,6 +451,7 @@ def _create_new_model_profile(
             except Exception as ex:
                 fetch_error_reason = f"Errore di rete ({type(ex).__name__}: {ex})"
 
+        models_pricing: Dict[str, Dict[str, float]] = {}
         if not models_list:
             try:
                 target_url = effective_base_url.rstrip("/") + "/models"
@@ -461,7 +462,19 @@ def _create_new_model_profile(
                     if isinstance(body, dict) and "data" in body and isinstance(body["data"], list):
                         for item in body["data"]:
                             if isinstance(item, dict) and "id" in item and isinstance(item["id"], str):
-                                models_list.append(item["id"])
+                                m_id = item["id"]
+                                models_list.append(m_id)
+                                p_dict = item.get("pricing")
+                                if isinstance(p_dict, dict):
+                                    try:
+                                        p_in = float(p_dict.get("prompt", 0)) * 1_000_000.0
+                                        p_out = float(p_dict.get("completion", 0)) * 1_000_000.0
+                                        models_pricing[m_id] = {
+                                            "input_per_million": round(p_in, 4),
+                                            "output_per_million": round(p_out, 4)
+                                        }
+                                    except (ValueError, TypeError):
+                                        pass
                     if not models_list:
                         fetch_error_reason = "Risposta 200 ma nessun modello trovato nella struttura 'data'"
                 else:
@@ -513,8 +526,9 @@ def _create_new_model_profile(
         if confirm_model:
             break
 
-    # Pricing inline opzionale per questo modello
-    _configure_pricing_section(config_dir, provider, chosen_model)
+    # Pricing inline opzionale per questo modello (con eventuale pricing rilevato automaticamente)
+    detected_p = models_pricing.get(chosen_model) if 'models_pricing' in locals() else None
+    _configure_pricing_section(config_dir, provider, chosen_model, detected_pricing=detected_p)
 
     # Scelta nome del profilo
     existing_profiles = _load_model_profiles(general_data)
@@ -1496,18 +1510,72 @@ def _configure_stt_section(config_dir: str) -> str:
     return stt_choice
 
 
-def _configure_pricing_section(config_dir: str, provider: Optional[str], model: Optional[str]) -> Optional[Dict[str, Any]]:
+def _configure_pricing_section(
+    config_dir: str,
+    provider: Optional[str],
+    model: Optional[str],
+    detected_pricing: Optional[Dict[str, float]] = None
+) -> Optional[Dict[str, Any]]:
     """
     Guida l'utente nella configurazione opzionale di un listino prezzi custom in config/general.yaml.
+    Se detected_pricing è presente, mostra i valori rilevati e chiede se modificarli (default: No/salva diretto).
     """
-    confirm = questionary.confirm(
-        "Vuoi configurare un listino prezzi custom per questo modello? (opzionale, RT ha già stime interne)",
-        default=False
-    ).ask()
+    if detected_pricing and "input_per_million" in detected_pricing and "output_per_million" in detected_pricing:
+        det_in = detected_pricing["input_per_million"]
+        det_out = detected_pricing["output_per_million"]
+        modify_confirm = questionary.confirm(
+            f"Costo rilevato per milione di token: input ${det_in:.2f}; output ${det_out:.2f}. Vuoi modificarlo?",
+            default=False
+        ).ask()
 
-    if not confirm:
-        print("⏭  Sezione Pricing custom saltata.")
-        return None
+        if modify_confirm is None:
+            return None
+
+        if not modify_confirm:
+            if not provider or not model:
+                return None
+            provider = provider.strip()
+            model = model.strip()
+            general_yaml_path = os.path.join(config_dir, "general.yaml")
+            general_data: Dict[str, Any] = {}
+            if os.path.isfile(general_yaml_path):
+                try:
+                    with open(general_yaml_path, "r", encoding="utf-8") as f:
+                        loaded = yaml.safe_load(f)
+                        if isinstance(loaded, dict):
+                            general_data = loaded
+                except Exception:
+                    pass
+
+            pricing_map = general_data.get("pricing")
+            if not isinstance(pricing_map, dict):
+                pricing_map = {}
+            if provider not in pricing_map or not isinstance(pricing_map[provider], dict):
+                pricing_map[provider] = {}
+
+            p_item: Dict[str, Any] = {
+                "input_per_million": det_in,
+                "output_per_million": det_out,
+            }
+            pricing_map[provider][model] = p_item
+            general_data["pricing"] = pricing_map
+            _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+            print(f"✅ Pricing salvato per {provider}/{model}: input=${det_in:.2f}/1M, output=${det_out:.2f}/1M")
+            return {"provider": provider, "model": model, "pricing": p_item}
+
+        default_in_str = str(det_in)
+        default_out_str = str(det_out)
+    else:
+        confirm = questionary.confirm(
+            "Vuoi configurare un listino prezzi custom per questo modello? (opzionale, RT ha già stime interne)",
+            default=False
+        ).ask()
+
+        if not confirm:
+            print("⏭  Sezione Pricing custom saltata.")
+            return None
+        default_in_str = ""
+        default_out_str = ""
 
     if not provider:
         p_in = questionary.text("Nome provider per pricing (es. deepseek):").ask()
@@ -1523,18 +1591,18 @@ def _configure_pricing_section(config_dir: str, provider: Optional[str], model: 
     provider = provider.strip()
     model = model.strip()
 
-    inp_str = questionary.text(
-        "Costo Input per 1M token in USD (es. 0.14):",
-        validate=lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"
-    ).ask()
+    kwargs_in: Dict[str, Any] = {"validate": lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"}
+    if default_in_str:
+        kwargs_in["default"] = default_in_str
+    inp_str = questionary.text("Costo Input per 1M token in USD (es. 0.14):", **kwargs_in).ask()
 
     if inp_str is None:
         return None
 
-    out_str = questionary.text(
-        "Costo Output per 1M token in USD (es. 0.28):",
-        validate=lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"
-    ).ask()
+    kwargs_out: Dict[str, Any] = {"validate": lambda v: _is_valid_float(v) or "Inserisci un numero valido >= 0"}
+    if default_out_str:
+        kwargs_out["default"] = default_out_str
+    out_str = questionary.text("Costo Output per 1M token in USD (es. 0.28):", **kwargs_out).ask()
 
     if out_str is None:
         return None
