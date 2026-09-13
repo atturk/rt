@@ -318,10 +318,15 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         # al messaggio del poll tramite reply_markup di sendPoll (API Telegram supporta reply_markup).
         # Troncamento difensivo: opzioni >100 caratteri e domanda >290 caratteri (limite API sendPoll).
         poll_msg_id = None
-        q_text = question.question_text
-        if len(q_text) > 290:
-            print(f"⚠️  [recall] Domanda quiz troncata ({len(q_text)} chars > 290): {q_text[:60]}...", file=sys.stderr)
-            q_text = q_text[:290] + "…"
+        # Riferimento all'unità solo se la domanda deriva da una sola unità (come le domande
+        # mirate): le domande vaste spaziano su più unità, un singolo riferimento sarebbe fuorviante.
+        unit_prefix = f"📌 Unità: {question.unit_ids[0]}\n\n" if len(question.unit_ids) == 1 else ""
+        raw_text = question.question_text
+        max_text_len = 290 - len(unit_prefix)
+        if len(raw_text) > max_text_len:
+            print(f"⚠️  [recall] Domanda quiz troncata ({len(raw_text)} chars > {max_text_len}): {raw_text[:60]}...", file=sys.stderr)
+            raw_text = raw_text[:max_text_len - 1] + "…"
+        q_text = unit_prefix + raw_text
         safe_options = []
         for opt in (question.options or []):
             if len(opt) > 100:

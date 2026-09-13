@@ -183,7 +183,7 @@ def _suggest_profile_name(provider: str, model: str, existing_names: Iterable[st
     """
     existing_set = set(existing_names) if existing_names else set()
     raw = f"{provider}_{model}".lower()
-    sanitized = re.sub(r"[^a-z0-9_]+", "_", raw)
+    sanitized = re.sub(r"[^a-z0-9_.-]+", "_", raw)
     sanitized = re.sub(r"_+", "_", sanitized).strip("_")
     if not sanitized:
         sanitized = "profilo"
@@ -1178,7 +1178,6 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
                             live.stop()
                             res_create = _create_new_model_profile(
                                 config_dir, env_path, general_data,
-                                default_name_hint=group_jobs[0],
                                 ask_role=True,
                                 group_label=group_label,
                                 current_phase_assignments=pending_selections[group_label]
@@ -1316,7 +1315,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
                                 print(f"\n📩 Nuovo messaggio rilevato in {topic_label}: '{snippet}'")
 
                                 mat = questionary.text(
-                                    f"Materia per {topic_label} (es. BIOCHIMICA, o 'varie' per Generale/Varie, invio per saltare):"
+                                    f"Materia per {topic_label} (o 'varie' per Generale/Varie, invio per saltare):"
                                 ).ask()
                                 if mat and mat.strip():
                                     mat_clean = mat.strip().upper()
@@ -1373,7 +1372,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
             chat_id, topic_id = parsed
             detected_chat_id = chat_id
             print(f"✔ Rilevato Chat ID: {chat_id}, Topic ID: {topic_id}")
-            mat = questionary.text(f"Materia per Topic ID {topic_id} (es. BIOCHIMICA, o 'varie' per Varie):").ask()
+            mat = questionary.text(f"Materia per Topic ID {topic_id} (o 'varie' per Varie):").ask()
             if mat and mat.strip():
                 mat_clean = mat.strip().upper()
                 if mat_clean in ("VARIE", "GENERALE"):
@@ -1410,9 +1409,9 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
         general_data["telegram"]["misc_topic_id"] = misc_topic_id
 
     # lessons_root
-    curr_lessons_root = general_data["telegram"].get("lessons_root", "")
+    curr_lessons_root = general_data["telegram"].get("lessons_root") or ""
     lessons_root_in = questionary.text(
-        "Percorso assoluto cartella lezioni (lessons_root per Telegram /list e /recall):",
+        "Percorso assoluto cartella lezioni (puoi anche trascinarla qui):",
         default=curr_lessons_root
     ).ask()
 
@@ -1847,26 +1846,22 @@ def _edit_single_topic_mapping(
         print(f"✅ Materia rinominata da '{mat_name}' a '{new_mat_clean}'.")
 
     elif action.startswith("🔧"):
-        if isinstance(curr_val, dict):
-            c_id_def = str(curr_val.get("chat_id", ""))
-            t_id_def = str(curr_val.get("message_thread_id", ""))
-        else:
-            c_id_def = str(os.environ.get("RT_TELEGRAM_CHAT_ID", ""))
-            t_id_def = str(curr_val or "")
+        # RT supporta un solo gruppo Telegram per bot (chat_id globale in RT_TELEGRAM_BOT_TOKEN/
+        # RT_TELEGRAM_CHAT_ID) — 'topics' mappa solo materia -> message_thread_id (int), MAI un
+        # chat_id per-topic: lo schema Pydantic (TelegramRuntimeConfig.topics: Dict[str, int])
+        # non lo supporta e farebbe fallire la validazione all'avvio di qualunque comando 'rt'.
+        t_id_def = str(curr_val.get("message_thread_id", "")) if isinstance(curr_val, dict) else str(curr_val or "")
+        new_tid = questionary.text("Topic ID:", default=t_id_def).ask()
 
-        new_cid = questionary.text("Chat ID (es. -1001234567890):", default=c_id_def).ask()
-        new_tid = questionary.text("Message Thread ID (Topic ID):", default=t_id_def).ask()
-
-        if new_cid and new_tid and new_cid.strip() and new_tid.strip():
+        if new_tid and new_tid.strip():
             try:
-                cid_int = int(new_cid.strip())
                 tid_int = int(new_tid.strip())
-                topics_map[mat_name] = {"chat_id": cid_int, "message_thread_id": tid_int}
+                topics_map[mat_name] = tid_int
                 general_data["telegram"]["topics"] = topics_map
                 _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
-                print(f"✅ Mappatura '{mat_name}' aggiornata: chat_id={cid_int}, topic_id={tid_int}.")
+                print(f"✅ Mappatura '{mat_name}' aggiornata: topic_id={tid_int}.")
             except ValueError:
-                print("❌ Chat ID e Topic ID devono essere numeri interi.")
+                print("❌ Il Topic ID deve essere un numero intero.")
 
     elif action.startswith("🗑️"):
         confirm_del = questionary.confirm(f"Sei sicuro di voler rimuovere la mappatura per '{mat_name}'?", default=False).ask()
@@ -1943,10 +1938,18 @@ def run_topics_management() -> None:
                 print("❌ Formato link non valido. Esempio atteso: https://t.me/c/1234567890/12/34")
                 continue
             chat_id, topic_id = parsed
-            mat = questionary.text(f"Materia per Topic ID {topic_id} (es. BIOCHIMICA):").ask()
+            configured_chat_id = os.environ.get("RT_TELEGRAM_CHAT_ID", "")
+            if configured_chat_id and configured_chat_id.strip() and str(chat_id) != configured_chat_id.strip():
+                print(
+                    f"⚠️  Questo link appartiene a un gruppo Telegram diverso da quello configurato "
+                    f"(chat_id {chat_id} vs {configured_chat_id}). RT supporta un solo gruppo Telegram "
+                    f"per bot: questo topic non può essere aggiunto perché appartiene a un gruppo diverso."
+                )
+                continue
+            mat = questionary.text(f"Materia per Topic ID {topic_id}:").ask()
             if mat and mat.strip():
                 mat_clean = mat.strip().upper()
-                topics_map[mat_clean] = {"chat_id": chat_id, "message_thread_id": topic_id}
+                topics_map[mat_clean] = topic_id
                 general_data["telegram"]["topics"] = topics_map
                 _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
                 print(f"✅ Mappatura '{mat_clean}' aggiunta.")

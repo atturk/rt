@@ -69,9 +69,11 @@ def _job_config_hint(job_name: str) -> str:
     where = os.path.relpath(existing, os.getcwd()) if existing else f"config/{job_name}.yaml (in qualunque sottocartella di config/)"
     return (
         f"❌ Il job '{job_name}' non ha alcun provider configurato in {where}.\n"
-        f"   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-        f"   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-        f"   in {where}. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa."
+        f"   Esegui 'rt config' per configurarlo con la procedura guidata.\n"
+        f"   In alternativa, per una modifica manuale: apri config/general.yaml, dichiara una\n"
+        f"   credenziale sotto 'credentials:' (nome, provider, env_var), imposta la variabile\n"
+        f"   d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:' in {where}.\n"
+        f"   Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa."
     )
 
 
@@ -98,9 +100,11 @@ def _ensure_config_ready(required_jobs: List[str]) -> Any:
         else:
             print(
                 f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing)}.\n"
-                "   Apri config/general.yaml, dichiara una credenziale sotto 'credentials:' (nome, provider, env_var),\n"
-                "   imposta la variabile d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:'\n"
-                "   nei rispettivi file config/<job>.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
+                "   Esegui 'rt config' per configurarli con la procedura guidata.\n"
+                "   In alternativa, per una modifica manuale: apri config/general.yaml, dichiara una\n"
+                "   credenziale sotto 'credentials:' (nome, provider, env_var), imposta la variabile\n"
+                "   d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:' nei\n"
+                "   rispettivi file config/<job>.yaml. Vedi docs/CONFIGURATION_REFERENCE.md per la sintassi completa.",
                 file=sys.stderr
             )
         sys.exit(1)
