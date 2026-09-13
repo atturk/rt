@@ -14,14 +14,19 @@ import shutil
 import json
 import re
 import time
-from typing import Dict, Any, List, Optional, Tuple, Iterable, Set
+import concurrent.futures
+from contextlib import contextmanager
+from typing import Dict, Any, List, Optional, Tuple, Iterable, Set, Callable, Generator
 import yaml
 import requests
 import questionary
+from textual.app import App, ComposeResult
+from textual.widgets import Static
+from rich.panel import Panel
+from rich.text import Text
 
 from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, _default_project_root
 from rt.pipeline.setup import clean_input_path
-from rt.core.keyboard import read_single_key, raw_mode
 
 
 def _is_placeholder_or_invalid_bot_token(token: str) -> bool:
@@ -924,25 +929,417 @@ def _find_matching_profile(job_data: Dict[str, Any], profiles: Dict[str, Dict[st
     return None
 
 
-def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str, str]:
-    """
-    Guida l'utente nella configurazione dei profili modello LLM per ciascuna fase della pipeline
-    attraverso un carosello di card testuali navigabili (LEFT/RIGHT, UP/DOWN) e conferma finale.
-    Restituisce una mappa {job_name: profile_name_o_descrizione}.
-    """
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.live import Live
+def _run_in_thread(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Esegue una funzione sincrona (es. prompt questionary) in un thread separato per evitare conflitti con l'event loop di Textual."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fn, *args, **kwargs)
+        return future.result()
 
-    print("\n------------------------------------------------------------")
-    print("🤖 Configurazione Provider LLM per ciascuna fase")
-    print("------------------------------------------------------------")
-    print("Ora configuriamo il modello LLM da usare per ciascuna fase della pipeline.")
-    print("Nota: solo il ruolo 'Primario' è obbligatorio, i 5 ruoli di 'Fallback' sono tutti facoltativi/opzionali.")
-    print("Usa le frecce SINISTRA/DESTRA per spostarti tra le card di ciascuna fase.")
-    print("Le modifiche verranno salvate su disco SOLO dopo la conferma finale.\n")
 
+class ConfigurePhaseRolesApp(App[None]):
+    """Textual App per la configurazione dei ruoli LLM per fase della pipeline."""
+
+    BINDINGS = [
+        ("up", "cursor_up", "Su"),
+        ("k", "cursor_up", "Su"),
+        ("down", "cursor_down", "Giù"),
+        ("j", "cursor_down", "Giù"),
+        ("left", "card_prev", "Card precedente"),
+        ("b", "card_prev", "Card precedente"),
+        ("right", "card_next", "Card successiva"),
+        ("n", "card_next", "Card successiva"),
+        ("c", "jump_confirm", "Conferma"),
+        ("f", "jump_confirm", "Conferma"),
+        ("enter", "select", "Seleziona"),
+        ("space", "select", "Seleziona"),
+        ("1", "select_1", "Opzione 1"),
+        ("2", "select_2", "Opzione 2"),
+        ("3", "select_3", "Opzione 3"),
+        ("q", "quit_wizard", "Esci"),
+        ("ctrl+q", "quit_wizard", "Esci"),
+        ("ctrl+c", "quit_wizard", "Esci"),
+    ]
+
+    def __init__(
+        self,
+        config_dir: str,
+        env_path: str,
+        general_data: Dict[str, Any],
+        general_yaml_path: str,
+        profiles: Dict[str, Dict[str, Any]],
+        job_paths: Dict[str, str],
+        grouped_jobs: List[Tuple[str, List[str]]],
+        group_info: Dict[str, Tuple[List[str], bool, Optional[str]]],
+        pending_selections: Dict[str, Dict[str, Optional[str]]],
+    ) -> None:
+        super().__init__()
+        self.config_dir = config_dir
+        self.env_path = env_path
+        self.general_data = general_data
+        self.general_yaml_path = general_yaml_path
+        self.profiles = profiles
+        self.job_paths = job_paths
+        self.grouped_jobs = grouped_jobs
+        self.group_info = group_info
+        self.pending_selections = pending_selections
+
+        self.curr_idx: int = 0
+        self.option_indices: Dict[int, int] = {}
+        self.confirm_option_idx: int = 0
+        self.result_assignments: Optional[Dict[str, str]] = None
+
+    SKIP_LABEL = "⏭ Lascia vuoto per ora"
+    NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
+    REMOVE_LABEL = "🗑 Rimuovi un'assegnazione"
+    keep_label = "🔧 Mantieni configurazione attuale (non riconosciuta come profilo salvato)"
+
+    _test_key_sequence: Optional[Iterable[str]] = None
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="carousel_view")
+
+    def on_mount(self) -> None:
+        self._update_view()
+
+    def _simulate_keys(self, keys: Iterable[str]) -> None:
+        key_map = {
+            "up": self.action_cursor_up,
+            "k": self.action_cursor_up,
+            "down": self.action_cursor_down,
+            "j": self.action_cursor_down,
+            "left": self.action_card_prev,
+            "b": self.action_card_prev,
+            "right": self.action_card_next,
+            "n": self.action_card_next,
+            "c": self.action_jump_confirm,
+            "f": self.action_jump_confirm,
+            "enter": self.action_select,
+            " ": self.action_select,
+            "space": self.action_select,
+            "q": self.action_quit_wizard,
+            "quit": self.action_quit_wizard,
+            "esci": self.action_quit_wizard,
+            "1": self.action_select_1,
+            "2": self.action_select_2,
+            "3": self.action_select_3,
+        }
+        for k in keys:
+            if self.result_assignments is not None:
+                break
+            action = key_map.get(k.strip().lower())
+            if action:
+                action()
+
+    def run(self, *args: Any, **kwargs: Any) -> Any:
+        if self._test_key_sequence is not None:
+            self._simulate_keys(self._test_key_sequence)
+            return None
+        return super().run(*args, **kwargs)
+
+    def _get_choices_for_card(self, idx: int) -> List[str]:
+        if idx >= len(self.grouped_jobs):
+            return []
+        group_label, _ = self.grouped_jobs[idx]
+        _, has_unrecognized, _ = self.group_info[group_label]
+        phase_map = self.pending_selections.get(group_label, {})
+
+        choices: List[str] = []
+        if has_unrecognized and phase_map.get("primary") == self.keep_label:
+            choices.append(self.keep_label)
+        choices.append(self.SKIP_LABEL)
+        choices.extend(sorted(self.profiles.keys()))
+        choices.append(self.NEW_PROFILE)
+
+        has_assigned_roles = any(phase_map.get(r) for r in ("primary", "timeout", "rate_limit", "safety", "auth", "generic"))
+        if has_assigned_roles:
+            choices.append(self.REMOVE_LABEL)
+        return choices
+
+    def _render_panel(self) -> Panel:
+        total_groups = len(self.grouped_jobs)
+        if self.curr_idx >= total_groups:
+            # Confirmation View
+            lines = [
+                "📋 RIEPILOGO ASSEGNAZIONI FASI",
+                "-" * 50,
+            ]
+            for idx, (gl, gjobs) in enumerate(self.grouped_jobs, start=1):
+                pmap = self.pending_selections.get(gl, {})
+                prim = pmap.get("primary")
+                status_icon = "✅" if prim else "⏳"
+                prim_str = _format_profile_display(prim, self.profiles) if prim else "(nessun primario)"
+                fb_parts = [f"{k}->{_format_profile_display(v, self.profiles)}" for k, v in pmap.items() if k != "primary" and v]
+                fb_str = f" [FB: {', '.join(fb_parts)}]" if fb_parts else ""
+                lines.append(f" {status_icon} [{idx}/{total_groups}] {gl}: {prim_str}{fb_str}")
+            lines.append("-" * 50)
+            lines.append("\nCome desideri procedere?\n")
+
+            confirm_choices = [
+                "✅ Conferma e applica configurazione",
+                "✏️ Modifica una fase specificata",
+                "❌ Annulla configurazione modelli"
+            ]
+            for opt_i, opt_text in enumerate(confirm_choices):
+                pointer = "▶ " if opt_i == self.confirm_option_idx else "  "
+                lines.append(f"{pointer}{opt_text}")
+
+            lines.append("\n[UP/DOWN=Sposta cursore | ENTER=Seleziona | LEFT=Torna alla card precedente | Q=Esci]")
+            return Panel(Text("\n".join(lines)), title="📋 CONFERMA CONFIGURAZIONE MODELLI", border_style="magenta")
+        else:
+            # Phase Card View
+            group_label, group_jobs = self.grouped_jobs[self.curr_idx]
+            _, has_unrecognized, _ = self.group_info[group_label]
+            phase_map = self.pending_selections.get(group_label, {})
+            choices = self._get_choices_for_card(self.curr_idx)
+
+            opt_idx = self.option_indices.get(self.curr_idx, 0)
+            if opt_idx >= len(choices):
+                opt_idx = 0
+            self.option_indices[self.curr_idx] = opt_idx
+
+            status_line = []
+            for i, (gl, _) in enumerate(self.grouped_jobs):
+                prim = self.pending_selections.get(gl, {}).get("primary")
+                st = "✅" if prim else "⏳"
+                marker = f"[{gl} {st}]" if i == self.curr_idx else f"{gl} {st}"
+                status_line.append(marker)
+            status_bar = "Avanzamento: " + " | ".join(status_line)
+
+            lines = [
+                status_bar,
+                "",
+                f"Configurazione ruoli per la fase '{group_label}' (inclusi {len(group_jobs)} job: {', '.join(group_jobs)}):",
+                "",
+            ]
+            prim_val = phase_map.get("primary")
+            prim_display = _format_profile_display(prim_val, self.profiles) if prim_val else "(non impostato — obbligatorio)"
+            lines.append(f"  ⭐ Primario (obbligatorio):    {prim_display}")
+            lines.append("  🛡️  Fallback (tutti opzionali):")
+            for r_key, r_title in [
+                ("timeout", "Fallback timeout:       "),
+                ("rate_limit", "Fallback rate-limit:    "),
+                ("safety", "Fallback safety:        "),
+                ("auth", "Fallback auth:          "),
+                ("generic", "Fallback generico:      "),
+            ]:
+                val = phase_map.get(r_key)
+                val_str = _format_profile_display(val, self.profiles) if val else "(non impostato)"
+                lines.append(f"     {r_title} {val_str}")
+            lines.append("")
+            lines.append("Opzioni disponibili:")
+            for opt_i, opt_text in enumerate(choices):
+                pointer = "▶ " if opt_i == opt_idx else "  "
+                lines.append(f"  {pointer}{opt_text}")
+
+            lines.append("\n[UP/DOWN=Sposta cursore | ENTER=Seleziona | LEFT/RIGHT=Cambia card | C=Conferma / Q=Esci]")
+            return Panel(Text("\n".join(lines)), title=f"🤖 FASE [{self.curr_idx + 1}/{total_groups}]: {group_label}", border_style="cyan")
+
+    def _update_view(self) -> None:
+        try:
+            widget = self.query_one("#carousel_view", Static)
+            widget.update(self._render_panel())
+        except Exception:
+            pass
+
+    def action_cursor_up(self) -> None:
+        total_groups = len(self.grouped_jobs)
+        if self.curr_idx >= total_groups:
+            self.confirm_option_idx = (self.confirm_option_idx - 1) % 3
+        else:
+            choices = self._get_choices_for_card(self.curr_idx)
+            if choices:
+                opt_idx = self.option_indices.get(self.curr_idx, 0)
+                self.option_indices[self.curr_idx] = (opt_idx - 1) % len(choices)
+        self._update_view()
+
+    def action_cursor_down(self) -> None:
+        total_groups = len(self.grouped_jobs)
+        if self.curr_idx >= total_groups:
+            self.confirm_option_idx = (self.confirm_option_idx + 1) % 3
+        else:
+            choices = self._get_choices_for_card(self.curr_idx)
+            if choices:
+                opt_idx = self.option_indices.get(self.curr_idx, 0)
+                self.option_indices[self.curr_idx] = (opt_idx + 1) % len(choices)
+        self._update_view()
+
+    def action_card_prev(self) -> None:
+        total_groups = len(self.grouped_jobs)
+        if self.curr_idx >= total_groups:
+            self.curr_idx = total_groups - 1
+        else:
+            self.curr_idx = max(0, self.curr_idx - 1)
+        self._update_view()
+
+    def action_card_next(self) -> None:
+        total_groups = len(self.grouped_jobs)
+        if self.curr_idx < total_groups:
+            self.curr_idx = min(total_groups, self.curr_idx + 1)
+        self._update_view()
+
+    def action_jump_confirm(self) -> None:
+        self.curr_idx = len(self.grouped_jobs)
+        self._update_view()
+
+    @contextmanager
+    def _safe_suspend(self) -> Generator[None, None, None]:
+        try:
+            with self.suspend():
+                yield
+        except Exception:
+            yield
+
+    def action_quit_wizard(self) -> None:
+        self.result_assignments = None
+        if self.is_running:
+            self.exit()
+
+    def action_select_1(self) -> None:
+        if self.curr_idx >= len(self.grouped_jobs):
+            self.confirm_option_idx = 0
+            self.action_select()
+
+    def action_select_2(self) -> None:
+        if self.curr_idx >= len(self.grouped_jobs):
+            self.confirm_option_idx = 1
+            self.action_select()
+
+    def action_select_3(self) -> None:
+        if self.curr_idx >= len(self.grouped_jobs):
+            self.confirm_option_idx = 2
+            self.action_select()
+
+    def action_select(self) -> None:
+        total_groups = len(self.grouped_jobs)
+        if self.curr_idx >= total_groups:
+            if self.confirm_option_idx == 0:  # Conferma e applica
+                job_assignments: Dict[str, str] = {}
+                for gl, group_jobs in self.grouped_jobs:
+                    pmap = self.pending_selections.get(gl, {})
+                    primary_sel = pmap.get("primary")
+                    g_jobs, g_has_unrec, g_match = self.group_info[gl]
+                    for jn in group_jobs:
+                        job_file = self.job_paths[jn]
+                        if g_has_unrec and primary_sel == self.keep_label:
+                            job_assignments[jn] = "(configurazione attuale mantenuta)"
+                        elif not primary_sel or primary_sel == self.SKIP_LABEL:
+                            job_assignments[jn] = "(non configurato)"
+                        else:
+                            _apply_profile_to_job(job_file, self.profiles[primary_sel])
+                            job_assignments[jn] = primary_sel
+
+                        for slot in ("timeout", "rate_limit", "safety", "auth", "generic"):
+                            fb_prof_name = pmap.get(slot)
+                            fb_prof_dict = self.profiles.get(fb_prof_name) if fb_prof_name else None
+                            _apply_fallback_to_job(job_file, slot, fb_prof_dict)
+
+                _save_model_profiles(self.general_data, self.profiles)
+                _atomic_write_text(self.general_yaml_path, yaml.safe_dump(self.general_data, sort_keys=False, allow_unicode=True))
+                self.result_assignments = job_assignments
+                if self.is_running:
+                    self.exit()
+            elif self.confirm_option_idx == 1:  # Modifica una fase
+                def _choose_phase() -> Optional[str]:
+                    try:
+                        return questionary.select(
+                            "Seleziona la fase da modificare:",
+                            choices=[gl for gl, _ in self.grouped_jobs]
+                        ).ask()
+                    except (EOFError, Exception):
+                        return None
+                with self._safe_suspend():
+                    phase_choice = _run_in_thread(_choose_phase)
+                if phase_choice:
+                    for i, (gl, _) in enumerate(self.grouped_jobs):
+                        if gl == phase_choice:
+                            self.curr_idx = i
+                            break
+                self._update_view()
+            elif self.confirm_option_idx == 2:  # Annulla
+                self.result_assignments = None
+                if self.is_running:
+                    self.exit()
+        else:
+            group_label, group_jobs = self.grouped_jobs[self.curr_idx]
+            choices = self._get_choices_for_card(self.curr_idx)
+            opt_idx = self.option_indices.get(self.curr_idx, 0)
+            if opt_idx >= len(choices):
+                opt_idx = 0
+            selected_choice = choices[opt_idx]
+
+            if selected_choice == self.keep_label:
+                self.pending_selections[group_label]["primary"] = self.keep_label
+                self._update_view()
+            elif selected_choice == self.SKIP_LABEL:
+                for r in ("primary", "timeout", "rate_limit", "safety", "auth", "generic"):
+                    self.pending_selections[group_label][r] = None
+                self._update_view()
+            elif selected_choice == self.REMOVE_LABEL:
+                role_titles = [
+                    ("primary", "Primario"),
+                    ("timeout", "Fallback timeout"),
+                    ("rate_limit", "Fallback rate-limit"),
+                    ("safety", "Fallback safety"),
+                    ("auth", "Fallback auth"),
+                    ("generic", "Fallback generico"),
+                ]
+                phase_map = self.pending_selections[group_label]
+                occupied_roles = [(rk, f"{rt}: {phase_map[rk]}") for rk, rt in role_titles if phase_map.get(rk)]
+                if occupied_roles:
+                    def _ask_remove() -> Optional[str]:
+                        try:
+                            return questionary.select(
+                                f"Quale assegnazione vuoi rimuovere per la fase '{group_label}'?",
+                                choices=[lbl for _, lbl in occupied_roles] + ["❌ Annulla"],
+                                default=occupied_roles[0][1]
+                            ).ask()
+                        except (EOFError, Exception):
+                            return None
+                    with self._safe_suspend():
+                        del_choice = _run_in_thread(_ask_remove)
+                    if del_choice and del_choice != "❌ Annulla":
+                        for rk, lbl in occupied_roles:
+                            if lbl == del_choice:
+                                self.pending_selections[group_label][rk] = None
+                                print(f"✅ Rimossa assegnazione {rk} per '{group_label}'.")
+                                break
+                self._update_view()
+            elif selected_choice == self.NEW_PROFILE:
+                with self._safe_suspend():
+                    res_create = _run_in_thread(
+                        _create_new_model_profile,
+                        self.config_dir,
+                        self.env_path,
+                        self.general_data,
+                        ask_role=True,
+                        group_label=group_label,
+                        current_phase_assignments=self.pending_selections[group_label],
+                    )
+                p_name = ""
+                p_dict: Dict[str, Any] = {}
+                p_role: Optional[str] = None
+                if isinstance(res_create, tuple):
+                    if len(res_create) == 3:
+                        p_name, p_dict, p_role = res_create
+                    elif len(res_create) == 2:
+                        p_name, p_dict = res_create
+                if p_name:
+                    self.profiles[p_name] = p_dict
+                    _save_model_profiles(self.general_data, self.profiles)
+                    if p_role:
+                        self.pending_selections[group_label][p_role] = p_name
+                    elif p_role is None and isinstance(res_create, tuple) and len(res_create) == 2:
+                        with self._safe_suspend():
+                            _run_in_thread(_ask_and_assign_role, p_name, group_label, self.pending_selections[group_label])
+                self._update_view()
+            else:
+                with self._safe_suspend():
+                    _run_in_thread(_ask_and_assign_role, selected_choice, group_label, self.pending_selections[group_label])
+                self._update_view()
+
+
+def _build_configure_roles_app(config_dir: str, env_path: str) -> Optional[ConfigurePhaseRolesApp]:
+    """Costruisce e restituisce l'istanza di ConfigurePhaseRolesApp per config_dir ed env_path, o None se nessun job trovato."""
     general_yaml_path = os.path.join(config_dir, "general.yaml")
     general_data: Dict[str, Any] = {}
     if os.path.isfile(general_yaml_path):
@@ -970,13 +1367,8 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
             grouped_jobs.append((jn, [jn]))
 
     if not grouped_jobs:
-        print("⚠️ Nessun file job YAML trovato per la configurazione dei modelli.")
-        return {}
+        return None
 
-    job_assignments: Dict[str, str] = {}
-    SKIP_LABEL = "⏭ Lascia vuoto per ora"
-    NEW_PROFILE = "➕ Configura un nuovo modello per questa fase"
-    REMOVE_LABEL = "🗑 Rimuovi un'assegnazione"
     keep_label = "🔧 Mantieni configurazione attuale (non riconosciuta come profilo salvato)"
 
     pending_selections: Dict[str, Dict[str, Optional[str]]] = {}
@@ -1022,259 +1414,46 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
 
         pending_selections[group_label] = phase_map
 
-    curr_idx = 0
-    total_groups = len(grouped_jobs)
-    option_indices: Dict[int, int] = {}
-    confirm_option_idx = 0
-    console = Console()
+    return ConfigurePhaseRolesApp(
+        config_dir=config_dir,
+        env_path=env_path,
+        general_data=general_data,
+        general_yaml_path=general_yaml_path,
+        profiles=profiles,
+        job_paths=job_paths,
+        grouped_jobs=grouped_jobs,
+        group_info=group_info,
+        pending_selections=pending_selections,
+    )
 
-    with raw_mode() as is_raw:
-        with Live(console=console, auto_refresh=False, transient=False) as live:
-            while True:
-                if curr_idx >= total_groups:
-                    lines = [
-                        "📋 RIEPILOGO ASSEGNAZIONI FASI",
-                        "-" * 50,
-                    ]
-                    for idx, (gl, gjobs) in enumerate(grouped_jobs, start=1):
-                        pmap = pending_selections.get(gl, {})
-                        prim = pmap.get("primary")
-                        status_icon = "✅" if prim else "⏳"
-                        prim_str = _format_profile_display(prim, profiles) if prim else "(nessun primario)"
-                        fb_parts = [f"{k}->{_format_profile_display(v, profiles)}" for k, v in pmap.items() if k != "primary" and v]
-                        fb_str = f" [FB: {', '.join(fb_parts)}]" if fb_parts else ""
-                        lines.append(f" {status_icon} [{idx}/{total_groups}] {gl}: {prim_str}{fb_str}")
-                    lines.append("-" * 50)
-                    lines.append("\nCome desideri procedere?\n")
 
-                    confirm_choices = [
-                        "✅ Conferma e applica configurazione",
-                        "✏️ Modifica una fase specificata",
-                        "❌ Annulla configurazione modelli"
-                    ]
-                    for opt_i, opt_text in enumerate(confirm_choices):
-                        pointer = "▶ " if opt_i == confirm_option_idx else "  "
-                        lines.append(f"{pointer}{opt_text}")
+def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str, str]:
+    """
+    Guida l'utente nella configurazione dei profili modello LLM per ciascuna fase della pipeline
+    attraverso un carosello di card testuali navigabili (LEFT/RIGHT, UP/DOWN) e conferma finale.
+    Restituisce una mappa {job_name: profile_name_o_descrizione}.
+    """
+    print("\n------------------------------------------------------------")
+    print("🤖 Configurazione Provider LLM per ciascuna fase")
+    print("------------------------------------------------------------")
+    print("Ora configuriamo il modello LLM da usare per ciascuna fase della pipeline.")
+    print("Nota: solo il ruolo 'Primario' è obbligatorio, i 5 ruoli di 'Fallback' sono tutti facoltativi/opzionali.")
+    print("Usa le frecce SINISTRA/DESTRA per spostarti tra le card di ciascuna fase.")
+    print("Le modifiche verranno salvate su disco SOLO dopo la conferma finale.\n")
 
-                    lines.append("\n[UP/DOWN=Sposta cursore | ENTER=Seleziona | LEFT=Torna alla card precedente | Q=Esci]")
+    app = _build_configure_roles_app(config_dir, env_path)
+    if not app:
+        print("⚠️ Nessun file job YAML trovato per la configurazione dei modelli.")
+        return {}
 
-                    panel = Panel(Text("\n".join(lines)), title="📋 CONFERMA CONFIGURAZIONE MODELLI", border_style="magenta")
-                    live.update(panel, refresh=True)
+    app.run()
 
-                    key = read_single_key(already_raw=is_raw)
-                    k = key.strip().lower()
-
-                    if k in ("up", "k"):
-                        confirm_option_idx = (confirm_option_idx - 1) % len(confirm_choices)
-                    elif k in ("down", "j"):
-                        confirm_option_idx = (confirm_option_idx + 1) % len(confirm_choices)
-                    elif k in ("left", "b"):
-                        curr_idx = total_groups - 1
-                    elif k in ("q", "quit", "esci"):
-                        live.stop()
-                        print("Configurazione LLM interrotta dall'utente.")
-                        return {}
-                    elif k in ("enter", "return", "\r", "\n", " ", "", "1", "2", "3"):
-                        chosen_opt = confirm_option_idx
-                        if k == "1":
-                            chosen_opt = 0
-                        elif k == "2":
-                            chosen_opt = 1
-                        elif k == "3":
-                            chosen_opt = 2
-
-                        if chosen_opt == 0:  # Conferma e applica
-                            live.stop()
-                            for gl, group_jobs in grouped_jobs:
-                                pmap = pending_selections.get(gl, {})
-                                primary_sel = pmap.get("primary")
-                                g_jobs, g_has_unrec, g_match = group_info[gl]
-                                for jn in group_jobs:
-                                    job_file = job_paths[jn]
-                                    if g_has_unrec and primary_sel == keep_label:
-                                        job_assignments[jn] = "(configurazione attuale mantenuta)"
-                                    elif not primary_sel or primary_sel == SKIP_LABEL:
-                                        job_assignments[jn] = "(non configurato)"
-                                    else:
-                                        _apply_profile_to_job(job_file, profiles[primary_sel])
-                                        job_assignments[jn] = primary_sel
-
-                                    for slot in ("timeout", "rate_limit", "safety", "auth", "generic"):
-                                        fb_prof_name = pmap.get(slot)
-                                        fb_prof_dict = profiles.get(fb_prof_name) if fb_prof_name else None
-                                        _apply_fallback_to_job(job_file, slot, fb_prof_dict)
-
-                            _save_model_profiles(general_data, profiles)
-                            _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
-                            print(f"\n✅ Assegnazione modelli completata per {len(job_assignments)} job!")
-                            return job_assignments
-                        elif chosen_opt == 1:  # Modifica una fase
-                            live.stop()
-                            try:
-                                phase_choice = questionary.select(
-                                    "Seleziona la fase da modificare:",
-                                    choices=[gl for gl, _ in grouped_jobs]
-                                ).ask()
-                            except (EOFError, Exception):
-                                phase_choice = None
-                            if phase_choice:
-                                for i, (gl, _) in enumerate(grouped_jobs):
-                                    if gl == phase_choice:
-                                        curr_idx = i
-                                        break
-                            console.clear()
-                            live.start()
-                        elif chosen_opt == 2:  # Annulla
-                            live.stop()
-                            print("Configurazione LLM interrotta dall'utente.")
-                            return {}
-
-                else:
-                    if curr_idx < 0:
-                        curr_idx = 0
-
-                    group_label, group_jobs = grouped_jobs[curr_idx]
-                    g_jobs, has_unrecognized, current_match = group_info[group_label]
-                    phase_map = pending_selections.get(group_label, {})
-
-                    choices = []
-                    if has_unrecognized and phase_map.get("primary") == keep_label:
-                        choices.append(keep_label)
-                    choices.append(SKIP_LABEL)
-                    choices.extend(sorted(profiles.keys()))
-                    choices.append(NEW_PROFILE)
-
-                    has_assigned_roles = any(phase_map.get(r) for r in ("primary", "timeout", "rate_limit", "safety", "auth", "generic"))
-                    if has_assigned_roles:
-                        choices.append(REMOVE_LABEL)
-
-                    opt_idx = option_indices.get(curr_idx, 0)
-                    if opt_idx >= len(choices):
-                        opt_idx = 0
-
-                    status_line = []
-                    for i, (gl, _) in enumerate(grouped_jobs):
-                        prim = pending_selections.get(gl, {}).get("primary")
-                        st = "✅" if prim else "⏳"
-                        marker = f"[{gl} {st}]" if i == curr_idx else f"{gl} {st}"
-                        status_line.append(marker)
-                    status_bar = "Avanzamento: " + " | ".join(status_line)
-
-                    lines = [
-                        status_bar,
-                        "",
-                        f"Configurazione ruoli per la fase '{group_label}' (inclusi {len(group_jobs)} job: {', '.join(group_jobs)}):",
-                        "",
-                    ]
-                    prim_val = phase_map.get("primary")
-                    prim_display = _format_profile_display(prim_val, profiles) if prim_val else "(non impostato — obbligatorio)"
-                    lines.append(f"  ⭐ Primario (obbligatorio):    {prim_display}")
-                    lines.append("  🛡️  Fallback (tutti opzionali):")
-                    for r_key, r_title in [
-                        ("timeout", "Fallback timeout:       "),
-                        ("rate_limit", "Fallback rate-limit:    "),
-                        ("safety", "Fallback safety:        "),
-                        ("auth", "Fallback auth:          "),
-                        ("generic", "Fallback generico:      "),
-                    ]:
-                        val = phase_map.get(r_key)
-                        val_str = _format_profile_display(val, profiles) if val else "(non impostato)"
-                        lines.append(f"     {r_title} {val_str}")
-                    lines.append("")
-                    lines.append("Opzioni disponibili:")
-                    for opt_i, opt_text in enumerate(choices):
-                        pointer = "▶ " if opt_i == opt_idx else "  "
-                        lines.append(f"  {pointer}{opt_text}")
-
-                    lines.append("\n[UP/DOWN=Sposta cursore | ENTER=Seleziona | LEFT/RIGHT=Cambia card | C=Conferma / Q=Esci]")
-
-                    panel = Panel(Text("\n".join(lines)), title=f"🤖 FASE [{curr_idx + 1}/{total_groups}]: {group_label}", border_style="cyan")
-                    live.update(panel, refresh=True)
-
-                    key = read_single_key(already_raw=is_raw)
-                    k = key.strip().lower()
-
-                    if k in ("up", "k"):
-                        opt_idx = (opt_idx - 1) % len(choices)
-                        option_indices[curr_idx] = opt_idx
-                    elif k in ("down", "j"):
-                        opt_idx = (opt_idx + 1) % len(choices)
-                        option_indices[curr_idx] = opt_idx
-                    elif k in ("left", "b"):
-                        curr_idx = max(0, curr_idx - 1)
-                    elif k in ("right", "n"):
-                        curr_idx = min(total_groups, curr_idx + 1)
-                    elif k in ("c", "f"):
-                        curr_idx = total_groups
-                    elif k in ("q", "quit", "esci"):
-                        live.stop()
-                        print("Configurazione LLM interrotta dall'utente.")
-                        return {}
-                    elif k in ("enter", "return", "\r", "\n", " ", ""):
-                        selected_choice = choices[opt_idx]
-                        if selected_choice == keep_label:
-                            pending_selections[group_label]["primary"] = keep_label
-                        elif selected_choice == SKIP_LABEL:
-                            for r in ("primary", "timeout", "rate_limit", "safety", "auth", "generic"):
-                                pending_selections[group_label][r] = None
-                        elif selected_choice == REMOVE_LABEL:
-                            live.stop()
-                            role_titles = [
-                                ("primary", "Primario"),
-                                ("timeout", "Fallback timeout"),
-                                ("rate_limit", "Fallback rate-limit"),
-                                ("safety", "Fallback safety"),
-                                ("auth", "Fallback auth"),
-                                ("generic", "Fallback generico"),
-                            ]
-                            occupied_roles = [(rk, f"{rt}: {phase_map[rk]}") for rk, rt in role_titles if phase_map.get(rk)]
-                            if occupied_roles:
-                                try:
-                                    del_choice = questionary.select(
-                                        f"Quale assegnazione vuoi rimuovere per la fase '{group_label}'?",
-                                        choices=[lbl for _, lbl in occupied_roles] + ["❌ Annulla"],
-                                        default=occupied_roles[0][1]
-                                    ).ask()
-                                except (EOFError, Exception):
-                                    del_choice = None
-                                if del_choice and del_choice != "❌ Annulla":
-                                    for rk, lbl in occupied_roles:
-                                        if lbl == del_choice:
-                                            pending_selections[group_label][rk] = None
-                                            print(f"✅ Rimossa assegnazione {rk} per '{group_label}'.")
-                                            break
-                            console.clear()
-                            live.start()
-                        elif selected_choice == NEW_PROFILE:
-                            live.stop()
-                            res_create = _create_new_model_profile(
-                                config_dir, env_path, general_data,
-                                ask_role=True,
-                                group_label=group_label,
-                                current_phase_assignments=pending_selections[group_label]
-                            )
-                            p_name = ""
-                            p_dict = {}
-                            p_role = None
-                            if isinstance(res_create, tuple):
-                                if len(res_create) == 3:
-                                    p_name, p_dict, p_role = res_create
-                                elif len(res_create) == 2:
-                                    p_name, p_dict = res_create
-                            if p_name:
-                                profiles[p_name] = p_dict
-                                _save_model_profiles(general_data, profiles)
-                                if p_role:
-                                    pending_selections[group_label][p_role] = p_name
-                                elif p_role is None and len(res_create) == 2:
-                                    _ask_and_assign_role(p_name, group_label, pending_selections[group_label])
-                            console.clear()
-                            live.start()
-                        else:
-                            live.stop()
-                            _ask_and_assign_role(selected_choice, group_label, pending_selections[group_label])
-                            console.clear()
-                            live.start()
+    if app.result_assignments is not None:
+        print(f"\n✅ Assegnazione modelli completata per {len(app.result_assignments)} job!")
+        return app.result_assignments
+    else:
+        print("Configurazione LLM interrotta dall'utente.")
+        return {}
 
 
 

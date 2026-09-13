@@ -160,7 +160,7 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
          patch("questionary.autocomplete", side_effect=mock_autocomplete), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", return_value=mock_resp):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -244,7 +244,7 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -530,7 +530,7 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -641,7 +641,7 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -716,7 +716,7 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -829,7 +829,7 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res1 = _configure_llm_provider_section(config_dir, env_file)
@@ -972,7 +972,7 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         assignments = _configure_llm_provider_section(config_dir, env_file)
@@ -1028,7 +1028,7 @@ def test_rerun_unrecognized_config_keep_choice(tmp_path):
         return m
 
     with patch("questionary.select", side_effect=mock_select), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["ENTER", "c", "ENTER"]):
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["ENTER", "c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
 
     assert res["outline"] == "(configurazione attuale mantenuta)"
@@ -1065,7 +1065,7 @@ def test_skip_option_and_no_forced_bootstrap(tmp_path):
         return m
 
     with patch("questionary.select", side_effect=mock_select), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["c", "ENTER"]):
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
 
     assert res["outline"] == "(non configurato)"
@@ -1133,7 +1133,7 @@ def test_grouped_jobs_recall_and_immagini(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "RIGHT", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "RIGHT", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res = _configure_llm_provider_section(config_dir, env_file)
@@ -1642,8 +1642,8 @@ def test_configure_config_parser_mutually_exclusive():
         parser.parse_args(["--models", "--telegram"])
 
 
-def test_configure_llm_provider_section_clears_console_on_new_profile(tmp_path):
-    """Verifica che console.clear() venga invocato dopo _create_new_model_profile nel carosello rt config (Task 46)."""
+def test_configure_llm_provider_section_creates_and_assigns_new_profile(tmp_path):
+    """Verifica che la creazione di un nuovo profilo dal carosello lo assegni e salvi correttamente."""
     config_dir = str(tmp_path / "config")
     os.makedirs(config_dir, exist_ok=True)
     general_file = os.path.join(config_dir, "general.yaml")
@@ -1656,14 +1656,11 @@ def test_configure_llm_provider_section_clears_console_on_new_profile(tmp_path):
 
     env_file = str(tmp_path / ".env")
 
-    mock_clear = MagicMock()
+    with patch("rt.pipeline.configure._create_new_model_profile", return_value=("p_new", {"provider": "google"}, "primary")), \
+         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]):
+        res = _configure_llm_provider_section(config_dir, env_file)
 
-    with patch("rich.console.Console.clear", mock_clear), \
-         patch("rt.pipeline.configure._create_new_model_profile", return_value=("p_new", {"provider": "google"})), \
-         patch("rt.pipeline.configure.read_single_key", side_effect=["DOWN", "ENTER", "c", "ENTER"]):
-        _configure_llm_provider_section(config_dir, env_file)
-
-    mock_clear.assert_called()
+    assert res.get("outline") == "p_new"
 
 
 # ======================================================================
@@ -1863,7 +1860,7 @@ def test_configure_llm_intro_text_mentions_optional_fallbacks(capsys, tmp_path):
 
     env_file = str(tmp_path / ".env")
 
-    with patch("rt.pipeline.configure.read_single_key", side_effect=["q"]):
+    with patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["q"]):
         _configure_llm_provider_section(config_dir, env_file)
 
     captured = capsys.readouterr().out
