@@ -654,6 +654,9 @@ def cmd_config(args: argparse.Namespace) -> None:
     elif getattr(args, "topics", False):
         from rt.pipeline.configure import run_topics_management
         run_topics_management()
+    elif getattr(args, "theme", False):
+        from rt.pipeline.configure import run_theme_selection
+        run_theme_selection()
     else:
         from rt.pipeline.configure import run_config_wizard
         run_config_wizard()

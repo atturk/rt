@@ -374,6 +374,8 @@ class IssueReviewApp(App):
         history: bool = False,
     ):
         super().__init__()
+        from rt.core.ui_theme import apply_saved_theme
+        apply_saved_theme(self)
         self.lesson_dir = lesson_dir
         self.to_review: List[ScienceIssue] = to_review
         self.issue_type = issue_type

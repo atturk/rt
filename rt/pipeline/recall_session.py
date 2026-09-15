@@ -552,6 +552,8 @@ class StaleRecallApp(App[None]):
 
     def __init__(self, lesson_dir: str, stale_questions: List[Any]) -> None:
         super().__init__()
+        from rt.core.ui_theme import apply_saved_theme
+        apply_saved_theme(self)
         self.lesson_dir = lesson_dir
         self.stale_questions = stale_questions
         self.idx: int = 0

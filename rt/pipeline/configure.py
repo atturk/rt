@@ -973,6 +973,8 @@ class ConfigurePhaseRolesApp(App[None]):
         pending_selections: Dict[str, Dict[str, Optional[str]]],
     ) -> None:
         super().__init__()
+        from rt.core.ui_theme import apply_saved_theme
+        apply_saved_theme(self)
         self.config_dir = config_dir
         self.env_path = env_path
         self.general_data = general_data
@@ -1901,6 +1903,8 @@ def run_config_wizard(interactive: bool = True) -> None:
     print("================================================------------")
 
     config_dir, env_path = _resolve_or_bootstrap_config_paths()
+    if interactive:
+        _maybe_prompt_theme_first_time(config_dir)
     job_profiles = _configure_llm_provider_section(config_dir, env_path)
     tg_res = _configure_telegram_section(config_dir, env_path)
     stt_engine = _configure_stt_section(config_dir)
@@ -2274,10 +2278,90 @@ def run_topics_management() -> None:
         _edit_single_topic_mapping(general_yaml_path, general_data, topics_map, mat_name)
 
 
+def run_theme_selection(config_dir: Optional[str] = None) -> Optional[str]:
+    """Configura direttamente il tema dell'interfaccia (scuro/chiaro) e salva in general.yaml."""
+    if config_dir is None:
+        config_dir, _ = _resolve_or_bootstrap_config_paths()
+
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    general_data: Dict[str, Any] = {}
+    if os.path.isfile(general_yaml_path):
+        try:
+            with open(general_yaml_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    general_data = loaded
+        except Exception:
+            pass
+
+    ui_data = general_data.get("ui")
+    curr_theme = "dark"
+    if isinstance(ui_data, dict):
+        curr_theme = ui_data.get("theme", "dark")
+
+    default_choice = "🌕 Chiaro" if curr_theme == "light" else "🌑 Scuro"
+
+    print("\n------------------------------------------------------------")
+    print("🎨 Configurazione Tema Interfaccia Terminale")
+    print("------------------------------------------------------------")
+
+    try:
+        choice = questionary.select(
+            "Il tuo terminale ha uno sfondo scuro o chiaro?",
+            choices=[
+                "🌑 Scuro",
+                "🌕 Chiaro",
+            ],
+            default=default_choice,
+        ).ask()
+    except Exception:
+        choice = None
+
+    if choice is None:
+        print("Operazione annullata.")
+        return None
+
+    selected_theme = "light" if "Chiaro" in choice else "dark"
+
+    if "ui" not in general_data or not isinstance(general_data["ui"], dict):
+        general_data["ui"] = {}
+    general_data["ui"]["theme"] = selected_theme
+
+    _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+    label = "Chiaro" if selected_theme == "light" else "Scuro"
+    print(f"\n✅ Tema impostato su: {label} (salvato in config/general.yaml)")
+    return selected_theme
+
+
+def _maybe_prompt_theme_first_time(config_dir: str) -> None:
+    """Propone la scelta del tema durante la prima esecuzione del wizard se non ancora configurato."""
+    general_yaml_path = os.path.join(config_dir, "general.yaml")
+    general_data: Dict[str, Any] = {}
+    if os.path.isfile(general_yaml_path):
+        try:
+            with open(general_yaml_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    general_data = loaded
+        except Exception:
+            pass
+    ui_dict = general_data.get("ui")
+    if isinstance(ui_dict, dict) and "theme" in ui_dict and ui_dict["theme"] in ("dark", "light"):
+        return
+    res = run_theme_selection(config_dir=config_dir)
+    if res is None and os.path.isfile(general_yaml_path):
+        if "ui" not in general_data or not isinstance(general_data["ui"], dict):
+            general_data["ui"] = {}
+        if "theme" not in general_data["ui"]:
+            general_data["ui"]["theme"] = "dark"
+            _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
+
+
 def configure_config_parser(parser: Any) -> Any:
     """Configura l'argparse parser per rt config."""
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--models", action="store_true", help="Apre direttamente il menu di gestione dei profili modello salvati (senza attraversare l'intero wizard)")
     group.add_argument("--telegram", action="store_true", help="Configura direttamente solo la sezione Telegram (senza attraversare l'intero wizard)")
     group.add_argument("--topics", action="store_true", help="Apre direttamente il menu di gestione dei topic Telegram già configurati (senza attraversare l'intero wizard)")
+    group.add_argument("--theme", action="store_true", help="Configura direttamente il tema dell'interfaccia terminale (scuro/chiaro)")
     return parser

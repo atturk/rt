@@ -8,7 +8,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 """
 
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
 import yaml
 from pydantic import BaseModel, Field, AliasChoices, model_validator
 
@@ -261,10 +261,15 @@ class ReviewConfig(BaseModel):
     asr_statistical_floor: float = Field(default=0.35, description="Soglia assoluta di sicurezza per confidenza ASR")
 
 
+class UiConfig(BaseModel):
+    theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
+
+
 class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
+    ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
     telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)
     mock_llm: bool = Field(default=False, description="Usa mock deterministico per test e CI")

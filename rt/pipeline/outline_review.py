@@ -157,6 +157,8 @@ class OutlineReviewApp(App):
 
     def __init__(self, lesson_dir: str, force_mock: bool = False):
         super().__init__()
+        from rt.core.ui_theme import apply_saved_theme
+        apply_saved_theme(self)
         self.lesson_dir = lesson_dir
         self.force_mock = force_mock
         self.outline: Outline = load_outline(lesson_dir)

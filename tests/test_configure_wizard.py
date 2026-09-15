@@ -460,6 +460,7 @@ def test_run_config_wizard_full_flow(tmp_path, monkeypatch):
         f.write("version: '2.0.0'\ncredentials: []\n")
 
     with patch("rt.pipeline.configure._default_project_root", return_value=fake_root), \
+         patch("rt.pipeline.configure._maybe_prompt_theme_first_time"), \
          patch("rt.pipeline.configure._configure_llm_provider_section", return_value={"outline": "generale"}), \
          patch("rt.pipeline.configure._configure_telegram_section", return_value={"configured": True, "topics_count": 2}), \
          patch("rt.pipeline.configure._configure_stt_section", return_value="macparakeet"):
