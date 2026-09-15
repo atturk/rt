@@ -181,11 +181,14 @@ avrebbe risolto gratis", ma nessun task successivo ha mai collegato per davvero 
 nativo di Textual (`App.theme`/`available_themes`, verificato presente e ricco — `textual-dark`/
 `-light`, `solarized-*`, `nord`, `dracula`, ecc.) a un comando persistente → Task 76.
 
+Task 76 implementato da Antigravity, verificato riga per riga: 758/758 test, nessun bug trovato —
+`UiConfig.theme` (`Literal["dark","light"]`, default "dark") in `RTConfig`, helper centralizzato
+`rt/core/ui_theme.py::apply_saved_theme` usato da tutte e 4 le App Textual, `rt config --theme`
+con prompt una tantum al primo wizard completo. Rilasciato tag v3.1.3.
+
 ## Task da fare, in ordine
 
-1. **76** — Collega il sistema di temi nativo di Textual a `rt config --theme` (scuro/chiaro),
-   rimasto in sospeso dalla migrazione a Textual — nessun CSS/palette custom da scrivere, usa
-   `App.theme` su tutte e 4 le schermate.
+Nessuno al momento. In attesa del prossimo giro di test reale da parte dell'utente.
 
 ## In sospeso — decisioni da prendere con l'utente prima di trasformarle in task
 
