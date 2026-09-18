@@ -265,10 +265,25 @@ class UiConfig(BaseModel):
     theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
 
 
+class JevConfig(BaseModel):
+    """Configurazione del pre-filtro Jev (System One di typesafe.ai) davanti alla critica
+    scientifica LLM. Soglie provvisorie, non ancora calibrate su dati reali: usa
+    'rt review --shadow-jev' per confrontare i verdetti di Jev con le decisioni reali
+    prima di fidartene in produzione."""
+    enabled: bool = Field(default=False, description="Abilita il pre-filtro Jev nella fase di review")
+    model: str = Field(default="typesafe/jev-1.13", description="ID modello Jev su OpenRouter")
+    credential: str = Field(default="openrouter", description="Nome della credenziale da usare (stessa chiave OpenRouter già configurata)")
+    base_url: str = Field(default="https://openrouter.ai/api/alpha/decisions", description="Endpoint 'decisions' di OpenRouter per i modelli System One")
+    timeout_seconds: float = Field(default=15.0, description="Timeout per singola chiamata Jev")
+    task_a_skip_confidence_threshold: float = Field(default=0.85, description="Confidenza minima per saltare la review LLM quando Jev classifica l'unità come non-'errore_grave'")
+    task_b_fabrication_threshold: float = Field(default=0.80, description="Probabilità minima (noul) per segnalare una possibile deriva/invenzione rispetto ai segmenti ASR grezzi")
+
+
 class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
+    jev: JevConfig = Field(default_factory=JevConfig, description="Configurazione del pre-filtro Jev (System One) per la review scientifica")
     ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
     telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)

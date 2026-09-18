@@ -179,7 +179,11 @@ def apply_decisions_to_draft(
             if iss_id in sci_by_id:
                 s_iss = sci_by_id[iss_id]
                 if s_iss.unit_id == unit.unit_id or (s_iss.segment_id and s_iss.segment_id in unit.source_segment_ids):
-                    if s_iss.type in (ScienceType.ERR_ASR_ST, getattr(ScienceType, "ERR_ASR_LLM", "ERR_ASR_LLM")):
+                    if s_iss.type in (
+                        ScienceType.ERR_ASR_ST,
+                        getattr(ScienceType, "ERR_ASR_LLM", "ERR_ASR_LLM"),
+                        getattr(ScienceType, "ERR_REWRITE_DRIFT", "ERR_REWRITE_DRIFT"),
+                    ):
                         if dec.decision == "accepted":
                             continue
                         elif dec.decision == "edited" and dec.resolved_text:

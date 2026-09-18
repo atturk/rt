@@ -52,7 +52,14 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         "gemini-2.0-flash-lite": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-1.5-flash": ModelPricing(input_per_million=0.075, output_per_million=0.30),
         "gemini-1.5-pro": ModelPricing(input_per_million=1.25, output_per_million=5.00),
-    }
+    },
+    "typesafe": {
+        # Jev (System One): output gratuito, non genera token in sequenza (single-pass).
+        # Fallback usato solo se OpenRouter non riporta usage.cost direttamente nella risposta.
+        "typesafe/jev-1.13": ModelPricing(input_per_million=0.042, output_per_million=0.0),
+        "jev-1.13": ModelPricing(input_per_million=0.042, output_per_million=0.0),
+        "jev-latest": ModelPricing(input_per_million=0.042, output_per_million=0.0),
+    },
 }
 
 

@@ -116,6 +116,7 @@ class ScienceType(str, Enum):
     SCIENCE_CHECK = "SCIENCE_CHECK"          # Affermazione plausibile che merita verifica scientifica o controllo fonti
     ERR_ASR_ST = "ERR_ASR_ST"                # Segmento ASR con confidenza significativamente degradata (statistico)
     ERR_ASR_LLM = "ERR_ASR_LLM"              # Segmento ASR con confidenza degradata e sospetto confermato da LLM
+    ERR_REWRITE_DRIFT = "ERR_REWRITE_DRIFT"  # Jev (System One) rileva contenuto rielaborato non supportato dai segmenti ASR grezzi, o deriva semantica significativa
 
 
 class ScienceSeverity(str, Enum):

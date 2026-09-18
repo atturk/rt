@@ -263,6 +263,14 @@ def should_auto_accept_science(iss: ScienceIssue, auto_accept: Optional[str]) ->
     return False
 
 
+def _is_no_diff_issue_type(iss: ScienceIssue) -> bool:
+    """Tipi di issue che non hanno un suggested_fix da mostrare come diff rosso/verde:
+    vengono renderizzati con una descrizione piatta (stesso trattamento già riservato
+    alle issue ASR)."""
+    iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+    return iss.type in (ScienceType.ERR_ASR_ST, ScienceType.ERR_REWRITE_DRIFT) or iss_type_str in ("ERR_ASR_LLM", "ERR_REWRITE_DRIFT")
+
+
 def _build_science_panel(
     idx: int,
     total_count: int,
@@ -276,17 +284,23 @@ def _build_science_panel(
     from rt.core.encoding import fix_mojibake
 
     iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
-    is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+    is_asr_risk = _is_no_diff_issue_type(iss)
 
     out = Text()
 
     if is_asr_risk:
-        header_title = "🎙️ RISCHIO ASR (statistico)" if iss.type == ScienceType.ERR_ASR_ST else "🎙️ RISCHIO ASR (validato LLM)"
+        if iss.type == ScienceType.ERR_ASR_ST:
+            header_title = "🎙️ RISCHIO ASR (statistico)"
+        elif iss.type == ScienceType.ERR_REWRITE_DRIFT:
+            header_title = "🔀 DERIVA RIELABORAZIONE (Jev)"
+        else:
+            header_title = "🎙️ RISCHIO ASR (validato LLM)"
         out.append(f"[{idx + 1}/{total_count}] {header_title} - ID: {iss.id}\n")
         if sci_unit_info != "N/D":
             out.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}\n")
-        out.append(f"  ⏱ Timecode (stima): {tc}\n")
-        out.append(f"  🎙️ Segmento raw sospetto: \"{fix_mojibake(iss.claim)}\"\n")
+        if iss.type != ScienceType.ERR_REWRITE_DRIFT:
+            out.append(f"  ⏱ Timecode (stima): {tc}\n")
+            out.append(f"  🎙️ Segmento raw sospetto: \"{fix_mojibake(iss.claim)}\"\n")
         out.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}\n")
         if iss.suggested_fix:
             out.append(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"\n")
@@ -475,8 +489,7 @@ class IssueReviewApp(App):
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
-        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
-        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        is_asr_risk = _is_no_diff_issue_type(iss)
         self._stop_audio()
         if is_asr_risk:
             sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
@@ -498,8 +511,7 @@ class IssueReviewApp(App):
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
-        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
-        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        is_asr_risk = _is_no_diff_issue_type(iss)
         if is_asr_risk:
             return
         self._stop_audio()
@@ -519,8 +531,7 @@ class IssueReviewApp(App):
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
-        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
-        is_asr_risk = (iss.type == ScienceType.ERR_ASR_ST) or (iss_type_str == "ERR_ASR_LLM")
+        is_asr_risk = _is_no_diff_issue_type(iss)
         sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
 
         if is_asr_risk:

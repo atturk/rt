@@ -209,7 +209,8 @@ def cmd_review(args):
 
     force = getattr(args, "force", False)
     asr_llm = getattr(args, "asr_llm", False)
-    res = run_review(args.lesson_dir, force=force, force_mock=args.mock, asr_llm=asr_llm)
+    shadow_jev = getattr(args, "shadow_jev", False)
+    res = run_review(args.lesson_dir, force=force, force_mock=args.mock, asr_llm=asr_llm, shadow_jev=shadow_jev)
     _print_phase_action("review", res)
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
@@ -761,6 +762,14 @@ def main(argv: Optional[List[str]] = None) -> None:
         "--asr-llm",
         action="store_true",
         help="Affida all'LLM di critica scientifica la validazione dei candidati a rischio ASR invece del solo criterio statistico (meno falsi positivi, costa di più)"
+    )
+    p_rsci.add_argument(
+        "--shadow-jev",
+        action="store_true",
+        dest="shadow_jev",
+        help="Esegue il pre-filtro Jev e ne registra il verdetto in llm_debug.log per confronto, "
+             "ma non salta né genera nulla: ogni unità passa comunque per l'intera critica LLM "
+             "come oggi (richiede 'jev: {enabled: true}' in config/general.yaml — no-op altrimenti)"
     )
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.set_defaults(func=cmd_review)

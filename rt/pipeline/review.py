@@ -11,11 +11,11 @@ Salva science_issues.json.
 import os
 import json
 from typing import Dict, Any, List, Optional
-from rt.core.models import ScienceIssue, ScienceType
+from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, DraftUnit
 from rt.core.segments import load_segments_json
 from rt.core.state import transition_to, WorkflowState
 from rt.core.manifest import load_manifest
-from rt.core.config import load_config
+from rt.core.config import load_config, JevConfig
 from rt.llm.client import LLMClient
 from rt.llm.prompts import (
     SCIENCE_REVIEW_SYSTEM_PROMPT,
@@ -25,6 +25,7 @@ from rt.llm.prompts import (
 from rt.pipeline.rewrite import load_draft
 from rt.core.lesson_paths import lesson_path
 from rt.core.asr_risk import detect_statistical_asr_risks
+from rt.llm.jev_client import call_jev, JevChoiceQuestion, JevNoulQuestion, JevError
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -178,7 +179,172 @@ def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
     return segs[-1].id
 
 
-def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False) -> Dict[str, Any]:
+# -----------------------------------------------------------------------
+# Pre-filtro Jev (System One di typesafe.ai): due valutazioni indipendenti per unità,
+# ENTRAMBE eseguite (se abilitate) PRIMA della critica scientifica LLM completa.
+# -----------------------------------------------------------------------
+
+class JevTaskAVerdict:
+    """Esito del Task A (correttezza scientifica): Jev vede SOLO il testo rielaborato."""
+
+    def __init__(self, choice: str, confidence: float, should_skip_expensive_llm: bool):
+        self.choice = choice
+        self.confidence = confidence
+        self.should_skip_expensive_llm = should_skip_expensive_llm
+
+
+class JevTaskBVerdict:
+    """Esito del Task B (coerenza rielaborazione/trascritto grezzo)."""
+
+    def __init__(self, noul_probability: float, is_high_confidence_drift: bool):
+        self.noul_probability = noul_probability
+        self.is_high_confidence_drift = is_high_confidence_drift
+
+
+def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskAVerdict]:
+    """
+    Chiede a Jev di classificare la correttezza scientifica dell'unità, vedendo SOLO il
+    testo rielaborato (mai il trascritto grezzo, per non contaminare il giudizio con
+    considerazioni sulla fedeltà ASR, di competenza del Task B).
+    Ritorna None se la chiamata fallisce: fallback prudente, nessuno skip verrà applicato.
+    """
+    try:
+        resp = call_jev(
+            state=unit.content,
+            questions={
+                "correttezza": JevChoiceQuestion(
+                    instructions=(
+                        "Sei un revisore scientifico che classifica un singolo paragrafo di prosa "
+                        "accademica (già rielaborato da una trascrizione di lezione universitaria) "
+                        "in base alla gravità di eventuali errori scientifici presenti, SENZA accesso "
+                        "alla trascrizione originale. Non correggere il testo: classifica solo la "
+                        "gravità di ciò che vi leggi. Ignora eventuali refusi isolati o termini "
+                        "graficamente sospetti che sembrano artefatti di trascrizione automatica (ASR) "
+                        "non ancora corretti: non è compito tuo, e non contano come errore scientifico "
+                        "se isolati e privi di altro significato rilevante."
+                    ),
+                    criteria={
+                        "corretta": (
+                            "Il testo è scientificamente corretto, oppure contiene al più imprecisioni "
+                            "terminologiche irrilevanti che non cambiano il significato concettuale."
+                        ),
+                        "imprecisione": (
+                            "Il testo contiene una semplificazione o approssimazione minore, di nessuna "
+                            "reale conseguenza per la preparazione dell'esame — ad esempio una "
+                            "generalizzazione innocua o un dettaglio tecnico secondario reso in modo "
+                            "impreciso (es. descrivere come lo stesso enzima due isoforme distinte che "
+                            "catalizzano reazioni analoghe). Non merita una segnalazione: correggerla "
+                            "sarebbe pignoleria controproducente."
+                        ),
+                        "errore_grave": (
+                            "Il testo contiene un errore concettuale che potrebbe genuinamente "
+                            "confondere uno studente durante il ripasso attivo, generare domande di "
+                            "richiamo fuorvianti, o riflette un vero fraintendimento concettuale del "
+                            "docente — ad esempio confondere due strutture anatomicamente distinte in "
+                            "un modo che genera vera confusione (es. dire 'carotide' intendendo "
+                            "'coronaria'), oppure affermare con sicurezza il contrario di un fatto "
+                            "consolidato e ben noto (es. sostenere che i bastoncelli sono meno numerosi "
+                            "dei coni, quando è vero il contrario)."
+                        ),
+                    },
+                )
+            },
+            job_name="jev_task_a",
+            unit_id=unit.unit_id,
+            lesson_dir=lesson_dir,
+            model=jev_cfg.model,
+            credential=jev_cfg.credential,
+            base_url=jev_cfg.base_url,
+            timeout_seconds=jev_cfg.timeout_seconds,
+        )
+    except JevError:
+        return None
+
+    answer = resp.answers.get("correttezza")
+    if answer is None or answer.type != "choice":
+        return None
+
+    should_skip = (answer.choice != "errore_grave") and (answer.confidence >= jev_cfg.task_a_skip_confidence_threshold)
+    return JevTaskAVerdict(choice=answer.choice, confidence=answer.confidence, should_skip_expensive_llm=should_skip)
+
+
+def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
+    """
+    Chiede a Jev se il testo rielaborato dell'unità introduce contenuto non supportato dai
+    segmenti ASR grezzi corrispondenti (possibile invenzione/allucinazione), o si discosta
+    significativamente dal loro senso. Vede sia i segmenti grezzi sia il rielaborato.
+    Ritorna None se la chiamata fallisce: nessuna issue verrà creata in quel caso.
+    """
+    state = f"SEGMENTI GREZZI ASR:\n{source_context}\n\n---\n\nTESTO RIELABORATO:\n{unit.content}"
+    try:
+        resp = call_jev(
+            state=state,
+            questions={
+                "unsupported_content": JevNoulQuestion(
+                    instructions=(
+                        "Ti vengono forniti (1) i segmenti grezzi della trascrizione automatica (ASR) "
+                        "di un frammento di lezione universitaria, così come sono stati trascritti, e "
+                        "(2) il testo finale rielaborato in prosa accademica a partire da quei "
+                        "segmenti. La rielaborazione in prosa fluida, con parafrasi e riformulazioni "
+                        "per la leggibilità, è normale e attesa: NON giudicare la fedeltà lessicale o "
+                        "lo stile. Valuta invece se il testo rielaborato introduce contenuto "
+                        "sostanziale che NON ha alcun riscontro, nemmeno approssimativo, nei segmenti "
+                        "grezzi forniti (possibile invenzione/allucinazione del modello che ha generato "
+                        "la rielaborazione, specialmente plausibile quando la trascrizione grezza è "
+                        "essa stessa degradata o incomprensibile e il modello sembra aver 'riempito i "
+                        "vuoti' con qualcosa di plausibile ma inventato), oppure se si allontana in "
+                        "modo significativo dal senso di quanto effettivamente trasmesso nei segmenti "
+                        "grezzi. Valuta quanto è vera l'affermazione: 'Il testo rielaborato contiene "
+                        "contenuto sostanziale non supportato dai segmenti grezzi, o si discosta "
+                        "significativamente dal loro significato.'"
+                    ),
+                )
+            },
+            job_name="jev_task_b",
+            unit_id=unit.unit_id,
+            lesson_dir=lesson_dir,
+            model=jev_cfg.model,
+            credential=jev_cfg.credential,
+            base_url=jev_cfg.base_url,
+            timeout_seconds=jev_cfg.timeout_seconds,
+        )
+    except JevError:
+        return None
+
+    answer = resp.answers.get("unsupported_content")
+    if answer is None or answer.type != "noul":
+        return None
+
+    is_drift = answer.noul >= jev_cfg.task_b_fabrication_threshold
+    return JevTaskBVerdict(noul_probability=answer.noul, is_high_confidence_drift=is_drift)
+
+
+def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> ScienceIssue:
+    """Costruisce una ScienceIssue ERR_REWRITE_DRIFT da un verdetto Jev ad alta confidenza.
+    Nessun testo qui è generato da un LLM: 'reason' è un template deterministico di RT,
+    sullo stesso modello già usato da detect_statistical_asr_risks per le issue ERR_ASR_ST."""
+    severity = ScienceSeverity.HIGH if verdict.noul_probability >= 0.9 else ScienceSeverity.MEDIUM
+    reason = (
+        f"Il modello di pre-screening Jev ha rilevato con probabilità {verdict.noul_probability:.2f} "
+        f"che questa unità rielaborata contiene contenuto non supportato dai segmenti ASR grezzi "
+        f"corrispondenti, o si discosta significativamente dal loro significato. Nessuna revisione "
+        f"LLM è stata eseguita su questo punto: verifica ascoltando l'audio originale (tasto P)."
+    )
+    return ScienceIssue(
+        id=f"sci_jevdrift_{unit.unit_id}",
+        type=ScienceType.ERR_REWRITE_DRIFT,
+        severity=severity,
+        unit_id=unit.unit_id,
+        segment_id=None,
+        claim=unit.content,
+        reason=reason,
+        suggested_fix=None,
+        diplomatic_question=None,
+        status="pending",
+    )
+
+
+def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
 
@@ -208,6 +374,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
             "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
             "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
             "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
+            "rewrite_drift_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_REWRITE_DRIFT),
             "next_state": next_state,
             "issues_path": get_science_issues_path(lesson_dir)
         }
@@ -270,50 +437,65 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
                 source_texts.append(f"[{s.id}] {s.text_raw}")
         source_context = "\n".join(source_texts)
 
-        asr_risk_context = None
-        if asr_llm and unit.unit_id in st_issues_by_unit:
-            unit_st = st_issues_by_unit[unit.unit_id][0]
-            asr_risk_context = (
-                f"SEGMENTO A RISCHIO ASR RILEVATO STATISTICAMENTE IN QUESTA UNITÀ:\n"
-                f"Trascrizione raw: \"{unit_st.claim}\"\n"
-                f"Dettaglio: {unit_st.reason}\n\n"
-                f"ECCEZIONE PER QUESTO PUNTO SPECIFICO: la tua istruzione generale è di ignorare artefatti ASR isolati — "
-                f"per QUESTO segmento specifico, invece, valuta se il testo rielaborato corrispondente riflette fedelmente "
-                f"questa trascrizione raw o se sembra un'invenzione/allucinazione introdotta durante la riscrittura. "
-                f"Se sospetti fabbricazione o travisamento, genera una issue con \"type\": \"ERR_ASR_LLM\", "
-                f"\"segment_id\": \"{unit_st.segment_id or ''}\", \"claim\": \"{unit_st.claim}\", \"reason\": la tua motivazione, "
-                f"\"suggested_fix\": null. Se non sospetti nulla, non generare alcuna issue per questo punto."
+        # Pre-filtro Jev (System One): due valutazioni indipendenti PRIMA della critica LLM
+        # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
+        # ma non saltano né creano nulla: il comportamento resta identico a Jev disattivato.
+        skip_expensive_llm = False
+        if _cfg.jev.enabled:
+            verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
+            verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
+
+            if not shadow_jev:
+                if verdict_b is not None and verdict_b.is_high_confidence_drift:
+                    all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
+                if verdict_a is not None and verdict_a.should_skip_expensive_llm:
+                    skip_expensive_llm = True
+
+        if not skip_expensive_llm:
+            asr_risk_context = None
+            if asr_llm and unit.unit_id in st_issues_by_unit:
+                unit_st = st_issues_by_unit[unit.unit_id][0]
+                asr_risk_context = (
+                    f"SEGMENTO A RISCHIO ASR RILEVATO STATISTICAMENTE IN QUESTA UNITÀ:\n"
+                    f"Trascrizione raw: \"{unit_st.claim}\"\n"
+                    f"Dettaglio: {unit_st.reason}\n\n"
+                    f"ECCEZIONE PER QUESTO PUNTO SPECIFICO: la tua istruzione generale è di ignorare artefatti ASR isolati — "
+                    f"per QUESTO segmento specifico, invece, valuta se il testo rielaborato corrispondente riflette fedelmente "
+                    f"questa trascrizione raw o se sembra un'invenzione/allucinazione introdotta durante la riscrittura. "
+                    f"Se sospetti fabbricazione o travisamento, genera una issue con \"type\": \"ERR_ASR_LLM\", "
+                    f"\"segment_id\": \"{unit_st.segment_id or ''}\", \"claim\": \"{unit_st.claim}\", \"reason\": la tua motivazione, "
+                    f"\"suggested_fix\": null. Se non sospetti nulla, non generare alcuna issue per questo punto."
+                )
+
+            prompt = build_science_review_user_prompt(
+                unit_id=unit.unit_id,
+                rewritten_content=unit.content,
+                asr_risk_context=asr_risk_context,
             )
 
-        prompt = build_science_review_user_prompt(
-            unit_id=unit.unit_id,
-            rewritten_content=unit.content,
-            asr_risk_context=asr_risk_context,
-        )
-        
-        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
-        if len(unit_title) > 28:
-            unit_title = unit_title[:25] + "..."
-        unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
+            unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
+            if len(unit_title) > 28:
+                unit_title = unit_title[:25] + "..."
+            unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
 
-        res = client.call_structured(
-            prompt=prompt,
-            system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
-            response_model=ScienceIssueList,
-            job_name="review",
-            unit_id=unit_label,
-            min_elapsed_seconds=5.0,
-            lesson_dir=lesson_dir
-        )
-        
-        for iss in res.issues:
-            iss.unit_id = unit.unit_id
-            if not iss.segment_id:
-                iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
-            if not force_mock:
-                iss = disambiguate_science_issue(iss, source_context)
-            all_science_issues.append(iss)
-            
+            res = client.call_structured(
+                prompt=prompt,
+                system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+                response_model=ScienceIssueList,
+                job_name="review",
+                unit_id=unit_label,
+                min_elapsed_seconds=5.0,
+                lesson_dir=lesson_dir
+            )
+
+            for iss in res.issues:
+                iss.unit_id = unit.unit_id
+                if not iss.segment_id:
+                    iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
+                if not force_mock:
+                    iss = disambiguate_science_issue(iss, source_context)
+                all_science_issues.append(iss)
+
         # Numerazione deterministica progressiva
         for s_idx, iss in enumerate(all_science_issues, start=1):
             iss.id = f"sci_{s_idx:06d}"
@@ -393,6 +575,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
         "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
         "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
         "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
+        "rewrite_drift_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_REWRITE_DRIFT),
         "next_state": next_state,
         "issues_path": get_science_issues_path(lesson_dir)
     }

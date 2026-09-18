@@ -15,6 +15,16 @@ review:
   asr_statistical_k: 3.0
   asr_statistical_floor: 0.35
 
+# Pre-filtro Jev (System One di typesafe.ai) davanti alla critica scientifica LLM: disabilitato
+# per default. Usa la stessa credenziale "openrouter" già configurata qui sotto, nessuna chiave
+# separata necessaria. Soglie provvisorie: valuta con 'rt review --shadow-jev' prima di fidartene.
+jev:
+  enabled: false
+  model: "typesafe/jev-1.13"
+  credential: "openrouter"
+  task_a_skip_confidence_threshold: 0.85
+  task_b_fabrication_threshold: 0.80
+
 credentials:
   - name: "openrouter"
     provider: "openrouter"
