@@ -120,7 +120,7 @@ class RTApp(App):
         border-title-color: $primary; padding: 1;
     }
     #sidebar:focus-within { border: round $primary; }
-    #search { margin-bottom: 1; }
+    #search { border: none; height: 1; padding: 0 1; margin-bottom: 1; }
 
     ListView { background: transparent; height: 1fr; }
     ListItem { padding: 0; background: transparent; }
@@ -209,14 +209,17 @@ class RTApp(App):
         self.query_one("#detail-info").border_title = "DETTAGLIO LEZIONE"
         self.query_one("#markdown-panel").border_title = "ANTEPRIMA MARKDOWN"
         await self.refresh_lessons()
+        self.query_one("#lesson-list", ListView).focus()
+
+    def _telegram_status_markup(self) -> str:
+        from rt.telegram.daemon_status import is_daemon_running
+        if is_daemon_running():
+            return "[$success]●[/] telegram attivo"
+        return "[dim]○ telegram non attivo[/]"
 
     async def refresh_lessons(self) -> None:
         root = self._lessons_root()
-        status = self.query_one("#status", Static)
-        if root:
-            status.update(f"[dim]root:[/] {root}    [dim]tema:[/] {self.theme}")
-        else:
-            status.update("[$warning]nessuna cartella lezioni configurata — premi 'g' per configurarla[/]")
+        self.query_one("#status", Static).update(self._telegram_status_markup())
 
         self.lessons = discover_lessons(root)
         list_view = self.query_one("#lesson-list", ListView)

@@ -107,7 +107,7 @@ def load_lesson_summary(lesson_dir: str) -> LessonSummary:
             state=compute_effective_workflow_state(lesson_dir),
             phase_status=phase_status,
             pending_issues=pending,
-            cost_total=(cost_data or {}).get("total_cost"),
+            cost_total=(cost_data or {}).get("total_estimated_cost_usd"),
             mtime=mtime,
         )
     except Exception as exc:

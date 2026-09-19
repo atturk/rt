@@ -16,6 +16,7 @@ from rt.tui.data import (
     LessonSummary,
     badge_for_state,
     discover_lessons,
+    load_lesson_summary,
     load_markdown_preview,
 )
 
@@ -133,16 +134,30 @@ class TestMarkdownPreview:
         assert "Nessuna anteprima disponibile" in preview
 
 
+class TestLessonCost:
+    def test_cost_total_reads_the_real_field_from_compute_lesson_cost(self, tmp_path):
+        # Regressione: compute_lesson_cost restituisce 'total_estimated_cost_usd', non
+        # 'total_cost' — una prima versione leggeva la chiave sbagliata e mostrava
+        # sempre costo assente anche con un llm_debug.log popolato.
+        lesson_dir = str(tmp_path)
+        _write_lesson(lesson_dir)
+        state_dir = os.path.join(lesson_dir, "_state")
+        entries = [
+            {"job": "outline", "status": "success", "estimated_cost": 0.05},
+            {"job": "rewrite", "status": "success", "estimated_cost": 0.09},
+        ]
+        with open(os.path.join(state_dir, "llm_debug.log"), "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+        summary = load_lesson_summary(lesson_dir)
+        assert summary.cost_total == pytest.approx(0.14)
+
+
 class TestBareCliLaunchesTui:
-    def test_no_subcommand_launches_rt_app(self):
-        from rt.cli import main
-
-        with patch("rt.tui.app.run_app") as mock_run:
-            main([])
-        mock_run.assert_called_once()
-
     def test_subcommand_still_works_normally(self):
-        # Non deve lanciare la TUI quando viene passato un sottocomando reale.
+        # Non deve lanciare la TUI quando viene passato un sottocomando reale
+        # (vedi test_version_and_update.py per il caso senza sottocomando).
         from rt.cli import main
 
         with patch("rt.tui.app.run_app") as mock_run:

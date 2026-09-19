@@ -293,11 +293,13 @@ def test_cli_main_flag_interception():
         mock_update.assert_called_once()
 
 
-def test_cli_main_missing_subcommand_behavior():
-    with pytest.raises(SystemExit) as exc_info:
+def test_cli_main_no_subcommand_launches_tui_app():
+    # Dalla v3.3.1 'rt' senza sottocomando non è più un errore argparse: lancia la
+    # dashboard Textual principale (rt.tui.app.run_app), mockata qui per non aprire
+    # davvero un'App Textual bloccante durante i test.
+    with patch("rt.tui.app.run_app") as mock_run:
         main([])
-    # argparse error on missing required subparser exits with code 2
-    assert exc_info.value.code == 2
+    mock_run.assert_called_once()
 
 
 def test_cli_help_includes_version_and_update(capsys):
