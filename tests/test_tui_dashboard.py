@@ -192,3 +192,98 @@ async def test_dashboard_end_to_end_with_fixture_lessons(tmp_path):
             await pilot.pause()
             assert isinstance(list_view.highlighted_child, LessonRow)
             assert app.selected_lesson.dir_path == list_view.highlighted_child.lesson.dir_path
+
+
+class TestDashboardSubprocessRun:
+    def test_run_cli_invokes_subprocess(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from rt.tui.app import RTApp
+        import subprocess
+
+        mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        monkeypatch.setattr("builtins.input", lambda prompt="": "")
+        monkeypatch.setattr("rt.telegram.daemon_status.get_rt_executable_path", lambda: "/mock/bin/rt")
+
+        app = RTApp()
+        with patch.object(app, "suspend"):
+            app._run_cli(["config"])
+
+        mock_run.assert_called_once_with(["/mock/bin/rt", "config"])
+
+    def test_run_cli_handles_nonzero_exit_without_crashing(self, monkeypatch, capsys):
+        from unittest.mock import MagicMock
+        from rt.tui.app import RTApp
+        import subprocess
+
+        mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=1))
+        monkeypatch.setattr(subprocess, "run", mock_run)
+        monkeypatch.setattr("builtins.input", lambda prompt="": "")
+        monkeypatch.setattr("rt.telegram.daemon_status.get_rt_executable_path", lambda: "/mock/bin/rt")
+
+        app = RTApp()
+        with patch.object(app, "suspend"):
+            app._run_cli(["review", "/path/to/lesson"])
+
+        captured = capsys.readouterr()
+        assert "terminato con codice 1" in captured.out
+
+    def test_run_cli_handles_exceptions_gracefully(self, monkeypatch, capsys):
+        from unittest.mock import MagicMock
+        from rt.tui.app import RTApp
+        import subprocess
+
+        monkeypatch.setattr(subprocess, "run", MagicMock(side_effect=FileNotFoundError))
+        monkeypatch.setattr("builtins.input", lambda prompt="": "")
+        monkeypatch.setattr("rt.telegram.daemon_status.get_rt_executable_path", lambda: "/mock/bin/rt")
+
+        app = RTApp()
+        with patch.object(app, "suspend"):
+            app._run_cli(["config"])
+
+        captured = capsys.readouterr()
+        assert "Eseguibile non trovato" in captured.out
+
+    @pytest.mark.anyio
+    async def test_action_methods_pass_correct_argv(self, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock
+        from rt.tui.app import RTApp
+
+        app = RTApp()
+        dummy_lesson = LessonSummary(
+            dir_path="/path/to/lesson",
+            title="lezione",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        app.selected_lesson = dummy_lesson
+        monkeypatch.setattr(app, "refresh_lessons", AsyncMock())
+
+        mock_run_cli = MagicMock()
+        monkeypatch.setattr(app, "_run_cli", mock_run_cli)
+
+        await app.action_run_next()
+        mock_run_cli.assert_called_with(["run", "/path/to/lesson"])
+
+        await app.action_review()
+        mock_run_cli.assert_called_with(["review", "/path/to/lesson"])
+
+        await app.action_build()
+        mock_run_cli.assert_called_with(["build", "/path/to/lesson"])
+
+        await app.action_cost()
+        mock_run_cli.assert_called_with(["cost", "/path/to/lesson", "--split"])
+
+        await app.action_recall()
+        mock_run_cli.assert_called_with(["recall", "/path/to/lesson"])
+
+        await app.action_configure()
+        mock_run_cli.assert_called_with(["config"])
+

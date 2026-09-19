@@ -253,22 +253,30 @@ class RTApp(App):
         self.query_one("#search", Input).focus()
 
     def _run_cli(self, argv: List[str]) -> None:
-        """Sospende la dashboard e lancia lo stesso 'rt <sottocomando>' del terminale
-        (rt.cli.main, zero logica duplicata), poi riprende. Un errore nel sottocomando
-        non deve far crashare la dashboard: viene mostrato e si torna qui."""
-        from rt.cli import main as cli_main
+        """Sospende la dashboard e lancia 'rt <sottocomando>' in un sottoprocesso separato
+        per evitare conflitti con l'event loop di asyncio (asyncio.run() annidato),
+        poi riprende. Un errore nel sottocomando non deve far crashare la dashboard:
+        viene mostrato e si torna qui."""
+        import subprocess
+        from rt.telegram.daemon_status import get_rt_executable_path
+
+        rt_path = get_rt_executable_path()
         with self.suspend():
             print(f"\n$ rt {' '.join(argv)}\n")
             try:
-                cli_main(argv)
-            except SystemExit as exc:
-                if exc.code not in (0, None):
-                    print(f"\n[rt {' '.join(argv)} terminato con codice {exc.code}]")
+                proc = subprocess.run([rt_path, *argv])
+                if proc.returncode != 0:
+                    print(f"\n[rt {' '.join(argv)} terminato con codice {proc.returncode}]")
             except KeyboardInterrupt:
                 print("\n⏹ Interrotto.")
-            except Exception as exc:  # confine verso comandi arbitrari: non deve uccidere la dashboard
+            except FileNotFoundError:
+                print(f"\n❌ Eseguibile non trovato: {rt_path}")
+            except Exception as exc:  # confine verso errori imprevisti di spawn: non deve uccidere la dashboard
                 print(f"\n❌ Errore inatteso: {exc}")
-            input("\nPremi INVIO per tornare alla dashboard RT…")
+            try:
+                input("\nPremi INVIO per tornare alla dashboard RT…")
+            except (KeyboardInterrupt, EOFError):
+                pass
 
     async def action_run_next(self) -> None:
         if self.selected_lesson:
