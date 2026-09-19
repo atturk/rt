@@ -32,6 +32,9 @@ credentials:
 
 telegram:
   default_channel: "terminal"
+  # Cartella che raccoglie tutte le lezioni: 'rt build' vi sposta le lezioni finite, e la
+  # dashboard principale (comando 'rt' senza sottocomando) la scansiona per elencarle tutte.
+  # Se configurata, 'rt' (tasto 'n', nuova lezione) crea lì anche le lezioni nuove.
   lessons_root: null
   topics: {}
   misc_topic_id: null

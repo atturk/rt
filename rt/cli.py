@@ -704,7 +704,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         formatter_class=RTHelpFormatter
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True, title="Comandi principali")
+    subparsers = parser.add_subparsers(dest="command", required=False, title="Comandi principali")
 
     # 1. config
     p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
@@ -875,6 +875,10 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     normalized_argv = normalize_review_cli_args(raw_args)
     args = parser.parse_args(normalized_argv)
+    if args.command is None:
+        from rt.tui.app import run_app
+        run_app()
+        return
     from rt.llm.errors import LLMFailure
     from pydantic import ValidationError
     try:
