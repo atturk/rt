@@ -126,12 +126,58 @@ class TestMarkdownPreview:
 
         assert load_markdown_preview(lesson_dir) == content
 
+    def test_strips_frontmatter_from_real_rielaborato(self, tmp_path):
+        lesson_dir = str(tmp_path)
+        _write_lesson(lesson_dir)
+        state_dir = os.path.join(lesson_dir, "_state")
+        content = (
+            "---\n"
+            "titolo: 'Patologia Generale: Adattamenti'\n"
+            "materia: 'PATOLOGIA GENERALE 1'\n"
+            "data: '2025-02-26'\n"
+            "argomenti:\n"
+            "  - ''\n"
+            "---\n\n"
+            "# [2025-02-26] PATOLOGIA GENERALE 1 - Patologia Generale\n\n"
+            "Corpo della lezione."
+        )
+        with open(os.path.join(state_dir, "rielaborato.md"), "w", encoding="utf-8") as f:
+            f.write(content)
+
+        preview = load_markdown_preview(lesson_dir)
+        assert preview == "# [2025-02-26] PATOLOGIA GENERALE 1 - Patologia Generale\n\nCorpo della lezione."
+        assert "titolo:" not in preview
+        assert "argomenti:" not in preview
+
     def test_placeholder_when_nothing_available(self, tmp_path):
         lesson_dir = str(tmp_path)
         _write_lesson(lesson_dir, with_draft=False)
 
         preview = load_markdown_preview(lesson_dir)
         assert "Nessuna anteprima disponibile" in preview
+
+
+class TestStripYamlFrontmatter:
+    def test_strips_valid_frontmatter(self):
+        from rt.tui.data import strip_yaml_frontmatter
+        text = "---\ntitolo: 'Test'\nmateria: 'BIO'\n---\n\n# Titolo\nCorpo"
+        assert strip_yaml_frontmatter(text) == "# Titolo\nCorpo"
+
+    def test_preserves_content_without_frontmatter(self):
+        from rt.tui.data import strip_yaml_frontmatter
+        text = "# Titolo\n\n---\nSeparatore\n---\nTesto"
+        assert strip_yaml_frontmatter(text) == text
+
+    def test_strips_frontmatter_with_empty_yaml_list(self):
+        from rt.tui.data import strip_yaml_frontmatter
+        text = "---\ntitolo: 'T'\nargomenti:\n  - ''\n---\n\n# Titolo"
+        assert strip_yaml_frontmatter(text) == "# Titolo"
+
+    def test_empty_or_none_safe(self):
+        from rt.tui.data import strip_yaml_frontmatter
+        assert strip_yaml_frontmatter("") == ""
+        assert strip_yaml_frontmatter(None) is None
+
 
 
 class TestLessonCost:
