@@ -341,9 +341,16 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
     info = read_info_yaml(yaml_path)
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
-    topics_val = info.get("argomenti", "Argomenti")
+    raw_topics = info.get("argomenti")
 
     outline = load_outline(lesson_dir)
+    topics_replaced = False
+    if (not raw_topics or not str(raw_topics).strip()) and outline.generated_topics:
+        topics_val = ", ".join(outline.generated_topics)
+        topics_replaced = True
+    else:
+        topics_val = raw_topics or "Argomenti"
+
     safe_title = re.sub(r'[/\\:*?"<>|]', ' ', outline.lesson_title)
     safe_title = re.sub(r'\s+', ' ', safe_title).strip()
     named_filename = f"[{date_val}] {subject_val.upper()} - {safe_title}.md"
@@ -453,11 +460,14 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
 
     # 8. Aggiornamento stato e manifest
     transition_to(yaml_path, WorkflowState.COMPLETED, allow_force=force)
-    update_info_yaml(yaml_path, {
+    info_updates = {
         "titolo": outline.lesson_title,
         "fase_corrente": "completato",
-        "stato": "completato"
-    })
+        "stato": "completato",
+    }
+    if topics_replaced:
+        info_updates["argomenti"] = topics_val
+    update_info_yaml(yaml_path, info_updates)
 
     init_or_update_manifest(
         lesson_dir=current_dir,

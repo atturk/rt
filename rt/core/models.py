@@ -84,6 +84,12 @@ class Outline(BaseModel):
     schema_version: str = "1.0"
     lesson_title: str = Field(..., min_length=1, description="Titolo formale accademico della lezione")
     macro_sections: List[OutlineMacro] = Field(..., min_length=1, description="Elenco macro capitoli")
+    generated_topics: Optional[List[str]] = Field(default=None, description="Argomenti generali di lezione generati automaticamente se omessi dall'utente")
+
+
+class LessonTopics(BaseModel):
+    argomenti: List[str] = Field(default_factory=list, description="Elenco sintetico di 3-6 argomenti principali a livello di lezione")
+
 
 
 # ---------------------------------------------------------

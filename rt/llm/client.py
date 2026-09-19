@@ -1276,7 +1276,15 @@ class LLMClient:
             from rt.llm.prompts import ImageUnitJudgeResult
             return ImageUnitJudgeResult(image_hashes=[])  # type: ignore
 
-
+        elif model_name == "LessonTopics":
+            from rt.core.models import LessonTopics
+            return LessonTopics(
+                argomenti=[
+                    "Introduzione e concetti fondamentali",
+                    "Meccanismi patologici e adattamento",
+                    "Implicazioni cliniche e conclusioni",
+                ]
+            )  # type: ignore
 
         # Fallback generico per qualsiasi altro modello
         try:

@@ -7,8 +7,8 @@ ai soli segment_id esistenti, e ne valida la coerenza e la copertura didattica.
 
 import os
 import json
-from typing import Dict, Any
-from rt.core.models import Outline
+from typing import Dict, Any, List, Optional
+from rt.core.models import Outline, LessonTopics
 from rt.core.segments import load_segments_json
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import init_or_update_manifest
@@ -140,6 +140,29 @@ def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) 
         client, OUTLINE_SYSTEM_PROMPT, [], prompt, segments_data, lesson_dir
     )
     
+    # Generazione automatica argomenti se non specificati dall'utente
+    if not topics_val or not str(topics_val).strip():
+        try:
+            macro_summary = "\n".join(f"- {m.id}. {m.title}" for m in outline.macro_sections)
+            topics_prompt = (
+                f"Sulla base del titolo della lezione e dei macro capitoli seguenti, "
+                f"estrai da 3 a 6 argomenti principali sintetici in linguaggio naturale (stile elenco/indice).\n\n"
+                f"Titolo lezione: {outline.lesson_title}\n"
+                f"Materia: {subject_val}\n"
+                f"Macro capitoli:\n{macro_summary}\n"
+            )
+            topics_res = client.call_structured(
+                prompt=topics_prompt,
+                system_prompt="Sei un assistente didattico accademico. Estrai gli argomenti sintetici della lezione.",
+                response_model=LessonTopics,
+                job_name="outline",
+                lesson_dir=lesson_dir,
+            )
+            if topics_res and topics_res.argomenti:
+                outline.generated_topics = [t.strip() for t in topics_res.argomenti if t.strip()]
+        except Exception as e:
+            print(f"⚠️  Generazione automatica argomenti non riuscita: {e}")
+
     # Salvataggio atomico
     save_outline(outline, lesson_dir)
     
