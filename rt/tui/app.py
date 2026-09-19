@@ -149,6 +149,11 @@ class RTApp(App):
         height: 1fr; border: round $primary 25%; border-title-color: $primary;
     }
     MarkdownViewer { height: 1fr; background: $surface; }
+    MarkdownTableOfContents {
+        width: 30;
+        max-width: 35;
+        border-right: vkey $primary 20%;
+    }
 
     Footer { background: $panel; }
     """
@@ -162,6 +167,7 @@ class RTApp(App):
         ("b", "build", "Build"),
         ("c", "cost", "Costi"),
         ("a", "recall", "Active recall"),
+        ("t", "toggle_toc", "TOC"),
         ("q", "quit", "Esci"),
     ]
 
@@ -201,7 +207,7 @@ class RTApp(App):
                 with Vertical(id="detail-info"):
                     yield Static("", id="detail-body")
                 with Vertical(id="markdown-panel"):
-                    yield MarkdownViewer("", show_table_of_contents=False)
+                    yield MarkdownViewer("", show_table_of_contents=True)
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -251,6 +257,13 @@ class RTApp(App):
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()
+
+    def action_toggle_toc(self) -> None:
+        try:
+            viewer = self.query_one(MarkdownViewer)
+            viewer.show_table_of_contents = not viewer.show_table_of_contents
+        except Exception:
+            pass
 
     def _run_cli(self, argv: List[str]) -> None:
         """Sospende la dashboard e lancia 'rt <sottocomando>' in un sottoprocesso separato

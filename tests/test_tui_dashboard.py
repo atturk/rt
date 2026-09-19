@@ -239,6 +239,19 @@ async def test_dashboard_end_to_end_with_fixture_lessons(tmp_path):
             assert isinstance(list_view.highlighted_child, LessonRow)
             assert app.selected_lesson.dir_path == list_view.highlighted_child.lesson.dir_path
 
+            from textual.widgets import MarkdownViewer
+            viewer = app.query_one(MarkdownViewer)
+            assert viewer.show_table_of_contents is True
+
+            await pilot.press("t")
+            await pilot.pause()
+            assert viewer.show_table_of_contents is False
+
+            await pilot.press("t")
+            await pilot.pause()
+            assert viewer.show_table_of_contents is True
+
+
 
 class TestDashboardSubprocessRun:
     def test_run_cli_invokes_subprocess(self, monkeypatch):
