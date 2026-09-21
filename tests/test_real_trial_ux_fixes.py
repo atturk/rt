@@ -213,9 +213,7 @@ def test_mock_generation_rich_science(tmp_path):
 
     res_sci = run_review(lesson_dir, force=True, force_mock=True)
     assert res_sci["total_science_issues"] == 10
-    assert res_sci["docente_issues"] > 0
-    assert res_sci["reconstruction_issues"] > 0
-    assert res_sci["science_checks"] > 0
+    assert res_sci["concettuale_issues"] == 10
 
 
 def test_mock_generation_bounded_across_many_units(tmp_path):

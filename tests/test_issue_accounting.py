@@ -33,19 +33,11 @@ stato: completed
     with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
         f.write(info_content)
 
-    # Creiamo M science issues: 2 ERR_DOCENTE, 4 ERR_RECONSTRUCTION, 1 SCIENCE_CHECK = 7 totali
+    # Creiamo M science issues: 7 ERR_CONCETTUALE totali
     sci_issues = []
-    for i in range(2):
+    for i in range(7):
         sci_issues.append({
-            "id": f"sci_d_{i}", "type": "ERR_DOCENTE", "severity": "high", "claim": f"claim_{i}", "reason": "errore docente", "status": "pending"
-        })
-    for i in range(4):
-        sci_issues.append({
-            "id": f"sci_r_{i}", "type": "ERR_RECONSTRUCTION", "severity": "medium", "claim": f"claim_{i+2}", "reason": "allucinazione", "status": "pending"
-        })
-    for i in range(1):
-        sci_issues.append({
-            "id": f"sci_c_{i}", "type": "SCIENCE_CHECK", "severity": "low", "claim": f"claim_{i+6}", "reason": "controllo fonti", "status": "pending"
+            "id": f"sci_{i}", "type": "ERR_CONCETTUALE", "severity": "high", "claim": f"claim_{i}", "reason": "errore concettuale", "status": "pending"
         })
 
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
@@ -56,7 +48,7 @@ stato: completed
     for i in range(7):
         record_decision(lesson_dir, f"sci_auto_{i}", "accepted", notes="auto applied", resolved_by="cli_auto")
     # 1 science issue risolta dall'utente
-    record_decision(lesson_dir, "sci_d_0", "riformula", notes="manual rewrite note", resolved_by="user")
+    record_decision(lesson_dir, "sci_0", "riformula", notes="manual rewrite note", resolved_by="user")
 
     from types import SimpleNamespace
     args = SimpleNamespace(lesson_dir=lesson_dir, issues=True)
@@ -64,9 +56,7 @@ stato: completed
     captured = capsys.readouterr().out
 
     assert "Science Issues (7 totali):" in captured
-    assert "ERR_DOCENTE:                2" in captured
-    assert "ERR_RECONSTRUCTION:         4" in captured
-    assert "SCIENCE_CHECK:              1" in captured
+    assert "ERR_CONCETTUALE:            7" in captured
 
     assert "Decision Ledger (8 registrate):" in captured
     assert "auto-applied:               7" in captured

@@ -252,7 +252,7 @@ def test_start_review_via_telegram_registers_session(tmp_path, monkeypatch):
     from rt.telegram.config import TelegramConfig
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -297,7 +297,7 @@ def test_start_review_callback_integration_registers_session(tmp_path, monkeypat
     _setup_review_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -343,7 +343,7 @@ def test_start_review_via_telegram_prevents_duplicate_active_session(tmp_path, m
     _setup_review_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -392,7 +392,7 @@ def test_start_review_via_telegram_busy_different_activity(tmp_path, monkeypatch
     _setup_review_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="err", reason="reason", suggested_fix="corr")
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)

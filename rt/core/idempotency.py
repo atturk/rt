@@ -27,7 +27,7 @@ PROCESSOR_VERSIONS = {
     "prepare": "prepare_v1.0",
     "outline": "outline_v1.0",
     "rewrite": "rewrite_v1.0",
-    "review": "review_v1.1",
+    "review": "review_v1.2",
     "build": "build_v1.0",
 }
 
@@ -179,8 +179,7 @@ def check_phase_status(
         "build": [
             "pre-elaborato.md",
             "rielaborato.md",
-            "Errori concettuali.md",
-            "Problemi scientifici.md"
+            "Errori concettuali.md"
         ]
     }
 
@@ -358,8 +357,7 @@ def check_phase_status(
         required_files = [
             "pre-elaborato.md",
             "rielaborato.md",
-            "Errori concettuali.md",
-            "Problemi scientifici.md"
+            "Errori concettuali.md"
         ]
         for rf in required_files:
             p = lesson_path(lesson_dir, rf)

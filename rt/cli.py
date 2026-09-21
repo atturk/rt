@@ -403,9 +403,7 @@ def cmd_status(args):
     decisions = ledger.decisions
     decided_ids = {d.issue_id for d in decisions}
 
-    sci_docente = sum(1 for x in sci_issues if x.type == ScienceType.ERR_DOCENTE)
-    sci_reconstruction = sum(1 for x in sci_issues if x.type == ScienceType.ERR_RECONSTRUCTION)
-    sci_check = sum(1 for x in sci_issues if x.type == ScienceType.SCIENCE_CHECK)
+    sci_concettuale = sum(1 for x in sci_issues if x.type == ScienceType.ERR_CONCETTUALE)
 
     dec_accepted = sum(1 for d in decisions if d.decision == "accepted")
     dec_rejected = sum(1 for d in decisions if d.decision == "rejected")
@@ -444,9 +442,7 @@ def cmd_status(args):
         print("🔍 REPORT DIAGNOSTICO DETTAGLIATO ISSUE & DECISION LEDGER")
         print("=" * 60)
         print(f"Science Issues ({len(sci_issues)} totali):")
-        print(f"  ERR_DOCENTE:                {sci_docente}")
-        print(f"  ERR_RECONSTRUCTION:         {sci_reconstruction}")
-        print(f"  SCIENCE_CHECK:              {sci_check}")
+        print(f"  ERR_CONCETTUALE:            {sci_concettuale}")
         print()
         print(f"Decision Ledger ({len(decisions)} registrate):")
         print(f"  accepted:                   {dec_accepted}")
@@ -476,7 +472,7 @@ def cmd_status(args):
     }
     if getattr(args, "issues", False):
         res["issues_breakdown"] = {
-            "science": {"err_docente": sci_docente, "err_reconstruction": sci_reconstruction, "science_check": sci_check},
+            "science": {"err_concettuale": sci_concettuale},
             "decisions": {"total": len(decisions), "accepted": dec_accepted, "rejected": dec_rejected, "edited": dec_edited, "auto_applied": dec_auto, "user": dec_user},
             "pending": {"total": total_pending, "science": len(pending_sci)}
         }
@@ -581,8 +577,8 @@ def cmd_run(args):
 
     if with_review:
         sci_res = run_review(lesson_dir, force=force, force_mock=mock_mode)
-        sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Docente: {sci_res['docente_issues']}, Ricostruzione: {sci_res['reconstruction_issues']}, Check: {sci_res['science_checks']})"
-        _print_phase_action("review", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su docente e allucinazioni", details=sci_details)
+        sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Concettuali: {sci_res.get('concettuale_issues', 0)})"
+        _print_phase_action("review", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su correttezza scientifica", details=sci_details)
 
         auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
         if not run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val):
@@ -598,8 +594,7 @@ def cmd_run(args):
         "File finali generati con successo:\n"
         f"  - Rielaborato: {bld_res['rielaborato']}\n"
         f"  - Pre-elaborato: {bld_res['pre_elaborato']}\n"
-        f"  - Errori concettuali: {bld_res['errori_concettuali']}\n"
-        f"  - Problemi scientifici: {bld_res['problemi_scientifici']}"
+        f"  - Errori concettuali: {bld_res['errori_concettuali']}"
     )
     _print_phase_action("build", bld_res, step=build_step_num, total_steps=total_steps, description="Finalizzazione deterministica Markdown", details=bld_details)
     print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")

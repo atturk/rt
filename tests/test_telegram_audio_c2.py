@@ -190,7 +190,7 @@ def test_telegram_review_science_audio_deduplication(tmp_path):
     sci_issues = [
         ScienceIssue(
             id="sci_001",
-            type=ScienceType.ERR_RECONSTRUCTION,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             claim="Claim 1",
@@ -199,7 +199,7 @@ def test_telegram_review_science_audio_deduplication(tmp_path):
         ),
         ScienceIssue(
             id="sci_002",
-            type=ScienceType.SCIENCE_CHECK,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.LOW,
             unit_id="U1",
             claim="Claim 2",
@@ -264,7 +264,7 @@ def test_telegram_review_missing_audio_does_not_fail(tmp_path):
     sci_issues = [
         ScienceIssue(
             id="sci_001",
-            type=ScienceType.ERR_DOCENTE,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             segment_id="seg_000001",

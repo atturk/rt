@@ -543,7 +543,7 @@ class TestRecallUsesResolvedDraft:
 
         sci_issue = ScienceIssue(
             id="sci_000001",
-            type=ScienceType.ERR_DOCENTE,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.LOW,
             unit_id="1.1",
             segment_id="seg_000001",

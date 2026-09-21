@@ -235,7 +235,7 @@ def _setup_review_environment(lesson_dir: str):
 def _create_sample_science_issue(id_str="sci_001", unit_id="U1", claim="distillazione", fix="distillazione"):
     return ScienceIssue(
         id=id_str,
-        type=ScienceType.ERR_RECONSTRUCTION,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id=unit_id,
         claim=claim,
@@ -368,7 +368,7 @@ async def test_unknown_key_in_science_review_no_action(tmp_path):
     sci_issues = [
         ScienceIssue(
             id="sci_001",
-            type=ScienceType.ERR_RECONSTRUCTION,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             claim="abbiamo una reazione esotermica",
@@ -466,7 +466,7 @@ async def test_science_interactive_p_and_e_keys(tmp_path):
     sci_issues = [
         ScienceIssue(
             id="sci_001",
-            type=ScienceType.ERR_RECONSTRUCTION,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             claim="abbiamo una reazione esotermica",

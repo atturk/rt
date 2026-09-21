@@ -130,7 +130,7 @@ async def test_mpv_player_launch_and_toggle(tmp_path):
 
     iss = ScienceIssue(
         id="sci_1",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="velocità è la derivata",
@@ -169,7 +169,7 @@ async def test_mpv_player_autoclose_on_actions(tmp_path):
 
     iss1 = ScienceIssue(
         id="sci_1",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 1",
@@ -178,7 +178,7 @@ async def test_mpv_player_autoclose_on_actions(tmp_path):
     )
     iss2 = ScienceIssue(
         id="sci_2",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 2",
@@ -208,7 +208,7 @@ async def test_mpv_player_not_closed_on_edit(tmp_path):
 
     iss = ScienceIssue(
         id="sci_1",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 1",
@@ -238,7 +238,7 @@ async def test_mpv_player_external_close_detection(tmp_path):
 
     iss = ScienceIssue(
         id="sci_1",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 1",
@@ -278,7 +278,7 @@ async def test_mpv_not_installed_error_message(tmp_path):
 
     iss = ScienceIssue(
         id="sci_1",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 1",

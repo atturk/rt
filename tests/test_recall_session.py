@@ -422,7 +422,7 @@ class TestFormatUnitReference:
         _setup_lesson(lesson_dir)
 
         sci_issue = ScienceIssue(
-            id="sci_000001", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.LOW,
+            id="sci_000001", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.LOW,
             unit_id="1.1", segment_id="seg_000001", claim="Contenuto unita 1.",
             reason="Dettaglio approvato dal docente.",
             suggested_fix="Contenuto unita 1, RIVISTO E APPROVATO.",

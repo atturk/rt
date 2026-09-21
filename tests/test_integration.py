@@ -123,7 +123,7 @@ def test_full_pipeline_end_to_end(temp_lesson_dir):
     assert os.path.isfile(build_res["pre_elaborato"])
     assert os.path.isfile(build_res["rielaborato"])
     assert os.path.isfile(build_res["errori_concettuali"])
-    assert os.path.isfile(build_res["problemi_scientifici"])
+    assert not os.path.exists(os.path.join(lesson_dir, "Problemi scientifici.md"))
     
     # 7. VERIFICA RIGOROSA DEL REQUISITO TIMESTAMP SUI FILE GENERATI
     with open(build_res["rielaborato"], "r", encoding="utf-8") as f:

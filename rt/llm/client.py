@@ -1184,18 +1184,18 @@ class LLMClient:
             if not src_snippet:
                 src_snippet = "[MOCK] Citazione sorgente docente"
 
-            # Mix dei 3 tipi: ERR_DOCENTE, ERR_RECONSTRUCTION, SCIENCE_CHECK (10 issue totali)
+            # Issue tutte di tipo ERR_CONCETTUALE con varietà di gravità e diplomatic_question opzionale (10 issue totali)
             sci_specs = [
-                (ScienceType.ERR_DOCENTE, ScienceSeverity.HIGH, src_snippet, "Professore, intendeva confermare questo passaggio?"),
-                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.MEDIUM, None, None),
-                (ScienceType.SCIENCE_CHECK, ScienceSeverity.LOW, None, None),
-                (ScienceType.ERR_DOCENTE, ScienceSeverity.MEDIUM, src_snippet, "Professore, nel passaggio si riferiva al cofattore indicato?"),
-                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.HIGH, None, None),
-                (ScienceType.SCIENCE_CHECK, ScienceSeverity.MEDIUM, None, None),
-                (ScienceType.ERR_DOCENTE, ScienceSeverity.LOW, src_snippet, "Professore, si intendeva il valore di riferimento citato?"),
-                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.LOW, None, None),
-                (ScienceType.SCIENCE_CHECK, ScienceSeverity.HIGH, None, None),
-                (ScienceType.ERR_RECONSTRUCTION, ScienceSeverity.MEDIUM, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.HIGH, src_snippet, "Professore, intendeva confermare questo passaggio?"),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.MEDIUM, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.LOW, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.MEDIUM, src_snippet, "Professore, nel passaggio si riferiva al cofattore indicato?"),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.HIGH, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.MEDIUM, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.LOW, src_snippet, "Professore, si intendeva il valore di riferimento citato?"),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.LOW, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.HIGH, None, None),
+                (ScienceType.ERR_CONCETTUALE, ScienceSeverity.MEDIUM, None, None),
             ]
 
             mock_issues = []

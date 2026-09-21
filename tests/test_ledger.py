@@ -66,7 +66,7 @@ def test_load_resolved_draft_reflects_accepted_science_decision(tmp_path):
 
     sci_issue = ScienceIssue(
         id="sci_000001",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.LOW,
         unit_id="1.2",
         segment_id="seg_000001",
@@ -128,7 +128,7 @@ def test_apply_science_decision_clean_replacement(tmp_path):
     
     sci_issue = ScienceIssue(
         id="sci_000011",
-        type=ScienceType.ERR_RECONSTRUCTION,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="4.3",
         segment_id="seg_000100",

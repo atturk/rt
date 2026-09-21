@@ -30,7 +30,7 @@ def test_science_critic_diff_rendering_with_spans():
     sci_unit = _sample_draft_unit()
     iss = ScienceIssue(
         id="sci_001",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="abbassano l'energia di attivazione",
@@ -78,7 +78,7 @@ def test_science_critic_no_suggested_fix_omits_green_and_legend():
     sci_unit = _sample_draft_unit()
     iss = ScienceIssue(
         id="sci_002",
-        type=ScienceType.SCIENCE_CHECK,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.LOW,
         unit_id="U1",
         claim="abbassano l'energia di attivazione",
@@ -105,7 +105,7 @@ def test_science_critic_fallback_when_claim_not_verbatim():
     sci_unit = _sample_draft_unit()
     iss = ScienceIssue(
         id="sci_003",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.MEDIUM,
         unit_id="U1",
         claim="un claim che non esiste nel testo",
@@ -164,7 +164,7 @@ async def test_keybindings_and_actions_science_critic(tmp_path):
 
     iss1 = ScienceIssue(
         id="sci_1",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 1",
@@ -173,7 +173,7 @@ async def test_keybindings_and_actions_science_critic(tmp_path):
     )
     iss2 = ScienceIssue(
         id="sci_2",
-        type=ScienceType.ERR_DOCENTE,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="claim 2",

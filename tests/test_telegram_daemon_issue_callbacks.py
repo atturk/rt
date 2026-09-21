@@ -45,7 +45,7 @@ def _setup_test_lesson(lesson_dir: str):
         json.dump(draft.model_dump(mode="json"), f)
 
     sci_issues = [
-        ScienceIssue(id="sci_01", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="errore", reason="mot", suggested_fix="fix esatto"),
+        ScienceIssue(id="sci_01", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="errore", reason="mot", suggested_fix="fix esatto"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)

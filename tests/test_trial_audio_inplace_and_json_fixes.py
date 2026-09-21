@@ -98,7 +98,7 @@ async def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     sci_issues = [
         ScienceIssue(
             id="sci_001",
-            type=ScienceType.ERR_RECONSTRUCTION,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             segment_id="seg_000001",
@@ -149,7 +149,7 @@ async def test_science_clip_unit_playback(tmp_path):
 
     sci_issue = ScienceIssue(
         id="sci_001",
-        type=ScienceType.ERR_RECONSTRUCTION,
+        type=ScienceType.ERR_CONCETTUALE,
         severity=ScienceSeverity.HIGH,
         unit_id="U1",
         claim="abbiamo una reazione termica",
@@ -193,7 +193,7 @@ async def test_redraw_in_place_ansi_sequences(tmp_path):
     sci_issues = [
         ScienceIssue(
             id="sci_001",
-            type=ScienceType.ERR_RECONSTRUCTION,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             segment_id="seg_000001",
@@ -203,7 +203,7 @@ async def test_redraw_in_place_ansi_sequences(tmp_path):
         ),
         ScienceIssue(
             id="sci_002",
-            type=ScienceType.ERR_RECONSTRUCTION,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.HIGH,
             unit_id="U1",
             segment_id="seg_000002",

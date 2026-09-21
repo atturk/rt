@@ -456,7 +456,7 @@ def test_cmd_run_cost_summary(capsys, monkeypatch, tmp_path):
          patch("rt.cli.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 2, "coverage_percentage": 100}}), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli.run_rewrite", return_value={"skipped": True, "total_units": 2, "processed_units": 2}), \
-         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 0, "docente_issues": 0, "reconstruction_issues": 0, "science_checks": 0}), \
+         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 0, "concettuale_issues": 0}), \
          patch("rt.cli.load_ledger", return_value=MagicMock(decisions=[])), \
          patch("rt.cli.load_science_issues", return_value=[]), \
          patch("rt.cli.run_build", return_value={
@@ -464,7 +464,6 @@ def test_cmd_run_cost_summary(capsys, monkeypatch, tmp_path):
              "rielaborato": "rielaborato.md",
              "pre_elaborato": "pre_elaborato.md",
              "errori_concettuali": "errori_concettuali.md",
-             "problemi_scientifici": "problemi_scientifici.md"
          }):
         cmd_run(args)
 

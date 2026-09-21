@@ -74,7 +74,7 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
     assert os.path.isfile(lesson_path(lesson_dir, "pre-elaborato.md"))
     assert os.path.isfile(lesson_path(lesson_dir, "rielaborato.md"))
     assert os.path.isfile(os.path.join(lesson_dir, "Errori concettuali.md"))
-    assert os.path.isfile(os.path.join(lesson_dir, "Problemi scientifici.md"))
+    assert not os.path.exists(os.path.join(lesson_dir, "Problemi scientifici.md"))
 
     # 4. Stato finale completato
     state = get_current_state(os.path.join(lesson_dir, "info.yaml"))

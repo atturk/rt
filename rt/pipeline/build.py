@@ -90,9 +90,9 @@ def render_pre_elaborato_md(
             unit_markers = []
             if draft_unit:
                 for s_id in draft_unit.source_segment_ids:
-                    # Errori docente
+                    # Errori concettuali
                     for sci in sci_by_seg.get(s_id, []):
-                        if sci.type == "ERR_DOCENTE":
+                        if getattr(sci.type, "value", sci.type) == "ERR_CONCETTUALE":
                             seg_item = seg_by_id.get(s_id)
                             tc = format_timestamp(seg_item.start_seconds) if seg_item else derived_timestamp
                             unit_markers.append(f"(⁉️ ERR{err_counter} {tc})")
@@ -190,23 +190,23 @@ def render_errori_concettuali_md(
     subject: str,
     ledger: Optional[DecisionLedger] = None
 ) -> str:
-    """Renderizza Errori concettuali.md focalizzato sugli errori del docente (ERR_DOCENTE)."""
+    """Renderizza Errori concettuali.md (ERR_CONCETTUALE)."""
     seg_by_id = {s.id: s for s in segments_data.segments}
     decisions_map = {d.issue_id: d for d in (ledger.decisions if ledger else [])}
-    docente_issues = [s for s in science_issues if s.type.value == "ERR_DOCENTE"]
+    concettuali_issues = [s for s in science_issues if getattr(s.type, "value", s.type) == "ERR_CONCETTUALE"]
     
     lines = [
-        f"# Errori Concettuali e Lapsus del Docente - [{date}] {subject.upper()}",
+        f"# Errori Concettuali - [{date}] {subject.upper()}",
         "",
-        "> Registro delle incongruenze espresse durante la lezione, con correzioni e spunti per chiarimenti.",
+        "> Registro delle incongruenze scientifiche ed errori concettuali, con correzioni e spunti per chiarimenti.",
         ""
     ]
     
-    if not docente_issues:
-        lines.append("_Nessun lapsus o errore concettuale del docente rilevato._\n")
+    if not concettuali_issues:
+        lines.append("_Nessun errore concettuale rilevato._\n")
         return "\n".join(lines)
         
-    for iss in docente_issues:
+    for iss in concettuali_issues:
         seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
         tc = seg.start_formatted if seg else "N/D"
         status = decisions_map[iss.id].decision if iss.id in decisions_map else iss.status
@@ -219,46 +219,6 @@ def render_errori_concettuali_md(
         if iss.diplomatic_question:
             lines.append(f"- **Domanda diplomatica**: *\"{iss.diplomatic_question}\"*")
         lines.append(f"- **Stato revisione**: `{status}`\n")
-        
-    return "\n".join(lines)
-
-
-def render_problemi_scientifici_md(
-    science_issues: List[ScienceIssue],
-    segments_data: SegmentsData,
-    date: str,
-    subject: str,
-    ledger: Optional[DecisionLedger] = None
-) -> str:
-    """Renderizza Problemi scientifici.md (ERR_RECONSTRUCTION e SCIENCE_CHECK)."""
-    seg_by_id = {s.id: s for s in segments_data.segments}
-    decisions_map = {d.issue_id: d for d in (ledger.decisions if ledger else [])}
-    other_issues = [s for s in science_issues if s.type.value in ("ERR_RECONSTRUCTION", "SCIENCE_CHECK")]
-    
-    lines = [
-        f"# Revisione Scientifica e Controlli di Fedeltà - [{date}] {subject.upper()}",
-        "",
-        "> Registro delle verifiche scientifiche indipendenti (ricostruzioni ad alto rischio e controlli di plausibilità).",
-        ""
-    ]
-    
-    if not other_issues:
-        lines.append("_Nessun problema di ricostruzione o incongruenza scientifica rilevata dal revisore._\n")
-        return "\n".join(lines)
-        
-    for iss in other_issues:
-        seg = seg_by_id.get(iss.segment_id) if iss.segment_id else None
-        tc = seg.start_formatted if seg else "N/D"
-        status = decisions_map[iss.id].decision if iss.id in decisions_map else iss.status
-        
-        lines.append(f"### {iss.id} [{iss.type.value}] ({tc}) - Gravità: {iss.severity.value.upper()}")
-        lines.append(f"- **Passo in esame**: \"{iss.claim}\"")
-        if iss.source_quote:
-            lines.append(f"- **Citazione ASR sorgente**: \"{iss.source_quote}\"")
-        lines.append(f"- **Critica scientifica**: {iss.reason}")
-        if iss.suggested_fix:
-            lines.append(f"- **Risoluzione raccomandata**: {iss.suggested_fix}")
-        lines.append(f"- **Stato**: `{status}`\n")
         
     return "\n".join(lines)
 
@@ -371,7 +331,6 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
             "rielaborato": lesson_path(current_dir, "rielaborato.md"),
             "named_file": named_filepath,
             "errori_concettuali": lesson_path(current_dir, "Errori concettuali.md"),
-            "problemi_scientifici": lesson_path(current_dir, "Problemi scientifici.md"),
             "telemetry_summary": lesson_path(current_dir, "telemetry_summary.json")
         }
 
@@ -412,11 +371,7 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
     err_md = render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger)
     _atomic_write_text(lesson_path(lesson_dir, "Errori concettuali.md"), err_md)
 
-    # 5. Generazione Problemi scientifici.md (atomica)
-    prob_md = render_problemi_scientifici_md(science_issues, segments_data, date_val, subject_val, ledger)
-    _atomic_write_text(lesson_path(lesson_dir, "Problemi scientifici.md"), prob_md)
-        
-    # 6. Copia intitolata di rielaborato.md con nome formale (atomica)
+    # 5. Copia intitolata di rielaborato.md con nome formale (atomica)
     _atomic_write_text(named_filepath, rielab_md)
 
     current_dir = lesson_dir
@@ -493,6 +448,5 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
         "rielaborato": lesson_path(current_dir, "rielaborato.md"),
         "named_file": named_filepath,
         "errori_concettuali": lesson_path(current_dir, "Errori concettuali.md"),
-        "problemi_scientifici": lesson_path(current_dir, "Problemi scientifici.md"),
         "telemetry_summary": telemetry_file
     }

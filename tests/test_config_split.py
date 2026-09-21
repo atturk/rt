@@ -422,9 +422,7 @@ def test_cli_commands_proceed_when_mock_without_config_dir(tmp_path, monkeypatch
         "critical_issues": 0,
         "pedagogical_notes": 0,
         "total_science_issues": 0,
-        "docente_issues": 0,
-        "reconstruction_issues": 0,
-        "science_checks": 0,
+        "concettuale_issues": 0,
     }
 
     with patch("rt.cli.run_prepare", return_value=dummy_res), \

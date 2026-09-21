@@ -67,8 +67,8 @@ def test_get_pending_issues(tmp_path):
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
-        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -122,7 +122,7 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim", reason="reason", suggested_fix="Sostituire con: \"fix\""),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim", reason="reason", suggested_fix="Sostituire con: \"fix\""),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -154,7 +154,7 @@ def test_start_review_via_telegram_and_advance(tmp_path, monkeypatch):
 
     # 2. Verifica che sia stato mandato il primo messaggio e tracciato il message_id
     assert len(sent_messages) == 1
-    assert "Science Critic (ERR_DOCENTE)" in sent_messages[0]["text"]
+    assert "Science Critic (ERR_CONCETTUALE)" in sent_messages[0]["text"]
     from rt.telegram import session as tg_session
     sess = tg_session.get_active_session(state_dir, 123, None)
     assert sess is not None
@@ -186,8 +186,8 @@ def test_telegram_callback_indietro(tmp_path, monkeypatch):
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
-        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="r2", suggested_fix="fix 2"),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="r2", suggested_fix="fix 2"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -230,8 +230,8 @@ async def test_interactive_terminal_backward_navigation(tmp_path):
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
-        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="r2", suggested_fix="fix 2"),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="r2", suggested_fix="fix 2"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -258,7 +258,7 @@ async def test_history_mode_terminal_and_telegram(tmp_path, capsys):
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -290,8 +290,8 @@ async def test_history_mode_backward_science_does_not_revert_untouched_historica
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_DOCENTE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
-        ScienceIssue(id="sci_2", type=ScienceType.SCIENCE_CHECK, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="reason 1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_2", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.LOW, unit_id="U1", claim="claim 2", reason="reason 2", suggested_fix="fix 2"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
@@ -323,7 +323,7 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
     def fake_run_build(*a, **kw):
         build_called.append((a, kw))
         return {"skipped": False, "rielaborato": "x", "pre_elaborato": "x",
-                "errori_concettuali": "x", "problemi_scientifici": "x"}
+                "errori_concettuali": "x"}
 
     args = argparse.Namespace(
         input=lesson_dir, force=False, mock=True, with_review=True, channel="telegram",
@@ -335,7 +335,7 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
          patch("rt.cli.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 1, "coverage_percentage": 100}}), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
          patch("rt.cli.run_rewrite", return_value={"skipped": True, "total_units": 1, "processed_units": 1}), \
-         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 1, "docente_issues": 1, "reconstruction_issues": 0, "science_checks": 0}), \
+         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 1, "concettuale_issues": 1}), \
          patch("rt.cli.run_interactive_review", return_value=False) as mock_review, \
          patch("rt.cli.run_build", side_effect=fake_run_build):
         cmd_run(args)

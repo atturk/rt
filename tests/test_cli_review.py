@@ -53,7 +53,7 @@ class TestCLIReview(unittest.TestCase):
 
     def test_should_auto_accept_science_modes(self):
         iss_sci = ScienceIssue(
-            id="sci_1", type=ScienceType.ERR_RECONSTRUCTION,
+            id="sci_1", type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.MEDIUM, claim="claim", reason="reason"
         )
 

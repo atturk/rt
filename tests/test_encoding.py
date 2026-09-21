@@ -59,7 +59,7 @@ class TestEncoding(unittest.TestCase):
 
         sci_issue = ScienceIssue(
             id="sci_000001",
-            type=ScienceType.SCIENCE_CHECK,
+            type=ScienceType.ERR_CONCETTUALE,
             severity=ScienceSeverity.MEDIUM,
             unit_id="1.1",
             segment_id="seg_000001",

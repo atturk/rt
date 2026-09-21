@@ -158,23 +158,18 @@ Il tuo ruolo NON è riscrivere il testo, ma agire da CRITIC per individuare erro
 
 Non hai accesso alla trascrizione grezza originale né all'audio della lezione: valuti esclusivamente il testo rielaborato così com'è, in base alla tua conoscenza scientifica. Questo è intenzionale: non farti mai confondere da singole parole isolate che sembrano fuori posto o senza senso nel contesto della frase — potrebbero essere un artefatto di trascrizione automatica (ASR) non ancora corretto (un termine tecnico graficamente simile ma sbagliato, una parola spezzata o unita male), non un errore concettuale. La correzione di questo tipo di artefatti è compito esclusivo della review ASR (fase separata, facoltativa, potrebbe non essere mai stata eseguita) — NON è compito tuo, e non devi provare a indovinare cosa "avrebbe dovuto dire" un frammento privo di senso. Se un'affermazione contiene SOLO un'anomalia isolata di questo tipo e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase.
 
-DEVI DISTINGUERE CATEGORICAMENTE TRA:
-1. "ERR_DOCENTE": Il docente ha con ogni probabilità pronunciato esplicitamente un lapsus o un errore concettuale palese durante la lezione (es. invertire muscolo liscio e striato). Per questi, formula anche una "diplomatic_question" (domanda diplomatica per chiedere chiarimenti con garbo, riferita al TESTO RIELABORATO — non hai la trascrizione originale da citare).
-2. "ERR_RECONSTRUCTION": L'errore o l'allucinazione è con ogni probabilità stato introdotto dal modello durante la rielaborazione (es. inventare reazioni, confondere mutasi e racemasi, aggiungere dettagli fattuali specifici e circostanziati — numeri, nomi di tecniche, meccanismi, riferimenti — senza un motivo evidente per cui sarebbero stati pronunciati a lezione).
-3. "SCIENCE_CHECK": L'affermazione è plausibile ma tocca elementi ad alto rischio (bilanci energetici, concentrazioni, cofattori, localizzazione cellulare) e necessita di un controllo da parte dello studente.
-
-Senza la trascrizione originale, distingui ERR_DOCENTE da ERR_RECONSTRUCTION dallo STILE dell'errore, non da un confronto testuale: un lapsus orale tende a essere uno scambio semplice e naturale tra due termini/concetti correlati, il tipo di errore che capita parlando a braccio; un'allucinazione da ricostruzione tende invece ad aggiungere dettagli specifici che sembrano un'elaborazione del modello per "completare" il discorso, più che qualcosa che un docente direbbe spontaneamente. Nel dubbio tra i due, preferisci SCIENCE_CHECK piuttosto che attribuire con sicurezza a uno dei due.
+Verifica la correttezza scientifica del testo rielaborato. Se individui un errore concettuale, una contraddizione o un'incongruenza fattuale (es. invertire muscolo liscio e striato, confondere mutasi e racemasi, scambiare carotide e coronaria o bastoncelli e coni, inventare reazioni o meccanismi biochimici inesistenti), indipendentemente dal fatto che possa trattarsi di un lapsus orale del docente o di un'allucinazione introdotta durante la rielaborazione, restituisci una issue di tipo "ERR_CONCETTUALE".
 
 Per ogni problema riscontrato restituisci:
 - "id": "sci_000001"
-- "type": "ERR_DOCENTE" | "ERR_RECONSTRUCTION" | "SCIENCE_CHECK"
+- "type": "ERR_CONCETTUALE"
 - "severity": "low" | "medium" | "high"
 - "unit_id": ID unità
 - "segment_id": ID segmento correlato se identificabile (es. seg_000049, seg_002314)
 - "claim": frase esatta del rielaborato in discussione (deve corrispondere letteralmente a una frase intera o proposizione autonoma del testo)
 - "reason": spiegazione scientifica dettagliata dell'errore
 - "suggested_fix": testo letterale esatto di sostituzione per "claim". ATTENZIONE: DEVE ESSERE UNICAMENTE IL TESTO CORRETTO pronto per la sostituzione diretta, SENZA formule introduttive (NON scrivere 'Sostituire con:', 'Correggere con:', 'Riformulare in:'), SENZA opzioni multiple ('oppure...') e SENZA virgolette esterne di contorno. Se si tratta di una raccomandazione non applicabile come stringa diretta, mantieni il testo sostitutivo comunque pulito ed esplicativo.
-- "diplomatic_question": (solo per ERR_DOCENTE) formulazione diplomatica per il docente, riferita al testo rielaborato."""
+- "diplomatic_question": (opzionale) formulazione diplomatica per il docente, riferita al testo rielaborato, se ha senso chiedere un chiarimento diretto — indipendentemente dalla probabile origine dell'errore."""
 
 
 def build_science_review_user_prompt(

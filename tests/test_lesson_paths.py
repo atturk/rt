@@ -199,10 +199,10 @@ class TestNewLessonUsesStateSubdir:
 
         # Deliverable: SOLO in radice.
         assert os.path.isfile(os.path.join(lesson_dir, "Errori concettuali.md"))
-        assert os.path.isfile(os.path.join(lesson_dir, "Problemi scientifici.md"))
+        assert not os.path.exists(os.path.join(lesson_dir, "Problemi scientifici.md"))
         # Il file col titolo formale (il deliverable finale) è in radice...
         md_deliverables = [f for f in os.listdir(lesson_dir) if f.endswith(".md")]
-        assert any(f not in ("Errori concettuali.md", "Problemi scientifici.md") for f in md_deliverables)
+        assert any(f != "Errori concettuali.md" for f in md_deliverables)
         # ...mentre rielaborato.md e pre-elaborato.md (intermedi) sono SOLO in _state/,
         # non duplicati anche in radice (era la ridondanza segnalata dall'utente).
         assert "rielaborato.md" not in md_deliverables

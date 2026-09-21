@@ -117,9 +117,7 @@ class Draft(BaseModel):
 # ---------------------------------------------------------
 
 class ScienceType(str, Enum):
-    ERR_DOCENTE = "ERR_DOCENTE"              # Lapsus o errore esplicito pronunciato dal docente
-    ERR_RECONSTRUCTION = "ERR_RECONSTRUCTION"# Errore o allucinazione introdotta dall'LLM durante la rielaborazione
-    SCIENCE_CHECK = "SCIENCE_CHECK"          # Affermazione plausibile che merita verifica scientifica o controllo fonti
+    ERR_CONCETTUALE = "ERR_CONCETTUALE"      # Incongruenza o errore scientifico/concettuale nel rielaborato (lapsus o rewrite)
     ERR_ASR_ST = "ERR_ASR_ST"                # Segmento ASR con confidenza significativamente degradata (statistico)
     ERR_ASR_LLM = "ERR_ASR_LLM"              # Segmento ASR con confidenza degradata e sospetto confermato da LLM
     ERR_REWRITE_DRIFT = "ERR_REWRITE_DRIFT"  # Jev (System One) rileva contenuto rielaborato non supportato dai segmenti ASR grezzi, o deriva semantica significativa

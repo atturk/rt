@@ -1,10 +1,8 @@
 """
 rt.pipeline.review
 Fase E: REVIEW (Critic Scientifico Indipendente).
-Analizza il draft contro la fonte originale identificando:
-- ERR_DOCENTE (lapsus del docente con domanda diplomatica)
-- ERR_RECONSTRUCTION (errori introdotti dal modello durante la rielaborazione)
-- SCIENCE_CHECK (elementi critici ad alto rischio da verificare)
+Analizza il draft rielaborato identificando:
+- ERR_CONCETTUALE (incongruenze scientifiche ed errori concettuali nel rielaborato)
 Salva science_issues.json.
 """
 
@@ -45,6 +43,13 @@ def get_science_issues_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "science_issues.json")
 
 
+LEGACY_TYPE_MAP = {
+    "ERR_DOCENTE": "ERR_CONCETTUALE",
+    "ERR_RECONSTRUCTION": "ERR_CONCETTUALE",
+    "SCIENCE_CHECK": "ERR_CONCETTUALE",
+}
+
+
 def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
     path = get_science_issues_path(lesson_dir)
     if not os.path.isfile(path):
@@ -53,7 +58,17 @@ def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
         data = json.load(f)
     if isinstance(data, list):
         cleaned_data = sanitize_object_encoding(data)
-        return [ScienceIssue.model_validate(x) for x in cleaned_data]
+        migrated_data = []
+        for x in cleaned_data:
+            if isinstance(x, dict):
+                item = dict(x)
+                raw_type = item.get("type")
+                if raw_type in LEGACY_TYPE_MAP:
+                    item["type"] = LEGACY_TYPE_MAP[raw_type]
+                migrated_data.append(item)
+            else:
+                migrated_data.append(x)
+        return [ScienceIssue.model_validate(x) for x in migrated_data]
     return []
 
 
@@ -64,96 +79,6 @@ def save_science_issues(issues: List[ScienceIssue], lesson_dir: str) -> None:
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, path)
-
-
-def check_text_grounding_score(query: str, source_text: str) -> float:
-    """
-    Calcola un punteggio conservativo di grounding (0.0 - 1.0) tra una frase/citazione
-    e la trascrizione sorgente, gestendo variazioni di punteggiatura e parafrasi.
-    """
-    if not query or not source_text:
-        return 0.0
-    import re
-    q_clean = re.sub(r"[^\w\s]", " ", query.lower()).strip()
-    src_clean = re.sub(r"[^\w\s]", " ", source_text.lower()).strip()
-    if not q_clean or not src_clean:
-        return 0.0
-    # Match esatto sottostringa
-    if q_clean in src_clean:
-        return 1.0
-    # Match parole significative (lunghezza >= 4)
-    words = [w for w in q_clean.split() if len(w) >= 4]
-    if not words:
-        words = q_clean.split()
-    if not words:
-        return 0.0
-    matched = sum(1 for w in words if w in src_clean)
-    return matched / len(words)
-
-
-def disambiguate_science_issue(iss: Any, source_text: str) -> Any:
-    """
-    Applica una classificazione conservativa e basata su prove (grounding)
-    per distinguere oggettivamente tra:
-    - ERR_DOCENTE: l'errore o lapsus è effettivamente presente nella lezione sorgente.
-    - ERR_RECONSTRUCTION: l'errore/allucinazione è stato introdotto dal modello e non ha riscontro nella lezione.
-    - SCIENCE_CHECK: affermazione plausibile ma critica o con correlazione parziale/ambigua.
-    """
-    is_dict = isinstance(iss, dict)
-    quote = (iss.get("source_quote") if is_dict else iss.source_quote) or ""
-    claim = (iss.get("claim") if is_dict else iss.claim) or ""
-    curr_type = iss.get("type") if is_dict else iss.type
-    if isinstance(curr_type, ScienceType):
-        curr_type = curr_type.value
-    curr_reason = (iss.get("reason") or iss.get("explanation", "")) if is_dict else iss.reason
-    diplomatic_question = (iss.get("diplomatic_question") if is_dict else iss.diplomatic_question) or ""
-
-    score_quote = check_text_grounding_score(quote, source_text) if quote else 0.0
-    score_claim = check_text_grounding_score(claim, source_text) if claim else 0.0
-    max_grounding = max(score_quote, score_claim)
-
-    new_type = curr_type
-    new_reason = curr_reason
-    new_question = diplomatic_question
-
-    if curr_type == ScienceType.ERR_DOCENTE.value:
-        if max_grounding >= 0.65:
-            # Forte riscontro nella sorgente: confermato lapsus docente
-            if not new_question:
-                new_question = f"Professore, riguardo a '{claim}', potrebbe confermare se il riferimento inteso è corretto?"
-        elif max_grounding <= 0.20:
-            # Nessun riscontro nella sorgente: il docente non l'ha mai detto, introdotto dal modello
-            new_type = ScienceType.ERR_RECONSTRUCTION.value
-            new_reason = f"[AUTO-RECLASSIFIED from ERR_DOCENTE to ERR_RECONSTRUCTION: affermazione non presente nella sorgente] {curr_reason}"
-        else:
-            # Grounding parziale/ambiguo: non imputare né al docente né al modello
-            new_type = ScienceType.SCIENCE_CHECK.value
-            new_reason = f"[AUTO-RECLASSIFIED to SCIENCE_CHECK: correlazione parziale con la registrazione] {curr_reason}"
-
-    elif curr_type == ScienceType.ERR_RECONSTRUCTION.value:
-        if max_grounding >= 0.75:
-            # Il testo contestato (claim, dal draft) ha forte riscontro letterale nella
-            # trascrizione originale: non è un'invenzione del modello, il docente l'ha
-            # detto (o quasi) così. Usa "claim" (prosa del draft), mai "quote": il critic
-            # non ha più accesso alla trascrizione grezza, un'eventuale "quote" prodotta
-            # comunque dal modello non è affidabile e non va mai mostrata all'utente.
-            new_type = ScienceType.ERR_DOCENTE.value
-            if not new_question:
-                new_question = f"Professore, riguardo a '{claim}', intendeva confermare questo dettaglio?"
-
-    if is_dict:
-        iss["type"] = new_type
-        iss["reason"] = new_reason
-        iss["explanation"] = new_reason
-        if new_question:
-            iss["diplomatic_question"] = new_question
-    else:
-        iss.type = ScienceType(new_type)
-        iss.reason = new_reason
-        if new_question:
-            iss.diplomatic_question = new_question
-
-    return iss
 
 
 def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
@@ -369,9 +294,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
             "skipped": True,
             "reason": reason,
             "total_science_issues": len(all_science_issues),
-            "docente_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_DOCENTE),
-            "reconstruction_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_RECONSTRUCTION),
-            "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
+            "concettuale_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_CONCETTUALE),
             "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
             "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
             "rewrite_drift_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_REWRITE_DRIFT),
@@ -492,8 +415,6 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
                 iss.unit_id = unit.unit_id
                 if not iss.segment_id:
                     iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
-                if not force_mock:
-                    iss = disambiguate_science_issue(iss, source_context)
                 all_science_issues.append(iss)
 
         # Numerazione deterministica progressiva
@@ -570,9 +491,7 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
         "skipped": False,
         "reason": "explicit user-requested rerun" if force else reason,
         "total_science_issues": len(all_science_issues),
-        "docente_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_DOCENTE),
-        "reconstruction_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_RECONSTRUCTION),
-        "science_checks": sum(1 for x in all_science_issues if x.type == ScienceType.SCIENCE_CHECK),
+        "concettuale_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_CONCETTUALE),
         "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
         "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
         "rewrite_drift_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_REWRITE_DRIFT),

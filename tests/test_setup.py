@@ -121,7 +121,7 @@ def test_rt_setup_clean_initialization(tmp_path):
     assert os.path.isfile(lesson_path(lecture_dir, "pre-elaborato.md"))
     assert os.path.isfile(lesson_path(lecture_dir, "rielaborato.md"))
     assert os.path.isfile(lesson_path(lecture_dir, "Errori concettuali.md"))
-    assert os.path.isfile(lesson_path(lecture_dir, "Problemi scientifici.md"))
+    assert not os.path.exists(lesson_path(lecture_dir, "Problemi scientifici.md"))
 
 
 def test_macparakeet_failure_hard_fails(tmp_path):
