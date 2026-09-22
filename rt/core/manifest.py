@@ -22,7 +22,10 @@ def load_manifest(lesson_dir: str) -> Optional[Manifest]:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return Manifest.model_validate(data)
+        manifest = Manifest.model_validate(data)
+        if "review" not in manifest.phase_records and "review_science" in manifest.phase_records:
+            manifest.phase_records["review"] = manifest.phase_records["review_science"]
+        return manifest
     except Exception:
         return None
 

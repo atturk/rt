@@ -550,6 +550,80 @@ def test_content_hash_invalidation_and_provenance(synthetic_lesson):
     assert st_build_after == PhaseStatus.VALID, f"Expected VALID but got {st_build_after}: {reason_build}"
 
 
+# ==============================================================================
+# TEST TASK 84: MIGRAZIONE IN LETTURA CHIAVE LEGACY review_science
+# ==============================================================================
+
+def test_legacy_review_science_manifest_migration(tmp_path):
+    """Verifica che load_manifest copi in memoria review_science in review se review non esiste."""
+    lesson_dir = str(tmp_path / "legacy_lesson")
+    os.makedirs(lesson_dir, exist_ok=True)
+    manifest_data = {
+        "schema_version": "1.0",
+        "workflow_version": "2.0.0",
+        "lesson_id": "legacy_01",
+        "lesson_dir": os.path.abspath(lesson_dir),
+        "date": "2026-02-26",
+        "subject": "PATOLOGIA",
+        "current_state": "REVIEW_DONE",
+        "created_at": "2026-02-26T10:00:00",
+        "updated_at": "2026-02-26T11:00:00",
+        "phase_records": {
+            "review_science": {
+                "status": "VALID",
+                "completed_items": [f"1.{i}" for i in range(1, 18)],
+                "source_fingerprint": "abc123fp",
+                "processor_version": "review_science_v1.0"
+            }
+        }
+    }
+    with open(os.path.join(lesson_dir, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest_data, f, indent=2)
+
+    manifest = load_manifest(lesson_dir)
+    assert manifest is not None
+    assert "review" in manifest.phase_records
+    assert manifest.phase_records["review"]["status"] == "VALID"
+    assert len(manifest.phase_records["review"]["completed_items"]) == 17
+    assert manifest.phase_records["review"] == manifest.phase_records["review_science"]
+
+    # Non-regressione: se "review" esiste già, non viene sovrascritto da "review_science"
+    manifest_data["phase_records"]["review"] = {
+        "status": "VALID",
+        "completed_items": ["99.1"],
+        "processor_version": "review_v1.2"
+    }
+    with open(os.path.join(lesson_dir, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest_data, f, indent=2)
+
+    manifest_existing = load_manifest(lesson_dir)
+    assert manifest_existing.phase_records["review"]["completed_items"] == ["99.1"]
 
 
+def test_legacy_review_science_check_phase_status_end_to_end(synthetic_lesson):
+    """Verifica che una lezione legacy con sola chiave review_science sia considerata VALID da review e build."""
+    lesson_dir = synthetic_lesson
+    run_prepare(lesson_dir)
+    run_outline(lesson_dir, force_mock=True)
+    run_rewrite(lesson_dir, force_mock=True)
+    run_review(lesson_dir, force_mock=True)
+    run_build(lesson_dir)
 
+    # Simula un manifest legacy rinominando la chiave "review" in "review_science" su disco
+    from rt.core.manifest import get_manifest_path
+    manifest_path = get_manifest_path(lesson_dir)
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert "review" in data.get("phase_records", {})
+    data["phase_records"]["review_science"] = data["phase_records"].pop("review")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    # Verifica status review
+    st_review, reason_review = check_phase_status(lesson_dir, "review")
+    assert st_review == PhaseStatus.VALID, f"Expected VALID but got {st_review}: {reason_review}"
+
+    # Verifica status build
+    st_build, reason_build = check_phase_status(lesson_dir, "build")
+    assert st_build == PhaseStatus.VALID, f"Expected VALID but got {st_build}: {reason_build}"
