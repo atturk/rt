@@ -658,19 +658,10 @@ def cmd_config(args: argparse.Namespace) -> None:
         run_config_wizard()
 
 
-def main(argv: Optional[List[str]] = None) -> None:
-    raw_args = sys.argv[1:] if argv is None else argv
-    if raw_args and raw_args[0] in ("-v", "--version"):
-        from rt.core.version import run_version
-        run_version(_default_project_root())
-        sys.exit(0)
-    elif raw_args and raw_args[0] in ("-u", "--update"):
-        from rt.core.version import run_update
-        run_update(_default_project_root())
-        sys.exit(0)
-
-    load_env_file(override=True)
+def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.ArgumentParser]]:
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
+    from rt.pipeline.configure import configure_config_parser
+
     epilog_text = (
         "Fasi della pipeline:\n"
         "  setup               Esegue l'ingest di file audio, trascrizione macparakeet-cli e metadati\n"
@@ -703,7 +694,6 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # 1. config
     p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
-    from rt.pipeline.configure import configure_config_parser
     configure_config_parser(p_cfg)
     p_cfg.set_defaults(func=cmd_config)
 
@@ -867,6 +857,39 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_cost.add_argument("--split", action="store_true", help="Mostra il dettaglio completo per fase, unità e singoli tentativi")
     p_cost.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_cost.set_defaults(func=cmd_cost)
+
+    return parser, {
+        "config": p_cfg,
+        "run": p_run,
+        "review": p_rsci,
+        "recall": p_recall,
+        "status": p_stat,
+        "telegram-daemon": p_tgd,
+        "setup": p_set,
+        "prepare": p_prep,
+        "outline": p_out,
+        "rewrite": p_rew,
+        "build": p_bld,
+        "add-images": p_addimg,
+        "validate-outline": p_vout,
+        "validate-draft": p_vdr,
+        "cost": p_cost,
+    }
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    raw_args = sys.argv[1:] if argv is None else argv
+    if raw_args and raw_args[0] in ("-v", "--version"):
+        from rt.core.version import run_version
+        run_version(_default_project_root())
+        sys.exit(0)
+    elif raw_args and raw_args[0] in ("-u", "--update"):
+        from rt.core.version import run_update
+        run_update(_default_project_root())
+        sys.exit(0)
+
+    load_env_file(override=True)
+    parser, _ = build_parser()
 
     normalized_argv = normalize_review_cli_args(raw_args)
     args = parser.parse_args(normalized_argv)

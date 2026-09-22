@@ -327,8 +327,9 @@ class TestDashboardSubprocessRun:
 
         mock_run_cli = MagicMock()
         monkeypatch.setattr(app, "_run_cli", mock_run_cli)
+        monkeypatch.setattr(app, "push_screen_wait", AsyncMock(return_value=["run", "/path/to/lesson"]))
 
-        await app.action_run_next()
+        await app.action_run()
         mock_run_cli.assert_called_with(["run", "/path/to/lesson"])
 
         await app.action_review()

@@ -7,9 +7,9 @@ temporaneamente l'interfaccia Textual (App.suspend()) invece di reimplementarli.
 """
 from typing import List, Optional
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, ListItem, ListView, MarkdownViewer, Static
 
 from rt.core.idempotency import PhaseStatus
@@ -68,34 +68,6 @@ class LessonRow(ListItem):
                 yield Static(self.lesson.title, classes="lesson-title")
                 yield Static(f"{self.lesson.subject or '—'} · {self.lesson.when}", classes="lesson-sub")
             yield Static(f"[${token}]{label}[/]", classes="lesson-badge")
-
-
-class NewLessonModal(ModalScreen[Optional[str]]):
-    """Chiede il percorso di un file audio per avviare 'rt run --dest-dir <root>'."""
-
-    DEFAULT_CSS = """
-    NewLessonModal { align: center middle; }
-    NewLessonModal > #dialog {
-        width: 74; height: auto; padding: 1 2;
-        border: round $primary; background: $surface;
-    }
-    NewLessonModal > #dialog > Static { margin-bottom: 1; }
-    """
-    BINDINGS = [("escape", "cancel", "Annulla")]
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Static("[b]Nuova lezione[/b]  [dim]— percorso file audio, INVIO per confermare, ESC per annullare[/dim]")
-            yield Input(placeholder="/percorso/alla/lezione.m4a", id="audio-path")
-
-    def on_mount(self) -> None:
-        self.query_one(Input).focus()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.dismiss(event.value.strip() or None)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
 
 
 class RTApp(App):
@@ -160,9 +132,9 @@ class RTApp(App):
 
     BINDINGS = [
         ("/", "focus_search", "Cerca"),
-        ("n", "new_lesson", "Nuova lezione"),
+        ("n", "run", "Nuova lezione"),
         ("g", "configure", "Configura"),
-        ("r", "run_next", "Esegui/continua"),
+        ("r", "run", "Esegui/continua"),
         ("v", "review", "Revisiona"),
         ("b", "build", "Build"),
         ("c", "cost", "Costi"),
@@ -174,9 +146,12 @@ class RTApp(App):
     def __init__(self) -> None:
         super().__init__()
         from rt.core.ui_theme import apply_saved_theme
+        from rt.cli import build_parser
+
         apply_saved_theme(self)
         self.lessons: List[LessonSummary] = []
         self.selected_lesson: Optional[LessonSummary] = None
+        _, self.subcommand_parsers = build_parser()
 
     def _lessons_root(self) -> Optional[str]:
         try:
@@ -291,9 +266,21 @@ class RTApp(App):
             except (KeyboardInterrupt, EOFError):
                 pass
 
-    async def action_run_next(self) -> None:
+    async def action_run(self) -> None:
         if self.selected_lesson:
-            self._run_cli(["run", self.selected_lesson.dir_path])
+            prefill = {"input": [self.selected_lesson.dir_path]}
+        else:
+            root = self._lessons_root()
+            prefill = {"dest_dir": root} if root else {}
+
+        parser = self.subcommand_parsers.get("run")
+        if not parser:
+            return
+        from rt.tui.command_form import CommandFormScreen
+
+        argv = await self.push_screen_wait(CommandFormScreen("run", parser, prefill=prefill))
+        if argv:
+            self._run_cli(argv)
             await self.refresh_lessons()
 
     async def action_review(self) -> None:
@@ -318,19 +305,6 @@ class RTApp(App):
     async def action_configure(self) -> None:
         self._run_cli(["config"])
         await self.refresh_lessons()
-
-    async def action_new_lesson(self) -> None:
-        root = self._lessons_root()
-        if not root:
-            self.notify(
-                "Configura prima 'telegram.lessons_root' in config/general.yaml (premi 'g').",
-                severity="warning",
-            )
-            return
-        path = await self.push_screen_wait(NewLessonModal())
-        if path:
-            self._run_cli(["run", path, "--dest-dir", root])
-            await self.refresh_lessons()
 
 
 def run_app() -> None:
