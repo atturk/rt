@@ -329,7 +329,11 @@ class TestDashboardSubprocessRun:
         monkeypatch.setattr(app, "_run_cli", mock_run_cli)
         monkeypatch.setattr(app, "push_screen_wait", AsyncMock(return_value=["run", "/path/to/lesson"]))
 
-        await app.action_run()
+        # action_run gira in un worker Textual (push_screen_wait lo richiede): serve un'app
+        # realmente in esecuzione (run_test) per schedularlo, non basta chiamarlo su un'istanza
+        # bare come le altre azioni sotto, che non aprono nessuna schermata.
+        async with app.run_test():
+            await app.action_run().wait()
         mock_run_cli.assert_called_with(["run", "/path/to/lesson"])
 
         await app.action_review()

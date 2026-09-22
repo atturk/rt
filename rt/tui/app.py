@@ -266,6 +266,7 @@ class RTApp(App):
             except (KeyboardInterrupt, EOFError):
                 pass
 
+    @work
     async def action_run(self) -> None:
         if self.selected_lesson:
             prefill = {"input": [self.selected_lesson.dir_path]}

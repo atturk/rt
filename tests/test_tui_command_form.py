@@ -209,6 +209,23 @@ class TestDashboardWiringNonRegression:
         assert not hasattr(tui_app_mod.RTApp, "action_new_lesson")
 
     @pytest.mark.anyio
+    async def test_pressing_n_key_opens_form_without_crashing(self):
+        """Regressione: chiamare action_run() direttamente (bypassando il dispatch reale dei
+        keybinding di Textual) nasconde un NoActiveWorker reale, perché push_screen_wait()
+        richiede di girare dentro un worker Textual (vedi @work su action_run in rt/tui/app.py).
+        Solo simulando la vera pressione del tasto (pilot.press, che passa per
+        App._check_bindings -> run_action -> _dispatch_action, lo stesso percorso usato in
+        produzione) questo tipo di bug viene intercettato."""
+        app = RTApp()
+        async with app.run_test() as pilot:
+            await pilot.press("n")
+            await pilot.pause()
+            assert isinstance(app.screen, CommandFormScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not isinstance(app.screen, CommandFormScreen)
+
+    @pytest.mark.anyio
     async def test_action_run_with_and_without_selected_lesson(self, monkeypatch):
         app = RTApp()
         dummy_lesson = LessonSummary(
@@ -238,16 +255,20 @@ class TestDashboardWiringNonRegression:
 
         monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
 
-        await app.action_run()
-        assert len(pushed_screens) == 1
-        assert pushed_screens[0].prefill == {"input": ["/path/to/selected"]}
-        mock_run_cli.assert_called_with(["run", "/path/to/selected"])
+        # action_run gira in un worker Textual (push_screen_wait lo richiede): serve un'app
+        # realmente in esecuzione (run_test) per schedularlo — un solo ingresso, un'App non va
+        # rieseguita una seconda volta con un secondo 'async with run_test()'.
+        async with app.run_test():
+            await app.action_run().wait()
+            assert len(pushed_screens) == 1
+            assert pushed_screens[0].prefill == {"input": ["/path/to/selected"]}
+            mock_run_cli.assert_called_with(["run", "/path/to/selected"])
 
-        # 2. Without selected lesson
-        pushed_screens.clear()
-        app.selected_lesson = None
-        monkeypatch.setattr(app, "_lessons_root", lambda: "/my/lessons/root")
+            # 2. Without selected lesson
+            pushed_screens.clear()
+            app.selected_lesson = None
+            monkeypatch.setattr(app, "_lessons_root", lambda: "/my/lessons/root")
 
-        await app.action_run()
+            await app.action_run().wait()
         assert len(pushed_screens) == 1
         assert pushed_screens[0].prefill == {"dest_dir": "/my/lessons/root"}
