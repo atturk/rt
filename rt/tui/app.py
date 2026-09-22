@@ -24,6 +24,19 @@ PHASE_ICON = {
 }
 
 
+CAPTURED_SUBCOMMANDS = {
+    "prepare",
+    "rewrite",
+    "build",
+    "cost",
+    "status",
+    "add-images",
+    "validate-outline",
+    "validate-draft",
+    "setup",
+}
+
+
 def build_stepper(lesson: LessonSummary) -> str:
     parts = []
     for phase, status in lesson.phase_status:
@@ -266,6 +279,14 @@ class RTApp(App):
             except (KeyboardInterrupt, EOFError):
                 pass
 
+    async def _execute(self, argv: List[str]) -> None:
+        if argv and argv[0] in CAPTURED_SUBCOMMANDS:
+            from rt.tui.command_output import CommandOutputScreen
+            await self.push_screen_wait(CommandOutputScreen(argv))
+        else:
+            self._run_cli(argv)
+        await self.refresh_lessons()
+
     @work
     async def action_run(self) -> None:
         if self.selected_lesson:
@@ -281,22 +302,22 @@ class RTApp(App):
 
         argv = await self.push_screen_wait(CommandFormScreen("run", parser, prefill=prefill))
         if argv:
-            self._run_cli(argv)
-            await self.refresh_lessons()
+            await self._execute(argv)
 
     async def action_review(self) -> None:
         if self.selected_lesson:
             self._run_cli(["review", self.selected_lesson.dir_path])
             await self.refresh_lessons()
 
+    @work
     async def action_build(self) -> None:
         if self.selected_lesson:
-            self._run_cli(["build", self.selected_lesson.dir_path])
-            await self.refresh_lessons()
+            await self._execute(["build", self.selected_lesson.dir_path])
 
+    @work
     async def action_cost(self) -> None:
         if self.selected_lesson:
-            self._run_cli(["cost", self.selected_lesson.dir_path, "--split"])
+            await self._execute(["cost", self.selected_lesson.dir_path, "--split"])
 
     async def action_recall(self) -> None:
         if self.selected_lesson:

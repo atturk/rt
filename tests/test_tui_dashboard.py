@@ -307,6 +307,7 @@ class TestDashboardSubprocessRun:
     async def test_action_methods_pass_correct_argv(self, monkeypatch):
         from unittest.mock import AsyncMock, MagicMock
         from rt.tui.app import RTApp
+        from rt.tui.command_output import CommandOutputScreen
 
         app = RTApp()
         dummy_lesson = LessonSummary(
@@ -327,23 +328,29 @@ class TestDashboardSubprocessRun:
 
         mock_run_cli = MagicMock()
         monkeypatch.setattr(app, "_run_cli", mock_run_cli)
-        monkeypatch.setattr(app, "push_screen_wait", AsyncMock(return_value=["run", "/path/to/lesson"]))
+        pushed_screens = []
+        async def fake_push_screen_wait(screen):
+            pushed_screens.append(screen)
+            if hasattr(screen, "argv"):
+                return 0
+            return ["run", "/path/to/lesson"]
 
-        # action_run gira in un worker Textual (push_screen_wait lo richiede): serve un'app
-        # realmente in esecuzione (run_test) per schedularlo, non basta chiamarlo su un'istanza
-        # bare come le altre azioni sotto, che non aprono nessuna schermata.
+        monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
+
+        # action_run, action_build e action_cost girano in worker Textual (push_screen_wait lo richiede):
+        # usiamo run_test per schedularli correttamente.
         async with app.run_test():
             await app.action_run().wait()
-        mock_run_cli.assert_called_with(["run", "/path/to/lesson"])
+            mock_run_cli.assert_called_with(["run", "/path/to/lesson"])
+
+            await app.action_build().wait()
+            assert any(isinstance(s, CommandOutputScreen) and s.argv == ["build", "/path/to/lesson"] for s in pushed_screens)
+
+            await app.action_cost().wait()
+            assert any(isinstance(s, CommandOutputScreen) and s.argv == ["cost", "/path/to/lesson", "--split"] for s in pushed_screens)
 
         await app.action_review()
         mock_run_cli.assert_called_with(["review", "/path/to/lesson"])
-
-        await app.action_build()
-        mock_run_cli.assert_called_with(["build", "/path/to/lesson"])
-
-        await app.action_cost()
-        mock_run_cli.assert_called_with(["cost", "/path/to/lesson", "--split"])
 
         await app.action_recall()
         mock_run_cli.assert_called_with(["recall", "/path/to/lesson"])
