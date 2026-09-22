@@ -36,6 +36,11 @@ CAPTURED_SUBCOMMANDS = {
     "setup",
 }
 
+# Sottoinsieme di CAPTURED_SUBCOMMANDS il cui output è il vero scopo del comando (un report
+# da leggere), non solo la conferma che un'azione è avvenuta: per questi la schermata NON si
+# chiude da sola nemmeno su successo, altrimenti l'utente non fa in tempo a leggerlo.
+REPORT_SUBCOMMANDS = {"cost", "status", "validate-outline", "validate-draft"}
+
 
 def build_stepper(lesson: LessonSummary) -> str:
     parts = []
@@ -282,7 +287,8 @@ class RTApp(App):
     async def _execute(self, argv: List[str]) -> None:
         if argv and argv[0] in CAPTURED_SUBCOMMANDS:
             from rt.tui.command_output import CommandOutputScreen
-            await self.push_screen_wait(CommandOutputScreen(argv))
+            auto_dismiss = argv[0] not in REPORT_SUBCOMMANDS
+            await self.push_screen_wait(CommandOutputScreen(argv, auto_dismiss_on_success=auto_dismiss))
         else:
             self._run_cli(argv)
         await self.refresh_lessons()

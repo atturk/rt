@@ -63,9 +63,10 @@ class CommandOutputScreen(Screen[int]):
         ("escape", "dismiss_screen", "Chiudi / Esc"),
     ]
 
-    def __init__(self, argv: List[str]) -> None:
+    def __init__(self, argv: List[str], auto_dismiss_on_success: bool = True) -> None:
         super().__init__()
         self.argv = argv
+        self.auto_dismiss_on_success = auto_dismiss_on_success
         self.proc: Optional[asyncio.subprocess.Process] = None
         self.exit_code: Optional[int] = None
         self._proc_running = True
@@ -88,9 +89,17 @@ class CommandOutputScreen(Screen[int]):
         status = self.query_one("#cmd-status", Static)
 
         try:
+            # stdin=DEVNULL (non ereditato dal terminale reale della dashboard): alcuni
+            # sottocomandi qui catturati (es. build -> _prompt_and_launch_daemon_if_needed)
+            # hanno un prompt interattivo opzionale che si auto-disattiva controllando
+            # sys.stdin.isatty(). Senza DEVNULL il sottoprocesso erediterebbe lo stesso
+            # terminale reale della dashboard, isatty() risulterebbe vero, e il prompt
+            # entrerebbe in conflitto con la lettura raw-mode di Textual (nessun input riga
+            # per riga può mai arrivargli) restando bloccato per sempre.
             self.proc = await asyncio.create_subprocess_exec(
                 rt_path,
                 *self.argv,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -114,12 +123,17 @@ class CommandOutputScreen(Screen[int]):
         self._proc_running = False
 
         if self.exit_code == 0:
-            status.update("[$success]✓ Completato con successo[/]")
-            await asyncio.sleep(0.6)
-            try:
-                self.dismiss(0)
-            except Exception:
-                pass
+            if self.auto_dismiss_on_success:
+                status.update("[$success]✓ Completato con successo[/]")
+                await asyncio.sleep(0.6)
+                try:
+                    self.dismiss(0)
+                except Exception:
+                    pass
+            else:
+                status.update(
+                    "[$success]✓ Completato con successo[/] — premi [b]Esc[/b] per tornare alla dashboard"
+                )
         else:
             status.update(
                 f"[$error]✗ Terminato con codice {self.exit_code}[/] — premi [b]Esc[/b] per tornare alla dashboard"

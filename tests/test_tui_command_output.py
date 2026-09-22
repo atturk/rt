@@ -155,6 +155,105 @@ class TestExecuteRouting:
         }
         assert CAPTURED_SUBCOMMANDS == expected
 
+    def test_report_subcommands_set(self):
+        from rt.tui.app import REPORT_SUBCOMMANDS
+        assert REPORT_SUBCOMMANDS == {"cost", "status", "validate-outline", "validate-draft"}
+        assert REPORT_SUBCOMMANDS <= CAPTURED_SUBCOMMANDS
+
+    @pytest.mark.anyio
+    async def test_report_subcommand_disables_auto_dismiss(self, monkeypatch):
+        # Regressione: 'cost'/'status' ecc. sono report da leggere, non semplici conferme —
+        # non devono chiudersi da soli nemmeno su successo (visto dal vivo: la schermata dei
+        # costi si chiudeva un istante dopo essersi aperta, senza dare il tempo di leggerla).
+        app = RTApp()
+        monkeypatch.setattr(app, "refresh_lessons", AsyncMock())
+        monkeypatch.setattr(app, "_run_cli", MagicMock())
+        pushed_screens = []
+        async def fake_push_screen_wait(screen):
+            pushed_screens.append(screen)
+            return 0
+        monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
+
+        await app._execute(["cost", "/path/to/lesson", "--split"])
+        await app._execute(["build", "/path/to/lesson"])
+
+        assert pushed_screens[0].argv[0] == "cost"
+        assert pushed_screens[0].auto_dismiss_on_success is False
+        assert pushed_screens[1].argv[0] == "build"
+        assert pushed_screens[1].auto_dismiss_on_success is True
+
+
+class TestCommandOutputScreenAutoDismissFlag:
+    @pytest.mark.anyio
+    async def test_auto_dismiss_false_keeps_screen_open_on_success(self, monkeypatch):
+        cmd_script = "print('report riga 1')"
+        monkeypatch.setattr(
+            "rt.tui.command_output.get_rt_executable_path",
+            lambda: sys.executable,
+        )
+
+        class HostApp(App[int]):
+            return_code = None
+
+            @work
+            async def on_mount(self):
+                self.return_code = await self.push_screen_wait(
+                    CommandOutputScreen(["-c", cmd_script], auto_dismiss_on_success=False)
+                )
+
+        app = HostApp()
+        async with app.run_test() as pilot:
+            await pilot.pause(0.5)
+            # Successo, ma auto_dismiss_on_success=False: deve restare aperta
+            assert isinstance(app.screen, CommandOutputScreen)
+            assert app.return_code is None
+            status_widget = app.screen.query_one("#cmd-status", Static)
+            assert "successo" in str(status_widget.render()).lower()
+
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, CommandOutputScreen)
+            assert app.return_code == 0
+
+    @pytest.mark.anyio
+    async def test_stdin_devnull_prevents_hang_on_interactive_prompt(self, monkeypatch):
+        # Regressione reale: 'rt build' può chiedere via input()/questionary se avviare il
+        # demone Telegram quando la notifica fallisce. Senza stdin=DEVNULL il sottoprocesso
+        # erediterebbe il terminale reale della dashboard (isatty()=True) e resterebbe
+        # bloccato per sempre in attesa di un input che non può mai arrivargli in modo
+        # affidabile (in conflitto con la lettura raw-mode di Textual).
+        cmd_script = (
+            "import sys\n"
+            "print('prima della domanda')\n"
+            "try:\n"
+            "    line = input('Vuoi procedere? (Y/n) ')\n"
+            "except EOFError:\n"
+            "    line = None\n"
+            "print(f'risposta={line!r}')\n"
+        )
+        monkeypatch.setattr(
+            "rt.tui.command_output.get_rt_executable_path",
+            lambda: sys.executable,
+        )
+
+        class HostApp(App[int]):
+            return_code = None
+
+            @work
+            async def on_mount(self):
+                self.return_code = await self.push_screen_wait(
+                    CommandOutputScreen(["-c", cmd_script])
+                )
+                self.exit(self.return_code)
+
+        app = HostApp()
+        async with app.run_test() as pilot:
+            # Se stdin non fosse DEVNULL questo test andrebbe in timeout (il sottoprocesso
+            # resterebbe bloccato su input() per sempre): il fatto che completi in tempi
+            # brevi è la prova che EOFError viene sollevato subito, come atteso.
+            await pilot.pause(1.0)
+            assert app.return_code == 0
+
 
 class TestDashboardKeypressRegression:
     @pytest.mark.anyio
