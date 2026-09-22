@@ -41,6 +41,7 @@ def compute_lesson_cost(lesson_dir: str) -> Optional[Dict[str, Any]]:
 
     total_calls = len(entries)
     total_cost = 0.0
+    total_unknown_calls = 0
     by_job: Dict[str, Dict[str, Any]] = {}
 
     for entry in entries:
@@ -58,15 +59,20 @@ def compute_lesson_cost(lesson_dir: str) -> Optional[Dict[str, Any]]:
         timestamp = entry.get("timestamp")
 
         cost_numeric = float(cost_val) if (cost_val is not None and isinstance(cost_val, (int, float))) else None
+        is_unknown_cost = (cost_numeric is None)
 
         if cost_numeric is not None:
             total_cost += cost_numeric
+        else:
+            total_unknown_calls += 1
 
         if job not in by_job:
             by_job[job] = {
                 "total_calls": 0,
                 "success_calls": 0,
                 "error_calls": 0,
+                "unknown_cost_calls": 0,
+                "has_unknown_cost": False,
                 "total_cost": 0.0,
                 "units": {},
                 "direct_entries": []
@@ -79,7 +85,10 @@ def compute_lesson_cost(lesson_dir: str) -> Optional[Dict[str, Any]]:
         else:
             job_data["error_calls"] += 1
 
-        if cost_numeric is not None:
+        if is_unknown_cost:
+            job_data["unknown_cost_calls"] += 1
+            job_data["has_unknown_cost"] = True
+        else:
             job_data["total_cost"] += cost_numeric
 
         entry_summary = {
@@ -99,12 +108,17 @@ def compute_lesson_cost(lesson_dir: str) -> Optional[Dict[str, Any]]:
             if unit_id not in job_data["units"]:
                 job_data["units"][unit_id] = {
                     "total_calls": 0,
+                    "unknown_cost_calls": 0,
+                    "has_unknown_cost": False,
                     "total_cost": 0.0,
                     "entries": []
                 }
             u_data = job_data["units"][unit_id]
             u_data["total_calls"] += 1
-            if cost_numeric is not None:
+            if is_unknown_cost:
+                u_data["unknown_cost_calls"] += 1
+                u_data["has_unknown_cost"] = True
+            else:
                 u_data["total_cost"] += cost_numeric
             u_data["entries"].append(entry_summary)
         else:
@@ -113,9 +127,18 @@ def compute_lesson_cost(lesson_dir: str) -> Optional[Dict[str, Any]]:
     return {
         "lesson_dir": os.path.abspath(lesson_dir),
         "total_calls": total_calls,
+        "unknown_cost_calls": total_unknown_calls,
+        "has_unknown_cost": total_unknown_calls > 0,
         "total_estimated_cost_usd": total_cost,
         "by_job": by_job,
     }
+
+
+def _format_cost_aggregate(cost: float, unknown_calls: int) -> str:
+    if unknown_calls <= 0:
+        return f"${cost:.6f}"
+    unit_label = "chiamata" if unknown_calls == 1 else "chiamate"
+    return f"${cost:.6f} (+{unknown_calls} {unit_label} a costo sconosciuto)"
 
 
 def render_cost_report(cost_data: Optional[Dict[str, Any]], split: bool = False) -> str:
@@ -126,6 +149,7 @@ def render_cost_report(cost_data: Optional[Dict[str, Any]], split: bool = False)
     lesson_dir = cost_data["lesson_dir"]
     total_calls = cost_data["total_calls"]
     total_cost = cost_data["total_estimated_cost_usd"]
+    unknown_calls = cost_data.get("unknown_cost_calls", 0)
     by_job = cost_data["by_job"]
 
     lines = []
@@ -135,16 +159,17 @@ def render_cost_report(cost_data: Optional[Dict[str, Any]], split: bool = False)
     if not split:
         for job_name, j_data in by_job.items():
             calls_str = f"{j_data['total_calls']} chiamate"
-            cost_str = f"${j_data['total_cost']:.6f}"
+            cost_str = _format_cost_aggregate(j_data['total_cost'], j_data.get('unknown_cost_calls', 0))
             lines.append(f"  {job_name:<18} {calls_str:>14}    {cost_str:>12}")
         lines.append("-" * 60)
         tot_calls_str = f"{total_calls} chiamate"
-        tot_cost_str = f"${total_cost:.6f}"
+        tot_cost_str = _format_cost_aggregate(total_cost, unknown_calls)
         lines.append(f"  {'TOTALE':<18} {tot_calls_str:>14}    {tot_cost_str:>12}")
         lines.append("=" * 60 + "\n")
     else:
         for job_name, j_data in by_job.items():
-            lines.append(f"\n📂 FASE/JOB: {job_name} ({j_data['total_calls']} chiamate, ${j_data['total_cost']:.6f})")
+            job_cost_str = _format_cost_aggregate(j_data['total_cost'], j_data.get('unknown_cost_calls', 0))
+            lines.append(f"\n📂 FASE/JOB: {job_name} ({j_data['total_calls']} chiamate, {job_cost_str})")
 
             # Se ci sono chiamate dirette (senza unit_id)
             if j_data["direct_entries"]:
@@ -159,7 +184,8 @@ def render_cost_report(cost_data: Optional[Dict[str, Any]], split: bool = False)
             # Se ci sono unità
             if j_data["units"]:
                 for unit_id, u_data in j_data["units"].items():
-                    lines.append(f"  • Unità {unit_id} ({u_data['total_calls']} tentativi, ${u_data['total_cost']:.6f}):")
+                    unit_cost_str = _format_cost_aggregate(u_data['total_cost'], u_data.get('unknown_cost_calls', 0))
+                    lines.append(f"  • Unità {unit_id} ({u_data['total_calls']} tentativi, {unit_cost_str}):")
                     for e in u_data["entries"]:
                         status_icon = "✔" if e["status"] == "success" else "❌"
                         status_desc = "Success" if e["status"] == "success" else (e["failure_class"] or e["status"])
@@ -170,7 +196,7 @@ def render_cost_report(cost_data: Optional[Dict[str, Any]], split: bool = False)
 
         lines.append("\n" + "=" * 60)
         tot_calls_str = f"{total_calls} chiamate"
-        tot_cost_str = f"${total_cost:.6f}"
+        tot_cost_str = _format_cost_aggregate(total_cost, unknown_calls)
         lines.append(f"  {'TOTALE GENERALE':<18} {tot_calls_str:>14}    {tot_cost_str:>12}")
         lines.append("=" * 60 + "\n")
 
