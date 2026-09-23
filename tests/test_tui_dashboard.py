@@ -474,13 +474,108 @@ class TestPhaseButtons:
 
             await pilot.click("#issues-link")
             await pilot.pause()
-            mock_execute.assert_awaited_once_with(["review", str(tmp_path / "issues_lesson")])
+            mock_execute.assert_awaited_once_with(["review", str(tmp_path / "issues_lesson"), "--no-regenerate"])
 
             # Switch to lesson without issues
             app.query_one("#lesson-list").focus()
             await pilot.press("down")
             await pilot.pause()
             assert link.display is False
+
+    @pytest.mark.anyio
+    async def test_phase_link_review_stale_with_existing_issues_shows_confirm_modal(self, monkeypatch, tmp_path):
+        from unittest.mock import AsyncMock
+        from rt.core.idempotency import PhaseStatus
+        from rt.tui.app import RTApp
+        from rt.tui.command_form import ConfirmModal
+        from rt.core.models import ScienceIssue
+
+        app = RTApp()
+        dummy_lesson = LessonSummary(
+            dir_path=str(tmp_path / "stale_review_lesson"),
+            title="lezione",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("review", PhaseStatus.STALE)],
+            pending_issues=2,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        from rt.core.models import ScienceType, ScienceSeverity
+        fake_issues = [
+            ScienceIssue(
+                id="sci_1",
+                type=ScienceType.ERR_CONCETTUALE,
+                severity=ScienceSeverity.MEDIUM,
+                unit_id="u1",
+                claim="claim text",
+                reason="c",
+                suggested_fix="d",
+                status="pending",
+            )
+        ]
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [dummy_lesson])
+        monkeypatch.setattr("rt.pipeline.review.load_science_issues", lambda path: fake_issues)
+        mock_execute = AsyncMock()
+        monkeypatch.setattr(app, "_execute", mock_execute)
+
+        # 1. Confirm with 'y' -> executes without --no-regenerate
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            await pilot.click("#phase-link-review")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmModal)
+            await pilot.press("y")
+            await pilot.pause()
+            mock_execute.assert_awaited_once_with(["review", str(tmp_path / "stale_review_lesson")])
+
+        # 2. Cancel with 'n' -> does not execute
+        app2 = RTApp()
+        mock_execute2 = AsyncMock()
+        monkeypatch.setattr(app2, "_execute", mock_execute2)
+        async with app2.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            await pilot.click("#phase-link-review")
+            await pilot.pause()
+            assert isinstance(app2.screen, ConfirmModal)
+            await pilot.press("n")
+            await pilot.pause()
+            mock_execute2.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_phase_link_build_stale_executes_directly_without_modal(self, monkeypatch, tmp_path):
+        from unittest.mock import AsyncMock
+        from rt.core.idempotency import PhaseStatus
+        from rt.tui.app import RTApp
+        from rt.tui.command_form import ConfirmModal
+
+        app = RTApp()
+        dummy_lesson = LessonSummary(
+            dir_path=str(tmp_path / "stale_build_lesson"),
+            title="lezione",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("build", PhaseStatus.STALE)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [dummy_lesson])
+        mock_execute = AsyncMock()
+        monkeypatch.setattr(app, "_execute", mock_execute)
+
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            await pilot.click("#phase-link-build")
+            await pilot.pause()
+            assert not isinstance(app.screen, ConfirmModal)
+            mock_execute.assert_awaited_once_with(["build", str(tmp_path / "stale_build_lesson")])
 
     @pytest.mark.anyio
     async def test_phase_buttons_update_on_selection_change(self, monkeypatch, tmp_path):

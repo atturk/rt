@@ -200,6 +200,38 @@ def _get_lesson_title_for_notify(lesson_dir: str) -> str:
 
 
 def cmd_review(args):
+    no_regenerate = getattr(args, "no_regenerate", False) is True
+    if no_regenerate:
+        if getattr(args, "reset", False) is True:
+            from rt.pipeline.ledger import purge_decisions_by_prefix
+            removed = purge_decisions_by_prefix(args.lesson_dir, prefix="sci_")
+            print(f"🔄 Reset: rimosse {removed} decisioni scientifiche precedenti (le issue esistenti restano invariate).")
+        channel = getattr(args, "channel", None)
+        if not channel:
+            from rt.core.config import load_config as _load_cfg_for_channel
+            channel = _load_cfg_for_channel().telegram.default_channel
+        auto_accept = getattr(args, "auto_accept", None)
+        history = getattr(args, "history", False)
+        run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
+        return
+
+    from rt.core.idempotency import check_phase_status, PhaseStatus
+    phase_status, reason = check_phase_status(args.lesson_dir, "review")
+    if phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
+        existing_issues = load_science_issues(args.lesson_dir)
+        if existing_issues and sys.stdin.isatty():
+            import questionary
+            n = len(existing_issues)
+            msg = (
+                f"La fase 'review' è {phase_status.value.upper()} e contiene {n} issue/decisioni già esistenti.\n"
+                f"Una nuova rigenerazione sostituirà completamente le issue attuali.\n"
+                f"Continuare con la rigenerazione?"
+            )
+            confirmed = questionary.confirm(msg, default=False).ask()
+            if not confirmed:
+                print("Operazione annullata. Usa 'rt review <lezione> --no-regenerate' per sfogliare le issue esistenti senza rigenerarle.")
+                return
+
     if not getattr(args, "mock", False):
         _ensure_config_ready(["review"])
     if getattr(args, "reset", False):
@@ -227,6 +259,7 @@ def cmd_review(args):
     auto_accept = getattr(args, "auto_accept", None)
     history = getattr(args, "history", False)
     run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
+
 
 
 def cmd_recall(args):
@@ -757,6 +790,11 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
              "come oggi (richiede 'jev: {enabled: true}' in config/general.yaml — no-op altrimenti)"
     )
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
+    p_rsci.add_argument(
+        "--no-regenerate",
+        action="store_true",
+        help="Salta la rigenerazione delle issue e apre direttamente la revisione interattiva di quelle già esistenti su disco"
+    )
     p_rsci.set_defaults(func=cmd_review)
 
     # 4. recall

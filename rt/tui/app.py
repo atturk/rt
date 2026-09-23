@@ -368,6 +368,22 @@ class RTApp(App):
             return
         lesson = self.selected_lesson
         status = next((st for ph, st in lesson.phase_status if ph == phase), PhaseStatus.MISSING)
+        if phase == "review" and status in (PhaseStatus.STALE, PhaseStatus.INVALID):
+            from rt.pipeline.review import load_science_issues
+            existing_issues = load_science_issues(lesson.dir_path)
+            if existing_issues:
+                from rt.tui.command_form import ConfirmModal
+                n = len(existing_issues)
+                msg = (
+                    f"La fase 'review' è {status.value.upper()} e contiene {n} issue/decisioni esistenti.\n\n"
+                    f"Rigenerarla cancellerà completamente le issue e le decisioni attuali.\n\n"
+                    f"Continuare con la rigenerazione?"
+                )
+                confirmed = await self.push_screen_wait(ConfirmModal(msg, title="Rigenerazione REVIEW"))
+                if confirmed:
+                    await self._execute([phase, lesson.dir_path])
+                return
+
         if status != PhaseStatus.VALID:
             await self._execute([phase, lesson.dir_path])
         else:
@@ -384,7 +400,7 @@ class RTApp(App):
     @work
     async def _handle_review_issues_action(self) -> None:
         if self.selected_lesson:
-            await self._execute(["review", self.selected_lesson.dir_path])
+            await self._execute(["review", self.selected_lesson.dir_path, "--no-regenerate"])
 
     @work
     async def action_run(self) -> None:

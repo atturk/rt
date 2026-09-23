@@ -63,5 +63,8 @@ def lesson_path(lesson_dir: str, filename: str) -> str:
         return root_path
 
     state_dir = os.path.join(lesson_dir, STATE_SUBDIR)
-    os.makedirs(state_dir, exist_ok=True)
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+    except OSError:
+        pass
     return os.path.join(state_dir, filename)
