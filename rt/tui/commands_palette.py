@@ -28,7 +28,7 @@ class CommandsProvider(Provider):
     def _get_command_help(self, name: str) -> str:
         parser = getattr(self.app, "subcommand_parsers", {}).get(name)
         if parser:
-            return parser.description or parser.help or ""
+            return getattr(parser, "description", "") or getattr(parser, "help", "") or ""
         return ""
 
     def _trigger_command(self, name: str) -> None:

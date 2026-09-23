@@ -172,6 +172,7 @@ class RTApp(App):
         ("r", "run", "Esegui/continua"),
         ("a", "recall", "Active recall"),
         ("t", "toggle_toc", "TOC"),
+        ("?", "show_manual", "Manuale"),
         ("q", "quit", "Esci"),
     ]
 
@@ -408,6 +409,10 @@ class RTApp(App):
             self.notify(f"Impossibile avviare il demone: {exc}", severity="error", title="Telegram")
 
         self.query_one("#status", Static).update(self._telegram_status_markup())
+
+    def action_show_manual(self) -> None:
+        from rt.tui.manual import ManualScreen
+        self.push_screen(ManualScreen(self.subcommand_parsers))
 
 
 def run_app() -> None:
