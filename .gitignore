@@ -51,3 +51,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Note di lavoro interne (solo locali, mai pubbliche)
+.agents/
+.agent/
