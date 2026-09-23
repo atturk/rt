@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import time
 from typing import List, Optional, Set, Dict, Any
-from rich.panel import Panel
 from rich.text import Text
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.containers import Horizontal, Vertical
