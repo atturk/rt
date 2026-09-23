@@ -288,8 +288,8 @@ class TestDashboardKeypressRegression:
 
         async with app.run_test(size=(160, 45)) as pilot:
             await pilot.pause()
-            # Simula il click reale sul bottone build dalla dashboard
-            await pilot.click("#btn-phase-build")
+            # Simula il click reale sulla scritta cliccabile della fase build dalla dashboard
+            await pilot.click("#phase-link-build")
             await pilot.pause(0.5)
             await app.workers.wait_for_complete()
 

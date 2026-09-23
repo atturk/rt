@@ -374,7 +374,7 @@ class TestPhaseButtons:
 
         async with app.run_test(size=(160, 45)) as pilot:
             await pilot.pause()
-            await pilot.click("#btn-phase-build")
+            await pilot.click("#phase-link-build")
             await pilot.pause()
             mock_execute.assert_awaited_once_with(["build", str(tmp_path / "stale_lesson")])
 
@@ -406,7 +406,7 @@ class TestPhaseButtons:
         # 1. Confirm with 'y'
         async with app.run_test(size=(160, 45)) as pilot:
             await pilot.pause()
-            await pilot.click("#btn-phase-build")
+            await pilot.click("#phase-link-build")
             await pilot.pause()
             assert isinstance(app.screen, ConfirmModal)
             await pilot.press("y")
@@ -419,7 +419,7 @@ class TestPhaseButtons:
         monkeypatch.setattr(app2, "_execute", mock_execute2)
         async with app2.run_test(size=(160, 45)) as pilot:
             await pilot.pause()
-            await pilot.click("#btn-phase-build")
+            await pilot.click("#phase-link-build")
             await pilot.pause()
             assert isinstance(app2.screen, ConfirmModal)
             await pilot.press("n")
@@ -467,11 +467,12 @@ class TestPhaseButtons:
 
         async with app.run_test(size=(160, 45)) as pilot:
             await pilot.pause()
-            btn = app.query_one("#btn-review-issues", Button)
-            assert btn.display is True
-            assert "4" in str(btn.label)
+            from rt.tui.app import IssuesLink
+            link = app.query_one("#issues-link", IssuesLink)
+            assert link.display is True
+            assert "4" in str(link.render())
 
-            await pilot.click("#btn-review-issues")
+            await pilot.click("#issues-link")
             await pilot.pause()
             mock_execute.assert_awaited_once_with(["review", str(tmp_path / "issues_lesson")])
 
@@ -479,13 +480,12 @@ class TestPhaseButtons:
             app.query_one("#lesson-list").focus()
             await pilot.press("down")
             await pilot.pause()
-            assert btn.display is False
+            assert link.display is False
 
     @pytest.mark.anyio
     async def test_phase_buttons_update_on_selection_change(self, monkeypatch, tmp_path):
-        from textual.widgets import Button
+        from rt.tui.app import RTApp, PhaseLink
         from rt.core.idempotency import PhaseStatus
-        from rt.tui.app import RTApp
 
         lesson1 = LessonSummary(
             dir_path=str(tmp_path / "l1"),
@@ -519,17 +519,17 @@ class TestPhaseButtons:
 
         async with app.run_test(size=(160, 45)) as pilot:
             await pilot.pause()
-            btn_prep = app.query_one("#btn-phase-prepare", Button)
-            btn_build = app.query_one("#btn-phase-build", Button)
+            link_prep = app.query_one("#phase-link-prepare", PhaseLink)
+            link_build = app.query_one("#phase-link-build", PhaseLink)
 
-            assert "✓" in str(btn_prep.label)
-            assert "○" in str(btn_build.label)
+            assert "✓" in str(link_prep.render())
+            assert "○" in str(link_build.render())
 
             await pilot.press("down")
             await pilot.pause()
 
-            assert "⚠" in str(btn_prep.label)
-            assert "✓" in str(btn_build.label)
+            assert "⚠" in str(link_prep.render())
+            assert "✓" in str(link_build.render())
 
 
 

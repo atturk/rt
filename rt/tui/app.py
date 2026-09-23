@@ -10,7 +10,7 @@ from typing import List, Optional
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Footer, Input, ListItem, ListView, MarkdownViewer, Static
+from textual.widgets import Footer, Input, ListItem, ListView, MarkdownViewer, Static
 
 from rt.core.idempotency import PhaseStatus
 from rt.tui.data import PHASES, LessonSummary, badge_for_state, discover_lessons, load_markdown_preview
@@ -42,46 +42,47 @@ CAPTURED_SUBCOMMANDS = {
 REPORT_SUBCOMMANDS = {"cost", "status", "validate-outline", "validate-draft"}
 
 
-def build_stepper(lesson: LessonSummary) -> str:
-    parts = []
-    for phase, status in lesson.phase_status:
-        icon, token = PHASE_ICON.get(status, ("○", None))
-        label = phase.upper()
-        parts.append(f"[${token}]{icon} {label}[/]" if token else f"[dim]{icon} {label}[/]")
-    return "  ─  ".join(parts)
+def _phase_markup(phase: str, status: PhaseStatus) -> str:
+    icon, token = PHASE_ICON.get(status, ("○", None))
+    label = phase.upper()
+    return f"[${token}]{icon} {label}[/]" if token else f"[dim]{icon} {label}[/]"
 
 
-def build_detail(lesson: LessonSummary) -> str:
+def build_header(lesson: LessonSummary) -> str:
     lines = [f"[b]{lesson.title}[/b]"]
     meta = lesson.subject or "—"
     if lesson.recorded:
         meta += f" · registrata {lesson.recorded}"
     meta += f" · aggiornata {lesson.when}"
     lines.append(f"[dim]{meta}[/dim]")
-    lines.append("")
-    lines.append(build_stepper(lesson))
+    return "\n".join(lines)
+
+
+def build_stats(lesson: LessonSummary) -> str:
     stats = []
-    if lesson.pending_issues:
-        stats.append(f"[$warning]●[/] {lesson.pending_issues} issue in sospeso")
     if lesson.cost_total:
         stats.append(f"costo stimato [b]${lesson.cost_total:.2f}[/b]")
     if lesson.error:
         stats.append(f"[$error]⚠ stato illeggibile: {lesson.error}[/]")
-    if stats:
-        lines.append("")
-        lines.append("   ·   ".join(stats))
-    return "\n".join(lines)
+    return "   ·   ".join(stats)
 
 
 class LessonRow(ListItem):
     def __init__(self, lesson: LessonSummary) -> None:
-        _, token = badge_for_state(lesson.state)
-        super().__init__(classes=f"status-{token}")
+        super().__init__()
         self.lesson = lesson
 
     def compose(self) -> ComposeResult:
         label, token = badge_for_state(self.lesson.state)
         with Horizontal(classes="lesson-row"):
+            with Horizontal(classes="phase-strip"):
+                for phase in PHASES:
+                    status = next(
+                        (st for ph, st in self.lesson.phase_status if ph == phase),
+                        PhaseStatus.MISSING,
+                    )
+                    _, seg_token = PHASE_ICON.get(status, ("○", None))
+                    yield Static("", classes=f"phase-seg phase-seg-{seg_token or 'missing'}")
             with Vertical(classes="lesson-text"):
                 yield Static(self.lesson.title, classes="lesson-title")
                 yield Static(f"{self.lesson.subject or '—'} · {self.lesson.when}", classes="lesson-sub")
@@ -94,6 +95,29 @@ class TelegramStatusIndicator(Static):
     def on_click(self) -> None:
         if hasattr(self.app, "action_toggle_telegram_daemon"):
             self.app.action_toggle_telegram_daemon()
+
+
+class PhaseLink(Static):
+    """Testo cliccabile per una fase della pipeline nel pannello dettaglio lezione: appare come
+    testo normale, con un effetto 'bottone' (sfondo/colore) solo quando ci si passa sopra col
+    mouse — niente bordo o riquadro permanente."""
+
+    def __init__(self, phase: str, **kwargs) -> None:
+        super().__init__("", **kwargs)
+        self.phase = phase
+
+    def on_click(self) -> None:
+        if hasattr(self.app, "_handle_phase_action"):
+            self.app._handle_phase_action(self.phase)
+
+
+class IssuesLink(Static):
+    """Testo cliccabile 'N issue in sospeso' nel pannello dettaglio lezione (stesso trattamento
+    hover di PhaseLink)."""
+
+    def on_click(self) -> None:
+        if hasattr(self.app, "_handle_review_issues_action"):
+            self.app._handle_review_issues_action()
 
 
 class RTApp(App):
@@ -125,14 +149,17 @@ class RTApp(App):
 
     ListView { background: transparent; height: 1fr; }
     ListItem { padding: 0; background: transparent; }
+    ListItem:hover .lesson-row { background: $primary 15%; }
+    ListItem:hover .lesson-title { color: $primary; text-style: bold; }
 
     .lesson-row { height: 3; padding: 0 1; }
-    .status-primary .lesson-row { border-left: thick $primary; }
-    .status-secondary .lesson-row { border-left: thick $secondary; }
-    .status-accent .lesson-row { border-left: thick $accent; }
-    .status-success .lesson-row { border-left: thick $success; }
-    .status-warning .lesson-row { border-left: thick $warning; }
-    .status-error .lesson-row { border-left: thick $error; }
+
+    .phase-strip { width: 5; height: 3; margin-right: 1; }
+    .phase-seg { width: 1; height: 1fr; }
+    .phase-seg-success { background: $success; }
+    .phase-seg-warning { background: $warning; }
+    .phase-seg-error { background: $error; }
+    .phase-seg-missing { background: $surface; }
 
     .lesson-text { width: 1fr; }
     .lesson-title { color: $text; text-wrap: nowrap; text-overflow: ellipsis; }
@@ -145,12 +172,14 @@ class RTApp(App):
         height: auto; padding: 1 2; margin-bottom: 1;
         border: round $primary 25%; border-title-color: $primary;
     }
-    #phase-buttons {
+    #phase-stepper {
         height: auto; margin-top: 1; align: left middle;
     }
-    #phase-buttons Button {
-        margin-right: 1;
-    }
+    .phase-link { width: auto; padding: 0 1; }
+    .phase-link:hover { background: $primary 20%; text-style: bold; }
+    .phase-sep { width: auto; color: $text-muted; }
+    .issues-link { width: auto; padding: 0 1; margin-top: 1; }
+    .issues-link:hover { background: $warning 20%; text-style: bold; }
 
     #markdown-panel {
         height: 1fr; border: round $primary 25%; border-title-color: $primary;
@@ -213,11 +242,14 @@ class RTApp(App):
                 yield ListView(id="lesson-list")
             with Vertical(id="detail"):
                 with Vertical(id="detail-info"):
-                    yield Static("", id="detail-body")
-                    with Horizontal(id="phase-buttons"):
-                        for p in PHASES:
-                            yield Button(p.upper(), id=f"btn-phase-{p}")
-                        yield Button("Revisiona issue", id="btn-review-issues")
+                    yield Static("", id="detail-header")
+                    with Horizontal(id="phase-stepper"):
+                        for i, p in enumerate(PHASES):
+                            if i > 0:
+                                yield Static("  ─  ", classes="phase-sep")
+                            yield PhaseLink(p, id=f"phase-link-{p}", classes="phase-link")
+                    yield IssuesLink("", id="issues-link", classes="issues-link")
+                    yield Static("", id="detail-stats")
                 with Vertical(id="markdown-panel"):
                     yield MarkdownViewer("", show_table_of_contents=True)
         yield Footer()
@@ -250,35 +282,35 @@ class RTApp(App):
             await self._show_lesson(self.lessons[0])
         else:
             self.selected_lesson = None
-            self.query_one("#detail-body", Static).update(
+            self.query_one("#detail-header", Static).update(
                 "Nessuna lezione trovata in questa cartella."
                 if root else
                 "Configura 'telegram.lessons_root' in config/general.yaml (o premi 'g') "
                 "per vedere qui le tue lezioni."
             )
-            self.query_one("#phase-buttons").display = False
+            self.query_one("#detail-stats", Static).update("")
+            self.query_one("#phase-stepper").display = False
+            self.query_one("#issues-link").display = False
             await self.query_one(MarkdownViewer).document.update("")
 
     async def _show_lesson(self, lesson: LessonSummary) -> None:
         self.selected_lesson = lesson
-        self.query_one("#detail-body", Static).update(build_detail(lesson))
-        self.query_one("#phase-buttons").display = True
+        self.query_one("#detail-header", Static).update(build_header(lesson))
+        self.query_one("#phase-stepper").display = True
 
         for p in PHASES:
-            btn = self.query_one(f"#btn-phase-{p}", Button)
+            link = self.query_one(f"#phase-link-{p}", PhaseLink)
             status = next((st for ph, st in lesson.phase_status if ph == p), PhaseStatus.MISSING)
-            icon, token = PHASE_ICON.get(status, ("○", None))
-            btn.label = f"{icon} {p.upper()}"
-            btn.variant = token if token in ("success", "warning", "error", "primary") else "default"
+            link.update(_phase_markup(p, status))
 
-        btn_issues = self.query_one("#btn-review-issues", Button)
+        issues_link = self.query_one("#issues-link", IssuesLink)
         if lesson.pending_issues > 0:
-            btn_issues.display = True
-            btn_issues.label = f"Revisiona issue ({lesson.pending_issues})"
-            btn_issues.variant = "warning"
+            issues_link.display = True
+            issues_link.update(f"[$warning]●[/] {lesson.pending_issues} issue in sospeso")
         else:
-            btn_issues.display = False
+            issues_link.display = False
 
+        self.query_one("#detail-stats", Static).update(build_stats(lesson))
         await self.query_one(MarkdownViewer).document.update(load_markdown_preview(lesson.dir_path))
 
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
@@ -353,14 +385,6 @@ class RTApp(App):
     async def _handle_review_issues_action(self) -> None:
         if self.selected_lesson:
             await self._execute(["review", self.selected_lesson.dir_path])
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        button_id = event.button.id or ""
-        if button_id.startswith("btn-phase-"):
-            phase = button_id[len("btn-phase-"):]
-            self._handle_phase_action(phase)
-        elif button_id == "btn-review-issues":
-            self._handle_review_issues_action()
 
     @work
     async def action_run(self) -> None:
