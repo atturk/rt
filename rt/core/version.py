@@ -195,12 +195,18 @@ def run_update(project_root: str) -> None:
 
         extracted_root = os.path.join(temp_dir, extracted_dirs[0])
 
-        # Copia file estratti sovrascrivendo l'equivalente in project_root (escludendo config/.env/.venv/install.log)
+        # Copia file estratti sovrascrivendo l'equivalente in project_root (escludendo
+        # config/.env/.venv/install.log). VERSION è copiato per ultimo, fuori da questo
+        # loop (vedi sotto): l'ordine di os.walk() non è garantito, e se il processo
+        # venisse interrotto a metà sincronizzazione dopo aver già scritto il nuovo
+        # VERSION ma prima di tutti gli altri file, un successivo 'rt -u' vedrebbe
+        # l'installazione già aggiornata (VERSION combacia) e non la risincronizzerebbe
+        # mai più, lasciandola permanentemente inconsistente.
         for root, dirs, files in os.walk(extracted_root):
             for f in files:
                 src_file = os.path.join(root, f)
                 rel_path = os.path.relpath(src_file, extracted_root)
-                if _is_update_excluded(rel_path):
+                if rel_path == "VERSION" or _is_update_excluded(rel_path):
                     continue
                 dst_file = os.path.join(project_root, rel_path)
                 os.makedirs(os.path.dirname(dst_file), exist_ok=True)
@@ -229,6 +235,12 @@ def run_update(project_root: str) -> None:
                         os.rmdir(root)
                     except OSError:
                         pass
+
+        # VERSION per ultimo, solo ora che il resto della sincronizzazione è riuscito
+        # per intero (vedi commento sopra sul loop di copia).
+        new_version_src = os.path.join(extracted_root, "VERSION")
+        if os.path.isfile(new_version_src):
+            shutil.copy2(new_version_src, os.path.join(project_root, "VERSION"))
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

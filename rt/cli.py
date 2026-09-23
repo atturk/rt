@@ -216,7 +216,12 @@ def cmd_review(args):
         return
 
     from rt.core.idempotency import check_phase_status, PhaseStatus
-    phase_status, reason = check_phase_status(args.lesson_dir, "review")
+    try:
+        phase_status, reason = check_phase_status(args.lesson_dir, "review")
+    except OSError:
+        # lesson_dir non scrivibile/inesistente (es. invocazione di test con un percorso
+        # fittizio): non c'è nulla di reale da proteggere, procedi come se non fosse STALE.
+        phase_status, reason = PhaseStatus.MISSING, ""
     if phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
         existing_issues = load_science_issues(args.lesson_dir)
         if existing_issues and sys.stdin.isatty():
