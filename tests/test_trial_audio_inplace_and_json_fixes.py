@@ -217,11 +217,9 @@ async def test_redraw_in_place_ansi_sequences(tmp_path):
 
     app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
     async with app.run_test() as pilot:
-        p1 = app._render_panel()
-        assert "Science Review [1/2]" in str(p1.title)
+        assert "[1/2]" in app._get_progress_label()
         await pilot.press("a")
-        p2 = app._render_panel()
-        assert "Science Review [2/2]" in str(p2.title)
+        assert "[2/2]" in app._get_progress_label()
         await pilot.press("a")
 
     assert app.return_value is True

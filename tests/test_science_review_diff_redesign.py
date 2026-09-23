@@ -38,7 +38,7 @@ def test_science_critic_diff_rendering_with_spans():
         suggested_fix="riducono la barriera di energia libera",
     )
 
-    panel = _build_science_panel(
+    rendered_text: Text = _build_science_panel(
         idx=0,
         total_count=1,
         iss=iss,
@@ -47,8 +47,6 @@ def test_science_critic_diff_rendering_with_spans():
         sci_unit=sci_unit,
         decisions_map={},
     )
-
-    rendered_text: Text = panel.renderable
     plain = rendered_text.plain
 
     # 1. Nessuna riga Timecode
@@ -86,7 +84,7 @@ def test_science_critic_no_suggested_fix_omits_green_and_legend():
         suggested_fix=None,
     )
 
-    panel = _build_science_panel(
+    rendered_text = _build_science_panel(
         idx=0,
         total_count=1,
         iss=iss,
@@ -96,7 +94,7 @@ def test_science_critic_no_suggested_fix_omits_green_and_legend():
         decisions_map={},
     )
 
-    plain = panel.renderable.plain
+    plain = rendered_text.plain
     assert "+ " not in plain
     assert "🔴 = claim attuale" not in plain
 
@@ -113,7 +111,7 @@ def test_science_critic_fallback_when_claim_not_verbatim():
         suggested_fix="correzione alternativa",
     )
 
-    panel = _build_science_panel(
+    rendered_text = _build_science_panel(
         idx=0,
         total_count=1,
         iss=iss,
@@ -123,7 +121,7 @@ def test_science_critic_fallback_when_claim_not_verbatim():
         decisions_map={},
     )
 
-    plain = panel.renderable.plain
+    plain = rendered_text.plain
     assert "⚠️ Affermazione: \"un claim che non esiste nel testo\"" in plain
     assert "💡 Correzione:   \"correzione alternativa\"" in plain
 
@@ -139,7 +137,7 @@ def test_asr_risk_visual_layout_unchanged():
         reason="ASR incerto",
     )
 
-    panel = _build_science_panel(
+    rendered_text = _build_science_panel(
         idx=0,
         total_count=1,
         iss=iss,
@@ -149,11 +147,10 @@ def test_asr_risk_visual_layout_unchanged():
         decisions_map={},
     )
 
-    plain = panel.renderable.plain
+    plain = rendered_text.plain
     assert "🎙️ RISCHIO ASR (statistico)" in plain
     assert "⏱ Timecode (stima): 00:15" in plain
     assert "🎙️ Segmento raw sospetto: \"enzimi abbassano\"" in plain
-    assert "Azione [A=Accetta / M=Modifica" in plain
     assert "🔴 = claim attuale" not in plain
 
 

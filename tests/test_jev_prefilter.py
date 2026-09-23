@@ -366,12 +366,12 @@ def test_rewrite_drift_issue_renders_no_diff_branch():
     )
     assert _is_no_diff_issue_type(iss) is True
 
-    panel = _build_science_panel(
+    rendered_text = _build_science_panel(
         idx=0, total_count=1, iss=iss, tc="N/D",
         sci_unit_info=f"{unit.unit_id} - {unit.title}", sci_unit=unit,
         decisions_map={}, last_status=None,
     )
-    rendered = panel.renderable.plain
+    rendered = rendered_text.plain
     assert "DERIVA RIELABORAZIONE" in rendered
     assert "Il modello di pre-screening Jev" in rendered
     assert "0.95" in rendered

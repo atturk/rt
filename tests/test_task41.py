@@ -273,7 +273,7 @@ def test_tui_science_panel_err_asr_st():
         status="pending",
     )
 
-    panel = _build_science_panel(
+    rendered = _build_science_panel(
         idx=0,
         total_count=1,
         iss=issue,
@@ -290,8 +290,9 @@ def test_tui_science_panel_err_asr_st():
         decisions_map={},
     )
 
-    panel_text = str(panel.renderable)
+    panel_text = rendered.plain
     assert "🎙️ RISCHIO ASR (statistico)" in panel_text
-    assert "A=Accetta" in panel_text
-    assert "M=Modifica" in panel_text
+    assert "sci_st_1.1" in panel_text
+    assert "Confidenza ASR degradata" in panel_text
+    assert "trascrizione raw sospetta" in panel_text
 

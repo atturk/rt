@@ -15,7 +15,8 @@ from typing import List, Optional, Set, Dict, Any
 from rich.panel import Panel
 from rich.text import Text
 from textual.app import App, ComposeResult, SuspendNotSupported
-from textual.widgets import Static
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Footer, Static
 
 from rt.core.models import ScienceIssue, ScienceType
 from rt.telegram import issue_queue as tg_queue
@@ -280,7 +281,7 @@ def _build_science_panel(
     sci_unit,
     decisions_map: dict,
     last_status: Optional[str] = None
-) -> Panel:
+) -> Text:
     from rt.core.encoding import fix_mojibake
 
     iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
@@ -306,7 +307,7 @@ def _build_science_panel(
             out.append(f"  💡 Correzione:   \"{fix_mojibake(iss.suggested_fix)}\"\n")
         if iss.diplomatic_question:
             out.append(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"\n")
-        if sci_unit and sci_unit.content:
+        if sci_unit and getattr(sci_unit, "content", None):
             out.append(f"\n  📖 Contesto Draft (Unità {sci_unit.unit_id} intera):\n")
             out.append("  " + "-" * 56 + "\n")
             for line in fix_mojibake(sci_unit.content).strip().split("\n"):
@@ -360,16 +361,14 @@ def _build_science_panel(
     if last_status:
         out.append(f"\n  {last_status}\n")
 
-    if is_asr_risk:
-        out.append("\n  Azione [A=Accetta / M=Modifica / P=Player audio / I=Indietro / S=Salta / Q=Esci]: ")
-    else:
-        out.append("\n  Azione [A=Accetta / R=Rifiuta / M=Modifica / P=Player audio / I=Indietro / S=Salta / Q=Esci]: ")
-
-    return Panel(out, title=f"Science Review [{idx + 1}/{total_count}]", border_style="magenta")
+    return out
 
 
 class IssueReviewApp(App):
     """Schermata interattiva Textual per la revisione delle issue ASR / Science."""
+
+    TITLE = "RT · Revisione Issue"
+
     BINDINGS = [
         ("a", "approve_or_accept", "Accetta"),
         ("r", "reject", "Rifiuta"),
@@ -379,6 +378,60 @@ class IssueReviewApp(App):
         ("s,right,down,j", "skip", "Salta"),
         ("q,escape", "quit", "Esci"),
     ]
+
+    CSS = """
+    Screen {
+        background: $background;
+    }
+
+    #topbar {
+        height: 3;
+        background: $panel;
+        border-bottom: solid $primary 20%;
+        padding: 0 2;
+        align: left middle;
+    }
+
+    #topbar #brand {
+        width: 1fr;
+        color: $text;
+        text-style: bold;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    #topbar #progress {
+        width: auto;
+        color: $text-muted;
+        text-wrap: nowrap;
+    }
+
+    #body {
+        height: 1fr;
+        padding: 1 2;
+    }
+
+    #issue-card {
+        height: 1fr;
+        background: $surface;
+        border: round $primary 25%;
+        border-title-color: $primary;
+        padding: 1 2;
+    }
+
+    #issue-card:focus-within {
+        border: round $primary;
+    }
+
+    #issue-content {
+        height: 1fr;
+        overflow-y: auto;
+    }
+
+    Footer {
+        background: $panel;
+    }
+    """
 
     def __init__(
         self,
@@ -421,10 +474,19 @@ class IssueReviewApp(App):
         self.mpv_socket_path: Optional[str] = None
 
     def compose(self) -> ComposeResult:
-        yield Static(self._render_panel(), id="panel_view")
+        with Vertical():
+            with Horizontal(id="topbar"):
+                yield Static("🔬 RT · Revisione Issue", id="brand")
+                yield Static(self._get_progress_label(), id="progress")
+            with Vertical(id="body"):
+                with Vertical(id="issue-card") as card:
+                    card.border_title = self._get_card_title()
+                    yield Static(self._get_issue_content(), id="issue-content")
+            yield Footer()
 
     def on_mount(self) -> None:
         self.set_interval(0.2, self._check_audio_proc)
+        self._update_display()
 
     def on_unmount(self) -> None:
         self._stop_audio()
@@ -448,9 +510,32 @@ class IssueReviewApp(App):
         if self.mpv_proc is not None and self.mpv_proc.poll() is not None:
             self.mpv_proc = None
 
-    def _render_panel(self) -> Panel:
+    def _get_progress_label(self) -> str:
+        total = len(self.to_review)
+        if total == 0:
+            return "[0/0]"
+        current = min(self.idx + 1, total)
+        return f"[{current}/{total}]"
+
+    def _get_card_title(self) -> str:
         if self.idx >= len(self.to_review):
-            return Panel(Text("✨ Tutte le issue sono state revisionate."), title="Revisione completata", border_style="green")
+            return "Revisione completata"
+        iss = self.to_review[self.idx]
+        iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
+        is_asr_risk = _is_no_diff_issue_type(iss)
+        if is_asr_risk:
+            if iss.type == ScienceType.ERR_ASR_ST:
+                header_title = "🎙️ RISCHIO ASR (statistico)"
+            elif iss.type == ScienceType.ERR_REWRITE_DRIFT:
+                header_title = "🔀 DERIVA RIELABORAZIONE (Jev)"
+            else:
+                header_title = "🎙️ RISCHIO ASR (validato LLM)"
+            return f"{header_title} · ID: {iss.id}"
+        return f"SCIENCE CRITIC ({iss_type_str}) · ID: {iss.id}"
+
+    def _get_issue_content(self) -> Text:
+        if self.idx >= len(self.to_review):
+            return Text("✨ Tutte le issue sono state revisionate.", style="green bold")
 
         iss = self.to_review[self.idx]
         ledger = load_ledger(self.lesson_dir)
@@ -480,8 +565,14 @@ class IssueReviewApp(App):
 
     def _update_display(self) -> None:
         try:
-            widget = self.query_one("#panel_view", Static)
-            widget.update(self._render_panel())
+            card = self.query_one("#issue-card", Vertical)
+            card.border_title = self._get_card_title()
+
+            content = self.query_one("#issue-content", Static)
+            content.update(self._get_issue_content())
+
+            prog = self.query_one("#progress", Static)
+            prog.update(self._get_progress_label())
         except Exception:
             pass
 
