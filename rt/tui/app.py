@@ -88,6 +88,14 @@ class LessonRow(ListItem):
             yield Static(f"[${token}]{label}[/]", classes="lesson-badge")
 
 
+class TelegramStatusIndicator(Static):
+    """Sensore cliccabile dello stato del demone Telegram nella topbar."""
+
+    def on_click(self) -> None:
+        if hasattr(self.app, "action_toggle_telegram_daemon"):
+            self.app.action_toggle_telegram_daemon()
+
+
 class RTApp(App):
     """Dashboard principale di RT."""
 
@@ -197,7 +205,7 @@ class RTApp(App):
                 f"[dim]v{version}[/dim]",
                 id="brand",
             )
-            yield Static("", id="status")
+            yield TelegramStatusIndicator("", id="status")
         with Horizontal(id="body"):
             with Vertical(id="sidebar"):
                 yield Input(placeholder="› cerca lezione…", id="search")
@@ -379,6 +387,29 @@ class RTApp(App):
         self._run_cli(["config"])
         await self.refresh_lessons()
 
+    def action_toggle_telegram_daemon(self) -> None:
+        import shlex
+        import subprocess
+        from rt.telegram.daemon_status import get_rt_executable_path, is_daemon_running
+
+        if is_daemon_running():
+            self.notify("Il demone Telegram è già attivo.", title="Telegram")
+            return
+
+        rt_path = get_rt_executable_path()
+        inner_cmd = f"{shlex.quote(rt_path)} telegram-daemon"
+        escaped_inner_cmd = inner_cmd.replace("\\", "\\\\").replace('"', '\\"')
+        script = f'tell application "Terminal" to do script "{escaped_inner_cmd}"'
+
+        try:
+            subprocess.Popen(["osascript", "-e", script])
+            self.notify("Avvio demone Telegram in una nuova finestra Terminal…", title="Telegram")
+        except Exception as exc:
+            self.notify(f"Impossibile avviare il demone: {exc}", severity="error", title="Telegram")
+
+        self.query_one("#status", Static).update(self._telegram_status_markup())
+
 
 def run_app() -> None:
     RTApp().run()
+
