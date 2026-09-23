@@ -1,9 +1,13 @@
 """
-Test per Task 54 — rt -v (versione) e rt -u (aggiornamento).
+Test per Task 92 — rt -v (versione) e rt -u (aggiornamento) basati su file VERSION e GitHub Releases.
 """
+import io
 import os
 import sys
-import subprocess
+import json
+import tarfile
+import tempfile
+import urllib.error
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -42,229 +46,227 @@ def test_semver_sorting_v2_10_greater_than_v2_9():
     assert parse_semver("v2.10.0") > parse_semver("v2.9.0")
 
 
-def test_get_current_version_with_tag():
-    mock_res = MagicMock(returncode=0, stdout="v2.4.0\n")
-    with patch("subprocess.run", return_value=mock_res) as mock_run:
-        ver = get_current_version("/fake/root")
-        assert ver == "2.4.0"
-        mock_run.assert_called_once_with(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            cwd="/fake/root",
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+def test_get_current_version_from_file(tmp_path):
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("3.3.8\n", encoding="utf-8")
+    assert get_current_version(str(tmp_path)) == "3.3.8"
+
+    version_file.write_text("v3.4.0", encoding="utf-8")
+    assert get_current_version(str(tmp_path)) == "3.4.0"
 
 
-def test_get_current_version_no_tags():
-    mock_res = MagicMock(returncode=128, stdout="", stderr="fatal: No names found\n")
-    with patch("subprocess.run", return_value=mock_res):
-        ver = get_current_version("/fake/root")
-        assert ver == "sconosciuta"
+def test_get_current_version_missing_or_empty(tmp_path):
+    assert get_current_version(str(tmp_path)) == "sconosciuta"
 
-
-def test_get_current_version_exception():
-    with patch("subprocess.run", side_effect=OSError("git not found")):
-        ver = get_current_version("/fake/root")
-        assert ver == "sconosciuta"
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("   \n", encoding="utf-8")
+    assert get_current_version(str(tmp_path)) == "sconosciuta"
 
 
 def test_get_latest_remote_version_success():
-    remote_output = (
-        "aaa111\trefs/tags/v2.3.0\n"
-        "bbb222\trefs/tags/v2.10.0\n"
-        "ccc333\trefs/tags/v2.10.0^{}\n"
-        "ddd444\trefs/tags/v2.9.0\n"
-        "eee555\trefs/tags/non-semver\n"
-    )
-    mock_res = MagicMock(returncode=0, stdout=remote_output)
-    with patch("subprocess.run", return_value=mock_res) as mock_run:
+    mock_payload = json.dumps({"tag_name": "v3.3.8"}).encode("utf-8")
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.read.return_value = mock_payload
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
         latest = get_latest_remote_version("/fake/root", timeout=3.0)
-        assert latest == "2.10.0"
-        mock_run.assert_called_once_with(
-            ["git", "ls-remote", "--tags", "origin"],
-            cwd="/fake/root",
-            capture_output=True,
-            text=True,
-            timeout=3.0,
-            check=False,
-        )
+        assert latest == "3.3.8"
+
+
+def test_get_latest_remote_version_404_no_releases():
+    http_err = urllib.error.HTTPError(
+        url="https://api.github.com/repos/atturk/rt/releases/latest",
+        code=404,
+        msg="Not Found",
+        hdrs={},
+        fp=io.BytesIO(b"{}"),
+    )
+    with patch("urllib.request.urlopen", side_effect=http_err):
+        latest = get_latest_remote_version("/fake/root")
+        assert latest == ""
 
 
 def test_get_latest_remote_version_failure_or_timeout():
-    mock_res = MagicMock(returncode=128, stdout="")
-    with patch("subprocess.run", return_value=mock_res):
+    url_err = urllib.error.URLError("Network is unreachable")
+    with patch("urllib.request.urlopen", side_effect=url_err):
         assert get_latest_remote_version("/fake/root") is None
 
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="git", timeout=5.0)):
-        assert get_latest_remote_version("/fake/root") is None
-
-    with patch("subprocess.run", side_effect=OSError("network down")):
+    with patch("urllib.request.urlopen", side_effect=TimeoutError("Timed out")):
         assert get_latest_remote_version("/fake/root") is None
 
 
 def test_run_version_up_to_date(capsys):
-    with patch("rt.core.version.get_current_version", return_value="2.4.0"), \
-         patch("rt.core.version.get_latest_remote_version", return_value="2.4.0"):
+    with patch("rt.core.version.get_current_version", return_value="3.3.8"), \
+         patch("rt.core.version.get_latest_remote_version", return_value="3.3.8"):
         run_version("/fake/root")
         captured = capsys.readouterr().out
-        assert "RT versione 2.4.0 — sei aggiornato ✅" in captured
+        assert "RT versione 3.3.8 — sei aggiornato ✅" in captured
 
 
 def test_run_version_update_available(capsys):
-    with patch("rt.core.version.get_current_version", return_value="2.3.0"), \
-         patch("rt.core.version.get_latest_remote_version", return_value="2.4.0"):
+    with patch("rt.core.version.get_current_version", return_value="3.3.7"), \
+         patch("rt.core.version.get_latest_remote_version", return_value="3.3.8"):
         run_version("/fake/root")
         captured = capsys.readouterr().out
-        assert "RT versione 2.3.0 — è disponibile la versione 2.4.0" in captured
+        assert "RT versione 3.3.7 — è disponibile la versione 3.3.8" in captured
         assert "Esegui 'rt -u' per aggiornare" in captured
 
 
 def test_run_version_offline(capsys):
-    with patch("rt.core.version.get_current_version", return_value="2.3.0"), \
+    with patch("rt.core.version.get_current_version", return_value="3.3.8"), \
          patch("rt.core.version.get_latest_remote_version", return_value=None):
         run_version("/fake/root")
         captured = capsys.readouterr().out
-        assert "RT versione 2.3.0 (impossibile verificare aggiornamenti — controlla la connessione)" in captured
+        assert "RT versione 3.3.8 (impossibile verificare aggiornamenti — controlla la connessione)" in captured
+
+
+def test_run_version_no_releases_yet(capsys):
+    with patch("rt.core.version.get_current_version", return_value="3.3.8"), \
+         patch("rt.core.version.get_latest_remote_version", return_value=""):
+        run_version("/fake/root")
+        captured = capsys.readouterr().out
+        assert "RT versione 3.3.8 (nessuna versione pubblicata ancora sul repository)" in captured
 
 
 def test_run_version_unknown_current_version(capsys):
     with patch("rt.core.version.get_current_version", return_value="sconosciuta"), \
-         patch("rt.core.version.get_latest_remote_version", return_value="2.4.0"):
+         patch("rt.core.version.get_latest_remote_version", return_value="3.3.8"):
         run_version("/fake/root")
         captured = capsys.readouterr().out
-        assert "RT versione sconosciuta — è disponibile la versione 2.4.0" in captured
+        assert "RT versione sconosciuta — è disponibile la versione 3.3.8" in captured
         assert "Esegui 'rt -u' per aggiornare" in captured
 
 
-def test_run_update_uncommitted_changes(capsys):
-    # git status --porcelain -uno returns non-empty
-    mock_status = MagicMock(returncode=0, stdout=" M rt/cli.py\n")
-    with patch("subprocess.run", return_value=mock_status) as mock_run:
-        with pytest.raises(SystemExit) as exc_info:
-            run_update("/fake/root")
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr().out
-        assert "⚠️ Ci sono modifiche locali non salvate nel codice, impossibile aggiornare in sicurezza." in captured
-        assert mock_run.call_count == 1
-        assert mock_run.call_args[0][0] == ["git", "status", "--porcelain", "-uno"]
+def _create_mock_tarball_bytes(version: str, new_file_name: str = "nuovo_modulo.py") -> bytes:
+    tar_stream = io.BytesIO()
+    with tarfile.open(fileobj=tar_stream, mode="w:gz") as tar:
+        # VERSION
+        v_data = f"{version}\n".encode("utf-8")
+        ti_v = tarfile.TarInfo(name=f"rt-{version}/VERSION")
+        ti_v.size = len(v_data)
+        tar.addfile(ti_v, io.BytesIO(v_data))
+
+        # new file
+        f_data = b"# new file content\n"
+        ti_f = tarfile.TarInfo(name=f"rt-{version}/{new_file_name}")
+        ti_f.size = len(f_data)
+        tar.addfile(ti_f, io.BytesIO(f_data))
+
+        # requirements.txt
+        req_data = b"pytest\n"
+        ti_req = tarfile.TarInfo(name=f"rt-{version}/requirements.txt")
+        ti_req.size = len(req_data)
+        tar.addfile(ti_req, io.BytesIO(req_data))
+
+    return tar_stream.getvalue()
 
 
-def test_run_update_not_on_main_branch(capsys):
-    def side_effect(cmd, **kwargs):
-        if cmd == ["git", "status", "--porcelain", "-uno"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
-            return MagicMock(returncode=0, stdout="feature-branch\n")
-        return MagicMock(returncode=0, stdout="")
+def test_run_update_end_to_end_success(tmp_path, capsys):
+    # 1. Existing installation in tmp_path
+    (tmp_path / "VERSION").write_text("3.3.7\n", encoding="utf-8")
+    (tmp_path / "vecchio_modulo.py").write_text("print('old')", encoding="utf-8")
+    
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "general.yaml").write_text("user_setting: true\n", encoding="utf-8")
 
-    with patch("subprocess.run", side_effect=side_effect):
-        with pytest.raises(SystemExit) as exc_info:
-            run_update("/fake/root")
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr().out
-        assert "⚠️ Non sei sul branch 'main', impossibile aggiornare automaticamente." in captured
+    (tmp_path / ".env").write_text("SECRET=my_key\n", encoding="utf-8")
+    (tmp_path / ".env.local").write_text("LOCAL=1\n", encoding="utf-8")
+    (tmp_path / "install.log").write_text("previous install log\n", encoding="utf-8")
 
-
-def test_run_update_already_up_to_date(capsys):
-    def side_effect(cmd, **kwargs):
-        if cmd == ["git", "status", "--porcelain", "-uno"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
-            return MagicMock(returncode=0, stdout="main\n")
-        if cmd == ["git", "fetch", "origin"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "HEAD"]:
-            return MagicMock(returncode=0, stdout="sha123\n")
-        if cmd == ["git", "rev-parse", "origin/main"]:
-            return MagicMock(returncode=0, stdout="sha123\n")
-        if cmd == ["git", "describe", "--tags", "--abbrev=0"]:
-            return MagicMock(returncode=0, stdout="v2.4.0\n")
-        return MagicMock(returncode=0, stdout="")
-
-    with patch("subprocess.run", side_effect=side_effect) as mock_run:
-        with pytest.raises(SystemExit) as exc_info:
-            run_update("/fake/root")
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr().out
-        assert "Sei già aggiornato all'ultima versione (2.4.0)." in captured
-        # Ensure pip install was NOT called
-        for call in mock_run.call_args_list:
-            assert "pip" not in call[0][0]
-
-
-def test_run_update_successful(capsys, tmp_path):
-    # Setup a mock requirements.txt and mock venv python
-    req_file = tmp_path / "requirements.txt"
-    req_file.write_text("pytest\n")
     venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
     venv_py = venv_bin / "python3"
-    venv_py.write_text("")
+    venv_py.write_text("#!/bin/sh\n", encoding="utf-8")
 
-    call_history = []
+    tar_bytes = _create_mock_tarball_bytes("3.3.8", "nuovo_modulo.py")
 
-    def side_effect(cmd, **kwargs):
-        call_history.append(cmd)
-        if cmd == ["git", "status", "--porcelain", "-uno"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
-            return MagicMock(returncode=0, stdout="main\n")
-        if cmd == ["git", "fetch", "origin"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "HEAD"]:
-            return MagicMock(returncode=0, stdout="old_sha\n")
-        if cmd == ["git", "rev-parse", "origin/main"]:
-            return MagicMock(returncode=0, stdout="new_sha\n")
-        if cmd == ["git", "describe", "--tags", "--abbrev=0"]:
-            # Returns 2.3.0 first, then 2.4.0 after merge
-            if len([c for c in call_history if c == ["git", "merge", "--ff-only", "origin/main"]]) == 0:
-                return MagicMock(returncode=0, stdout="v2.3.0\n")
-            return MagicMock(returncode=0, stdout="v2.4.0\n")
-        if cmd == ["git", "merge", "--ff-only", "origin/main"]:
-            return MagicMock(returncode=0, stdout="Updating old_sha..new_sha\n")
-        return MagicMock(returncode=0, stdout="")
+    def mock_urlopen(req, timeout=None):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        if "releases/latest" in url:
+            mock_resp.status = 200
+            mock_resp.read.return_value = json.dumps({"tag_name": "v3.3.8"}).encode("utf-8")
+        elif "archive/refs/tags" in url or ".tar.gz" in url:
+            mock_resp.status = 200
+            mock_resp.read.side_effect = [tar_bytes, b""]
+            mock_resp.raw = io.BytesIO(tar_bytes)
+        return mock_resp
 
-    with patch("subprocess.run", side_effect=side_effect):
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen), \
+         patch("subprocess.run") as mock_subproc:
+
         with pytest.raises(SystemExit) as exc_info:
             run_update(str(tmp_path))
         assert exc_info.value.code == 0
-        captured = capsys.readouterr().out
-        assert "Aggiornamento in corso..." in captured
-        assert "✅ RT aggiornato: 2.3.0 → 2.4.0" in captured
 
-        # Check that pip install was called with the venv python
-        pip_calls = [c for c in call_history if len(c) > 2 and "pip" in c]
-        assert len(pip_calls) == 1
-        assert pip_calls[0][0] == str(venv_py)
-        assert pip_calls[0][1:] == ["-m", "pip", "install", "-r", str(req_file), "--quiet"]
+    captured = capsys.readouterr().out
+    assert "✅ RT aggiornato: 3.3.7 → 3.3.8" in captured
+
+    # Verify user config, env, venv, install.log were NOT modified
+    assert (tmp_path / "config" / "general.yaml").read_text(encoding="utf-8") == "user_setting: true\n"
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == "SECRET=my_key\n"
+    assert (tmp_path / ".env.local").read_text(encoding="utf-8") == "LOCAL=1\n"
+    assert (tmp_path / "install.log").read_text(encoding="utf-8") == "previous install log\n"
+    assert (tmp_path / ".venv" / "bin" / "python3").exists()
+
+    # Verify old untracked file deleted, new file copied, VERSION updated
+    assert not (tmp_path / "vecchio_modulo.py").exists()
+    assert (tmp_path / "nuovo_modulo.py").exists()
+    assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.8"
 
 
-def test_run_update_divergent_history_merge_failure(capsys):
-    def side_effect(cmd, **kwargs):
-        if cmd == ["git", "status", "--porcelain", "-uno"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
-            return MagicMock(returncode=0, stdout="main\n")
-        if cmd == ["git", "fetch", "origin"]:
-            return MagicMock(returncode=0, stdout="")
-        if cmd == ["git", "rev-parse", "HEAD"]:
-            return MagicMock(returncode=0, stdout="old_sha\n")
-        if cmd == ["git", "rev-parse", "origin/main"]:
-            return MagicMock(returncode=0, stdout="new_sha\n")
-        if cmd == ["git", "describe", "--tags", "--abbrev=0"]:
-            return MagicMock(returncode=0, stdout="v2.3.0\n")
-        if cmd == ["git", "merge", "--ff-only", "origin/main"]:
-            return MagicMock(returncode=1, stdout="", stderr="fatal: Not possible to fast-forward, aborting.")
-        return MagicMock(returncode=0, stdout="")
+def test_run_update_download_failure_preserves_installation(tmp_path, capsys):
+    (tmp_path / "VERSION").write_text("3.3.7\n", encoding="utf-8")
+    (tmp_path / "vecchio_modulo.py").write_text("print('old')", encoding="utf-8")
 
-    with patch("subprocess.run", side_effect=side_effect):
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "general.yaml").write_text("user_setting: true\n", encoding="utf-8")
+
+    def mock_urlopen(req, timeout=None):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "releases/latest" in url:
+            mock_resp = MagicMock()
+            mock_resp.__enter__.return_value = mock_resp
+            mock_resp.status = 200
+            mock_resp.read.return_value = json.dumps({"tag_name": "v3.3.8"}).encode("utf-8")
+            return mock_resp
+        else:
+            raise urllib.error.URLError("Download stream interrupted")
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
         with pytest.raises(SystemExit) as exc_info:
-            run_update("/fake/root")
+            run_update(str(tmp_path))
         assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "❌ Impossibile completare l'aggiornamento automatico" in err
-        assert "Contatta chi mantiene il progetto" in err
+
+    err = capsys.readouterr().err
+    assert "❌ Impossibile scaricare l'aggiornamento" in err
+
+    # Verify files untouched
+    assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.7"
+    assert (tmp_path / "vecchio_modulo.py").exists()
+    assert (tmp_path / "config" / "general.yaml").exists()
+
+
+def test_run_update_already_up_to_date(tmp_path, capsys):
+    (tmp_path / "VERSION").write_text("3.3.8\n", encoding="utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.read.return_value = json.dumps({"tag_name": "v3.3.8"}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        with pytest.raises(SystemExit) as exc_info:
+            run_update(str(tmp_path))
+        assert exc_info.value.code == 0
+
+    captured = capsys.readouterr().out
+    assert "Sei già aggiornato all'ultima versione (3.3.8)." in captured
 
 
 def test_cli_main_flag_interception():
@@ -294,9 +296,6 @@ def test_cli_main_flag_interception():
 
 
 def test_cli_main_no_subcommand_launches_tui_app():
-    # Dalla v3.3.1 'rt' senza sottocomando non è più un errore argparse: lancia la
-    # dashboard Textual principale (rt.tui.app.run_app), mockata qui per non aprire
-    # davvero un'App Textual bloccante durante i test.
     with patch("rt.tui.app.run_app") as mock_run:
         main([])
     mock_run.assert_called_once()

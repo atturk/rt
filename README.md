@@ -32,6 +32,12 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 #### Installazione Automatica (Consigliata su macOS)
 
+Scarica ed estrae l'ultima release ufficiale di RT:
+```bash
+mkdir -p rt && curl -sL $(curl -sL https://api.github.com/repos/atturk/rt/releases/latest | grep '"tarball_url":' | cut -d '"' -f 4) | tar -xz -C rt --strip-components=1 && cd rt && ./install.sh
+```
+
+*(In alternativa per sviluppatori con git già installato)*:
 ```bash
 git clone https://github.com/atturk/rt.git && cd rt && ./install.sh
 ```

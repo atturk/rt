@@ -1,0 +1,8 @@
+.agents/ export-ignore
+tests/ export-ignore
+.github/ export-ignore
+install.log export-ignore
+pytest.ini export-ignore
+requirements-dev.txt export-ignore
+docs/DEVELOPMENT.md export-ignore
+.gitattributes export-ignore

@@ -1,12 +1,17 @@
 """
-Gestione della versione e dell'aggiornamento automatico di RT.
-Tutte le operazioni git sono incapsulate ed eseguite rispetto alla project_root.
-L'utente finale non vede comandi o terminologia git grezza.
+Gestione della versione e dell'aggiornamento automatico di RT tramite GitHub Releases.
+Nessuna dipendenza da git per l'utente finale.
 """
 import os
 import re
-import subprocess
 import sys
+import json
+import shutil
+import tempfile
+import tarfile
+import subprocess
+import urllib.request
+import urllib.error
 from typing import Optional, Tuple, List
 
 
@@ -39,69 +44,53 @@ def format_version(version_str: str) -> str:
 
 def get_current_version(project_root: str) -> str:
     """
-    Esegue `git describe --tags --abbrev=0` per ottenere il tag più recente su HEAD.
-    Se non ci sono tag o git fallisce, ritorna 'sconosciuta'.
+    Legge il file VERSION alla radice di project_root.
+    Se non esiste o è vuoto/non valido, ritorna 'sconosciuta'.
     """
-    try:
-        res = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res.returncode == 0 and res.stdout.strip():
-            return format_version(res.stdout.strip())
+    version_file = os.path.join(project_root, "VERSION")
+    if not os.path.isfile(version_file):
         return "sconosciuta"
-    except (subprocess.SubprocessError, OSError):
+    try:
+        with open(version_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+        if not content:
+            return "sconosciuta"
+        return format_version(content)
+    except OSError:
         return "sconosciuta"
 
 
 def get_latest_remote_version(project_root: str, timeout: float = 5.0) -> Optional[str]:
     """
-    Esegue `git ls-remote --tags origin` per elencare i tag disponibili sul remote,
-    estrae e ordina semanticamente le versioni, e ritorna la più recente (es. '2.4.0').
-    Ritorna None in caso di offline, errore o timeout. Ritorna stringa vuota "" (non None)
-    se il comando riesce ma il remote non ha ancora nessun tag pubblicato: è uno stato
-    diverso da un problema di connessione e va comunicato diversamente all'utente.
+    Esegue una chiamata HTTP GET all'API pubblica di GitHub Releases per determinare
+    la versione più recente pubblicata di RT (es. '3.3.8').
+    Ritorna:
+    - None in caso di offline, errore di connessione, o timeout.
+    - "" (stringa vuota) se non esiste ancora nessuna Release pubblicata (HTTP 404).
+    - la stringa di versione (es. '3.3.8') se disponibile.
     """
+    url = "https://api.github.com/repos/atturk/rt/releases/latest"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "RT-Updater",
+            "Accept": "application/vnd.github.v3+json",
+        },
+    )
     try:
-        res = subprocess.run(
-            ["git", "ls-remote", "--tags", "origin"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        if res.returncode != 0:
-            return None
-
-        candidates: List[Tuple[Tuple[int, int, int], str]] = []
-        for line in res.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            ref = parts[1]
-            if not ref.startswith("refs/tags/"):
-                continue
-            tag = ref[len("refs/tags/"):]
-            if tag.endswith("^{}"):
-                tag = tag[:-3]
-
-            parsed = parse_semver(tag)
-            if parsed is not None:
-                candidates.append((parsed, format_version(tag)))
-
-        if not candidates:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status != 200:
+                return None
+            data = json.loads(response.read().decode("utf-8"))
+            tag_name = data.get("tag_name", "")
+            if not tag_name:
+                return ""
+            return format_version(tag_name)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
             return ""
-
-        candidates.sort(key=lambda x: x[0])
-        return candidates[-1][1]
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        return None
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
         return None
 
 
@@ -134,123 +123,116 @@ def run_version(project_root: str) -> None:
         print("Esegui 'rt -u' per aggiornare")
 
 
+def _is_update_excluded(rel_path: str) -> bool:
+    parts = rel_path.replace("\\", "/").split("/")
+    top = parts[0]
+    if top in ("config", ".venv", ".git"):
+        return True
+    if top == ".env" or top.startswith(".env."):
+        return True
+    if top == "install.log":
+        return True
+    return False
+
+
 def run_update(project_root: str) -> None:
     """
-    Esegue l'aggiornamento automatico sicuro di RT:
-    1. Verifica assenza modifiche locali non salvate
-    2. Verifica branch main
-    3. Recupera aggiornamenti (fetch)
-    4. Confronta HEAD con origin/main
-    5. Fast-forward merge se disponibile
-    6. Re-installa requirements.txt nel virtualenv
-    7. Mostra versione aggiornata
+    Esegue l'aggiornamento automatico sicuro di RT tramite GitHub Releases:
+    1. Verifica disponibilità di una versione più recente via API GitHub.
+    2. Scarica il tarball sorgente in una directory temporanea (mai in project_root).
+    3. Estrae l'archivio nella directory temporanea.
+    4. Sincronizza il codice estratto dentro project_root preservando configurazioni utente.
+    5. Pulisce la directory temporanea.
+    6. Re-installa requirements.txt nel virtualenv.
+    7. Mostra versione aggiornata.
     """
-    # 1. Verifica modifiche locali non salvate su file tracciati
-    try:
-        res = subprocess.run(
-            ["git", "status", "--porcelain", "-uno"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res.returncode != 0:
-            print("❌ Errore durante il controllo dello stato locale.", file=sys.stderr)
-            sys.exit(1)
-        if res.stdout.strip():
-            print("⚠️ Ci sono modifiche locali non salvate nel codice, impossibile aggiornare in sicurezza.")
-            sys.exit(1)
-    except (subprocess.SubprocessError, OSError):
-        print("❌ Errore durante l'esecuzione dei comandi di controllo locale.", file=sys.stderr)
+    latest_ver = get_latest_remote_version(project_root)
+    if latest_ver is None:
+        print("❌ Impossibile verificare gli aggiornamenti remoti (errore di connessione).", file=sys.stderr)
         sys.exit(1)
+    if latest_ver == "":
+        print("Nessuna versione pubblicata ancora sul repository.")
+        sys.exit(0)
 
-    # 2. Verifica di essere sul branch main
-    try:
-        res = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        current_branch = res.stdout.strip()
-        if res.returncode != 0 or current_branch != "main":
-            print("⚠️ Non sei sul branch 'main', impossibile aggiornare automaticamente.")
-            sys.exit(1)
-    except (subprocess.SubprocessError, OSError):
-        print("❌ Impossibile determinare il branch corrente.", file=sys.stderr)
-        sys.exit(1)
+    curr_ver = get_current_version(project_root)
+    curr_parsed = parse_semver(curr_ver)
+    lat_parsed = parse_semver(latest_ver)
 
-    # 3. git fetch origin
-    try:
-        res = subprocess.run(
-            ["git", "fetch", "origin"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res.returncode != 0:
-            print("❌ Impossibile verificare gli aggiornamenti remoti (errore di connessione a origin).", file=sys.stderr)
-            sys.exit(1)
-    except (subprocess.SubprocessError, OSError):
-        print("❌ Impossibile verificare gli aggiornamenti remoti (errore di connessione a origin).", file=sys.stderr)
-        sys.exit(1)
+    if curr_parsed is not None and lat_parsed is not None and curr_parsed >= lat_parsed:
+        print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
+        sys.exit(0)
 
-    # 4. Confronta HEAD con origin/main
+    print(f"Aggiornamento in corso ({curr_ver} → {latest_ver})...")
+    temp_dir = tempfile.mkdtemp(prefix="rt-update-")
     try:
-        res_head = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
+        tarball_url = f"https://github.com/atturk/rt/archive/refs/tags/v{latest_ver}.tar.gz"
+        archive_path = os.path.join(temp_dir, "release.tar.gz")
+        req = urllib.request.Request(
+            tarball_url,
+            headers={"User-Agent": "RT-Updater"},
         )
-        res_remote = subprocess.run(
-            ["git", "rev-parse", "origin/main"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res_head.returncode != 0 or res_remote.returncode != 0:
-            print("❌ Impossibile confrontare lo stato locale con origin/main.", file=sys.stderr)
+        try:
+            with urllib.request.urlopen(req, timeout=30.0) as resp, open(archive_path, "wb") as out_f:
+                shutil.copyfileobj(resp, out_f)
+        except Exception as exc:
+            print(f"❌ Impossibile scaricare l'aggiornamento: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        head_sha = res_head.stdout.strip()
-        remote_sha = res_remote.stdout.strip()
-
-        if head_sha == remote_sha:
-            curr_ver = get_current_version(project_root)
-            print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
-            sys.exit(0)
-    except (subprocess.SubprocessError, OSError):
-        print("❌ Errore durante il confronto delle versioni.", file=sys.stderr)
-        sys.exit(1)
-
-    # 5. Se origin/main è avanti, fast-forward merge
-    old_ver = get_current_version(project_root)
-    print("Aggiornamento in corso...")
-    try:
-        res_merge = subprocess.run(
-            ["git", "merge", "--ff-only", "origin/main"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res_merge.returncode != 0:
-            print(
-                "❌ Impossibile completare l'aggiornamento automatico (la cronologia locale diverge da origin/main).\n"
-                "Contatta chi mantiene il progetto per assistenza.",
-                file=sys.stderr,
-            )
+        try:
+            with tarfile.open(archive_path, "r:gz") as tar:
+                tar.extractall(path=temp_dir)
+        except Exception as exc:
+            print(f"❌ Impossibile estrarre l'archivio di aggiornamento: {exc}", file=sys.stderr)
             sys.exit(1)
-    except (subprocess.SubprocessError, OSError):
-        print("❌ Impossibile completare l'aggiornamento automatico. Contatta chi mantiene il progetto per assistenza.", file=sys.stderr)
-        sys.exit(1)
 
-    # 6. Reinstalla le dipendenze nel venv
+        extracted_dirs = [
+            d for d in os.listdir(temp_dir)
+            if os.path.isdir(os.path.join(temp_dir, d)) and d != "__MACOSX" and not d.startswith(".")
+        ]
+        if not extracted_dirs:
+            print("❌ Archivio di aggiornamento non valido o vuoto.", file=sys.stderr)
+            sys.exit(1)
+
+        extracted_root = os.path.join(temp_dir, extracted_dirs[0])
+
+        # Copia file estratti sovrascrivendo l'equivalente in project_root (escludendo config/.env/.venv/install.log)
+        for root, dirs, files in os.walk(extracted_root):
+            for f in files:
+                src_file = os.path.join(root, f)
+                rel_path = os.path.relpath(src_file, extracted_root)
+                if _is_update_excluded(rel_path):
+                    continue
+                dst_file = os.path.join(project_root, rel_path)
+                os.makedirs(os.path.dirname(dst_file), exist_ok=True)
+                shutil.copy2(src_file, dst_file)
+
+        # Rimuovi file orfani in project_root non presenti nella nuova versione
+        for root, dirs, files in os.walk(project_root, topdown=False):
+            rel_dir = os.path.relpath(root, project_root)
+            if rel_dir != "." and _is_update_excluded(rel_dir):
+                continue
+            for f in files:
+                p_file = os.path.join(root, f)
+                rel_path = os.path.relpath(p_file, project_root)
+                if _is_update_excluded(rel_path):
+                    continue
+                extracted_file = os.path.join(extracted_root, rel_path)
+                if not os.path.exists(extracted_file):
+                    try:
+                        os.remove(p_file)
+                    except OSError:
+                        pass
+            if rel_dir != ".":
+                extracted_dir = os.path.join(extracted_root, rel_dir)
+                if not os.path.exists(extracted_dir):
+                    try:
+                        os.rmdir(root)
+                    except OSError:
+                        pass
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Reinstalla le dipendenze nel virtualenv
     venv_python = os.path.join(project_root, ".venv", "bin", "python3")
     py_exec = venv_python if os.path.isfile(venv_python) else sys.executable
     req_file = os.path.join(project_root, "requirements.txt")
@@ -265,7 +247,6 @@ def run_update(project_root: str) -> None:
         except (subprocess.SubprocessError, OSError):
             pass
 
-    # 7. Ricalcola versione e stampa esito
     new_ver = get_current_version(project_root)
-    print(f"✅ RT aggiornato: {old_ver} → {new_ver}")
+    print(f"✅ RT aggiornato: {curr_ver} → {new_ver}")
     sys.exit(0)
