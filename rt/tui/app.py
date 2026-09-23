@@ -91,6 +91,9 @@ class LessonRow(ListItem):
 class RTApp(App):
     """Dashboard principale di RT."""
 
+    from rt.tui.commands_palette import CommandsProvider
+
+    COMMANDS = App.COMMANDS | {CommandsProvider}
     TITLE = "RT"
 
     CSS = """
