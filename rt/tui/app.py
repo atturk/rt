@@ -10,10 +10,10 @@ from typing import List, Optional
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Input, ListItem, ListView, MarkdownViewer, Static
+from textual.widgets import Button, Footer, Input, ListItem, ListView, MarkdownViewer, Static
 
 from rt.core.idempotency import PhaseStatus
-from rt.tui.data import LessonSummary, badge_for_state, discover_lessons, load_markdown_preview
+from rt.tui.data import PHASES, LessonSummary, badge_for_state, discover_lessons, load_markdown_preview
 
 PHASE_ICON = {
     PhaseStatus.VALID: ("✓", "success"),
@@ -134,6 +134,12 @@ class RTApp(App):
         height: auto; padding: 1 2; margin-bottom: 1;
         border: round $primary 25%; border-title-color: $primary;
     }
+    #phase-buttons {
+        height: auto; margin-top: 1; align: left middle;
+    }
+    #phase-buttons Button {
+        margin-right: 1;
+    }
 
     #markdown-panel {
         height: 1fr; border: round $primary 25%; border-title-color: $primary;
@@ -153,9 +159,6 @@ class RTApp(App):
         ("n", "run", "Nuova lezione"),
         ("g", "configure", "Configura"),
         ("r", "run", "Esegui/continua"),
-        ("v", "review", "Revisiona"),
-        ("b", "build", "Build"),
-        ("c", "cost", "Costi"),
         ("a", "recall", "Active recall"),
         ("t", "toggle_toc", "TOC"),
         ("q", "quit", "Esci"),
@@ -199,6 +202,10 @@ class RTApp(App):
             with Vertical(id="detail"):
                 with Vertical(id="detail-info"):
                     yield Static("", id="detail-body")
+                    with Horizontal(id="phase-buttons"):
+                        for p in PHASES:
+                            yield Button(p.upper(), id=f"btn-phase-{p}")
+                        yield Button("Revisiona issue", id="btn-review-issues")
                 with Vertical(id="markdown-panel"):
                     yield MarkdownViewer("", show_table_of_contents=True)
         yield Footer()
@@ -237,11 +244,29 @@ class RTApp(App):
                 "Configura 'telegram.lessons_root' in config/general.yaml (o premi 'g') "
                 "per vedere qui le tue lezioni."
             )
+            self.query_one("#phase-buttons").display = False
             await self.query_one(MarkdownViewer).document.update("")
 
     async def _show_lesson(self, lesson: LessonSummary) -> None:
         self.selected_lesson = lesson
         self.query_one("#detail-body", Static).update(build_detail(lesson))
+        self.query_one("#phase-buttons").display = True
+
+        for p in PHASES:
+            btn = self.query_one(f"#btn-phase-{p}", Button)
+            status = next((st for ph, st in lesson.phase_status if ph == p), PhaseStatus.MISSING)
+            icon, token = PHASE_ICON.get(status, ("○", None))
+            btn.label = f"{icon} {p.upper()}"
+            btn.variant = token if token in ("success", "warning", "error", "primary") else "default"
+
+        btn_issues = self.query_one("#btn-review-issues", Button)
+        if lesson.pending_issues > 0:
+            btn_issues.display = True
+            btn_issues.label = f"Revisiona issue ({lesson.pending_issues})"
+            btn_issues.variant = "warning"
+        else:
+            btn_issues.display = False
+
         await self.query_one(MarkdownViewer).document.update(load_markdown_preview(lesson.dir_path))
 
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
@@ -294,6 +319,38 @@ class RTApp(App):
         await self.refresh_lessons()
 
     @work
+    async def _handle_phase_action(self, phase: str) -> None:
+        if not self.selected_lesson:
+            return
+        lesson = self.selected_lesson
+        status = next((st for ph, st in lesson.phase_status if ph == phase), PhaseStatus.MISSING)
+        if status != PhaseStatus.VALID:
+            await self._execute([phase, lesson.dir_path])
+        else:
+            from rt.tui.command_form import ConfirmModal
+            msg = (
+                f"La fase '{phase}' è già completata (VALID).\n\n"
+                f"Rieseguirla forzerà la rigenerazione ignorando/sovrascrivendo i risultati precedenti (--force).\n\n"
+                f"Continuare?"
+            )
+            confirmed = await self.push_screen_wait(ConfirmModal(msg, title=f"Riesecuzione {phase.upper()}"))
+            if confirmed:
+                await self._execute([phase, lesson.dir_path, "--force"])
+
+    @work
+    async def _handle_review_issues_action(self) -> None:
+        if self.selected_lesson:
+            await self._execute(["review", self.selected_lesson.dir_path])
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id.startswith("btn-phase-"):
+            phase = button_id[len("btn-phase-"):]
+            self._handle_phase_action(phase)
+        elif button_id == "btn-review-issues":
+            self._handle_review_issues_action()
+
+    @work
     async def action_run(self) -> None:
         if self.selected_lesson:
             prefill = {"input": [self.selected_lesson.dir_path]}
@@ -309,21 +366,6 @@ class RTApp(App):
         argv = await self.push_screen_wait(CommandFormScreen("run", parser, prefill=prefill))
         if argv:
             await self._execute(argv)
-
-    async def action_review(self) -> None:
-        if self.selected_lesson:
-            self._run_cli(["review", self.selected_lesson.dir_path])
-            await self.refresh_lessons()
-
-    @work
-    async def action_build(self) -> None:
-        if self.selected_lesson:
-            await self._execute(["build", self.selected_lesson.dir_path])
-
-    @work
-    async def action_cost(self) -> None:
-        if self.selected_lesson:
-            await self._execute(["cost", self.selected_lesson.dir_path, "--split"])
 
     async def action_recall(self) -> None:
         if self.selected_lesson:

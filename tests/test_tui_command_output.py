@@ -257,7 +257,7 @@ class TestCommandOutputScreenAutoDismissFlag:
 
 class TestDashboardKeypressRegression:
     @pytest.mark.anyio
-    async def test_pressing_b_key_launches_build_without_no_active_worker_crash(self, monkeypatch):
+    async def test_clicking_build_button_launches_build_without_no_active_worker_crash(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
             "rt.tui.command_output.get_rt_executable_path",
             lambda: sys.executable,
@@ -265,7 +265,7 @@ class TestDashboardKeypressRegression:
 
         app = RTApp()
         dummy_lesson = LessonSummary(
-            dir_path="/path/to/selected",
+            dir_path=str(tmp_path / "selected"),
             title="lezione",
             subject="materia",
             recorded="2026-03-14",
@@ -277,61 +277,23 @@ class TestDashboardKeypressRegression:
             mtime=0.0,
             error=None,
         )
-
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [dummy_lesson])
+        monkeypatch.setattr(app, "_lessons_root", lambda: str(tmp_path))
         pushed_screens = []
         async def fake_push_screen_wait(screen):
             pushed_screens.append(screen)
             return 0
 
         monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
-        monkeypatch.setattr(app, "refresh_lessons", AsyncMock())
 
-        async with app.run_test() as pilot:
-            app.selected_lesson = dummy_lesson
-            # Simula la pressione reale del tasto 'b' dalla dashboard
-            await pilot.press("b")
-            await pilot.pause(0.2)
-
-            assert len(pushed_screens) == 1
-            assert isinstance(pushed_screens[0], CommandOutputScreen)
-            assert pushed_screens[0].argv == ["build", "/path/to/selected"]
-
-    @pytest.mark.anyio
-    async def test_pressing_c_key_launches_cost_without_no_active_worker_crash(self, monkeypatch):
-        monkeypatch.setattr(
-            "rt.tui.command_output.get_rt_executable_path",
-            lambda: sys.executable,
-        )
-
-        app = RTApp()
-        dummy_lesson = LessonSummary(
-            dir_path="/path/to/selected",
-            title="lezione",
-            subject="materia",
-            recorded="2026-03-14",
-            when="oggi",
-            state=None,
-            phase_status=[],
-            pending_issues=0,
-            cost_total=0.0,
-            mtime=0.0,
-            error=None,
-        )
-
-        pushed_screens = []
-        async def fake_push_screen_wait(screen):
-            pushed_screens.append(screen)
-            return 0
-
-        monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
-        monkeypatch.setattr(app, "refresh_lessons", AsyncMock())
-
-        async with app.run_test() as pilot:
-            app.selected_lesson = dummy_lesson
-            # Simula la pressione reale del tasto 'c' dalla dashboard
-            await pilot.press("c")
-            await pilot.pause(0.2)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            # Simula il click reale sul bottone build dalla dashboard
+            await pilot.click("#btn-phase-build")
+            await pilot.pause(0.5)
+            await app.workers.wait_for_complete()
 
             assert len(pushed_screens) == 1
             assert isinstance(pushed_screens[0], CommandOutputScreen)
-            assert pushed_screens[0].argv == ["cost", "/path/to/selected", "--split"]
+            assert pushed_screens[0].argv == ["build", str(tmp_path / "selected")]
+

@@ -307,7 +307,6 @@ class TestDashboardSubprocessRun:
     async def test_action_methods_pass_correct_argv(self, monkeypatch):
         from unittest.mock import AsyncMock, MagicMock
         from rt.tui.app import RTApp
-        from rt.tui.command_output import CommandOutputScreen
 
         app = RTApp()
         dummy_lesson = LessonSummary(
@@ -337,24 +336,200 @@ class TestDashboardSubprocessRun:
 
         monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
 
-        # action_run, action_build e action_cost girano in worker Textual (push_screen_wait lo richiede):
-        # usiamo run_test per schedularli correttamente.
         async with app.run_test():
             await app.action_run().wait()
             mock_run_cli.assert_called_with(["run", "/path/to/lesson"])
-
-            await app.action_build().wait()
-            assert any(isinstance(s, CommandOutputScreen) and s.argv == ["build", "/path/to/lesson"] for s in pushed_screens)
-
-            await app.action_cost().wait()
-            assert any(isinstance(s, CommandOutputScreen) and s.argv == ["cost", "/path/to/lesson", "--split"] for s in pushed_screens)
-
-        await app.action_review()
-        mock_run_cli.assert_called_with(["review", "/path/to/lesson"])
 
         await app.action_recall()
         mock_run_cli.assert_called_with(["recall", "/path/to/lesson"])
 
         await app.action_configure()
         mock_run_cli.assert_called_with(["config"])
+
+
+class TestPhaseButtons:
+    @pytest.mark.anyio
+    async def test_phase_button_non_valid_executes_directly(self, monkeypatch, tmp_path):
+        from unittest.mock import AsyncMock
+        from rt.core.idempotency import PhaseStatus
+        from rt.tui.app import RTApp
+
+        app = RTApp()
+        dummy_lesson = LessonSummary(
+            dir_path=str(tmp_path / "stale_lesson"),
+            title="lezione",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("build", PhaseStatus.STALE), ("outline", PhaseStatus.MISSING)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [dummy_lesson])
+        mock_execute = AsyncMock()
+        monkeypatch.setattr(app, "_execute", mock_execute)
+
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            await pilot.click("#btn-phase-build")
+            await pilot.pause()
+            mock_execute.assert_awaited_once_with(["build", str(tmp_path / "stale_lesson")])
+
+    @pytest.mark.anyio
+    async def test_phase_button_valid_shows_confirm_modal_and_forces(self, monkeypatch, tmp_path):
+        from unittest.mock import AsyncMock
+        from rt.core.idempotency import PhaseStatus
+        from rt.tui.app import RTApp
+        from rt.tui.command_form import ConfirmModal
+
+        app = RTApp()
+        dummy_lesson = LessonSummary(
+            dir_path=str(tmp_path / "valid_lesson"),
+            title="lezione",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("build", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [dummy_lesson])
+        mock_execute = AsyncMock()
+        monkeypatch.setattr(app, "_execute", mock_execute)
+
+        # 1. Confirm with 'y'
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            await pilot.click("#btn-phase-build")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmModal)
+            await pilot.press("y")
+            await pilot.pause()
+            mock_execute.assert_awaited_once_with(["build", str(tmp_path / "valid_lesson"), "--force"])
+
+        # 2. Cancel with 'n'
+        app2 = RTApp()
+        mock_execute2 = AsyncMock()
+        monkeypatch.setattr(app2, "_execute", mock_execute2)
+        async with app2.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            await pilot.click("#btn-phase-build")
+            await pilot.pause()
+            assert isinstance(app2.screen, ConfirmModal)
+            await pilot.press("n")
+            await pilot.pause()
+            mock_execute2.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_review_issues_button_visibility_and_execution(self, monkeypatch, tmp_path):
+        from unittest.mock import AsyncMock
+        from textual.widgets import Button
+        from rt.core.idempotency import PhaseStatus
+        from rt.tui.app import RTApp
+
+        lesson_with_issues = LessonSummary(
+            dir_path=str(tmp_path / "issues_lesson"),
+            title="lezione",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("review", PhaseStatus.VALID)],
+            pending_issues=4,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        lesson_no_issues = LessonSummary(
+            dir_path=str(tmp_path / "clean_lesson"),
+            title="lezione 2",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("review", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+
+        app = RTApp()
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [lesson_with_issues, lesson_no_issues])
+        mock_execute = AsyncMock()
+        monkeypatch.setattr(app, "_execute", mock_execute)
+
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            btn = app.query_one("#btn-review-issues", Button)
+            assert btn.display is True
+            assert "4" in str(btn.label)
+
+            await pilot.click("#btn-review-issues")
+            await pilot.pause()
+            mock_execute.assert_awaited_once_with(["review", str(tmp_path / "issues_lesson")])
+
+            # Switch to lesson without issues
+            app.query_one("#lesson-list").focus()
+            await pilot.press("down")
+            await pilot.pause()
+            assert btn.display is False
+
+    @pytest.mark.anyio
+    async def test_phase_buttons_update_on_selection_change(self, monkeypatch, tmp_path):
+        from textual.widgets import Button
+        from rt.core.idempotency import PhaseStatus
+        from rt.tui.app import RTApp
+
+        lesson1 = LessonSummary(
+            dir_path=str(tmp_path / "l1"),
+            title="lezione 1",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("prepare", PhaseStatus.VALID), ("build", PhaseStatus.MISSING)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+        lesson2 = LessonSummary(
+            dir_path=str(tmp_path / "l2"),
+            title="lezione 2",
+            subject="materia",
+            recorded="2026-03-14",
+            when="oggi",
+            state=None,
+            phase_status=[("prepare", PhaseStatus.STALE), ("build", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=0.0,
+            error=None,
+        )
+
+        app = RTApp()
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [lesson1, lesson2])
+
+        async with app.run_test(size=(160, 45)) as pilot:
+            await pilot.pause()
+            btn_prep = app.query_one("#btn-phase-prepare", Button)
+            btn_build = app.query_one("#btn-phase-build", Button)
+
+            assert "✓" in str(btn_prep.label)
+            assert "○" in str(btn_build.label)
+
+            await pilot.press("down")
+            await pilot.pause()
+
+            assert "⚠" in str(btn_prep.label)
+            assert "✓" in str(btn_build.label)
+
+
 
