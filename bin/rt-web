@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Avvia il prototipo web locale usando l'ambiente RT."""
+import os
+import sys
+
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+venv = os.path.join(project_root, '.venv')
+python = os.path.join(venv, 'bin', 'python3')
+if os.path.isfile(python) and os.path.realpath(sys.prefix) != os.path.realpath(venv):
+    os.execv(python, [python, os.path.abspath(__file__), *sys.argv[1:]])
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from rt.web.app import main
+
+if __name__ == '__main__':
+    main()

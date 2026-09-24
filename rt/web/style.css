@@ -1,0 +1,48 @@
+:root { --rt-ink: #172b2d; --rt-muted: #6e8180; --rt-border: #d9e3df; --rt-accent: #138a78; --rt-bg: #f4f8f5; }
+.gradio-container { max-width: 1510px !important; margin: 0 auto !important; background: var(--rt-bg); color: var(--rt-ink); }
+#rt-header { padding: 17px 4px 20px; border-bottom: 1px solid var(--rt-border); }
+#rt-header h1 { margin: 0; font-size: 31px; font-weight: 750; letter-spacing: -.04em; color: var(--rt-ink); }
+#rt-header p { color: var(--rt-muted); margin: 5px 0 0; font-size: 14px; }
+#rt-sidebar { background: #eaf1ed; border: 1px solid var(--rt-border); border-radius: 18px; padding: 18px; min-height: 700px; }
+#rt-sidebar h3 { margin: 1px 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .11em; color: #48716b; }
+#rt-sidebar label { font-weight: 500; }
+#lesson-picker { background: transparent; border: 0; }
+#lesson-picker label { line-height: 1.35; }
+#rt-main { padding: 8px 0 16px 15px; }
+#rt-main .tab-nav { border-bottom: 1px solid var(--rt-border); margin-bottom: 18px; }
+#rt-main .tab-nav button { font-size: 15px; font-weight: 650; }
+.rt-eyebrow { font-size: 11px; letter-spacing: .11em; font-weight: 760; color: var(--rt-accent); }
+.rt-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 13px; margin-bottom: 16px; }
+.rt-stat, .rt-lesson-card, .rt-issue-heading, .rt-config-card, .rt-empty { background: #fff; border: 1px solid var(--rt-border); border-radius: 17px; box-shadow: 0 3px 18px rgba(20,50,39,.04); }
+.rt-stat { display: flex; flex-direction: column; padding: 18px 22px; }
+.rt-stat strong { font-size: 27px; line-height: 1; color: var(--rt-ink); }
+.rt-stat span { color: var(--rt-muted); font-size: 12px; margin-top: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.rt-lesson-card, .rt-issue-heading { padding: 24px 28px; }
+.rt-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rt-lesson-card h2, .rt-issue-heading h2 { margin: 13px 0 7px; font-size: 23px; letter-spacing: -.025em; line-height: 1.25; }
+.rt-meta { color: var(--rt-muted); margin: 0 0 21px; font-size: 13px; }
+.rt-badge { border-radius: 999px; padding: 5px 10px; font-size: 10px; font-weight: 800; letter-spacing: .06em; background: #e8efe9; color: #386353; white-space: nowrap; }
+.rt-badge.warning { background: #fff0cf; color: #95640a; }
+.rt-badge.error { background: #ffe4de; color: #a04232; }
+.rt-phase-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.rt-phase { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 9px; font-size: 12px; background: #f0f3f2; color: #667a78; }
+.rt-phase-dot { width: 7px; height: 7px; border-radius: 50%; background: #aebbb9; }
+.rt-phase.done { color: #147464; background: #e0f3ec; }
+.rt-phase.done .rt-phase-dot { background: #19a07f; }
+.rt-phase.warn { color: #98620c; background: #fff1d6; }
+.rt-phase.warn .rt-phase-dot { background: #daa13b; }
+.rt-phase.bad { color: #a04232; background: #ffe4de; }
+.rt-phase.bad .rt-phase-dot { background: #d95b46; }
+.rt-card-foot { display: flex; gap: 22px; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--rt-border); color: var(--rt-muted); font-size: 12px; }
+.rt-error { color: #a04232; }
+.rt-section-title { font-size: 16px; color: var(--rt-ink); margin: 15px 0 6px; }
+.rt-config-card { padding: 21px 24px; margin: 0 0 14px; }
+.rt-config-row { display: grid; grid-template-columns: 1.3fr 1fr 1.4fr; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #edf1ef; color: var(--rt-muted); font-size: 13px; }
+.rt-config-row:last-child { border-bottom: 0; }
+.rt-config-row strong { font-weight: 650; color: var(--rt-ink); word-break: break-word; }
+.rt-empty { padding: 24px; color: var(--rt-muted); }
+.rt-note { padding: 12px 14px; border-radius: 10px; background: #f1f4f2; color: #607471; font-size: 12px; }
+#rt-preview { max-height: 550px; overflow: auto; background: white; border: 1px solid var(--rt-border); border-radius: 13px; padding: 18px 22px; }
+#rt-review-source textarea, #rt-review-proposal textarea { min-height: 170px; }
+@media (max-width: 900px) { #rt-sidebar { min-height: auto; } #rt-main { padding-left: 0; } .rt-stats { grid-template-columns: 1fr 1fr 1fr; } }
+@media (max-width: 600px) { .rt-stats { gap: 6px; } .rt-stat { padding: 12px; } .rt-stat strong { font-size: 21px; } .rt-phase-row { gap: 5px; } .rt-lesson-card { padding: 18px; } }

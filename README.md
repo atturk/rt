@@ -80,6 +80,21 @@ cp -r config.example config
 > I file YAML in `config.example/` sono volutamente senza commenti: il significato di ogni campo e le funzionalità opzionali (credenziali custom, pricing globale/per-route) sono documentati in [Guida alla Configurazione (CONFIGURATION_REFERENCE.md)](docs/CONFIGURATION_REFERENCE.md).
 
 
+#### Anteprima dell'interfaccia web locale
+
+Per provare la nuova interfaccia Gradio (dashboard, review e configurazione) nell'ambiente di sviluppo:
+
+```bash
+./.venv/bin/python -m pip install -r requirements-web.txt
+./bin/rt-web
+```
+
+L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:7860`.
+Legge la cartella delle lezioni configurata in RT; per usarne un'altra, passa
+`--lessons-root "/percorso/alle/lezioni"`. È un prototipo di sola lettura: le decisioni
+di review e le impostazioni si gestiscono ancora con i comandi RT. Per dettagli e
+limiti attuali, vedi [Prototipo web](docs/WEB_PROTOTYPE.md).
+
 ### 2. Esecuzione End-to-End di una Lezione
 
 ```bash

@@ -56,5 +56,6 @@ Thumbs.db
 
 # Stato locale degli assistenti e strumenti
 .claude/
+.codex/
 .ruff_cache/
 .mypy_cache/
