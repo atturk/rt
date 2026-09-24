@@ -815,9 +815,16 @@ def test_client_three_state_thinking_integration(monkeypatch):
             assert captured_payloads[2]["reasoning"] == {"enabled": True, "effort": "low"}
 
 
-def test_effective_routes_property():
+def test_effective_routes_property(monkeypatch):
     """Verifica il comportamento della property effective_routes su JobRoutingConfig nei vari casi."""
     from rt.core.config import JobRoutingConfig, RouteConfig
+    from rt.llm import credentials
+
+    # Registro isolato: nessuna dipendenza dalla configurazione privata o da altri test.
+    registry = credentials.CredentialRegistry()
+    for name in ("google_1", "google_2", "google_3"):
+        registry.register(credentials.CredentialRef(name=name, provider="google"))
+    monkeypatch.setattr(credentials, "GLOBAL_CREDENTIALS", registry)
 
     r1 = RouteConfig(route_id="r1", provider="google", credential="google_1", model="m1")
     r2 = RouteConfig(route_id="r2", provider="google", credential="google_2", model="m2")
@@ -838,7 +845,6 @@ def test_effective_routes_property():
     # 4. primary_routes ha precedenza su primary/secondary se specificato
     cfg4 = JobRoutingConfig(primary=r1, secondary=r2, primary_routes=[r2, r3])
     assert cfg4.effective_routes == [r2, r3]
-
 
 
 
