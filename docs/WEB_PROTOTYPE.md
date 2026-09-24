@@ -28,8 +28,8 @@ rt web --lessons-root "/percorso/alle/lezioni"
 L'app si apre su `http://127.0.0.1:7860`. Si può usare `--port 7868` per cambiare
 porta o `--no-browser` per non aprire automaticamente il browser. `bin/rt-web`
 resta disponibile come avvio diretto equivalente. Il server ascolta
-solo su `127.0.0.1` e non genera un link pubblico Gradio. `requirements-web.txt`
-aggiunge Gradio alle dipendenze di RT; l'installazione standard include la web app.
+solo su `127.0.0.1` e non genera un link pubblico Gradio. Gradio fa parte delle
+dipendenze standard di RT; `requirements-web.txt` resta come alias compatibile.
 
 Il terminale mostra avvio, richieste HTTP, durata delle azioni, errori Python e
 segnalazioni dal browser. Gli stessi eventi vengono salvati in un file locale a

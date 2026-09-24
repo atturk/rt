@@ -42,8 +42,12 @@ percorsi assoluti. Non committare né distribuire il virtualenv.
 
 ## Aggiornamenti e dati
 
-Usare Git nei checkout di sviluppo; `rt -u` li rifiuta prima di accedere alla rete.
-Le installazioni da archivio usano `rt -u`. L'updater conserva `.env`, `config/`,
+`rt -u` aggiorna le installazioni da archivio e i checkout Git sul branch `main`
+senza modifiche tracciate. Nei checkout Git scarica il tag della release ufficiale
+ed esegue solo un fast-forward; gli altri branch o le modifiche locali richiedono
+una gestione manuale. Per le versioni fino alla 3.4.1, usare una volta lo script
+di transizione `scripts/upgrade_legacy.sh`, perché il vecchio updater può rifiutare
+o alterare il checkout Git. L'updater conserva `.env`, `config/`,
 `.rt_telegram/` e note degli assistenti. La rimozione del codice obsoleto è limitata
 alle directory possedute dalla distribuzione: `rt/`, `bin/`, `config.example/`, `docs/`.
 Non salvare dati personali in queste directory. File sconosciuti alla radice e

@@ -9,3 +9,5 @@ python-telegram-bot[job-queue]>=21.0
 PyMuPDF
 textual>=0.80.0
 textual-diff-view>=0.1.5
+gradio==6.22.0
+markdown-it-py==4.2.0

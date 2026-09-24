@@ -8,6 +8,8 @@ import json
 import tarfile
 import tempfile
 import urllib.error
+import subprocess
+from pathlib import Path
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -380,3 +382,144 @@ def test_update_refuses_development_checkout_before_network(tmp_path, git_is_fil
             run_update(str(tmp_path))
     assert exc.value.code == 1
     network.assert_not_called()
+
+
+def _git(*args, cwd):
+    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_run_update_fast_forwards_clean_git_install_to_release(tmp_path):
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git("init", "-b", "main", cwd=upstream)
+    _git("config", "user.name", "RT Test", cwd=upstream)
+    _git("config", "user.email", "rt-test@example.invalid", cwd=upstream)
+    (upstream / ".gitignore").write_text("config/\n.venv/\n", encoding="utf-8")
+    (upstream / "VERSION").write_text("3.3.13\n", encoding="utf-8")
+    (upstream / "requirements.txt").write_text("pydantic\n", encoding="utf-8")
+    _git("add", ".", cwd=upstream)
+    _git("commit", "-m", "old release", cwd=upstream)
+
+    install = tmp_path / "install"
+    _git("clone", str(upstream), str(install), cwd=tmp_path)
+    (install / "config").mkdir()
+    (install / "config" / "general.yaml").write_text("user: true\n", encoding="utf-8")
+
+    (upstream / "VERSION").write_text("3.4.2\n", encoding="utf-8")
+    (upstream / "requirements.txt").write_text("gradio==6.22.0\n", encoding="utf-8")
+    _git("add", ".", cwd=upstream)
+    _git("commit", "-m", "web release", cwd=upstream)
+    _git("tag", "-a", "v3.4.2", "-m", "release", cwd=upstream)
+
+    with patch("rt.core.version.OFFICIAL_GIT_URL", str(upstream)), \
+         patch("rt.core.version.get_latest_remote_version", return_value="3.4.2"), \
+         patch("rt.core.version._install_runtime_requirements", return_value=True) as install_deps:
+        with pytest.raises(SystemExit) as exc:
+            run_update(str(install))
+
+    assert exc.value.code == 0
+    install_deps.assert_called_once_with(str(install))
+    assert (install / "VERSION").read_text(encoding="utf-8").strip() == "3.4.2"
+    assert "gradio" in (install / "requirements.txt").read_text(encoding="utf-8")
+    assert (install / "config" / "general.yaml").read_text(encoding="utf-8") == "user: true\n"
+    assert not _git("status", "--porcelain", "--untracked-files=no", cwd=install)
+
+
+def test_run_update_refuses_modified_git_install_before_network(tmp_path):
+    _git("init", "-b", "main", cwd=tmp_path)
+    _git("config", "user.name", "RT Test", cwd=tmp_path)
+    _git("config", "user.email", "rt-test@example.invalid", cwd=tmp_path)
+    (tmp_path / "VERSION").write_text("3.3.13\n", encoding="utf-8")
+    _git("add", "VERSION", cwd=tmp_path)
+    _git("commit", "-m", "installed", cwd=tmp_path)
+    (tmp_path / "VERSION").write_text("custom\n", encoding="utf-8")
+
+    with patch("rt.core.version.get_latest_remote_version") as remote:
+        with pytest.raises(SystemExit) as exc:
+            run_update(str(tmp_path))
+
+    assert exc.value.code == 1
+    assert (tmp_path / "VERSION").read_text(encoding="utf-8") == "custom\n"
+    remote.assert_not_called()
+
+
+def test_legacy_upgrade_script_migrates_clean_git_install(tmp_path):
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git("init", "-b", "main", cwd=upstream)
+    _git("config", "user.name", "RT Test", cwd=upstream)
+    _git("config", "user.email", "rt-test@example.invalid", cwd=upstream)
+    (upstream / "rt" / "core").mkdir(parents=True)
+    (upstream / "rt" / "core" / "version.py").write_text("# placeholder\n", encoding="utf-8")
+    (upstream / "bin").mkdir()
+    fake_rt = upstream / "bin" / "rt"
+    fake_rt.write_text('#!/bin/sh\necho called >> "$RT_TEST_CALLS"\n', encoding="utf-8")
+    fake_rt.chmod(0o755)
+    (upstream / "VERSION").write_text("3.3.13\n", encoding="utf-8")
+    _git("add", ".", cwd=upstream)
+    _git("commit", "-m", "old release", cwd=upstream)
+    install = tmp_path / "install"
+    _git("clone", str(upstream), str(install), cwd=tmp_path)
+    (upstream / "VERSION").write_text("3.4.2\n", encoding="utf-8")
+    _git("add", "VERSION", cwd=upstream)
+    _git("commit", "-m", "new release", cwd=upstream)
+    _git("tag", "-a", "v3.4.2", "-m", "release", cwd=upstream)
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    fake_curl = tool_dir / "curl"
+    fake_curl.write_text('#!/bin/sh\necho \'{"tag_name":"v3.4.2"}\'\n', encoding="utf-8")
+    fake_curl.chmod(0o755)
+    calls = tmp_path / "calls"
+    env = os.environ.copy()
+    env["PATH"] = f"{install / 'bin'}:{tool_dir}:{env['PATH']}"
+    env["RT_TEST_CALLS"] = str(calls)
+    env["GIT_CONFIG_COUNT"] = "1"
+    env["GIT_CONFIG_KEY_0"] = f"url.{upstream}.insteadOf"
+    env["GIT_CONFIG_VALUE_0"] = "https://github.com/atturk/rt.git"
+    script = Path(__file__).resolve().parents[1] / "scripts" / "upgrade_legacy.sh"
+
+    result = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert (install / "VERSION").read_text(encoding="utf-8").strip() == "3.4.2"
+    assert calls.read_text(encoding="utf-8").splitlines() == ["called"]
+
+
+def test_legacy_upgrade_script_uses_safe_updater_for_archive_install(tmp_path):
+    install = tmp_path / "install"
+    (install / "rt" / "core").mkdir(parents=True)
+    (install / "rt" / "core" / "version.py").write_text("# old updater\n", encoding="utf-8")
+    (install / "bin").mkdir()
+    fake_rt = install / "bin" / "rt"
+    fake_rt.write_text('#!/bin/sh\nexit 99\n', encoding="utf-8")
+    fake_rt.chmod(0o755)
+    venv_bin = install / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python3").symlink_to(sys.executable)
+
+    updater_source = tmp_path / "safe_version.py"
+    updater_source.write_text(
+        'import os\ndef run_update(root):\n    open(os.environ["RT_TEST_CALLS"], "w").write(root)\n',
+        encoding="utf-8",
+    )
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    fake_curl = tool_dir / "curl"
+    fake_curl.write_text(
+        '#!/bin/sh\nif [ "$#" -eq 2 ]; then echo \'{"tag_name":"v3.4.2"}\'; '
+        'else cp "$RT_TEST_UPDATER" "$4"; fi\n',
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o755)
+    calls = tmp_path / "calls"
+    env = os.environ.copy()
+    env["PATH"] = f"{install / 'bin'}:{tool_dir}:{env['PATH']}"
+    env["RT_TEST_CALLS"] = str(calls)
+    env["RT_TEST_UPDATER"] = str(updater_source)
+    script = Path(__file__).resolve().parents[1] / "scripts" / "upgrade_legacy.sh"
+
+    result = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert calls.read_text(encoding="utf-8") == str(install)

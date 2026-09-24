@@ -189,7 +189,20 @@ python3 -m pytest tests/
 
 La radice del repository `rt/` contiene il pacchetto Python omonimo `rt/`: non sono due copie del progetto.
 Configurazione personale, segreti e stato Telegram restano locali; lezioni e backup vanno fuori dal checkout.
-Le installazioni da release si aggiornano con `rt -u`; i checkout di sviluppo si aggiornano con Git.
+Le installazioni da release e i cloni Git puliti sul branch `main` si aggiornano con
+`rt -u`; il comando si ferma senza cambiare i file se rileva modifiche locali o un
+altro branch. Chi usa una versione precedente alla 3.4.2 in un clone Git deve
+eseguire una volta il comando di transizione qui sotto, perché alcune vecchie
+versioni non gestiscono correttamente gli aggiornamenti nei cloni. Lo stesso
+comando funziona anche sulle installazioni da archivio e verifica le dipendenze web:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/atturk/rt/main/scripts/upgrade_legacy.sh)"
+```
+
+Il comando si interrompe prima di modificare un clone Git se non è su `main` o
+se contiene modifiche tracciate. Da quel momento gli aggiornamenti successivi si
+fanno con `rt -u`.
 La trascrizione integrata usa `macparakeet-cli` su macOS; gli altri sistemi possono elaborare trascrizioni già prodotte.
 
 Per contribuire: [sviluppo](https://github.com/atturk/rt/blob/main/docs/DEVELOPMENT.md), [gestione file e release](https://github.com/atturk/rt/blob/main/docs/MAINTENANCE.md),

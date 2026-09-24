@@ -14,6 +14,8 @@ import urllib.request
 import urllib.error
 from typing import Optional, Tuple, List
 
+OFFICIAL_GIT_URL = "https://github.com/atturk/rt.git"
+
 
 def parse_semver(version_str: str) -> Optional[Tuple[int, int, int]]:
     """
@@ -175,6 +177,46 @@ def _install_runtime_requirements(project_root: str) -> bool:
     return True
 
 
+def _git_checkout_is_safe_to_update(project_root: str) -> bool:
+    """Un aggiornamento Git è ammesso solo sul main senza modifiche tracciate."""
+    checks = (
+        (["git", "rev-parse", "--abbrev-ref", "HEAD"], "main", "RT deve trovarsi sul branch main."),
+        (["git", "status", "--porcelain", "--untracked-files=no"], "", "Il checkout ha modifiche locali ai file tracciati."),
+    )
+    for command, expected, message in checks:
+        try:
+            result = subprocess.run(command, cwd=project_root, capture_output=True, text=True, check=False)
+        except (subprocess.SubprocessError, OSError) as exc:
+            print(f"❌ Impossibile verificare il checkout Git: {exc}", file=sys.stderr)
+            return False
+        if result.returncode != 0 or result.stdout.strip() != expected:
+            print(f"❌ {message} Aggiornamento interrotto senza modificare i file.", file=sys.stderr)
+            return False
+    return True
+
+
+def _update_git_checkout(project_root: str, latest_ver: str) -> bool:
+    """Porta un checkout pulito al tag ufficiale, senza riscrivere la cronologia."""
+    print(f"Aggiornamento Git alla release {latest_ver}...")
+    commands = (
+        ["git", "fetch", "--no-tags", OFFICIAL_GIT_URL, f"refs/tags/v{latest_ver}"],
+        ["git", "merge", "--ff-only", "FETCH_HEAD"],
+    )
+    for command in commands:
+        try:
+            result = subprocess.run(command, cwd=project_root, check=False)
+        except (subprocess.SubprocessError, OSError) as exc:
+            print(f"❌ Aggiornamento Git fallito: {exc}", file=sys.stderr)
+            return False
+        if result.returncode != 0:
+            print("❌ Impossibile aggiornare senza perdere modifiche o riscrivere la cronologia Git.", file=sys.stderr)
+            return False
+    if get_current_version(project_root) != latest_ver:
+        print("❌ La versione del checkout non coincide con la release richiesta.", file=sys.stderr)
+        return False
+    return True
+
+
 def run_update(project_root: str) -> None:
     """
     Esegue l'aggiornamento automatico sicuro di RT tramite GitHub Releases:
@@ -186,8 +228,8 @@ def run_update(project_root: str) -> None:
     6. Installa le dipendenze CLI e web nel virtualenv.
     7. Scrive VERSION solo dopo l'installazione riuscita.
     """
-    if os.path.exists(os.path.join(project_root, ".git")):
-        print("❌ Questo è un checkout di sviluppo: aggiorna con Git, non con 'rt -u'.", file=sys.stderr)
+    git_checkout = os.path.exists(os.path.join(project_root, ".git"))
+    if git_checkout and not _git_checkout_is_safe_to_update(project_root):
         sys.exit(1)
 
     latest_ver = get_latest_remote_version(project_root)
@@ -206,6 +248,14 @@ def run_update(project_root: str) -> None:
         if curr_parsed == lat_parsed and not _install_runtime_requirements(project_root):
             sys.exit(1)
         print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
+        sys.exit(0)
+
+    if git_checkout:
+        if not _update_git_checkout(project_root, latest_ver):
+            sys.exit(1)
+        if not _install_runtime_requirements(project_root):
+            sys.exit(1)
+        print(f"✅ RT aggiornato: {curr_ver} → {latest_ver}")
         sys.exit(0)
 
     print(f"Aggiornamento in corso ({curr_ver} → {latest_ver})...")
