@@ -679,5 +679,93 @@ class TestPhaseButtons:
             assert len(set(ys)) == len(ys)
 
 
+class TestDashboardSearchFilter:
+    @pytest.mark.anyio
+    async def test_search_filters_by_title_and_subject_and_restores(self, tmp_path, monkeypatch):
+        from rt.tui.app import RTApp, LessonRow
+        from rt.tui.data import LessonSummary, PhaseStatus
+        from rt.core.state import WorkflowState
+        from textual.widgets import ListView, Input, Static
+
+        dir1 = str(tmp_path / "lesson1")
+        dir2 = str(tmp_path / "lesson2")
+        dir3 = str(tmp_path / "lesson3")
+        for d in (dir1, dir2, dir3):
+            os.makedirs(os.path.join(d, "_state"), exist_ok=True)
+
+        l1 = LessonSummary(
+            dir_path=dir1,
+            title="BIOCHIMICA GENERALE 1",
+            subject="Chimica",
+            recorded="2026-03-14",
+            when="oggi",
+            state=WorkflowState.PREPARED,
+            phase_status=[("prepare", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=100.0,
+        )
+        l2 = LessonSummary(
+            dir_path=dir2,
+            title="ANATOMIA UMANA 2",
+            subject="Medicina",
+            recorded="2026-03-14",
+            when="oggi",
+            state=WorkflowState.PREPARED,
+            phase_status=[("prepare", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=200.0,
+        )
+        l3 = LessonSummary(
+            dir_path=dir3,
+            title="FISIOLOGIA 1",
+            subject="Biochimica Medica",
+            recorded="2026-03-14",
+            when="oggi",
+            state=WorkflowState.PREPARED,
+            phase_status=[("prepare", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=300.0,
+        )
+
+        app = RTApp()
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [l1, l2, l3])
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            lv = app.query_one("#lesson-list", ListView)
+            search_input = app.query_one("#search", Input)
+            assert len(lv.children) == 3
+
+            # 1. Filtro per titolo (case-insensitive): "biochimic" trova solo BIOCHIMICA (l1) e FISIOLOGIA (subject: Biochimica Medica, l3)
+            # Digita "ANATOM"
+            search_input.value = "ANATOM"
+            await pilot.pause()
+            assert len(lv.children) == 1
+            assert lv.children[0].lesson.title == "ANATOMIA UMANA 2"
+
+            # 2. Filtro per materia: "medicina" trova ANATOMIA (subject: Medicina)
+            search_input.value = "medicina"
+            await pilot.pause()
+            assert len(lv.children) == 1
+            assert lv.children[0].lesson.title == "ANATOMIA UMANA 2"
+
+            # 3. Filtro che non trova nulla
+            search_input.value = "inesistente"
+            await pilot.pause()
+            assert len(lv.children) == 0
+            assert app.selected_lesson is None
+            assert "Nessuna lezione corrisponde" in str(app.query_one("#detail-header", Static).render())
+
+            # 4. Cancellazione ricerca ripristina tutte le 3 lezioni
+            search_input.value = ""
+            await pilot.pause()
+            assert len(lv.children) == 3
+            assert app.selected_lesson is not None
+
+
+
 
 

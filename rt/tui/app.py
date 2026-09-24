@@ -272,26 +272,83 @@ class RTApp(App):
         self.query_one("#status", Static).update(self._telegram_status_markup())
 
         self.lessons = discover_lessons(root)
+        try:
+            search_input = self.query_one("#search", Input)
+            query = (search_input.value or "").strip().lower()
+        except Exception:
+            query = ""
+
         list_view = self.query_one("#lesson-list", ListView)
         await list_view.clear()
-        for lesson in self.lessons:
+
+        filtered = [
+            l for l in self.lessons
+            if not query or query in (l.title or "").lower() or query in (l.subject or "").lower()
+        ]
+
+        for lesson in filtered:
             await list_view.append(LessonRow(lesson))
 
-        if self.lessons:
-            list_view.index = 0
-            await self._show_lesson(self.lessons[0])
+        if filtered:
+            if self.selected_lesson and any(l.dir_path == self.selected_lesson.dir_path for l in filtered):
+                idx = next(i for i, l in enumerate(filtered) if l.dir_path == self.selected_lesson.dir_path)
+                list_view.index = idx
+                await self._show_lesson(filtered[idx])
+            else:
+                list_view.index = 0
+                await self._show_lesson(filtered[0])
         else:
             self.selected_lesson = None
             self.query_one("#detail-header", Static).update(
-                "Nessuna lezione trovata in questa cartella."
+                f"Nessuna lezione corrisponde a \"{query}\"."
+                if query else
+                ("Nessuna lezione trovata in questa cartella."
                 if root else
                 "Configura 'telegram.lessons_root' in config/general.yaml (o premi 'g') "
-                "per vedere qui le tue lezioni."
+                "per vedere qui le tue lezioni.")
             )
             self.query_one("#detail-stats", Static).update("")
             self.query_one("#phase-stepper").display = False
             self.query_one("#issues-link").display = False
             await self.query_one(MarkdownViewer).document.update("")
+
+    async def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "search":
+            query = (event.value or "").strip().lower()
+            list_view = self.query_one("#lesson-list", ListView)
+            await list_view.clear()
+
+            filtered = [
+                l for l in self.lessons
+                if not query or query in (l.title or "").lower() or query in (l.subject or "").lower()
+            ]
+
+            for lesson in filtered:
+                await list_view.append(LessonRow(lesson))
+
+            root = self._lessons_root()
+            if filtered:
+                if self.selected_lesson and any(l.dir_path == self.selected_lesson.dir_path for l in filtered):
+                    idx = next(i for i, l in enumerate(filtered) if l.dir_path == self.selected_lesson.dir_path)
+                    list_view.index = idx
+                    await self._show_lesson(filtered[idx])
+                else:
+                    list_view.index = 0
+                    await self._show_lesson(filtered[0])
+            else:
+                self.selected_lesson = None
+                self.query_one("#detail-header", Static).update(
+                    f"Nessuna lezione corrisponde a \"{event.value}\"."
+                    if query else
+                    ("Nessuna lezione trovata in questa cartella."
+                    if root else
+                    "Configura 'telegram.lessons_root' in config/general.yaml (o premi 'g') "
+                    "per vedere qui le tue lezioni.")
+                )
+                self.query_one("#detail-stats", Static).update("")
+                self.query_one("#phase-stepper").display = False
+                self.query_one("#issues-link").display = False
+                await self.query_one(MarkdownViewer).document.update("")
 
     async def _show_lesson(self, lesson: LessonSummary) -> None:
         self.selected_lesson = lesson
