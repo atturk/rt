@@ -5,6 +5,7 @@ con azioni rapide sulla lezione selezionata. Le azioni richiamano gli stessi sot
 CLI già usati da terminale (rt run/review/build/cost/recall/config), sospendendo
 temporaneamente l'interfaccia Textual (App.suspend()) invece di reimplementarli.
 """
+import asyncio
 from typing import List, Optional
 
 from textual import work
@@ -213,6 +214,8 @@ class RTApp(App):
         apply_saved_theme(self)
         self.lessons: List[LessonSummary] = []
         self.selected_lesson: Optional[LessonSummary] = None
+        self._markdown_preview_generation = 0
+        self._markdown_preview_lock = asyncio.Lock()
         _, self.subcommand_parsers = build_parser()
 
     def _lessons_root(self) -> Optional[str]:
@@ -270,11 +273,20 @@ class RTApp(App):
     async def refresh_lessons(self) -> None:
         root = self._lessons_root()
         self.query_one("#status", Static).update(self._telegram_status_markup())
-
         self.lessons = discover_lessons(root)
+        await self._apply_lesson_filter()
+
+    async def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "search":
+            await self._apply_lesson_filter()
+
+    async def _apply_lesson_filter(self) -> None:
+        """Ricostruisce #lesson-list applicando il testo corrente di #search (se presente) a
+        titolo/materia. Condivisa da refresh_lessons (dopo una riscansione) e on_input_changed
+        (ad ogni carattere digitato) per non duplicare la stessa logica di filtro/selezione."""
+        root = self._lessons_root()
         try:
-            search_input = self.query_one("#search", Input)
-            query = (search_input.value or "").strip().lower()
+            query = (self.query_one("#search", Input).value or "").strip().lower()
         except Exception:
             query = ""
 
@@ -312,50 +324,40 @@ class RTApp(App):
             self.query_one("#issues-link").display = False
             await self._update_markdown_preview("")
 
-    async def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "search":
-            query = (event.value or "").strip().lower()
-            list_view = self.query_one("#lesson-list", ListView)
-            await list_view.clear()
-
-            filtered = [
-                l for l in self.lessons
-                if not query or query in (l.title or "").lower() or query in (l.subject or "").lower()
-            ]
-
-            for lesson in filtered:
-                await list_view.append(LessonRow(lesson))
-
-            root = self._lessons_root()
-            if filtered:
-                if self.selected_lesson and any(l.dir_path == self.selected_lesson.dir_path for l in filtered):
-                    idx = next(i for i, l in enumerate(filtered) if l.dir_path == self.selected_lesson.dir_path)
-                    list_view.index = idx
-                    await self._show_lesson(filtered[idx])
-                else:
-                    list_view.index = 0
-                    await self._show_lesson(filtered[0])
-            else:
-                self.selected_lesson = None
-                self.query_one("#detail-header", Static).update(
-                    f"Nessuna lezione corrisponde a \"{event.value}\"."
-                    if query else
-                    ("Nessuna lezione trovata in questa cartella."
-                    if root else
-                    "Configura 'telegram.lessons_root' in config/general.yaml (o premi 'g') "
-                    "per vedere qui le tue lezioni.")
-                )
-                self.query_one("#detail-stats", Static).update("")
-                self.query_one("#phase-stepper").display = False
-                self.query_one("#issues-link").display = False
-                await self._update_markdown_preview("")
-
     async def _update_markdown_preview(self, markdown_text: str) -> None:
-        try:
-            viewer = self.query_one(MarkdownViewer)
-            await viewer.document.update(markdown_text)
-        except Exception:
-            pass
+        # Rimonta un MarkdownViewer nuovo invece di aggiornare .document in place: la TOC
+        # interna di Textual non si risincronizza correttamente con document.update() e un
+        # click su una voce della TOC dopo un refresh crasha con NoMatches (Task 96) — un
+        # remount completo garantisce che TOC e blocchi restino sempre coerenti fra loro.
+        #
+        # Guardia di rientranza: _show_lesson può essere invocata due volte in rapida
+        # successione per la stessa selezione (list_view.index = idx dentro
+        # _apply_lesson_filter fa scattare anche on_list_view_highlighted, che chiama di
+        # nuovo _show_lesson, in aggiunta alla chiamata esplicita subito dopo). Due remount
+        # sovrapposti fanno crashare MarkdownViewer._on_mount: rimuovere il vecchio widget e
+        # montarne uno nuovo non è atomico (entrambi cedono il controllo all'event loop più
+        # volte), quindi una seconda chiamata può rimuovere il MarkdownViewer della prima
+        # PRIMA che il suo stesso figlio Markdown abbia finito di montarsi. Un lock serializza
+        # l'intera sequenza remove+mount; il contatore di generazione scarta poi il lavoro di
+        # una chiamata ormai superata invece di montarlo comunque quando tocca il suo turno.
+        self._markdown_preview_generation += 1
+        my_generation = self._markdown_preview_generation
+        async with self._markdown_preview_lock:
+            if self._markdown_preview_generation != my_generation:
+                return
+            try:
+                panel = self.query_one("#markdown-panel", Vertical)
+                show_toc = True
+                try:
+                    old_viewer = panel.query_one(MarkdownViewer)
+                    show_toc = old_viewer.show_table_of_contents
+                    await old_viewer.remove()
+                except Exception:
+                    pass
+                new_viewer = MarkdownViewer(markdown_text, show_table_of_contents=show_toc)
+                await panel.mount(new_viewer)
+            except Exception:
+                pass
 
     async def on_markdown_table_of_contents_selected(self, event) -> None:
         try:

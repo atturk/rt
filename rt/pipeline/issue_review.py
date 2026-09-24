@@ -506,27 +506,27 @@ class IssueReviewApp(App):
                         yield Button("Player audio", id="btn-audio")
             yield Footer()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         self.set_interval(0.2, self._check_audio_proc)
-        self._update_display()
+        await self._update_display()
 
     def on_unmount(self) -> None:
         self._stop_audio()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
         if button_id == "btn-accept":
-            self.action_approve_or_accept()
+            await self.action_approve_or_accept()
         elif button_id == "btn-reject":
-            self.action_reject()
+            await self.action_reject()
         elif button_id == "btn-edit":
-            self.action_edit()
+            await self.action_edit()
         elif button_id == "btn-back":
-            self.action_back()
+            await self.action_back()
         elif button_id == "btn-skip":
-            self.action_skip()
+            await self.action_skip()
         elif button_id == "btn-audio":
-            self.action_toggle_audio()
+            await self.action_toggle_audio()
 
     def _stop_audio(self) -> None:
         if self.mpv_proc is not None:
@@ -600,7 +600,7 @@ class IssueReviewApp(App):
             self.last_status,
         )
 
-    def _update_display(self) -> None:
+    async def _update_display(self) -> None:
         try:
             card = self.query_one("#issue-card", Vertical)
             card.border_title = self._get_card_title()
@@ -612,7 +612,6 @@ class IssueReviewApp(App):
             content.update(self._get_issue_content())
 
             diff_container = self.query_one("#diff-container", Vertical)
-            diff_view = self.query_one("#diff-view", DiffView)
             btn_reject = self.query_one("#btn-reject", Button)
 
             if self.idx >= len(self.to_review):
@@ -635,14 +634,23 @@ class IssueReviewApp(App):
                     sci_unit = self.seg_to_unit[iss.segment_id]
                 try:
                     code_orig, code_mod = _build_diff_strings(sci_unit, iss)
-                    diff_view.code_original = code_orig
-                    diff_view.code_modified = code_mod
+                    # DiffView non ricalcola il diff se si aggiornano code_original/
+                    # code_modified su un'istanza già montata (verificato: i contatori
+                    # +N/-N restano a 0 nonostante il contenuto sia genuinamente diverso) —
+                    # l'unico modo affidabile è costruire un'istanza nuova con il contenuto
+                    # già nel costruttore, stesso principio del remount MarkdownViewer.
+                    old_diff_view = self.query_one("#diff-view", DiffView)
+                    await old_diff_view.remove()
+                    new_diff_view = DiffView(
+                        "originale", "corretto", code_orig, code_mod, split=True, id="diff-view"
+                    )
+                    await diff_container.mount(new_diff_view)
                 except Exception:
                     pass
         except Exception:
             pass
 
-    def action_approve_or_accept(self) -> None:
+    async def action_approve_or_accept(self) -> None:
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
@@ -662,9 +670,9 @@ class IssueReviewApp(App):
         if self.idx >= len(self.to_review):
             self.exit(True)
         else:
-            self._update_display()
+            await self._update_display()
 
-    def action_reject(self) -> None:
+    async def action_reject(self) -> None:
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
@@ -679,12 +687,12 @@ class IssueReviewApp(App):
         if self.idx >= len(self.to_review):
             self.exit(True)
         else:
-            self._update_display()
+            await self._update_display()
 
     def _do_edit_interaction(self, initial_content: str) -> str:
         return edit_text_in_editor(initial_content)
 
-    def action_edit(self) -> None:
+    async def action_edit(self) -> None:
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
@@ -719,12 +727,12 @@ class IssueReviewApp(App):
             if self.idx >= len(self.to_review):
                 self.exit(True)
             else:
-                self._update_display()
+                await self._update_display()
         else:
             self.last_status = "⚠️ Nessuna modifica inserita."
-            self._update_display()
+            await self._update_display()
 
-    def action_toggle_audio(self) -> None:
+    async def action_toggle_audio(self) -> None:
         if self.idx >= len(self.to_review):
             return
         iss = self.to_review[self.idx]
@@ -732,18 +740,18 @@ class IssueReviewApp(App):
         if self.mpv_proc is not None and self.mpv_proc.poll() is None:
             self._stop_audio()
             self.last_status = "⏹ Player audio chiuso."
-            self._update_display()
+            await self._update_display()
             return
 
         if not shutil.which("mpv"):
             self.last_status = "⚠️ Installa mpv con 'brew install mpv' per usare il player companion."
-            self._update_display()
+            await self._update_display()
             return
 
         sci_unit = self.unit_by_id.get(iss.unit_id) if iss.unit_id else (self.seg_to_unit.get(iss.segment_id) if iss.segment_id else None)
         if not sci_unit:
             self.last_status = "⚠️ Unità non associata all'issue."
-            self._update_display()
+            await self._update_display()
             return
 
         from rt.core.audio_clip import get_or_create_unit_clip, calculate_mpv_geometry
@@ -756,12 +764,12 @@ class IssueReviewApp(App):
             clip_path = get_or_create_unit_clip(self.lesson_dir, sci_unit, segments)
         except Exception as e:
             self.last_status = f"⚠️ Errore ritaglio clip audio: {e}"
-            self._update_display()
+            await self._update_display()
             return
 
         if not clip_path:
             self.last_status = "⚠️ File audio originale o clip non disponibile."
-            self._update_display()
+            await self._update_display()
             return
 
         geometry = calculate_mpv_geometry()
@@ -787,9 +795,9 @@ class IssueReviewApp(App):
         except Exception as e:
             self.last_status = f"⚠️ Impossibile avviare mpv: {e}"
 
-        self._update_display()
+        await self._update_display()
 
-    def action_back(self) -> None:
+    async def action_back(self) -> None:
         self._stop_audio()
         if self.idx == 0:
             self.last_status = "⚠️  Sei già al primo elemento, impossibile tornare oltre."
@@ -800,16 +808,16 @@ class IssueReviewApp(App):
                 revert_last_decision(self.lesson_dir, prev_iss.id)
                 self.decided_this_session.discard(prev_iss.id)
             self.last_status = f"◀️ Tornato all'issue precedente ({prev_iss.id})."
-        self._update_display()
+        await self._update_display()
 
-    def action_skip(self) -> None:
+    async def action_skip(self) -> None:
         self._stop_audio()
         self.last_status = "⏭ Saltato."
         self.idx += 1
         if self.idx >= len(self.to_review):
             self.exit(True)
         else:
-            self._update_display()
+            await self._update_display()
 
     def action_quit(self) -> None:
         self._stop_audio()
