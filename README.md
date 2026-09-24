@@ -83,12 +83,15 @@ cp -r config.example config
 #### Anteprima dell'interfaccia web locale
 
 Per provare la nuova interfaccia Gradio (dashboard, review, importazione audio e
-configurazione) nell'ambiente di sviluppo:
+configurazione), installa o aggiorna RT e avvia:
 
 ```bash
-./.venv/bin/python -m pip install -r requirements-web.txt
-./bin/rt web
+rt web
 ```
+
+`rt -u` installa anche le dipendenze web e può ripararle se mancano già nella
+versione corrente. Da un checkout di sviluppo, usa prima
+`./.venv/bin/python -m pip install -r requirements-web.txt` e poi `./bin/rt web`.
 
 L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:7860`.
 Legge la cartella delle lezioni configurata in RT; per usarne un'altra, passa

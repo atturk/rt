@@ -205,6 +205,7 @@ def test_run_update_end_to_end_success(tmp_path, capsys):
 
     with patch("urllib.request.urlopen", side_effect=mock_urlopen), \
          patch("subprocess.run") as mock_subproc:
+        mock_subproc.return_value.returncode = 0
 
         with pytest.raises(SystemExit) as exc_info:
             run_update(str(tmp_path))
@@ -226,6 +227,54 @@ def test_run_update_end_to_end_success(tmp_path, capsys):
         assert (tmp_path / name).read_text(encoding="utf-8") == "contenuto locale"
     assert (tmp_path / "nuovo_modulo.py").exists()
     assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.8"
+    assert mock_subproc.call_args.args[0][-3:] == ["-r", str(tmp_path / "requirements.txt"), "--quiet"]
+
+
+def test_run_update_dependency_failure_keeps_old_version(tmp_path, capsys):
+    (tmp_path / "VERSION").write_text("3.3.7\n", encoding="utf-8")
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python3").write_text("#!/bin/sh\n", encoding="utf-8")
+    tar_bytes = _create_mock_tarball_bytes("3.3.8")
+
+    def mock_urlopen(req, timeout=None):
+        response = MagicMock()
+        response.status = 200
+        response.__enter__.return_value = response
+        if "releases/latest" in req.full_url:
+            response.read.return_value = b'{"tag_name": "v3.3.8"}'
+        else:
+            response.read.side_effect = [tar_bytes, b""]
+        return response
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen), \
+         patch("subprocess.run") as pip:
+        pip.return_value.returncode = 1
+        with pytest.raises(SystemExit) as exc_info:
+            run_update(str(tmp_path))
+
+    assert exc_info.value.code == 1
+    assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.7"
+    assert "Installazione delle dipendenze fallita" in capsys.readouterr().err
+
+
+def test_run_update_repairs_dependencies_when_version_is_current(tmp_path, capsys):
+    (tmp_path / "VERSION").write_text("3.3.8\n", encoding="utf-8")
+    (tmp_path / "requirements-web.txt").write_text("gradio==6.22.0\n", encoding="utf-8")
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python3").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    with patch("rt.core.version.get_latest_remote_version", return_value="3.3.8"), \
+         patch("subprocess.run") as pip:
+        pip.return_value.returncode = 0
+        with pytest.raises(SystemExit) as exc_info:
+            run_update(str(tmp_path))
+
+    assert exc_info.value.code == 0
+    assert pip.call_args.args[0][0] == str(venv_bin / "python3")
+    assert str(tmp_path / "requirements-web.txt") in pip.call_args.args[0]
+    assert "Sei già aggiornato" in capsys.readouterr().out
 
 
 def test_run_update_download_failure_preserves_installation(tmp_path, capsys):

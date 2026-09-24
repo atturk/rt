@@ -8,26 +8,28 @@ e aggiunge un registro delle azioni web nella stessa cartella della lezione.
 
 ## Avvio
 
-Dalla radice del repository, dopo aver installato RT:
+Dopo aver installato o aggiornato RT:
 
 ```bash
-./.venv/bin/python -m pip install -r requirements-web.txt
-./bin/rt web
+rt web
 ```
+
+`rt -u` installa anche le dipendenze web e verifica quelle mancanti quando RT
+è già aggiornato. In un checkout di sviluppo, installa manualmente
+`requirements-web.txt` nel virtualenv e avvia `./bin/rt web`.
 
 Se la cartella delle lezioni non è impostata in `config/general.yaml`, oppure per
 provarne un'altra:
 
 ```bash
-./bin/rt web --lessons-root "/Users/attilioturco/rt-stuff/prove trt"
+rt web --lessons-root "/percorso/alle/lezioni"
 ```
 
 L'app si apre su `http://127.0.0.1:7860`. Si può usare `--port 7868` per cambiare
-porta o `--no-browser` per non aprire automaticamente il browser. `./bin/rt-web`
+porta o `--no-browser` per non aprire automaticamente il browser. `bin/rt-web`
 resta disponibile come avvio diretto equivalente. Il server ascolta
 solo su `127.0.0.1` e non genera un link pubblico Gradio. `requirements-web.txt`
-aggiunge Gradio alle dipendenze di RT; l'installazione standard della CLI resta
-invariata.
+aggiunge Gradio alle dipendenze di RT; l'installazione standard include la web app.
 
 Il terminale mostra avvio, richieste HTTP, durata delle azioni, errori Python e
 segnalazioni dal browser. Gli stessi eventi vengono salvati in un file locale a

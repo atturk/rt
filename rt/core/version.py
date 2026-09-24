@@ -142,6 +142,39 @@ def _is_managed_code(rel_path: str) -> bool:
     )
 
 
+def _install_runtime_requirements(project_root: str) -> bool:
+    """Installa le dipendenze nel venv di RT e rende visibile qualsiasi errore."""
+    req_file = os.path.join(project_root, "requirements-web.txt")
+    if not os.path.isfile(req_file):
+        req_file = os.path.join(project_root, "requirements.txt")
+    if not os.path.isfile(req_file):
+        return True
+
+    venv_python = os.path.join(project_root, ".venv", "bin", "python3")
+    if not os.path.isfile(venv_python):
+        print("❌ Ambiente Python di RT assente: esegui install.sh per ripristinarlo.", file=sys.stderr)
+        return False
+
+    print("Verifica e installazione delle dipendenze Python...")
+    try:
+        result = subprocess.run(
+            [venv_python, "-m", "pip", "install", "-r", req_file, "--quiet"],
+            cwd=project_root,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        print(f"❌ Installazione delle dipendenze fallita: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        print(
+            f"❌ Installazione delle dipendenze fallita (codice {result.returncode}). "
+            "Controlla l'errore di pip qui sopra e riprova con 'rt -u'.",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def run_update(project_root: str) -> None:
     """
     Esegue l'aggiornamento automatico sicuro di RT tramite GitHub Releases:
@@ -150,8 +183,8 @@ def run_update(project_root: str) -> None:
     3. Estrae l'archivio nella directory temporanea.
     4. Sincronizza il codice estratto dentro project_root preservando configurazioni utente.
     5. Pulisce la directory temporanea.
-    6. Re-installa le dipendenze CLI e web nel virtualenv.
-    7. Mostra versione aggiornata.
+    6. Installa le dipendenze CLI e web nel virtualenv.
+    7. Scrive VERSION solo dopo l'installazione riuscita.
     """
     if os.path.exists(os.path.join(project_root, ".git")):
         print("❌ Questo è un checkout di sviluppo: aggiorna con Git, non con 'rt -u'.", file=sys.stderr)
@@ -170,6 +203,8 @@ def run_update(project_root: str) -> None:
     lat_parsed = parse_semver(latest_ver)
 
     if curr_parsed is not None and lat_parsed is not None and curr_parsed >= lat_parsed:
+        if curr_parsed == lat_parsed and not _install_runtime_requirements(project_root):
+            sys.exit(1)
         print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
         sys.exit(0)
 
@@ -248,30 +283,15 @@ def run_update(project_root: str) -> None:
                     except OSError:
                         pass
 
-        # VERSION per ultimo, solo ora che il resto della sincronizzazione è riuscito
-        # per intero (vedi commento sopra sul loop di copia).
+        # VERSION per ultimo, dopo la sincronizzazione e le dipendenze. Un errore
+        # di pip lascia la vecchia versione per consentire un nuovo tentativo.
+        if not _install_runtime_requirements(project_root):
+            sys.exit(1)
         new_version_src = os.path.join(extracted_root, "VERSION")
         if os.path.isfile(new_version_src):
             shutil.copy2(new_version_src, os.path.join(project_root, "VERSION"))
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-
-    # Reinstalla le dipendenze nel virtualenv
-    venv_python = os.path.join(project_root, ".venv", "bin", "python3")
-    py_exec = venv_python if os.path.isfile(venv_python) else sys.executable
-    req_file = os.path.join(project_root, "requirements-web.txt")
-    if not os.path.isfile(req_file):
-        req_file = os.path.join(project_root, "requirements.txt")
-    if os.path.isfile(req_file):
-        try:
-            subprocess.run(
-                [py_exec, "-m", "pip", "install", "-r", req_file, "--quiet"],
-                cwd=project_root,
-                capture_output=True,
-                check=False,
-            )
-        except (subprocess.SubprocessError, OSError):
-            pass
 
     new_ver = get_current_version(project_root)
     print(f"✅ RT aggiornato: {curr_ver} → {new_ver}")

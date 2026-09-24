@@ -702,7 +702,7 @@ def cmd_web(args: argparse.Namespace) -> None:
         from rt.web.app import main as web_main
     except ModuleNotFoundError as exc:
         if exc.name == "gradio":
-            raise SystemExit("Installa l'interfaccia web con: pip install -r requirements-web.txt") from exc
+            raise SystemExit("Interfaccia web mancante. Esegui 'rt -u' per installare le dipendenze e riprova.") from exc
         raise
     argv = ["--port", str(args.port)]
     if args.lessons_root:
