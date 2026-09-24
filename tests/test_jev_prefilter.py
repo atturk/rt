@@ -372,7 +372,6 @@ def test_rewrite_drift_issue_renders_no_diff_branch():
         decisions_map={}, last_status=None,
     )
     rendered = rendered_text.plain
-    assert "DERIVA RIELABORAZIONE" in rendered
     assert "Il modello di pre-screening Jev" in rendered
     assert "0.95" in rendered
     # Nessun blocco diff rosso/verde: niente prefisso "+ " di correzione, dato che

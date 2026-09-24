@@ -24,7 +24,9 @@ def test_daemon_concurrent_updates_flag():
     """Verifica che run_daemon configuri concurrent_updates(True) sull'ApplicationBuilder."""
     with patch("rt.telegram.daemon.load_telegram_config") as mock_tg_cfg, \
          patch("rt.telegram.daemon.load_config") as mock_cfg, \
-         patch("rt.telegram.daemon.Application.builder") as mock_builder_factory:
+         patch("rt.telegram.daemon.Application.builder") as mock_builder_factory, \
+         patch("rt.telegram.daemon_status.write_daemon_pid"), \
+         patch("rt.telegram.daemon_status.remove_daemon_pid"):
 
         mock_tg_cfg.return_value.bot_token = "dummy_token"
         mock_cfg.return_value.telegram.state_dir = "/tmp/state"

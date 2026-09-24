@@ -1,5 +1,6 @@
 """
-Test per Task 74: redesign della card di review scientifica (diff-style) e ridenominazione tasti A/R/M/I.
+Test per Task 74 e Task 93: redesign della card di review scientifica (DiffView), bottoni discreti,
+rimozione ridondanze e uscita senza attesa INVIO.
 """
 import os
 import json
@@ -10,8 +11,9 @@ from rich.text import Text
 from rt.core.models import (
     ScienceIssue, ScienceType, ScienceSeverity, Draft, DraftUnit, SegmentsData, Segment
 )
-from rt.pipeline.issue_review import _build_science_panel, IssueReviewApp
+from rt.pipeline.issue_review import _build_diff_strings, _build_science_panel, IssueReviewApp
 from rt.pipeline.ledger import load_ledger
+from textual_diff_view import DiffView
 
 
 def _sample_draft_unit():
@@ -26,7 +28,7 @@ def _sample_draft_unit():
     )
 
 
-def test_science_critic_diff_rendering_with_spans():
+def test_science_critic_diff_strings_building():
     sci_unit = _sample_draft_unit()
     iss = ScienceIssue(
         id="sci_001",
@@ -36,6 +38,52 @@ def test_science_critic_diff_rendering_with_spans():
         claim="abbassano l'energia di attivazione",
         reason="L'enzima stabilizza lo stato di transizione.",
         suggested_fix="riducono la barriera di energia libera",
+    )
+
+    code_orig, code_mod = _build_diff_strings(sci_unit, iss)
+    assert code_orig == sci_unit.content
+    assert code_mod == "Gli enzimi riducono la barriera di energia libera accelerando la reazione."
+
+
+def test_science_critic_diff_strings_fallback_and_no_fix():
+    sci_unit = _sample_draft_unit()
+    iss_fallback = ScienceIssue(
+        id="sci_002",
+        type=ScienceType.ERR_CONCETTUALE,
+        severity=ScienceSeverity.MEDIUM,
+        unit_id="U1",
+        claim="claim inesistente",
+        reason="critica",
+        suggested_fix="correzione",
+    )
+    orig_fb, mod_fb = _build_diff_strings(sci_unit, iss_fallback)
+    assert "claim inesistente" in orig_fb
+    assert "correzione" in mod_fb
+
+    iss_nofix = ScienceIssue(
+        id="sci_003",
+        type=ScienceType.ERR_CONCETTUALE,
+        severity=ScienceSeverity.LOW,
+        unit_id="U1",
+        claim="abbassano l'energia di attivazione",
+        reason="critica",
+        suggested_fix=None,
+    )
+    orig_nf, mod_nf = _build_diff_strings(sci_unit, iss_nofix)
+    assert orig_nf == mod_nf == sci_unit.content
+
+
+def test_science_critic_panel_no_header_or_legend():
+    sci_unit = _sample_draft_unit()
+    iss = ScienceIssue(
+        id="sci_001",
+        type=ScienceType.ERR_CONCETTUALE,
+        severity=ScienceSeverity.HIGH,
+        unit_id="U1",
+        claim="abbassano l'energia di attivazione",
+        reason="L'enzima stabilizza lo stato di transizione.",
+        suggested_fix="riducono la barriera di energia libera",
+        diplomatic_question="Come possiamo chiarire questo punto?",
     )
 
     rendered_text: Text = _build_science_panel(
@@ -49,84 +97,17 @@ def test_science_critic_diff_rendering_with_spans():
     )
     plain = rendered_text.plain
 
-    # 1. Nessuna riga Timecode
-    assert "Timecode" not in plain
-
-    # 2. Presenza dei marcatori diff
-    assert "- abbassano l'energia di attivazione" in plain
-    assert "+ riducono la barriera di energia libera" in plain
-
-    # 3. Verifica spans di stile (rosso per claim rimosso, verde per aggiunta)
-    styles = [(span.style, plain[span.start:span.end]) for span in rendered_text.spans]
-    has_red_prefix = any("red" in str(st) and "- " in txt for st, txt in styles)
-    has_red_claim = any("red" in str(st) and "abbassano l'energia di attivazione" in txt for st, txt in styles)
-    has_green_prefix = any("green" in str(st) and "+ " in txt for st, txt in styles)
-    has_green_fix = any("green" in str(st) and "riducono la barriera di energia libera" in txt for st, txt in styles)
-
-    assert has_red_prefix or has_red_claim
-    assert has_green_prefix or has_green_fix
-
-    # 4. Legenda con solo emoji
-    assert "🔴 = claim attuale · 🟢 = correzione suggerita" in plain
-    assert "rosso" not in plain
-    assert "verde" not in plain
-
-
-def test_science_critic_no_suggested_fix_omits_green_and_legend():
-    sci_unit = _sample_draft_unit()
-    iss = ScienceIssue(
-        id="sci_002",
-        type=ScienceType.ERR_CONCETTUALE,
-        severity=ScienceSeverity.LOW,
-        unit_id="U1",
-        claim="abbassano l'energia di attivazione",
-        reason="Verificare se il concetto è chiaro.",
-        suggested_fix=None,
-    )
-
-    rendered_text = _build_science_panel(
-        idx=0,
-        total_count=1,
-        iss=iss,
-        tc="01:23",
-        sci_unit_info="U1 - Introduzione",
-        sci_unit=sci_unit,
-        decisions_map={},
-    )
-
-    plain = rendered_text.plain
-    assert "+ " not in plain
+    # Nessuna riga header duplicata [1/1] o ID
+    assert "[1/1]" not in plain
+    assert "SCIENCE CRITIC" not in plain
+    # Nessuna legenda
     assert "🔴 = claim attuale" not in plain
+    # Presenza di critica e domanda docente
+    assert "L'enzima stabilizza lo stato di transizione." in plain
+    assert "Come possiamo chiarire questo punto?" in plain
 
 
-def test_science_critic_fallback_when_claim_not_verbatim():
-    sci_unit = _sample_draft_unit()
-    iss = ScienceIssue(
-        id="sci_003",
-        type=ScienceType.ERR_CONCETTUALE,
-        severity=ScienceSeverity.MEDIUM,
-        unit_id="U1",
-        claim="un claim che non esiste nel testo",
-        reason="Spiegazione alternativa",
-        suggested_fix="correzione alternativa",
-    )
-
-    rendered_text = _build_science_panel(
-        idx=0,
-        total_count=1,
-        iss=iss,
-        tc="01:23",
-        sci_unit_info="U1 - Introduzione",
-        sci_unit=sci_unit,
-        decisions_map={},
-    )
-
-    plain = rendered_text.plain
-    assert "⚠️ Affermazione: \"un claim che non esiste nel testo\"" in plain
-    assert "💡 Correzione:   \"correzione alternativa\"" in plain
-
-
-def test_asr_risk_visual_layout_unchanged():
+def test_asr_risk_visual_layout():
     sci_unit = _sample_draft_unit()
     iss = ScienceIssue(
         id="asr_001",
@@ -148,10 +129,10 @@ def test_asr_risk_visual_layout_unchanged():
     )
 
     plain = rendered_text.plain
-    assert "🎙️ RISCHIO ASR (statistico)" in plain
+    assert "[1/1]" not in plain
     assert "⏱ Timecode (stima): 00:15" in plain
     assert "🎙️ Segmento raw sospetto: \"enzimi abbassano\"" in plain
-    assert "🔴 = claim attuale" not in plain
+    assert "ASR incerto" in plain
 
 
 @pytest.mark.anyio
@@ -197,11 +178,63 @@ async def test_keybindings_and_actions_science_critic(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_buttons_click_science_critic(tmp_path):
+    lesson_dir = str(tmp_path / "lesson")
+    os.makedirs(os.path.join(lesson_dir, "_state"), exist_ok=True)
+
+    iss1 = ScienceIssue(
+        id="sci_btn_1",
+        type=ScienceType.ERR_CONCETTUALE,
+        severity=ScienceSeverity.HIGH,
+        unit_id="U1",
+        claim="claim 1",
+        reason="reason 1",
+        suggested_fix="fix 1",
+    )
+    iss2 = ScienceIssue(
+        id="sci_btn_2",
+        type=ScienceType.ERR_CONCETTUALE,
+        severity=ScienceSeverity.HIGH,
+        unit_id="U1",
+        claim="claim 2",
+        reason="reason 2",
+        suggested_fix="fix 2",
+    )
+
+    app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[iss1, iss2])
+    async with app.run_test(size=(100, 35)) as pilot:
+        # Verifica che DiffView sia montato
+        dv = app.query_one("#diff-view", DiffView)
+        assert dv.split is True
+
+        # Click sul bottone Accetta
+        await pilot.click("#btn-accept")
+        await pilot.pause()
+        assert app.idx == 1
+
+        # Click sul bottone Indietro
+        await pilot.click("#btn-back")
+        await pilot.pause()
+        assert app.idx == 0
+
+        # Click sul bottone Salta
+        await pilot.click("#btn-skip")
+        await pilot.pause()
+        assert app.idx == 1
+
+        # Click sul bottone Rifiuta
+        await pilot.click("#btn-reject")
+        await pilot.pause()
+
+    ledger = load_ledger(lesson_dir)
+    assert any(d.issue_id == "sci_btn_2" and d.decision == "rejected" for d in ledger.decisions)
+
+
+@pytest.mark.anyio
 async def test_keybindings_and_actions_asr_risk(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     os.makedirs(os.path.join(lesson_dir, "_state"), exist_ok=True)
 
-    # Scrivi draft.json
     draft = Draft(
         schema_version="1.0",
         lesson_id="test_lesson",
@@ -220,12 +253,34 @@ async def test_keybindings_and_actions_asr_risk(tmp_path):
     )
 
     app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[iss_asr])
-    async with app.run_test() as pilot:
-        # 'a' per ASR accetta il testo dell'unità
+    async with app.run_test(size=(100, 35)) as pilot:
         await pilot.press("a")
+        await pilot.pause()
 
     ledger = load_ledger(lesson_dir)
     assert len(ledger.decisions) == 1
     assert ledger.decisions[0].issue_id == "asr_1"
     assert ledger.decisions[0].decision == "accepted"
     assert ledger.decisions[0].resolved_text == _sample_draft_unit().content
+
+
+def test_run_cli_review_skips_input_prompt():
+    from rt.tui.app import RTApp
+    app = RTApp()
+    with patch.object(app, "suspend"), \
+         patch("builtins.input") as mock_input, \
+         patch("subprocess.run") as mock_run, \
+         patch("rt.telegram.daemon_status.get_rt_executable_path", return_value="/mock/bin/rt"):
+        mock_run.return_value.returncode = 0
+        app._run_cli(["review", "some_lesson"])
+        mock_input.assert_not_called()
+
+    # Per comandi diversi da review, l'attesa INVIO deve essere chiamata
+    with patch.object(app, "suspend"), \
+         patch("builtins.input") as mock_input, \
+         patch("subprocess.run") as mock_run, \
+         patch("rt.telegram.daemon_status.get_rt_executable_path", return_value="/mock/bin/rt"):
+        mock_run.return_value.returncode = 0
+        app._run_cli(["config"])
+        mock_input.assert_called_once()
+

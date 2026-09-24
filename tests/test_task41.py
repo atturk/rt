@@ -291,8 +291,6 @@ def test_tui_science_panel_err_asr_st():
     )
 
     panel_text = rendered.plain
-    assert "🎙️ RISCHIO ASR (statistico)" in panel_text
-    assert "sci_st_1.1" in panel_text
     assert "Confidenza ASR degradata" in panel_text
     assert "trascrizione raw sospetta" in panel_text
 

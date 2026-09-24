@@ -6,7 +6,7 @@ Questo documento guida sviluppatori e maintainer all'estensione del sistema RT, 
 
 ## 1. Setup dell'Ambiente Locale
 
-Il progetto richiede Python 3.10+ ed è progettato per operare sia con le librerie standard sia con `pydantic` (v2):
+Il progetto richiede Python 3.11+ ed è progettato per operare sia con le librerie standard sia con `pydantic` (v2):
 
 ```bash
 # Esecuzione della CLI direttamente dal repository
@@ -19,6 +19,7 @@ python3 -m rt.cli --help
 
 - **ffmpeg**: ritaglio/riproduzione clip audio durante la review (`rt/core/audio_clip.py`). `brew install ffmpeg`.
 - **macparakeet-cli**: trascrizione ASR delle lezioni (`rt/pipeline/setup.py::find_macparakeet_binary()`). Installato automaticamente da `./install.sh` via Homebrew (`brew install moona3k/tap/macparakeet-cli`).
+- **mpv**: media player esterno per l'ascolto dei passaggi audio durante la review interattiva (`brew install mpv`). Installato automaticamente da `./install.sh`.
 - **micro** (consigliato al posto di `nano`): editor per le correzioni testuali durante la review interattiva (`rt/core/editor_edit.py`), navigazione a frecce/mouse e scorciatoie standard (`Ctrl+S` salva, `Ctrl+Q` esce) invece dei comandi di `nano`. `brew install micro`, poi `export EDITOR=micro` nel proprio shell profile. Se `$EDITOR` non è impostata, il fallback resta `nano`.
 
 ---

@@ -348,10 +348,12 @@ class RTApp(App):
                 print(f"\n❌ Eseguibile non trovato: {rt_path}")
             except Exception as exc:  # confine verso errori imprevisti di spawn: non deve uccidere la dashboard
                 print(f"\n❌ Errore inatteso: {exc}")
-            try:
-                input("\nPremi INVIO per tornare alla dashboard RT…")
-            except (KeyboardInterrupt, EOFError):
-                pass
+            # I comandi come 'review' hanno una propria interfaccia TUI completa e non richiedono attesa INVIO
+            if not (argv and argv[0] in ("review",)):
+                try:
+                    input("\nPremi INVIO per tornare alla dashboard RT…")
+                except (KeyboardInterrupt, EOFError):
+                    pass
 
     async def _execute(self, argv: List[str]) -> None:
         if argv and argv[0] in CAPTURED_SUBCOMMANDS:

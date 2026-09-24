@@ -94,9 +94,9 @@ if ! command -v brew &>/dev/null; then
 fi
 
 find_compatible_python() {
-    for py in python3 python3.13 python3.12 python3.11 python3.10; do
+    for py in python3 python3.13 python3.12 python3.11; do
         if command -v "$py" &>/dev/null; then
-            if "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' &>/dev/null; then
+            if "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' &>/dev/null; then
                 echo "$py"
                 return 0
             fi
@@ -108,13 +108,13 @@ find_compatible_python() {
 PYTHON_BIN="$(find_compatible_python || true)"
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "${YELLOW}⚠️  Nessuna versione compatibile di Python (>= 3.10) trovata. Installazione via Homebrew...${RESET}"
+    echo "${YELLOW}⚠️  Nessuna versione compatibile di Python (>= 3.11) trovata. Installazione via Homebrew...${RESET}"
     brew_install_quiet python@3.13 "python@3.13"
     PYTHON_BIN="$(find_compatible_python || true)"
 fi
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "${RED}❌ Impossibile trovare o installare Python >= 3.10.${RESET}" >&2
+    echo "${RED}❌ Impossibile trovare o installare Python >= 3.11.${RESET}" >&2
     exit 1
 fi
 
@@ -242,6 +242,12 @@ if command -v micro &>/dev/null; then
     echo "ℹ️ Editor 'micro' già installato."
 else
     brew_install_quiet micro "micro"
+fi
+
+if command -v mpv &>/dev/null; then
+    echo "ℹ️ Media player 'mpv' già installato."
+else
+    brew_install_quiet mpv "mpv"
 fi
 
 if [ -d "$VENV_DIR" ]; then

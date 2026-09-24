@@ -11,11 +11,12 @@ import json
 import shutil
 import subprocess
 import time
-from typing import List, Optional, Set, Dict, Any
+from typing import List, Optional, Set, Dict, Any, Tuple
 from rich.text import Text
 from textual.app import App, ComposeResult, SuspendNotSupported
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Static
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Footer, Static, Button
+from textual_diff_view import DiffView, LoadError
 
 from rt.core.models import ScienceIssue, ScienceType
 from rt.telegram import issue_queue as tg_queue
@@ -271,6 +272,32 @@ def _is_no_diff_issue_type(iss: ScienceIssue) -> bool:
     return iss.type in (ScienceType.ERR_ASR_ST, ScienceType.ERR_REWRITE_DRIFT) or iss_type_str in ("ERR_ASR_LLM", "ERR_REWRITE_DRIFT")
 
 
+def _build_diff_strings(sci_unit: Any, iss: ScienceIssue) -> Tuple[str, str]:
+    from rt.core.encoding import fix_mojibake
+
+    unit_text = fix_mojibake(sci_unit.content).strip() if (sci_unit and getattr(sci_unit, "content", None)) else ""
+    claim_clean = fix_mojibake(iss.claim or "").strip()
+    has_fix = bool(iss.suggested_fix and iss.suggested_fix.strip())
+    fix_clean = fix_mojibake(iss.suggested_fix.strip()) if has_fix else ""
+
+    if not unit_text:
+        return (claim_clean, fix_clean if has_fix else claim_clean)
+
+    if not has_fix:
+        return (unit_text, unit_text)
+
+    pos = unit_text.find(claim_clean) if claim_clean else -1
+    if pos != -1:
+        code_orig = unit_text
+        code_mod = unit_text[:pos] + fix_clean + unit_text[pos + len(claim_clean):]
+        return (code_orig, code_mod)
+    else:
+        # Fallback se non c'è match posizionale esatto
+        code_orig = f"{unit_text}\n\n[Affermazione]: {claim_clean}"
+        code_mod = f"{unit_text}\n\n[Correzione]: {fix_clean}"
+        return (code_orig, code_mod)
+
+
 def _build_science_panel(
     idx: int,
     total_count: int,
@@ -283,19 +310,11 @@ def _build_science_panel(
 ) -> Text:
     from rt.core.encoding import fix_mojibake
 
-    iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
     is_asr_risk = _is_no_diff_issue_type(iss)
 
     out = Text()
 
     if is_asr_risk:
-        if iss.type == ScienceType.ERR_ASR_ST:
-            header_title = "🎙️ RISCHIO ASR (statistico)"
-        elif iss.type == ScienceType.ERR_REWRITE_DRIFT:
-            header_title = "🔀 DERIVA RIELABORAZIONE (Jev)"
-        else:
-            header_title = "🎙️ RISCHIO ASR (validato LLM)"
-        out.append(f"[{idx + 1}/{total_count}] {header_title} - ID: {iss.id}\n")
         if sci_unit_info != "N/D":
             out.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}\n")
         if iss.type != ScienceType.ERR_REWRITE_DRIFT:
@@ -313,45 +332,11 @@ def _build_science_panel(
                 out.append(f"  {line}\n")
             out.append("  " + "-" * 56 + "\n")
     else:
-        out.append(f"[{idx + 1}/{total_count}] SCIENCE CRITIC ({iss_type_str}) - ID: {iss.id}\n")
         if sci_unit_info != "N/D":
             out.append(f"  📚 Unità:        {fix_mojibake(sci_unit_info)}\n")
-
-        unit_text = fix_mojibake(sci_unit.content).strip() if (sci_unit and getattr(sci_unit, "content", None)) else None
-        claim_clean = fix_mojibake(iss.claim or "").strip()
-        has_fix = bool(iss.suggested_fix and iss.suggested_fix.strip())
-        fix_clean = fix_mojibake(iss.suggested_fix.strip()) if has_fix else ""
-
-        pos = unit_text.find(claim_clean) if (unit_text and claim_clean) else -1
-        if unit_text and pos != -1:
-            prefix = unit_text[:pos]
-            matched_claim = unit_text[pos:pos+len(claim_clean)]
-            suffix = unit_text[pos+len(claim_clean):]
-
-            out.append("\n  ")
-            out.append(prefix)
-            out.append("- ", style="bold red")
-            out.append(matched_claim, style="red")
-            out.append(suffix)
-            out.append("\n")
-            if has_fix:
-                out.append("  ")
-                out.append("+ ", style="bold green")
-                out.append(fix_clean, style="green")
-                out.append("\n")
-        else:
-            if unit_text:
-                out.append(f"\n  {unit_text}\n")
-            out.append(f"\n  ⚠️ Affermazione: \"{claim_clean}\"\n")
-            if has_fix:
-                out.append(f"  💡 Correzione:   \"{fix_clean}\"\n")
-
-        out.append(f"\n  🔬 Critica:      {fix_mojibake(iss.reason)}\n")
+        out.append(f"  🔬 Critica:      {fix_mojibake(iss.reason)}\n")
         if iss.diplomatic_question:
             out.append(f"  🤝 Domanda docente: \"{fix_mojibake(iss.diplomatic_question)}\"\n")
-
-        if has_fix:
-            out.append("  🔴 = claim attuale · 🟢 = correzione suggerita\n")
 
     if iss.id in decisions_map:
         d = decisions_map[iss.id]
@@ -422,9 +407,37 @@ class IssueReviewApp(App):
         border: round $primary;
     }
 
-    #issue-content {
+    #diff-container {
         height: 1fr;
+        min-height: 8;
+        border-bottom: solid $primary 15%;
+        margin-bottom: 1;
+    }
+
+    #diff-view {
+        height: 1fr;
+    }
+
+    #content-container {
+        height: auto;
+        max-height: 14;
         overflow-y: auto;
+    }
+
+    #issue-content {
+        height: auto;
+    }
+
+    #actions-bar {
+        height: 3;
+        align: center middle;
+        margin-top: 1;
+    }
+
+    #actions-bar Button {
+        margin: 0 1;
+        min-width: 10;
+        height: 3;
     }
 
     Footer {
@@ -480,7 +493,17 @@ class IssueReviewApp(App):
             with Vertical(id="body"):
                 with Vertical(id="issue-card") as card:
                     card.border_title = self._get_card_title()
-                    yield Static(self._get_issue_content(), id="issue-content")
+                    with Vertical(id="diff-container"):
+                        yield DiffView("original", "modified", "", "", split=True, id="diff-view")
+                    with VerticalScroll(id="content-container"):
+                        yield Static(self._get_issue_content(), id="issue-content")
+                    with Horizontal(id="actions-bar"):
+                        yield Button("Accetta", variant="success", id="btn-accept")
+                        yield Button("Rifiuta", variant="error", id="btn-reject")
+                        yield Button("Modifica", id="btn-edit")
+                        yield Button("◀ Indietro", id="btn-back")
+                        yield Button("Salta ▶", id="btn-skip")
+                        yield Button("Player audio", id="btn-audio")
             yield Footer()
 
     def on_mount(self) -> None:
@@ -489,6 +512,21 @@ class IssueReviewApp(App):
 
     def on_unmount(self) -> None:
         self._stop_audio()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id == "btn-accept":
+            self.action_approve_or_accept()
+        elif button_id == "btn-reject":
+            self.action_reject()
+        elif button_id == "btn-edit":
+            self.action_edit()
+        elif button_id == "btn-back":
+            self.action_back()
+        elif button_id == "btn-skip":
+            self.action_skip()
+        elif button_id == "btn-audio":
+            self.action_toggle_audio()
 
     def _stop_audio(self) -> None:
         if self.mpv_proc is not None:
@@ -567,11 +605,40 @@ class IssueReviewApp(App):
             card = self.query_one("#issue-card", Vertical)
             card.border_title = self._get_card_title()
 
+            prog = self.query_one("#progress", Static)
+            prog.update(self._get_progress_label())
+
             content = self.query_one("#issue-content", Static)
             content.update(self._get_issue_content())
 
-            prog = self.query_one("#progress", Static)
-            prog.update(self._get_progress_label())
+            diff_container = self.query_one("#diff-container", Vertical)
+            diff_view = self.query_one("#diff-view", DiffView)
+            btn_reject = self.query_one("#btn-reject", Button)
+
+            if self.idx >= len(self.to_review):
+                diff_container.display = False
+                return
+
+            iss = self.to_review[self.idx]
+            is_asr = _is_no_diff_issue_type(iss)
+
+            if is_asr:
+                diff_container.display = False
+                btn_reject.display = False
+            else:
+                diff_container.display = True
+                btn_reject.display = True
+                sci_unit = None
+                if iss.unit_id and iss.unit_id in self.unit_by_id:
+                    sci_unit = self.unit_by_id[iss.unit_id]
+                elif iss.segment_id and iss.segment_id in self.seg_to_unit:
+                    sci_unit = self.seg_to_unit[iss.segment_id]
+                try:
+                    code_orig, code_mod = _build_diff_strings(sci_unit, iss)
+                    diff_view.code_original = code_orig
+                    diff_view.code_modified = code_mod
+                except Exception:
+                    pass
         except Exception:
             pass
 
