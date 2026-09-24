@@ -310,7 +310,7 @@ class RTApp(App):
             self.query_one("#detail-stats", Static).update("")
             self.query_one("#phase-stepper").display = False
             self.query_one("#issues-link").display = False
-            await self.query_one(MarkdownViewer).document.update("")
+            await self._update_markdown_preview("")
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search":
@@ -348,7 +348,33 @@ class RTApp(App):
                 self.query_one("#detail-stats", Static).update("")
                 self.query_one("#phase-stepper").display = False
                 self.query_one("#issues-link").display = False
-                await self.query_one(MarkdownViewer).document.update("")
+                await self._update_markdown_preview("")
+
+    async def _update_markdown_preview(self, markdown_text: str) -> None:
+        try:
+            panel = self.query_one("#markdown-panel", Vertical)
+            show_toc = True
+            try:
+                old_viewer = panel.query_one(MarkdownViewer)
+                show_toc = old_viewer.show_table_of_contents
+                await old_viewer.remove()
+            except Exception:
+                pass
+            new_viewer = MarkdownViewer(markdown_text, show_table_of_contents=show_toc)
+            await panel.mount(new_viewer)
+        except Exception:
+            pass
+
+    async def on_markdown_table_of_contents_selected(self, event) -> None:
+        try:
+            viewer = self.query_one(MarkdownViewer)
+            block_selector = f"#{event.block_id}"
+            from textual.widgets._markdown import MarkdownBlock
+            block = viewer.query_one(block_selector, MarkdownBlock)
+            viewer.scroll_to_widget(block, top=True)
+            event.stop()
+        except Exception:
+            event.stop()
 
     async def _show_lesson(self, lesson: LessonSummary) -> None:
         self.selected_lesson = lesson
@@ -368,7 +394,7 @@ class RTApp(App):
             issues_link.display = False
 
         self.query_one("#detail-stats", Static).update(build_stats(lesson))
-        await self.query_one(MarkdownViewer).document.update(load_markdown_preview(lesson.dir_path))
+        await self._update_markdown_preview(load_markdown_preview(lesson.dir_path))
 
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if isinstance(event.item, LessonRow):

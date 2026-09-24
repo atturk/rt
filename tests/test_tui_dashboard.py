@@ -766,6 +766,76 @@ class TestDashboardSearchFilter:
             assert app.selected_lesson is not None
 
 
+class TestDashboardMarkdownTOC:
+    @pytest.mark.anyio
+    async def test_toc_click_after_refresh_does_not_crash(self, tmp_path, monkeypatch):
+        from rt.tui.app import RTApp
+        from rt.tui.data import LessonSummary, PhaseStatus
+        from rt.core.state import WorkflowState
+        from textual.widgets import MarkdownViewer, Tree
+
+        lesson_dir = str(tmp_path / "lesson_toc")
+        os.makedirs(os.path.join(lesson_dir, "_state"), exist_ok=True)
+
+        md_content = (
+            "# Introduzione Generale\n\nContenuto introduttivo.\n\n"
+            "## Sezione Uno: Concetti Base\n\nTesto della sezione 1.\n\n"
+            "## Sezione Due: Dettagli Avanzati\n\nTesto della sezione 2.\n"
+        )
+        with open(os.path.join(lesson_dir, "rielaborato.md"), "w", encoding="utf-8") as f:
+            f.write(md_content)
+
+        lesson = LessonSummary(
+            dir_path=lesson_dir,
+            title="Lezione TOC Test",
+            subject="Medicina",
+            recorded="2026-03-14",
+            when="oggi",
+            state=WorkflowState.COMPLETED,
+            phase_status=[("build", PhaseStatus.VALID)],
+            pending_issues=0,
+            cost_total=0.0,
+            mtime=100.0,
+        )
+
+        app = RTApp()
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [lesson])
+
+        async with app.run_test(size=(140, 45)) as pilot:
+            await pilot.pause()
+
+            # 1. Simula un refresh/re-show della lezione (come dopo l'uscita da una review o refresh)
+            await app._show_lesson(lesson)
+            await pilot.pause()
+
+            viewer = app.query_one(MarkdownViewer)
+            tree = viewer.query_one(Tree)
+            assert len(tree.root.children) > 0
+
+            # 2. Clicca / seleziona il primo nodo della TOC
+            first_node = tree.root.children[0]
+            tree.select_node(first_node)
+            await pilot.pause()
+
+            # 3. Secondo refresh con nuovo show_lesson e selezione nodo figlio
+            await app._show_lesson(lesson)
+            await pilot.pause()
+
+            viewer2 = app.query_one(MarkdownViewer)
+            tree2 = viewer2.query_one(Tree)
+            assert len(tree2.root.children) >= 1
+            top_node = tree2.root.children[0]
+            tree2.select_node(top_node)
+            await pilot.pause()
+
+            if top_node.children:
+                sub_node = top_node.children[0]
+                tree2.select_node(sub_node)
+                await pilot.pause()
+
+
+
+
 
 
 
