@@ -352,16 +352,8 @@ class RTApp(App):
 
     async def _update_markdown_preview(self, markdown_text: str) -> None:
         try:
-            panel = self.query_one("#markdown-panel", Vertical)
-            show_toc = True
-            try:
-                old_viewer = panel.query_one(MarkdownViewer)
-                show_toc = old_viewer.show_table_of_contents
-                await old_viewer.remove()
-            except Exception:
-                pass
-            new_viewer = MarkdownViewer(markdown_text, show_table_of_contents=show_toc)
-            await panel.mount(new_viewer)
+            viewer = self.query_one(MarkdownViewer)
+            await viewer.document.update(markdown_text)
         except Exception:
             pass
 
@@ -438,11 +430,54 @@ class RTApp(App):
                 except (KeyboardInterrupt, EOFError):
                     pass
 
+    async def _execute_captured_quiet(self, argv: List[str]) -> None:
+        """Esegue un sottocomando catturato in background senza aprire una schermata a pieno.
+        Se ha successo, mostra una notifica toast. Se fallisce, apre CommandOutputScreen
+        mostrando l'output d'errore già catturato."""
+        import asyncio
+        from rt.telegram.daemon_status import get_rt_executable_path
+        from rt.tui.command_output import CommandOutputScreen
+
+        rt_path = get_rt_executable_path()
+        captured_output = ""
+        exit_code = 0
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                rt_path,
+                *argv,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout_bytes, _ = await proc.communicate()
+            if stdout_bytes:
+                captured_output = stdout_bytes.decode(errors="replace")
+            exit_code = proc.returncode if proc.returncode is not None else 0
+        except Exception as exc:
+            captured_output = f"Impossibile avviare il comando: {exc}"
+            exit_code = 1
+
+        if exit_code == 0:
+            cmd_name = argv[0] if argv else "comando"
+            self.notify(f"✓ {cmd_name} completato", severity="information")
+        else:
+            await self.push_screen_wait(
+                CommandOutputScreen(
+                    argv,
+                    auto_dismiss_on_success=False,
+                    initial_output=captured_output,
+                    initial_exit_code=exit_code,
+                )
+            )
+
     async def _execute(self, argv: List[str]) -> None:
         if argv and argv[0] in CAPTURED_SUBCOMMANDS:
-            from rt.tui.command_output import CommandOutputScreen
-            auto_dismiss = argv[0] not in REPORT_SUBCOMMANDS
-            await self.push_screen_wait(CommandOutputScreen(argv, auto_dismiss_on_success=auto_dismiss))
+            if argv[0] in REPORT_SUBCOMMANDS:
+                from rt.tui.command_output import CommandOutputScreen
+                await self.push_screen_wait(CommandOutputScreen(argv, auto_dismiss_on_success=False))
+            else:
+                await self._execute_captured_quiet(argv)
         else:
             self._run_cli(argv)
         await self.refresh_lessons()

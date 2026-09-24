@@ -60,27 +60,45 @@ class CommandOutputScreen(Screen[int]):
     """
 
     BINDINGS = [
-        ("escape", "dismiss_screen", "Chiudi / Esc"),
+        ("escape,q", "dismiss_screen", "Chiudi / Esc"),
     ]
 
-    def __init__(self, argv: List[str], auto_dismiss_on_success: bool = True) -> None:
+    def __init__(
+        self,
+        argv: List[str],
+        auto_dismiss_on_success: bool = True,
+        initial_output: Optional[str] = None,
+        initial_exit_code: Optional[int] = None,
+    ) -> None:
         super().__init__()
         self.argv = argv
         self.auto_dismiss_on_success = auto_dismiss_on_success
+        self.initial_output = initial_output
+        self.initial_exit_code = initial_exit_code
         self.proc: Optional[asyncio.subprocess.Process] = None
-        self.exit_code: Optional[int] = None
-        self._proc_running = True
+        self.exit_code: Optional[int] = initial_exit_code
+        self._proc_running = (initial_output is None and initial_exit_code is None)
 
     def compose(self) -> ComposeResult:
         yield Static(f"[b $primary]$ rt {' '.join(self.argv)}[/]", id="cmd-header")
         with Vertical(id="cmd-log-container"):
             yield RichLog(wrap=True, highlight=False, markup=False, auto_scroll=True, id="cmd-log")
-        yield Static("[dim]● In esecuzione…[/]", id="cmd-status")
+        status_text = (
+            "[dim]● In esecuzione…[/]"
+            if self._proc_running
+            else f"[$error]✗ Terminato con codice {self.exit_code or 1}[/] — premi [b]Esc[/b] o [b]q[/b] per tornare alla dashboard"
+        )
+        yield Static(status_text, id="cmd-status")
         yield Footer()
 
     async def on_mount(self) -> None:
         self.query_one("#cmd-log-container").border_title = "OUTPUT"
-        self._run_command()
+        if self.initial_output is not None:
+            log = self.query_one("#cmd-log", RichLog)
+            for line in self.initial_output.splitlines():
+                log.write(line)
+        elif self._proc_running:
+            self._run_command()
 
     @work
     async def _run_command(self) -> None:
@@ -107,7 +125,7 @@ class CommandOutputScreen(Screen[int]):
             self._proc_running = False
             self.exit_code = 1
             log.write(f"Impossibile avviare il comando: {exc}")
-            status.update(f"[$error]✗ Errore di avvio: {exc}[/] — premi [b]Esc[/b] per tornare alla dashboard")
+            status.update(f"[$error]✗ Errore di avvio: {exc}[/] — premi [b]Esc[/b] o [b]q[/b] per tornare alla dashboard")
             return
 
         if self.proc.stdout is not None:
@@ -132,11 +150,11 @@ class CommandOutputScreen(Screen[int]):
                     pass
             else:
                 status.update(
-                    "[$success]✓ Completato con successo[/] — premi [b]Esc[/b] per tornare alla dashboard"
+                    "[$success]✓ Completato con successo[/] — premi [b]Esc[/b] o [b]q[/b] per tornare alla dashboard"
                 )
         else:
             status.update(
-                f"[$error]✗ Terminato con codice {self.exit_code}[/] — premi [b]Esc[/b] per tornare alla dashboard"
+                f"[$error]✗ Terminato con codice {self.exit_code}[/] — premi [b]Esc[/b] o [b]q[/b] per tornare alla dashboard"
             )
 
     async def action_dismiss_screen(self) -> None:

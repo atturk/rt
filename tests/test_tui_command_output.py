@@ -80,6 +80,64 @@ class TestCommandOutputScreen:
             assert app.return_code == 42
 
     @pytest.mark.anyio
+    async def test_failing_command_stays_open_until_q(self, monkeypatch):
+        cmd_script = "import sys; print('errore build fallita'); sys.exit(42)"
+        monkeypatch.setattr(
+            "rt.tui.command_output.get_rt_executable_path",
+            lambda: sys.executable,
+        )
+
+        class HostApp(App[int]):
+            return_code = None
+
+            @work
+            async def on_mount(self):
+                self.return_code = await self.push_screen_wait(
+                    CommandOutputScreen(["-c", cmd_script])
+                )
+
+        app = HostApp()
+        async with app.run_test() as pilot:
+            await pilot.pause(0.5)
+
+            assert isinstance(app.screen, CommandOutputScreen)
+            assert app.return_code is None
+
+            # Premendo 'q', la schermata si chiude e restituisce il returncode 42
+            await pilot.press("q")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, CommandOutputScreen)
+            assert app.return_code == 42
+
+    @pytest.mark.anyio
+    async def test_initial_output_and_exit_code_display(self):
+        class HostApp(App[int]):
+            return_code = None
+
+            @work
+            async def on_mount(self):
+                self.return_code = await self.push_screen_wait(
+                    CommandOutputScreen(
+                        ["build", "/dummy"],
+                        auto_dismiss_on_success=False,
+                        initial_output="riga di errore 1\nriga di errore 2",
+                        initial_exit_code=12,
+                    )
+                )
+
+        app = HostApp()
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, CommandOutputScreen)
+            status_widget = app.screen.query_one("#cmd-status", Static)
+            assert "12" in str(status_widget.render())
+
+            await pilot.press("q")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, CommandOutputScreen)
+            assert app.return_code == 12
+
+    @pytest.mark.anyio
     async def test_spawn_failure_displays_error_and_allows_escape(self, monkeypatch):
         monkeypatch.setattr(
             "rt.tui.command_output.get_rt_executable_path",
@@ -110,7 +168,83 @@ class TestCommandOutputScreen:
 
 class TestExecuteRouting:
     @pytest.mark.anyio
-    async def test_captured_subcommand_routes_to_screen(self, monkeypatch):
+    async def test_captured_subcommand_success_shows_toast_no_screen(self, monkeypatch):
+        app = RTApp()
+        mock_refresh = AsyncMock()
+        monkeypatch.setattr(app, "refresh_lessons", mock_refresh)
+        mock_run_cli = MagicMock()
+        monkeypatch.setattr(app, "_run_cli", mock_run_cli)
+        mock_notify = MagicMock()
+        monkeypatch.setattr(app, "notify", mock_notify)
+
+        pushed_screens = []
+        async def fake_push_screen_wait(screen):
+            pushed_screens.append(screen)
+            return 0
+
+        monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
+
+        # Simula processo subprocess che esce con codice 0
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"ok output", b"")
+        mock_proc.returncode = 0
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            return mock_proc
+
+        monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+
+        await app._execute(["build", "/path/to/lesson"])
+
+        # Nessuna schermata a pieno deve essere stata aperta su successo
+        assert len(pushed_screens) == 0
+        mock_run_cli.assert_not_called()
+        mock_refresh.assert_awaited_once()
+        mock_notify.assert_called_once()
+        assert "✓ build completato" in mock_notify.call_args[0][0]
+
+    @pytest.mark.anyio
+    async def test_captured_subcommand_failure_opens_screen_with_buffer(self, monkeypatch):
+        app = RTApp()
+        mock_refresh = AsyncMock()
+        monkeypatch.setattr(app, "refresh_lessons", mock_refresh)
+        mock_run_cli = MagicMock()
+        monkeypatch.setattr(app, "_run_cli", mock_run_cli)
+        mock_notify = MagicMock()
+        monkeypatch.setattr(app, "notify", mock_notify)
+
+        pushed_screens = []
+        async def fake_push_screen_wait(screen):
+            pushed_screens.append(screen)
+            return screen.exit_code
+
+        monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
+
+        # Simula processo subprocess che fallisce con codice 42
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"errore grave durante il build\n", b"")
+        mock_proc.returncode = 42
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            return mock_proc
+
+        monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+
+        await app._execute(["build", "/path/to/lesson"])
+
+        # Su fallimento, la schermata CommandOutputScreen viene aperta con l'output catturato
+        assert len(pushed_screens) == 1
+        screen = pushed_screens[0]
+        assert isinstance(screen, CommandOutputScreen)
+        assert screen.argv == ["build", "/path/to/lesson"]
+        assert screen.initial_exit_code == 42
+        assert "errore grave durante il build" in screen.initial_output
+        mock_run_cli.assert_not_called()
+        mock_refresh.assert_awaited_once()
+        mock_notify.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_report_subcommand_always_shows_screen_even_on_success(self, monkeypatch):
         app = RTApp()
         mock_refresh = AsyncMock()
         monkeypatch.setattr(app, "refresh_lessons", mock_refresh)
@@ -124,11 +258,13 @@ class TestExecuteRouting:
 
         monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
 
-        await app._execute(["build", "/path/to/lesson"])
+        await app._execute(["cost", "/path/to/lesson", "--split"])
 
+        # I comandi REPORT aprono sempre CommandOutputScreen
         assert len(pushed_screens) == 1
         assert isinstance(pushed_screens[0], CommandOutputScreen)
-        assert pushed_screens[0].argv == ["build", "/path/to/lesson"]
+        assert pushed_screens[0].argv == ["cost", "/path/to/lesson", "--split"]
+        assert pushed_screens[0].auto_dismiss_on_success is False
         mock_run_cli.assert_not_called()
         mock_refresh.assert_awaited_once()
 
@@ -159,28 +295,6 @@ class TestExecuteRouting:
         from rt.tui.app import REPORT_SUBCOMMANDS
         assert REPORT_SUBCOMMANDS == {"cost", "status", "validate-outline", "validate-draft"}
         assert REPORT_SUBCOMMANDS <= CAPTURED_SUBCOMMANDS
-
-    @pytest.mark.anyio
-    async def test_report_subcommand_disables_auto_dismiss(self, monkeypatch):
-        # Regressione: 'cost'/'status' ecc. sono report da leggere, non semplici conferme —
-        # non devono chiudersi da soli nemmeno su successo (visto dal vivo: la schermata dei
-        # costi si chiudeva un istante dopo essersi aperta, senza dare il tempo di leggerla).
-        app = RTApp()
-        monkeypatch.setattr(app, "refresh_lessons", AsyncMock())
-        monkeypatch.setattr(app, "_run_cli", MagicMock())
-        pushed_screens = []
-        async def fake_push_screen_wait(screen):
-            pushed_screens.append(screen)
-            return 0
-        monkeypatch.setattr(app, "push_screen_wait", fake_push_screen_wait)
-
-        await app._execute(["cost", "/path/to/lesson", "--split"])
-        await app._execute(["build", "/path/to/lesson"])
-
-        assert pushed_screens[0].argv[0] == "cost"
-        assert pushed_screens[0].auto_dismiss_on_success is False
-        assert pushed_screens[1].argv[0] == "build"
-        assert pushed_screens[1].auto_dismiss_on_success is True
 
 
 class TestCommandOutputScreenAutoDismissFlag:
