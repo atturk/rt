@@ -6,10 +6,14 @@
 .sidebar-parent:has(#rt-sidebar:not(.open)) { padding-left: 0 !important; }
 #rt-sidebar .rt-resize-handle { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; width: 9px; cursor: col-resize; }
 #rt-sidebar .rt-resize-handle:hover { background: rgba(22,125,110,.12); }
-#rt-home { margin: 12px 0 15px; text-align: left; font-weight: 700; border: 0; box-shadow: none; background: transparent; color: var(--rt-accent); }
 #rt-lesson-list { border: 0; background: transparent; }
 .rt-sidebar-group { margin: 0 0 18px; }
-.rt-sidebar-group h3 { margin: 0 0 7px; padding: 0 5px; color: var(--rt-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.rt-sidebar-group summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 7px; padding: 5px; color: var(--rt-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; list-style: none; cursor: pointer; }
+.rt-sidebar-group summary::-webkit-details-marker { display: none; }
+.rt-sidebar-group summary:hover { color: var(--rt-accent); }
+.rt-sidebar-group summary:focus-visible { border-radius: 5px; outline: 2px solid var(--rt-accent); outline-offset: 2px; }
+.rt-sidebar-chevron { flex: 0 0 auto; width: 7px; height: 7px; margin-right: 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-135deg); transition: transform 120ms ease; }
+.rt-sidebar-group:not([open]) .rt-sidebar-chevron { transform: rotate(45deg); }
 .rt-sidebar-lesson { display: flex; flex-direction: column; width: 100%; gap: 2px; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--rt-ink); text-align: left; cursor: pointer; font: inherit; }
 .rt-sidebar-lesson:hover { background: #e9f1ed; }
 .rt-sidebar-lesson.active { background: #dceee7; color: #155f52; }

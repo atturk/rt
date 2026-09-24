@@ -117,7 +117,11 @@ def sidebar_lessons(lessons: list[LessonSummary], selected: Optional[str]) -> st
                 f'<span class="rt-sidebar-date">{escape(lesson.recorded or "Senza data")}</span>'
                 f'<span class="rt-sidebar-title">{escape(lesson_title(lesson))}</span>{count}</button>'
             )
-        sections.append(f'<section class="rt-sidebar-group"><h3>{escape(subject)}</h3>{"".join(items)}</section>')
+        sections.append(
+            f'<details class="rt-sidebar-group" open><summary>'
+            f'<span>{escape(subject)}</span><span class="rt-sidebar-chevron" aria-hidden="true"></span>'
+            f'</summary>{"".join(items)}</details>'
+        )
     return '<nav class="rt-sidebar-lessons" aria-label="Lezioni per materia">' + (
         ''.join(sections) if sections else '<p class="rt-sidebar-empty">Nessuna lezione.</p>'
     ) + '</nav>'

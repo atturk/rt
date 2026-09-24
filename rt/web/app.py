@@ -58,9 +58,31 @@ const wireTimecodes = () => {
 };
 wireTimecodes();
 watch('value', () => requestAnimationFrame(wireTimecodes));
+let seekSequence = 0;
+const displayedSeconds = () => {
+  const time = document.querySelector('#rt-lesson-audio #time')?.textContent?.trim();
+  if (!time) return null;
+  return time.split(':').map(Number).reduce((sum, part) => sum * 60 + part, 0);
+};
+const playAfterSeek = (seconds, sequence) => {
+  const deadline = Date.now() + 15000;
+  const check = () => {
+    if (sequence !== seekSequence) return;
+    if (displayedSeconds() === seconds) {
+      document.querySelector('#rt-lesson-audio button[aria-label="Play"]')?.click();
+    } else if (Date.now() < deadline) {
+      requestAnimationFrame(check);
+    }
+  };
+  requestAnimationFrame(check);
+};
 element.addEventListener('click', event => {
   const button = event.target.closest('button.rt-timecode');
-  if (button) trigger('seek', { seconds: Number(button.dataset.seconds) });
+  if (!button) return;
+  const seconds = Number(button.dataset.seconds);
+  const sequence = ++seekSequence;
+  if (displayedSeconds() !== seconds) trigger('seek', { seconds });
+  playAfterSeek(seconds, sequence);
 });
 """
 RESIZE_JS = """
@@ -83,7 +105,13 @@ if (handle && sidebar) {
 SIDEBAR_JS = """
 element.addEventListener('click', event => {
   const button = event.target.closest('button[data-lesson-path]');
-  if (button) trigger('lesson_selected', { lesson_dir: button.dataset.lessonPath });
+  if (!button) return;
+  for (const lesson of element.querySelectorAll('button[data-lesson-path]')) {
+    const active = lesson === button;
+    lesson.classList.toggle('active', active);
+    lesson.setAttribute('aria-current', active ? 'page' : 'false');
+  }
+  trigger('lesson_selected', { lesson_dir: button.dataset.lessonPath });
 });
 """
 
@@ -141,9 +169,8 @@ def _refresh_view(root: str, current: Optional[str]):
 
 def _select_view(root: str, evt: gr.EventData):
     lesson = _require_lesson(root, evt.lesson_dir)
-    lessons = list_lessons(root)
-    return (lesson.dir_path, sidebar_lessons(lessons, lesson.dir_path),
-            *_selection_view(root, lesson.dir_path), gr.update(selected="dashboard"))
+    return (lesson.dir_path, *_selection_view(root, lesson.dir_path),
+            gr.update(selected="dashboard"))
 
 
 def _decision_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str], action: str,
@@ -202,7 +229,6 @@ def build_app(root: str) -> gr.Blocks:
 
     with gr.Blocks(title="RT · Lezioni", analytics_enabled=False, fill_width=True) as demo:
         with gr.Sidebar(label="Navigazione", width=280, elem_id="rt-sidebar"):
-            go_home = gr.Button("Dashboard", variant="secondary", elem_id="rt-home")
             sidebar_list = gr.HTML(sidebar_lessons(lessons, selected), js_on_load=SIDEBAR_JS,
                                    apply_default_css=False,
                                    elem_id="rt-lesson-list")
@@ -288,7 +314,7 @@ def build_app(root: str) -> gr.Blocks:
             return _select_view(root, evt)
 
         sidebar_list.lesson_selected(select_sidebar,
-                                     outputs=[picker, sidebar_list, *view_outputs, pages],
+                                     outputs=[picker, *view_outputs, pages],
                                      show_progress="hidden")
         issue_picker.input(lambda path, issue_id: _review_view(root, path, issue_id),
                            inputs=[picker, issue_picker], outputs=review_outputs,
@@ -307,7 +333,6 @@ def build_app(root: str) -> gr.Blocks:
                           outputs=[editor, save_edit, cancel_edit], show_progress="hidden")
         save_edit.click(lambda path, issue, text: _decision_view(root, path, issue, "edited", text),
                         inputs=[picker, issue_picker, editor], outputs=decision_outputs)
-        go_home.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
         back_review.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
         back_config.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
         back_upload.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
