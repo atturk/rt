@@ -82,7 +82,8 @@ cp -r config.example config
 
 #### Anteprima dell'interfaccia web locale
 
-Per provare la nuova interfaccia Gradio (dashboard, review e configurazione) nell'ambiente di sviluppo:
+Per provare la nuova interfaccia Gradio (dashboard, review, importazione audio e
+configurazione) nell'ambiente di sviluppo:
 
 ```bash
 ./.venv/bin/python -m pip install -r requirements-web.txt
@@ -93,8 +94,9 @@ L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:
 Legge la cartella delle lezioni configurata in RT; per usarne un'altra, passa
 `--lessons-root "/percorso/alle/lezioni"`. La review consente di accettare,
 mantenere l'originale, modificare e riaprire le decisioni: usa il ledger RT e
-registra le azioni in un log per lezione. Le impostazioni si gestiscono ancora
-con i comandi RT. Per dettagli e limiti attuali, vedi
+registra le azioni in un log per lezione. La dashboard mostra gli appunti completi
+con timecode collegati all'audio; l'importazione riusa il setup RT. Le impostazioni
+si gestiscono ancora con i comandi RT. Per dettagli e limiti attuali, vedi
 [Prototipo web](docs/WEB_PROTOTYPE.md).
 
 ### 2. Esecuzione End-to-End di una Lezione

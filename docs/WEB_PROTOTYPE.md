@@ -30,8 +30,9 @@ invariata.
 
 ## Schermate
 
-- **Dashboard:** scelta o ricerca di una lezione, stato delle cinque fasi, numero di
-  questioni aperte e anteprima degli appunti.
+- **Dashboard:** sidebar richiudibile e regolabile con lezioni raggruppate per
+  materia, stato delle cinque fasi, questioni aperte e appunti completi. I timecode
+  negli appunti spostano il lettore dell'audio integrale sotto il testo.
 - **Review:** elenco delle questioni, affermazione, proposta e diff, motivazione,
   unità completa e citazione ASR espandibili, estratto audio relativo al segmento
   quando disponibile. Accetta, mantiene l'originale o salva un testo modificato
@@ -39,6 +40,13 @@ invariata.
   riaprire. La prossima questione in attesa viene selezionata automaticamente.
 - **Configurazione:** percorsi e modelli in uso, senza mostrare le chiavi API. Le
   impostazioni si continuano a modificare dal wizard CLI.
+- **Importa audio:** il pulsante nell'intestazione apre il setup non interattivo
+  della CLI. Richiede data e materia; la trascrizione con `macparakeet-cli` è
+  selezionabile. Una lezione esistente non viene sovrascritta.
+
+L'interfaccia usa Seravek quando disponibile sul sistema, con font di riserva.
+La cartella originale delle lezioni resta esclusa dall'accesso diretto via web:
+RT prepara per Gradio solo l'audio della lezione scelta in una cartella temporanea.
 
 Le lezioni di prova non vengono importate nel repository: la UI usa la loro cartella
 originale, esattamente come fa RT. La verifica è stata eseguita sulla lezione di
@@ -54,8 +62,8 @@ esiste già nella radice di una lezione con il vecchio layout, RT usa quel file.
    servizio usato dalla GUI, mantenendo le regole attuali dei tre canali.
 2. Estrarre la configurazione dal wizard CLI in servizi condivisi e rendere
    modificabile la schermata delle impostazioni.
-3. Aggiungere azioni di pipeline con stato e avanzamento strutturati, senza lanciare
-   comandi CLI come sottoprocessi dalla pagina.
+3. Aggiungere stato e avanzamento strutturati all'importazione e alle altre azioni
+   di pipeline, senza lanciare comandi CLI come sottoprocessi dalla pagina.
 4. Verificare il flusso completo con le lezioni di prova e poi scegliere la modalità
    di distribuzione. Docker è opzionale: il prototipo funziona nell'ambiente Python
    locale già usato da RT.

@@ -4,13 +4,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from html import escape
+from hashlib import sha256
 import io
+import os
+from pathlib import Path
 import re
+import shutil
 import subprocess
+import tempfile
 import wave
 from typing import Optional
 
 import numpy as np
+from markdown_it import MarkdownIt
 
 from rt.core.audio_clip import resolve_audio_path
 from rt.core.config import load_config
@@ -19,7 +25,7 @@ from rt.pipeline.issue_review import _is_no_diff_issue_type
 from rt.pipeline.ledger import load_ledger, sanitize_suggested_fix
 from rt.pipeline.review import load_science_issues
 from rt.pipeline.rewrite import load_draft
-from rt.tui.data import LessonSummary, badge_for_state, discover_lessons, load_markdown_preview
+from rt.tui.data import LessonSummary, discover_lessons, load_markdown_preview
 
 
 PHASE_LABELS = {
@@ -27,6 +33,8 @@ PHASE_LABELS = {
     "review": "Revisione", "build": "Documento",
 }
 PHASE_COLORS = {"valid": "done", "partial": "warn", "stale": "warn", "invalid": "bad", "missing": "todo"}
+MARKDOWN = MarkdownIt("commonmark", {"html": False})
+_WEB_AUDIO_DIR: Optional[tempfile.TemporaryDirectory] = None
 
 
 @dataclass
@@ -84,18 +92,35 @@ def list_lessons(root: str) -> list[LessonSummary]:
     return discover_lessons(root)
 
 
-def picker_choices(lessons: list[LessonSummary], query: str = "") -> list[tuple[str, str]]:
-    needle = query.strip().casefold()
-    choices = []
+def lesson_title(lesson: LessonSummary) -> str:
+    """Rimuove data e materia usate come prefisso nel nome della cartella."""
+    title = re.sub(r"^\[\d{4}-\d{2}-\d{2}\]\s*", "", lesson.title)
+    prefix = f"{lesson.subject} - " if lesson.subject else ""
+    return title[len(prefix):] if prefix and title.casefold().startswith(prefix.casefold()) else title
+
+
+def sidebar_lessons(lessons: list[LessonSummary], selected: Optional[str]) -> str:
+    """Elenco per materia, con una selezione diretta della lezione."""
+    grouped: dict[str, list[LessonSummary]] = {}
     for lesson in lessons:
-        if needle and needle not in f"{lesson.subject} {lesson.title} {lesson.recorded}".casefold():
-            continue
-        topic = lesson.title.split(" - ", 1)[-1] if " - " in lesson.title else lesson.title
-        topic = topic[:54] + ("…" if len(topic) > 54 else "")
-        count = f" · {lesson.pending_issues} da rivedere" if lesson.pending_issues else ""
-        choices.append((f"{lesson.recorded or 'Senza data'} · {lesson.subject or 'Lezione'} · {topic}{count}",
-                        lesson.dir_path))
-    return choices
+        grouped.setdefault(lesson.subject or "Altre lezioni", []).append(lesson)
+    sections = []
+    for subject in sorted(grouped, key=str.casefold):
+        items = []
+        for lesson in sorted(grouped[subject], key=lambda item: (item.recorded, item.title), reverse=True):
+            count = f'<span class="rt-sidebar-count">{lesson.pending_issues} da rivedere</span>' if lesson.pending_issues else ''
+            active = ' active' if lesson.dir_path == selected else ''
+            items.append(
+                f'<button type="button" class="rt-sidebar-lesson{active}" '
+                f'data-lesson-path="{escape(lesson.dir_path, quote=True)}" '
+                f'aria-current="{"page" if active else "false"}">'
+                f'<span class="rt-sidebar-date">{escape(lesson.recorded or "Senza data")}</span>'
+                f'<span class="rt-sidebar-title">{escape(lesson_title(lesson))}</span>{count}</button>'
+            )
+        sections.append(f'<section class="rt-sidebar-group"><h3>{escape(subject)}</h3>{"".join(items)}</section>')
+    return '<nav class="rt-sidebar-lessons" aria-label="Lezioni per materia">' + (
+        ''.join(sections) if sections else '<p class="rt-sidebar-empty">Nessuna lezione.</p>'
+    ) + '</nav>'
 
 
 def lesson_stats(lessons: list[LessonSummary]) -> str:
@@ -114,22 +139,24 @@ def lesson_stats(lessons: list[LessonSummary]) -> str:
 def lesson_card(lesson: Optional[LessonSummary]) -> str:
     if lesson is None:
         return '<div class="rt-empty">Seleziona una lezione per vedere il suo stato.</div>'
-    badge, token = badge_for_state(lesson.state)
     phases = ''.join(
         f'<div class="rt-phase {PHASE_COLORS.get(status.value.lower(), "todo")}">'
         f'<span class="rt-phase-dot"></span>{escape(PHASE_LABELS.get(name, name))}</div>'
         for name, status in lesson.phase_status
     )
     warning = f'<p class="rt-error">{escape(lesson.error)}</p>' if lesson.error else ''
-    meta = ' · '.join(x for x in (lesson.subject, lesson.recorded, f'aggiornata {lesson.when}') if x)
+    title = lesson_title(lesson)
+    meta = ' · '.join(x for x in (lesson.subject, lesson.recorded) if x)
+    review_link = (
+        f'<button class="rt-review-link" type="button" data-open-review="1">'
+        f'{lesson.pending_issues} questioni da valutare →</button>'
+        if lesson.pending_issues else '<span class="rt-complete-label">Nessuna questione in attesa</span>'
+    )
     return (
         '<div class="rt-lesson-card">'
-        f'<div class="rt-card-head"><span class="rt-eyebrow">LEZIONE SELEZIONATA</span>'
-        f'<span class="rt-badge {escape(token)}">{escape(badge)}</span></div>'
-        f'<h2>{escape(lesson.title)}</h2><p class="rt-meta">{escape(meta)}</p>'
+        f'<h2>{escape(title)}</h2><p class="rt-meta">{escape(meta)}</p>'
         f'<div class="rt-phase-row">{phases}</div>'
-        f'<div class="rt-card-foot"><span>{lesson.pending_issues} questioni da valutare</span>'
-        f'<span>Costo stimato ${lesson.cost_total or 0:.2f}</span></div>{warning}</div>'
+        f'<div class="rt-card-foot">{review_link}</div>{warning}</div>'
     )
 
 
@@ -137,7 +164,50 @@ def lesson_preview(lesson: Optional[LessonSummary]) -> str:
     if lesson is None:
         return "Seleziona una lezione."
     text = load_markdown_preview(lesson.dir_path)
-    return text[:18000] + ("\n\n… Anteprima limitata; apri il documento per il testo completo." if len(text) > 18000 else "")
+    text = re.sub(r"\A#\s+[^\n]+\n+", "", text, count=1)
+    return text
+
+
+def lesson_preview_html(lesson: Optional[LessonSummary]) -> str:
+    """Renderizza Markdown senza HTML grezzo; i timecode diventano controlli del player."""
+    return '<div class="rt-document">' + MARKDOWN.render(lesson_preview(lesson)) + '</div>'
+
+
+def lesson_audio_path(lesson: Optional[LessonSummary]) -> Optional[str]:
+    if lesson is None:
+        return None
+    audio = resolve_audio_path(lesson.dir_path)
+    if audio:
+        return _web_audio_path(lesson, audio)
+    # Le lezioni appena importate hanno info.yaml, ma il manifest arriva con prepare.
+    from rt.core.lesson_paths import lesson_path
+    from rt.core.state import read_info_yaml
+
+    try:
+        raw_name = read_info_yaml(lesson_path(lesson.dir_path, "info.yaml")).get("file_audio")
+        candidate = Path(lesson.dir_path) / Path(str(raw_name or "")).name
+        return _web_audio_path(lesson, str(candidate)) if raw_name and candidate.is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
+def _web_audio_path(lesson: LessonSummary, original: str) -> Optional[str]:
+    """Espone a Gradio solo l'audio scelto, lasciando bloccata la cartella lezioni."""
+    source = Path(original).resolve()
+    if not source.is_file() or not source.is_relative_to(Path(lesson.dir_path).resolve()):
+        return None
+    global _WEB_AUDIO_DIR
+    if _WEB_AUDIO_DIR is None:
+        _WEB_AUDIO_DIR = tempfile.TemporaryDirectory(prefix="rt-web-audio-")
+    stat = source.stat()
+    name = sha256(f"{source}:{stat.st_mtime_ns}:{stat.st_size}".encode()).hexdigest()[:20]
+    target = Path(_WEB_AUDIO_DIR.name) / f"{name}{source.suffix.lower()}"
+    if not target.exists():
+        try:
+            os.link(source, target)
+        except OSError:
+            shutil.copyfile(source, target)
+    return str(target)
 
 
 def review_issues(lesson_dir: str):
