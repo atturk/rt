@@ -151,14 +151,14 @@ def _decision_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str]
     try:
         lesson = _require_lesson(root, lesson_dir)
         if not issue_id:
-            raise ValueError("Seleziona una questione da valutare.")
+            raise ValueError("Seleziona una issue da valutare.")
         if action == "undo":
             undo_web_decision(lesson.dir_path, issue_id)
             status = f"↶ Decisione {issue_id} riaperta. Operazione registrata nel log della lezione."
         else:
             submit_review_decision(lesson.dir_path, issue_id, action, edited_text)
             labels = {"accepted": "accettata", "rejected": "rifiutata", "edited": "modificata"}
-            status = f"✓ Questione {issue_id} {labels[action]}. Decisione salvata nel ledger e nel log."
+            status = f"✓ Issue {issue_id} {labels[action]}. Decisione salvata nel ledger e nel log."
     except (OSError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
 
@@ -232,7 +232,7 @@ def build_app(root: str) -> gr.Blocks:
             with gr.Tab("Review", id="review"):
                 back_review = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
                 issue_picker = gr.Dropdown(
-                    choices=initial_choices, value=initial_issue, label="Questione da valutare",
+                    choices=initial_choices, value=initial_issue, label="Issue da valutare",
                     filterable=True,
                 )
                 action_status = gr.Markdown(visible=False, elem_id="rt-action-status")

@@ -1,4 +1,5 @@
 """Flusso locale della dashboard web e importazione audio."""
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,9 @@ def test_web_import_creates_lesson_without_overwriting(tmp_path):
     assert "BIOCHIMICA" in sidebar_lessons([lesson], lesson.dir_path)
     assert 'aria-current="page"' in sidebar_lessons([lesson], lesson.dir_path)
     assert "<h2>Lipidi</h2>" in lesson_card(lesson)
+    review_card = lesson_card(replace(lesson, pending_issues=3, cost_total=1.25))
+    assert review_card.index('$1.25') < review_card.index('3 issue da valutare')
+    assert 'questioni' not in review_card
     exposed_audio = Path(lesson_audio_path(lesson))
     assert exposed_audio.read_bytes() == b"test audio"
     assert not exposed_audio.is_relative_to(root)

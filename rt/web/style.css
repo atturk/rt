@@ -44,12 +44,13 @@
 .rt-phase.warn .rt-phase-dot { background: #daa13b; }
 .rt-phase.bad { color: #a04232; background: #ffe9e3; }
 .rt-phase.bad .rt-phase-dot { background: #d95b46; }
-.rt-card-foot { margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--rt-border); }
+.rt-card-foot { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--rt-border); }
+.rt-cost { color: var(--rt-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .rt-review-link { border: 0; background: transparent; padding: 0; color: var(--rt-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .rt-review-link:hover { text-decoration: underline; }
 .rt-complete-label { color: var(--rt-muted); font-size: 12px; }
 .rt-error { color: #a04232; }
-#rt-preview { max-height: 600px; overflow: auto; background: white; border: 1px solid var(--rt-border); border-radius: 12px; padding: 17px 21px; margin-top: 12px; }
+#rt-preview { max-height: 600px; min-height: 0; overflow-y: auto !important; overflow-x: hidden !important; overscroll-behavior: contain; background: white; border: 1px solid var(--rt-border); border-radius: 12px; padding: 17px 21px; margin-top: 12px; }
 .rt-document h2 { font-size: 17px; margin: 16px 0 8px; }
 .rt-document h3 { font-size: 14px; margin: 13px 0 6px; }
 .rt-document p { font-size: 13px; line-height: 1.62; }

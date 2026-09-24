@@ -39,7 +39,7 @@ _WEB_AUDIO_DIR: Optional[tempfile.TemporaryDirectory] = None
 
 @dataclass
 class IssueDetail:
-    heading: str = "<div class='rt-empty'>Nessuna questione da visualizzare.</div>"
+    heading: str = "<div class='rt-empty'>Nessuna issue da visualizzare.</div>"
     claim: str = ""
     proposal: str = ""
     reason: str = ""
@@ -147,16 +147,17 @@ def lesson_card(lesson: Optional[LessonSummary]) -> str:
     warning = f'<p class="rt-error">{escape(lesson.error)}</p>' if lesson.error else ''
     title = lesson_title(lesson)
     meta = ' · '.join(x for x in (lesson.subject, lesson.recorded) if x)
+    cost = f'<span class="rt-cost" title="Costo stimato">${lesson.cost_total or 0:.2f}</span>'
     review_link = (
         f'<button class="rt-review-link" type="button" data-open-review="1">'
-        f'{lesson.pending_issues} questioni da valutare →</button>'
-        if lesson.pending_issues else '<span class="rt-complete-label">Nessuna questione in attesa</span>'
+        f'{lesson.pending_issues} issue da valutare →</button>'
+        if lesson.pending_issues else '<span class="rt-complete-label">Nessuna issue da valutare</span>'
     )
     return (
         '<div class="rt-lesson-card">'
         f'<h2>{escape(title)}</h2><p class="rt-meta">{escape(meta)}</p>'
         f'<div class="rt-phase-row">{phases}</div>'
-        f'<div class="rt-card-foot">{review_link}</div>{warning}</div>'
+        f'<div class="rt-card-foot">{cost}{review_link}</div>{warning}</div>'
     )
 
 
@@ -245,7 +246,7 @@ def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> Is
     heading = (
         '<div class="rt-issue-heading">'
         f'<span class="rt-eyebrow">{escape(issue.type.value)} · {escape(issue.severity.value.upper())}</span>'
-        f'<h2>{escape(context.get("unit_info") or issue.unit_id or "Questione")}</h2>'
+        f'<h2>{escape(context.get("unit_info") or issue.unit_id or "Issue")}</h2>'
         f'<p class="rt-meta">{escape(issue.id)} · {escape(context.get("timecode") or "Audio disponibile sotto")}'
         f' · {status}</p></div>'
     )
