@@ -4,8 +4,6 @@ config/
 !config.example/
 .rt_telegram/
 
-# Prompt di implementazione per Antigravity (locali, non versionati)
-.agent/
 .env
 .env.*
 !.env.example
@@ -55,3 +53,8 @@ Thumbs.db
 # Note di lavoro interne (solo locali, mai pubbliche)
 .agents/
 .agent/
+
+# Stato locale degli assistenti e strumenti
+.claude/
+.ruff_cache/
+.mypy_cache/

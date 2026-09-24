@@ -126,13 +126,20 @@ def run_version(project_root: str) -> None:
 def _is_update_excluded(rel_path: str) -> bool:
     parts = rel_path.replace("\\", "/").split("/")
     top = parts[0]
-    if top in ("config", ".venv", ".git"):
+    if top in ("config", ".venv", ".git", ".rt_telegram", ".agents", ".agent", ".claude"):
         return True
     if top == ".env" or top.startswith(".env."):
         return True
     if top == "install.log":
         return True
     return False
+
+
+def _is_managed_code(rel_path: str) -> bool:
+    """Solo queste directory appartengono al distributore, mai i dati dell'utente."""
+    return rel_path.replace("\\", "/").split("/")[0] in (
+        "rt", "bin", "config.example", "docs",
+    )
 
 
 def run_update(project_root: str) -> None:
@@ -146,6 +153,10 @@ def run_update(project_root: str) -> None:
     6. Re-installa requirements.txt nel virtualenv.
     7. Mostra versione aggiornata.
     """
+    if os.path.exists(os.path.join(project_root, ".git")):
+        print("❌ Questo è un checkout di sviluppo: aggiorna con Git, non con 'rt -u'.", file=sys.stderr)
+        sys.exit(1)
+
     latest_ver = get_latest_remote_version(project_root)
     if latest_ver is None:
         print("❌ Impossibile verificare gli aggiornamenti remoti (errore di connessione).", file=sys.stderr)
@@ -212,7 +223,8 @@ def run_update(project_root: str) -> None:
                 os.makedirs(os.path.dirname(dst_file), exist_ok=True)
                 shutil.copy2(src_file, dst_file)
 
-        # Rimuovi file orfani in project_root non presenti nella nuova versione
+        # Rimuovi soltanto codice orfano nelle directory gestite. File e directory
+        # sconosciuti alla release possono essere dati locali e vanno preservati.
         for root, dirs, files in os.walk(project_root, topdown=False):
             rel_dir = os.path.relpath(root, project_root)
             if rel_dir != "." and _is_update_excluded(rel_dir):
@@ -220,7 +232,7 @@ def run_update(project_root: str) -> None:
             for f in files:
                 p_file = os.path.join(root, f)
                 rel_path = os.path.relpath(p_file, project_root)
-                if _is_update_excluded(rel_path):
+                if _is_update_excluded(rel_path) or not _is_managed_code(rel_path):
                     continue
                 extracted_file = os.path.join(extracted_root, rel_path)
                 if not os.path.exists(extracted_file):
@@ -228,7 +240,7 @@ def run_update(project_root: str) -> None:
                         os.remove(p_file)
                     except OSError:
                         pass
-            if rel_dir != ".":
+            if rel_dir != "." and _is_managed_code(rel_dir):
                 extracted_dir = os.path.join(extracted_root, rel_dir)
                 if not os.path.exists(extracted_dir):
                     try:

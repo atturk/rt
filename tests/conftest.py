@@ -170,7 +170,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture(autouse=True)
-def _isolate_load_config_from_ambient_repo_config(monkeypatch):
+def _isolate_load_config_from_ambient_repo_config(monkeypatch, tmp_path):
     """Una vera cartella config/ nella working directory di sviluppo (creata per l'uso
     reale di RT, come consigliato dal README) non deve mai influenzare i test che non la
     richiedono esplicitamente: altrimenti chiunque esegua 'pytest' dalla root del repo dopo
@@ -198,12 +198,14 @@ def _isolate_load_config_from_ambient_repo_config(monkeypatch):
         if config_path is not None:
             return original_load_config(config_path)
         if os.path.abspath(os.getcwd()) == REPO_ROOT:
-            return rt.core.config.RTConfig(jobs=_test_default_jobs())
+            return rt.core.config.RTConfig(
+                jobs=_test_default_jobs(),
+                telegram={"state_dir": str(tmp_path / "telegram-state")},
+            )
         return original_load_config(None)
 
     monkeypatch.setattr(rt.core.config, "load_config", patched_load_config)
     monkeypatch.setattr(rt.llm.client, "load_config", patched_load_config)
     monkeypatch.setattr(rt.pipeline.review, "load_config", patched_load_config)
     monkeypatch.setattr(rt.pipeline.smoke_test, "load_config", patched_load_config)
-
 

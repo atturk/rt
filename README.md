@@ -1,4 +1,4 @@
-# RT 2.0 — Academic Lecture Transcription & Reconstruction Engine
+# RT — Academic Lecture Transcription & Reconstruction Engine
 
 Sistema ibrido industriale per la trascrizione e rielaborazione accademica delle lezioni universitarie.
 
@@ -99,8 +99,7 @@ Per testare offline senza consumare crediti API:
 ./bin/rt validate-outline "cartella_lezione"  # Valida monotonicità e copertura
 ./bin/rt rewrite "cartella_lezione"           # Rielabora a finestre con provenance
 ./bin/rt validate-draft "cartella_lezione"    # Valida il draft prodotto
-./bin/rt review-asr "cartella_lezione"        # Rileva ambiguità ASR e avvia la revisione interattiva
-./bin/rt review-science "cartella_lezione"    # Esegue il science critic e avvia la revisione interattiva
+./bin/rt review "cartella_lezione"            # Revisione scientifica e delle ambiguità ASR
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi
 ./bin/rt status "cartella_lezione"            # Mostra lo stato di avanzamento
 ```
@@ -150,7 +149,7 @@ poi caricalo con `launchctl load ~/Library/LaunchAgents/com.rt.telegram-daemon.p
 - [Architettura del Sistema (ARCHITECTURE.md)](docs/ARCHITECTURE.md)
 - [Workflow e Ciclo di Vita (WORKFLOW.md)](docs/WORKFLOW.md)
 - [Modelli Dati e Contratti JSON (SCHEMAS.md)](docs/SCHEMAS.md)
-- [Guida allo Sviluppo e Test Suite (DEVELOPMENT.md)](docs/DEVELOPMENT.md)
+- [Guida allo Sviluppo e Test Suite (DEVELOPMENT.md)](https://github.com/atturk/rt/blob/main/docs/DEVELOPMENT.md)
 - [Motori di Trascrizione Alternativi (ALTERNATIVE_TRANSCRIPTION.md)](docs/ALTERNATIVE_TRANSCRIPTION.md)
 
 
@@ -163,3 +162,13 @@ La suite di test comprende unit test, test di validazione timestamp, test del cr
 ```bash
 python3 -m pytest tests/
 ```
+
+## Sviluppo e distribuzione
+
+La radice del repository `rt/` contiene il pacchetto Python omonimo `rt/`: non sono due copie del progetto.
+Configurazione personale, segreti e stato Telegram restano locali; lezioni e backup vanno fuori dal checkout.
+Le installazioni da release si aggiornano con `rt -u`; i checkout di sviluppo si aggiornano con Git.
+La trascrizione integrata usa `macparakeet-cli` su macOS; gli altri sistemi possono elaborare trascrizioni già prodotte.
+
+Per contribuire: [sviluppo](https://github.com/atturk/rt/blob/main/docs/DEVELOPMENT.md), [gestione file e release](https://github.com/atturk/rt/blob/main/docs/MAINTENANCE.md),
+[valutazione delle interfacce](https://github.com/atturk/rt/blob/main/docs/INTERFACE_DIRECTION.md) (documenti disponibili nel repository).
