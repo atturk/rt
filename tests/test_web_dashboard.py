@@ -5,9 +5,13 @@ import shutil
 import subprocess
 
 import pytest
+import yaml
+from unittest.mock import patch
 
+from rt.web.app import build_app, main as web_main
 from rt.web.data import lesson_audio_html, lesson_audio_path, lesson_card, lesson_preview_html, lesson_title, list_lessons, sidebar_lessons
 from rt.web.ingest import ingest_audio
+from rt.web.settings import save_lessons_root
 
 
 def test_web_import_creates_lesson_without_overwriting(tmp_path):
@@ -73,3 +77,61 @@ def test_web_audio_remuxes_mislabeled_aac_without_touching_original(tmp_path):
     assert (lesson_dir / source.name).read_bytes() == original
     assert 'data-chapter="next"' in lesson_audio_html(lesson)
     assert 'preload="metadata"' in lesson_audio_html(lesson)
+
+
+def test_web_can_configure_lessons_folder_without_rewriting_other_settings(tmp_path, monkeypatch):
+    project = tmp_path / "rt"
+    config = project / "config"
+    config.mkdir(parents=True)
+    original = (
+        'version: "2.0.0"\n\n'
+        'telegram:\n'
+        '  # Mantieni questo commento e i topic esistenti.\n'
+        '  default_channel: "terminal"\n'
+        '  lessons_root: null\n'
+        '  topics: {BIOCHIMICA: 42}\n'
+        'ui:\n  theme: dark\n'
+    )
+    general = config / "general.yaml"
+    general.write_text(original, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    lessons = tmp_path / "Lezioni di prova"
+
+    saved = save_lessons_root(str(lessons), project)
+
+    assert saved == str(lessons)
+    assert lessons.is_dir()
+    updated = general.read_text(encoding="utf-8")
+    assert "# Mantieni questo commento" in updated
+    assert 'topics: {BIOCHIMICA: 42}' in updated
+    assert yaml.safe_load(updated)["telegram"]["lessons_root"] == str(lessons)
+    assert yaml.safe_load(updated)["ui"]["theme"] == "dark"
+
+
+def test_web_rejects_lessons_folder_inside_installation(tmp_path, monkeypatch):
+    project = tmp_path / "rt"
+    (project / "config").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="fuori dall'installazione"):
+        save_lessons_root(str(project / "lezioni"), project)
+    assert not (project / "lezioni").exists()
+
+
+def test_web_starts_without_configured_lessons_folder(tmp_path):
+    with patch("rt.web.app.lessons_root", return_value=None), \
+         patch("rt.web.app.build_app") as build, \
+         patch("rt.web.app.configure_logging", return_value=str(tmp_path / "web.log")):
+        web_main(["--no-browser"])
+
+    assert build.call_args.args == ("",)
+    launch_options = build.return_value.launch.call_args.kwargs
+    assert launch_options["server_name"] == "127.0.0.1"
+    assert "" not in launch_options["blocked_paths"]
+
+
+def test_web_first_run_renders_configuration_screen():
+    demo = build_app("")
+    tabs = next(component for component in demo.config["components"]
+                if component["props"].get("elem_id") == "rt-pages")
+    assert tabs["props"]["selected"] == "config"

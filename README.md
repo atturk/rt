@@ -94,7 +94,9 @@ versione corrente. Da un checkout di sviluppo, usa prima
 `./.venv/bin/python -m pip install -r requirements-web.txt` e poi `./bin/rt web`.
 
 L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:7860`.
-Legge la cartella delle lezioni configurata in RT; per usarne un'altra, passa
+Al primo avvio, se non è impostata una cartella lezioni, si apre la schermata
+Configurazione: puoi scegliere una cartella esistente o crearne una, e RT ne salva
+il percorso. Per usare temporaneamente un'altra cartella, passa
 `--lessons-root "/percorso/alle/lezioni"`. La review consente di accettare,
 mantenere l'originale, modificare e riaprire le decisioni: usa il ledger RT e
 registra le azioni in un log per lezione. La dashboard mostra gli appunti completi

@@ -18,8 +18,11 @@ rt web
 è già aggiornato. In un checkout di sviluppo, installa manualmente
 `requirements-web.txt` nel virtualenv e avvia `./bin/rt web`.
 
-Se la cartella delle lezioni non è impostata in `config/general.yaml`, oppure per
-provarne un'altra:
+Se la cartella delle lezioni non è impostata in `config/general.yaml`, l'app si
+apre sulla schermata Configurazione. Inserisci il percorso di una cartella
+esistente oppure scegli dove crearne una nuova e premi **Usa questa cartella**.
+Il percorso viene salvato in `telegram.lessons_root`, mantenendo intatte le altre
+impostazioni. Per provarne un'altra solo per la sessione corrente:
 
 ```bash
 rt web --lessons-root "/percorso/alle/lezioni"

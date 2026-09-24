@@ -451,7 +451,7 @@ def configuration_summary(root: str) -> str:
         )
     return (
         '<div class="rt-config-card"><span class="rt-eyebrow">PERCORSI E PREFERENZE</span>'
-        f'<div class="rt-config-row"><span>Cartella lezioni</span><strong>{escape(root)}</strong></div>'
+        f'<div class="rt-config-row"><span>Cartella lezioni</span><strong>{escape(root or "Da configurare")}</strong></div>'
         f'<div class="rt-config-row"><span>Canale predefinito</span><strong>{escape(cfg.telegram.default_channel)}</strong></div>'
         f'<div class="rt-config-row"><span>Tema terminale</span><strong>{escape(cfg.ui.theme)}</strong></div>'
         '</div><div class="rt-config-card"><span class="rt-eyebrow">MODELLI PER FASE</span>'

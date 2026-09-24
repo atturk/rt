@@ -20,6 +20,7 @@ from rt.web.data import (
 )
 from rt.web.diagnostics import LOG, RequestLogMiddleware, configure_logging, log_action
 from rt.web.ingest import ingest_audio
+from rt.web.settings import save_lessons_root
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CSS = (Path(__file__).with_name("style.css")).read_text(encoding="utf-8")
@@ -339,9 +340,10 @@ def _ingest_view(root: str, audio_path: Optional[str], recorded: str, subject: s
     )
 
 
-def build_app(root: str) -> gr.Blocks:
+def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks:
     """Costruisce una UI che legge e aggiorna le stesse lezioni usate da RT."""
-    root = str(Path(root).expanduser().resolve())
+    root = str(Path(root).expanduser().resolve()) if root else ""
+    blocked_paths = blocked_paths if blocked_paths is not None else []
     lessons = list_lessons(root)
     selected = next((lesson.dir_path for lesson in lessons if lesson.pending_issues),
                     lessons[0].dir_path if lessons else None)
@@ -369,7 +371,8 @@ def build_app(root: str) -> gr.Blocks:
             go_config = gr.Button("⚙ Configurazione", variant="secondary", size="sm", scale=0,
                                   elem_id="rt-config-nav")
 
-        with gr.Tabs(selected="dashboard", elem_id="rt-pages") as pages:
+        with gr.Tabs(selected="dashboard" if root and Path(root).is_dir() else "config",
+                     elem_id="rt-pages") as pages:
             with gr.Tab("Dashboard", id="dashboard"):
                 stats = gr.HTML(lesson_stats(lessons))
                 card = gr.HTML(lesson_card(initial_lesson), js_on_load=CARD_JS,
@@ -418,8 +421,18 @@ def build_app(root: str) -> gr.Blocks:
                             cancel_edit = gr.Button("Annulla modifica", visible=False)
             with gr.Tab("Configurazione", id="config"):
                 back_config = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
-                gr.HTML(configuration_summary(root))
-                gr.HTML('<div class="rt-note">Le chiavi API non vengono mostrate. Le impostazioni si modificano ancora con il wizard CLI.</div>')
+                gr.Markdown("### Cartella delle lezioni\nScegli una cartella esistente oppure indica dove crearne una nuova.")
+                root_input = gr.Textbox(
+                    value=root or str(Path.home() / "RT Lezioni"),
+                    label="Percorso della cartella delle lezioni",
+                    placeholder="~/RT Lezioni",
+                )
+                save_root = gr.Button("Usa questa cartella", variant="primary")
+                root_status = gr.Markdown(
+                    "Configura la cartella per iniziare." if not root or not Path(root).is_dir() else "",
+                )
+                config_summary = gr.HTML(configuration_summary(root))
+                gr.HTML('<div class="rt-note">Le chiavi API non vengono mostrate. Le altre impostazioni si modificano ancora con il wizard CLI.</div>')
             with gr.Tab("Importa audio", id="upload"):
                 back_upload = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
                 gr.Markdown("## Nuova lezione\nCarica un file audio: RT creerà la cartella della lezione senza toccare quelle esistenti.")
@@ -441,6 +454,9 @@ def build_app(root: str) -> gr.Blocks:
         def select_sidebar(evt: gr.EventData):
             return _select_view(root, evt)
 
+        def select_issue_from_sidebar(path: str, evt: gr.EventData):
+            return _select_issue(root, path, evt)
+
         sidebar_list.lesson_selected(select_sidebar,
                                      outputs=[picker, *view_outputs, pages, selection_done],
                                      show_progress="hidden")
@@ -449,7 +465,7 @@ def build_app(root: str) -> gr.Blocks:
         issue_picker.input(lambda path, issue_id: _review_view(root, path, issue_id),
                            inputs=[picker, issue_picker], outputs=review_outputs,
                            show_progress="hidden")
-        issue_list.issue_selected(lambda path, evt: _select_issue(root, path, evt),
+        issue_list.issue_selected(select_issue_from_sidebar,
                                   inputs=picker, outputs=[issue_picker, *review_outputs, issue_list],
                                   show_progress="hidden")
         issue_list.open_issues_file(lambda path: _open_issues_file(root, path),
@@ -483,6 +499,26 @@ def build_app(root: str) -> gr.Blocks:
             inputs=[upload_file, upload_date, upload_subject, upload_topics, upload_transcribe],
             outputs=[upload_status, picker, sidebar_list, stats, *view_outputs, pages],
         )
+
+        @log_action("configurazione.cartella_lezioni")
+        def configure_root(path: str):
+            nonlocal root
+            try:
+                new_root = save_lessons_root(path, PROJECT_ROOT)
+            except (OSError, ValueError) as exc:
+                raise gr.Error(str(exc)) from exc
+            root = new_root
+            if new_root not in blocked_paths:
+                blocked_paths.append(new_root)
+            refreshed = _refresh_view(root, None)
+            return (
+                configuration_summary(root), f"Cartella pronta: **{root}**",
+                *refreshed, gr.update(selected="dashboard"),
+            )
+
+        save_root.click(configure_root, inputs=root_input,
+                        outputs=[config_summary, root_status, stats, picker, sidebar_list,
+                                 *view_outputs, pages])
     return demo
 
 
@@ -493,15 +529,19 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--no-browser", action="store_true", help="Non aprire automaticamente il browser")
     parser.add_argument("--log-file", help="Percorso del log diagnostico (default: log utente)")
     args = parser.parse_args(argv)
-    root = args.lessons_root or lessons_root()
-    if not root or not Path(root).is_dir():
-        parser.error("Configura telegram.lessons_root o passa --lessons-root con una cartella esistente.")
+    root = args.lessons_root or lessons_root() or ""
+    if args.lessons_root and not Path(root).expanduser().is_dir():
+        parser.error("La cartella passata con --lessons-root non esiste.")
     log_file = configure_logging(args.log_file)
-    LOG.info("Avvio RT web: lezioni in %s", root)
+    if root and Path(root).expanduser().is_dir():
+        LOG.info("Avvio RT web: lezioni in %s", root)
+    else:
+        LOG.info("Avvio RT web: cartella lezioni da configurare nell'interfaccia")
     blocked = [str(PROJECT_ROOT / name) for name in (".env", "config", ".rt_telegram", ".agents", ".claude")]
-    blocked.append(str(Path(root).resolve()))
+    if root:
+        blocked.append(str(Path(root).expanduser().resolve()))
     try:
-        build_app(root).launch(
+        build_app(root, blocked_paths=blocked).launch(
             server_name="127.0.0.1", server_port=args.port, inbrowser=not args.no_browser,
             share=False, show_error=True, blocked_paths=blocked,
             allowed_paths=[web_audio_directory()],
