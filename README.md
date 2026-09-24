@@ -87,7 +87,7 @@ configurazione) nell'ambiente di sviluppo:
 
 ```bash
 ./.venv/bin/python -m pip install -r requirements-web.txt
-./bin/rt-web
+./bin/rt web
 ```
 
 L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:7860`.

@@ -1,10 +1,12 @@
 """Flusso locale della dashboard web e importazione audio."""
 from dataclasses import replace
 from pathlib import Path
+import shutil
+import subprocess
 
 import pytest
 
-from rt.web.data import lesson_audio_path, lesson_card, lesson_preview_html, lesson_title, list_lessons, sidebar_lessons
+from rt.web.data import lesson_audio_html, lesson_audio_path, lesson_card, lesson_preview_html, lesson_title, list_lessons, sidebar_lessons
 from rt.web.ingest import ingest_audio
 
 
@@ -48,3 +50,26 @@ def test_dashboard_renders_full_markdown_without_duplicate_title(monkeypatch, tm
     assert "<h2>Sezione</h2>" in rendered
     assert "&lt;script&gt;unsafe&lt;/script&gt;" in rendered
     assert rendered.count("testo") == 4000
+
+
+def test_web_audio_remuxes_mislabeled_aac_without_touching_original(tmp_path):
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg non disponibile")
+    root = tmp_path / "lessons"
+    root.mkdir()
+    source = tmp_path / "recording.m4a"
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+         "-c:a", "aac", "-f", "adts", str(source)],
+        check=True,
+    )
+    original = source.read_bytes()
+    lesson_dir = Path(ingest_audio(str(source), str(root), "2026-09-24", "BIOCHIMICA", "Prova", False))
+    lesson = list_lessons(str(root))[0]
+    playable = Path(lesson_audio_path(lesson))
+
+    assert original[4:8] != b"ftyp"
+    assert playable.read_bytes()[4:8] == b"ftyp"
+    assert (lesson_dir / source.name).read_bytes() == original
+    assert 'data-chapter="next"' in lesson_audio_html(lesson)
+    assert 'preload="metadata"' in lesson_audio_html(lesson)

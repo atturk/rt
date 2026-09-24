@@ -12,27 +12,37 @@ Dalla radice del repository, dopo aver installato RT:
 
 ```bash
 ./.venv/bin/python -m pip install -r requirements-web.txt
-./bin/rt-web
+./bin/rt web
 ```
 
 Se la cartella delle lezioni non è impostata in `config/general.yaml`, oppure per
 provarne un'altra:
 
 ```bash
-./bin/rt-web --lessons-root "/Users/attilioturco/rt-stuff/prove trt"
+./bin/rt web --lessons-root "/Users/attilioturco/rt-stuff/prove trt"
 ```
 
 L'app si apre su `http://127.0.0.1:7860`. Si può usare `--port 7868` per cambiare
-porta o `--no-browser` per non aprire automaticamente il browser. Il server ascolta
+porta o `--no-browser` per non aprire automaticamente il browser. `./bin/rt-web`
+resta disponibile come avvio diretto equivalente. Il server ascolta
 solo su `127.0.0.1` e non genera un link pubblico Gradio. `requirements-web.txt`
 aggiunge Gradio alle dipendenze di RT; l'installazione standard della CLI resta
 invariata.
 
+Il terminale mostra avvio, richieste HTTP, durata delle azioni, errori Python e
+segnalazioni dal browser. Gli stessi eventi vengono salvati in un file locale a
+rotazione (5 MB per file, tre copie): su macOS `~/Library/Logs/rt/web.log`, oppure
+nel percorso scelto con `--log-file`. `RT_WEB_LOG` permette la stessa scelta via
+variabile d'ambiente. I log non includono corpi delle richieste né il percorso dei
+file audio serviti. Premi Ctrl+C per fermare il server.
+
 ## Schermate
 
-- **Dashboard:** sidebar richiudibile e regolabile con lezioni raggruppate per
-  materia, stato delle cinque fasi, questioni aperte e appunti completi. I timecode
-  negli appunti spostano il lettore dell'audio integrale sotto il testo.
+- **Dashboard:** sidebar sovrapposta e regolabile con lezioni raggruppate per
+  materia, stato delle cinque fasi, issue aperte e appunti completi. Durante il
+  cambio lezione il controllo di chiusura e le altre lezioni restano bloccati fino
+  al caricamento. I timecode avviano il lettore nativo dell'audio integrale; le
+  frecce accanto al lettore passano tra le unità della lezione.
 - **Review:** elenco delle questioni, affermazione, proposta e diff, motivazione,
   unità completa e citazione ASR espandibili, estratto audio relativo al segmento
   quando disponibile. Accetta, mantiene l'originale o salva un testo modificato
@@ -47,6 +57,8 @@ invariata.
 L'interfaccia usa Seravek quando disponibile sul sistema, con font di riserva.
 La cartella originale delle lezioni resta esclusa dall'accesso diretto via web:
 RT prepara per Gradio solo l'audio della lezione scelta in una cartella temporanea.
+Se un file chiamato `.m4a` contiene in realtà AAC grezzo, RT lo rimette in un
+contenitore M4A riproducibile dal browser, senza modificare l'originale.
 
 Le lezioni di prova non vengono importate nel repository: la UI usa la loro cartella
 originale, esattamente come fa RT. La verifica è stata eseguita sulla lezione di

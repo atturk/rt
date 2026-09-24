@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import wave
 from typing import Optional
+from urllib.parse import quote
 
 import numpy as np
 from markdown_it import MarkdownIt
@@ -35,6 +36,13 @@ PHASE_LABELS = {
 PHASE_COLORS = {"valid": "done", "partial": "warn", "stale": "warn", "invalid": "bad", "missing": "todo"}
 MARKDOWN = MarkdownIt("commonmark", {"html": False})
 _WEB_AUDIO_DIR: Optional[tempfile.TemporaryDirectory] = None
+
+
+def web_audio_directory() -> str:
+    global _WEB_AUDIO_DIR
+    if _WEB_AUDIO_DIR is None:
+        _WEB_AUDIO_DIR = tempfile.TemporaryDirectory(prefix="rt-web-audio-")
+    return _WEB_AUDIO_DIR.name
 
 
 @dataclass
@@ -196,22 +204,54 @@ def lesson_audio_path(lesson: Optional[LessonSummary]) -> Optional[str]:
         return None
 
 
+def lesson_audio_html(lesson: Optional[LessonSummary]) -> str:
+    """Lettore nativo che scarica l'audio a richiesta, senza decodificarlo tutto."""
+    path = lesson_audio_path(lesson)
+    if not path:
+        return '<div class="rt-audio-empty">Nessun audio disponibile per questa lezione.</div>'
+    url = '/gradio_api/file=' + quote(path, safe='/')
+    return (
+        '<section class="rt-audio-player" aria-label="Audio della lezione">'
+        '<div class="rt-audio-header"><span>♫</span><strong>Audio della lezione</strong></div>'
+        '<div class="rt-audio-controls">'
+        '<button type="button" class="rt-audio-chapter" data-chapter="previous" '
+        'aria-label="Unità precedente" title="Unità precedente">◀◀</button>'
+        f'<audio controls preload="metadata" src="{escape(url, quote=True)}"></audio>'
+        '<button type="button" class="rt-audio-chapter" data-chapter="next" '
+        'aria-label="Unità successiva" title="Unità successiva">▶▶</button>'
+        '</div></section>'
+    )
+
+
 def _web_audio_path(lesson: LessonSummary, original: str) -> Optional[str]:
     """Espone a Gradio solo l'audio scelto, lasciando bloccata la cartella lezioni."""
     source = Path(original).resolve()
     if not source.is_file() or not source.is_relative_to(Path(lesson.dir_path).resolve()):
         return None
-    global _WEB_AUDIO_DIR
-    if _WEB_AUDIO_DIR is None:
-        _WEB_AUDIO_DIR = tempfile.TemporaryDirectory(prefix="rt-web-audio-")
     stat = source.stat()
     name = sha256(f"{source}:{stat.st_mtime_ns}:{stat.st_size}".encode()).hexdigest()[:20]
-    target = Path(_WEB_AUDIO_DIR.name) / f"{name}{source.suffix.lower()}"
+    suffix = source.suffix.lower()
+    target = Path(web_audio_directory()) / f"{name}{suffix}"
     if not target.exists():
-        try:
-            os.link(source, target)
-        except OSError:
-            shutil.copyfile(source, target)
+        with source.open('rb') as handle:
+            is_mp4 = handle.read(8)[4:8] == b'ftyp'
+        if suffix == '.m4a' and not is_mp4:
+            # Alcune registrazioni AAC ADTS hanno un nome .m4a: il browser le rifiuta.
+            temporary = target.with_suffix('.tmp.m4a')
+            try:
+                subprocess.run(
+                    ['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', str(source),
+                     '-c:a', 'copy', '-movflags', '+faststart', str(temporary)],
+                    check=True, capture_output=True, timeout=90,
+                )
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        else:
+            try:
+                os.link(source, target)
+            except OSError:
+                shutil.copyfile(source, target)
     return str(target)
 
 

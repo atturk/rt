@@ -696,6 +696,24 @@ def cmd_config(args: argparse.Namespace) -> None:
         run_config_wizard()
 
 
+def cmd_web(args: argparse.Namespace) -> None:
+    """Avvia la web app nell'ambiente RT, mantenendo il terminale come console log."""
+    try:
+        from rt.web.app import main as web_main
+    except ModuleNotFoundError as exc:
+        if exc.name == "gradio":
+            raise SystemExit("Installa l'interfaccia web con: pip install -r requirements-web.txt") from exc
+        raise
+    argv = ["--port", str(args.port)]
+    if args.lessons_root:
+        argv += ["--lessons-root", args.lessons_root]
+    if args.no_browser:
+        argv.append("--no-browser")
+    if args.log_file:
+        argv += ["--log-file", args.log_file]
+    web_main(argv)
+
+
 def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.ArgumentParser]]:
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
     from rt.pipeline.configure import configure_config_parser
@@ -716,6 +734,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  -v, --version       Mostra la versione corrente e verifica aggiornamenti\n"
         "  -u, --update        Aggiorna RT all'ultima versione disponibile\n\n"
         "Esempi:\n"
+        "  rt web                          Avvia l'interfaccia web locale\n"
         "  rt run lezione.m4a              Pipeline completa da un file audio\n"
         "  rt run <cartella_lezione>       Riprende una lezione già iniziata\n"
         "  rt review <cartella_lezione>    Critica scientifica indipendente\n"
@@ -729,6 +748,13 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     )
 
     subparsers = parser.add_subparsers(dest="command", required=False, title="Comandi principali")
+
+    p_web = subparsers.add_parser("web", help="Avvia l'interfaccia web locale e mostra i log nel terminale")
+    p_web.add_argument("--lessons-root", help="Cartella delle lezioni")
+    p_web.add_argument("--port", type=int, default=7860, help="Porta locale (default: 7860)")
+    p_web.add_argument("--no-browser", action="store_true", help="Non aprire automaticamente il browser")
+    p_web.add_argument("--log-file", help="Percorso del log diagnostico")
+    p_web.set_defaults(func=cmd_web)
 
     # 1. config
     p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
@@ -902,6 +928,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_cost.set_defaults(func=cmd_cost)
 
     return parser, {
+        "web": p_web,
         "config": p_cfg,
         "run": p_run,
         "review": p_rsci,
@@ -989,4 +1016,3 @@ def main(argv: Optional[List[str]] = None) -> None:
 
 if __name__ == "__main__":
     main()
-

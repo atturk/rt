@@ -19,15 +19,15 @@ from rt.tui.data import LessonSummary
 
 
 class TestBuildParser:
-    def test_returns_all_15_subcommands(self):
+    def test_returns_all_16_subcommands(self):
         parser, sub_dict = build_parser()
         expected_subcommands = {
             "config", "run", "review", "recall", "status", "telegram-daemon",
             "setup", "prepare", "outline", "rewrite", "build", "add-images",
-            "validate-outline", "validate-draft", "cost",
+            "validate-outline", "validate-draft", "cost", "web",
         }
         assert set(sub_dict.keys()) == expected_subcommands
-        assert len(sub_dict) == 15
+        assert len(sub_dict) == 16
 
     def test_parse_args_run_command(self):
         parser, _ = build_parser()
