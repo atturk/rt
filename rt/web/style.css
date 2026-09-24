@@ -44,5 +44,11 @@
 .rt-note { padding: 12px 14px; border-radius: 10px; background: #f1f4f2; color: #607471; font-size: 12px; }
 #rt-preview { max-height: 550px; overflow: auto; background: white; border: 1px solid var(--rt-border); border-radius: 13px; padding: 18px 22px; }
 #rt-review-source textarea, #rt-review-proposal textarea { min-height: 170px; }
+.rt-diff, .rt-diff-empty { margin: 8px 0 18px; padding: 16px 20px; background: #fff; border: 1px solid var(--rt-border); border-radius: 13px; }
+.rt-diff p { margin: 9px 0 0; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rt-diff del { background: #ffe3dc; color: #983f32; text-decoration-color: #d66251; border-radius: 3px; padding: 1px 2px; }
+.rt-diff ins { background: #ddf3e9; color: #146c58; text-decoration: none; border-radius: 3px; padding: 1px 2px; }
+.rt-diff-empty { color: var(--rt-muted); font-size: 13px; }
+#rt-action-status { background: #e0f3ec; color: #146c58; padding: 11px 15px; border-radius: 9px; margin-bottom: 12px; }
 @media (max-width: 900px) { #rt-sidebar { min-height: auto; } #rt-main { padding-left: 0; } .rt-stats { grid-template-columns: 1fr 1fr 1fr; } }
 @media (max-width: 600px) { .rt-stats { gap: 6px; } .rt-stat { padding: 12px; } .rt-stat strong { font-size: 21px; } .rt-phase-row { gap: 5px; } .rt-lesson-card { padding: 18px; } }

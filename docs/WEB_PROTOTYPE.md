@@ -1,9 +1,10 @@
 # Prototipo web locale
 
 La nuova interfaccia Gradio è un'anteprima per valutare il flusso di lavoro prima di
-sostituire la TUI Textual. Si avvia localmente e **legge** i dati esistenti di RT:
+sostituire la TUI Textual. Si avvia localmente e legge i dati esistenti di RT:
 manifest, stato delle fasi, documento Markdown, questioni di review, ledger delle
-decisioni, file audio e configurazione. Non crea né modifica file delle lezioni.
+decisioni, file audio e configurazione. La review scrive le decisioni nel ledger RT
+e aggiunge un registro delle azioni web nella stessa cartella della lezione.
 
 ## Avvio
 
@@ -31,23 +32,28 @@ invariata.
 
 - **Dashboard:** scelta o ricerca di una lezione, stato delle cinque fasi, numero di
   questioni aperte e anteprima degli appunti.
-- **Review:** elenco delle questioni, testo sorgente, proposta, motivazione e breve
-  estratto audio relativo al segmento, quando disponibile. Le decisioni esistenti
-  vengono lette dal ledger. I pulsanti di decisione sono per ora disabilitati.
+- **Review:** elenco delle questioni, affermazione, proposta e diff, motivazione,
+  unità completa e citazione ASR espandibili, estratto audio relativo al segmento
+  quando disponibile. Accetta, mantiene l'originale o salva un testo modificato
+  nel ledger usato anche da CLI e Telegram. Una decisione presa dalla GUI si può
+  riaprire. La prossima questione in attesa viene selezionata automaticamente.
 - **Configurazione:** percorsi e modelli in uso, senza mostrare le chiavi API. Le
   impostazioni si continuano a modificare dal wizard CLI.
 
 Le lezioni di prova non vengono importate nel repository: la UI usa la loro cartella
-originale, esattamente come fa RT. Per la verifica iniziale è stata usata la lezione
-di Patologia generale del 26 febbraio 2025 in `prove trt`, con 18 questioni in
-attesa; la UI individua anche le altre lezioni presenti nella stessa cartella.
+originale, esattamente come fa RT. La verifica è stata eseguita sulla lezione di
+Patologia generale del 26 febbraio 2025 in `prove trt`: una decisione di prova è
+stata salvata, riletta dalla dashboard e poi riaperta. Il ledger è tornato a 18
+questioni in attesa. Il log `web_review_events.jsonl` conserva entrambi gli eventi
+(`recorded` e `reverted`) nella sottocartella `_state/` della lezione. Se un log
+esiste già nella radice di una lezione con il vecchio layout, RT usa quel file.
 
 ## Passi successivi
 
-1. Estrarre le operazioni di review e configurazione oggi legate alla CLI in servizi
-   Python invocabili da entrambe le interfacce, con validazione e scrittura atomica.
-2. Collegare i pulsanti di decisione al ledger esistente e aggiornare la dashboard
-   subito dopo ogni scelta.
+1. Unificare ulteriormente le azioni di review della CLI e di Telegram attorno al
+   servizio usato dalla GUI, mantenendo le regole attuali dei tre canali.
+2. Estrarre la configurazione dal wizard CLI in servizi condivisi e rendere
+   modificabile la schermata delle impostazioni.
 3. Aggiungere azioni di pipeline con stato e avanzamento strutturati, senza lanciare
    comandi CLI come sottoprocessi dalla pagina.
 4. Verificare il flusso completo con le lezioni di prova e poi scegliere la modalità

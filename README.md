@@ -91,9 +91,11 @@ Per provare la nuova interfaccia Gradio (dashboard, review e configurazione) nel
 
 L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:7860`.
 Legge la cartella delle lezioni configurata in RT; per usarne un'altra, passa
-`--lessons-root "/percorso/alle/lezioni"`. È un prototipo di sola lettura: le decisioni
-di review e le impostazioni si gestiscono ancora con i comandi RT. Per dettagli e
-limiti attuali, vedi [Prototipo web](docs/WEB_PROTOTYPE.md).
+`--lessons-root "/percorso/alle/lezioni"`. La review consente di accettare,
+mantenere l'originale, modificare e riaprire le decisioni: usa il ledger RT e
+registra le azioni in un log per lezione. Le impostazioni si gestiscono ancora
+con i comandi RT. Per dettagli e limiti attuali, vedi
+[Prototipo web](docs/WEB_PROTOTYPE.md).
 
 ### 2. Esecuzione End-to-End di una Lezione
 

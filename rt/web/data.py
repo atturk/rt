@@ -1,9 +1,11 @@
-"""Adattatori di sola lettura per il prototipo Gradio."""
+"""Adattatori di lettura e presentazione per il prototipo Gradio."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+from difflib import SequenceMatcher
 from html import escape
 import io
-import os
+import re
 import subprocess
 import wave
 from typing import Optional
@@ -13,9 +15,11 @@ import numpy as np
 from rt.core.audio_clip import resolve_audio_path
 from rt.core.config import load_config
 from rt.pipeline.issue_review import _prepare_issue_context
-from rt.pipeline.ledger import load_ledger
+from rt.pipeline.issue_review import _is_no_diff_issue_type
+from rt.pipeline.ledger import load_ledger, sanitize_suggested_fix
 from rt.pipeline.review import load_science_issues
-from rt.tui.data import PHASES, LessonSummary, badge_for_state, discover_lessons, load_markdown_preview
+from rt.pipeline.rewrite import load_draft
+from rt.tui.data import LessonSummary, badge_for_state, discover_lessons, load_markdown_preview
 
 
 PHASE_LABELS = {
@@ -23,6 +27,53 @@ PHASE_LABELS = {
     "review": "Revisione", "build": "Documento",
 }
 PHASE_COLORS = {"valid": "done", "partial": "warn", "stale": "warn", "invalid": "bad", "missing": "todo"}
+
+
+@dataclass
+class IssueDetail:
+    heading: str = "<div class='rt-empty'>Nessuna questione da visualizzare.</div>"
+    claim: str = ""
+    proposal: str = ""
+    reason: str = ""
+    source_quote: str = ""
+    unit_text: str = ""
+    diff: str = ""
+    audio: object = None
+    editor_initial: str = ""
+    can_accept: bool = False
+    can_reject: bool = False
+    can_edit: bool = False
+    can_undo: bool = False
+
+
+def _word_diff(original: str, proposed: Optional[str]) -> str:
+    if not proposed:
+        return '<div class="rt-diff-empty">Nessuna sostituzione testuale automatica proposta.</div>'
+    old = re.findall(r"\s+|\S+", original)
+    new = re.findall(r"\s+|\S+", proposed)
+    parts = []
+    for tag, old_start, old_end, new_start, new_end in SequenceMatcher(None, old, new).get_opcodes():
+        before = escape("".join(old[old_start:old_end]))
+        after = escape("".join(new[new_start:new_end]))
+        if tag == "equal":
+            parts.append(before)
+        else:
+            if before:
+                parts.append(f"<del>{before}</del>")
+            if after:
+                parts.append(f"<ins>{after}</ins>")
+    return '<div class="rt-diff"><span class="rt-eyebrow">CONFRONTO DEL TESTO</span><p>' + "".join(parts) + "</p></div>"
+
+
+def _unit_for_issue(lesson_dir: str, issue):
+    try:
+        draft = load_draft(lesson_dir)
+    except (OSError, ValueError, KeyError):
+        return None
+    unit = next((unit for unit in draft.units if unit.unit_id == issue.unit_id), None)
+    if unit is None and issue.segment_id:
+        unit = next((unit for unit in draft.units if issue.segment_id in unit.source_segment_ids), None)
+    return unit
 
 
 def lessons_root() -> Optional[str]:
@@ -35,11 +86,16 @@ def list_lessons(root: str) -> list[LessonSummary]:
 
 def picker_choices(lessons: list[LessonSummary], query: str = "") -> list[tuple[str, str]]:
     needle = query.strip().casefold()
-    return [
-        (f"{lesson.subject or 'Lezione'}  ·  {lesson.title}", lesson.dir_path)
-        for lesson in lessons
-        if not needle or needle in f"{lesson.subject} {lesson.title}".casefold()
-    ]
+    choices = []
+    for lesson in lessons:
+        if needle and needle not in f"{lesson.subject} {lesson.title} {lesson.recorded}".casefold():
+            continue
+        topic = lesson.title.split(" - ", 1)[-1] if " - " in lesson.title else lesson.title
+        topic = topic[:54] + ("…" if len(topic) > 54 else "")
+        count = f" · {lesson.pending_issues} da rivedere" if lesson.pending_issues else ""
+        choices.append((f"{lesson.recorded or 'Senza data'} · {lesson.subject or 'Lezione'} · {topic}{count}",
+                        lesson.dir_path))
+    return choices
 
 
 def lesson_stats(lessons: list[LessonSummary]) -> str:
@@ -95,21 +151,21 @@ def issue_choices(lesson: Optional[LessonSummary]) -> tuple[list[tuple[str, str]
     issues, decisions = review_issues(lesson.dir_path)
     choices = []
     for issue in issues:
-        marker = "✓" if issue.id in decisions else "○"
+        decision = decisions.get(issue.id)
+        marker = {"accepted": "✓", "rejected": "×", "edited": "✎"}.get(decision.decision, "•") if decision else "○"
         short_claim = issue.claim.replace("\n", " ").strip()[:65]
         choices.append((f"{marker} {issue.unit_id or 'Unità'} · {short_claim}", issue.id))
     pending = next((issue.id for issue in issues if issue.id not in decisions), None)
     return choices, pending or (issues[0].id if issues else None)
 
 
-def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]):
-    empty = ("<div class='rt-empty'>Nessuna questione da visualizzare.</div>", "", "", "", None)
+def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> IssueDetail:
     if lesson is None or not issue_id:
-        return empty
+        return IssueDetail()
     issues, decisions = review_issues(lesson.dir_path)
     issue = next((item for item in issues if item.id == issue_id), None)
     if issue is None:
-        return empty
+        return IssueDetail()
     try:
         context = _prepare_issue_context(lesson.dir_path, issue, "science")
     except (OSError, ValueError, KeyError):
@@ -123,7 +179,9 @@ def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]):
         f'<p class="rt-meta">{escape(issue.id)} · {escape(context.get("timecode") or "Audio disponibile sotto")}'
         f' · {status}</p></div>'
     )
-    source = issue.source_quote or context.get("sentence") or issue.claim
+    unit = _unit_for_issue(lesson.dir_path, issue)
+    is_asr = _is_no_diff_issue_type(issue)
+    source = issue.source_quote or context.get("sentence") or ""
     proposal = decision.resolved_text if decision and decision.resolved_text else (issue.suggested_fix or "Nessuna proposta automatica")
     reason = issue.reason or ""
     start_s, end_s = context.get("start_s"), context.get("end_s")
@@ -140,7 +198,18 @@ def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]):
         except (OSError, ValueError, KeyError):
             pass
     audio = audio_excerpt(lesson.dir_path, start_s, end_s)
-    return heading, source, proposal, reason, audio
+    return IssueDetail(
+        heading=heading, claim=issue.claim, proposal=proposal, reason=reason,
+        source_quote=source or "Nessuna citazione ASR disponibile.",
+        unit_text=unit.content if unit else "Unità non disponibile.",
+        diff=_word_diff(issue.claim, None if is_asr else sanitize_suggested_fix(issue.suggested_fix)),
+        audio=audio,
+        editor_initial=(unit.content if unit else issue.claim) if is_asr else issue.claim,
+        can_accept=decision is None and (not is_asr or unit is not None),
+        can_reject=decision is None and not is_asr,
+        can_edit=decision is None,
+        can_undo=decision is not None and decision.resolved_by == "web",
+    )
 
 
 def audio_excerpt(lesson_dir: str, start: Optional[float], end: Optional[float]):
