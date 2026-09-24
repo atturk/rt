@@ -9,6 +9,8 @@ Questo documento guida sviluppatori e maintainer all'estensione del sistema RT, 
 Il progetto richiede Python 3.11+ ed è progettato per operare sia con le librerie standard sia con `pydantic` (v2):
 
 ```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
 # Esecuzione della CLI direttamente dal repository
 ./bin/rt --help
 # Oppure tramite modulo Python
@@ -26,7 +28,7 @@ python3 -m rt.cli --help
 
 ## 2. Esecuzione della Test Suite
 
-La suite di test è collocata nella cartella `tests/` ed è suddivisa in 25 file di test mirati:
+La suite di test è collocata nella cartella `tests/` ed è organizzata per comportamento; alcuni esempi:
 
 - `test_audio_run.py`: pipeline audio ingest, split e normalizzazione.
 - `test_checkpointing.py`: recovery e checkpointing transazionale per-unità.
@@ -45,7 +47,6 @@ La suite di test è collocata nella cartella `tests/` ed è suddivisa in 25 file
 - `test_regression_biochem.py`: test di regressione sui 499 segmenti della lezione reale di biochimica.
 - `test_renderer.py`: **test vincolo timestamp** (verifica che il timestamp derivi dal segmento e fallisca se manomesso).
 - `test_science.py`: classificazione nei 4 scenari scientifici (`ERR_DOCENTE`, `ERR_RECONSTRUCTION`, `SCIENCE_CHECK`).
-- `test_science_grounding.py`: ancoraggio epistemico al trascritto ASR e mitigazione allucinazioni.
 - `test_segments.py`: parser ASR (macparakeet-cli e MacWhisper legacy), intervalli temporali e finestra di contesto scorrevole ~90s.
 - `test_setup.py`: setup cartella, mock deterministico ASR e inizializzazione info.yaml.
 - `test_source_truth_json.py`: integrità e immutabilità del trascritto grezzo sorgente.
@@ -55,7 +56,7 @@ La suite di test è collocata nella cartella `tests/` ed è suddivisa in 25 file
 
 Per eseguire l'intera suite:
 ```bash
-python3 -m pytest tests/ -q
+.venv/bin/python -m pytest tests/ -q
 ```
 
 ---
@@ -119,3 +120,12 @@ Se una fase fallisce o si desidera rieseguire un passaggio:
 1. Lo stato può essere ripristinato rieseguendo la fase precedente (es. `./bin/rt prepare <cartella>`).
 2. I file sorgente (`trascritto grezzo.md`, `audio.m4a`, `trascritto grezzo.json`) **non vengono mai modificati**.
 3. Il file `review_decisions.json` preserva le decisioni umane già prese, evitando di dover rispondere due volte allo stesso quesito.
+
+## Fixture private e manutenzione
+
+Il test di regressione della lezione reale cerca `../data/regression/biochem/trascritto grezzo.md`
+rispetto alla radice del checkout. Per un percorso diverso, impostare `RT_REAL_LECTURE_DIR`.
+In CI la lezione privata non è disponibile: quel solo test viene saltato; le fixture sintetiche
+in `tests/fixtures/` sono versionate. Non copiare registrazioni o trascrizioni personali nella repo.
+
+Vedi [MAINTENANCE.md](MAINTENANCE.md) per dipendenze, archivi e procedura di release.

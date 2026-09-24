@@ -8,14 +8,19 @@ Verifica:
 """
 
 import os
-import json
+from pathlib import Path
 import pytest
 from rt.core.segments import parse_segments_from_markdown, load_segments_json
 from rt.core.timestamp import format_timestamp
 
 
 def test_real_lecture_segments():
-    lecture_md = os.path.join(os.path.dirname(__file__), "..", "test_real_lecture", "trascritto grezzo.md")
+    # Fixture privata fuori dal repository; percorso esplicito per altri checkout.
+    fixture_dir = Path(os.environ.get(
+        "RT_REAL_LECTURE_DIR",
+        str(Path(__file__).resolve().parents[2] / "data" / "regression" / "biochem"),
+    ))
+    lecture_md = str(fixture_dir / "trascritto grezzo.md")
     if not os.path.isfile(lecture_md):
         pytest.skip("Lezione reale non copiata localmente per il test.")
         

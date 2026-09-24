@@ -166,7 +166,14 @@ def _create_mock_tarball_bytes(version: str, new_file_name: str = "nuovo_modulo.
 def test_run_update_end_to_end_success(tmp_path, capsys):
     # 1. Existing installation in tmp_path
     (tmp_path / "VERSION").write_text("3.3.7\n", encoding="utf-8")
-    (tmp_path / "vecchio_modulo.py").write_text("print('old')", encoding="utf-8")
+    (tmp_path / "rt").mkdir()
+    (tmp_path / "rt" / "vecchio_modulo.py").write_text("print('old')", encoding="utf-8")
+    private_files = [".agents/notes.md", ".agent/plan.md", ".claude/settings.json",
+                     ".rt_telegram/registry.json", "lezioni/audio.wav", "appunti.md"]
+    for name in private_files:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("contenuto locale", encoding="utf-8")
     
     cfg_dir = tmp_path / "config"
     cfg_dir.mkdir()
@@ -213,8 +220,10 @@ def test_run_update_end_to_end_success(tmp_path, capsys):
     assert (tmp_path / "install.log").read_text(encoding="utf-8") == "previous install log\n"
     assert (tmp_path / ".venv" / "bin" / "python3").exists()
 
-    # Verify old untracked file deleted, new file copied, VERSION updated
-    assert not (tmp_path / "vecchio_modulo.py").exists()
+    # Elimina solo codice obsoleto, conserva stato e dati locali.
+    assert not (tmp_path / "rt" / "vecchio_modulo.py").exists()
+    for name in private_files:
+        assert (tmp_path / name).read_text(encoding="utf-8") == "contenuto locale"
     assert (tmp_path / "nuovo_modulo.py").exists()
     assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.8"
 
@@ -308,3 +317,17 @@ def test_cli_help_includes_version_and_update(capsys):
     captured = capsys.readouterr().out
     assert "-v, --version" in captured
     assert "-u, --update" in captured
+
+
+@pytest.mark.parametrize('git_is_file', [False, True])
+def test_update_refuses_development_checkout_before_network(tmp_path, git_is_file):
+    """Protegge sia repository normali sia worktree, anche se hanno modifiche locali."""
+    if git_is_file:
+        (tmp_path / '.git').write_text('gitdir: /some/worktree')
+    else:
+        (tmp_path / '.git').mkdir()
+    with patch('urllib.request.urlopen') as network:
+        with pytest.raises(SystemExit) as exc:
+            run_update(str(tmp_path))
+    assert exc.value.code == 1
+    network.assert_not_called()

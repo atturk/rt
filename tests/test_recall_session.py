@@ -1421,7 +1421,9 @@ class TestTask12StaleRecallCheck:
         bank = RecallBank(questions=[q])
         save_recall_bank(bank, lesson_dir)
 
-        with patch("rt.telegram.client.send_message") as mock_send:
+        # La modalità deve essere esplicita: lo stato personale non è una fixture.
+        with patch("rt.telegram.recall_preferences.get_active_style", return_value="mirata"), \
+             patch("rt.telegram.client.send_message") as mock_send:
             mock_send.return_value = {"message_id": 999}
             send_current_recall_question(lesson_dir, force_mock=True)
 
@@ -1528,5 +1530,4 @@ class TestTask12StaleRecallCheck:
         run_stale_recall_check(lesson_dir, state_dir=state_dir)
         out = capsys.readouterr().out
         assert "HUMAN REVIEW REQUIRED" in out
-
 

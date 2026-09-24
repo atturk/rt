@@ -128,8 +128,7 @@ Lancia `prepare` per estrarre e validare i segmenti deterministici, poi prosegui
 ./bin/rt prepare "cartella_lezione"
 ./bin/rt outline "cartella_lezione"
 ./bin/rt rewrite "cartella_lezione"
-./bin/rt review-asr "cartella_lezione"
-./bin/rt review-science "cartella_lezione"
+./bin/rt review "cartella_lezione"
 ./bin/rt build "cartella_lezione"
 ```
 Oppure direttamente:

@@ -6,7 +6,10 @@ Questo documento descrive le fasi operative, le transizioni di stato e le garanz
 
 ## 1. Ciclo di Vita e Macchina a Stati
 
-Ogni lezione possiede un file `info.yaml` e un `manifest.json` che ne tracciano lo stato corrente:
+Ogni lezione possiede `info.yaml` e gli artefatti interni in `_state/`, incluso
+`manifest.json`. I nomi degli artefatti nel seguito sono relativi a questa gestione;
+`rt/core/lesson_paths.py` centralizza anche la compatibilità con i layout storici.
+Il diagramma riassume il percorso principale (non tutte le transizioni di ripresa):
 
 ```mermaid
 stateDiagram-v2
@@ -16,10 +19,9 @@ stateDiagram-v2
     SETUP_COMPLETED --> PREPARED: rt prepare
     PREPARED --> OUTLINE_VALIDATED: rt outline
     OUTLINE_VALIDATED --> DRAFT_VALIDATED: rt rewrite
-    DRAFT_VALIDATED --> ASR_REVIEW_READY: rt review-asr
-    DRAFT_VALIDATED --> HUMAN_REVIEW_REQUIRED: rt review-science (se pendenti YELLOW/RED)
-    DRAFT_VALIDATED --> READY_TO_BUILD: rt review-science (se 0 pendenti)
-    HUMAN_REVIEW_REQUIRED --> READY_TO_BUILD: rt review-asr / rt review-science (decisioni registrate)
+    DRAFT_VALIDATED --> HUMAN_REVIEW_REQUIRED: rt review (se pendenti YELLOW/RED)
+    DRAFT_VALIDATED --> READY_TO_BUILD: rt review (se 0 pendenti)
+    HUMAN_REVIEW_REQUIRED --> READY_TO_BUILD: rt review (decisioni registrate)
     READY_TO_BUILD --> COMPLETED: rt build
     COMPLETED --> [*]
 ```
@@ -30,8 +32,7 @@ stateDiagram-v2
 - `preparato`: `segments.json` e `transcript_normalized.md` creati, integrità temporale validata.
 - `outline_validata`: scaletta didattica generata e verificata per monotonicità e copertura.
 - `draft_validato`: unità didattiche rielaborate con traccia esplicita di `source_segment_ids`.
-- `revisione_asr_completata`: issue fonetiche estratte e classificate per confidenza (GREEN auto-approvate).
-- `revisione_scientifica_completata`: controllo scientifico indipendente eseguito.
+- `revisione_completata`: controllo scientifico e rilevamento delle ambiguità ASR eseguiti.
 - `in_attesa_revisione_umana`: presenza di decisioni in attesa di risposta utente.
 - `pronto_per_build`: tutte le anomalie risolte o esplicitate nel ledger.
 - `completato`: file definitivi generati e cartella finalizzata.
@@ -75,21 +76,16 @@ stateDiagram-v2
   - **Glossario di riferimento**.
 - Il draft salva obbligatoriamente `source_segment_ids`.
 
-### Fase 5: ASR Review (`rt review-asr`)
-- Analisi fonetica mirata.
-- **GREEN (≥ 0.95)**: correzioni certe come *"glucosio se fosfato"*, applicate automaticamente nel ledger.
-- **YELLOW (0.75–0.94)**: inserite nella coda di revisione.
-- **RED (< 0.75)**: richiedono verifica utente con indicazione dell'intervallo audio di ascolto.
+### Fase 5: Review unificata (`rt review`)
+- Il comando unico sostituisce i precedenti comandi separati di review.
+- Il critic confronta il rielaborato con la trascrizione e distingue `ERR_DOCENTE`,
+  `ERR_RECONSTRUCTION` e `SCIENCE_CHECK`.
+- Il rilevamento statistico ASR produce `ERR_ASR_ST`; l'opzione `--asr-llm` abilita
+  il raffinamento LLM dei candidati statistici (`ERR_ASR_LLM`).
+- Analisi e decisioni sono distinte: la CLI richiama la pipeline e poi la sessione
+  interattiva tramite terminale o Telegram.
 
-### Fase 6: Science Review (`rt review-science`)
-- Un modello indipendente in funzione di critic confronta il rielaborato con la trascrizione grezza.
-- Categorie:
-  - `ERR_DOCENTE`: lapsus del docente, arricchito da una domanda diplomatica consigliata.
-  - `ERR_RECONSTRUCTION`: allucinazione o reazione introdotta dal modello.
-  - `SCIENCE_CHECK`: affermazione che tocca parametri critici (bilanci energetici, isoforme).
-
-### Fase 7: Human-in-the-Loop Review (`rt review-asr` / `rt review-science`)
-- Ciascun comando di review (`rt review-asr` e `rt review-science`) esegue l'analisi e avvia direttamente la sessione di revisione interattiva (via terminale o Telegram) per i casi pendenti YELLOW e RED.
+### Fase 6: Human-in-the-Loop Review (`rt review`)
 - Mostra in cima l'identificativo e il titolo dell'Unità didattica, il timecode, il frammento ASR originale, la proposta AI e la motivazione.
 - **Contesto Draft ASR**: per le ambiguità ASR estrae e mostra la singola frase pulita dal testo rielaborato dove cade il termine (`[termine]`), senza puntini di sospensione.
 - **Contesto Draft Scienza**: per le critiche scientifiche mostra l'intero testo dell'unità didattica per una valutazione contestuale completa.
@@ -100,7 +96,7 @@ stateDiagram-v2
   - `--auto-accept red`: auto-accetta le proposte RED.
 - Tutte le decisioni sono scritte in tempo reale in `review_decisions.json`.
 
-### Fase 8: Deterministic Build (`rt build`)
+### Fase 7: Deterministic Build (`rt build`)
 - Assembla:
   - `pre-elaborato.md`: documento di lavoro con traccia temporale e marker formattati.
   - `rielaborato.md`: prosa accademica definitiva per lo studio.
@@ -131,10 +127,10 @@ Ogni fase registra nel manifest (`phase_records`):
 
 ### 3.3 Matrice di Dipendenza e Invalidazione Downstream
 Quando una fase produce un nuovo artefatto (per modifiche ai sorgenti o tramite flag `--force`), solo le fasi downstream dipendenti vengono marcate come `STALE`:
-- Modifica a `prepare` (`segments.json`) $\rightarrow$ invalida `outline`, `rewrite`, `review-asr`, `review-science`, `build`.
-- Modifica a `outline` (`outline.json`) $\rightarrow$ invalida `rewrite`, `review-science`, `build`.
-- Modifica a `rewrite` (`draft.json`) $\rightarrow$ invalida `review-asr`, `review-science`, `build`.
-- Modifica a `review-asr` (`asr_issues.json`) o `review-science` (`science_issues.json`) $\rightarrow$ invalida `build`.
+- Modifica a `prepare` (`segments.json`) $\rightarrow$ invalida `outline`, `rewrite`, `review`, `build`.
+- Modifica a `outline` (`outline.json`) $\rightarrow$ invalida `rewrite`, `review`, `build`.
+- Modifica a `rewrite` (`draft.json`) $\rightarrow$ invalida `review`, `build`.
+- Modifica a `review` (`science_issues.json`) $\rightarrow$ invalida `build`.
 - I file sorgente grezzi (`trascritto grezzo.*`, `audio.*`) e le decisioni umane registrate (`review_decisions.json`) **non vengono mai sovrascritti o cancellati**.
 
 ### 3.4 Rerun Parziale per Unità Didattica
