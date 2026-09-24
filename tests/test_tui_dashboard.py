@@ -626,5 +626,58 @@ class TestPhaseButtons:
             assert "⚠" in str(link_prep.render())
             assert "✓" in str(link_build.render())
 
+    @pytest.mark.anyio
+    async def test_lesson_row_phase_strip_vertical_stacking(self, tmp_path, monkeypatch):
+        from rt.tui.app import RTApp, LessonRow
+        from rt.tui.data import LessonSummary, PhaseStatus
+        from rt.core.state import WorkflowState
+
+        lesson_dir = str(tmp_path / "lesson")
+        os.makedirs(os.path.join(lesson_dir, "_state"), exist_ok=True)
+
+        lesson = LessonSummary(
+            dir_path=lesson_dir,
+            title="Patologia",
+            subject="Medicina",
+            recorded="2026-03-14",
+            when="oggi",
+            state=WorkflowState.PREPARED,
+            phase_status=[
+                ("prepare", PhaseStatus.VALID),
+                ("outline", PhaseStatus.VALID),
+                ("rewrite", PhaseStatus.VALID),
+                ("review", PhaseStatus.PARTIAL),
+                ("build", PhaseStatus.MISSING),
+            ],
+            pending_issues=0,
+            cost_total=1.2,
+            mtime=100.0,
+            error=None,
+        )
+
+        app = RTApp()
+        monkeypatch.setattr("rt.tui.app.discover_lessons", lambda root: [lesson])
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            row = app.query_one(LessonRow)
+            segs = list(row.query(".phase-seg"))
+            assert len(segs) == 5
+
+            # Verifica che le classi di colore siano corrette
+            assert "phase-seg-success" in segs[0].classes
+            assert "phase-seg-success" in segs[1].classes
+            assert "phase-seg-success" in segs[2].classes
+            assert "phase-seg-warning" in segs[3].classes
+            assert "phase-seg-missing" in segs[4].classes
+
+            # Verifica disposizione verticale: stessa X, Y strettamente crescente
+            xs = [s.region.x for s in segs]
+            ys = [s.region.y for s in segs]
+            assert len(set(xs)) == 1
+            assert ys == sorted(ys)
+            assert len(set(ys)) == len(ys)
+
+
 
 

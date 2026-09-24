@@ -75,14 +75,14 @@ class LessonRow(ListItem):
     def compose(self) -> ComposeResult:
         label, token = badge_for_state(self.lesson.state)
         with Horizontal(classes="lesson-row"):
-            with Horizontal(classes="phase-strip"):
+            with Vertical(classes="phase-strip"):
                 for phase in PHASES:
                     status = next(
                         (st for ph, st in self.lesson.phase_status if ph == phase),
                         PhaseStatus.MISSING,
                     )
                     _, seg_token = PHASE_ICON.get(status, ("○", None))
-                    yield Static("", classes=f"phase-seg phase-seg-{seg_token or 'missing'}")
+                    yield Static("▮", classes=f"phase-seg phase-seg-{seg_token or 'missing'}")
             with Vertical(classes="lesson-text"):
                 yield Static(self.lesson.title, classes="lesson-title")
                 yield Static(f"{self.lesson.subject or '—'} · {self.lesson.when}", classes="lesson-sub")
@@ -152,14 +152,14 @@ class RTApp(App):
     ListItem:hover .lesson-row { background: $primary 15%; }
     ListItem:hover .lesson-title { color: $primary; text-style: bold; }
 
-    .lesson-row { height: 3; padding: 0 1; }
+    .lesson-row { height: auto; min-height: 5; padding: 0 1; align: left middle; }
 
-    .phase-strip { width: 5; height: 3; margin-right: 1; }
-    .phase-seg { width: 1; height: 1fr; }
-    .phase-seg-success { background: $success; }
-    .phase-seg-warning { background: $warning; }
-    .phase-seg-error { background: $error; }
-    .phase-seg-missing { background: $surface; }
+    .phase-strip { width: 1; height: 5; margin-right: 1; }
+    .phase-seg { width: 1; height: 1; }
+    .phase-seg-success { color: $success; }
+    .phase-seg-warning { color: $warning; }
+    .phase-seg-error { color: $error; }
+    .phase-seg-missing { color: $panel-lighten-2; }
 
     .lesson-text { width: 1fr; }
     .lesson-title { color: $text; text-wrap: nowrap; text-overflow: ellipsis; }
