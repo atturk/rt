@@ -8,6 +8,7 @@ Salva science_issues.json.
 
 import os
 import json
+import logging
 from typing import Dict, Any, List, Optional
 from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, DraftUnit
 from rt.core.segments import load_segments_json
@@ -37,6 +38,8 @@ from rt.core.idempotency import (
     get_phase_checkpoint,
     mark_downstream_stale,
 )
+
+LOG = logging.getLogger(__name__)
 
 
 def get_science_issues_path(lesson_dir: str) -> str:
@@ -102,6 +105,57 @@ def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
         if cumulative >= target:
             return s.id
     return segs[-1].id
+
+
+def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
+                             lesson_dir: str, unit_label: str,
+                             max_repair_attempts: int = 2) -> List[ScienceIssue]:
+    """Non persiste claim concettuali che non sono nel draft esaminato dal critic."""
+    result = client.call_structured(
+        prompt=prompt, system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+        response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
+        min_elapsed_seconds=5.0, lesson_dir=lesson_dir,
+    )
+    issues = list(result.issues)
+    for index, issue in enumerate(issues):
+        if issue.type != ScienceType.ERR_CONCETTUALE:
+            continue
+        for attempt in range(max_repair_attempts + 1):
+            claim = issue.claim.strip()
+            if claim and claim in unit.content:
+                issue.claim = claim
+                break
+            if attempt == max_repair_attempts:
+                # Conserviamo l'oggetto per renderlo auditabile, ma il livello web/CLI
+                # lo tratta come non applicabile: nessuna decisione può modificarlo.
+                # La sidebar lo esclude dall'elenco operativo e mostra il conteggio
+                # con il collegamento al JSON completo.
+                LOG.error("Review unità %s: claim issue %s non ancorabile dopo %s tentativi; issue marcata come orfana",
+                          unit.unit_id, index + 1, max_repair_attempts)
+                break
+            LOG.warning("Claim review non ancorabile, unità %s issue %s: tentativo di correzione %s/%s",
+                        unit.unit_id, index + 1, attempt + 1, max_repair_attempts)
+            repair_prompt = (
+                "Correggi SOLTANTO il campo claim della singola issue seguente. "
+                "Deve essere una sottostringa letteralmente identica e contigua del "
+                "TESTO RIELABORATO, completa abbastanza da identificare il punto. "
+                "Conserva tipo, gravità, motivazione e proposta; restituisci "
+                "ScienceIssueList con esattamente questa unica issue. "
+                "Se la tua critica non riguarda il testo fornito, non inventare una citazione.\n\n"
+                f"UNITÀ: {unit.unit_id}\nTESTO RIELABORATO:\n{unit.content}\n\n"
+                f"ISSUE DA RIPARARE:\n{json.dumps(issue.model_dump(mode='json'), ensure_ascii=False)}"
+            )
+            repaired = client.call_structured(
+                prompt=repair_prompt, system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+                response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
+                lesson_dir=lesson_dir,
+            )
+            if len(repaired.issues) != 1 or repaired.issues[0].type != issue.type:
+                continue
+            candidate = repaired.issues[0]
+            # Il job di correzione può cambiare solo l'ancora, mai il contenuto della critica.
+            issue.claim = candidate.claim
+    return issues
 
 
 # -----------------------------------------------------------------------
@@ -401,18 +455,12 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
                 unit_title = unit_title[:25] + "..."
             unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
 
-            res = client.call_structured(
-                prompt=prompt,
-                system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
-                response_model=ScienceIssueList,
-                job_name="review",
-                unit_id=unit_label,
-                min_elapsed_seconds=5.0,
-                lesson_dir=lesson_dir
-            )
-
-            for iss in res.issues:
+            for iss in _validated_review_issues(client, unit, prompt, lesson_dir, unit_label):
                 iss.unit_id = unit.unit_id
+                if iss.segment_id and iss.segment_id not in unit.source_segment_ids:
+                    LOG.warning("Segmento %s fuori dall'unità %s: ricalcolo ancora review",
+                                iss.segment_id, unit.unit_id)
+                    iss.segment_id = None
                 if not iss.segment_id:
                     iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
                 all_science_issues.append(iss)

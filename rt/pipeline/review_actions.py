@@ -66,6 +66,10 @@ def submit_review_decision(
             raise ValueError("Questa questione ha già una decisione. Aggiorna la pagina.")
 
         is_asr = _is_no_diff_issue_type(issue)
+        if not is_asr and action in {"accepted", "edited"}:
+            unit_content = _unit_content(lesson_dir, issue)
+            if not unit_content or not issue.claim.strip() or issue.claim.strip() not in unit_content:
+                raise ValueError("Il claim non è presente nel draft: impossibile applicare la correzione. Apri il file delle issue per verificarla.")
         if action == "rejected" and is_asr:
             raise ValueError("Per una verifica ASR puoi accettare il testo o modificarlo.")
         if action == "accepted":

@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 from datetime import date
 from pathlib import Path
+import subprocess
+import sys
 from typing import Optional
 
 import gradio as gr
@@ -12,7 +14,7 @@ from starlette.middleware import Middleware
 from rt.pipeline.review_actions import submit_review_decision, undo_web_decision
 from rt.tui.data import LessonSummary
 from rt.web.data import (
-    IssueDetail, configuration_summary, issue_choices, issue_detail, lesson_card,
+    IssueDetail, configuration_summary, issue_choices, issue_detail, issue_sidebar, lesson_card,
     lesson_audio_html, lesson_preview_html, lesson_stats, lessons_root, list_lessons,
     sidebar_lessons, web_audio_directory,
 )
@@ -187,6 +189,13 @@ element.addEventListener('click', event => {
   }, 60000);
 });
 """
+ISSUE_SIDEBAR_JS = """
+element.addEventListener('click', event => {
+  const issue = event.target.closest('button[data-issue-id]');
+  if (issue) trigger('issue_selected', { issue_id: issue.dataset.issueId });
+  if (event.target.closest('button[data-open-issues-file]')) trigger('open_issues_file');
+});
+"""
 SELECTION_DONE_JS = """
 watch('value', () => window.dispatchEvent(new CustomEvent('rt-selection-done', {
   detail: { token: props.value }
@@ -229,6 +238,7 @@ def _selection_view(root: str, lesson_dir: Optional[str]):
         lesson_card(lesson), lesson_preview_html(lesson),
         lesson_audio_html(lesson),
         gr.update(choices=choices, value=issue_id),
+        issue_sidebar(lesson, issue_id),
         *_review_values(IssueDetail()),
     )
 
@@ -236,6 +246,30 @@ def _selection_view(root: str, lesson_dir: Optional[str]):
 @log_action("review.issue")
 def _review_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str]):
     return _review_values(issue_detail(_selected(list_lessons(root), lesson_dir), issue_id))
+
+
+def _select_issue(root: str, lesson_dir: Optional[str], evt: gr.EventData):
+    lesson = _require_lesson(root, lesson_dir)
+    choices, _ = issue_choices(lesson)
+    if evt.issue_id not in {value for _, value in choices}:
+        raise gr.Error("Issue non disponibile: aggiorna l'elenco.")
+    return (gr.update(value=evt.issue_id), *_review_values(issue_detail(lesson, evt.issue_id)),
+            issue_sidebar(lesson, evt.issue_id))
+
+
+def _open_issues_file(root: str, lesson_dir: Optional[str]) -> None:
+    lesson = _require_lesson(root, lesson_dir)
+    from rt.pipeline.review import get_science_issues_path
+    path = Path(get_science_issues_path(lesson.dir_path))
+    if not path.is_file():
+        raise gr.Error("File delle issue non trovato.")
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    try:
+        subprocess.Popen([opener, str(path)], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        raise gr.Error(f"Impossibile aprire il file: {exc}") from exc
+    gr.Info("File delle issue aperto nell'app predefinita di questo computer.")
 
 
 @log_action("review.apri")
@@ -283,7 +317,8 @@ def _decision_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str]
     detail = issue_detail(lesson, next_issue)
     return (
         lesson_stats(lessons), lesson_card(lesson), lesson_preview_html(lesson),
-        gr.update(choices=choices, value=next_issue), *_review_values(detail, status),
+        gr.update(choices=choices, value=next_issue), issue_sidebar(lesson, next_issue),
+        *_review_values(detail, status),
     )
 
 
@@ -347,35 +382,40 @@ def build_app(root: str) -> gr.Blocks:
                 back_review = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
                 issue_picker = gr.Dropdown(
                     choices=initial_choices, value=initial_issue, label="Issue da valutare",
-                    filterable=True,
+                    filterable=True, visible=False,
                 )
-                action_status = gr.Markdown(visible=False, elem_id="rt-action-status")
-                issue_header = gr.HTML(initial_detail.heading)
                 with gr.Row():
-                    original = gr.Textbox(value=initial_detail.claim, label="Affermazione da valutare",
-                                          lines=5, interactive=False, elem_id="rt-review-source")
-                    suggested = gr.Textbox(value=initial_detail.proposal, label="Correzione proposta / testo deciso",
-                                           lines=5, interactive=False, elem_id="rt-review-proposal")
-                diff_view = gr.HTML(initial_detail.diff)
-                explanation = gr.Markdown(f"**Motivo**\n\n{initial_detail.reason}")
-                with gr.Accordion("Contesto: unità completa e trascrizione sorgente", open=False):
-                    unit_text = gr.Textbox(value=initial_detail.unit_text, label="Unità completa",
-                                           lines=14, max_lines=18, interactive=False)
-                    source_quote = gr.Textbox(value=initial_detail.source_quote,
-                                              label="Citazione della trascrizione originale",
-                                              lines=5, interactive=False)
-                audio_player = gr.Audio(value=initial_detail.audio, label="Ascolta il passaggio",
-                                        interactive=False, buttons=[], format="wav")
-                with gr.Row():
-                    accept = gr.Button("Accetta", interactive=initial_detail.can_accept, variant="primary")
-                    reject = gr.Button("Mantieni originale", interactive=initial_detail.can_reject)
-                    modify = gr.Button("Modifica…", interactive=initial_detail.can_edit)
-                    undo = gr.Button("Riapri decisione", interactive=initial_detail.can_undo)
-                editor = gr.Textbox(value=initial_detail.editor_initial, label="Testo corretto",
-                                    lines=8, visible=False)
-                with gr.Row():
-                    save_edit = gr.Button("Salva modifica", variant="primary", visible=False)
-                    cancel_edit = gr.Button("Annulla modifica", visible=False)
+                    with gr.Column(scale=1, min_width=240):
+                        issue_list = gr.HTML(issue_sidebar(initial_lesson, initial_issue),
+                                             js_on_load=ISSUE_SIDEBAR_JS, elem_id="rt-issue-list")
+                    with gr.Column(scale=3, min_width=320):
+                        action_status = gr.Markdown(visible=False, elem_id="rt-action-status")
+                        issue_header = gr.HTML(initial_detail.heading)
+                        with gr.Row():
+                            original = gr.Textbox(value=initial_detail.claim, label="Affermazione da valutare",
+                                                  lines=5, interactive=False, elem_id="rt-review-source")
+                            suggested = gr.Textbox(value=initial_detail.proposal, label="Correzione proposta / testo deciso",
+                                                   lines=5, interactive=False, elem_id="rt-review-proposal")
+                        diff_view = gr.HTML(initial_detail.diff)
+                        explanation = gr.Markdown(f"**Motivo**\n\n{initial_detail.reason}")
+                        with gr.Accordion("Contesto: unità completa e trascrizione sorgente", open=False):
+                            unit_text = gr.Textbox(value=initial_detail.unit_text, label="Unità completa",
+                                                   lines=14, max_lines=18, interactive=False)
+                            source_quote = gr.Textbox(value=initial_detail.source_quote,
+                                                      label="Citazione della trascrizione originale",
+                                                      lines=5, interactive=False)
+                        audio_player = gr.Audio(value=initial_detail.audio, label="Ascolta il passaggio",
+                                                interactive=False, buttons=[], format="wav")
+                        with gr.Row():
+                            accept = gr.Button("Accetta", interactive=initial_detail.can_accept, variant="primary")
+                            reject = gr.Button("Mantieni originale", interactive=initial_detail.can_reject)
+                            modify = gr.Button("Modifica…", interactive=initial_detail.can_edit)
+                            undo = gr.Button("Riapri decisione", interactive=initial_detail.can_undo)
+                        editor = gr.Textbox(value=initial_detail.editor_initial, label="Testo corretto",
+                                            lines=8, visible=False)
+                        with gr.Row():
+                            save_edit = gr.Button("Salva modifica", variant="primary", visible=False)
+                            cancel_edit = gr.Button("Annulla modifica", visible=False)
             with gr.Tab("Configurazione", id="config"):
                 back_config = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
                 gr.HTML(configuration_summary(root))
@@ -395,8 +435,8 @@ def build_app(root: str) -> gr.Blocks:
         review_outputs = [issue_header, original, suggested, diff_view, explanation, source_quote,
                           unit_text, audio_player, accept, reject, modify, undo, editor,
                           save_edit, cancel_edit, action_status]
-        view_outputs = [card, preview, lesson_audio, issue_picker, *review_outputs]
-        decision_outputs = [stats, card, preview, issue_picker, *review_outputs]
+        view_outputs = [card, preview, lesson_audio, issue_picker, issue_list, *review_outputs]
+        decision_outputs = [stats, card, preview, issue_picker, issue_list, *review_outputs]
 
         def select_sidebar(evt: gr.EventData):
             return _select_view(root, evt)
@@ -409,6 +449,11 @@ def build_app(root: str) -> gr.Blocks:
         issue_picker.input(lambda path, issue_id: _review_view(root, path, issue_id),
                            inputs=[picker, issue_picker], outputs=review_outputs,
                            show_progress="hidden")
+        issue_list.issue_selected(lambda path, evt: _select_issue(root, path, evt),
+                                  inputs=picker, outputs=[issue_picker, *review_outputs, issue_list],
+                                  show_progress="hidden")
+        issue_list.open_issues_file(lambda path: _open_issues_file(root, path),
+                                    inputs=picker, show_progress="hidden")
         refresh.click(lambda path: _refresh_view(root, path), inputs=picker,
                       outputs=[stats, picker, sidebar_list, *view_outputs], show_progress="hidden")
         accept.click(lambda path, issue: _decision_view(root, path, issue, "accepted"),

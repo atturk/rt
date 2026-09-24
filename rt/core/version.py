@@ -150,7 +150,7 @@ def run_update(project_root: str) -> None:
     3. Estrae l'archivio nella directory temporanea.
     4. Sincronizza il codice estratto dentro project_root preservando configurazioni utente.
     5. Pulisce la directory temporanea.
-    6. Re-installa requirements.txt nel virtualenv.
+    6. Re-installa le dipendenze CLI e web nel virtualenv.
     7. Mostra versione aggiornata.
     """
     if os.path.exists(os.path.join(project_root, ".git")):
@@ -259,7 +259,9 @@ def run_update(project_root: str) -> None:
     # Reinstalla le dipendenze nel virtualenv
     venv_python = os.path.join(project_root, ".venv", "bin", "python3")
     py_exec = venv_python if os.path.isfile(venv_python) else sys.executable
-    req_file = os.path.join(project_root, "requirements.txt")
+    req_file = os.path.join(project_root, "requirements-web.txt")
+    if not os.path.isfile(req_file):
+        req_file = os.path.join(project_root, "requirements.txt")
     if os.path.isfile(req_file):
         try:
             subprocess.run(

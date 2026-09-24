@@ -260,7 +260,7 @@ fi
 
 echo "📦 Aggiornamento pip e installazione dipendenze in .venv..."
 if "${VENV_DIR}/bin/python" -m pip install --upgrade pip -q >>"$LOG_FILE" 2>&1 && \
-   "${VENV_DIR}/bin/pip" install -r requirements.txt -q >>"$LOG_FILE" 2>&1; then
+   "${VENV_DIR}/bin/pip" install -r requirements-web.txt -q >>"$LOG_FILE" 2>&1; then
     echo "${GREEN}✅ Dipendenze Python installate con successo.${RESET}"
 else
     echo "${RED}❌ Installazione dipendenze Python fallita — vedi install.log per i dettagli.${RESET}" >&2
@@ -365,4 +365,3 @@ if [ -t 0 ] && [ -t 1 ]; then
     exec_shell="${SHELL:-/bin/zsh}"
     exec "$exec_shell" -l
 fi
-

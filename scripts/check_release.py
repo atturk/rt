@@ -9,12 +9,12 @@ import tarfile
 
 
 REQUIRED = {
-    'VERSION', 'README.md', 'requirements.txt', 'constraints.txt',
+    'VERSION', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
     'install.sh', 'bootstrap.sh', 'bin/rt', 'rt/cli.py', '.env.example',
     'config.example/general.yaml',
 }
 ALLOWED_ROOT_FILES = {
-    'VERSION', 'README.md', 'requirements.txt', 'constraints.txt',
+    'VERSION', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
     'install.sh', 'bootstrap.sh', '.env.example',
 }
 ALLOWED_DIRS = {'rt', 'bin', 'config.example', 'docs'}

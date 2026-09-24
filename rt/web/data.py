@@ -20,6 +20,7 @@ import numpy as np
 from markdown_it import MarkdownIt
 
 from rt.core.audio_clip import resolve_audio_path
+from rt.core.models import ScienceType
 from rt.core.config import load_config
 from rt.pipeline.issue_review import _prepare_issue_context
 from rt.pipeline.issue_review import _is_no_diff_issue_type
@@ -260,18 +261,105 @@ def review_issues(lesson_dir: str):
     return load_science_issues(lesson_dir), decisions
 
 
+WARNING_LABELS = {
+    ScienceType.ERR_ASR_ST: (
+        "Qualità ASR · statistica",
+        "Un segmento audio dell'unità ha una confidenza ASR insolitamente bassa. Controlla l'unità ascoltando l'audio: non è un errore confermato.",
+    ),
+    ScienceType.ERR_ASR_LLM: (
+        "Qualità ASR · modello",
+        "Un modello ha trovato sospetto un segmento ASR già segnalato dalla statistica. Confronta unità e audio: non è un errore confermato.",
+    ),
+    ScienceType.ERR_REWRITE_DRIFT: (
+        "Fedeltà al parlato",
+        "Il pre-filtro Jev segnala che l'unità potrebbe discostarsi dal trascritto grezzo. Confronta unità e audio: non è un errore confermato.",
+    ),
+}
+
+
+def _issue_anchor_available(issue, units: dict, segments: set[str]) -> bool:
+    unit = units.get(issue.unit_id)
+    if unit is None:
+        return False
+    if issue.segment_id and issue.segment_id not in segments:
+        return False
+    if issue.type == ScienceType.ERR_CONCETTUALE:
+        return bool(issue.claim.strip() and issue.claim.strip() in unit.content)
+    return True
+
+
+def issue_sidebar(lesson: Optional[LessonSummary], selected_issue: Optional[str]) -> str:
+    """Elenco compatto: errori concettuali e segnalazioni di qualità restano distinti."""
+    if lesson is None:
+        return '<div class="rt-issue-sidebar"><p>Nessuna lezione selezionata.</p></div>'
+    issues, decisions = review_issues(lesson.dir_path)
+    try:
+        draft = load_draft(lesson.dir_path)
+        units = {unit.unit_id: unit for unit in draft.units}
+    except (OSError, ValueError, KeyError):
+        units = {}
+    try:
+        from rt.core.lesson_paths import lesson_path
+        from rt.core.segments import load_segments_json
+        segments = {s.id for s in load_segments_json(lesson_path(lesson.dir_path, "segments.json")).segments}
+    except (OSError, ValueError, KeyError):
+        segments = set()
+    rows = []
+    orphan_count = 0
+    for issue in issues:
+        if not _issue_anchor_available(issue, units, segments):
+            orphan_count += 1
+            continue
+        warning = WARNING_LABELS.get(issue.type)
+        label = warning[0] if warning else "Errore concettuale"
+        title = warning[1] if warning else "Correzione concettuale proposta per un passaggio del testo."
+        marker = "⚠" if warning else "●"
+        decided = " · valutata" if issue.id in decisions else ""
+        active = " active" if issue.id == selected_issue else ""
+        rows.append(
+            f'<button type="button" class="rt-issue-item{active}" data-issue-id="{escape(issue.id, quote=True)}" '
+            f'title="{escape(title, quote=True)}">'
+            f'<span class="rt-issue-marker" aria-hidden="true">{marker}</span>'
+            f'<span><strong>{escape(label)}</strong><small>Unità {escape(issue.unit_id or "?")}{decided}</small></span>'
+            '</button>'
+        )
+    orphan_note = (
+        '<div class="rt-orphan-note"><p>'
+        f'{orphan_count} issue senza unità, segmento o claim corrispondente. '
+        'Controlla il file JSON delle issue.</p>'
+        '<button type="button" data-open-issues-file="1">Apri file JSON</button></div>'
+        if orphan_count else ''
+    )
+    return ('<aside class="rt-issue-sidebar" aria-label="Issue della lezione">'
+            + (''.join(rows) or '<p class="rt-sidebar-empty">Nessuna issue ancorata.</p>')
+            + orphan_note + '</aside>')
+
+
 def issue_choices(lesson: Optional[LessonSummary]) -> tuple[list[tuple[str, str]], Optional[str]]:
     if lesson is None:
         return [], None
     issues, decisions = review_issues(lesson.dir_path)
+    try:
+        units = {unit.unit_id: unit for unit in load_draft(lesson.dir_path).units}
+    except (OSError, ValueError, KeyError):
+        units = {}
+    try:
+        from rt.core.lesson_paths import lesson_path
+        from rt.core.segments import load_segments_json
+        segments = {s.id for s in load_segments_json(lesson_path(lesson.dir_path, "segments.json")).segments}
+    except (OSError, ValueError, KeyError):
+        segments = set()
     choices = []
     for issue in issues:
+        if not _issue_anchor_available(issue, units, segments):
+            continue
         decision = decisions.get(issue.id)
         marker = {"accepted": "✓", "rejected": "×", "edited": "✎"}.get(decision.decision, "•") if decision else "○"
         short_claim = issue.claim.replace("\n", " ").strip()[:65]
         choices.append((f"{marker} {issue.unit_id or 'Unità'} · {short_claim}", issue.id))
-    pending = next((issue.id for issue in issues if issue.id not in decisions), None)
-    return choices, pending or (issues[0].id if issues else None)
+    visible_ids = {value for _, value in choices}
+    pending = next((issue.id for issue in issues if issue.id in visible_ids and issue.id not in decisions), None)
+    return choices, pending or (choices[0][1] if choices else None)
 
 
 def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> IssueDetail:
@@ -296,6 +384,7 @@ def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> Is
     )
     unit = _unit_for_issue(lesson.dir_path, issue)
     is_asr = _is_no_diff_issue_type(issue)
+    concept_anchor = is_asr or bool(unit and issue.claim.strip() in unit.content)
     source = issue.source_quote or context.get("sentence") or ""
     proposal = decision.resolved_text if decision and decision.resolved_text else (issue.suggested_fix or "Nessuna proposta automatica")
     reason = issue.reason or ""
@@ -320,9 +409,9 @@ def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> Is
         diff=_word_diff(issue.claim, None if is_asr else sanitize_suggested_fix(issue.suggested_fix)),
         audio=audio,
         editor_initial=(unit.content if unit else issue.claim) if is_asr else issue.claim,
-        can_accept=decision is None and (not is_asr or unit is not None),
-        can_reject=decision is None and not is_asr,
-        can_edit=decision is None,
+        can_accept=decision is None and concept_anchor and (not is_asr or unit is not None),
+        can_reject=decision is None and concept_anchor and not is_asr,
+        can_edit=decision is None and concept_anchor,
         can_undo=decision is not None and decision.resolved_by == "web",
     )
 

@@ -1170,6 +1170,11 @@ class LLMClient:
 
             u_match = re.search(r"UNITÀ:\s*([0-9.]+)", prompt)
             unit_id = u_match.group(1) if u_match else "1.1"
+            draft_match = re.search(r"TESTO RIELABORATO:\s*\n(.*?)(?:\n\n(?:---|Individua)|\Z)", prompt, re.DOTALL)
+            draft_text = draft_match.group(1).strip() if draft_match else ""
+            mock_claim = draft_text.split(". ", 1)[0].strip()
+            if mock_claim and not mock_claim.endswith(".") and mock_claim + "." in draft_text:
+                mock_claim += "."
 
             seg_matches = re.findall(r"seg_\d{6}", prompt)
             if not seg_matches:
@@ -1208,7 +1213,7 @@ class LLMClient:
                         severity=sev,
                         unit_id=unit_id,
                         segment_id=seg_id,
-                        claim=f"[MOCK] Affermazione scientifica analizzata #{i}",
+                        claim=mock_claim or "[MOCK] Affermazione scientifica analizzata",
                         source_quote=quote,
                         reason=f"[MOCK] Critica scientifica #{i} di tipo {sci_type.value}",
                         suggested_fix=f"[MOCK] Correzione scientifica proposta #{i}",
