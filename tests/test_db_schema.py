@@ -19,7 +19,7 @@ from rt.db.models import Base
 from rt.db.repositories import LessonRepository, SettingRepository
 from rt.db.session import session_scope
 
-TABLES = {"lessons", "phase_runs", "issues", "review_decisions", "llm_calls", "settings"}
+TABLES = {"lessons", "phase_runs", "issues", "review_decisions", "llm_calls", "settings", "state_documents"}
 
 
 def test_migrations_apply_in_memory():

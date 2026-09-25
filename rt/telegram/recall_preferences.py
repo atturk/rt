@@ -8,6 +8,8 @@ import os
 import json
 from typing import Optional
 
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
+
 DEFAULT_STYLE = "quiz"
 VALID_STYLES = ("quiz", "mirata", "vasta")
 
@@ -18,11 +20,15 @@ def _path(state_dir: str) -> str:
 
 def get_active_style(state_dir: str) -> str:
     path = _path(state_dir)
-    if not os.path.isfile(path):
-        return DEFAULT_STYLE
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_document(path)
+        if data is MISSING:
+            return DEFAULT_STYLE
+        if data is NO_DATABASE:
+            if not os.path.isfile(path):
+                return DEFAULT_STYLE
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
         style = data.get("active_style")
         return style if style in VALID_STYLES else DEFAULT_STYLE
     except Exception:
@@ -32,8 +38,10 @@ def get_active_style(state_dir: str) -> str:
 def set_active_style(state_dir: str, style: str) -> None:
     if style not in VALID_STYLES:
         raise ValueError(f"Stile non valido: '{style}'. Valori ammessi: {', '.join(VALID_STYLES)}.")
-    os.makedirs(state_dir, exist_ok=True)
     path = _path(state_dir)
+    if write_document(path, {"active_style": style}):
+        return
+    os.makedirs(state_dir, exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump({"active_style": style}, f, ensure_ascii=False, indent=2)

@@ -8,6 +8,8 @@ import json
 from datetime import datetime
 from typing import Optional, Dict, Any
 
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
+
 
 def _path(state_dir: str) -> str:
     return os.path.join(state_dir, "awaiting_feedback.json")
@@ -15,6 +17,9 @@ def _path(state_dir: str) -> str:
 
 def _load(state_dir: str) -> Dict[str, Any]:
     path = _path(state_dir)
+    doc = read_document(path)
+    if doc is not NO_DATABASE:
+        return {} if doc is MISSING else doc
     if not os.path.isfile(path):
         return {}
     with open(path, "r", encoding="utf-8") as f:
@@ -22,8 +27,10 @@ def _load(state_dir: str) -> Dict[str, Any]:
 
 
 def _save(state_dir: str, data: Dict[str, Any]) -> None:
-    os.makedirs(state_dir, exist_ok=True)
     path = _path(state_dir)
+    if write_document(path, data):
+        return
+    os.makedirs(state_dir, exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

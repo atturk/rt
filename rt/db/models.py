@@ -131,3 +131,14 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(256), primary_key=True)
     value: Mapped[Any] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class StateDocument(Base):
+    """Documento JSON di stato che prima viveva in un file (stato del daemon Telegram:
+    sessioni attive, registro, coda issue, feedback atteso...). key è il percorso assoluto
+    del file originale, così ogni modulo mantiene la propria struttura dati."""
+    __tablename__ = "state_documents"
+
+    key: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

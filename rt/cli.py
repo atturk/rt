@@ -595,6 +595,7 @@ def cmd_run(args):
 
 def cmd_telegram_daemon(args):
     from rt.telegram.daemon import run_daemon
+    _upgrade_database_quietly()
     run_daemon(state_dir=getattr(args, "state_dir", None))
 
 

@@ -10,6 +10,8 @@ import time
 from datetime import datetime
 from typing import Optional, Dict, Any, Union
 
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
+
 
 def _sessions_path(state_dir: str) -> str:
     return os.path.join(state_dir, "active_sessions.json")
@@ -52,6 +54,9 @@ def _session_key(chat_id: Union[int, str], thread_id: Optional[Union[int, str]] 
 
 def _load_sessions(state_dir: str) -> Dict[str, Any]:
     path = _sessions_path(state_dir)
+    doc = read_document(path)
+    if doc is not NO_DATABASE:
+        return {"schema_version": "1.0", "sessions": {}} if doc is MISSING else doc
     if not os.path.isfile(path):
         return {"schema_version": "1.0", "sessions": {}}
     try:
@@ -63,6 +68,8 @@ def _load_sessions(state_dir: str) -> Dict[str, Any]:
 
 def _save_sessions(state_dir: str, data: Dict[str, Any]) -> None:
     path = _sessions_path(state_dir)
+    if write_document(path, data):
+        return
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

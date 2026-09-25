@@ -9,6 +9,7 @@ import json
 from datetime import datetime
 from typing import Optional, Dict, Any
 from rt.core.lesson_paths import lesson_path
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
 
 
 def _get_audio_sent_path(lesson_dir: str) -> str:
@@ -17,6 +18,9 @@ def _get_audio_sent_path(lesson_dir: str) -> str:
 
 def _load_all_sent(lesson_dir: str) -> Dict[str, Any]:
     path = _get_audio_sent_path(lesson_dir)
+    doc = read_document(path)
+    if doc is not NO_DATABASE:
+        return {} if doc is MISSING else doc
     if not os.path.isfile(path):
         return {}
     try:
@@ -28,6 +32,8 @@ def _load_all_sent(lesson_dir: str) -> Dict[str, Any]:
 
 def _save_all_sent(lesson_dir: str, data: Dict[str, Any]) -> None:
     path = _get_audio_sent_path(lesson_dir)
+    if write_document(path, data):
+        return
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

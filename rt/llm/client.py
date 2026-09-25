@@ -56,7 +56,9 @@ def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
-        pass  # Il log di debug non deve mai far fallire la pipeline
+        return  # Il log di debug non deve mai far fallire la pipeline
+    from rt.db.llm_calls import record_llm_call
+    record_llm_call(lesson_dir, entry)
 
 
 def _is_openrouter_free_tier(provider: str, model: str) -> bool:

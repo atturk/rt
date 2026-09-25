@@ -291,11 +291,12 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   `postgresql://…` (driver da installare a parte).
 - **SQLite**: WAL, `foreign_keys=ON`, `busy_timeout` 30 s e transazioni `BEGIN IMMEDIATE`,
   così CLI, daemon Telegram e web scrivono in coda senza errori di lock.
-- **Creazione**: solo esplicita, con `rt db upgrade`, oppure automatica all'avvio di `rt web`.
+- **Creazione**: solo esplicita, con `rt db upgrade`, oppure automatica all'avvio di `rt web`
+  e di `rt telegram-daemon`.
   Finché il file non esiste, `get_database()` restituisce `None` e RT lavora solo sui file;
   un DB illeggibile produce un avviso nei log e lo stesso comportamento.
 - **Modelli** (`rt/db/models.py`): `Lesson`, `PhaseRun`, `Issue`, `ReviewDecision`,
-  `LlmCall`, `Setting`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
+  `LlmCall`, `Setting`, `StateDocument`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
 - **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
 - **Sincronizzazione** (`rt/db/sync.py`): `rt db sync` importa le lezioni di `lessons_root`
@@ -308,6 +309,24 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   al momento (`check_phase_status`), che il DB non conserva.
 - **Test**: `tests/conftest.py` spegne il DB per ogni test (`RT_DATABASE_URL=off`); la
   fixture `rt_db` ne crea uno temporaneo.
+
+- **Fonte di verità nel DB** (quando il DB esiste):
+  - *Decisioni di review* (`rt/db/ledger_store.py`): `record_decision`,
+    `revert_last_decision` e `purge_decisions_by_prefix` scrivono nel DB in una transazione e
+    riesportano `review_decisions.json` nello stesso formato (chi legge usa ancora il file).
+    Gli annullamenti restano nel DB con `reverted_at`. Se il file cambia fuori da RT (hash
+    diverso da `Lesson.ledger_sha`) viene reimportato prima della modifica successiva, ed è
+    l'unico caso in cui `rt db sync` tocca il ledger. `review_service` tiene la scrittura
+    sotto il lock `.rt.lock` della lezione.
+  - *Chiamate LLM* (`rt/db/llm_calls.py`): ogni riga di `llm_debug.log` diventa un `LlmCall`
+    (la prima volta per una lezione si importa l'intero log); `rt cost` legge dal DB con
+    fallback al file.
+  - *Stato del daemon Telegram* (`rt/db/state_documents.py`): `active_sessions.json`,
+    `registry.json`, `awaiting_feedback.json`, `recall_preferences.json`,
+    `last_lesson_per_topic.json`, `telegram_issue_queue.json` e `telegram_audio_sent.json`
+    diventano righe di `state_documents` (chiave = percorso del file). Alla prima lettura il
+    JSON esistente viene importato e rinominato `.migrated`, mai cancellato.
+  Senza DB tutte queste funzioni scrivono i file come prima.
 
 Nuova migrazione: modificare `rt/db/models.py`, poi generare la revisione con Alembic
 (`alembic.command.revision(alembic_config(url), message, autogenerate=True)`) e rileggerla.

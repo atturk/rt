@@ -11,6 +11,7 @@ import hashlib
 import logging
 import os
 import threading
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -101,9 +102,9 @@ def issues_from_files(lesson_dir: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def decisions_from_files(lesson_dir: str) -> List[Dict[str, Any]]:
+def decisions_from_files(lesson_dir: str, strict: bool = True) -> List[Dict[str, Any]]:
     from rt.pipeline.ledger import load_ledger
-    return [d.model_dump(mode="json") for d in load_ledger(lesson_dir, strict=True).decisions]
+    return [d.model_dump(mode="json") for d in load_ledger(lesson_dir, strict=strict).decisions]
 
 
 # ---------------------------------------------------------------- import nel DB
@@ -113,7 +114,8 @@ def import_ledger(session: Session, lesson: Lesson, lesson_dir: str, force: bool
     sha = ledger_file_sha(lesson_dir)
     if not force and lesson.ledger_sha == sha:
         return False
-    decisions = decisions_from_files(lesson_dir) if sha != MISSING_LEDGER_SHA else []
+    # lettura tollerante come load_ledger: un file illeggibile vale come ledger vuoto
+    decisions = decisions_from_files(lesson_dir, strict=False) if sha != MISSING_LEDGER_SHA else []
     DecisionRepository(session).replace_active(lesson, decisions)
     lesson.ledger_sha = sha
     return True
@@ -130,6 +132,8 @@ def sync_lesson(session: Session, lesson_dir: str) -> Optional[Lesson]:
     PhaseRunRepository(session).replace_for_lesson(lesson, phase_runs_from_files(lesson_dir))
     IssueRepository(session).replace_for_lesson(lesson, issues_from_files(lesson_dir))
     import_ledger(session, lesson, lesson_dir)
+    from rt.db.llm_calls import import_log_if_empty
+    import_log_if_empty(session, lesson)
     return lesson
 
 
@@ -152,6 +156,18 @@ def sync_all(db: Database, lessons_root: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------- dual-write
+
+@contextmanager
+def suspend_dual_write():
+    """Dentro una transazione che già aggiorna la lezione (ledger_store) il dual-write
+    annidato aprirebbe una seconda transazione in attesa della prima."""
+    previous = getattr(_local, "active", False)
+    _local.active = True
+    try:
+        yield
+    finally:
+        _local.active = previous
+
 
 def dual_write_lesson(lesson_dir: str) -> None:
     """Aggiorna il DB dopo una scrittura dei file di stato. Mai bloccante: senza DB non fa
