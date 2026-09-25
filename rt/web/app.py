@@ -33,6 +33,17 @@ from rt.telegram.daemon_status import get_daemon_pid, is_daemon_running
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CSS = (Path(__file__).with_name("style.css")).read_text(encoding="utf-8")
+NAV_ICONS = {
+    "＋": str(Path(__file__).with_name("nav_plus.svg")),
+    "←": str(Path(__file__).with_name("nav_back.svg")),
+    "⚙": str(Path(__file__).with_name("nav_settings.svg")),
+}
+
+
+def _nav_update(symbol: str):
+    return gr.update(value=symbol, icon=NAV_ICONS[symbol])
+
+
 CARD_JS = """
 element.addEventListener('click', event => {
   if (event.target.closest('[data-open-review]')) trigger('open_review');
@@ -71,11 +82,34 @@ const wireTimecodes = () => {
   }
 };
 wireTimecodes();
+let commentObserver = null;
 const focusIssue = () => {
+  commentObserver?.disconnect();
   const anchor = element.querySelector('#rt-issue-anchor');
-  if (anchor) anchor.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const article = element.querySelector('.rt-document');
+  const comment = article?.querySelector('.rt-inline-comment');
+  if (!anchor || !article || !comment) return;
+  const placeComment = () => {
+    const rectangles = anchor.getClientRects();
+    const reference = rectangles[rectangles.length - 1] || anchor.getBoundingClientRect();
+    const articleRect = article.getBoundingClientRect();
+    const top = reference.bottom - articleRect.top + 12;
+    const available = Math.max(12, article.clientWidth - comment.offsetWidth - 12);
+    const left = Math.min(Math.max(12, reference.left - articleRect.left), available);
+    comment.style.top = `${top}px`;
+    comment.style.left = `${left}px`;
+  };
+  placeComment();
+  anchor.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  commentObserver = new ResizeObserver(placeComment);
+  commentObserver.observe(article);
 };
 element.addEventListener('click', event => {
+  if (event.target.closest('[data-comment-close]')) {
+    const comment = element.querySelector('.rt-inline-comment');
+    if (comment) comment.hidden = true;
+    return;
+  }
   const button = event.target.closest('[data-review-action]');
   if (!button) return;
   const text = element.querySelector('#rt-comment-edit')?.value || '';
@@ -162,15 +196,22 @@ watch('value', () => window.dispatchEvent(new CustomEvent('rt-selection-done', {
 """
 BOT_JS = """
 const setTitle = () => {
-  const button = document.querySelector('#rt-bot-nav button');
+  const button = document.querySelector('#rt-bot-nav');
   if (button) {
     const match = button.textContent.match(/PID (\\d+)/);
     const pid = match?.[1];
     button.classList.toggle('rt-bot-active', Boolean(pid));
     button.title = pid ? `Bot Telegram attivo · PID ${pid}` : 'Avvia il bot Telegram in background';
     button.setAttribute('aria-label', button.title);
-    const wrapper = document.querySelector('#rt-bot-nav');
-    if (wrapper) wrapper.dataset.botTooltip = button.title;
+    button.dataset.botTooltip = button.title;
+  }
+  for (const [id, label] of [['rt-upload-nav', 'Importa audio'], ['rt-config-nav', 'Configurazione']]) {
+    const nav = document.getElementById(id);
+    if (!nav) continue;
+    const back = nav.textContent.includes('←');
+    nav.classList.toggle('rt-nav-back', back);
+    nav.title = back ? 'Torna alla dashboard' : label;
+    nav.setAttribute('aria-label', nav.title);
   }
 };
 const watchBot = () => {
@@ -453,17 +494,20 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
         with gr.Row(elem_id="rt-header"):
             gr.HTML('<div class="rt-brand"><h1>rt<span>.</span></h1>'
                     '<p>Le tue lezioni, dall’audio agli appunti pronti per lo studio.</p></div>', scale=1)
-            go_upload = gr.Button("＋", variant="secondary", size="sm", scale=0,
+            go_upload = gr.Button("＋", icon=NAV_ICONS["＋"],
+                                  variant="secondary", size="sm", scale=0,
                                   elem_id="rt-upload-nav")
             current_bot_pid = get_daemon_pid()
             bot_button = gr.Button(f"PID {current_bot_pid}" if current_bot_pid else "",
                                    icon=Path(__file__).with_name("telegram.svg"),
                                    interactive=current_bot_pid is None, size="sm", scale=0,
                                    elem_id="rt-bot-nav")
-            go_config = gr.Button("⚙" if root and Path(root).is_dir() else "←",
+            initial_config_icon = "⚙" if root and Path(root).is_dir() else "←"
+            go_config = gr.Button(initial_config_icon, icon=NAV_ICONS[initial_config_icon],
                                   variant="secondary", size="sm", scale=0,
                                   elem_id="rt-config-nav")
-            gr.HTML('<span aria-hidden="true" style="display:none"></span>', js_on_load=BOT_JS)
+            gr.HTML('<span aria-hidden="true"></span>', js_on_load=BOT_JS,
+                    elem_id="rt-bot-script")
         bot_timer = gr.Timer(value=5)
         config_open = gr.State(not bool(root and Path(root).is_dir()))
         upload_open = gr.State(False)
@@ -613,7 +657,7 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
         sidebar_list.lesson_selected(select_sidebar,
                                      outputs=[picker, *view_outputs, review_panel, pages, selection_done],
                                      show_progress="hidden").then(
-                                         lambda: (gr.update(value="⚙"), gr.update(value="＋"), False, False),
+                                         lambda: (_nav_update("⚙"), _nav_update("＋"), False, False),
                                          outputs=[go_config, go_upload, config_open, upload_open],
                                          show_progress="hidden")
         sidebar_list.client_log(_client_log, show_progress="hidden")
@@ -637,8 +681,8 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
             inputs=picker, outputs=[review_panel, preview], show_progress="hidden")
         def toggle_config(open_now: bool):
             return (gr.update(selected="dashboard" if open_now else "config"),
-                    gr.update(value="⚙" if open_now else "←"),
-                    gr.update(value="＋"), not open_now, False,
+                    _nav_update("⚙" if open_now else "←"),
+                    _nav_update("＋"), not open_now, False,
                     gr.update(visible=False))
 
         go_config.click(toggle_config, inputs=config_open,
@@ -646,8 +690,8 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                                  settings_modal], show_progress="hidden")
         def toggle_upload(open_now: bool):
             return (gr.update(selected="dashboard" if open_now else "upload"),
-                    gr.update(value="←" if not open_now else "＋"),
-                    gr.update(value="⚙"), not open_now, False,
+                    _nav_update("←" if not open_now else "＋"),
+                    _nav_update("⚙"), not open_now, False,
                     gr.update(visible=False))
         go_upload.click(toggle_upload, inputs=upload_open,
                         outputs=[pages, go_upload, go_config, upload_open, config_open,
@@ -665,7 +709,7 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
             inputs=[upload_file, upload_date, upload_subject, upload_topics, upload_transcribe],
             outputs=[upload_status, picker, sidebar_list, stats, *view_outputs,
                      review_panel, pages],
-        ).then(lambda: (gr.update(value="＋"), False),
+        ).then(lambda: (_nav_update("＋"), False),
                outputs=[go_upload, upload_open], show_progress="hidden")
 
         forms = [lessons_form, connection_form, phase_model_form, telegram_form, stt_form]
@@ -817,8 +861,8 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
             refreshed = _refresh_view(root, None)
             return (
                 configuration_summary(root), f"Cartella pronta: **{root}**",
-                *refreshed, gr.update(selected="dashboard"), gr.update(value="⚙"),
-                gr.update(value="＋"), False, False, gr.update(visible=False),
+                *refreshed, gr.update(selected="dashboard"), _nav_update("⚙"),
+                _nav_update("＋"), False, False, gr.update(visible=False),
             )
 
         save_root.click(configure_root, inputs=root_input,
@@ -846,10 +890,10 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 *_selection_view(root, chosen),
                 gr.update(visible=False),
                 gr.update(selected="dashboard" if root and Path(root).is_dir() else "config"),
-                gr.update(value="⚙" if root and Path(root).is_dir() else "←"),
+                _nav_update("⚙" if root and Path(root).is_dir() else "←"),
                 not bool(root and Path(root).is_dir()),
                 _bot_button(),
-                gr.update(value="＋"), False,
+                _nav_update("＋"), False,
                 gr.update(visible=not bool(root and Path(root).is_dir())),
                 gr.update(visible=not bool(root and Path(root).is_dir())),
             )
