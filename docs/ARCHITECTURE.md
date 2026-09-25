@@ -279,3 +279,27 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
 - **Regola di layering** (`tests/test_layering.py`, bloccante dalla fine della fase A):
   `rt/pipeline`, `rt/core` e `rt/services` non importano `textual`, `rich.prompt`,
   `questionary`, `rt.telegram`, `rt.tui`, `rt.web` e non chiamano `input()` o `sys.exit()`.
+
+## 8. Database (RT 4.0, fase B)
+
+Il pacchetto `rt/db` aggiunge un database SQLAlchemy 2.0 con migrazioni Alembic. I file della
+cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice, stato e storico.
+
+- **Dove vive**: `RT_DATABASE_URL` (variabile d'ambiente, `off` lo disattiva) >
+  `database_url` in `config/general.yaml` > SQLite in `<lessons_root>/.rt/rt.db` (oppure
+  `~/.rt/rt.db` se `lessons_root` non è impostato). Postgres funziona passando un URL
+  `postgresql://…` (driver da installare a parte).
+- **SQLite**: WAL, `foreign_keys=ON`, `busy_timeout` 30 s e transazioni `BEGIN IMMEDIATE`,
+  così CLI, daemon Telegram e web scrivono in coda senza errori di lock.
+- **Creazione**: solo esplicita, con `rt db upgrade`, oppure automatica all'avvio di `rt web`.
+  Finché il file non esiste, `get_database()` restituisce `None` e RT lavora solo sui file;
+  un DB illeggibile produce un avviso nei log e lo stesso comportamento.
+- **Modelli** (`rt/db/models.py`): `Lesson`, `PhaseRun`, `Issue`, `ReviewDecision`,
+  `LlmCall`, `Setting`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
+  esegue `alembic check` per garantire che modelli e migrazioni coincidano.
+- **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
+- **Test**: `tests/conftest.py` spegne il DB per ogni test (`RT_DATABASE_URL=off`); la
+  fixture `rt_db` ne crea uno temporaneo.
+
+Nuova migrazione: modificare `rt/db/models.py`, poi generare la revisione con Alembic
+(`alembic.command.revision(alembic_config(url), message, autogenerate=True)`) e rileggerla.

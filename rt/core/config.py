@@ -298,6 +298,7 @@ class RTConfig(BaseModel):
     show_monitor_verbose: bool = Field(default=False, description="Se True, mostra il box dettagliato multi-riga invece della riga compatta di default")
     pricing: Optional[Dict[str, Dict[str, Any]]] = Field(default=None, description="Pricing custom opzionale per provider e modello")
     searxng_base_url: Optional[str] = Field(default=None, description="URL base dell'istanza SearXNG self-hosted per la ricerca immagini web con --web-search")
+    database_url: Optional[str] = Field(default=None, description="URL SQLAlchemy del database (default: sqlite in <lessons_root>/.rt/rt.db; 'off' lo disattiva)")
 
     @property
     def llm(self) -> Dict[str, JobRoutingConfig]:

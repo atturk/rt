@@ -1,5 +1,6 @@
 # Versioni risolte e verificate; aggiornare insieme alla suite e alla matrice CI.
 # Vincoli, non elenco di pacchetti da installare. Python 3.11–3.14.
+alembic==1.20.0
 annotated-types==0.8.0
 anyio==4.15.1
 APScheduler==3.11.3
@@ -11,7 +12,9 @@ httpx==0.28.1
 idna==3.20
 iniconfig==2.3.0
 linkify-it-py==2.2.0
+Mako==1.4.3
 markdown-it-py==4.2.0
+MarkupSafe==3.0.3
 mdit-py-plugins==0.6.1
 mdurl==0.1.2
 packaging==26.3
@@ -29,6 +32,7 @@ PyYAML==6.0.3
 questionary==2.1.1
 requests==2.34.2
 rich==15.0.0
+SQLAlchemy==2.1.1
 textual==8.2.8
 textual-diff-view==0.1.5
 typing-inspection==0.4.4

@@ -87,6 +87,15 @@ Se aggiunto e impostato a `true`, mostra la vista estesa del monitor invece di q
 show_monitor_verbose: false
 ```
 
+### Campo opzionale: `database_url`
+URL SQLAlchemy del database di RT (indice lezioni, decisioni di review, costi, stato Telegram).
+Se assente si usa SQLite in `<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`);
+`off` lo disattiva. La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea
+con `rt db upgrade` (o all'avvio di `rt web`); senza DB RT funziona solo sui file come prima.
+```yaml
+database_url: "sqlite:////Users/io/Lezioni/.rt/rt.db"
+```
+
 ### Funzionalità opzionale: listino prezzi custom globale
 In alternativa al pricing per-route (vedi sezione 2), è possibile definire in `general.yaml` un listino custom globale per provider e modello, con priorità sulle stime hardcoded in `rt/llm/pricing.py`:
 ```yaml
