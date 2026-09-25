@@ -255,3 +255,14 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   `request_outline_revision(lesson_dir, feedback, ctx)`. La UI da terminale (app Textual e
   fallback testuale) è in `rt/tui/outline_review.py`; `rt/pipeline/outline_review.py` tiene
   solo la regola di gating `outline_needs_approval()`.
+- **Review delle issue** (`rt/services/review_service.py`): punto unico per elencare le issue
+  pendenti con contesto (unità, timecode, finestra audio), registrare una decisione
+  (`record_review_decision`, con `channel` cli/telegram/web/api e `actor`), annullare
+  l'ultima (`undo_last_decision`), applicare l'auto-accept e sapere se la review è completa.
+  Ogni scrittura del ledger avviene sotto il lock a file `.rt.lock` della lezione, quindi CLI,
+  daemon Telegram e web possono decidere in parallelo senza perdere decisioni. Il ledger
+  resta `review_decisions.json` nello stesso formato: `channel`/`actor` compaiono solo nelle
+  decisioni che li hanno. L'app Textual è in `rt/tui/issue_review.py`, l'invio via Telegram
+  in `rt/telegram/review_channel.py` (porta `ReviewChannel`), la web usa
+  `rt/pipeline/review_actions.py` come adattatore sottile; `rt/pipeline/issue_review.py`
+  contiene solo regole pure e non importa più `rt.telegram`.

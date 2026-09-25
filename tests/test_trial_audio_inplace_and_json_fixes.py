@@ -18,8 +18,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 import argparse
 
-import rt.pipeline.issue_review as ir_module
-from rt.pipeline.issue_review import run_interactive_review
+import rt.tui.issue_review as ir_module
+from rt.tui.issue_review import run_interactive_review
 from rt.core.models import (
     ScienceIssue, ScienceType, ScienceSeverity,
     SegmentsData, Segment, Draft, DraftUnit
@@ -91,7 +91,7 @@ def test_no_sigstop_sigcont_in_issue_review():
 @pytest.mark.anyio
 async def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
     """Test 1 & 2 & 3: Play -> Pausa (terminate), Pausa -> Ripresa (seek), Riavvio O (reset)."""
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
@@ -143,7 +143,7 @@ async def test_audio_pause_terminate_and_resume_seek(tmp_path, monkeypatch):
 @pytest.mark.anyio
 async def test_science_clip_unit_playback(tmp_path):
     """Test 4: Science review P riproduce l'intera unità con mpv."""
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
@@ -186,7 +186,7 @@ async def test_science_clip_unit_playback(tmp_path):
 @pytest.mark.anyio
 async def test_redraw_in_place_ansi_sequences(tmp_path):
     """Test 5: Verifica rendering pannelli Textual per Science Review."""
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_env(lesson_dir)
 
@@ -277,7 +277,7 @@ def test_cli_json_flag_and_stdout(capsys):
     # 4. review
     with patch("rt.cli._has_real_config_source", return_value=True), \
          patch("rt.cli.run_review", return_value={"status": "OK"}), \
-         patch("rt.pipeline.issue_review.run_interactive_review"):
+         patch("rt.tui.issue_review.run_interactive_review"):
         args_no_json = argparse.Namespace(lesson_dir="dummy", force=False, mock=True, channel="terminal", json=False, reset=False, auto_accept=None, history=False)
         cmd_review(args_no_json)
         out = capsys.readouterr().out

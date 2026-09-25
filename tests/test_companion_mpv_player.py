@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 from rt.core.models import (
     ScienceIssue, ScienceType, ScienceSeverity, Draft, DraftUnit, SegmentsData, Segment
 )
-from rt.pipeline.issue_review import IssueReviewApp
+from rt.tui.issue_review import IssueReviewApp
 from rt.core.audio_clip import (
     get_terminal_bounds,
     calculate_mpv_geometry,
@@ -222,7 +222,7 @@ async def test_mpv_player_not_closed_on_edit(tmp_path):
     with patch("shutil.which", return_value="/usr/local/bin/mpv"), \
          patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/test_clip.mp3"), \
          patch("subprocess.Popen", return_value=mock_proc), \
-         patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="Testo modificato"):
+         patch("rt.tui.issue_review.edit_text_in_editor", return_value="Testo modificato"):
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=[iss])
         async with app.run_test() as pilot:

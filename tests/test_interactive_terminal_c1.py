@@ -25,7 +25,7 @@ from rt.core.models import (
 )
 from rt.core.manifest import save_manifest
 from rt.pipeline.ledger import load_ledger, get_pending_issues
-from rt.pipeline.issue_review import run_interactive_review
+from rt.tui.issue_review import run_interactive_review
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +246,7 @@ def _create_sample_science_issue(id_str="sci_001", unit_id="U1", claim="distilla
 
 @pytest.mark.anyio
 async def test_asr_interactive_p_and_m_keys(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -261,7 +261,7 @@ async def test_asr_interactive_p_and_m_keys(tmp_path):
          patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
          patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/test_clip.mp3"), \
          patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
-         patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di rettificazione abbiamo una reazione esotermica importante.") as mock_edit:
+         patch("rt.tui.issue_review.edit_text_in_editor", return_value="# Commento\nNel processo di rettificazione abbiamo una reazione esotermica importante.") as mock_edit:
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
@@ -281,7 +281,7 @@ async def test_asr_interactive_p_and_m_keys(tmp_path):
 
 @pytest.mark.anyio
 async def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypatch):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -314,7 +314,7 @@ async def test_audio_pause_resume_restart_and_stop_on_action(tmp_path, monkeypat
 
 @pytest.mark.anyio
 async def test_audio_error_messages_remain_visible(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -339,7 +339,7 @@ async def test_audio_error_messages_remain_visible(tmp_path):
 
 @pytest.mark.anyio
 async def test_unrecognized_key_no_action_no_advance(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -361,7 +361,7 @@ async def test_unrecognized_key_no_action_no_advance(tmp_path):
 
 @pytest.mark.anyio
 async def test_unknown_key_in_science_review_no_action(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -393,7 +393,7 @@ async def test_unknown_key_in_science_review_no_action(tmp_path):
 
 @pytest.mark.anyio
 async def test_arrow_keys_aliases_left_right(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -422,7 +422,7 @@ async def test_arrow_keys_aliases_left_right(tmp_path):
 
 @pytest.mark.anyio
 async def test_context_fallback_when_draft_mismatch(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -439,7 +439,7 @@ async def test_context_fallback_when_draft_mismatch(tmp_path):
 
 @pytest.mark.anyio
 async def test_science_interactive_m_missing_markers_retries(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -459,7 +459,7 @@ async def test_science_interactive_m_missing_markers_retries(tmp_path):
 
 @pytest.mark.anyio
 async def test_science_interactive_p_and_e_keys(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -484,7 +484,7 @@ async def test_science_interactive_p_and_e_keys(tmp_path):
          patch("rt.core.audio_clip.get_terminal_bounds", return_value=None), \
          patch("rt.core.audio_clip.get_or_create_unit_clip", return_value="/tmp/test_clip_sci.mp3"), \
          patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
-         patch("rt.pipeline.issue_review.edit_text_in_editor", return_value="# Commento iniziale\nabbiamo una reazione endotermica controllata") as mock_edit:
+         patch("rt.tui.issue_review.edit_text_in_editor", return_value="# Commento iniziale\nabbiamo una reazione endotermica controllata") as mock_edit:
 
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
@@ -504,7 +504,7 @@ async def test_science_interactive_p_and_e_keys(tmp_path):
 
 @pytest.mark.anyio
 async def test_silent_p_o_and_unrecognized_keys_science(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -537,7 +537,7 @@ async def test_silent_p_o_and_unrecognized_keys_science(tmp_path):
 
 @pytest.mark.anyio
 async def test_quit_during_p_sequence_interrupts_cleanly(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -563,7 +563,7 @@ async def test_quit_during_p_sequence_interrupts_cleanly(tmp_path):
 
 @pytest.mark.anyio
 async def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 
@@ -571,7 +571,7 @@ async def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path):
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)
 
-    with patch("rt.pipeline.issue_review.edit_text_in_editor", side_effect=["", "Nel processo di distillazione abbiamo una reazione esotermica importante."]):
+    with patch("rt.tui.issue_review.edit_text_in_editor", side_effect=["", "Nel processo di distillazione abbiamo una reazione esotermica importante."]):
         app = IssueReviewApp(lesson_dir=lesson_dir, to_review=sci_issues)
         async with app.run_test() as pilot:
             await pilot.press("m")  # Returns empty -> warning, does not advance
@@ -586,7 +586,7 @@ async def test_m_and_e_failure_reprompts_without_full_redraw(tmp_path):
 @pytest.mark.anyio
 async def test_asr_risk_issue_actions(tmp_path):
     """Testa i comandi specifici per issue di tipo ERR_ASR_ST."""
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _setup_review_environment(lesson_dir)
 

@@ -148,7 +148,7 @@ def test_issue_review_app_theme(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     os.makedirs(lesson_dir, exist_ok=True)
 
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
 
     with patch("rt.core.ui_theme.get_configured_textual_theme", return_value="textual-light"):
         app = IssueReviewApp(lesson_dir, to_review=[])

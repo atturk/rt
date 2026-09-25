@@ -25,7 +25,8 @@ from rt.llm.jev_client import JevResponse, JevChoiceAnswer, JevNoulAnswer
 from rt.llm.prompts import ScienceIssueList
 from rt.pipeline.review import run_review
 from rt.pipeline.ledger import apply_decisions_to_draft
-from rt.pipeline.issue_review import _build_science_panel, _is_no_diff_issue_type
+from rt.tui.issue_review import _build_science_panel
+from rt.pipeline.issue_review import _is_no_diff_issue_type
 from rt.cli import main
 
 

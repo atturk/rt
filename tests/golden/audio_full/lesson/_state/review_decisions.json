@@ -8,7 +8,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000002",
@@ -17,7 +19,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000003",
@@ -26,7 +30,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000004",
@@ -35,7 +41,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000005",
@@ -44,7 +52,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000006",
@@ -53,7 +63,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000007",
@@ -62,7 +74,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000008",
@@ -71,7 +85,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000009",
@@ -80,7 +96,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     },
     {
       "issue_id": "sci_000010",
@@ -89,7 +107,9 @@
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
-      "original_context": null
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
     }
   ]
 }

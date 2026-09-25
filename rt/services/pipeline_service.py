@@ -92,32 +92,11 @@ def _resolve_channel(channel: Optional[str]) -> str:
 def _auto_accept_pending(lesson_dir: str, ctx: RunContext) -> List[Any]:
     """Senza DecisionProvider: applica l'auto-accept alle issue pendenti e restituisce
     quelle che richiedono ancora una decisione umana."""
-    from rt.pipeline.issue_review import should_auto_accept_science
-    from rt.pipeline.ledger import get_pending_issues, record_decision, sanitize_suggested_fix
-    _, pending = get_pending_issues(lesson_dir)
-    remaining = []
-    accepted = 0
-    for iss in pending:
-        if should_auto_accept_science(iss, "all"):
-            record_decision(lesson_dir, iss.id, "accepted", resolved_text=sanitize_suggested_fix(iss.suggested_fix), resolved_by="cli_auto")
-            accepted += 1
-        else:
-            remaining.append(iss)
+    from rt.services.review_service import auto_accept_pending
+    accepted, remaining = auto_accept_pending(lesson_dir, "all", channel="api")
     if accepted:
-        ctx.emit(Notice(message=f"⚡ Auto-approvati {accepted} casi in base ai filtri CLI."))
+        ctx.emit(Notice(message=f"⚡ Auto-approvati {len(accepted)} casi in base ai filtri CLI."))
     return remaining
-
-
-def _mark_ready_to_build(lesson_dir: str) -> None:
-    import os
-    from rt.core.lesson_paths import lesson_path
-    from rt.core.state import transition_to, WorkflowState
-    yaml_path = lesson_path(lesson_dir, "info.yaml")
-    if os.path.isfile(yaml_path):
-        try:
-            transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
-        except Exception:
-            pass
 
 
 def run_pipeline(
@@ -204,7 +183,8 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
                 _wait(result, ctx, "science_issue", lesson_dir,
                       {"lesson_dir": lesson_dir, "pending": [i.id for i in remaining]})
                 return
-            _mark_ready_to_build(lesson_dir)
+            from rt.services.review_service import mark_ready_to_build
+            mark_ready_to_build(lesson_dir)
 
     ctx.check_cancelled()
     bld_res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)

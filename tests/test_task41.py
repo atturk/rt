@@ -23,7 +23,7 @@ from rt.core.asr_risk import (
     detect_statistical_asr_risks,
 )
 from rt.pipeline.ledger import apply_decisions_to_draft
-from rt.pipeline.issue_review import _build_science_panel
+from rt.tui.issue_review import _build_science_panel
 
 
 def test_p10_calculation():

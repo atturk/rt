@@ -817,8 +817,8 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     if action == "ib":
         from rt.telegram import issue_queue as tg_queue
-        from rt.pipeline.ledger import revert_last_decision
-        from rt.pipeline.issue_review import send_current_issue
+        from rt.services.review_service import undo_last_decision, ReviewDecisionError
+        from rt.telegram.review_channel import send_current_issue
 
         queue = tg_queue.load_queue(lesson_dir)
         if queue is None or queue.current_index <= 0:
@@ -829,7 +829,10 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         tg_queue._save(queue, lesson_dir)
 
         prev_issue_id = queue.issue_ids[queue.current_index]
-        revert_last_decision(lesson_dir, prev_issue_id)
+        try:
+            undo_last_decision(lesson_dir, prev_issue_id)
+        except ReviewDecisionError:
+            pass
 
         await update.callback_query.answer("◀️ Tornato alla issue precedente.")
         try:
@@ -860,12 +863,13 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         await update.callback_query.answer("Saltata.")
     else:
         from rt.pipeline.ledger import (
-            record_decision, find_science_issue_by_id,
-            resolve_science_accept_text, resolve_science_reject_text,
+            find_science_issue_by_id, resolve_science_accept_text, resolve_science_reject_text,
         )
+        from rt.services.review_service import record_review_decision
         issue = find_science_issue_by_id(lesson_dir, issue_id)
         resolved = resolve_science_accept_text(issue) if action == "ia" else resolve_science_reject_text(issue)
-        record_decision(lesson_dir, issue_id, "accepted" if action == "ia" else "rejected", resolved_text=resolved)
+        record_review_decision(lesson_dir, issue_id, "accepted" if action == "ia" else "rejected", resolved,
+                               channel="telegram", actor=str(update.effective_user.id) if update.effective_user else "telegram")
         await update.callback_query.answer("✔ Registrato." if action == "ia" else "Registrato (mantenuto originale).")
 
     try:
@@ -874,7 +878,7 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         pass
 
     from rt.telegram import issue_queue as tg_queue
-    from rt.pipeline.issue_review import send_current_issue
+    from rt.telegram.review_channel import send_current_issue
     tg_queue.advance(lesson_dir)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, send_current_issue, lesson_dir)
@@ -894,7 +898,7 @@ async def _handle_start_review_callback(update: Update, context: ContextTypes.DE
         pass
 
     from rt.pipeline.ledger import get_pending_issues
-    from rt.pipeline.issue_review import start_review_via_telegram
+    from rt.telegram.review_channel import start_review_via_telegram
     _, sci_to_review = get_pending_issues(lesson_dir)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, start_review_via_telegram, lesson_dir, None, sci_to_review)
@@ -1041,15 +1045,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if kind == "issue_edit":
         issue_id = awaiting["extra"]["issue_id"]
-        from rt.pipeline.ledger import record_decision
-        record_decision(lesson_dir, issue_id, "edited", resolved_text=update.message.text)
+        from rt.services.review_service import record_review_decision
+        record_review_decision(lesson_dir, issue_id, "edited", update.message.text,
+                               channel="telegram", actor=str(update.effective_user.id) if update.effective_user else "telegram")
         convo.clear_awaiting_feedback(state_dir, chat_id)
         await _send_with_retry(lambda: update.message.reply_text(
             "✏️ Modifica registrata.",
             message_thread_id=update.effective_message.message_thread_id,
         ))
         from rt.telegram import issue_queue as tg_queue
-        from rt.pipeline.issue_review import send_current_issue
+        from rt.telegram.review_channel import send_current_issue
         tg_queue.advance(lesson_dir)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, send_current_issue, lesson_dir)

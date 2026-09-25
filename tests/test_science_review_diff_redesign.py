@@ -11,7 +11,8 @@ from rich.text import Text
 from rt.core.models import (
     ScienceIssue, ScienceType, ScienceSeverity, Draft, DraftUnit, SegmentsData, Segment
 )
-from rt.pipeline.issue_review import _build_diff_strings, _build_science_panel, IssueReviewApp
+from rt.pipeline.issue_review import _build_diff_strings
+from rt.tui.issue_review import _build_science_panel, IssueReviewApp
 from rt.pipeline.ledger import load_ledger
 from textual_diff_view import DiffView
 

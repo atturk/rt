@@ -72,10 +72,15 @@ def get_ledger_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "review_decisions.json")
 
 
-def load_ledger(lesson_dir: str) -> DecisionLedger:
+def load_ledger(lesson_dir: str, strict: bool = False) -> DecisionLedger:
+    """Carica il ledger. Un file illeggibile vale come ledger vuoto, oppure (strict=True)
+    solleva l'errore: chi sta per scrivere non deve sovrascrivere dati che non sa leggere."""
     path = get_ledger_path(lesson_dir)
     if not os.path.isfile(path):
         return DecisionLedger(schema_version="1.0", decisions=[])
+    if strict:
+        with open(path, "r", encoding="utf-8") as f:
+            return DecisionLedger.model_validate(sanitize_object_encoding(json.load(f)))
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -88,6 +93,11 @@ def load_ledger(lesson_dir: str) -> DecisionLedger:
 def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
     path = get_ledger_path(lesson_dir)
     data = sanitize_object_encoding(ledger.model_dump(mode="json"))
+    # channel/actor si scrivono solo quando noti: le decisioni senza restano nel formato storico.
+    for dec in data.get("decisions", []):
+        for key in ("channel", "actor"):
+            if dec.get(key) is None:
+                dec.pop(key, None)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -102,8 +112,11 @@ def record_decision(
     resolved_by: str = "user",
     notes: Optional[str] = None,
     original_context: Optional[str] = None,
+    channel: Optional[str] = None,
+    actor: Optional[str] = None,
 ) -> ReviewDecision:
-    """Registra una decisione nel ledger atomico append-only con sanitizzazione UTF-8."""
+    """Registra una decisione nel ledger atomico append-only con sanitizzazione UTF-8.
+    Le interfacce passano da rt.services.review_service, che prende il lock per lezione."""
     ledger = load_ledger(lesson_dir)
     clean_resolved = fix_mojibake(resolved_text) if resolved_text else None
     clean_notes = fix_mojibake(notes) if notes else None
@@ -123,6 +136,8 @@ def record_decision(
         timestamp=datetime.now().isoformat(),
         notes=clean_notes,
         original_context=clean_context,
+        channel=channel,
+        actor=actor,
     )
     
     ledger.decisions.append(dec_obj)

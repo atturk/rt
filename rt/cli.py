@@ -39,7 +39,7 @@ from rt.tui.outline_review import confirm_or_revise_outline
 from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review import run_review, load_science_issues
-from rt.pipeline.issue_review import run_interactive_review
+from rt.tui.issue_review import run_interactive_review
 from rt.pipeline.ledger import load_ledger
 from rt.pipeline.build import run_build
 
