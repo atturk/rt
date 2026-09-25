@@ -1,5 +1,5 @@
 """
-rt.pipeline.configure
+rt.tui.configure
 Wizard interattivo di configurazione guidata per il progetto RT.
 Gestisce la configurazione di:
 - Provider LLM (DeepSeek, OpenRouter, Google Gemini, OpenAI Compatible) e credenziali.
@@ -67,40 +67,17 @@ def _is_valid_float(val: str) -> bool:
 
 
 def _atomic_write_text(file_path: str, content: str) -> None:
-    """Scrive un file di testo in modo atomico tramite file temporaneo + os.replace."""
-    tmp_path = file_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    os.replace(tmp_path, file_path)
+    """Scrive un file di testo in modo atomico (vedi rt.services.config_service)."""
+    from rt.services.config_service import write_text_atomic
+    write_text_atomic(file_path, content)
 
 
 def _update_env_file(env_path: str, key: str, value: str) -> None:
     """
     Aggiorna o inserisce una variabile d'ambiente nel file .env preservando le righe esistenti.
     """
-    lines: List[str] = []
-    if os.path.isfile(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-    found = False
-    new_lines: List[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith(f"{key}=") or stripped.startswith(f"export {key}="):
-            prefix = "export " if stripped.startswith("export ") else ""
-            new_lines.append(f"{prefix}{key}={value}\n")
-            found = True
-        else:
-            new_lines.append(line)
-
-    if not found:
-        if new_lines and not new_lines[-1].endswith("\n"):
-            new_lines.append("\n")
-        new_lines.append(f"{key}={value}\n")
-
-    _atomic_write_text(env_path, "".join(new_lines))
-    os.environ[key] = value
+    from rt.services.config_service import set_env_var
+    set_env_var(env_path, key, value)
 
 
 def _resolve_or_bootstrap_config_paths() -> Tuple[str, str]:

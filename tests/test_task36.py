@@ -1,5 +1,5 @@
 """
-Unit test per Task 36: bugfixes in rt/pipeline/configure.py.
+Unit test per Task 36: bugfixes in rt/tui/configure/__init__.py.
 """
 
 import os
@@ -7,7 +7,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     _is_placeholder_or_invalid_bot_token,
     _create_new_model_profile,
     _configure_telegram_section

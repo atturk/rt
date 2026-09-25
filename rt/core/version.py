@@ -217,7 +217,7 @@ def _update_git_checkout(project_root: str, latest_ver: str) -> bool:
     return True
 
 
-def run_update(project_root: str) -> None:
+def run_update(project_root: str) -> int:
     """
     Esegue l'aggiornamento automatico sicuro di RT tramite GitHub Releases:
     1. Verifica disponibilità di una versione più recente via API GitHub.
@@ -227,18 +227,19 @@ def run_update(project_root: str) -> None:
     5. Pulisce la directory temporanea.
     6. Installa le dipendenze CLI e web nel virtualenv.
     7. Scrive VERSION solo dopo l'installazione riuscita.
+    Restituisce il codice di uscita per la CLI (0 = ok o già aggiornato, 1 = errore).
     """
     git_checkout = os.path.exists(os.path.join(project_root, ".git"))
     if git_checkout and not _git_checkout_is_safe_to_update(project_root):
-        sys.exit(1)
+        return 1
 
     latest_ver = get_latest_remote_version(project_root)
     if latest_ver is None:
         print("❌ Impossibile verificare gli aggiornamenti remoti (errore di connessione).", file=sys.stderr)
-        sys.exit(1)
+        return 1
     if latest_ver == "":
         print("Nessuna versione pubblicata ancora sul repository.")
-        sys.exit(0)
+        return 0
 
     curr_ver = get_current_version(project_root)
     curr_parsed = parse_semver(curr_ver)
@@ -246,17 +247,17 @@ def run_update(project_root: str) -> None:
 
     if curr_parsed is not None and lat_parsed is not None and curr_parsed >= lat_parsed:
         if curr_parsed == lat_parsed and not _install_runtime_requirements(project_root):
-            sys.exit(1)
+            return 1
         print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
-        sys.exit(0)
+        return 0
 
     if git_checkout:
         if not _update_git_checkout(project_root, latest_ver):
-            sys.exit(1)
+            return 1
         if not _install_runtime_requirements(project_root):
-            sys.exit(1)
+            return 1
         print(f"✅ RT aggiornato: {curr_ver} → {latest_ver}")
-        sys.exit(0)
+        return 0
 
     print(f"Aggiornamento in corso ({curr_ver} → {latest_ver})...")
     temp_dir = tempfile.mkdtemp(prefix="rt-update-")
@@ -272,14 +273,14 @@ def run_update(project_root: str) -> None:
                 shutil.copyfileobj(resp, out_f)
         except Exception as exc:
             print(f"❌ Impossibile scaricare l'aggiornamento: {exc}", file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         try:
             with tarfile.open(archive_path, "r:gz") as tar:
                 tar.extractall(path=temp_dir)
         except Exception as exc:
             print(f"❌ Impossibile estrarre l'archivio di aggiornamento: {exc}", file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         extracted_dirs = [
             d for d in os.listdir(temp_dir)
@@ -287,7 +288,7 @@ def run_update(project_root: str) -> None:
         ]
         if not extracted_dirs:
             print("❌ Archivio di aggiornamento non valido o vuoto.", file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         extracted_root = os.path.join(temp_dir, extracted_dirs[0])
 
@@ -336,7 +337,7 @@ def run_update(project_root: str) -> None:
         # VERSION per ultimo, dopo la sincronizzazione e le dipendenze. Un errore
         # di pip lascia la vecchia versione per consentire un nuovo tentativo.
         if not _install_runtime_requirements(project_root):
-            sys.exit(1)
+            return 1
         new_version_src = os.path.join(extracted_root, "VERSION")
         if os.path.isfile(new_version_src):
             shutil.copy2(new_version_src, os.path.join(project_root, "VERSION"))
@@ -345,4 +346,4 @@ def run_update(project_root: str) -> None:
 
     new_ver = get_current_version(project_root)
     print(f"✅ RT aggiornato: {curr_ver} → {new_ver}")
-    sys.exit(0)
+    return 0

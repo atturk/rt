@@ -82,7 +82,7 @@ def test_handle_recall_reply_to_list_valid_position(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
-         patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+         patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
         cfg.telegram.topics = {}
@@ -112,7 +112,7 @@ def test_handle_recall_without_reply_falls_back_to_text_search(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
-         patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+         patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
         cfg.telegram.topics = {}
@@ -149,7 +149,7 @@ def test_handle_recall_reply_to_list_out_of_range_error(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
-         patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+         patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
         cfg.telegram.topics = {}
@@ -188,7 +188,7 @@ def test_handle_recall_reply_to_list_non_numeric_keeps_text_search(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
-         patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+         patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
         cfg.telegram.topics = {}

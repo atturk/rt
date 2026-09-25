@@ -3,39 +3,24 @@ tests/test_layering.py
 Test architetturale (RT4-A0): il motore (rt/pipeline, rt/core) non deve dipendere dalle
 interfacce utente né bloccarsi sul terminale.
 
-Segnala in ogni file di rt/pipeline e rt/core:
+Segnala in ogni file di rt/pipeline, rt/core e rt/services:
   - import di textual, rich.prompt, questionary, rt.telegram, rt.tui, rt.web (anche dentro
     funzioni);
   - chiamate a input() e sys.exit().
 
-ALLOWLIST elenca le violazioni esistenti quando il test è stato introdotto: ogni task della
-fase A ne rimuove alcune. Una violazione nuova fa fallire il test, e anche una voce
-dell'allowlist che non corrisponde più al codice (così l'elenco resta esatto).
-test_engine_is_ui_free è xfail finché l'allowlist non è vuota (RT4-A6).
+Dalla chiusura della fase A (RT4-A6) il test è bloccante e senza eccezioni: la UI vive in
+rt/tui, rt/telegram, rt/web e negli adattatori CLI (rt/cli*.py); il motore passa da
+rt/services.
 """
 import ast
 import os
 from typing import Set
 
-import pytest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENGINE_PACKAGES = ("rt/pipeline", "rt/core")
+ENGINE_PACKAGES = ("rt/pipeline", "rt/core", "rt/services")
 FORBIDDEN_MODULES = ("textual", "rich.prompt", "questionary", "rt.telegram", "rt.tui", "rt.web")
 
-# Formato: "<file>: import <modulo>" | "<file>: call input()" | "<file>: call sys.exit()".
-ALLOWLIST: Set[str] = {
-    "rt/core/version.py: call sys.exit()",
-    "rt/pipeline/configure.py: import questionary",
-    "rt/pipeline/configure.py: import textual.app",
-    "rt/pipeline/configure.py: import textual.widgets",
-    "rt/pipeline/recall_session.py: call input()",
-    "rt/pipeline/recall_session.py: import rt.telegram",
-    "rt/pipeline/recall_session.py: import rt.telegram.client",
-    "rt/pipeline/recall_session.py: import rt.telegram.config",
-    "rt/pipeline/recall_session.py: import textual.app",
-    "rt/pipeline/recall_session.py: import textual.widgets",
-}
 
 
 def _is_forbidden(module: str) -> bool:
@@ -81,16 +66,6 @@ def collect_violations() -> Set[str]:
     return found
 
 
-def test_no_new_layering_violations():
-    new = sorted(collect_violations() - ALLOWLIST)
-    assert not new, "Nuove dipendenze UI nel motore (rt/pipeline, rt/core):\n" + "\n".join(new)
-
-
-def test_allowlist_has_no_stale_entries():
-    stale = sorted(ALLOWLIST - collect_violations())
-    assert not stale, "Voci dell'allowlist risolte, rimuovile da ALLOWLIST:\n" + "\n".join(stale)
-
-
-@pytest.mark.xfail(strict=True, reason="Fase A in corso: l'allowlist si svuota in RT4-A6")
 def test_engine_is_ui_free():
-    assert not collect_violations()
+    found = sorted(collect_violations())
+    assert not found, "Dipendenze UI nel motore (rt/pipeline, rt/core):\n" + "\n".join(found)

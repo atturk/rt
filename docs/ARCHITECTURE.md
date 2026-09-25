@@ -266,3 +266,16 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   in `rt/telegram/review_channel.py` (porta `ReviewChannel`), la web usa
   `rt/pipeline/review_actions.py` come adattatore sottile; `rt/pipeline/issue_review.py`
   contiene solo regole pure e non importa più `rt.telegram`.
+- **Configurazione** (`rt/services/config_service.py`): percorsi (`config/` nella cwd o nel
+  progetto, `.env` accanto), lettura/validazione (`validate_config`) e scrittura atomica di
+  YAML e testo, `set_env_var` e `set_secret` (oggi `.env` con chmod 600; RT4-C1 lo sostituirà
+  con l'archivio cifrato). Il wizard `rt config` è in `rt/tui/configure/` e, come le
+  impostazioni web (`rt/web/settings.py`), scrive attraverso il servizio.
+- **Active Recall** (`rt/services/recall_service.py`): stato di sessione per lezione, batch
+  iniziale, prossima domanda con rifornimento, valutazione delle risposte, domande stale.
+  Canali: `rt/telegram/recall_channel.py` (Telegram) e `rt/tui/recall.py` (terminale e
+  revisione delle domande stale). `rt/core/version.run_update` restituisce il codice di
+  uscita invece di terminare il processo.
+- **Regola di layering** (`tests/test_layering.py`, bloccante dalla fine della fase A):
+  `rt/pipeline`, `rt/core` e `rt/services` non importano `textual`, `rich.prompt`,
+  `questionary`, `rt.telegram`, `rt.tui`, `rt.web` e non chiamano `input()` o `sys.exit()`.

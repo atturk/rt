@@ -66,9 +66,11 @@ Per eseguire l'intera suite:
   dell'outline) e confronta output del terminale e file finali con `tests/golden/`, dopo aver
   normalizzato percorsi temporanei, timestamp e hash. Se un cambiamento è voluto, rigenera con
   `.venv/bin/python scripts/update_golden.py [scenario]` e rivedi il diff.
-- `test_layering.py`: segnala gli import di UI (`textual`, `rich.prompt`, `questionary`,
-  `rt.telegram`, `rt.tui`, `rt.web`) e le chiamate `input()`/`sys.exit()` dentro `rt/pipeline`
-  e `rt/core`. Le violazioni note stanno in `ALLOWLIST`; togline le voci quando le risolvi.
+- `test_layering.py` (bloccante): fallisce se `rt/pipeline`, `rt/core` o `rt/services`
+  importano UI (`textual`, `rich.prompt`, `questionary`, `rt.telegram`, `rt.tui`, `rt.web`) o
+  chiamano `input()`/`sys.exit()`. Prompt, app Textual e messaggi Telegram vanno in `rt/tui`,
+  `rt/telegram`, `rt/web` o negli adattatori CLI (`rt/cli.py`, `rt/cli_reporter.py`,
+  `rt/cli_prompts.py`).
 
 ---
 

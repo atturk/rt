@@ -7,7 +7,7 @@ import yaml
 import pytest
 from unittest.mock import patch, MagicMock
 
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     parse_telegram_topic_link,
     _configure_telegram_section,
     run_topics_management
@@ -119,7 +119,7 @@ def test_run_topics_management_edit_rename_delete(tmp_path):
         m.ask.return_value = val
         return m
 
-    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, os.path.join(tmp_path, ".env"))):
+    with patch("rt.tui.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, os.path.join(tmp_path, ".env"))):
         with patch("questionary.select", side_effect=mock_select):
             with patch("questionary.text") as mock_txt:
                 mock_txt.return_value.ask.return_value = "ANATOMIA I"

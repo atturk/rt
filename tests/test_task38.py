@@ -7,7 +7,7 @@ import yaml
 import pytest
 from unittest.mock import patch, MagicMock
 
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     _configure_pricing_section,
     _build_configure_roles_app,
 )
@@ -55,7 +55,7 @@ async def test_phase_blocks_navigation_and_confirmation(tmp_path):
     with open(rewrite_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         async with app.run_test() as pilot:
@@ -106,7 +106,7 @@ async def test_phase_blocks_no_write_until_confirmation(tmp_path):
     with open(outline_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         async with app.run_test() as pilot:

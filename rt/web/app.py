@@ -307,7 +307,7 @@ def _listen_topics(token_input: str, existing_rows: list[list[str]]):
 
 
 def _topic_from_link(link: str, existing_rows: list[list[str]], chat_input: str):
-    from rt.pipeline.configure import parse_telegram_topic_link
+    from rt.tui.configure import parse_telegram_topic_link
     parsed = parse_telegram_topic_link(link)
     if parsed is None:
         raise gr.Error("Incolla un link a un messaggio del topic, per esempio https://t.me/c/1234567890/12/34.")

@@ -258,7 +258,7 @@ class OutlineReviewApp(App):
         # questionary/prompt_toolkit prova a creare un proprio event loop asyncio: eseguito nel
         # thread dell'event loop di Textual (anche sotto suspend()) fallisce silenziosamente e
         # cade sempre sul fallback input() — un thread dedicato senza loop già in esecuzione
-        # evita il conflitto (stesso pattern di _run_in_thread in rt/pipeline/configure.py).
+        # evita il conflitto (stesso pattern di _run_in_thread in rt/tui/configure/__init__.py).
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             feedback = executor.submit(_ask_feedback).result()
 

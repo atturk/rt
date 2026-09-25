@@ -248,7 +248,7 @@ def cmd_review(args):
 
 def cmd_recall(args):
     if getattr(args, "check", False) is True:
-        from rt.pipeline.recall_session import run_stale_recall_check
+        from rt.tui.recall import run_stale_recall_check
         run_stale_recall_check(args.lesson_dir)
         return
 
@@ -285,7 +285,8 @@ def cmd_recall(args):
         from rt.core.config import load_config as _load_cfg_for_channel
         channel = _load_cfg_for_channel().telegram.default_channel
 
-    from rt.pipeline.recall_session import start_recall_via_telegram, run_recall_terminal_session
+    from rt.telegram.recall_channel import start_recall_via_telegram
+    from rt.tui.recall import run_recall_terminal_session
     if channel == "telegram":
         start_recall_via_telegram(args.lesson_dir, order=order, style=style, force_mock=force_mock)
     else:
@@ -616,19 +617,19 @@ class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
 def cmd_config(args: argparse.Namespace) -> None:
     if getattr(args, "models", False):
-        from rt.pipeline.configure import run_models_management
+        from rt.tui.configure import run_models_management
         run_models_management()
     elif getattr(args, "telegram", False):
-        from rt.pipeline.configure import run_telegram_only
+        from rt.tui.configure import run_telegram_only
         run_telegram_only()
     elif getattr(args, "topics", False):
-        from rt.pipeline.configure import run_topics_management
+        from rt.tui.configure import run_topics_management
         run_topics_management()
     elif getattr(args, "theme", False):
-        from rt.pipeline.configure import run_theme_selection
+        from rt.tui.configure import run_theme_selection
         run_theme_selection()
     else:
-        from rt.pipeline.configure import run_config_wizard
+        from rt.tui.configure import run_config_wizard
         run_config_wizard()
 
 
@@ -652,7 +653,7 @@ def cmd_web(args: argparse.Namespace) -> None:
 
 def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.ArgumentParser]]:
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
-    from rt.pipeline.configure import configure_config_parser
+    from rt.tui.configure import configure_config_parser
 
     epilog_text = (
         "Fasi della pipeline:\n"
@@ -891,8 +892,8 @@ def main(argv: Optional[List[str]] = None) -> None:
         sys.exit(0)
     elif raw_args and raw_args[0] in ("-u", "--update"):
         from rt.core.version import run_update
-        run_update(_default_project_root())
-        sys.exit(0)
+        code = run_update(_default_project_root())
+        sys.exit(code if isinstance(code, int) else 0)
 
     load_env_file(override=True)
     parser, _ = build_parser()

@@ -1,6 +1,6 @@
 """
 tests/test_configure_wizard.py
-Unit test per il wizard di configurazione rt config (rt/pipeline/configure.py).
+Unit test per il wizard di configurazione rt config (rt/tui/configure/__init__.py).
 """
 
 import os
@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 import yaml
 import requests
 
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     _resolve_or_bootstrap_config_paths,
     _update_env_file,
     _load_model_profiles,
@@ -48,7 +48,7 @@ def test_resolve_or_bootstrap_config_paths_first_run(tmp_path, monkeypatch):
     with open(os.path.join(example_dir, "general.yaml"), "w", encoding="utf-8") as f:
         f.write("version: '2.0.0'\n")
 
-    with patch("rt.pipeline.configure._default_project_root", return_value=fake_root):
+    with patch("rt.tui.configure._default_project_root", return_value=fake_root):
         config_dir, env_path = _resolve_or_bootstrap_config_paths()
 
     assert config_dir == os.path.join(fake_root, "config")
@@ -160,7 +160,7 @@ def test_configure_llm_provider_section_success_http_models(tmp_path):
          patch("questionary.autocomplete", side_effect=mock_autocomplete), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", return_value=mock_resp):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -244,7 +244,7 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -260,7 +260,7 @@ def test_configure_llm_provider_section_http_failure_fallback_manual(tmp_path):
 
 def test_parse_telegram_topic_link():
     """Verifica il parsing dei link a messaggi/topic Telegram."""
-    from rt.pipeline.configure import parse_telegram_topic_link
+    from rt.tui.configure import parse_telegram_topic_link
 
     # Link valido con message_id
     res1 = parse_telegram_topic_link("https://t.me/c/4490473926/541/679")
@@ -282,7 +282,7 @@ def test_configure_telegram_section_skip(tmp_path):
     os.makedirs(config_dir, exist_ok=True)
     env_file = str(tmp_path / ".env")
 
-    from rt.pipeline.configure import _configure_telegram_section
+    from rt.tui.configure import _configure_telegram_section
 
     with patch("questionary.confirm", return_value=MagicMock(ask=lambda: False)):
         _configure_telegram_section(config_dir, env_file)
@@ -300,7 +300,7 @@ def test_configure_telegram_section_manual_link_flow(tmp_path):
 
     env_file = str(tmp_path / ".env")
 
-    from rt.pipeline.configure import _configure_telegram_section
+    from rt.tui.configure import _configure_telegram_section
 
     def mock_confirm(prompt, default=True):
         m = MagicMock()
@@ -459,11 +459,11 @@ def test_run_config_wizard_full_flow(tmp_path, monkeypatch):
     with open(os.path.join(example_dir, "general.yaml"), "w", encoding="utf-8") as f:
         f.write("version: '2.0.0'\ncredentials: []\n")
 
-    with patch("rt.pipeline.configure._default_project_root", return_value=fake_root), \
-         patch("rt.pipeline.configure._maybe_prompt_theme_first_time"), \
-         patch("rt.pipeline.configure._configure_llm_provider_section", return_value={"outline": "generale"}), \
-         patch("rt.pipeline.configure._configure_telegram_section", return_value={"configured": True, "topics_count": 2}), \
-         patch("rt.pipeline.configure._configure_stt_section", return_value="macparakeet"):
+    with patch("rt.tui.configure._default_project_root", return_value=fake_root), \
+         patch("rt.tui.configure._maybe_prompt_theme_first_time"), \
+         patch("rt.tui.configure._configure_llm_provider_section", return_value={"outline": "generale"}), \
+         patch("rt.tui.configure._configure_telegram_section", return_value={"configured": True, "topics_count": 2}), \
+         patch("rt.tui.configure._configure_stt_section", return_value="macparakeet"):
 
         run_config_wizard()
 
@@ -531,7 +531,7 @@ def test_configure_llm_provider_section_multi_key_round_robin(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -642,7 +642,7 @@ def test_configure_llm_provider_section_multi_key_append_rerun(tmp_path, monkeyp
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -717,7 +717,7 @@ def test_configure_llm_provider_section_multi_key_single_key_fallback(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         _configure_llm_provider_section(config_dir, env_file)
@@ -830,7 +830,7 @@ def test_configure_llm_provider_section_first_run_and_rerun(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res1 = _configure_llm_provider_section(config_dir, env_file)
@@ -973,7 +973,7 @@ def test_per_phase_model_selection_and_reuse(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "RIGHT", "DOWN", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         assignments = _configure_llm_provider_section(config_dir, env_file)
@@ -1029,7 +1029,7 @@ def test_rerun_unrecognized_config_keep_choice(tmp_path):
         return m
 
     with patch("questionary.select", side_effect=mock_select), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["ENTER", "c", "ENTER"]):
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["ENTER", "c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
 
     assert res["outline"] == "(configurazione attuale mantenuta)"
@@ -1066,7 +1066,7 @@ def test_skip_option_and_no_forced_bootstrap(tmp_path):
         return m
 
     with patch("questionary.select", side_effect=mock_select), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["c", "ENTER"]):
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
 
     assert res["outline"] == "(non configurato)"
@@ -1134,7 +1134,7 @@ def test_grouped_jobs_recall_and_immagini(tmp_path):
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text), \
          patch("questionary.password", side_effect=mock_password), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "RIGHT", "DOWN", "ENTER", "c", "ENTER"]), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "RIGHT", "DOWN", "ENTER", "c", "ENTER"]), \
          patch("requests.get", side_effect=requests.RequestException("Timeout")):
 
         res = _configure_llm_provider_section(config_dir, env_file)
@@ -1450,7 +1450,7 @@ def test_models_management_zero_profiles(tmp_path, monkeypatch):
     with open(general_file, "w", encoding="utf-8") as f:
         yaml.safe_dump({"version": "2.0.0", "model_profiles": {}}, f)
 
-    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, str(tmp_path / ".env"))):
+    with patch("rt.tui.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, str(tmp_path / ".env"))):
         run_models_management()
 
 
@@ -1495,7 +1495,7 @@ def test_models_management_rename_profile(tmp_path):
             m.ask.return_value = default or ""
         return m
 
-    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+    with patch("rt.tui.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.text", side_effect=mock_text):
         run_models_management()
@@ -1540,7 +1540,7 @@ def test_models_management_delete_profile(tmp_path):
         m.ask.return_value = True
         return m
 
-    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+    with patch("rt.tui.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.confirm", side_effect=mock_confirm):
         run_models_management()
@@ -1590,7 +1590,7 @@ def test_models_management_update_api_key(tmp_path):
         m.ask.return_value = "sk-new-secret-key-999"
         return m
 
-    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+    with patch("rt.tui.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
          patch("questionary.select", side_effect=mock_select), \
          patch("questionary.password", side_effect=mock_password):
         run_models_management()
@@ -1614,8 +1614,8 @@ def test_run_telegram_only(tmp_path):
 
     mock_tg = MagicMock(return_value={"configured": True})
 
-    with patch("rt.pipeline.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
-         patch("rt.pipeline.configure._configure_telegram_section", mock_tg):
+    with patch("rt.tui.configure._resolve_or_bootstrap_config_paths", return_value=(config_dir, env_file)), \
+         patch("rt.tui.configure._configure_telegram_section", mock_tg):
         run_telegram_only()
 
     mock_tg.assert_called_once_with(config_dir, env_file)
@@ -1657,8 +1657,8 @@ def test_configure_llm_provider_section_creates_and_assigns_new_profile(tmp_path
 
     env_file = str(tmp_path / ".env")
 
-    with patch("rt.pipeline.configure._create_new_model_profile", return_value=("p_new", {"provider": "google"}, "primary")), \
-         patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]):
+    with patch("rt.tui.configure._create_new_model_profile", return_value=("p_new", {"provider": "google"}, "primary")), \
+         patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["DOWN", "ENTER", "c", "ENTER"]):
         res = _configure_llm_provider_section(config_dir, env_file)
 
     assert res.get("outline") == "p_new"
@@ -1861,7 +1861,7 @@ def test_configure_llm_intro_text_mentions_optional_fallbacks(capsys, tmp_path):
 
     env_file = str(tmp_path / ".env")
 
-    with patch("rt.pipeline.configure.ConfigurePhaseRolesApp._test_key_sequence", ["q"]):
+    with patch("rt.tui.configure.ConfigurePhaseRolesApp._test_key_sequence", ["q"]):
         _configure_llm_provider_section(config_dir, env_file)
 
     captured = capsys.readouterr().out
