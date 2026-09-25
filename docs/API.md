@@ -31,3 +31,23 @@ I messaggi passano dal sanificatore delle credenziali; un errore inatteso è un 
 
 `docs/openapi.json` è lo schema esportato da `python scripts/export_openapi.py` (un test
 verifica che sia aggiornato). La SPA ne genera il client TypeScript.
+
+## Endpoint
+
+Tutti sotto `/api/v1` e autenticati, salvo `GET /health` e `POST /auth/session`.
+Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso anche quando
+`rt build` rinomina o sposta la cartella.
+
+### Lettura (RT4-E2)
+
+| Metodo e percorso | Cosa restituisce | Equivalente CLI |
+|---|---|---|
+| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo | dashboard `rt` |
+| `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio | `rt status`, `rt cost` |
+| `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione | `rt validate-outline`, `rt validate-draft` |
+| `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`) | anteprima / file finale |
+| `GET /lessons/{id}/audio` | Audio della lezione, con `Range`; solo file audio dentro la cartella | — |
+| `GET /lessons/{id}/outline` | Albero dell'outline e approvazione | approvazione outline |
+| `GET /lessons/{id}/issues?status=pending\|all` | Issue con contesto (unità, timecode, finestra audio) e decisione | `rt review` |
+| `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |
+| `GET /costs` | Costi LLM di tutte le lezioni, per lezione e per job | `rt cost` |

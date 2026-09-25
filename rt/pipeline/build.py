@@ -409,6 +409,10 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         yaml_path = lesson_path(current_dir, "info.yaml")
         named_filepath = os.path.join(current_dir, named_filename)
 
+    if os.path.abspath(current_dir) != os.path.abspath(lesson_dir):
+        from rt.db.sync import relocate_lesson
+        relocate_lesson(lesson_dir, current_dir)
+
     # 7. Registrazione fingerprint build
     source_fp = compute_source_fingerprint(current_dir, "build")
     record_phase_fingerprint(

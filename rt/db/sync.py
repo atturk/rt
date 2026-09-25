@@ -190,6 +190,24 @@ def dual_write_lesson(lesson_dir: str) -> None:
         _local.active = False
 
 
+def relocate_lesson(old_dir: str, new_dir: str) -> None:
+    """La cartella è stata rinominata o spostata (rt build): la riga Lesson segue la cartella,
+    così l'id della lezione (usato dall'API) e lo storico restano gli stessi. Mai bloccante."""
+    db = get_database()
+    if db is None:
+        return
+    try:
+        with session_scope(db) as session:
+            repo = LessonRepository(session)
+            lesson = repo.get_by_path(old_dir)
+            if lesson is None or repo.get_by_path(new_dir) is not None:
+                return
+            lesson.path = normalize_lesson_path(new_dir)
+            lesson.folder_name = os.path.basename(lesson.path)
+    except Exception as exc:
+        logger.warning("Aggiornamento del percorso della lezione nel database non riuscito: %s", exc)
+
+
 def lesson_dir_of_state_file(path: str) -> str:
     """Cartella della lezione per un file di stato (radice o sottocartella _state/)."""
     from rt.core.lesson_paths import STATE_SUBDIR

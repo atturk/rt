@@ -63,4 +63,5 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
 
 
 def _domain_routers() -> list:
-    return []
+    from rt.api.routers import lessons
+    return [lessons.router]

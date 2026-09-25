@@ -1,6 +1,173 @@
 {
   "components": {
     "schemas": {
+      "CostSummary": {
+        "properties": {
+          "by_job": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JobCost"
+            },
+            "title": "By Job",
+            "type": "object"
+          },
+          "lessons": {
+            "items": {
+              "$ref": "#/components/schemas/LessonCost"
+            },
+            "title": "Lessons",
+            "type": "array"
+          },
+          "total_calls": {
+            "title": "Total Calls",
+            "type": "integer"
+          },
+          "total_cost_usd": {
+            "title": "Total Cost Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "total_cost_usd",
+          "total_calls",
+          "by_job",
+          "lessons"
+        ],
+        "title": "CostSummary",
+        "type": "object"
+      },
+      "Decision": {
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "issue_id": {
+            "title": "Issue Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "resolved_by": {
+            "default": "user",
+            "title": "Resolved By",
+            "type": "string"
+          },
+          "resolved_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Text"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issue_id",
+          "decision",
+          "timestamp"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DocumentSection": {
+        "properties": {
+          "end_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Seconds"
+          },
+          "end_segment_id": {
+            "title": "End Segment Id",
+            "type": "string"
+          },
+          "start_formatted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Formatted"
+          },
+          "start_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Seconds"
+          },
+          "start_segment_id": {
+            "title": "Start Segment Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "title",
+          "start_segment_id",
+          "end_segment_id"
+        ],
+        "title": "DocumentSection",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -76,6 +243,454 @@
         "title": "Health",
         "type": "object"
       },
+      "IssueContext": {
+        "properties": {
+          "end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End S"
+          },
+          "end_segment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Segment Id"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          },
+          "start_segment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Segment Id"
+          },
+          "timecode": {
+            "title": "Timecode",
+            "type": "string"
+          },
+          "unit_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Content"
+          },
+          "unit_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Info"
+          }
+        },
+        "required": [
+          "timecode"
+        ],
+        "title": "IssueContext",
+        "type": "object"
+      },
+      "IssueItem": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Decision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issue": {
+            "additionalProperties": true,
+            "description": "ScienceIssue (science_issues.json)",
+            "title": "Issue",
+            "type": "object"
+          }
+        },
+        "required": [
+          "issue"
+        ],
+        "title": "IssueItem",
+        "type": "object"
+      },
+      "IssueList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IssueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "review_complete": {
+            "title": "Review Complete",
+            "type": "boolean"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "total",
+          "review_complete",
+          "items"
+        ],
+        "title": "IssueList",
+        "type": "object"
+      },
+      "JobCost": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cost_usd",
+          "calls"
+        ],
+        "title": "JobCost",
+        "type": "object"
+      },
+      "LessonCost": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "folder_name": {
+            "title": "Folder Name",
+            "type": "string"
+          },
+          "has_unknown_cost": {
+            "default": false,
+            "title": "Has Unknown Cost",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "folder_name",
+          "cost_usd",
+          "calls"
+        ],
+        "title": "LessonCost",
+        "type": "object"
+      },
+      "LessonDetail": {
+        "properties": {
+          "argomenti": {
+            "default": "",
+            "title": "Argomenti",
+            "type": "string"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stesso report di 'rt cost --json'",
+            "title": "Cost"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "data": {
+            "default": "",
+            "title": "Data",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "folder_name": {
+            "title": "Folder Name",
+            "type": "string"
+          },
+          "has_audio": {
+            "default": false,
+            "title": "Has Audio",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "materia": {
+            "default": "",
+            "title": "Materia",
+            "type": "string"
+          },
+          "outline_approved": {
+            "default": false,
+            "title": "Outline Approved",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "pending_issues": {
+            "default": 0,
+            "title": "Pending Issues",
+            "type": "integer"
+          },
+          "phase_report": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseState"
+            },
+            "title": "Phase Report",
+            "type": "array"
+          },
+          "phases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "fase -> VALID | PARTIAL | STALE | MISSING | INVALID",
+            "title": "Phases",
+            "type": "object"
+          },
+          "segment_count": {
+            "default": 0,
+            "title": "Segment Count",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato effettivo del workflow (come 'rt status')",
+            "title": "State"
+          },
+          "titolo": {
+            "default": "",
+            "title": "Titolo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "folder_name",
+          "path",
+          "phases",
+          "phase_report"
+        ],
+        "title": "LessonDetail",
+        "type": "object"
+      },
+      "LessonDocument": {
+        "properties": {
+          "final": {
+            "description": "True se è il documento di 'rt build', False se anteprima dal draft",
+            "title": "Final",
+            "type": "boolean"
+          },
+          "html": {
+            "description": "HTML sanificato (l'HTML grezzo del Markdown è escapato)",
+            "title": "Html",
+            "type": "string"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "sections": {
+            "description": "Timecode per unità, da segments.json",
+            "items": {
+              "$ref": "#/components/schemas/DocumentSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "final",
+          "markdown",
+          "html",
+          "sections"
+        ],
+        "title": "LessonDocument",
+        "type": "object"
+      },
+      "LessonSummary": {
+        "properties": {
+          "argomenti": {
+            "default": "",
+            "title": "Argomenti",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "data": {
+            "default": "",
+            "title": "Data",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "folder_name": {
+            "title": "Folder Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "materia": {
+            "default": "",
+            "title": "Materia",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "pending_issues": {
+            "default": 0,
+            "title": "Pending Issues",
+            "type": "integer"
+          },
+          "phases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "fase -> VALID | PARTIAL | STALE | MISSING | INVALID",
+            "title": "Phases",
+            "type": "object"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato effettivo del workflow (come 'rt status')",
+            "title": "State"
+          },
+          "titolo": {
+            "default": "",
+            "title": "Titolo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "folder_name",
+          "path",
+          "phases"
+        ],
+        "title": "LessonSummary",
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "actor": {
@@ -87,6 +702,182 @@
           "actor"
         ],
         "title": "Me",
+        "type": "object"
+      },
+      "Outline": {
+        "properties": {
+          "approval": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval"
+          },
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "lesson_title": {
+            "title": "Lesson Title",
+            "type": "string"
+          },
+          "macro_sections": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineMacro"
+            },
+            "title": "Macro Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lesson_title",
+          "macro_sections",
+          "approved"
+        ],
+        "title": "Outline",
+        "type": "object"
+      },
+      "OutlineMacro": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineUnit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "units"
+        ],
+        "title": "OutlineMacro",
+        "type": "object"
+      },
+      "OutlineUnit": {
+        "properties": {
+          "end_segment_id": {
+            "title": "End Segment Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key_concepts": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Concepts",
+            "type": "array"
+          },
+          "start_segment_id": {
+            "title": "Start Segment Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "start_segment_id",
+          "end_segment_id"
+        ],
+        "title": "OutlineUnit",
+        "type": "object"
+      },
+      "PhaseReport": {
+        "properties": {
+          "draft_validation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Come 'rt validate-draft'",
+            "title": "Draft Validation"
+          },
+          "outline_validation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Come 'rt validate-outline'",
+            "title": "Outline Validation"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseState"
+            },
+            "title": "Phases",
+            "type": "array"
+          },
+          "validation_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Error"
+          }
+        },
+        "required": [
+          "phases"
+        ],
+        "title": "PhaseReport",
+        "type": "object"
+      },
+      "PhaseState": {
+        "properties": {
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "status",
+          "reason"
+        ],
+        "title": "PhaseState",
         "type": "object"
       },
       "SessionInfo": {
@@ -272,6 +1063,82 @@
         ]
       }
     },
+    "/api/v1/costs": {
+      "get": {
+        "operationId": "get_costs_api_v1_costs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Riepilogo dei costi LLM di tutte le lezioni",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -290,6 +1157,784 @@
         "summary": "Stato del servizio (senza autenticazione)",
         "tags": [
           "sistema"
+        ]
+      }
+    },
+    "/api/v1/lessons": {
+      "get": {
+        "operationId": "list_lessons_api_v1_lessons_get",
+        "parameters": [
+          {
+            "description": "Filtra per materia",
+            "in": "query",
+            "name": "materia",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtra per materia",
+              "title": "Materia"
+            }
+          },
+          {
+            "description": "Filtra per stato del workflow (es. completato)",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtra per stato del workflow (es. completato)",
+              "title": "State"
+            }
+          },
+          {
+            "description": "Testo libero su cartella, titolo, argomenti",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Testo libero su cartella, titolo, argomenti",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LessonSummary"
+                  },
+                  "title": "Response List Lessons Api V1 Lessons Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elenco delle lezioni (come la dashboard)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}": {
+      "get": {
+        "operationId": "get_lesson_api_v1_lessons__lesson_id__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dettaglio di una lezione: fasi, costi, stato (come 'rt status' e 'rt cost')",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/audio": {
+      "get": {
+        "operationId": "get_audio_api_v1_lessons__lesson_id__audio_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "audio/*": {}
+            },
+            "description": "Successful Response"
+          },
+          "206": {
+            "description": "Contenuto parziale"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Audio della lezione (supporta Range)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/decisions": {
+      "get": {
+        "operationId": "get_decisions_api_v1_lessons__lesson_id__decisions_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Decision"
+                  },
+                  "title": "Response Get Decisions Api V1 Lessons  Lesson Id  Decisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ledger delle decisioni (review_decisions.json)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/document": {
+      "get": {
+        "operationId": "get_document_api_v1_lessons__lesson_id__document_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Documento Markdown finale (o anteprima) con HTML sanificato e timecode",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/issues": {
+      "get": {
+        "operationId": "get_issues_api_v1_lessons__lesson_id__issues_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pending: solo da decidere",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "description": "pending: solo da decidere",
+              "enum": [
+                "pending",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Issue della review con contesto (unità, timecode, finestra audio)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/outline": {
+      "get": {
+        "operationId": "get_outline_api_v1_lessons__lesson_id__outline_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outline"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Outline ad albero con stato di approvazione",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/phases": {
+      "get": {
+        "operationId": "get_phases_api_v1_lessons__lesson_id__phases_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhaseReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Freschezza delle fasi e report di validazione di outline e draft",
+        "tags": [
+          "lezioni"
         ]
       }
     }
