@@ -51,3 +51,27 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 | `GET /lessons/{id}/issues?status=pending\|all` | Issue con contesto (unità, timecode, finestra audio) e decisione | `rt review` |
 | `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |
 | `GET /costs` | Costi LLM di tutte le lezioni, per lezione e per job | `rt cost` |
+
+### Impostazioni (RT4-E4)
+
+La logica vive in `rt/services/settings_service.py` e `rt/services/connections_service.py`
+(spostati da `rt/web/`, che li reimporta per Gradio). Nessuna risposta contiene un valore
+segreto: solo `set: true/false`.
+
+| Metodo e percorso | Cosa fa | Equivalente CLI |
+|---|---|---|
+| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing | `rt config` |
+| `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
+| `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
+| `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
+| `POST /settings/connections` | Nuova connessione (provider, base URL, chiavi) | `rt config --models` |
+| `POST /settings/connections/{name}/models` | Aggiunge un modello | `rt config --models` |
+| `PUT /settings/phases/{job}` | Connessione e modello per outline, rewrite, review, recall, image_description, image_unit_judge | `rt config --models` |
+| `GET/PUT /settings/routes/{job}/{role}` | Route primaria, secondaria, fallback | file `config/*.yaml` |
+| `PUT /settings/pricing` | Pricing custom per provider e modello | `rt config` |
+| `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
+| `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
+
+Il bot parte come processo separato in una sessione propria (sopravvive all'API) e il lock
+del PID file in `~/.rt/` impedisce i duplicati; lo stop invia SIGTERM. Un servizio launchd
+dedicato arriva con la fase G.

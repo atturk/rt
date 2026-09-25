@@ -23,6 +23,23 @@ def isolated_workspace(tmp_path, monkeypatch, lessons_root=True):
     return str(root)
 
 
+def workspace_with_example_config(tmp_path, monkeypatch):
+    """Come isolated_workspace, ma con config/ copiata da config.example (i sei job LLM)."""
+    root = isolated_workspace(tmp_path, monkeypatch, lessons_root=False)
+    project = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config = os.path.join(os.getcwd(), "config")
+    shutil.rmtree(config)
+    shutil.copytree(os.path.join(project, "config.example"), config)
+    import yaml
+    general_path = os.path.join(config, "general.yaml")
+    with open(general_path, encoding="utf-8") as f:
+        general = yaml.safe_load(f) or {}
+    general.setdefault("telegram", {})["lessons_root"] = root
+    with open(general_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
+    return root
+
+
 def make_lesson(root: str, name: str = LESSON_NAME) -> str:
     """Cartella già inizializzata con trascritto Markdown (come lo scenario golden)."""
     lesson_dir = os.path.join(root, name)
