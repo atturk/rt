@@ -27,6 +27,7 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 
 from rt.core.config import load_env_file, _default_project_root
+from rt.cli_secrets import configure_secrets_parser, cmd_secrets
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.encoding import fix_mojibake
 
@@ -767,6 +768,11 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
     configure_config_parser(p_cfg)
     p_cfg.set_defaults(func=cmd_config)
+
+    # 1-bis. secrets
+    p_sec = subparsers.add_parser("secrets", help="Chiavi API e token cifrati: init, migrate, list, set, unset, rotate")
+    configure_secrets_parser(p_sec)
+    p_sec.set_defaults(func=cmd_secrets)
 
     # 2. run
     p_run = subparsers.add_parser("run", help="Esegue l'intera pipeline end-to-end (accetta file audio o cartella lezione)")

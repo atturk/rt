@@ -36,8 +36,9 @@ cp -r config.example config
 
 La schermata Configurazione di `rt web` consente di gestire cartella lezioni,
 credenziali, modelli, fallback, rotazione delle chiavi, bot Telegram e motore STT.
-Le chiavi sono salvate nel `.env` locale; per il server STT custom la variabile
-facoltativa è `RT_STT_API_KEY`.
+Le chiavi sono salvate nell'archivio cifrato `config/secrets.enc` se è stato creato con
+`rt secrets init`, altrimenti nel `.env` locale (vedi "Segreti cifrati a riposo" qui sotto);
+per il server STT custom la variabile facoltativa è `RT_STT_API_KEY`.
 
 ### Dichiarazione delle Credenziali (`credentials:`)
 
@@ -46,7 +47,7 @@ facoltativa è `RT_STT_API_KEY`.
 
 #### Flusso di configurazione:
 1. Apri `config/general.yaml` e dichiara le credenziali desiderate sotto `credentials:`.
-2. Imposta le variabili d'ambiente indicate in `.env` (oppure esportale nell'ambiente shell).
+2. Salva le chiavi con `rt secrets set <ENV_VAR>` (archivio cifrato), oppure nel `.env`, oppure esportale nell'ambiente shell.
 3. Nei singoli file `config/<job>.yaml`, imposta `provider` e `model` sotto `primary:`.
 
 #### Esempio base con OpenRouter (già presente come template in `config.example/general.yaml`):
@@ -105,6 +106,35 @@ pricing:
       input_per_million: 0.14
       output_per_million: 0.28
 ```
+
+### Segreti cifrati a riposo (`rt secrets`)
+
+Chiavi API, token del bot Telegram e `RT_STT_API_KEY` possono stare in un archivio cifrato
+invece che in chiaro nel `.env`. Senza archivio tutto funziona come prima.
+
+| Comando | Cosa fa |
+|---|---|
+| `rt secrets init` | Genera la chiave master, la salva nel portachiavi di sistema (servizio `rt`, voce `master_key`) e crea `config/secrets.enc`. Con `--no-keyring`, o se il portachiavi non è disponibile, la chiave viene mostrata **una sola volta** e va messa in `RT_MASTER_KEY`. `--print-key` la mostra anche quando è nel portachiavi. |
+| `rt secrets migrate` | Copia nell'archivio le variabili dichiarate in `credentials:`, `RT_TELEGRAM_BOT_TOKEN` e `RT_STT_API_KEY` presenti nel `.env`, rilegge l'archivio per verificarle e solo dopo, se confermi (o con `--yes`), crea il backup `.env.bak-<data>` (permessi 600) e toglie quei valori dal `.env`. `--keep-env` copia senza toccare il `.env`. È idempotente: rieseguito non trova nulla da fare. Se l'archivio ha già un valore diverso per una chiave, resta quello dell'archivio. |
+| `rt secrets list` | Nomi e data di modifica, mai i valori. |
+| `rt secrets set NOME` / `unset NOME` | Salva (valore chiesto senza eco, o da stdin con `--stdin`) o rimuove un segreto. |
+| `rt secrets rotate` | Ricifra l'archivio con una chiave master nuova. Con il portachiavi lo aggiorna da solo; con `RT_MASTER_KEY` mostra la chiave nuova da sostituire. |
+
+**Priorità** quando lo stesso nome è in più posti: variabile esportata nell'ambiente >
+archivio cifrato > `.env`. Se l'archivio esiste e una chiave nota è ancora in chiaro nel
+`.env`, RT lo segnala una volta per processo. `RT_TELEGRAM_CHAT_ID` non è un segreto e resta
+nel `.env`.
+
+**Chiave master**: letta da `RT_MASTER_KEY` (anche più chiavi separate da virgola, la prima
+cifra, tutte decifrano) oppure dal portachiavi. Per il daemon Telegram avviato da launchd il
+portachiavi di login funziona; se usi `RT_MASTER_KEY`, aggiungila all'ambiente del servizio.
+Se la chiave va persa l'archivio non si può più leggere: conserva la chiave mostrata da
+`init` in un gestore di password. Con archivio presente ma chiave assente RT avvisa e continua
+con i valori del `.env`.
+
+`RT_SECRETS_FILE` sposta l'archivio (default: `secrets.enc` nella cartella `config/` in uso).
+`install.sh` e `rt -u` suggeriscono `rt secrets migrate` quando il `.env` contiene chiavi e
+l'archivio non esiste, ma non migrano da soli.
 
 ---
 

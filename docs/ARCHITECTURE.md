@@ -268,9 +268,16 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   contiene solo regole pure e non importa più `rt.telegram`.
 - **Configurazione** (`rt/services/config_service.py`): percorsi (`config/` nella cwd o nel
   progetto, `.env` accanto), lettura/validazione (`validate_config`) e scrittura atomica di
-  YAML e testo, `set_env_var` e `set_secret` (oggi `.env` con chmod 600; RT4-C1 lo sostituirà
-  con l'archivio cifrato). Il wizard `rt config` è in `rt/tui/configure/` e, come le
+  YAML e testo, `set_env_var` e `set_secret` (archivio cifrato se inizializzato, altrimenti `.env` con
+  chmod 600). Il wizard `rt config` è in `rt/tui/configure/` e, come le
   impostazioni web (`rt/web/settings.py`), scrive attraverso il servizio.
+- **Segreti** (`rt/security/secrets.py`, fase C): porta `SecretStore` con
+  `EnvSecretStore` (sola lettura) ed `EncryptedFileSecretStore` (`config/secrets.enc`,
+  Fernet/MultiFernet, chiave master da `RT_MASTER_KEY` o dal portachiavi). `load_env_file`
+  riversa lo store in `os.environ` con priorità ambiente esplicito > store > `.env`, quindi
+  `CredentialRegistry` e il daemon Telegram non cambiano. Gestione (init, migrate, list,
+  set, unset, rotate) in `rt/services/secrets_service.py`, comando `rt secrets` in
+  `rt/cli_secrets.py`. Una futura `DbSecretStore` (fase B) implementerà la stessa porta.
 - **Active Recall** (`rt/services/recall_service.py`): stato di sessione per lezione, batch
   iniziale, prossima domanda con rifornimento, valutazione delle risposte, domande stale.
   Canali: `rt/telegram/recall_channel.py` (Telegram) e `rt/tui/recall.py` (terminale e

@@ -217,6 +217,19 @@ def _update_git_checkout(project_root: str, latest_ver: str) -> bool:
     return True
 
 
+def _print_secrets_migration_hint(project_root: str) -> None:
+    """RT4-C2: dopo l'aggiornamento suggerisce 'rt secrets migrate' se .env contiene chiavi in
+    chiaro e l'archivio cifrato non esiste. Non migra da solo e non blocca mai l'update."""
+    try:
+        from rt.services.secrets_service import env_needs_migration
+        if env_needs_migration(os.path.join(project_root, ".env"),
+                               os.path.join(project_root, "config", "general.yaml")):
+            print("🔐 Le chiavi API sono ancora in chiaro nel file .env: per cifrarle esegui "
+                  "'rt secrets init' e poi 'rt secrets migrate'.")
+    except Exception:
+        pass
+
+
 def run_update(project_root: str) -> int:
     """
     Esegue l'aggiornamento automatico sicuro di RT tramite GitHub Releases:
@@ -257,6 +270,7 @@ def run_update(project_root: str) -> int:
         if not _install_runtime_requirements(project_root):
             return 1
         print(f"✅ RT aggiornato: {curr_ver} → {latest_ver}")
+        _print_secrets_migration_hint(project_root)
         return 0
 
     print(f"Aggiornamento in corso ({curr_ver} → {latest_ver})...")
@@ -346,4 +360,5 @@ def run_update(project_root: str) -> int:
 
     new_ver = get_current_version(project_root)
     print(f"✅ RT aggiornato: {curr_ver} → {new_ver}")
+    _print_secrets_migration_hint(project_root)
     return 0
