@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Union
 
 from rt.services.context import RunCancelled, RunContext, phase_scope
+from rt.pipeline.outline_review import outline_needs_approval
 from rt.services.events import DecisionRequired, Notice
 
 
@@ -70,16 +71,6 @@ class Notifier(Protocol):
 def is_audio_input(inputs: Sequence[str]) -> bool:
     from rt.pipeline.setup import is_audio_file
     return any(is_audio_file(x) for x in inputs)
-
-
-def outline_needs_approval(lesson_dir: str, force: bool) -> bool:
-    """Stessa regola di gating di confirm_or_revise_outline: si chiede conferma solo se il
-    rewrite non è già VALID, oppure con force."""
-    if force:
-        return True
-    from rt.core.idempotency import check_phase_status, PhaseStatus
-    status, _ = check_phase_status(lesson_dir, "rewrite")
-    return status != PhaseStatus.VALID
 
 
 def lesson_title(lesson_dir: str) -> str:
@@ -186,10 +177,14 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     result.phase_results["outline"] = run_outline(lesson_dir, force=force, force_mock=mock, ctx=ctx)
 
     if outline_needs_approval(lesson_dir, force):
+        from rt.services import outline_service
         if decisions is not None:
             decisions.approve_outline(lesson_dir, force=force, force_mock=mock)
-        elif not options.auto_accept:
-            _wait(result, ctx, "outline_approval", lesson_dir, {"lesson_dir": lesson_dir})
+        elif options.auto_accept:
+            outline_service.approve_outline(lesson_dir, actor="auto_accept", channel="api")
+        elif not outline_service.is_outline_approved(lesson_dir):
+            _wait(result, ctx, "outline_approval", lesson_dir,
+                  {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
             return
 
     ctx.check_cancelled()

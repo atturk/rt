@@ -249,3 +249,9 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   si usano i default di sempre, oppure con `strict=True` si solleva `MissingSetupFields`
   (l'orchestratore senza `DecisionProvider` la trasforma in `DecisionRequired(setup_metadata)`).
   L'annullamento di un prompt è `SetupCancelled` (exit 0 in CLI), gli errori restano `SetupError`.
+- **Outline** (`rt/services/outline_service.py`): `get_outline_review()` (albero JSON e stato),
+  `approve_outline(lesson_dir, actor, channel)` (registrata in `_state/outline_approval.json`
+  con l'hash di `outline.json`, quindi una revisione la invalida), `is_outline_approved()`,
+  `request_outline_revision(lesson_dir, feedback, ctx)`. La UI da terminale (app Textual e
+  fallback testuale) è in `rt/tui/outline_review.py`; `rt/pipeline/outline_review.py` tiene
+  solo la regola di gating `outline_needs_approval()`.

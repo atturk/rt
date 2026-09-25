@@ -35,7 +35,7 @@ from rt.core.lesson_paths import lesson_path
 from rt.core.segments import load_segments_json
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
-from rt.pipeline.outline_review import confirm_or_revise_outline
+from rt.tui.outline_review import confirm_or_revise_outline
 from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review import run_review, load_science_issues

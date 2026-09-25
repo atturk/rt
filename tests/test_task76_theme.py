@@ -132,7 +132,7 @@ def test_outline_review_app_theme(tmp_path):
             ],
         }, f)
 
-    from rt.pipeline.outline_review import OutlineReviewApp
+    from rt.tui.outline_review import OutlineReviewApp
 
     with patch("rt.core.ui_theme.get_configured_textual_theme", return_value="textual-light"):
         app = OutlineReviewApp(lesson_dir)
