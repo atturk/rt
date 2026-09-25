@@ -59,6 +59,17 @@ Per eseguire l'intera suite:
 .venv/bin/python -m pytest tests/ -q
 ```
 
+### Rete di sicurezza per il refactoring (RT 4.0)
+
+- `test_golden_run.py`: esegue `rt run ... --mock` in un sottoprocesso su due scenari
+  (audio completo con review e seconda esecuzione in SKIP; cartella con trascritto e revisione
+  dell'outline) e confronta output del terminale e file finali con `tests/golden/`, dopo aver
+  normalizzato percorsi temporanei, timestamp e hash. Se un cambiamento è voluto, rigenera con
+  `.venv/bin/python scripts/update_golden.py [scenario]` e rivedi il diff.
+- `test_layering.py`: segnala gli import di UI (`textual`, `rich.prompt`, `questionary`,
+  `rt.telegram`, `rt.tui`, `rt.web`) e le chiamate `input()`/`sys.exit()` dentro `rt/pipeline`
+  e `rt/core`. Le violazioni note stanno in `ALLOWLIST`; togline le voci quando le risolvi.
+
 ---
 
 ## 3. Configurazione Provider LLM

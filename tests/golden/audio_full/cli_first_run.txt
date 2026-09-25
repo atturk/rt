@@ -1,0 +1,57 @@
+exit_code: 0
+--- stdout ---
+
+============================================================
+🎙️  RT 2.0 — PIPELINE END-TO-END DA SORGENTE AUDIO
+============================================================
+File audio in ingresso: demo_lecture.wav
+
+[1/7] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...
+✔ Cartella lezione: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi
+
+[2/7] MACWHISPER TRANSCRIPTION (ASR Timecoded)...
+⏩ [MOCK ASR] Trascrizione deterministica generata offline a costo zero.
+
+[3/7] PREPARE (Parsing deterministico segmenti)...
+✔ Segmenti estratti: 4 (62.0s)
+
+[4/7] OUTLINE (Scaletta gerarchica didattica)...
+✔ Outline validata: 1 unità didattiche (100.0% copertura)
+
+============================================================
+📋 OUTLINE GENERATA — in attesa di conferma
+============================================================
+📋 Lezione Accademica Rielaborata
+
+1. Introduzione e concetti fondamentali
+  1.1 Panoramica generale e prima unità — Concetto chiave 1, Concetto chiave 2
+
+Azione [A=Approva / M=Richiedi modifiche]: ✔ Outline approvata.
+
+[5/7] REWRITE (Rielaborazione fluida a finestre con provenance)...
+✔ Rielaborate 1/1 unità. Provenance verificata.
+
+[6/7] REVIEW (Critic indipendente su correttezza scientifica)...
+✔ Issue scientifiche: 10 (Concettuali: 10)
+
+⚡ Auto-approvati 10 casi in base ai filtri CLI.
+
+✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).
+
+[7/7] BUILD (Finalizzazione deterministica Markdown)...
+✔ File finali generati con successo:
+  - Rielaborato: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi/_state/rielaborato.md
+  - Pre-elaborato: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi/_state/pre-elaborato.md
+  - Errori concettuali: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi/Errori concettuali.md
+
+✨ PIPELINE COMPLETATA CON SUCCESSO!
+
+============================================================
+💰 RIEPILOGO COSTI SESSIONE
+============================================================
+  outline            1 richieste  $0.000000
+  rewrite            1 richieste  $0.000000
+  review             1 richieste  $0.000000
+  TOTALE               $0.000000
+============================================================
+--- stderr ---

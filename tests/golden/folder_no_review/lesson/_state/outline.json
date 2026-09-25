@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "lesson_title": "Lezione Accademica Rielaborata",
+  "macro_sections": [
+    {
+      "id": "1",
+      "title": "Introduzione e concetti fondamentali",
+      "units": [
+        {
+          "id": "1.1",
+          "title": "Panoramica generale e prima unità",
+          "start_segment_id": "seg_000001",
+          "end_segment_id": "seg_000001",
+          "key_concepts": [
+            "Concetto chiave 1",
+            "Concetto chiave 2"
+          ]
+        }
+      ]
+    }
+  ],
+  "generated_topics": null
+}

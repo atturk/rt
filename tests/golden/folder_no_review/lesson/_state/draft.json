@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "lesson_id": "[2026-09-05] BIOCHIMICA - Lipidi",
+  "units": [
+    {
+      "unit_id": "1.1",
+      "title": "Unità Didattica Rielaborata",
+      "start_segment_id": "seg_000001",
+      "end_segment_id": "seg_000001",
+      "source_segment_ids": [
+        "seg_000001"
+      ],
+      "content": "La trattazione scientifica si apre con l'analisi sistematica dei meccanismi biochimici fondamentali.",
+      "generated_at": "<TS>"
+    }
+  ]
+}

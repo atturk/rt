@@ -1,0 +1,26 @@
+exit_code: 0
+--- stdout ---
+
+============================================================
+🚀 RT 2.0 — PIPELINE END-TO-END PER: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi
+============================================================
+
+[1/5] PREPARE (Parsing deterministico segmenti)...
+⏩ [SKIP] Segmenti già validi (4 segmenti, 62.0s)
+
+[2/5] OUTLINE (Scaletta gerarchica didattica)...
+⏩ [SKIP] Outline già valida (1 unità didattiche, 0 chiamate LLM)
+
+[3/5] REWRITE (Rielaborazione fluida a finestre con provenance)...
+⏩ [SKIP] Draft già valido (1 unità verificate, 0 chiamate LLM)
+
+[4/5] REVIEW (Critic indipendente su correttezza scientifica)...
+⏩ [SKIP] Review scientifica già completata (10 issue note, 0 chiamate LLM)
+
+✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).
+
+[5/5] BUILD (Finalizzazione deterministica Markdown)...
+⏩ [SKIP] Documenti finali già generati e aggiornati.
+
+✨ PIPELINE COMPLETATA CON SUCCESSO!
+--- stderr ---
