@@ -24,8 +24,7 @@ aggiornare e testare launcher, configurazione e updater, che oggi dipendono dall
 
 ## Dipendenze e Python
 
-Python minimo: 3.11. La matrice CI verifica 3.11, 3.12 e 3.14 su macOS e Linux.
-Questo non rende disponibile la trascrizione nativa Mac su Linux.
+Python minimo: 3.11. La matrice CI verifica 3.11, 3.12 e 3.14 solo su macOS: rt è pensato per Mac.
 `requirements.txt` descrive le dipendenze dirette; `constraints.txt` blocca le
 versioni dirette e transitive del set verificato. I vincoli includono pytest, ma
 non lo installano negli ambienti runtime: è richiesto solo da `requirements-dev.txt`.
