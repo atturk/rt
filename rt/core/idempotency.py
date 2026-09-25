@@ -6,6 +6,7 @@ freschezza degli artefatti e invalidazione a cascata nel workflow RT 2.0.
 
 import os
 import hashlib
+import json
 from enum import Enum
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple, List
@@ -78,6 +79,49 @@ def find_raw_transcript_source(lesson_dir: str) -> Optional[str]:
     return None
 
 
+def _info_fingerprint_strs(lesson_dir: str) -> List[str]:
+    """Metadati di info.yaml che entrano nell'impronta di prepare e outline.
+
+    Gli argomenti generati dall'outline (lezione nata senza argomenti) vengono scritti in
+    info.yaml dal build: sono un prodotto della pipeline, non un input dell'utente, quindi
+    finché coincidono con outline.generated_topics contano come argomenti vuoti. Vuoto può
+    essere stato registrato come null o come '' a seconda di chi ha scritto info.yaml, per
+    cui in quel caso si restituiscono entrambe le varianti."""
+    from rt.core.state import read_info_yaml
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
+    if not os.path.isfile(yaml_path):
+        return [""]
+    try:
+        info = read_info_yaml(yaml_path)
+    except Exception:
+        return [""]
+    prefix = f"{info.get('data', '')}:{info.get('materia', '')}:"
+    topics = info.get("argomenti", "")
+    if topics and str(topics).strip():
+        try:
+            with open(lesson_path(lesson_dir, "outline.json"), "r", encoding="utf-8") as f:
+                generated = json.load(f).get("generated_topics") or []
+        except (OSError, ValueError, AttributeError):
+            generated = []
+        if generated and str(topics).strip() == ", ".join(generated):
+            return [prefix + "None", prefix]
+    return [f"{prefix}{topics}"]
+
+
+def _metadata_fingerprints(lesson_dir: str, phase_name: str) -> List[str]:
+    """Impronte accettabili per prepare e outline, una per variante dei metadati."""
+    proc_ver = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
+    if phase_name == "prepare":
+        raw_source = find_raw_transcript_source(lesson_dir)
+        source_hash = compute_file_sha256(raw_source) if raw_source else "no_source"
+    else:
+        source_hash = compute_file_sha256(lesson_path(lesson_dir, "segments.json"))
+    return [
+        compute_string_sha256(f"{source_hash}|{info_str}|{proc_ver}")
+        for info_str in _info_fingerprint_strs(lesson_dir)
+    ]
+
+
 def compute_source_fingerprint(
     lesson_dir: str,
     phase_name: str,
@@ -92,35 +136,10 @@ def compute_source_fingerprint(
     """
     proc_ver = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
 
-    if phase_name == "prepare":
-        raw_source = find_raw_transcript_source(lesson_dir)
-        source_hash = compute_file_sha256(raw_source) if raw_source else "no_source"
-        from rt.core.state import read_info_yaml
-        yaml_path = lesson_path(lesson_dir, "info.yaml")
-        info_str = ""
-        if os.path.isfile(yaml_path):
-            try:
-                info = read_info_yaml(yaml_path)
-                info_str = f"{info.get('data', '')}:{info.get('materia', '')}:{info.get('argomenti', '')}"
-            except Exception:
-                pass
-        return compute_string_sha256(f"{source_hash}|{info_str}|{proc_ver}")
+    if phase_name in ("prepare", "outline"):
+        return _metadata_fingerprints(lesson_dir, phase_name)[0]
 
-    elif phase_name == "outline":
-        seg_path = lesson_path(lesson_dir, "segments.json")
-        seg_hash = compute_file_sha256(seg_path)
-        from rt.core.state import read_info_yaml
-        yaml_path = lesson_path(lesson_dir, "info.yaml")
-        info_str = ""
-        if os.path.isfile(yaml_path):
-            try:
-                info = read_info_yaml(yaml_path)
-                info_str = f"{info.get('data', '')}:{info.get('materia', '')}:{info.get('argomenti', '')}"
-            except Exception:
-                pass
-        return compute_string_sha256(f"{seg_hash}|{info_str}|{proc_ver}")
-
-    elif phase_name == "rewrite":
+    if phase_name == "rewrite":
         seg_path = lesson_path(lesson_dir, "segments.json")
         out_path = lesson_path(lesson_dir, "outline.json")
         seg_hash = compute_file_sha256(seg_path)
@@ -224,9 +243,8 @@ def check_phase_status(
         except Exception as e:
             return PhaseStatus.INVALID, f"segments.json non valido o corrotto: {e}"
 
-        current_fp = compute_source_fingerprint(lesson_dir, "prepare")
         recorded_fp = current_rec.get("source_fingerprint")
-        if recorded_fp and recorded_fp != current_fp:
+        if recorded_fp and recorded_fp not in _metadata_fingerprints(lesson_dir, "prepare"):
             return PhaseStatus.STALE, "Trascritto grezzo o metadati info.yaml modificati"
         return PhaseStatus.VALID, "segments.json valido e aggiornato"
 
@@ -250,9 +268,8 @@ def check_phase_status(
         except Exception as e:
             return PhaseStatus.INVALID, f"outline.json non valido rispetto ai segmenti: {e}"
 
-        current_fp = compute_source_fingerprint(lesson_dir, "outline")
         recorded_fp = current_rec.get("source_fingerprint")
-        if recorded_fp and recorded_fp != current_fp:
+        if recorded_fp and recorded_fp not in _metadata_fingerprints(lesson_dir, "outline"):
             return PhaseStatus.STALE, "segments.json o metadati modificati dopo la generazione dell'outline"
         return PhaseStatus.VALID, "outline.json valido e conforme ai segmenti"
 
@@ -504,9 +521,12 @@ def get_phase_checkpoint(
     if not record:
         return None, PhaseStatus.MISSING, f"Nessun checkpoint per fase {phase_name}"
 
-    current_fp = compute_source_fingerprint(lesson_dir, phase_name)
     recorded_fp = record.get("source_fingerprint")
-    if not recorded_fp or recorded_fp != current_fp:
+    if phase_name in ("prepare", "outline"):
+        accepted = _metadata_fingerprints(lesson_dir, phase_name)
+    else:
+        accepted = [compute_source_fingerprint(lesson_dir, phase_name)]
+    if not recorded_fp or recorded_fp not in accepted:
         return record, PhaseStatus.STALE, "Input a monte o configurazione modificati rispetto al checkpoint"
 
     art_fps = record.get("artifact_fingerprints", {})
