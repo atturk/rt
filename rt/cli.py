@@ -596,6 +596,7 @@ def cmd_run(args):
 
 def cmd_telegram_daemon(args):
     from rt.telegram.daemon import run_daemon
+    _upgrade_database_quietly()
     run_daemon(state_dir=getattr(args, "state_dir", None))
 
 
@@ -634,6 +635,73 @@ def cmd_config(args: argparse.Namespace) -> None:
         run_config_wizard()
 
 
+def cmd_db(args: argparse.Namespace) -> None:
+    """Gestione del database (migrazioni)."""
+    from rt.db.engine import current_revision, get_database, head_revision, resolve_database_url, sqlite_file
+
+    url = resolve_database_url()
+    if not url:
+        print("Database disattivato (RT_DATABASE_URL=off o database_url: off).")
+        sys.exit(1)
+    shown = sqlite_file(url) or url.split("@")[-1]
+    if args.db_command in ("sync", "check"):
+        _cmd_db_sync_or_check(args, url, shown)
+        return
+    if args.db_command == "upgrade":
+        db = get_database(create=True, url=url)
+        if db is None:
+            print(f"❌ Impossibile creare o aggiornare il database: {shown}", file=sys.stderr)
+            sys.exit(1)
+        print(f"✅ Database aggiornato ({current_revision(db.engine)}): {shown}")
+    else:
+        db = get_database(url=url)
+        if db is None:
+            print(f"Database non ancora creato: {shown}\nEsegui 'rt db upgrade' per crearlo.")
+            return
+        print(f"Database: {shown}\nRevisione: {current_revision(db.engine)} (ultima: {head_revision()})")
+
+
+def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> None:
+    from rt.core.config import load_config
+    from rt.db.engine import get_database
+    from rt.db.sync import check_all, sync_all
+
+    root = args.lessons_root or load_config().telegram.lessons_root
+    if not root or not os.path.isdir(os.path.expanduser(root)):
+        print("❌ Cartella delle lezioni non trovata: passa --lessons-root o imposta telegram.lessons_root.", file=sys.stderr)
+        sys.exit(1)
+    root = os.path.abspath(os.path.expanduser(root))
+    db = get_database(create=args.db_command == "sync", url=url)
+    if db is None:
+        print(f"❌ Database non disponibile: {shown}\nEsegui 'rt db upgrade' per crearlo.", file=sys.stderr)
+        sys.exit(1)
+    if args.db_command == "sync":
+        result = sync_all(db, root)
+        print(f"✅ Lezioni sincronizzate: {result['synced']} ({shown})")
+        for err in result["errors"]:
+            print(f"  ⚠️  {err}", file=sys.stderr)
+        if result["errors"]:
+            sys.exit(1)
+        return
+    diffs = check_all(db, root)
+    if not diffs:
+        print("✅ Database allineato ai file delle lezioni.")
+        return
+    print(f"⚠️  {len(diffs)} differenze tra database e file (esegui 'rt db sync' per riallinearli):")
+    for d in diffs:
+        print(f"  - {d}")
+    sys.exit(1)
+
+
+def _upgrade_database_quietly() -> None:
+    """Crea o aggiorna il DB all'avvio dei processi di lunga durata (web, daemon)."""
+    try:
+        from rt.db.engine import get_database
+        get_database(create=True)
+    except Exception:
+        pass
+
+
 def cmd_web(args: argparse.Namespace) -> None:
     """Avvia la web app nell'ambiente RT, mantenendo il terminale come console log."""
     try:
@@ -642,6 +710,7 @@ def cmd_web(args: argparse.Namespace) -> None:
         if exc.name == "gradio":
             raise SystemExit("Interfaccia web mancante. Esegui 'rt -u' per installare le dipendenze e riprova.") from exc
         raise
+    _upgrade_database_quietly()
     argv = ["--port", str(args.port)]
     if args.lessons_root:
         argv += ["--lessons-root", args.lessons_root]
@@ -666,6 +735,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  add-images          Integra slide/foto o immagini web nel documento finale\n\n"
         "Comandi diagnostici:\n"
         "  cost                Mostra il costo stimato cumulativo di una lezione\n"
+        "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n\n"
         "Opzioni generali:\n"
@@ -869,6 +939,17 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_cost.add_argument("--split", action="store_true", help="Mostra il dettaglio completo per fase, unità e singoli tentativi")
     p_cost.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_cost.set_defaults(func=cmd_cost)
+
+    # db (fuori dalla mappa restituita: la palette della TUI non gestisce sotto-comandi annidati)
+    p_db = subparsers.add_parser("db", help=argparse.SUPPRESS, description="Gestione del database di RT (indice lezioni, decisioni, costi, stato Telegram)")
+    db_sub = p_db.add_subparsers(dest="db_command", required=True, title="Comandi database")
+    db_sub.add_parser("upgrade", help="Crea il database o applica le migrazioni mancanti")
+    db_sub.add_parser("status", help="Mostra percorso e revisione del database")
+    for name, text in (("sync", "Importa nel database le lezioni di lessons_root (non modifica i file)"),
+                       ("check", "Confronta database e file delle lezioni e segnala le differenze")):
+        p_sub = db_sub.add_parser(name, help=text)
+        p_sub.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
+    p_db.set_defaults(func=cmd_db)
 
     return parser, {
         "web": p_web,

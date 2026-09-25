@@ -49,6 +49,30 @@ def _disable_real_telegram_notifications():
     os.environ["RT_TELEGRAM_CHAT_ID"] = "0"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_database(monkeypatch):
+    """Nessun test tocca il database reale dell'utente (quello in <lessons_root>/.rt/rt.db
+    della config della macchina): il DB è spento per default e i test del DB lo attivano
+    con un URL temporaneo (fixture rt_db)."""
+    from rt.db.engine import reset_database_cache
+    monkeypatch.setenv("RT_DATABASE_URL", "off")
+    reset_database_cache()
+    yield
+    reset_database_cache()
+
+
+@pytest.fixture
+def rt_db(tmp_path, monkeypatch):
+    """Database SQLite su file in una cartella temporanea, migrato e attivo per il test."""
+    from rt.db.engine import get_database, reset_database_cache
+    url = "sqlite:///" + str(tmp_path / "db" / "rt.db")
+    monkeypatch.setenv("RT_DATABASE_URL", url)
+    reset_database_cache()
+    db = get_database(create=True)
+    assert db is not None
+    return db
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _register_standard_test_credentials():
     """Molti test esistenti costruiscono route con credential='openrouter'/'deepseek'/

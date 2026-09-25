@@ -100,6 +100,9 @@ def update_info_yaml(yaml_path: str, updates: Dict[str, Any]) -> None:
         f.writelines(new_lines)
     os.replace(tmp_path, yaml_path)
 
+    from rt.db.sync import dual_write_lesson, lesson_dir_of_state_file
+    dual_write_lesson(lesson_dir_of_state_file(yaml_path))
+
 
 def get_current_state(yaml_path: str) -> Optional[WorkflowState]:
     """Legge lo stato corrente del workflow da info.yaml."""

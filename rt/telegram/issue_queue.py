@@ -10,6 +10,7 @@ import json
 from typing import Optional, Dict, List
 from rt.core.models import IssueReviewQueueState
 from rt.core.lesson_paths import lesson_path
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
 
 
 def get_queue_path(lesson_dir: str) -> str:
@@ -18,15 +19,21 @@ def get_queue_path(lesson_dir: str) -> str:
 
 def load_queue(lesson_dir: str) -> Optional[IssueReviewQueueState]:
     path = get_queue_path(lesson_dir)
-    if not os.path.isfile(path):
+    data = read_document(path)
+    if data is MISSING:
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    if data is NO_DATABASE:
+        if not os.path.isfile(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
     return IssueReviewQueueState.model_validate(data)
 
 
 def _save(state: IssueReviewQueueState, lesson_dir: str) -> None:
     path = get_queue_path(lesson_dir)
+    if write_document(path, state.model_dump(mode="json")):
+        return
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(state.model_dump(mode="json"), f, ensure_ascii=False, indent=2)

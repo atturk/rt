@@ -90,7 +90,8 @@ def load_ledger(lesson_dir: str, strict: bool = False) -> DecisionLedger:
         return DecisionLedger(schema_version="1.0", decisions=[])
 
 
-def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
+def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
+    """Scrive review_decisions.json (formato storico), senza toccare il DB."""
     path = get_ledger_path(lesson_dir)
     data = sanitize_object_encoding(ledger.model_dump(mode="json"))
     # channel/actor si scrivono solo quando noti: le decisioni senza restano nel formato storico.
@@ -102,6 +103,14 @@ def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, path)
+
+
+def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
+    """Sovrascrive il ledger con `ledger` e allinea il DB (che lo reimporta)."""
+    write_ledger_file(ledger, lesson_dir)
+
+    from rt.db.sync import dual_write_lesson
+    dual_write_lesson(lesson_dir)
 
 
 def record_decision(
@@ -140,15 +149,23 @@ def record_decision(
         actor=actor,
     )
     
-    ledger.decisions.append(dec_obj)
-    save_ledger(ledger, lesson_dir)
+    # Con il DB attivo la decisione si registra lì e il file viene riesportato dal DB.
+    from rt.db.ledger_store import NO_DATABASE, append_decision
+    if append_decision(lesson_dir, dec_obj.model_dump()) is NO_DATABASE:
+        ledger.decisions.append(dec_obj)
+        save_ledger(ledger, lesson_dir)
 
     return dec_obj
 
 
 
 def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
-    """Rimuove l'ultima voce per issue_id dal ledger (append-only). Ritorna False se non trovata."""
+    """Rimuove l'ultima voce per issue_id dal ledger (append-only). Ritorna False se non trovata.
+    Con il DB attivo la voce resta nel DB marcata come annullata."""
+    from rt.db.ledger_store import NO_DATABASE, revert_last
+    result = revert_last(lesson_dir, issue_id)
+    if result is not NO_DATABASE:
+        return result
     ledger = load_ledger(lesson_dir)
     target_idx = None
     for idx in range(len(ledger.decisions) - 1, -1, -1):
@@ -164,6 +181,10 @@ def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
 
 def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     """Rimuove dal ledger (append-only) tutte le voci il cui issue_id inizia con prefix. Salva e ritorna il numero di voci rimosse."""
+    from rt.db.ledger_store import NO_DATABASE, revert_prefix
+    removed = revert_prefix(lesson_dir, prefix)
+    if removed is not NO_DATABASE:
+        return removed
     ledger = load_ledger(lesson_dir)
     original_count = len(ledger.decisions)
     ledger.decisions = [d for d in ledger.decisions if not d.issue_id.startswith(prefix)]

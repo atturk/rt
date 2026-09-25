@@ -10,6 +10,8 @@ import json
 from datetime import datetime
 from typing import Optional, Union
 
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
+
 
 def _path(state_dir: str) -> str:
     return os.path.join(state_dir, "last_lesson_per_topic.json")
@@ -22,6 +24,9 @@ def _key(chat_id: Union[int, str], thread_id: Optional[Union[int, str]]) -> str:
 
 def _load(state_dir: str) -> dict:
     path = _path(state_dir)
+    doc = read_document(path)
+    if doc is not NO_DATABASE:
+        return {} if doc is MISSING else doc
     if not os.path.isfile(path):
         return {}
     try:
@@ -32,13 +37,15 @@ def _load(state_dir: str) -> dict:
 
 
 def record_last_lesson(state_dir: str, chat_id: Union[int, str], thread_id: Optional[Union[int, str]], lesson_dir: str) -> None:
-    os.makedirs(state_dir, exist_ok=True)
     data = _load(state_dir)
     data[_key(chat_id, thread_id)] = {
         "lesson_dir": os.path.abspath(lesson_dir),
         "updated_at": datetime.now().isoformat(),
     }
     path = _path(state_dir)
+    if write_document(path, data):
+        return
+    os.makedirs(state_dir, exist_ok=True)
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

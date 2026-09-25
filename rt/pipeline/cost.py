@@ -1,41 +1,24 @@
 """
 rt.pipeline.cost
 Modulo di calcolo e reportistica diagnostica dei costi cumulativi LLM per lezione.
-Legge e aggrega le voci registrate in _state/llm_debug.log.
+Legge e aggrega le chiamate LLM (DB se presente, altrimenti _state/llm_debug.log).
 """
 
 import os
-import json
-from typing import Dict, List, Optional, Any
-from rt.core.lesson_paths import lesson_path
+from typing import Dict, Optional, Any
 
 
 def compute_lesson_cost(lesson_dir: str) -> Optional[Dict[str, Any]]:
     """
-    Legge _state/llm_debug.log e calcola l'aggregazione dei costi LLM.
+    Legge le chiamate LLM (dal DB se presente, altrimenti da _state/llm_debug.log) e ne
+    calcola l'aggregazione dei costi.
     Restituisce None se il file non esiste o non contiene record validi.
     """
-    log_path = lesson_path(lesson_dir, "llm_debug.log")
-    if not os.path.isfile(log_path):
-        return None
-
-    entries: List[Dict[str, Any]] = []
-    try:
-        with open(log_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line_str = line.strip()
-                if not line_str:
-                    continue
-                try:
-                    record = json.loads(line_str)
-                    if isinstance(record, dict):
-                        entries.append(record)
-                except Exception:
-                    # Ignora silenziosamente eventuali righe JSON corrotte
-                    continue
-    except Exception:
-        return None
-
+    from rt.db.llm_calls import load_entries, read_log_entries
+    # Con il DB attivo le chiamate si leggono da lì (stesse righe del log), altrimenti dal file.
+    entries = load_entries(lesson_dir)
+    if entries is None:
+        entries = read_log_entries(lesson_dir)
     if not entries:
         return None
 

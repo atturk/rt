@@ -12,6 +12,8 @@ import hashlib
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
+from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
+
 
 def _registry_path(state_dir: str) -> str:
     return os.path.join(state_dir, "registry.json")
@@ -49,6 +51,9 @@ def _release_lock(state_dir: str) -> None:
 
 def _load_registry(state_dir: str) -> Dict[str, Any]:
     path = _registry_path(state_dir)
+    doc = read_document(path)
+    if doc is not NO_DATABASE:
+        return {"schema_version": "1.0", "entries": {}} if doc is MISSING else doc
     if not os.path.isfile(path):
         return {"schema_version": "1.0", "entries": {}}
     with open(path, "r", encoding="utf-8") as f:
@@ -57,6 +62,8 @@ def _load_registry(state_dir: str) -> Dict[str, Any]:
 
 def _save_registry(state_dir: str, data: Dict[str, Any]) -> None:
     path = _registry_path(state_dir)
+    if write_document(path, data):
+        return
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

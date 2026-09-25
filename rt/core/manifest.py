@@ -49,6 +49,9 @@ def save_manifest(manifest: Manifest, lesson_dir: Optional[str] = None) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, path)
 
+    from rt.db.sync import dual_write_lesson
+    dual_write_lesson(target_dir)
+
 
 def init_or_update_manifest(
     lesson_dir: str,

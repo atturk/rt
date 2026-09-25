@@ -1,5 +1,6 @@
 # Versioni risolte e verificate; aggiornare insieme alla suite e alla matrice CI.
 # Vincoli, non elenco di pacchetti da installare. Python 3.11–3.14.
+alembic==1.20.0
 annotated-types==0.8.0
 anyio==4.15.1
 APScheduler==3.11.3
@@ -20,7 +21,9 @@ jaraco.functools==4.6.0
 jeepney==0.9.0
 keyring==25.7.0
 linkify-it-py==2.2.0
+Mako==1.4.3
 markdown-it-py==4.2.0
+MarkupSafe==3.0.3
 mdit-py-plugins==0.6.1
 mdurl==0.1.2
 more-itertools==11.1.0
@@ -41,6 +44,7 @@ questionary==2.1.1
 requests==2.34.2
 rich==15.0.0
 SecretStorage==3.5.0
+SQLAlchemy==2.1.1
 textual-diff-view==0.1.5
 textual==8.2.8
 typing-inspection==0.4.4
