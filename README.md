@@ -122,6 +122,21 @@ Per testare offline senza consumare crediti API:
 ./bin/rt run "percorso/cartella_lezione" --mock --auto-accept
 ```
 
+### 2-bis. Coda dei job e worker (opzionale)
+
+Il database di RT si crea e si aggiorna da solo al primo comando (e importa le lezioni già
+presenti): non servono comandi di database. Per far girare le elaborazioni lunghe in un
+processo separato, avvia un worker e accoda la pipeline:
+
+```bash
+./bin/rt worker                          # esegue i job in coda (Ctrl+C per fermarlo)
+./bin/rt run "cartella_lezione" --queue  # accoda e segue il progresso
+./bin/rt jobs                            # elenca i job; 'rt jobs cancel ID' ne annulla uno
+```
+
+Senza `--queue`, `rt run` lavora in processo come sempre. Con un worker attivo anche il daemon
+Telegram gli passa la generazione delle domande di recall e la trascrizione dei vocali.
+
 ### 3. Esecuzione Passo-Passo
 
 ```bash

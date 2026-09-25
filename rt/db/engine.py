@@ -7,9 +7,11 @@ Ordine di risoluzione dell'URL:
 2. database_url in config/general.yaml;
 3. SQLite in <lessons_root>/.rt/rt.db, oppure ~/.rt/rt.db se lessons_root non è impostato.
 
-Il DB si crea solo in modo esplicito (rt db upgrade/sync, avvio di web e daemon Telegram):
-get_database() senza create=True restituisce None finché il file SQLite non esiste, così un
-'rt run' su una macchina senza DB si comporta esattamente come prima.
+Dalla fase D il DB è sempre attivo: ogni comando rt chiama rt.db.bootstrap.ensure_database(),
+che crea il file se manca e applica le migrazioni pendenti sotto un file lock (e importa le
+lezioni esistenti al primo avvio). Se il DB è illeggibile quel comando si ferma con
+DatabaseUnavailable e le istruzioni per ripristinarlo. get_database() resta la via tollerante
+per il codice di libreria: None se il DB è disattivato, assente (senza create=True) o rotto.
 """
 import logging
 import os
@@ -143,10 +145,78 @@ def head_revision() -> str:
     return ScriptDirectory.from_config(alembic_config("sqlite://")).get_current_head()
 
 
+class DatabaseUnavailable(RuntimeError):
+    """Il database non si apre o non si migra: RT non può proseguire (la coda dei job ci vive
+    dentro). Il messaggio spiega come ripristinarlo."""
+
+    def __init__(self, url: str, cause: BaseException):
+        self.url = url
+        self.cause = cause
+        super().__init__(restore_instructions(url, cause))
+
+
+def restore_instructions(url: str, cause: BaseException) -> str:
+    path = sqlite_file(url)
+    if not path:
+        where = url.split("@")[-1]
+        return (f"Database di RT non raggiungibile ({where}): {cause}\n"
+                "Controlla che il server del database sia attivo e che database_url sia corretto, "
+                "poi rilancia il comando.")
+    return (f"Database di RT illeggibile: {path}\n"
+            f"Causa: {cause}\n"
+            "Le lezioni sono al sicuro nelle loro cartelle. Per ripristinare il database:\n"
+            f"  - da un backup:       cp /percorso/del/backup/rt.db \"{path}\"\n"
+            f"  - oppure dai file:    mv \"{path}\" \"{path}.rotto\"   e rilancia il comando:\n"
+            "    RT ricrea il database e reimporta da solo lezioni, decisioni e costi.")
+
+
+def migration_lock_path(url: str) -> Optional[str]:
+    path = sqlite_file(url)
+    return os.path.abspath(path) + ".migrate.lock" if path else None
+
+
+def open_database(url: str, create: bool = True) -> Database:
+    """Apre il DB applicando le migrazioni pendenti; solleva DatabaseUnavailable se non riesce.
+    Le migrazioni girano sotto un file lock accanto al file SQLite, così due processi rt
+    avviati insieme non migrano in parallelo; se è già tutto aggiornato il lock non si prende
+    (costo: la sola lettura della revisione corrente)."""
+    engine = None
+    try:
+        path = sqlite_file(url)
+        if path:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        engine = create_db_engine(url)
+        head = head_revision()
+        if current_revision(engine) != head:
+            lock = migration_lock_path(url)
+            if lock:
+                from rt.core.filelock import file_lock
+                os.makedirs(os.path.dirname(lock), exist_ok=True)
+                with file_lock(lock, retries=600, backoff=0.05, stale_sec=300):
+                    if current_revision(engine) != head:
+                        upgrade_database(url, engine)
+            else:
+                upgrade_database(url, engine)
+        return Database(url=url, engine=engine, sessions=sessionmaker(bind=engine, expire_on_commit=False))
+    except Exception as exc:
+        if engine is not None:
+            engine.dispose()
+        raise DatabaseUnavailable(url, exc) from exc
+
+
 def _warn_once(key: str, message: str) -> None:
     if key not in _warned:
         _warned.add(key)
         logger.warning(message)
+
+
+def current_database_url() -> Optional[str]:
+    """URL del DB per questo processo (in cache per variabile d'ambiente e cwd: load_config
+    legge i YAML). None se disattivato."""
+    key = (os.environ.get(ENV_VAR), os.getcwd())
+    if key not in _url_cache:
+        _url_cache[key] = resolve_database_url()
+    return _url_cache[key]
 
 
 def get_database(create: bool = False, url: Optional[str] = None) -> Optional[Database]:
@@ -155,13 +225,8 @@ def get_database(create: bool = False, url: Optional[str] = None) -> Optional[Da
     create=True applica le migrazioni (e crea il file SQLite); senza, un DB con migrazioni
     arretrate viene aggiornato solo se esiste già. Il risultato è in cache per processo."""
     try:
-        if not url:
-            # load_config legge i YAML: l'URL si risolve una volta per processo (e cwd).
-            key = (os.environ.get(ENV_VAR), os.getcwd())
-            if key not in _url_cache:
-                _url_cache[key] = resolve_database_url()
-            url = _url_cache[key]
-    except Exception as exc:  # config illeggibile: RT continua con i soli file
+        url = url or current_database_url()
+    except Exception as exc:  # config illeggibile: il chiamante decide cosa fare senza DB
         _warn_once("resolve", f"Database non disponibile (configurazione): {exc}")
         return None
     if not url:
@@ -174,13 +239,26 @@ def get_database(create: bool = False, url: Optional[str] = None) -> Optional[Da
         if path and not os.path.isfile(path) and not create:
             return None
         try:
-            engine = create_db_engine(url)
-            if create or current_revision(engine) != head_revision():
-                upgrade_database(url, engine)
-            db = Database(url=url, engine=engine, sessions=sessionmaker(bind=engine, expire_on_commit=False))
-        except Exception as exc:
-            _warn_once(url, f"Database non disponibile, RT usa solo i file: {exc}")
+            db = open_database(url)
+        except DatabaseUnavailable as exc:
+            _warn_once(url, f"Database non disponibile: {exc.cause}")
             return None
+        _cache[url] = db
+        return db
+
+
+def require_database(url: Optional[str] = None) -> Database:
+    """Come get_database(create=True) ma senza ripiego: solleva DatabaseUnavailable (o
+    RuntimeError se il DB è disattivato). Per chi non può funzionare senza DB (coda job)."""
+    url = url or current_database_url()
+    if not url:
+        raise RuntimeError("Database disattivato (RT_DATABASE_URL=off o database_url: off): "
+                           "la coda dei job richiede il database.")
+    with _cache_lock:
+        cached = _cache.get(url)
+        if cached is not None:
+            return cached
+        db = open_database(url)
         _cache[url] = db
         return db
 

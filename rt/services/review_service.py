@@ -190,11 +190,15 @@ def record_review_decision(
             if any(d.issue_id == issue_id for d in load_ledger(lesson_dir, strict=True).decisions):
                 raise ReviewDecisionError("Questa questione ha già una decisione. Aggiorna la pagina.")
             resolved_text = _validated_text(lesson_dir, issue, decision, resolved_text)
-        return record_decision(
+        recorded = record_decision(
             lesson_dir, issue_id, decision, resolved_text=resolved_text,
             resolved_by=resolved_by or "user",
             notes=notes, channel=channel, actor=actor,
         )
+    # Con l'ultima issue decisa, il job della coda fermo sulla review riparte verso il build.
+    from rt.services.jobs import resume_waiting_jobs
+    resume_waiting_jobs(lesson_dir, "science_issue", condition=lambda: is_review_complete(lesson_dir))
+    return recorded
 
 
 def undo_last_decision(lesson_dir: str, issue_id: str, only_channel: Optional[str] = None) -> ReviewDecision:

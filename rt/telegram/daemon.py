@@ -939,6 +939,17 @@ async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAU
     await _send_post_answer_result(context, update.effective_chat.id, thread_id, lesson_dir, question_id, evaluation, state_dir)
 
 
+def _transcribe_voice(path: str, stt_engine: str) -> str:
+    """Trascrizione del vocale: con un worker vivo su questa macchina passa dalla coda (il
+    file è locale), altrimenti in processo come prima."""
+    from rt.core.recall_stt import transcribe_voice_answer
+    from rt.services.jobs import run_job_or_inline
+    result = run_job_or_inline("transcribe_voice", None, {"path": path, "engine": stt_engine},
+                               inline=lambda: transcribe_voice_answer(path, stt_engine),
+                               created_by="telegram", same_host=True)
+    return result["inline"] if "inline" in result else result.get("text", "")
+
+
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Risposta vocale a una domanda di recall: scarica, trascrive con macparakeet, valuta."""
     state_dir = context.bot_data["state_dir"]
@@ -991,7 +1002,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         from rt.telegram.config import load_telegram_config
         from rt.telegram.client import download_voice
-        from rt.core.recall_stt import transcribe_voice_answer
         from rt.core.config import load_config
 
         tg_cfg = load_telegram_config()
@@ -1001,7 +1011,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await loop.run_in_executor(None, download_voice, tg_cfg, file_id, tmp_path)
 
         try:
-            answer_text = await loop.run_in_executor(None, transcribe_voice_answer, tmp_path, stt_engine)
+            answer_text = await loop.run_in_executor(None, _transcribe_voice, tmp_path, stt_engine)
         except Exception as e:
             await _send_with_retry(lambda: update.message.reply_text(
                 f"⚠️ Trascrizione non riuscita: {e}. Riprova a voce o rispondi a testo.",

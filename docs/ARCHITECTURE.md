@@ -298,10 +298,17 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   `postgresql://…` (driver da installare a parte).
 - **SQLite**: WAL, `foreign_keys=ON`, `busy_timeout` 30 s e transazioni `BEGIN IMMEDIATE`,
   così CLI, daemon Telegram e web scrivono in coda senza errori di lock.
-- **Creazione**: solo esplicita, con `rt db upgrade`, oppure automatica all'avvio di `rt web`
-  e di `rt telegram-daemon`.
-  Finché il file non esiste, `get_database()` restituisce `None` e RT lavora solo sui file;
-  un DB illeggibile produce un avviso nei log e lo stesso comportamento.
+- **Creazione automatica** (fase D, `rt/db/bootstrap.py::ensure_database`): ogni comando `rt`
+  (tranne `db`, `config` e `secrets`) crea il DB se manca e applica le migrazioni pendenti
+  sotto il lock `rt.db.migrate.lock`; se è già aggiornato costa la sola lettura della
+  revisione. Al primo avvio con una `lessons_root` configurata importa da solo le lezioni
+  esistenti (come `rt db sync`, una volta, segnato in `settings` con `db.initial_import_done`).
+  L'utente non lancia mai comandi di database: `rt db upgrade|sync|check|status` restano per
+  la diagnosi. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
+  istruzioni per ripristinarlo da un backup o ricrearlo dai file. `RT_DATABASE_URL=off`
+  resta solo per sviluppo e test; la coda dei job (sezione 9) richiede il DB.
+  Nel codice di libreria `get_database()` resta tollerante (None se il DB manca o è rotto)
+  e `require_database()` è la variante che solleva.
 - **Modelli** (`rt/db/models.py`): `Lesson`, `PhaseRun`, `Issue`, `ReviewDecision`,
   `LlmCall`, `Setting`, `StateDocument`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
@@ -337,3 +344,59 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
 
 Nuova migrazione: modificare `rt/db/models.py`, poi generare la revisione con Alembic
 (`alembic.command.revision(alembic_config(url), message, autogenerate=True)`) e rileggerla.
+
+## 9. Coda dei job e worker (RT 4.0, fase D)
+
+La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la porta `JobQueue`
+(`enqueue`, `cancel`, `get`, `list`, `events`, `stream_events`) e l'implementazione
+`DbJobQueue` sulle tabelle `jobs`, `job_events` e `workers` (migrazione `0003`).
+
+- **Stati**: `queued` → `running` → `succeeded` | `failed` | `cancelled`, più
+  `waiting_for_decision` quando la pipeline si ferma su una decisione umana.
+- **Lease**: `rt worker` prende un job con `claim` (su SQLite la transazione è
+  `BEGIN IMMEDIATE`, su Postgres `SELECT … FOR UPDATE SKIP LOCKED`) e un thread rinnova
+  `lease_until` ogni lease/3 secondi. Se il worker muore il lease scade, `requeue_expired`
+  rimette il job in coda (`job_requeued`) e un altro worker lo riprende: l'idempotenza per
+  fase e il checkpoint per unità del rewrite evitano di ripagare le chiamate LLM già fatte.
+  Dopo `max_attempts` prese (default 3) il job fallisce. Ctrl+C sul worker rimette subito
+  in coda il job in corso senza contarlo come tentativo.
+- **Una lezione, un job**: mentre un job è `running`, `jobs.active_lesson` vale il percorso
+  della lezione ed è `UNIQUE`, quindi il DB rifiuta un secondo job mutante sulla stessa
+  lezione. In più worker e `rt run` in processo prendono un `flock` su
+  `<lezione>/.rt.job.lock` (`rt/core/process_lock.py`), rilasciato dal sistema se il
+  processo muore: `rt run` su una lezione che un job sta elaborando si ferma con un messaggio,
+  e il worker rimette in coda un job la cui lezione è occupata da `rt run`.
+- **Eventi e annullamento**: `JobEventReporter` scrive ogni evento di `rt/services/events.py`
+  in `job_events` e aggiorna `jobs.progress`; l'id crescente dell'evento è il cursore per chi
+  segue il job (CLI, API/SSE). `cancel` annulla subito un job in coda o in attesa; per uno in
+  esecuzione imposta `cancel_requested`, che il worker vede al successivo evento o battito
+  e trasforma in `RunCancelled` tra un'unità e l'altra.
+- **Handler**: ogni tipo di job ha un handler registrato in `rt/services/job_handlers.py`
+  (`JobInfo`, `RunContext`) → `JobOutcome`. Errori sanificati in `jobs.error`.
+- **CLI**: `rt worker [--once] [--concurrency N] [--types …]` esegue i job;
+  `rt jobs [list|show ID|cancel ID]` li elenca, mostra e annulla. La tabella `workers` tiene
+  il battito dei worker (`has_live_worker`), così CLI e daemon sanno se possono accodare.
+
+### Pipeline come job e decisioni (RT4-D2)
+
+- **Tipi di job** (`rt/services/job_handlers.py`): `run_pipeline` (come `rt run`),
+  `ingest_audio` (setup + trascrizione), `run_phase` (`prepare|outline|rewrite|review|build`),
+  `add_images`, `recall_generate` (primo batch di domande) e `transcribe_voice` (risposta
+  vocale di Telegram).
+- **Pause**: quando `pipeline_service` si ferma con `WAITING_FOR_DECISION` il job passa in
+  `waiting_for_decision` con la `DecisionRequired` in `jobs.decision` e libera la lezione.
+  `outline_service.approve_outline` e `review_service.record_review_decision` (quando l'ultima
+  issue è decisa) chiamano `resume_waiting_jobs`, che rimette in coda il job: il worker lo
+  riprende e le fasi già fatte vanno in SKIP. I metadati mancanti di un audio
+  (`setup_metadata`) si passano con `DbJobQueue.resume(job_id, {"options": {...}})`.
+- **macOS**: la trascrizione con macparakeet esiste solo su macOS; `ingest_audio` e
+  `run_pipeline` su audio falliscono con un messaggio chiaro su un worker non macOS (salvo
+  mock, `--skip-transcribe` o motore STT `custom`).
+- **CLI**: `rt run --queue` accoda la pipeline e ne segue gli eventi; le decisioni si prendono
+  in terminale come in `rt run` e il job riparte da solo. Senza `--queue` tutto resta in
+  processo come prima.
+- **Telegram**: la generazione delle domande di recall e la trascrizione dei vocali passano da
+  `run_job_or_inline`: con un worker vivo (per i vocali, sulla stessa macchina, perché il file
+  è locale) accodano un job e aspettano il risultato in un thread dell'executor; senza worker,
+  o se nessuno prende il job entro 30 secondi, eseguono in processo come prima. L'avvio della
+  review su Telegram non ha passi lunghi (la review LLM è una fase della pipeline).
