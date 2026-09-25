@@ -318,6 +318,15 @@ def default_store_path(project_root: Optional[PathLike] = None) -> Path:
     return Path(project_root) / "config" / SECRETS_FILENAME
 
 
+def store_path_for_env_file(env_file: PathLike) -> Path:
+    """Archivio che accompagna un file .env: <cartella del .env>/config/secrets.enc
+    (RT_SECRETS_FILE ha sempre la precedenza)."""
+    explicit = os.environ.get(SECRETS_FILE_ENV, "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    return Path(env_file).parent / "config" / SECRETS_FILENAME
+
+
 def is_initialized(project_root: Optional[PathLike] = None) -> bool:
     return default_store_path(project_root).is_file()
 
