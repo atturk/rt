@@ -233,3 +233,13 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   (`RunCancelled`); le unità già elaborate restano nel checkpoint.
 - **Presentazione a terminale** (`rt/cli_reporter.py`): `CliReporter` traduce gli eventi
   nelle stesse righe di sempre (`[n/N] FASE (...)`, `[SKIP]`, riepilogo costi).
+- **Orchestratore** (`rt/services/pipeline_service.py`): `run_pipeline(inputs, options, ctx,
+  decisions=None, notifiers=())` esegue setup (se l'input è audio) → prepare → outline →
+  rewrite → review (opzionale) → build e restituisce un `PipelineResult` con stato
+  `COMPLETED`, `WAITING_FOR_DECISION` (con la `DecisionRequired` pendente),
+  `SKIPPED_TRANSCRIPTION` o `FAILED` (con l'eccezione). Le decisioni umane passano da un
+  `DecisionProvider`: la CLI passa `CliDecisionProvider` (UI Textual/terminale o Telegram);
+  senza provider la pipeline si ferma sulla decisione, oppure con `auto_accept` approva
+  outline e issue. La notifica di fine build va ai `Notifier` registrati (la CLI registra
+  `TelegramBuildNotifier`). `cmd_run` in `rt/cli.py` fa solo parsing, banner, chiamata al
+  servizio, riepilogo costi ed exit code.

@@ -452,14 +452,14 @@ def test_cmd_run_cost_summary(capsys, monkeypatch, tmp_path):
 
 
 
-    with patch("rt.cli.run_prepare", return_value={"skipped": True, "segment_count": 10, "duration_seconds": 60.0}), \
-         patch("rt.cli.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 2, "coverage_percentage": 100}}), \
+    with patch("rt.pipeline.prepare.run_prepare", return_value={"skipped": True, "segment_count": 10, "duration_seconds": 60.0}), \
+         patch("rt.pipeline.outline.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 2, "coverage_percentage": 100}}), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
-         patch("rt.cli.run_rewrite", return_value={"skipped": True, "total_units": 2, "processed_units": 2}), \
-         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 0, "concettuale_issues": 0}), \
+         patch("rt.pipeline.rewrite.run_rewrite", return_value={"skipped": True, "total_units": 2, "processed_units": 2}), \
+         patch("rt.pipeline.review.run_review", return_value={"skipped": True, "total_science_issues": 0, "concettuale_issues": 0}), \
          patch("rt.cli.load_ledger", return_value=MagicMock(decisions=[])), \
          patch("rt.cli.load_science_issues", return_value=[]), \
-         patch("rt.cli.run_build", return_value={
+         patch("rt.pipeline.build.run_build", return_value={
              "skipped": False,
              "rielaborato": "rielaborato.md",
              "pre_elaborato": "pre_elaborato.md",

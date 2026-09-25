@@ -5,10 +5,11 @@ stampa da sempre. È l'unico punto in cui la presentazione a terminale delle fas
 """
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from rt.services.events import Event, Notice, PhaseCompleted
+from rt.services.events import DecisionRequired, Event, Notice, PhaseCompleted, PhaseStarted
 
 # Descrizioni mostrate da 'rt run' nell'intestazione "[n/N] FASE (descrizione)...".
 RUN_PHASE_DESCRIPTIONS = {
+    "setup": "Inizializzazione cartella e metadati",
     "prepare": "Parsing deterministico segmenti",
     "outline": "Scaletta gerarchica didattica",
     "rewrite": "Rielaborazione fluida a finestre con provenance",
@@ -94,6 +95,16 @@ def format_cost_summary(summary: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines)
 
 
+def run_steps(is_audio: bool, with_review: bool) -> Tuple[Dict[str, Tuple[int, str]], int]:
+    """Numerazione "[n/N]" di 'rt run': con audio i passi 1-2 sono setup e trascrizione."""
+    phases = ["prepare", "outline", "rewrite"] + (["review"] if with_review else []) + ["build"]
+    offset = 2 if is_audio else 0
+    steps = {ph: (offset + i, RUN_PHASE_DESCRIPTIONS[ph]) for i, ph in enumerate(phases, start=1)}
+    if is_audio:
+        steps["setup"] = (1, RUN_PHASE_DESCRIPTIONS["setup"])
+    return steps, offset + len(phases)
+
+
 class CliReporter:
     """Reporter per il terminale.
 
@@ -112,10 +123,38 @@ class CliReporter:
         self.out = out
 
     def emit(self, event: Event) -> None:
-        if isinstance(event, PhaseCompleted):
+        if isinstance(event, PhaseStarted):
+            if event.phase == "setup" and "setup" in self.steps:
+                self.out(f"\n[{self.steps['setup'][0]}/{self.total_steps}] SETUP / AUDIO INGEST ({self.steps['setup'][1]})...")
+        elif isinstance(event, PhaseCompleted):
+            if event.phase == "setup":
+                text = self.render_setup(event.result)
+                if text:
+                    self.out(text)
+                return
             self.out(self.render_phase(event.phase, event.result))
+            if event.phase == "build" and "build" in self.steps:
+                self.out("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
         elif isinstance(event, Notice):
             self.out(event.message)
+        elif isinstance(event, DecisionRequired):
+            lesson_dir = event.payload.get("lesson_dir", "")
+            if event.kind == "science_issue":
+                self.out(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review \"{lesson_dir}\"' da terminale). "
+                         f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
+            elif event.kind == "outline_approval":
+                self.out(f"\n⏸  Outline in attesa di approvazione. Esegui 'rt run \"{lesson_dir}\"' da un terminale interattivo per confermarla.")
+
+    def render_setup(self, res: Dict[str, Any]) -> Optional[str]:
+        step = self.steps.get("setup", (1, ""))[0] + 1
+        if res.get("mock_asr"):
+            return (f"\n[{step}/{self.total_steps}] MACWHISPER TRANSCRIPTION (ASR Timecoded)...\n"
+                    "⏩ [MOCK ASR] Trascrizione deterministica generata offline a costo zero.")
+        if res.get("skip_transcribe"):
+            return (f"\n[{step}/{self.total_steps}] MACWHISPER TRANSCRIPTION (ASR Timecoded)...\n"
+                    "⚠️  [SKIP] Trascrizione saltata (--skip-transcribe). Stato impostato su METADATA_ONLY.\n"
+                    "La pipeline si arresta qui. Esegui la trascrizione per procedere con 'rt prepare'.")
+        return f"✔ Trascrizione completata: {res.get('trascritto_json')}"
 
     def render_phase(self, phase: str, res: Dict[str, Any]) -> str:
         if phase in self.steps and self.total_steps is not None:
