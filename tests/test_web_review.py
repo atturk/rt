@@ -10,7 +10,7 @@ from rt.pipeline.ledger import load_ledger
 from rt.pipeline.review import save_science_issues
 from rt.pipeline.review_actions import submit_review_decision, undo_web_decision
 from rt.pipeline.rewrite import save_draft
-from rt.web.data import _word_diff, issue_choices, issue_sidebar
+from rt.web.data import issue_action_state, issue_choices, issue_sidebar
 
 
 def _science_issue() -> ScienceIssue:
@@ -79,13 +79,6 @@ def test_web_review_manual_edit_persists_exact_text(tmp_path):
         undo_web_decision(lesson, "un'altra")
 
 
-def test_word_diff_escapes_issue_text():
-    diff = _word_diff("<script>alert(1)</script> errato", "testo corretto")
-    assert "<script>" not in diff
-    assert "&lt;script&gt;" in diff
-    assert "<del>" in diff and "<ins>" in diff
-
-
 def test_warning_markers_and_orphan_notice(tmp_path):
     lesson = _lesson(tmp_path / "lesson")
     concept = _science_issue()
@@ -96,6 +89,9 @@ def test_warning_markers_and_orphan_notice(tmp_path):
     })
     save_science_issues([concept, missing, warning], lesson)
     selected = SimpleNamespace(dir_path=lesson)
+    assert issue_action_state(selected, concept.id).can_reject
+    assert issue_action_state(selected, warning.id).can_accept
+    assert not issue_action_state(selected, warning.id).can_reject
     sidebar = issue_sidebar(selected, concept.id)
     assert "Qualità ASR · statistica" in sidebar
     assert "non è un errore confermato" in sidebar

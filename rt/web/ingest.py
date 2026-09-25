@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rt.core.config import load_config
 from rt.pipeline.setup import SetupError, find_macparakeet_binary, is_audio_file, run_setup
 
 
@@ -19,7 +20,7 @@ def ingest_audio(
         raise ValueError("Inserisci la materia della lezione.")
     if not date.strip():
         raise ValueError("Inserisci la data della lezione.")
-    if transcribe and not find_macparakeet_binary():
+    if transcribe and load_config().transcription.engine == "macparakeet" and not find_macparakeet_binary():
         raise ValueError("macparakeet-cli non trovato: installalo oppure disattiva la trascrizione immediata.")
 
     try:

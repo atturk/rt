@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from typing import Optional
 
 import gradio as gr
@@ -14,13 +16,17 @@ from starlette.middleware import Middleware
 from rt.pipeline.review_actions import submit_review_decision, undo_web_decision
 from rt.tui.data import LessonSummary
 from rt.web.data import (
-    IssueDetail, configuration_summary, issue_choices, issue_detail, issue_sidebar, lesson_card,
+    configuration_summary, issue_action_state, issue_choices, issue_sidebar, lesson_card,
     lesson_audio_html, lesson_preview_html, lesson_stats, lessons_root, list_lessons,
     sidebar_lessons, web_audio_directory,
 )
-from rt.web.diagnostics import LOG, RequestLogMiddleware, configure_logging, log_action
+from rt.web.diagnostics import LOG, RequestLogMiddleware, configure_logging, default_log_file, log_action
 from rt.web.ingest import ingest_audio
-from rt.web.settings import save_lessons_root
+from rt.web.settings import (credential_names, general_config_path, route_round_robin_keys, route_settings,
+                             save_credential, save_lessons_root, save_route, save_telegram,
+                             save_transcription)
+from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, load_config, load_env_file
+from rt.telegram.daemon_status import is_daemon_running
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CSS = (Path(__file__).with_name("style.css")).read_text(encoding="utf-8")
@@ -62,70 +68,19 @@ const wireTimecodes = () => {
   }
 };
 wireTimecodes();
-watch('value', () => requestAnimationFrame(wireTimecodes));
-"""
-PLAYER_JS = """
-const currentAudio = () => element.querySelector('audio');
-const recentErrors = new Map();
-const report = (kind, error) => {
-  const message = String(error?.stack || error?.message || error).slice(0, 1200);
-  const key = `${kind}:${message}`;
-  if (Date.now() - (recentErrors.get(key) || 0) < 5000) return;
-  recentErrors.set(key, Date.now());
-  trigger('client_log', { kind, message });
+const focusIssue = () => {
+  const anchor = element.querySelector('#rt-issue-anchor');
+  if (anchor) anchor.scrollIntoView({ block: 'center', behavior: 'smooth' });
 };
-window.addEventListener('error', event => report('browser.error', event.error || event.message));
-window.addEventListener('unhandledrejection', event => report('browser.promise', event.reason));
-const seekTo = seconds => {
-  const audio = currentAudio();
-  if (!audio || !Number.isFinite(seconds)) return;
-  const start = () => {
-    audio.currentTime = Math.max(0, seconds);
-    audio.play().catch(error => report('audio.play', error));
-  };
-  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) start();
-  else audio.addEventListener('loadedmetadata', start, { once: true });
-};
-const chapters = () => {
-  const headings = [...document.querySelectorAll('#rt-preview .rt-document h3')];
-  const starts = headings.map(heading => {
-    let sibling = heading.nextElementSibling;
-    while (sibling && !/^H[23]$/.test(sibling.tagName)) {
-      const timecode = sibling.querySelector('button.rt-timecode');
-      if (timecode) return Number(timecode.dataset.seconds);
-      sibling = sibling.nextElementSibling;
-    }
-    return null;
-  }).filter(Number.isFinite);
-  return [...new Set(starts)].sort((a, b) => a - b);
-};
-document.addEventListener('click', event => {
-  const timecode = event.target.closest('#rt-preview button.rt-timecode');
-  if (timecode) {
-    seekTo(Number(timecode.dataset.seconds));
-    return;
-  }
-  const button = event.target.closest('#rt-lesson-audio button[data-chapter]');
+element.addEventListener('click', event => {
+  const button = event.target.closest('[data-review-action]');
   if (!button) return;
-  const audio = currentAudio();
-  if (!audio) return;
-  const positions = chapters();
-  const current = audio.currentTime;
-  const target = button.dataset.chapter === 'next'
-    ? positions.find(seconds => seconds > current + 1)
-    : positions[positions.findLastIndex(seconds => seconds <= current + .5) - 1];
-  if (target !== undefined) seekTo(target);
+  const text = element.querySelector('#rt-comment-edit')?.value || '';
+  trigger('review_action', { action: button.dataset.reviewAction, text });
 });
-const watchAudio = () => {
-  const audio = currentAudio();
-  if (!audio || audio.dataset.rtObserved) return;
-  audio.dataset.rtObserved = 'true';
-  audio.addEventListener('error', () => report('audio.error', audio.error?.message || 'File audio non riproducibile'));
-  audio.addEventListener('stalled', () => report('audio.stalled', `Riproduzione ferma a ${audio.currentTime.toFixed(1)} s`));
-};
-watchAudio();
-watch('value', () => requestAnimationFrame(watchAudio));
+watch('value', () => requestAnimationFrame(() => { wireTimecodes(); focusIssue(); }));
 """
+PLAYER_JS = (Path(__file__).with_name("player.js")).read_text(encoding="utf-8")
 RESIZE_JS = """
 const handle = element.querySelector('.rt-resize-handle');
 const sidebar = element.closest('#rt-sidebar');
@@ -202,10 +157,107 @@ watch('value', () => window.dispatchEvent(new CustomEvent('rt-selection-done', {
   detail: { token: props.value }
 })));
 """
+BOT_JS = """
+const setTitle = () => {
+  const button = document.querySelector('#rt-bot-nav');
+  if (button) {
+    button.title = button.disabled ? 'Bot Telegram rilevato e in esecuzione' : 'Avvia il bot Telegram in background';
+    button.setAttribute('aria-label', button.title);
+  }
+};
+const watchBot = () => {
+  const header = document.querySelector('#rt-header');
+  if (!header) { requestAnimationFrame(watchBot); return; }
+  setTitle();
+  new MutationObserver(setTitle).observe(header, {
+    subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'],
+  });
+};
+watchBot();
+"""
 
 
 def _client_log(evt: gr.EventData) -> None:
     LOG.warning("Browser %s: %s", str(evt.kind)[:60], str(evt.message)[:1200])
+
+
+def _bot_button():
+    running = is_daemon_running()
+    return gr.update(value="🤖", interactive=not running)
+
+
+@log_action("telegram.avvia")
+def _start_bot():
+    if is_daemon_running():
+        return _bot_button()
+    load_env_file(override=True)
+    if not os.environ.get("RT_TELEGRAM_BOT_TOKEN") or not os.environ.get("RT_TELEGRAM_CHAT_ID"):
+        raise gr.Error("Salva prima token e Chat ID nella sezione Telegram.")
+    logfile = default_log_file().with_name("telegram.log")
+    logfile.parent.mkdir(parents=True, exist_ok=True)
+    logfile.touch(mode=0o600, exist_ok=True)
+    os.chmod(logfile, 0o600)
+    with logfile.open("a", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "rt.cli", "telegram-daemon"],
+            cwd=general_config_path(PROJECT_ROOT).parent.parent,
+            stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    time.sleep(0.25)
+    if process.poll() is not None:
+        raise gr.Error(f"Il bot non si è avviato. Controlla {logfile}.")
+    LOG.info("Bot Telegram avviato in background (PID %d); log: %s", process.pid, logfile)
+    return _bot_button()
+
+
+@log_action("telegram.ascolta_topic")
+def _listen_topics(token_input: str, existing_rows: list[list[str]]):
+    if is_daemon_running():
+        raise gr.Error("Il bot è già in ascolto. Ferma il demone prima di cercare nuovi topic.")
+    load_env_file()
+    token = token_input.strip() or os.environ.get("RT_TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        raise gr.Error("Inserisci e salva prima il token del bot.")
+    import requests
+    try:
+        response = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
+                                params={"timeout": 20, "limit": 50}, timeout=25)
+        payload = response.json()
+    except (requests.RequestException, ValueError):
+        raise gr.Error("Impossibile contattare Telegram per il rilevamento dei topic.") from None
+    if response.status_code == 409:
+        raise gr.Error("Un altro processo sta già ascoltando questo bot.")
+    if not payload.get("ok"):
+        raise gr.Error("Telegram non ha accettato la richiesta. Verifica token e permessi del bot.")
+    messages = [item.get("message") or item.get("channel_post") for item in payload.get("result", [])]
+    messages = [message for message in messages if isinstance(message, dict)]
+    chats = {message.get("chat", {}).get("id") for message in messages}
+    chats.discard(None)
+    threads = {message.get("message_thread_id") for message in messages}
+    threads.discard(None)
+    rows = [list(row) for row in existing_rows or []
+            if row and len(row) > 1 and (str(row[0]).strip() or str(row[1]).strip())]
+    known = {str(row[1]) for row in rows}
+    rows.extend([["", str(thread)] for thread in sorted(threads) if str(thread) not in known])
+    status = (f"Rilevati {len(threads)} topic. Assegna una materia a ciascuno e salva."
+              if threads else "Nessun topic rilevato. Invia un messaggio in un topic e riprova.")
+    return status, str(next(iter(chats))) if len(chats) == 1 else "", rows or [["", ""]]
+
+
+def _topic_from_link(link: str, existing_rows: list[list[str]], chat_input: str):
+    from rt.pipeline.configure import parse_telegram_topic_link
+    parsed = parse_telegram_topic_link(link)
+    if parsed is None:
+        raise gr.Error("Incolla un link a un messaggio del topic, per esempio https://t.me/c/1234567890/12/34.")
+    chat_id, topic_id = parsed
+    if chat_input.strip() and chat_input.strip() != str(chat_id):
+        raise gr.Error("Questo topic appartiene a un gruppo diverso dal Chat ID configurato.")
+    rows = [list(row) for row in existing_rows or []
+            if row and len(row) > 1 and (str(row[0]).strip() or str(row[1]).strip())]
+    if str(topic_id) not in {str(row[1]) for row in rows}:
+        rows.append(["", str(topic_id)])
+    return f"Topic {topic_id} rilevato. Assegna una materia e salva.", str(chat_id), rows, ""
 
 
 def _selected(lessons: list[LessonSummary], lesson_dir: Optional[str]) -> Optional[LessonSummary]:
@@ -219,19 +271,6 @@ def _require_lesson(root: str, lesson_dir: Optional[str]) -> LessonSummary:
     return lesson
 
 
-def _review_values(detail: IssueDetail, status: str = ""):
-    return (
-        detail.heading, detail.claim, detail.proposal, detail.diff,
-        f"**Motivo**\n\n{detail.reason}" if detail.reason else "",
-        detail.source_quote, detail.unit_text, detail.audio,
-        gr.update(interactive=detail.can_accept), gr.update(interactive=detail.can_reject),
-        gr.update(interactive=detail.can_edit), gr.update(interactive=detail.can_undo),
-        gr.update(value=detail.editor_initial, visible=False),
-        gr.update(visible=False), gr.update(visible=False),
-        gr.update(value=status, visible=bool(status)),
-    )
-
-
 def _selection_view(root: str, lesson_dir: Optional[str]):
     lesson = _selected(list_lessons(root), lesson_dir)
     choices, issue_id = issue_choices(lesson)
@@ -240,22 +279,17 @@ def _selection_view(root: str, lesson_dir: Optional[str]):
         lesson_audio_html(lesson),
         gr.update(choices=choices, value=issue_id),
         issue_sidebar(lesson, issue_id),
-        *_review_values(IssueDetail()),
     )
 
 
 @log_action("review.issue")
-def _review_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str]):
-    return _review_values(issue_detail(_selected(list_lessons(root), lesson_dir), issue_id))
-
-
-def _select_issue(root: str, lesson_dir: Optional[str], evt: gr.EventData):
+def _select_issue(root: str, lesson_dir: Optional[str], grouping: str, evt: gr.EventData):
     lesson = _require_lesson(root, lesson_dir)
     choices, _ = issue_choices(lesson)
     if evt.issue_id not in {value for _, value in choices}:
         raise gr.Error("Issue non disponibile: aggiorna l'elenco.")
-    return (gr.update(value=evt.issue_id), *_review_values(issue_detail(lesson, evt.issue_id)),
-            issue_sidebar(lesson, evt.issue_id))
+    return (gr.update(value=evt.issue_id), lesson_preview_html(lesson, evt.issue_id),
+            issue_sidebar(lesson, evt.issue_id, grouping))
 
 
 def _open_issues_file(root: str, lesson_dir: Optional[str]) -> None:
@@ -274,8 +308,10 @@ def _open_issues_file(root: str, lesson_dir: Optional[str]) -> None:
 
 
 @log_action("review.apri")
-def _open_review(root: str, lesson_dir: Optional[str], issue_id: Optional[str]):
-    return gr.update(selected="review"), *_review_view(root, lesson_dir, issue_id)
+def _open_review(root: str, lesson_dir: Optional[str], issue_id: Optional[str], grouping: str):
+    lesson = _require_lesson(root, lesson_dir)
+    return (gr.update(visible=True), lesson_preview_html(lesson, issue_id),
+            issue_sidebar(lesson, issue_id, grouping))
 
 
 @log_action("lezioni.aggiorna")
@@ -283,19 +319,20 @@ def _refresh_view(root: str, current: Optional[str]):
     lessons = list_lessons(root)
     available = {lesson.dir_path for lesson in lessons}
     selected = current if current in available else (lessons[0].dir_path if lessons else None)
-    return lesson_stats(lessons), selected, sidebar_lessons(lessons, selected), *_selection_view(root, selected)
+    return (lesson_stats(lessons), selected, sidebar_lessons(lessons, selected),
+            *_selection_view(root, selected), gr.update(visible=False))
 
 
 @log_action("lezione.seleziona")
 def _select_view(root: str, evt: gr.EventData):
     lesson = _require_lesson(root, evt.lesson_dir)
     return (lesson.dir_path, *_selection_view(root, lesson.dir_path),
-            gr.update(selected="dashboard"), evt.token)
+            gr.update(visible=False), gr.update(selected="dashboard"), evt.token)
 
 
 @log_action("review.decisione")
 def _decision_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str], action: str,
-                   edited_text: Optional[str] = None):
+                   edited_text: Optional[str] = None, grouping: str = "unit"):
     try:
         lesson = _require_lesson(root, lesson_dir)
         if not issue_id:
@@ -315,12 +352,39 @@ def _decision_view(root: str, lesson_dir: Optional[str], issue_id: Optional[str]
     choices, next_issue = issue_choices(lesson)
     if lesson and lesson.pending_issues == 0:
         next_issue = issue_id
-    detail = issue_detail(lesson, next_issue)
     return (
-        lesson_stats(lessons), lesson_card(lesson), lesson_preview_html(lesson),
-        gr.update(choices=choices, value=next_issue), issue_sidebar(lesson, next_issue),
-        *_review_values(detail, status),
+        lesson_stats(lessons), lesson_card(lesson), lesson_preview_html(lesson, next_issue),
+        gr.update(choices=choices, value=next_issue), issue_sidebar(lesson, next_issue, grouping),
+        gr.update(value=status, visible=True),
     )
+
+
+def _review_action(root: str, lesson_dir: Optional[str], issue_id: Optional[str],
+                   grouping: str, evt: gr.EventData):
+    action = str(evt.action)
+    if action not in {"accept", "reject", "undo"}:
+        raise gr.Error("Azione di review non riconosciuta.")
+    detail = issue_action_state(_require_lesson(root, lesson_dir), issue_id)
+    if action == "accept":
+        proposed = detail.editor_initial
+        submitted = str(getattr(evt, "text", "") or "").strip()
+        if not detail.can_accept:
+            raise gr.Error("Questa issue non può essere accettata.")
+        if not submitted:
+            raise gr.Error("Inserisci il testo da applicare prima di accettare la issue.")
+        if submitted != proposed.strip():
+            action, proposed = "edited", submitted
+        else:
+            action, proposed = "accepted", None
+    elif action == "reject":
+        if not detail.can_reject:
+            raise gr.Error("Questa issue non può essere rifiutata.")
+        action, proposed = "rejected", None
+    else:
+        if not detail.can_undo:
+            raise gr.Error("Questa decisione non può essere riaperta.")
+        proposed = None
+    return _decision_view(root, lesson_dir, issue_id, action, proposed, grouping)
 
 
 @log_action("lezione.importa")
@@ -336,11 +400,12 @@ def _ingest_view(root: str, audio_path: Optional[str], recorded: str, subject: s
     return (
         status, lesson_dir, sidebar_lessons(lessons, lesson_dir),
         lesson_stats(lessons), *_selection_view(root, lesson_dir),
-        gr.update(selected="dashboard"),
+        gr.update(visible=False), gr.update(selected="dashboard"),
     )
 
 
-def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks:
+def build_app(root: str, blocked_paths: Optional[list[str]] = None,
+              root_override: bool = False) -> gr.Blocks:
     """Costruisce una UI che legge e aggiorna le stesse lezioni usate da RT."""
     root = str(Path(root).expanduser().resolve()) if root else ""
     blocked_paths = blocked_paths if blocked_paths is not None else []
@@ -349,10 +414,15 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks
                     lessons[0].dir_path if lessons else None)
     initial_lesson = _selected(lessons, selected)
     initial_choices, initial_issue = issue_choices(initial_lesson)
-    initial_detail = IssueDetail()
+    cfg = load_config()
+    load_env_file()
+    jobs = sorted(cfg.llm)
+    first_job = jobs[0] if jobs else ""
+    first_route = route_settings(PROJECT_ROOT, first_job, "primary") if first_job else ("openrouter", "", "", "", False)
+    topic_rows = [[subject, topic] for subject, topic in cfg.telegram.topics.items()]
 
     with gr.Blocks(title="RT · Lezioni", analytics_enabled=False, fill_width=True) as demo:
-        with gr.Sidebar(label="Navigazione", width=280, elem_id="rt-sidebar"):
+        with gr.Sidebar(label="Navigazione", width=280, open=False, elem_id="rt-sidebar"):
             sidebar_list = gr.HTML(sidebar_lessons(lessons, selected), js_on_load=SIDEBAR_JS,
                                    apply_default_css=False,
                                    elem_id="rt-lesson-list")
@@ -368,8 +438,14 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks
                     '<p>Le tue lezioni, dall’audio agli appunti pronti per lo studio.</p></div>', scale=1)
             go_upload = gr.Button("＋ Importa audio", variant="primary", size="sm", scale=0,
                                   elem_id="rt-upload-nav")
-            go_config = gr.Button("⚙ Configurazione", variant="secondary", size="sm", scale=0,
+            bot_button = gr.Button("🤖",
+                                   interactive=not is_daemon_running(), size="sm", scale=0,
+                                   elem_id="rt-bot-nav")
+            go_config = gr.Button("⚙" if root and Path(root).is_dir() else "←",
+                                  variant="secondary", size="sm", scale=0,
                                   elem_id="rt-config-nav")
+            gr.HTML('<span aria-hidden="true" style="display:none"></span>', js_on_load=BOT_JS)
+        config_open = gr.State(not bool(root and Path(root).is_dir()))
 
         with gr.Tabs(selected="dashboard" if root and Path(root).is_dir() else "config",
                      elem_id="rt-pages") as pages:
@@ -377,62 +453,111 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks
                 stats = gr.HTML(lesson_stats(lessons))
                 card = gr.HTML(lesson_card(initial_lesson), js_on_load=CARD_JS,
                                apply_default_css=False, elem_id="rt-lesson-card")
-                preview = gr.HTML(lesson_preview_html(initial_lesson), js_on_load=PREVIEW_JS,
-                                  elem_id="rt-preview")
-                lesson_audio = gr.HTML(lesson_audio_html(initial_lesson), js_on_load=PLAYER_JS,
-                                       elem_id="rt-lesson-audio")
-            with gr.Tab("Review", id="review"):
-                back_review = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
-                issue_picker = gr.Dropdown(
-                    choices=initial_choices, value=initial_issue, label="Issue da valutare",
-                    filterable=True, visible=False,
-                )
-                with gr.Row():
-                    with gr.Column(scale=1, min_width=240):
+                issue_picker = gr.Dropdown(choices=initial_choices, value=initial_issue,
+                                           label="Issue selezionata", visible=False)
+                with gr.Row(elem_id="rt-reading-layout"):
+                    with gr.Column(scale=3, min_width=350):
+                        preview = gr.HTML(lesson_preview_html(initial_lesson), js_on_load=PREVIEW_JS,
+                                          elem_id="rt-preview")
+                    with gr.Column(scale=1, min_width=270, visible=False,
+                                   elem_id="rt-review-panel") as review_panel:
+                        with gr.Row(elem_id="rt-review-panel-head"):
+                            gr.Markdown("### Issue della lezione")
+                            close_review = gr.Button("×", size="sm", scale=0,
+                                                      elem_id="rt-review-close")
+                        grouping = gr.Radio(choices=[("Per unità", "unit"), ("Per tipo", "type")],
+                                            value="unit", label="Raggruppa", container=False)
+                        action_status = gr.Markdown(visible=False, elem_id="rt-action-status")
                         issue_list = gr.HTML(issue_sidebar(initial_lesson, initial_issue),
                                              js_on_load=ISSUE_SIDEBAR_JS, elem_id="rt-issue-list")
-                    with gr.Column(scale=3, min_width=320):
-                        action_status = gr.Markdown(visible=False, elem_id="rt-action-status")
-                        issue_header = gr.HTML(initial_detail.heading)
-                        with gr.Row():
-                            original = gr.Textbox(value=initial_detail.claim, label="Affermazione da valutare",
-                                                  lines=5, interactive=False, elem_id="rt-review-source")
-                            suggested = gr.Textbox(value=initial_detail.proposal, label="Correzione proposta / testo deciso",
-                                                   lines=5, interactive=False, elem_id="rt-review-proposal")
-                        diff_view = gr.HTML(initial_detail.diff)
-                        explanation = gr.Markdown(f"**Motivo**\n\n{initial_detail.reason}")
-                        with gr.Accordion("Contesto: unità completa e trascrizione sorgente", open=False):
-                            unit_text = gr.Textbox(value=initial_detail.unit_text, label="Unità completa",
-                                                   lines=14, max_lines=18, interactive=False)
-                            source_quote = gr.Textbox(value=initial_detail.source_quote,
-                                                      label="Citazione della trascrizione originale",
-                                                      lines=5, interactive=False)
-                        audio_player = gr.Audio(value=initial_detail.audio, label="Ascolta il passaggio",
-                                                interactive=False, buttons=[], format="wav")
-                        with gr.Row():
-                            accept = gr.Button("Accetta", interactive=initial_detail.can_accept, variant="primary")
-                            reject = gr.Button("Mantieni originale", interactive=initial_detail.can_reject)
-                            modify = gr.Button("Modifica…", interactive=initial_detail.can_edit)
-                            undo = gr.Button("Riapri decisione", interactive=initial_detail.can_undo)
-                        editor = gr.Textbox(value=initial_detail.editor_initial, label="Testo corretto",
-                                            lines=8, visible=False)
-                        with gr.Row():
-                            save_edit = gr.Button("Salva modifica", variant="primary", visible=False)
-                            cancel_edit = gr.Button("Annulla modifica", visible=False)
+                lesson_audio = gr.HTML(lesson_audio_html(initial_lesson), js_on_load=PLAYER_JS,
+                                       elem_id="rt-lesson-audio")
             with gr.Tab("Configurazione", id="config"):
-                back_config = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
-                gr.Markdown("### Cartella delle lezioni\nScegli una cartella esistente oppure indica dove crearne una nuova.")
-                root_input = gr.Textbox(
-                    value=root or str(Path.home() / "RT Lezioni"),
-                    label="Percorso della cartella delle lezioni",
-                    placeholder="~/RT Lezioni",
-                )
-                save_root = gr.Button("Usa questa cartella", variant="primary")
-                root_status = gr.Markdown(
-                    "Configura la cartella per iniziare." if not root or not Path(root).is_dir() else "",
-                )
+                with gr.Accordion("Lezioni", open=True):
+                    gr.Markdown("Scegli una cartella esistente oppure indica dove crearne una nuova.")
+                    root_input = gr.Textbox(value=root or str(Path.home() / "RT Lezioni"),
+                                            label="Cartella delle lezioni", placeholder="~/RT Lezioni")
+                    save_root = gr.Button("Usa questa cartella", variant="primary")
+                    root_status = gr.Markdown(
+                        "Configura la cartella per iniziare." if not root or not Path(root).is_dir() else "")
+                with gr.Accordion("Modelli e provider", open=False):
+                    gr.Markdown("Aggiungi una chiave. Rimane nel file `.env` locale e non viene mostrata dopo il salvataggio.")
+                    with gr.Row():
+                        key_provider = gr.Dropdown(choices=[("OpenRouter", "openrouter"),
+                                                            ("Google AI Studio", "google"),
+                                                            ("DeepSeek", "deepseek"),
+                                                            ("OpenAI-compatible", "openai_compatible")],
+                                                   value="openrouter", label="Provider")
+                        key_name = gr.Textbox(label="Nome della chiave", placeholder="es. google_3")
+                        key_value = gr.Textbox(label="Chiave API", type="password")
+                    add_key = gr.Button("Salva chiave")
+                    key_status = gr.Markdown()
+                    gr.Markdown("Scegli il job e il ruolo del modello. Per il primario puoi selezionare più chiavi da alternare.")
+                    with gr.Row():
+                        model_job = gr.Dropdown(choices=jobs, value=first_job, label="Fase / job")
+                        model_role = gr.Dropdown(
+                            choices=[("Primario", "primary"), ("Secondario", "secondary"),
+                                     ("Fallback: timeout", "timeout"),
+                                     ("Fallback: limiti API", "rate_limit"),
+                                     ("Fallback: sicurezza", "safety"),
+                                     ("Fallback: autenticazione", "auth"),
+                                     ("Fallback: altro", "generic")], value="primary", label="Ruolo")
+                    with gr.Row():
+                        model_provider = gr.Dropdown(
+                            choices=[("OpenRouter", "openrouter"), ("Google AI Studio", "google"),
+                                     ("DeepSeek", "deepseek"),
+                                     ("OpenAI-compatible", "openai_compatible")],
+                            value=first_route[0], label="Provider")
+                        model_credential = gr.Dropdown(choices=credential_names(PROJECT_ROOT, first_route[0]),
+                                                       value=first_route[1] or None, label="Chiave")
+                    model_name = gr.Textbox(value=first_route[2], label="Nome / ID del modello")
+                    model_base = gr.Textbox(value=first_route[3], label="Base URL",
+                                             placeholder="Precompilato per i provider comuni")
+                    model_rr = gr.Checkbox(value=first_route[4],
+                                            label="Alterna più chiavi per il modello primario")
+                    model_rr_keys = gr.Dropdown(
+                        choices=credential_names(PROJECT_ROOT, first_route[0]),
+                        value=route_round_robin_keys(PROJECT_ROOT, first_job) if first_job else [],
+                        multiselect=True, visible=first_route[4],
+                        label="Chiavi da alternare")
+                    save_model = gr.Button("Salva modello", variant="primary")
+                    model_status = gr.Markdown()
+                with gr.Accordion("Telegram", open=False):
+                    gr.Markdown("Aggiungi il bot al gruppo e imposta i topic per materia. "
+                                "Per rilevarli, premi **Ascolta topic**, poi invia un messaggio nei topic "
+                                "dal telefono. Il token resta salvato localmente.")
+                    with gr.Row():
+                        telegram_token = gr.Textbox(label="Token del bot", type="password",
+                                                     placeholder="Lascia vuoto per mantenere quello salvato")
+                        telegram_chat = gr.Textbox(value=os.environ.get("RT_TELEGRAM_CHAT_ID", ""),
+                                                    label="Chat ID del gruppo")
+                    telegram_topics = gr.Dataframe(value=topic_rows or [["", ""]],
+                                                     headers=["Materia", "Topic ID"], type="array",
+                                                     interactive=True, label="Topic per materia")
+                    telegram_misc = gr.Textbox(value=str(cfg.telegram.misc_topic_id or ""),
+                                                label="Topic generale (facoltativo)")
+                    with gr.Row():
+                        telegram_save = gr.Button("Salva Telegram", variant="primary")
+                        telegram_listen = gr.Button("Ascolta topic per 20 secondi")
+                    with gr.Row():
+                        telegram_link = gr.Textbox(label="Link a un messaggio del topic (facoltativo)",
+                                                    placeholder="https://t.me/c/1234567890/12/34")
+                        telegram_add_link = gr.Button("Aggiungi dal link", size="sm")
+                    telegram_status = gr.Markdown()
+                with gr.Accordion("Trascrizione", open=False):
+                    stt_engine = gr.Radio(choices=[("macparakeet (su questo Mac)", "macparakeet"),
+                                                   ("Server OpenAI-compatible", "custom")],
+                                          value=cfg.transcription.engine, label="Motore predefinito")
+                    stt_base = gr.Textbox(value=cfg.transcription.base_url or "",
+                                           label="Base URL del server STT",
+                                           placeholder="http://localhost:8000/v1")
+                    stt_model = gr.Textbox(value=cfg.transcription.model or "",
+                                            label="ID modello STT")
+                    stt_key = gr.Textbox(type="password", label="Chiave API (facoltativa)",
+                                         placeholder="Lascia vuoto per mantenere quella salvata")
+                    stt_save = gr.Button("Salva trascrizione", variant="primary")
+                    stt_status = gr.Markdown()
                 config_summary = gr.HTML(configuration_summary(root))
-                gr.HTML('<div class="rt-note">Le chiavi API non vengono mostrate. Le altre impostazioni si modificano ancora con il wizard CLI.</div>')
             with gr.Tab("Importa audio", id="upload"):
                 back_upload = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
                 gr.Markdown("## Nuova lezione\nCarica un file audio: RT creerà la cartella della lezione senza toccare quelle esistenti.")
@@ -441,64 +566,155 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks
                     upload_date = gr.Textbox(value=date.today().isoformat(), label="Data della lezione (AAAA-MM-GG)")
                     upload_subject = gr.Textbox(label="Materia")
                 upload_topics = gr.Textbox(label="Argomenti (facoltativo)")
-                upload_transcribe = gr.Checkbox(value=True, label="Trascrivi subito con macparakeet-cli")
+                upload_transcribe = gr.Checkbox(value=True, label="Trascrivi subito")
                 upload_submit = gr.Button("Crea lezione", variant="primary")
                 upload_status = gr.Markdown()
 
-        review_outputs = [issue_header, original, suggested, diff_view, explanation, source_quote,
-                          unit_text, audio_player, accept, reject, modify, undo, editor,
-                          save_edit, cancel_edit, action_status]
-        view_outputs = [card, preview, lesson_audio, issue_picker, issue_list, *review_outputs]
-        decision_outputs = [stats, card, preview, issue_picker, issue_list, *review_outputs]
+        view_outputs = [card, preview, lesson_audio, issue_picker, issue_list]
+        decision_outputs = [stats, card, preview, issue_picker, issue_list, action_status]
 
         def select_sidebar(evt: gr.EventData):
             return _select_view(root, evt)
 
-        def select_issue_from_sidebar(path: str, evt: gr.EventData):
-            return _select_issue(root, path, evt)
+        def select_issue_from_sidebar(path: str, group: str, evt: gr.EventData):
+            return _select_issue(root, path, group, evt)
+
+        def act_on_review(path: str, issue: str, group: str, evt: gr.EventData):
+            return _review_action(root, path, issue, group, evt)
 
         sidebar_list.lesson_selected(select_sidebar,
-                                     outputs=[picker, *view_outputs, pages, selection_done],
+                                     outputs=[picker, *view_outputs, review_panel, pages, selection_done],
                                      show_progress="hidden")
         sidebar_list.client_log(_client_log, show_progress="hidden")
         lesson_audio.client_log(_client_log, show_progress="hidden")
-        issue_picker.input(lambda path, issue_id: _review_view(root, path, issue_id),
-                           inputs=[picker, issue_picker], outputs=review_outputs,
-                           show_progress="hidden")
         issue_list.issue_selected(select_issue_from_sidebar,
-                                  inputs=picker, outputs=[issue_picker, *review_outputs, issue_list],
+                                  inputs=[picker, grouping], outputs=[issue_picker, preview, issue_list],
                                   show_progress="hidden")
         issue_list.open_issues_file(lambda path: _open_issues_file(root, path),
                                     inputs=picker, show_progress="hidden")
+        grouping.change(
+            lambda path, issue, group: issue_sidebar(_selected(list_lessons(root), path), issue, group),
+            inputs=[picker, issue_picker, grouping], outputs=issue_list, show_progress="hidden")
+        preview.review_action(
+            act_on_review,
+            inputs=[picker, issue_picker, grouping], outputs=decision_outputs)
         refresh.click(lambda path: _refresh_view(root, path), inputs=picker,
-                      outputs=[stats, picker, sidebar_list, *view_outputs], show_progress="hidden")
-        accept.click(lambda path, issue: _decision_view(root, path, issue, "accepted"),
-                     inputs=[picker, issue_picker], outputs=decision_outputs)
-        reject.click(lambda path, issue: _decision_view(root, path, issue, "rejected"),
-                     inputs=[picker, issue_picker], outputs=decision_outputs)
-        undo.click(lambda path, issue: _decision_view(root, path, issue, "undo"),
-                   inputs=[picker, issue_picker], outputs=decision_outputs)
-        modify.click(lambda: (gr.update(visible=True), gr.update(visible=True), gr.update(visible=True)),
-                     outputs=[editor, save_edit, cancel_edit], show_progress="hidden")
-        cancel_edit.click(lambda: (gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)),
-                          outputs=[editor, save_edit, cancel_edit], show_progress="hidden")
-        save_edit.click(lambda path, issue, text: _decision_view(root, path, issue, "edited", text),
-                        inputs=[picker, issue_picker, editor], outputs=decision_outputs)
-        back_review.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
-        back_config.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
-        back_upload.click(lambda: gr.update(selected="dashboard"), outputs=pages, show_progress="hidden")
-        go_upload.click(lambda: gr.update(selected="upload"), outputs=pages, show_progress="hidden")
-        go_config.click(lambda: gr.update(selected="config"), outputs=pages, show_progress="hidden")
-        card.open_review(lambda path, issue: _open_review(root, path, issue),
-                         inputs=[picker, issue_picker], outputs=[pages, *review_outputs],
+                      outputs=[stats, picker, sidebar_list, *view_outputs, review_panel],
+                      show_progress="hidden")
+        close_review.click(
+            lambda path: (gr.update(visible=False), lesson_preview_html(_selected(list_lessons(root), path))),
+            inputs=picker, outputs=[review_panel, preview], show_progress="hidden")
+        def toggle_config(open_now: bool):
+            return (gr.update(selected="dashboard" if open_now else "config"),
+                    gr.update(value="⚙" if open_now else "←"), not open_now)
+
+        go_config.click(toggle_config, inputs=config_open,
+                        outputs=[pages, go_config, config_open], show_progress="hidden")
+        back_upload.click(lambda: (gr.update(selected="dashboard"), gr.update(value="⚙"), False),
+                          outputs=[pages, go_config, config_open], show_progress="hidden")
+        go_upload.click(lambda: (gr.update(selected="upload"), gr.update(value="⚙"), False),
+                        outputs=[pages, go_config, config_open], show_progress="hidden")
+        bot_button.click(_start_bot, outputs=bot_button)
+        card.open_review(lambda path, issue, group: _open_review(root, path, issue, group),
+                         inputs=[picker, issue_picker, grouping],
+                         outputs=[review_panel, preview, issue_list],
                          show_progress="hidden")
         upload_submit.click(
             lambda file, recorded, subject, topics, transcribe: _ingest_view(
                 root, file, recorded, subject, topics, transcribe,
             ),
             inputs=[upload_file, upload_date, upload_subject, upload_topics, upload_transcribe],
-            outputs=[upload_status, picker, sidebar_list, stats, *view_outputs, pages],
+            outputs=[upload_status, picker, sidebar_list, stats, *view_outputs,
+                     review_panel, pages],
         )
+
+        def load_model_form(job: str, role: str):
+            provider, credential, model, base_url, rr = route_settings(PROJECT_ROOT, job, role)
+            return (provider, gr.update(choices=credential_names(PROJECT_ROOT, provider),
+                                        value=credential or None), model, base_url, rr,
+                    gr.update(choices=credential_names(PROJECT_ROOT, provider),
+                              value=route_round_robin_keys(PROJECT_ROOT, job) if rr else [],
+                              visible=rr))
+
+        for control in (model_job, model_role):
+            control.change(load_model_form, inputs=[model_job, model_role],
+                           outputs=[model_provider, model_credential, model_name, model_base,
+                                    model_rr, model_rr_keys],
+                           show_progress="hidden")
+        model_provider.change(
+            lambda provider: (gr.update(choices=credential_names(PROJECT_ROOT, provider), value=None),
+                              KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, ""),
+                              gr.update(choices=credential_names(PROJECT_ROOT, provider), value=[])),
+            inputs=model_provider, outputs=[model_credential, model_base, model_rr_keys],
+            show_progress="hidden")
+        model_rr.change(lambda enabled, role: gr.update(visible=enabled and role == "primary"),
+                        inputs=[model_rr, model_role], outputs=model_rr_keys,
+                        show_progress="hidden")
+        key_provider.change(
+            lambda provider: f"{provider}_{len(credential_names(PROJECT_ROOT, provider)) + 1}",
+            inputs=key_provider, outputs=key_name, show_progress="hidden")
+
+        @log_action("configurazione.chiave")
+        def save_key_ui(provider: str, name: str, secret: str, current_provider: str,
+                        current_rr_keys: list[str]):
+            try:
+                saved = save_credential(PROJECT_ROOT, provider, name, secret)
+            except (OSError, ValueError) as exc:
+                raise gr.Error(str(exc)) from None
+            choices = credential_names(PROJECT_ROOT, current_provider)
+            return ("", f"Chiave **{saved}** salvata localmente.",
+                    gr.update(choices=choices,
+                              value=saved if provider == current_provider else None),
+                    gr.update(choices=choices,
+                              value=[key for key in current_rr_keys or [] if key in choices]))
+
+        add_key.click(save_key_ui, inputs=[key_provider, key_name, key_value,
+                                           model_provider, model_rr_keys],
+                      outputs=[key_value, key_status, model_credential, model_rr_keys])
+
+        @log_action("configurazione.modello")
+        def save_model_ui(job: str, role: str, provider: str, credential: str,
+                          model: str, base_url: str, rr: bool, rr_keys: list[str]):
+            try:
+                status = save_route(PROJECT_ROOT, job, role, provider, credential,
+                                    model, base_url, rr, rr_keys)
+            except (OSError, ValueError, KeyError) as exc:
+                raise gr.Error(str(exc)) from None
+            return status, configuration_summary(root)
+
+        save_model.click(save_model_ui,
+                         inputs=[model_job, model_role, model_provider, model_credential,
+                                 model_name, model_base, model_rr, model_rr_keys],
+                         outputs=[model_status, config_summary])
+
+        @log_action("configurazione.telegram")
+        def save_telegram_ui(token: str, chat: str, topics: list[list[str]], misc: str):
+            try:
+                status = save_telegram(PROJECT_ROOT, token, chat, topics, misc)
+            except (OSError, ValueError, TypeError) as exc:
+                raise gr.Error(str(exc)) from None
+            return "", status, _bot_button()
+
+        telegram_save.click(save_telegram_ui,
+                            inputs=[telegram_token, telegram_chat, telegram_topics, telegram_misc],
+                            outputs=[telegram_token, telegram_status, bot_button])
+        telegram_listen.click(_listen_topics, inputs=[telegram_token, telegram_topics],
+                              outputs=[telegram_status, telegram_chat, telegram_topics])
+        telegram_add_link.click(_topic_from_link,
+                                inputs=[telegram_link, telegram_topics, telegram_chat],
+                                outputs=[telegram_status, telegram_chat, telegram_topics,
+                                         telegram_link])
+
+        @log_action("configurazione.trascrizione")
+        def save_stt_ui(engine: str, base: str, model: str, key: str):
+            try:
+                status = save_transcription(PROJECT_ROOT, engine, base, model, key)
+            except (OSError, ValueError, TypeError) as exc:
+                raise gr.Error(str(exc)) from None
+            return "", status
+
+        stt_save.click(save_stt_ui, inputs=[stt_engine, stt_base, stt_model, stt_key],
+                       outputs=[stt_key, stt_status])
 
         @log_action("configurazione.cartella_lezioni")
         def configure_root(path: str):
@@ -513,12 +729,42 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None) -> gr.Blocks
             refreshed = _refresh_view(root, None)
             return (
                 configuration_summary(root), f"Cartella pronta: **{root}**",
-                *refreshed, gr.update(selected="dashboard"),
+                *refreshed, gr.update(selected="dashboard"), gr.update(value="⚙"), False,
             )
 
         save_root.click(configure_root, inputs=root_input,
                         outputs=[config_summary, root_status, stats, picker, sidebar_list,
-                                 *view_outputs, pages])
+                                 *view_outputs, review_panel, pages, go_config, config_open])
+
+        @log_action("pagina.carica")
+        def reload_page():
+            nonlocal root
+            # Gradio riutilizza i valori iniziali dei componenti anche dopo un refresh
+            # del browser: rileggere il file evita di tornare alla cartella precedente.
+            if not root_override:
+                saved = lessons_root() or ""
+                root = (str(Path(saved).expanduser().resolve())
+                        if saved and Path(saved).expanduser().is_dir() else "")
+            lessons_now = list_lessons(root)
+            chosen = next((item.dir_path for item in lessons_now if item.pending_issues),
+                          lessons_now[0].dir_path if lessons_now else None)
+            return (
+                root or str(Path.home() / "RT Lezioni"),
+                configuration_summary(root),
+                lesson_stats(lessons_now), chosen,
+                sidebar_lessons(lessons_now, chosen),
+                *_selection_view(root, chosen),
+                gr.update(visible=False),
+                gr.update(selected="dashboard" if root and Path(root).is_dir() else "config"),
+                gr.update(value="⚙" if root and Path(root).is_dir() else "←"),
+                not bool(root and Path(root).is_dir()),
+                _bot_button(),
+            )
+
+        demo.load(reload_page, outputs=[root_input, config_summary, stats, picker,
+                                        sidebar_list, *view_outputs, review_panel, pages,
+                                        go_config, config_open, bot_button],
+                  show_progress="hidden")
     return demo
 
 
@@ -541,11 +787,11 @@ def main(argv: Optional[list[str]] = None) -> None:
     if root:
         blocked.append(str(Path(root).expanduser().resolve()))
     try:
-        build_app(root, blocked_paths=blocked).launch(
+        build_app(root, blocked_paths=blocked, root_override=bool(args.lessons_root)).launch(
             server_name="127.0.0.1", server_port=args.port, inbrowser=not args.no_browser,
             share=False, show_error=True, blocked_paths=blocked,
             allowed_paths=[web_audio_directory()],
-            app_kwargs={"middleware": [Middleware(RequestLogMiddleware)]},
+            app_kwargs={"middleware": [Middleware(RequestLogMiddleware, audio_dir=web_audio_directory())]},
             theme=gr.themes.Soft(
                 primary_hue="teal", neutral_hue="slate",
                 font=["Seravek", "Helvetica Neue", "Arial", "sans-serif"],

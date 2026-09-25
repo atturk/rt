@@ -458,14 +458,23 @@ def run_setup(
         current_status = "pronto_per_rielaborazione"
 
     elif not skip_transcribe:
-        parakeet_bin = find_macparakeet_binary()
-        if not parakeet_bin:
+        from rt.core.config import load_config, load_env_file
+        from rt.core.custom_stt import transcribe_custom
+
+        stt = load_config().transcription
+        use_custom_stt = stt.engine == "custom"
+        parakeet_bin = None if use_custom_stt else find_macparakeet_binary()
+        if not use_custom_stt and not parakeet_bin:
             raise SetupError(
                 "macparakeet-cli non trovato. Assicurati che sia installato con 'brew install moona3k/tap/macparakeet-cli'."
             )
+        if use_custom_stt:
+            model = stt.model or ""
+            load_env_file()
 
         if on_progress:
-            on_progress("\n[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)...")
+            on_progress("\n[2/9] TRASCRIZIONE STT CUSTOM..." if use_custom_stt
+                        else "\n[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)...")
 
         # Se sono presenti file audio multipli, gestiamo la concatenazione deterministica con offset cumulativo
         all_segments_combined = []
@@ -474,42 +483,41 @@ def run_setup(
         cumulative_word_offset = 0
         combined_text_parts = []
 
-        temp_dir = tempfile.mkdtemp(prefix="rt_macparakeet_")
+        temp_dir = tempfile.mkdtemp(prefix="rt_stt_")
         try:
             for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
                 aud_abs = os.path.abspath(aud_file)
                 temp_audio_dir = os.path.join(temp_dir, f"audio_{audio_idx}")
                 os.makedirs(temp_audio_dir, exist_ok=True)
 
-                cmd_json = [
-                    parakeet_bin, "transcribe",
-                    "--format", "json",
-                    "--no-diarize",
-                    "--output-dir", temp_audio_dir,
-                ]
-                if model:
-                    model_param = model.replace("parakeet-", "") if model.startswith("parakeet-") else model
-                    cmd_json.extend(["--parakeet-model", model_param])
-                cmd_json.append(aud_abs)
-
-                # HARD-FAIL CHECK: se macparakeet-cli fallisce, il setup si interrompe immediatamente
-                res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
-                
-                json_files = [f for f in os.listdir(temp_audio_dir) if f.endswith(".json")] if os.path.exists(temp_audio_dir) else []
-                raw_data = None
-                if json_files:
-                    json_file_path = os.path.join(temp_audio_dir, json_files[0])
+                if use_custom_stt:
                     try:
-                        with open(json_file_path, "r", encoding="utf-8") as f:
-                            raw_data = json.load(f)
-                    except Exception:
-                        raw_data = None
-
-                if res_json.returncode != 0 or raw_data is None:
-                    raise SetupError(
-                        f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
-                        f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip() if res_json.stderr else ''}"
-                    )
+                        raw_data = transcribe_custom(aud_abs, stt.base_url, stt.model, stt.timeout_seconds)
+                    except (RuntimeError, ValueError) as exc:
+                        raise SetupError(str(exc)) from None
+                else:
+                    cmd_json = [
+                        parakeet_bin, "transcribe", "--format", "json", "--no-diarize",
+                        "--output-dir", temp_audio_dir,
+                    ]
+                    if model:
+                        model_param = model.replace("parakeet-", "") if model.startswith("parakeet-") else model
+                        cmd_json.extend(["--parakeet-model", model_param])
+                    cmd_json.append(aud_abs)
+                    res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
+                    json_files = [f for f in os.listdir(temp_audio_dir) if f.endswith(".json")]
+                    raw_data = None
+                    if json_files:
+                        try:
+                            with open(os.path.join(temp_audio_dir, json_files[0]), "r", encoding="utf-8") as f:
+                                raw_data = json.load(f)
+                        except (OSError, ValueError):
+                            raw_data = None
+                    if res_json.returncode != 0 or raw_data is None:
+                        raise SetupError(
+                            f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
+                            f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip() if res_json.stderr else ''}"
+                        )
 
                 word_ts = raw_data.get("wordTimestamps", [])
                 if isinstance(word_ts, list):

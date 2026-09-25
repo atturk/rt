@@ -6,14 +6,235 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from typing import Any
+from urllib.parse import urlparse
 
 import yaml
+
+from rt.core.config import JobRoutingConfig, KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, load_config
+from rt.llm.credentials import CredentialRef, GLOBAL_CREDENTIALS
 
 
 def general_config_path(project_root: Path) -> Path:
     """Usa la stessa precedenza di load_config(): config/ nella cwd, poi nel progetto."""
     local = Path.cwd() / "config"
     return (local if local.is_dir() else project_root / "config") / "general.yaml"
+
+
+def _read_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Configurazione non valida: {path.name}.")
+    return data
+
+
+def _atomic_yaml(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.stem}-", suffix=".yaml", dir=path.parent)
+    try:
+        if path.exists():
+            os.fchmod(fd, path.stat().st_mode & 0o777)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def _env_path(project_root: Path) -> Path:
+    config = general_config_path(project_root)
+    return config.parent.parent / ".env"
+
+
+def _save_secret(project_root: Path, env_var: str, secret: str) -> None:
+    _validate_secret(secret)
+    path = _env_path(project_root)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    encoded = json.dumps(secret, ensure_ascii=False)
+    pattern = re.compile(rf"^(?:export\s+)?{re.escape(env_var)}\s*=")
+    updated = [f"{env_var}={encoded}" if pattern.match(line) else line for line in lines]
+    if not any(pattern.match(line) for line in lines):
+        updated.append(f"{env_var}={encoded}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".rt-env-", dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(updated) + "\n")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    os.environ[env_var] = secret
+
+
+def _validate_secret(secret: str) -> None:
+    if not secret or any(char in secret for char in "\r\n\0"):
+        raise ValueError("La chiave non può essere vuota o contenere interruzioni di riga.")
+
+
+def credential_names(project_root: Path, provider: str | None = None) -> list[str]:
+    entries = _read_yaml(general_config_path(project_root)).get("credentials") or []
+    return [item["name"] for item in entries if isinstance(item, dict) and item.get("name")
+            and (provider is None or item.get("provider") == provider)]
+
+
+def save_credential(project_root: Path, provider: str, name: str, api_key: str) -> str:
+    if provider not in {"openrouter", "deepseek", "google", "openai_compatible"}:
+        raise ValueError("Provider non supportato.")
+    name = name.strip().lower().replace("-", "_")
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,49}", name):
+        raise ValueError("Usa un nome breve con lettere, numeri e _.")
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    entries = data.setdefault("credentials", [])
+    if not isinstance(entries, list):
+        raise ValueError("La sezione credentials non è valida.")
+    existing = next((item for item in entries if isinstance(item, dict) and item.get("name") == name), None)
+    if existing and existing.get("provider") != provider:
+        raise ValueError("Questo nome appartiene a un altro provider.")
+    env_var = (existing.get("env_var") if existing else None) or f"RT_{name.upper()}_API_KEY"
+    _validate_secret(api_key.strip())
+    _save_secret(project_root, env_var, api_key.strip())
+    if not existing:
+        entries.append({"name": name, "provider": provider, "env_var": env_var})
+        _atomic_yaml(path, data)
+    GLOBAL_CREDENTIALS.register(CredentialRef(name=name, provider=provider, env_var=env_var))
+    return name
+
+
+ROUTE_ROLES = ("primary", "secondary", "timeout", "rate_limit", "safety", "auth", "generic")
+
+
+def route_settings(project_root: Path, job: str, role: str) -> tuple[str, str, str, str, bool]:
+    paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    data = _read_yaml(Path(paths[job])) if job in paths else {}
+    if role in {"primary", "secondary"}:
+        route = data.get(role) or {}
+        if role == "primary" and data.get("primary_routes"):
+            route = data["primary_routes"][0]
+    else:
+        route = (data.get("fallback") or {}).get(role) or {}
+    provider = route.get("provider") or "openrouter"
+    return (provider, route.get("credential") or "", route.get("model") or "",
+            route.get("base_url") or KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, ""),
+            bool(role == "primary" and data.get("round_robin")))
+
+
+def route_round_robin_keys(project_root: Path, job: str) -> list[str]:
+    paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    data = _read_yaml(Path(paths[job])) if job in paths else {}
+    return [route["credential"] for route in (data.get("primary_routes") or [])
+            if isinstance(route, dict) and route.get("credential")]
+
+
+def save_route(project_root: Path, job: str, role: str, provider: str,
+               credential: str, model: str, base_url: str, round_robin: bool,
+               round_robin_credentials: list[str] | None = None) -> str:
+    if role not in ROUTE_ROLES or provider not in (*KNOWN_PROVIDER_DEFAULT_BASE_URLS, "openai_compatible"):
+        raise ValueError("Ruolo o provider non riconosciuto.")
+    paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    if job not in paths:
+        raise ValueError("Job LLM non trovato.")
+    model = model.strip()
+    if not model:
+        raise ValueError("Inserisci l'identificativo del modello.")
+    names = credential_names(project_root, provider)
+    selected_names = round_robin_credentials if round_robin_credentials is not None else names
+    if role == "primary" and round_robin:
+        if len(selected_names) < 2 or len(set(selected_names)) != len(selected_names):
+            raise ValueError("Per la rotazione servono almeno due chiavi dello stesso provider.")
+        if any(name not in names for name in selected_names):
+            raise ValueError("La rotazione contiene una chiave non associata al provider scelto.")
+        credential = selected_names[0]
+    elif credential not in names:
+        raise ValueError("Seleziona una chiave del provider scelto.")
+    base_url = base_url.strip().rstrip("/")
+    if provider == "openai_compatible" and not base_url:
+        raise ValueError("Il provider OpenAI-compatible richiede un Base URL.")
+    path = Path(paths[job])
+    data = _read_yaml(path)
+    previous = ((data.get("fallback") or {}).get(role) if role not in {"primary", "secondary"}
+                else (data.get(role) or {}))
+    route = {**previous, "provider": provider, "credential": credential, "model": model}
+    route.pop("base_url", None)
+    if previous.get("provider") != provider:
+        route.pop("provider_routing", None)
+    if base_url and base_url != KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider):
+        route["base_url"] = base_url
+    if role == "primary":
+        if round_robin:
+            data["primary_routes"] = [{**route, "credential": name} for name in selected_names]
+            data["round_robin"] = True
+            data["primary"] = data["primary_routes"][0]
+        else:
+            data["primary"] = route
+            data.pop("primary_routes", None)
+            data["round_robin"] = False
+    elif role == "secondary":
+        data["secondary"] = route
+    else:
+        data.setdefault("fallback", {})[role] = route
+    load_config()  # registra le credenziali dichiarate prima della validazione
+    JobRoutingConfig.model_validate(data)
+    _atomic_yaml(path, data)
+    return f"Modello {role} salvato per {job}."
+
+
+def save_telegram(project_root: Path, token: str, chat_id: str,
+                  topics: list[list[str]], misc_topic: str) -> str:
+    if token.strip():
+        _validate_secret(token.strip())
+    if chat_id.strip():
+        _validate_secret(chat_id.strip())
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    telegram = data.setdefault("telegram", {})
+    if not isinstance(telegram, dict):
+        raise ValueError("Configurazione Telegram non valida.")
+    mapped = {}
+    for row in topics or []:
+        if not row or not str(row[0]).strip():
+            continue
+        mapped[str(row[0]).strip().upper()] = int(row[1])
+    telegram["topics"] = mapped
+    telegram["misc_topic_id"] = int(misc_topic) if str(misc_topic).strip() else None
+    if chat_id.strip():
+        if not re.fullmatch(r"-?\d+", chat_id.strip()):
+            raise ValueError("Chat ID non valido.")
+    _atomic_yaml(path, data)
+    if token.strip():
+        _save_secret(project_root, "RT_TELEGRAM_BOT_TOKEN", token.strip())
+    if chat_id.strip():
+        _save_secret(project_root, "RT_TELEGRAM_CHAT_ID", chat_id.strip())
+    return "Impostazioni Telegram salvate."
+
+
+def save_transcription(project_root: Path, engine: str, base_url: str,
+                       model: str, api_key: str) -> str:
+    if api_key.strip():
+        _validate_secret(api_key.strip())
+    if engine not in {"macparakeet", "custom"}:
+        raise ValueError("Motore STT non riconosciuto.")
+    base_url, model = base_url.strip().rstrip("/"), model.strip()
+    if engine == "custom":
+        parsed = urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Inserisci un Base URL HTTP valido per il server STT.")
+        if not model:
+            raise ValueError("Inserisci l'ID del modello STT.")
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    data["transcription"] = {**(data.get("transcription") or {}),
+                              "engine": engine, "base_url": base_url or None,
+                              "model": model or None}
+    telegram = data.setdefault("telegram", {})
+    telegram.setdefault("recall", {})["stt_engine"] = engine
+    _atomic_yaml(path, data)
+    if api_key.strip():
+        _save_secret(project_root, "RT_STT_API_KEY", api_key.strip())
+    return "Motore di trascrizione salvato."
 
 
 def save_lessons_root(raw_path: str, project_root: Path) -> str:

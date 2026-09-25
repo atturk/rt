@@ -27,9 +27,17 @@ cp -r config.example config
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
 | `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`). |
-| `telegram.lessons_root` | Cartella radice assoluta contenente tutte le cartelle delle lezioni per l'enumerazione via bot Telegram. |
+| `telegram.lessons_root` | Cartella radice assoluta delle lezioni, usata anche dalla web app. |
 | `telegram.topics` | Mappa da materia in maiuscolo (es. `BIOCHIMICA`) a `message_thread_id` del topic Telegram dedicato nel gruppo. |
 | `telegram.misc_topic_id` | `message_thread_id` del topic "Varie/Generale" per materie non presenti in `topics`. |
+| `transcription.engine` | `macparakeet` oppure `custom` per un server STT OpenAI-compatible. |
+| `transcription.base_url` / `transcription.model` | Indirizzo del server e ID modello quando `engine: custom`. Il server deve fornire `/audio/transcriptions` con risposta `verbose_json` e `segments` temporizzati. |
+| `transcription.timeout_seconds` | Tempo massimo della richiesta STT custom (default 600 s). |
+
+La schermata Configurazione di `rt web` consente di gestire cartella lezioni,
+credenziali, modelli, fallback, rotazione delle chiavi, bot Telegram e motore STT.
+Le chiavi sono salvate nel `.env` locale; per il server STT custom la variabile
+facoltativa è `RT_STT_API_KEY`.
 
 ### Dichiarazione delle Credenziali (`credentials:`)
 
@@ -308,4 +316,3 @@ fallback:
 1. **Tradeoff della whitelist (`only`)**: se nessun provider presente nella whitelist `only` è disponibile o online in quel momento per il modello richiesto, la richiesta fallirà con errore HTTP di OpenRouter anziché degradare silenziosamente su provider non desiderati. Questo garantisce che non vengano utilizzate quantizzazioni scadenti o backend lenti, ma richiede di scegliere provider affidabili o abilitare `allow_fallbacks: true` se consentito.
 2. **Criterio di ordinamento (`sort`)**: OpenRouter supporta **un solo criterio alla volta** (`"price"` | `"throughput"` | `"latency"`), senza concatenazione. L'effetto di selezionare "il più veloce tra i provider affidabili ad alta qualità" si ottiene combinando i filtri `only` / `quantizations` con l'ordinamento `sort: "throughput"`.
 3. **Come trovare gli slug dei provider**: sulla pagina del singolo modello su [openrouter.ai](https://openrouter.ai/models) (es. `openrouter.ai/<vendor>/<modello>`), è presente la lista dei provider attivi con l'apposito pulsante per copiare lo slug esatto (es. `deepinfra`, `together`, `hyperbolic`, ecc.). Poiché la copertura varia da modello a modello, la lista va verificata specificamente per ciascun modello configurato.
-

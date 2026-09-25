@@ -4,6 +4,9 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+import httpx
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
 
 from rt.web.diagnostics import RequestLogMiddleware, log_action
 from rt.web.app import _client_log
@@ -38,3 +41,20 @@ def test_browser_error_reaches_server_log(caplog):
     with caplog.at_level(logging.WARNING, logger="rt.web"):
         _client_log(SimpleNamespace(kind="audio.error", message="Formato non supportato"))
     assert "Browser audio.error: Formato non supportato" in caplog.text
+
+
+def test_audio_route_serves_byte_ranges_without_exposing_lesson_paths(tmp_path):
+    name = "a" * 20 + ".m4a"
+    payload = bytes(range(256)) * 4
+    (tmp_path / name).write_bytes(payload)
+    app = Starlette(middleware=[Middleware(RequestLogMiddleware, audio_dir=str(tmp_path))])
+
+    async def read_range():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://localhost") as client:
+            return await client.get(f"/rt-audio/{name}", headers={"Range": "bytes=100-199"})
+
+    response = asyncio.run(read_range())
+    assert response.status_code == 206
+    assert response.headers["content-range"] == "bytes 100-199/1024"
+    assert response.content == payload[100:200]
