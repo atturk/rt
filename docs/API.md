@@ -75,3 +75,35 @@ segreto: solo `set: true/false`.
 Il bot parte come processo separato in una sessione propria (sopravvive all'API) e il lock
 del PID file in `~/.rt/` impedisce i duplicati; lo stop invia SIGTERM. Un servizio launchd
 dedicato arriva con la fase G.
+
+### Scritture, job ed eventi live (RT4-E3)
+
+Le operazioni lunghe sono job della coda della fase D (`rt/services/jobs.py`), eseguiti da
+`rt worker`: l'endpoint risponde `202` con `job_id` e `worker_available` (falso se nessun
+worker è attivo: il job resta in coda finché non ne parte uno). I tipi standard
+(`run_pipeline`, `ingest_audio`, `run_phase`, `add_images`, `recall_generate`) sono quelli di
+`rt/services/job_handlers.py`; quelli aggiuntivi usati solo dall'API (`rewrite_unit`,
+`recall_batch`, `recall_evaluate`, `outline_revision`, `credential_test`) stanno in
+`rt/services/api_jobs.py`.
+
+| Metodo e percorso | Cosa fa | Equivalente CLI |
+|---|---|---|
+| `POST /lessons` (multipart: `audio`, `date`, `materia`, `argomenti`, `mock`, `run`) | Job `ingest_audio` (solo setup e trascrizione); con `run=true` job `run_pipeline` dall'audio | `rt setup`, `rt run lezione.m4a` |
+| `POST /lessons/{id}/jobs` `{type: run_pipeline}` | Pipeline completa | `rt run <cartella>` |
+| `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
+| `POST /lessons/{id}/images` (multipart `files`, `web_search`) | Job `add_images` | `rt add-images` |
+| `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento | `rt jobs` |
+| `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
+| `GET /workers` | Worker attivi | — |
+| `POST /lessons/{id}/outline/approve` | Approva l'outline; il job in attesa riparte da solo | approvazione outline |
+| `POST /lessons/{id}/outline/revise` | Job `outline_revision` con feedback | "modifica" nell'approvazione |
+| `POST /lessons/{id}/issues/{issue_id}/decision` | accepted, rejected, edited (con testo); con l'ultima decisione il job riparte | `rt review` |
+| `POST /lessons/{id}/decisions/undo` | Annulla l'ultima decisione su un'issue | "annulla" in `rt review` |
+| `GET /lessons/{id}/recall`, `POST .../recall/generate`, `POST .../recall/next` | Riserva di domande, generazione (job `recall_generate`, o `recall_batch` con `qtype`), prossima domanda | `rt recall` |
+| `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
+| `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
+
+Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
+decisioni rispondono `409 lesson_busy`. I file caricati vanno in
+`<lessons_root>/.rt/uploads/` e si cancellano quando il job finisce (restano se si ferma su una decisione); il limite di
+dimensione è `RT_API_MAX_UPLOAD_MB` (default 2048).

@@ -155,3 +155,114 @@ class UndoRequest(BaseModel):
 
 class Message(BaseModel):
     message: str
+
+
+# ---------------------------------------------------------------- job
+
+class Job(BaseModel):
+    id: str
+    type: str
+    state: str = Field(description="queued | running | waiting_for_decision | succeeded | failed | cancelled")
+    lesson_id: Optional[int] = None
+    lesson_path: Optional[str] = None
+    payload: Dict[str, Any] = {}
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    progress: Optional[Dict[str, Any]] = None
+    decision: Optional[Dict[str, Any]] = Field(None, description="Decisione attesa (DecisionRequired) se waiting_for_decision")
+    attempts: int = 0
+    cancel_requested: bool = False
+    created_by: Optional[str] = None
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class JobAccepted(BaseModel):
+    job_id: str
+    type: str
+    state: str
+    lesson_id: Optional[int] = None
+    worker_available: bool = Field(description="False se nessun 'rt worker' è attivo: il job resta in coda")
+
+
+class JobEvent(BaseModel):
+    id: int
+    job_id: str
+    type: str
+    payload: Dict[str, Any] = {}
+    created_at: Optional[str] = None
+
+
+class JobRequest(BaseModel):
+    type: Literal["run_pipeline", "run_phase"] = "run_pipeline"
+    phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(
+        None, description="Obbligatoria per run_phase")
+    unit: Optional[str] = Field(None, description="Solo rewrite: una sola unità")
+    force: bool = False
+    mock: bool = False
+    with_review: bool = True
+    auto_accept: bool = False
+    rename: bool = True
+
+
+class WorkerInfo(BaseModel):
+    id: str
+    hostname: Optional[str] = None
+    pid: Optional[int] = None
+    platform: Optional[str] = None
+    job_types: List[str] = []
+    current_job_id: Optional[str] = None
+
+
+class CredentialTest(BaseModel):
+    credential: str
+    model: str
+    provider: Optional[str] = None
+    base_url: Optional[str] = None
+    mock: bool = False
+
+
+# ---------------------------------------------------------------- recall
+
+class RecallQuestion(BaseModel):
+    id: str
+    type: str
+    unit_ids: List[str]
+    question_text: str
+    options: Optional[List[str]] = None
+    status: str
+    correct_index: Optional[int] = None
+    explanation: Optional[str] = None
+
+
+class RecallOverview(BaseModel):
+    questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
+    answers: int
+
+
+class RecallGenerate(BaseModel):
+    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: riserva iniziale di tutti i tipi")
+    count: Optional[int] = Field(None, ge=1, le=50)
+    mock: bool = False
+
+
+class RecallAnswer(BaseModel):
+    question_id: str
+    choice: Optional[int] = Field(None, description="Quiz: indice dell'opzione (0-3)")
+    answer: Optional[str] = Field(None, description="Mirata/vasta: risposta scritta (valutata da un job)")
+    mock: bool = False
+
+
+class QuizResult(BaseModel):
+    question: RecallQuestion
+    correct: bool
+
+
+class RecallVote(BaseModel):
+    question_id: str
+    vote: Literal["up", "down", "lightning"]
+
+
+class RecallSkip(BaseModel):
+    question_id: str

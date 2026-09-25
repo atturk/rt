@@ -159,3 +159,84 @@ def is_question_stale(lesson_dir: str, question) -> bool:
 def find_stale_questions(lesson_dir: str) -> List[Any]:
     from rt.pipeline.recall import load_recall_bank
     return [q for q in load_recall_bank(lesson_dir).questions if is_question_stale(lesson_dir, q)]
+
+
+# ---------------------------------------------------------------------------
+# Operazioni senza LLM per l'API (RT4-E3): la generazione e la valutazione delle risposte
+# aperte passano da job (rt/services/api_jobs.py).
+# ---------------------------------------------------------------------------
+
+def question_view(question, reveal: bool = False) -> dict:
+    """Domanda serializzabile; la risposta corretta del quiz solo dopo aver risposto."""
+    data = {
+        "id": question.id, "type": question.type.value, "unit_ids": list(question.unit_ids),
+        "question_text": question.question_text, "options": question.options,
+        "status": question.status.value,
+    }
+    if reveal:
+        data["correct_index"] = question.correct_index
+        data["explanation"] = question.pregenerated_material
+    return data
+
+
+def recall_overview(lesson_dir: str) -> dict:
+    """Domande per tipo e stato, risposte date."""
+    from rt.pipeline.recall import load_recall_bank
+    bank = load_recall_bank(lesson_dir)
+    counts: dict = {}
+    for q in bank.questions:
+        by_status = counts.setdefault(q.type.value, {})
+        by_status[q.status.value] = by_status.get(q.status.value, 0) + 1
+    return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text])}
+
+
+def next_question_for(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",
+                      exclude_id: Optional[str] = None):
+    """Prossima domanda pendente (la marca come posta) senza generarne di nuove; None se la
+    riserva è vuota. Il cursore dell'ordine alternato è quello della sessione salvata."""
+    from rt.pipeline.recall import get_next_pending_question
+    state = load_recall_session_state(lesson_dir)
+    question = get_next_pending_question(lesson_dir, qtype, order=order,
+                                         unit_cursor=state.get("unit_cursor"), exclude_id=exclude_id)
+    if question is not None:
+        state.update({"order": order, "current_question_id": question.id,
+                      "unit_cursor": question.unit_ids[0] if order == "alternato" else state.get("unit_cursor")})
+        save_recall_session_state(lesson_dir, state)
+    return question
+
+
+def find_question(lesson_dir: str, question_id: str):
+    from rt.pipeline.recall import load_recall_bank
+    return next((q for q in load_recall_bank(lesson_dir).questions if q.id == question_id), None)
+
+
+def answer_quiz(lesson_dir: str, question_id: str, choice: int) -> dict:
+    """Risposta a un quiz, registrata come fa il recall da terminale."""
+    from rt.pipeline.recall import record_recall_answer
+    question = find_question(lesson_dir, question_id)
+    if question is None or question.type != RecallQuestionType.QUIZ or not question.options:
+        raise ValueError("Quiz inesistente.")
+    if not 0 <= choice < len(question.options):
+        raise ValueError("Opzione non valida.")
+    record_recall_answer(lesson_dir, question.id, question.options[choice], is_voice=False,
+                         evaluation=question.pregenerated_material)
+    return {"question": question_view(find_question(lesson_dir, question_id), reveal=True),
+            "correct": question.correct_index == choice}
+
+
+def vote_question(lesson_dir: str, question_id: str, vote: str) -> None:
+    """👍 / 👎 / ⚡ su una domanda: voto nella lezione e nei few-shot globali."""
+    from rt.core.config import load_config
+    from rt.pipeline.recall import record_fewshot_vote, record_recall_vote
+    question = find_question(lesson_dir, question_id)
+    if question is None:
+        raise ValueError("Domanda inesistente.")
+    record_recall_vote(lesson_dir, question_id, vote)
+    state_dir = load_config().telegram.state_dir
+    os.makedirs(state_dir, exist_ok=True)
+    record_fewshot_vote(question.type, question.question_text, vote, state_dir=state_dir)
+
+
+def skip_question(lesson_dir: str, question_id: str) -> None:
+    from rt.pipeline.recall import skip_recall_question
+    skip_recall_question(lesson_dir, question_id)
