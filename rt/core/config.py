@@ -412,13 +412,18 @@ def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> 
     da dentro la project root); se non lo trova lì, usa la project root reale
     (posizione del pacchetto 'rt'), per funzionare anche lanciando 'rt' da
     qualunque altra cartella. Non solleva errori se il file non esiste in nessuna
-    delle due posizioni.
+    delle due posizioni. Poi sovrappone i segreti di config/secrets.enc (rt.security.secrets).
     """
     from dotenv import load_dotenv
     if dotenv_path is None:
         cwd_path = os.path.join(os.getcwd(), ".env")
         dotenv_path = cwd_path if os.path.isfile(cwd_path) else os.path.join(_default_project_root(), ".env")
     load_dotenv(dotenv_path=dotenv_path, override=override)
+    # RT4-C1: i segreti dell'archivio cifrato (se esiste) vincono su .env ma non sulle
+    # variabili esportate a mano. Senza config/secrets.enc non cambia nulla.
+    from dotenv import dotenv_values
+    from rt.security.secrets import apply_to_environ
+    apply_to_environ(dotenv_values(dotenv_path) if os.path.isfile(dotenv_path) else {})
 
 
 def get_api_key(provider_or_credential: str) -> Optional[str]:
