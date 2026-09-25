@@ -87,7 +87,18 @@ def normalize_text(text: str, root: str) -> str:
     return text
 
 
+def _isolate_config(cwd: str) -> None:
+    """config/ e .env vuoti nella cwd: load_config() e load_env_file() li preferiscono a
+    quelli della project root, così la configurazione personale della macchina (per
+    esempio telegram.lessons_root, che sposterebbe la lezione di prova) resta fuori."""
+    os.makedirs(os.path.join(cwd, "config"), exist_ok=True)
+    env_path = os.path.join(cwd, ".env")
+    if not os.path.exists(env_path):
+        open(env_path, "w", encoding="utf-8").close()
+
+
 def _run_cli(argv: List[str], cwd: str, stdin: str) -> Tuple[int, str, str]:
+    _isolate_config(cwd)
     env = dict(os.environ)
     # Nessun contatto con Telegram reale anche se la macchina ha un .env configurato.
     env["RT_TELEGRAM_BOT_TOKEN"] = "test-disabled-token"
