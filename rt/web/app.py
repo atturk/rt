@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -22,11 +23,13 @@ from rt.web.data import (
 )
 from rt.web.diagnostics import LOG, RequestLogMiddleware, configure_logging, default_log_file, log_action
 from rt.web.ingest import ingest_audio
-from rt.web.settings import (credential_names, general_config_path, route_round_robin_keys, route_settings,
-                             save_credential, save_lessons_root, save_route, save_telegram,
+from rt.web.connections import (PHASES, PROVIDERS, add_model, assign_phase,
+                                connection_names, model_names,
+                                phase_selection, save_connection)
+from rt.web.settings import (general_config_path, save_lessons_root, save_telegram,
                              save_transcription)
 from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, load_config, load_env_file
-from rt.telegram.daemon_status import is_daemon_running
+from rt.telegram.daemon_status import get_daemon_pid, is_daemon_running
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CSS = (Path(__file__).with_name("style.css")).read_text(encoding="utf-8")
@@ -159,10 +162,15 @@ watch('value', () => window.dispatchEvent(new CustomEvent('rt-selection-done', {
 """
 BOT_JS = """
 const setTitle = () => {
-  const button = document.querySelector('#rt-bot-nav');
+  const button = document.querySelector('#rt-bot-nav button');
   if (button) {
-    button.title = button.disabled ? 'Bot Telegram rilevato e in esecuzione' : 'Avvia il bot Telegram in background';
+    const match = button.textContent.match(/PID (\\d+)/);
+    const pid = match?.[1];
+    button.classList.toggle('rt-bot-active', Boolean(pid));
+    button.title = pid ? `Bot Telegram attivo · PID ${pid}` : 'Avvia il bot Telegram in background';
     button.setAttribute('aria-label', button.title);
+    const wrapper = document.querySelector('#rt-bot-nav');
+    if (wrapper) wrapper.dataset.botTooltip = button.title;
   }
 };
 const watchBot = () => {
@@ -170,7 +178,7 @@ const watchBot = () => {
   if (!header) { requestAnimationFrame(watchBot); return; }
   setTitle();
   new MutationObserver(setTitle).observe(header, {
-    subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'],
+    subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled'],
   });
 };
 watchBot();
@@ -181,34 +189,46 @@ def _client_log(evt: gr.EventData) -> None:
     LOG.warning("Browser %s: %s", str(evt.kind)[:60], str(evt.message)[:1200])
 
 
+_BOT_START_LOCK = threading.Lock()
+
+
 def _bot_button():
-    running = is_daemon_running()
-    return gr.update(value="🤖", interactive=not running)
+    pid = get_daemon_pid()
+    return gr.update(value=f"PID {pid}" if pid else "", interactive=pid is None)
 
 
 @log_action("telegram.avvia")
 def _start_bot():
-    if is_daemon_running():
-        return _bot_button()
-    load_env_file(override=True)
-    if not os.environ.get("RT_TELEGRAM_BOT_TOKEN") or not os.environ.get("RT_TELEGRAM_CHAT_ID"):
-        raise gr.Error("Salva prima token e Chat ID nella sezione Telegram.")
-    logfile = default_log_file().with_name("telegram.log")
-    logfile.parent.mkdir(parents=True, exist_ok=True)
-    logfile.touch(mode=0o600, exist_ok=True)
-    os.chmod(logfile, 0o600)
-    with logfile.open("a", encoding="utf-8") as output:
-        process = subprocess.Popen(
-            [sys.executable, "-m", "rt.cli", "telegram-daemon"],
-            cwd=general_config_path(PROJECT_ROOT).parent.parent,
-            stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    time.sleep(0.25)
-    if process.poll() is not None:
-        raise gr.Error(f"Il bot non si è avviato. Controlla {logfile}.")
-    LOG.info("Bot Telegram avviato in background (PID %d); log: %s", process.pid, logfile)
-    return _bot_button()
+    with _BOT_START_LOCK:
+        if get_daemon_pid() is not None:
+            return _bot_button()
+        load_env_file(override=True)
+        if not os.environ.get("RT_TELEGRAM_BOT_TOKEN") or not os.environ.get("RT_TELEGRAM_CHAT_ID"):
+            raise gr.Error("Salva prima token e Chat ID nella sezione Telegram.")
+        logfile = default_log_file().with_name("telegram.log")
+        logfile.parent.mkdir(parents=True, exist_ok=True)
+        logfile.touch(mode=0o600, exist_ok=True)
+        os.chmod(logfile, 0o600)
+        with logfile.open("a", encoding="utf-8") as output:
+            process = subprocess.Popen(
+                [sys.executable, "-m", "rt.cli", "telegram-daemon"],
+                cwd=general_config_path(PROJECT_ROOT).parent.parent,
+                stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                if get_daemon_pid() is not None:
+                    return _bot_button()
+                raise gr.Error(f"Il bot non si è avviato. Controlla {logfile}.")
+            if get_daemon_pid() == process.pid:
+                time.sleep(1.5)
+                if process.poll() is None and get_daemon_pid() == process.pid:
+                    LOG.info("Bot Telegram avviato in background (PID %d); log: %s", process.pid, logfile)
+                    return _bot_button()
+            time.sleep(0.1)
+        raise gr.Error(f"Il bot non ha confermato l'avvio. Controlla {logfile}.")
 
 
 @log_action("telegram.ascolta_topic")
@@ -416,9 +436,6 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
     initial_choices, initial_issue = issue_choices(initial_lesson)
     cfg = load_config()
     load_env_file()
-    jobs = sorted(cfg.llm)
-    first_job = jobs[0] if jobs else ""
-    first_route = route_settings(PROJECT_ROOT, first_job, "primary") if first_job else ("openrouter", "", "", "", False)
     topic_rows = [[subject, topic] for subject, topic in cfg.telegram.topics.items()]
 
     with gr.Blocks(title="RT · Lezioni", analytics_enabled=False, fill_width=True) as demo:
@@ -436,16 +453,20 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
         with gr.Row(elem_id="rt-header"):
             gr.HTML('<div class="rt-brand"><h1>rt<span>.</span></h1>'
                     '<p>Le tue lezioni, dall’audio agli appunti pronti per lo studio.</p></div>', scale=1)
-            go_upload = gr.Button("＋ Importa audio", variant="primary", size="sm", scale=0,
+            go_upload = gr.Button("＋", variant="secondary", size="sm", scale=0,
                                   elem_id="rt-upload-nav")
-            bot_button = gr.Button("🤖",
-                                   interactive=not is_daemon_running(), size="sm", scale=0,
+            current_bot_pid = get_daemon_pid()
+            bot_button = gr.Button(f"PID {current_bot_pid}" if current_bot_pid else "",
+                                   icon=Path(__file__).with_name("telegram.svg"),
+                                   interactive=current_bot_pid is None, size="sm", scale=0,
                                    elem_id="rt-bot-nav")
             go_config = gr.Button("⚙" if root and Path(root).is_dir() else "←",
                                   variant="secondary", size="sm", scale=0,
                                   elem_id="rt-config-nav")
             gr.HTML('<span aria-hidden="true" style="display:none"></span>', js_on_load=BOT_JS)
+        bot_timer = gr.Timer(value=5)
         config_open = gr.State(not bool(root and Path(root).is_dir()))
+        upload_open = gr.State(False)
 
         with gr.Tabs(selected="dashboard" if root and Path(root).is_dir() else "config",
                      elem_id="rt-pages") as pages:
@@ -473,93 +494,100 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 lesson_audio = gr.HTML(lesson_audio_html(initial_lesson), js_on_load=PLAYER_JS,
                                        elem_id="rt-lesson-audio")
             with gr.Tab("Configurazione", id="config"):
-                with gr.Accordion("Lezioni", open=True):
-                    gr.Markdown("Scegli una cartella esistente oppure indica dove crearne una nuova.")
-                    root_input = gr.Textbox(value=root or str(Path.home() / "RT Lezioni"),
-                                            label="Cartella delle lezioni", placeholder="~/RT Lezioni")
-                    save_root = gr.Button("Usa questa cartella", variant="primary")
-                    root_status = gr.Markdown(
-                        "Configura la cartella per iniziare." if not root or not Path(root).is_dir() else "")
-                with gr.Accordion("Modelli e provider", open=False):
-                    gr.Markdown("Aggiungi una chiave. Rimane nel file `.env` locale e non viene mostrata dopo il salvataggio.")
-                    with gr.Row():
-                        key_provider = gr.Dropdown(choices=[("OpenRouter", "openrouter"),
-                                                            ("Google AI Studio", "google"),
-                                                            ("DeepSeek", "deepseek"),
-                                                            ("OpenAI-compatible", "openai_compatible")],
-                                                   value="openrouter", label="Provider")
-                        key_name = gr.Textbox(label="Nome della chiave", placeholder="es. google_3")
-                        key_value = gr.Textbox(label="Chiave API", type="password")
-                    add_key = gr.Button("Salva chiave")
-                    key_status = gr.Markdown()
-                    gr.Markdown("Scegli il job e il ruolo del modello. Per il primario puoi selezionare più chiavi da alternare.")
-                    with gr.Row():
-                        model_job = gr.Dropdown(choices=jobs, value=first_job, label="Fase / job")
-                        model_role = gr.Dropdown(
-                            choices=[("Primario", "primary"), ("Secondario", "secondary"),
-                                     ("Fallback: timeout", "timeout"),
-                                     ("Fallback: limiti API", "rate_limit"),
-                                     ("Fallback: sicurezza", "safety"),
-                                     ("Fallback: autenticazione", "auth"),
-                                     ("Fallback: altro", "generic")], value="primary", label="Ruolo")
-                    with gr.Row():
-                        model_provider = gr.Dropdown(
-                            choices=[("OpenRouter", "openrouter"), ("Google AI Studio", "google"),
-                                     ("DeepSeek", "deepseek"),
-                                     ("OpenAI-compatible", "openai_compatible")],
-                            value=first_route[0], label="Provider")
-                        model_credential = gr.Dropdown(choices=credential_names(PROJECT_ROOT, first_route[0]),
-                                                       value=first_route[1] or None, label="Chiave")
-                    model_name = gr.Textbox(value=first_route[2], label="Nome / ID del modello")
-                    model_base = gr.Textbox(value=first_route[3], label="Base URL",
-                                             placeholder="Precompilato per i provider comuni")
-                    model_rr = gr.Checkbox(value=first_route[4],
-                                            label="Alterna più chiavi per il modello primario")
-                    model_rr_keys = gr.Dropdown(
-                        choices=credential_names(PROJECT_ROOT, first_route[0]),
-                        value=route_round_robin_keys(PROJECT_ROOT, first_job) if first_job else [],
-                        multiselect=True, visible=first_route[4],
-                        label="Chiavi da alternare")
-                    save_model = gr.Button("Salva modello", variant="primary")
-                    model_status = gr.Markdown()
-                with gr.Accordion("Telegram", open=False):
-                    gr.Markdown("Aggiungi il bot al gruppo e imposta i topic per materia. "
-                                "Per rilevarli, premi **Ascolta topic**, poi invia un messaggio nei topic "
-                                "dal telefono. Il token resta salvato localmente.")
-                    with gr.Row():
-                        telegram_token = gr.Textbox(label="Token del bot", type="password",
-                                                     placeholder="Lascia vuoto per mantenere quello salvato")
-                        telegram_chat = gr.Textbox(value=os.environ.get("RT_TELEGRAM_CHAT_ID", ""),
-                                                    label="Chat ID del gruppo")
-                    telegram_topics = gr.Dataframe(value=topic_rows or [["", ""]],
-                                                     headers=["Materia", "Topic ID"], type="array",
-                                                     interactive=True, label="Topic per materia")
-                    telegram_misc = gr.Textbox(value=str(cfg.telegram.misc_topic_id or ""),
-                                                label="Topic generale (facoltativo)")
-                    with gr.Row():
-                        telegram_save = gr.Button("Salva Telegram", variant="primary")
+                gr.Markdown("## Configurazione")
+                with gr.Row(elem_id="rt-settings-actions"):
+                    open_lessons = gr.Button("Lezioni")
+                    open_connections = gr.Button("Crea connessione")
+                    open_telegram = gr.Button("Telegram")
+                    open_stt = gr.Button("Trascrizione")
+
+                with gr.Column(visible=not bool(root and Path(root).is_dir()),
+                               elem_id="rt-settings-modal") as settings_modal:
+                    with gr.Row(elem_id="rt-settings-modal-head"):
+                        modal_title = gr.Markdown("### Impostazioni")
+                        close_modal = gr.Button("×", size="sm", scale=0)
+                    with gr.Column(visible=not bool(root and Path(root).is_dir())) as lessons_form:
+                        gr.Markdown("Cartella che RT e il bot Telegram usano per trovare le lezioni.")
+                        root_input = gr.Textbox(value=root or str(Path.home() / "RT Lezioni"),
+                                                label="Cartella delle lezioni", placeholder="~/RT Lezioni")
+                        root_status = gr.Markdown(
+                            "Configura la cartella per iniziare." if not root or not Path(root).is_dir() else "")
+                        save_root = gr.Button("Salva", variant="primary", elem_classes="rt-modal-save")
+                    with gr.Column(visible=False) as connection_form:
+                        gr.Markdown("Le chiavi restano nel file `.env` locale. Se ne aggiungi più di una, RT le alterna automaticamente.")
+                        connection_name = gr.Textbox(label="Nome connessione", placeholder="es. OpenRouter personale")
+                        connection_provider = gr.Dropdown(choices=PROVIDERS, value="openrouter", label="Provider")
+                        connection_base = gr.Textbox(value=KNOWN_PROVIDER_DEFAULT_BASE_URLS["openrouter"],
+                                                      label="Base URL")
+                        key_fields = [gr.Textbox(label=f"Chiave API {index + 1}", type="password",
+                                                 visible=index == 0)
+                                      for index in range(12)]
+                        key_count = gr.State(1)
+                        add_key_field = gr.Button("＋ Aggiungi chiave", size="sm")
+                        connection_status = gr.Markdown()
+                        save_connection_button = gr.Button("Salva", variant="primary", elem_classes="rt-modal-save")
+                    with gr.Column(visible=False) as phase_model_form:
+                        phase_job = gr.State("outline")
+                        phase_connection = gr.Dropdown(choices=connection_names(PROJECT_ROOT),
+                                                       label="Nome connessione", filterable=True)
+                        phase_model_name = gr.Textbox(label="Modello", placeholder="es. openai/gpt-4.1")
+                        phase_model_status = gr.Markdown()
+                        save_phase_new_model = gr.Button("Salva", variant="primary", elem_classes="rt-modal-save")
+                    with gr.Column(visible=False) as telegram_form:
+                        gr.Markdown("Aggiungi il bot al gruppo. Per rilevare i topic, ascolta e invia un messaggio dal telefono.")
+                        with gr.Row():
+                            telegram_token = gr.Textbox(label="Token del bot", type="password",
+                                                         placeholder="Lascia vuoto per mantenere quello salvato")
+                            telegram_chat = gr.Textbox(value=os.environ.get("RT_TELEGRAM_CHAT_ID", ""),
+                                                        label="Chat ID del gruppo")
+                        telegram_topics = gr.Dataframe(value=topic_rows or [["", ""]],
+                                                         headers=["Materia", "Topic ID"], type="array",
+                                                         interactive=True, label="Topic per materia")
+                        telegram_misc = gr.Textbox(value=str(cfg.telegram.misc_topic_id or ""),
+                                                    label="Topic generale (facoltativo)")
                         telegram_listen = gr.Button("Ascolta topic per 20 secondi")
-                    with gr.Row():
-                        telegram_link = gr.Textbox(label="Link a un messaggio del topic (facoltativo)",
-                                                    placeholder="https://t.me/c/1234567890/12/34")
-                        telegram_add_link = gr.Button("Aggiungi dal link", size="sm")
-                    telegram_status = gr.Markdown()
-                with gr.Accordion("Trascrizione", open=False):
-                    stt_engine = gr.Radio(choices=[("macparakeet (su questo Mac)", "macparakeet"),
-                                                   ("Server OpenAI-compatible", "custom")],
-                                          value=cfg.transcription.engine, label="Motore predefinito")
-                    stt_base = gr.Textbox(value=cfg.transcription.base_url or "",
-                                           label="Base URL del server STT",
-                                           placeholder="http://localhost:8000/v1")
-                    stt_model = gr.Textbox(value=cfg.transcription.model or "",
-                                            label="ID modello STT")
-                    stt_key = gr.Textbox(type="password", label="Chiave API (facoltativa)",
-                                         placeholder="Lascia vuoto per mantenere quella salvata")
-                    stt_save = gr.Button("Salva trascrizione", variant="primary")
-                    stt_status = gr.Markdown()
-                config_summary = gr.HTML(configuration_summary(root))
+                        with gr.Row():
+                            telegram_link = gr.Textbox(label="Link a un messaggio del topic (facoltativo)",
+                                                        placeholder="https://t.me/c/1234567890/12/34")
+                            telegram_add_link = gr.Button("Aggiungi dal link", size="sm")
+                        telegram_status = gr.Markdown()
+                        telegram_save = gr.Button("Salva", variant="primary", elem_classes="rt-modal-save")
+                    with gr.Column(visible=False) as stt_form:
+                        stt_engine = gr.Radio(choices=[("macparakeet (su questo Mac)", "macparakeet"),
+                                                       ("Server OpenAI-compatible", "custom")],
+                                              value=cfg.transcription.engine, label="Motore predefinito")
+                        stt_base = gr.Textbox(value=cfg.transcription.base_url or "",
+                                               label="Base URL del server STT",
+                                               placeholder="http://localhost:8000/v1")
+                        stt_model = gr.Textbox(value=cfg.transcription.model or "",
+                                                label="ID modello STT")
+                        stt_key = gr.Textbox(type="password", label="Chiave API (facoltativa)",
+                                             placeholder="Lascia vuoto per mantenere quella salvata")
+                        stt_status = gr.Markdown()
+                        stt_save = gr.Button("Salva", variant="primary", elem_classes="rt-modal-save")
+
+                with gr.Column(elem_id="rt-model-table"):
+                    gr.Markdown("### Modelli per fase")
+                    phase_rows = {}
+                    for job, label in PHASES:
+                        current_connection, current_model = phase_selection(PROJECT_ROOT, job)
+                        with gr.Row(elem_classes="rt-phase-model-row"):
+                            gr.Markdown(label, elem_classes="rt-phase-model-label")
+                            selected_connection = gr.Dropdown(
+                                choices=connection_names(PROJECT_ROOT), value=current_connection,
+                                label="Connessione", show_label=False, filterable=True,
+                                elem_id=f"rt-connection-{job}")
+                            selected_model = gr.Dropdown(
+                                choices=model_names(PROJECT_ROOT, current_connection) if current_connection else [],
+                                value=current_model, label="Modello", show_label=False,
+                                filterable=True, interactive=bool(current_connection),
+                                elem_id=f"rt-model-{job}")
+                            add_phase_button = gr.Button("＋", size="sm", scale=0,
+                                                         elem_id=f"rt-add-model-{job}")
+                        phase_rows[job] = (selected_connection, selected_model, add_phase_button)
+                    model_status = gr.Markdown()
+                config_summary = gr.HTML(configuration_summary(root), visible=False)
             with gr.Tab("Importa audio", id="upload"):
-                back_upload = gr.Button("← Dashboard", size="sm", elem_classes="rt-back")
                 gr.Markdown("## Nuova lezione\nCarica un file audio: RT creerà la cartella della lezione senza toccare quelle esistenti.")
                 upload_file = gr.File(label="File audio", file_types=[".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg"])
                 with gr.Row():
@@ -584,7 +612,10 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
 
         sidebar_list.lesson_selected(select_sidebar,
                                      outputs=[picker, *view_outputs, review_panel, pages, selection_done],
-                                     show_progress="hidden")
+                                     show_progress="hidden").then(
+                                         lambda: (gr.update(value="⚙"), gr.update(value="＋"), False, False),
+                                         outputs=[go_config, go_upload, config_open, upload_open],
+                                         show_progress="hidden")
         sidebar_list.client_log(_client_log, show_progress="hidden")
         lesson_audio.client_log(_client_log, show_progress="hidden")
         issue_list.issue_selected(select_issue_from_sidebar,
@@ -606,15 +637,23 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
             inputs=picker, outputs=[review_panel, preview], show_progress="hidden")
         def toggle_config(open_now: bool):
             return (gr.update(selected="dashboard" if open_now else "config"),
-                    gr.update(value="⚙" if open_now else "←"), not open_now)
+                    gr.update(value="⚙" if open_now else "←"),
+                    gr.update(value="＋"), not open_now, False,
+                    gr.update(visible=False))
 
         go_config.click(toggle_config, inputs=config_open,
-                        outputs=[pages, go_config, config_open], show_progress="hidden")
-        back_upload.click(lambda: (gr.update(selected="dashboard"), gr.update(value="⚙"), False),
-                          outputs=[pages, go_config, config_open], show_progress="hidden")
-        go_upload.click(lambda: (gr.update(selected="upload"), gr.update(value="⚙"), False),
-                        outputs=[pages, go_config, config_open], show_progress="hidden")
+                        outputs=[pages, go_config, go_upload, config_open, upload_open,
+                                 settings_modal], show_progress="hidden")
+        def toggle_upload(open_now: bool):
+            return (gr.update(selected="dashboard" if open_now else "upload"),
+                    gr.update(value="←" if not open_now else "＋"),
+                    gr.update(value="⚙"), not open_now, False,
+                    gr.update(visible=False))
+        go_upload.click(toggle_upload, inputs=upload_open,
+                        outputs=[pages, go_upload, go_config, upload_open, config_open,
+                                 settings_modal], show_progress="hidden")
         bot_button.click(_start_bot, outputs=bot_button)
+        bot_timer.tick(_bot_button, outputs=bot_button, show_progress="hidden")
         card.open_review(lambda path, issue, group: _open_review(root, path, issue, group),
                          inputs=[picker, issue_picker, grouping],
                          outputs=[review_panel, preview, issue_list],
@@ -626,66 +665,113 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
             inputs=[upload_file, upload_date, upload_subject, upload_topics, upload_transcribe],
             outputs=[upload_status, picker, sidebar_list, stats, *view_outputs,
                      review_panel, pages],
-        )
+        ).then(lambda: (gr.update(value="＋"), False),
+               outputs=[go_upload, upload_open], show_progress="hidden")
 
-        def load_model_form(job: str, role: str):
-            provider, credential, model, base_url, rr = route_settings(PROJECT_ROOT, job, role)
-            return (provider, gr.update(choices=credential_names(PROJECT_ROOT, provider),
-                                        value=credential or None), model, base_url, rr,
-                    gr.update(choices=credential_names(PROJECT_ROOT, provider),
-                              value=route_round_robin_keys(PROJECT_ROOT, job) if rr else [],
-                              visible=rr))
+        forms = [lessons_form, connection_form, phase_model_form, telegram_form, stt_form]
+        modal_outputs = [settings_modal, modal_title, *forms]
 
-        for control in (model_job, model_role):
-            control.change(load_model_form, inputs=[model_job, model_role],
-                           outputs=[model_provider, model_credential, model_name, model_base,
-                                    model_rr, model_rr_keys],
-                           show_progress="hidden")
-        model_provider.change(
-            lambda provider: (gr.update(choices=credential_names(PROJECT_ROOT, provider), value=None),
-                              KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, ""),
-                              gr.update(choices=credential_names(PROJECT_ROOT, provider), value=[])),
-            inputs=model_provider, outputs=[model_credential, model_base, model_rr_keys],
-            show_progress="hidden")
-        model_rr.change(lambda enabled, role: gr.update(visible=enabled and role == "primary"),
-                        inputs=[model_rr, model_role], outputs=model_rr_keys,
-                        show_progress="hidden")
-        key_provider.change(
-            lambda provider: f"{provider}_{len(credential_names(PROJECT_ROOT, provider)) + 1}",
-            inputs=key_provider, outputs=key_name, show_progress="hidden")
+        def show_settings_form(kind: str):
+            titles = {"lessons": "Lezioni", "connection": "Crea connessione",
+                      "model": "Aggiungi modello", "telegram": "Telegram",
+                      "stt": "Trascrizione"}
+            return (gr.update(visible=True), f"### {titles[kind]}",
+                    *(gr.update(visible=kind == name)
+                      for name in ("lessons", "connection", "model", "telegram", "stt")))
 
-        @log_action("configurazione.chiave")
-        def save_key_ui(provider: str, name: str, secret: str, current_provider: str,
-                        current_rr_keys: list[str]):
+        for button, kind in ((open_lessons, "lessons"), (open_connections, "connection"),
+                             (open_telegram, "telegram"), (open_stt, "stt")):
+            button.click(lambda kind=kind: show_settings_form(kind), outputs=modal_outputs,
+                         show_progress="hidden")
+        close_modal.click(lambda: gr.update(visible=False), outputs=settings_modal,
+                          show_progress="hidden")
+        connection_provider.change(
+            lambda provider: KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider, ""),
+            inputs=connection_provider, outputs=connection_base, show_progress="hidden")
+
+        def reveal_key(count: int):
+            if count >= len(key_fields):
+                raise gr.Error(f"Sono supportate fino a {len(key_fields)} chiavi per connessione.")
+            count += 1
+            return (count, *(gr.update(visible=index < count) for index in range(len(key_fields))))
+
+        add_key_field.click(reveal_key, inputs=key_count, outputs=[key_count, *key_fields],
+                            show_progress="hidden")
+
+        @log_action("configurazione.connessione")
+        def save_connection_ui(name: str, provider: str, base_url: str, *keys: str):
             try:
-                saved = save_credential(PROJECT_ROOT, provider, name, secret)
+                saved = save_connection(PROJECT_ROOT, name, provider, base_url, list(keys))
             except (OSError, ValueError) as exc:
                 raise gr.Error(str(exc)) from None
-            choices = credential_names(PROJECT_ROOT, current_provider)
-            return ("", f"Chiave **{saved}** salvata localmente.",
-                    gr.update(choices=choices,
-                              value=saved if provider == current_provider else None),
-                    gr.update(choices=choices,
-                              value=[key for key in current_rr_keys or [] if key in choices]))
+            names = connection_names(PROJECT_ROOT)
+            gr.Info(f"Connessione {saved} salvata.")
+            return (gr.update(visible=False), "", "", 1,
+                    *(gr.update(value="", visible=index == 0) for index in range(len(key_fields))),
+                    *(gr.update(choices=names) for _ in PHASES),
+                    gr.update(choices=names))
 
-        add_key.click(save_key_ui, inputs=[key_provider, key_name, key_value,
-                                           model_provider, model_rr_keys],
-                      outputs=[key_value, key_status, model_credential, model_rr_keys])
+        connection_dropdowns = [phase_rows[job][0] for job, _ in PHASES]
+        model_dropdowns = [phase_rows[job][1] for job, _ in PHASES]
+        save_connection_button.click(
+            save_connection_ui,
+            inputs=[connection_name, connection_provider, connection_base, *key_fields],
+            outputs=[settings_modal, connection_name, connection_status, key_count,
+                     *key_fields, *connection_dropdowns, phase_connection])
+
+        def open_phase_form(job: str, current_connection: str | None):
+            return (*show_settings_form("model"), job,
+                    gr.update(choices=connection_names(PROJECT_ROOT), value=current_connection),
+                    "", "")
 
         @log_action("configurazione.modello")
-        def save_model_ui(job: str, role: str, provider: str, credential: str,
-                          model: str, base_url: str, rr: bool, rr_keys: list[str]):
+        def assign_phase_ui(job: str, connection: str, model: str):
             try:
-                status = save_route(PROJECT_ROOT, job, role, provider, credential,
-                                    model, base_url, rr, rr_keys)
+                status = assign_phase(PROJECT_ROOT, job, connection, model)
             except (OSError, ValueError, KeyError) as exc:
                 raise gr.Error(str(exc)) from None
             return status, configuration_summary(root)
 
-        save_model.click(save_model_ui,
-                         inputs=[model_job, model_role, model_provider, model_credential,
-                                 model_name, model_base, model_rr, model_rr_keys],
-                         outputs=[model_status, config_summary])
+        for job, _label in PHASES:
+            conn_dropdown, mod_dropdown, plus_button = phase_rows[job]
+            conn_dropdown.input(
+                lambda connection: gr.update(
+                    choices=model_names(PROJECT_ROOT, connection) if connection else [],
+                    value=None, interactive=bool(connection)),
+                inputs=conn_dropdown, outputs=mod_dropdown, show_progress="hidden")
+            mod_dropdown.input(
+                lambda connection, model, job=job: assign_phase_ui(job, connection, model),
+                inputs=[conn_dropdown, mod_dropdown], outputs=[model_status, config_summary],
+                show_progress="hidden")
+            plus_button.click(
+                lambda connection, job=job: open_phase_form(job, connection),
+                inputs=conn_dropdown,
+                outputs=[*modal_outputs, phase_job, phase_connection,
+                         phase_model_name, phase_model_status], show_progress="hidden")
+
+        @log_action("configurazione.nuovo_modello")
+        def add_phase_model_ui(job: str, connection: str, model: str):
+            try:
+                saved_model = add_model(PROJECT_ROOT, connection, model)
+                status = assign_phase(PROJECT_ROOT, job, connection, saved_model)
+            except (OSError, ValueError, KeyError) as exc:
+                raise gr.Error(str(exc)) from None
+            connection_updates = []
+            model_updates = []
+            for phase, _ in PHASES:
+                selected_connection, selected_model = phase_selection(PROJECT_ROOT, phase)
+                connection_updates.append(gr.update(choices=connection_names(PROJECT_ROOT),
+                                                    value=selected_connection))
+                model_updates.append(gr.update(
+                    choices=model_names(PROJECT_ROOT, selected_connection) if selected_connection else [],
+                    value=selected_model, interactive=bool(selected_connection)))
+            return (gr.update(visible=False), "", status, configuration_summary(root),
+                    *connection_updates, *model_updates)
+
+        save_phase_new_model.click(
+            add_phase_model_ui, inputs=[phase_job, phase_connection, phase_model_name],
+            outputs=[settings_modal, phase_model_name, model_status, config_summary,
+                     *connection_dropdowns, *model_dropdowns])
 
         @log_action("configurazione.telegram")
         def save_telegram_ui(token: str, chat: str, topics: list[list[str]], misc: str):
@@ -693,11 +779,12 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 status = save_telegram(PROJECT_ROOT, token, chat, topics, misc)
             except (OSError, ValueError, TypeError) as exc:
                 raise gr.Error(str(exc)) from None
-            return "", status, _bot_button()
+            gr.Info(status)
+            return "", status, _bot_button(), gr.update(visible=False)
 
         telegram_save.click(save_telegram_ui,
                             inputs=[telegram_token, telegram_chat, telegram_topics, telegram_misc],
-                            outputs=[telegram_token, telegram_status, bot_button])
+                            outputs=[telegram_token, telegram_status, bot_button, settings_modal])
         telegram_listen.click(_listen_topics, inputs=[telegram_token, telegram_topics],
                               outputs=[telegram_status, telegram_chat, telegram_topics])
         telegram_add_link.click(_topic_from_link,
@@ -711,10 +798,11 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 status = save_transcription(PROJECT_ROOT, engine, base, model, key)
             except (OSError, ValueError, TypeError) as exc:
                 raise gr.Error(str(exc)) from None
-            return "", status
+            gr.Info(status)
+            return "", status, gr.update(visible=False)
 
         stt_save.click(save_stt_ui, inputs=[stt_engine, stt_base, stt_model, stt_key],
-                       outputs=[stt_key, stt_status])
+                       outputs=[stt_key, stt_status, settings_modal])
 
         @log_action("configurazione.cartella_lezioni")
         def configure_root(path: str):
@@ -729,12 +817,14 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
             refreshed = _refresh_view(root, None)
             return (
                 configuration_summary(root), f"Cartella pronta: **{root}**",
-                *refreshed, gr.update(selected="dashboard"), gr.update(value="⚙"), False,
+                *refreshed, gr.update(selected="dashboard"), gr.update(value="⚙"),
+                gr.update(value="＋"), False, False, gr.update(visible=False),
             )
 
         save_root.click(configure_root, inputs=root_input,
                         outputs=[config_summary, root_status, stats, picker, sidebar_list,
-                                 *view_outputs, review_panel, pages, go_config, config_open])
+                                 *view_outputs, review_panel, pages, go_config, go_upload,
+                                 config_open, upload_open, settings_modal])
 
         @log_action("pagina.carica")
         def reload_page():
@@ -759,11 +849,15 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 gr.update(value="⚙" if root and Path(root).is_dir() else "←"),
                 not bool(root and Path(root).is_dir()),
                 _bot_button(),
+                gr.update(value="＋"), False,
+                gr.update(visible=not bool(root and Path(root).is_dir())),
+                gr.update(visible=not bool(root and Path(root).is_dir())),
             )
 
         demo.load(reload_page, outputs=[root_input, config_summary, stats, picker,
                                         sidebar_list, *view_outputs, review_panel, pages,
-                                        go_config, config_open, bot_button],
+                                        go_config, config_open, bot_button, go_upload,
+                                        upload_open, settings_modal, lessons_form],
                   show_progress="hidden")
     return demo
 
@@ -792,8 +886,7 @@ def main(argv: Optional[list[str]] = None) -> None:
             share=False, show_error=True, blocked_paths=blocked,
             allowed_paths=[web_audio_directory()],
             app_kwargs={"middleware": [Middleware(RequestLogMiddleware, audio_dir=web_audio_directory())]},
-            theme=gr.themes.Soft(
-                primary_hue="teal", neutral_hue="slate",
+            theme=gr.themes.Monochrome(
                 font=["Seravek", "Helvetica Neue", "Arial", "sans-serif"],
             ), css=CSS,
         )

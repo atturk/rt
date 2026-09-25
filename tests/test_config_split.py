@@ -584,4 +584,5 @@ def test_find_job_yaml_paths_excludes_recall_lessons_yaml(tmp_path):
     # Non deve far fallire il caricamento della config (recall_lessons.yaml non ha la
     # forma di un JobRoutingConfig e romperebbe model_validate se non fosse escluso).
     cfg = _load_config_dir(str(config_dir))
-    assert "recall_quiz" in cfg.jobs
+    assert "recall" in cfg.jobs
+    assert "recall_quiz" not in cfg.jobs

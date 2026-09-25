@@ -1165,7 +1165,7 @@ class TestCmdRecallGuard:
                 cmd_recall(args)
         assert exc.value.code == 1
         captured = capsys.readouterr()
-        assert "recall_quiz" in captured.err
+        assert "recall" in captured.err
 
 
 class TestTask10TelegramFloodingAndCleanup:
@@ -1530,4 +1530,3 @@ class TestTask12StaleRecallCheck:
         run_stale_recall_check(lesson_dir, state_dir=state_dir)
         out = capsys.readouterr().out
         assert "HUMAN REVIEW REQUIRED" in out
-

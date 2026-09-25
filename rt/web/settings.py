@@ -107,8 +107,24 @@ def save_credential(project_root: Path, provider: str, name: str, api_key: str) 
 ROUTE_ROLES = ("primary", "secondary", "timeout", "rate_limit", "safety", "auth", "generic")
 
 
+def _legacy_recall_path(paths: dict[str, str]) -> Path | None:
+    names = ("recall_quiz", "recall_mirata", "recall_vasta",
+             "recall_eval_mirata", "recall_eval_vasta")
+    candidates = [Path(paths[name]) for name in names if name in paths]
+    for path in candidates:
+        data = _read_yaml(path)
+        route = (data.get("primary_routes") or [data.get("primary") or {}])[0]
+        if isinstance(route, dict) and route.get("model"):
+            return path
+    return candidates[0] if candidates else None
+
+
 def route_settings(project_root: Path, job: str, role: str) -> tuple[str, str, str, str, bool]:
     paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    if job == "recall" and job not in paths:
+        previous = _legacy_recall_path(paths)
+        if previous:
+            paths[job] = str(previous)
     data = _read_yaml(Path(paths[job])) if job in paths else {}
     if role in {"primary", "secondary"}:
         route = data.get(role) or {}
@@ -135,6 +151,12 @@ def save_route(project_root: Path, job: str, role: str, provider: str,
     if role not in ROUTE_ROLES or provider not in (*KNOWN_PROVIDER_DEFAULT_BASE_URLS, "openai_compatible"):
         raise ValueError("Ruolo o provider non riconosciuto.")
     paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    if job == "recall" and job not in paths:
+        target = general_config_path(project_root).parent / "telegram" / "recall.yaml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        previous = _legacy_recall_path(paths)
+        _atomic_yaml(target, _read_yaml(previous) if previous else {"primary": {}})
+        paths["recall"] = str(target)
     if job not in paths:
         raise ValueError("Job LLM non trovato.")
     model = model.strip()

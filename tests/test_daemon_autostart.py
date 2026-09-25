@@ -48,7 +48,8 @@ def test_write_and_remove_pid(tmp_path):
         assert f.read().strip() == str(os.getpid())
 
     remove_daemon_pid(pid_file)
-    assert not os.path.exists(pid_file)
+    assert os.path.exists(pid_file)
+    assert open(pid_file, encoding="utf-8").read() == ""
 
 
 def test_prompt_daemon_non_tty():
