@@ -141,9 +141,13 @@ def add_model(project_root: Path, connection_name: str, model: str) -> str:
 def assign_phase(project_root: Path, job: str, connection_name: str, model: str) -> str:
     if job not in dict(PHASES):
         raise ValueError("Fase non riconosciuta.")
+    if not model or not str(model).strip():
+        raise ValueError("Seleziona un modello per questa connessione.")
+    # Il modello scelto viene salvato nella connessione: quelli ricavati dai vecchi file
+    # YAML altrimenti sparirebbero dall'elenco appena nessuna fase li usa più, mentre la
+    # pagina continua a proporli.
+    model = add_model(project_root, connection_name, str(model))
     connection = find_connection(project_root, connection_name)
-    if model not in model_names(project_root, connection_name):
-        raise ValueError("Seleziona un modello salvato per questa connessione.")
     credentials = connection["credentials"]
     return save_route(project_root, job, "primary", connection["provider"],
                       credentials[0], model, connection["base_url"],
