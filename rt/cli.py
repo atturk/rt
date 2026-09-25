@@ -35,11 +35,11 @@ from rt.core.lesson_paths import lesson_path
 from rt.core.segments import load_segments_json
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
-from rt.pipeline.outline_review import confirm_or_revise_outline
+from rt.tui.outline_review import confirm_or_revise_outline
 from rt.pipeline.validator import validate_outline, validate_draft
 from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
 from rt.pipeline.review import run_review, load_science_issues
-from rt.pipeline.issue_review import run_interactive_review
+from rt.tui.issue_review import run_interactive_review
 from rt.pipeline.ledger import load_ledger
 from rt.pipeline.build import run_build
 
@@ -120,29 +120,8 @@ def _print_phase_action(
     description: Optional[str] = None,
     details: Optional[str] = None,
 ):
-    action = res.get("action", "RUN")
-    reason = res.get("reason", "")
-    skipped = res.get("skipped", False) or action == "SKIP"
-
-    if step is not None and total_steps is not None:
-        header_desc = f" ({description})" if description else ""
-        print(f"\n[{step}/{total_steps}] {phase_name.upper()}{header_desc}...")
-        if skipped:
-            msg = details if details else f"{phase_name} già valido ({reason})"
-            print(f"⏩ [SKIP] {msg}")
-        elif action == "FORCE":
-            msg = details if details else f"{phase_name} completato (rigenerazione forzata)."
-            print(f"✔ [FORCE] {msg}")
-        else:
-            msg = details if details else f"{phase_name} completato."
-            print(f"✔ {msg}")
-    else:
-        if action == "SKIP":
-            print(f"\n[SKIP] {phase_name}\nReason: {reason}\n")
-        elif action == "FORCE":
-            print(f"\n[FORCE] {phase_name}\nReason: {reason}\n✔ {phase_name} completato (rigenerazione forzata).\n")
-        else:
-            print(f"\n[RUN] {phase_name}\nReason: {reason}\n✔ {phase_name} completato.\n")
+    from rt.cli_reporter import format_phase_action
+    print(format_phase_action(phase_name, res, step=step, total_steps=total_steps, description=description, details=details))
 
 
 def cmd_prepare(args):
@@ -269,7 +248,7 @@ def cmd_review(args):
 
 def cmd_recall(args):
     if getattr(args, "check", False) is True:
-        from rt.pipeline.recall_session import run_stale_recall_check
+        from rt.tui.recall import run_stale_recall_check
         run_stale_recall_check(args.lesson_dir)
         return
 
@@ -306,7 +285,8 @@ def cmd_recall(args):
         from rt.core.config import load_config as _load_cfg_for_channel
         channel = _load_cfg_for_channel().telegram.default_channel
 
-    from rt.pipeline.recall_session import start_recall_via_telegram, run_recall_terminal_session
+    from rt.telegram.recall_channel import start_recall_via_telegram
+    from rt.tui.recall import run_recall_terminal_session
     if channel == "telegram":
         start_recall_via_telegram(args.lesson_dir, order=order, style=style, force_mock=force_mock)
     else:
@@ -401,7 +381,8 @@ def cmd_build(args):
 
 def cmd_setup(args):
     """Setup nativo per l'ingest di file audio, trascrizione macparakeet-cli e metadati."""
-    from rt.pipeline.setup import run_setup, SetupError, DEFAULT_MODEL
+    from rt.pipeline.setup import run_setup, SetupError, SetupCancelled, DEFAULT_MODEL
+    from rt.cli_prompts import terminal_setup_prompter
     try:
         res = run_setup(
             audio=args.audio,
@@ -413,9 +394,12 @@ def cmd_setup(args):
             skip_transcribe=args.skip_transcribe,
             force=args.force,
             mock_asr=args.mock,
-            interactive=True
+            interactive=True,
+            prompter=terminal_setup_prompter(),
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
+    except SetupCancelled:
+        sys.exit(0)
     except SetupError as e:
         print(f"❌ Errore Setup: {e}", file=sys.stderr)
         sys.exit(1)
@@ -522,13 +506,39 @@ def cmd_cost(args: argparse.Namespace) -> None:
         print(render_cost_report(cost_data, split=split))
 
 
+class CliDecisionProvider:
+    """Decisioni umane di 'rt run' chieste con le UI da terminale (Textual/input) o Telegram."""
+
+    def __init__(self) -> None:
+        from rt.cli_prompts import terminal_setup_prompter
+        self.setup_prompter = terminal_setup_prompter()
+
+    def approve_outline(self, lesson_dir: str, force: bool, force_mock: bool) -> None:
+        confirm_or_revise_outline(lesson_dir, force=force, force_mock=force_mock)
+
+    def review_science_issues(self, lesson_dir: str, channel: str, auto_accept: Optional[str]) -> bool:
+        return run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept)
+
+
+class TelegramBuildNotifier:
+    """Notifica Telegram di fine build, poi proposta di avviare il demone (solo da TTY)."""
+
+    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
+        from rt.telegram.notify import notify_build_completed
+        notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title)
+        _prompt_and_launch_daemon_if_needed()
+
+
 def cmd_run(args):
     """Pipeline end-to-end completa con idempotenza, cost protection e supporto audio/cartella."""
-    from rt.pipeline.setup import is_audio_file, run_setup, SetupError, DEFAULT_MODEL
+    from rt.pipeline.setup import SetupError, SetupCancelled, DEFAULT_MODEL
+    from rt.cli_reporter import CliReporter, run_steps, format_cost_summary
+    from rt.llm.telemetry import GLOBAL_TELEMETRY
+    from rt.services.context import RunContext
+    from rt.services.pipeline_service import PipelineOptions, PipelineStatus, is_audio_input, run_pipeline
 
     raw_inputs = args.input if isinstance(args.input, list) else [args.input]
     first_input = raw_inputs[0] if raw_inputs else ""
-    force = getattr(args, "force", False)
     mock_mode = getattr(args, "mock", False)
     with_review = bool(getattr(args, "with_review", True))
 
@@ -538,116 +548,49 @@ def cmd_run(args):
             required.append("review")
         _ensure_config_ready(required)
 
-    is_audio_input = any(is_audio_file(x) for x in raw_inputs)
-    total_steps = (6 if is_audio_input else 4) + int(with_review)
+    is_audio = is_audio_input(raw_inputs)
+    steps, total_steps = run_steps(is_audio, with_review)
 
-    if is_audio_input:
-        print("\n" + "=" * 60)
+    print("\n" + "=" * 60)
+    if is_audio:
         print("🎙️  RT 2.0 — PIPELINE END-TO-END DA SORGENTE AUDIO")
         print("=" * 60)
         print(f"File audio in ingresso: {', '.join(os.path.basename(x) for x in raw_inputs)}")
-
-        step_offset = 2
-
-        print(f"\n[1/{total_steps}] SETUP / AUDIO INGEST (Inizializzazione cartella e metadati)...")
-        try:
-            setup_res = run_setup(
-                audio=raw_inputs,
-                date=getattr(args, "date", None),
-                materia=getattr(args, "materia", None),
-                argomenti=getattr(args, "argomenti", None),
-                dest_dir=getattr(args, "dest_dir", None),
-                model=getattr(args, "model", None) or DEFAULT_MODEL,
-                skip_transcribe=getattr(args, "skip_transcribe", False),
-                force=force,
-                mock_asr=mock_mode,
-                interactive=True,
-                on_progress=print
-            )
-            lesson_dir = setup_res["lesson_dir"]
-        except SetupError as se:
-            print(f"❌ Errore durante l'ingest audio: {se}", file=sys.stderr)
-            sys.exit(1)
-
-        if mock_mode:
-            print(f"\n[2/{total_steps}] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
-            print("⏩ [MOCK ASR] Trascrizione deterministica generata offline a costo zero.")
-        elif getattr(args, "skip_transcribe", False):
-            print(f"\n[2/{total_steps}] MACWHISPER TRANSCRIPTION (ASR Timecoded)...")
-            print("⚠️  [SKIP] Trascrizione saltata (--skip-transcribe). Stato impostato su METADATA_ONLY.")
-            print("La pipeline si arresta qui. Esegui la trascrizione per procedere con 'rt prepare'.")
-            return
-        else:
-            print(f"✔ Trascrizione completata: {setup_res.get('trascritto_json')}")
     else:
-        lesson_dir = first_input
-        print("\n" + "=" * 60)
-        print(f"🚀 RT 2.0 — PIPELINE END-TO-END PER: {lesson_dir}")
+        print(f"🚀 RT 2.0 — PIPELINE END-TO-END PER: {first_input}")
         print("=" * 60)
 
-        step_offset = 0
-
-    prep_res = run_prepare(lesson_dir, force=force)
-    prep_details = f"Segmenti già validi ({prep_res['segment_count']} segmenti, {prep_res['duration_seconds']:.1f}s)" if prep_res.get("skipped") else f"Segmenti estratti: {prep_res['segment_count']} ({prep_res['duration_seconds']:.1f}s)"
-    _print_phase_action("prepare", prep_res, step=step_offset + 1, total_steps=total_steps, description="Parsing deterministico segmenti", details=prep_details)
-
-    out_res = run_outline(lesson_dir, force=force, force_mock=mock_mode)
-    out_details = f"Outline già valida ({out_res['validation_report']['units_count']} unità didattiche, 0 chiamate LLM)" if out_res.get("skipped") else f"Outline validata: {out_res['validation_report']['units_count']} unità didattiche ({out_res['validation_report']['coverage_percentage']}% copertura)"
-    _print_phase_action("outline", out_res, step=step_offset + 2, total_steps=total_steps, description="Scaletta gerarchica didattica", details=out_details)
-
-    confirm_or_revise_outline(lesson_dir, force=force, force_mock=mock_mode)
-
-    rew_res = run_rewrite(lesson_dir, force=force, force_mock=mock_mode)
-    rew_details = f"Draft già valido ({rew_res['total_units']} unità verificate, 0 chiamate LLM)" if rew_res.get("skipped") else f"Rielaborate {rew_res['processed_units']}/{rew_res['total_units']} unità. Provenance verificata."
-    _print_phase_action("rewrite", rew_res, step=step_offset + 3, total_steps=total_steps, description="Rielaborazione fluida a finestre con provenance", details=rew_details)
-
-    next_step = step_offset + 4
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
-
-    if with_review:
-        sci_res = run_review(lesson_dir, force=force, force_mock=mock_mode)
-        sci_details = f"Review scientifica già completata ({sci_res['total_science_issues']} issue note, 0 chiamate LLM)" if sci_res.get("skipped") else f"Issue scientifiche: {sci_res['total_science_issues']} (Concettuali: {sci_res.get('concettuale_issues', 0)})"
-        _print_phase_action("review", sci_res, step=next_step, total_steps=total_steps, description="Critic indipendente su correttezza scientifica", details=sci_details)
-
-        auto_accept_val = "all" if getattr(args, "auto_accept", False) else None
-        if not run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept_val):
-            print(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review \"{lesson_dir}\"' da terminale). "
-                  f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
-            return
-        next_step += 1
-
-    build_step_num = next_step
-
-    bld_res = run_build(lesson_dir, force=force, rename_folder=args.rename)
-    bld_details = "Documenti finali già generati e aggiornati." if bld_res.get("skipped") else (
-        "File finali generati con successo:\n"
-        f"  - Rielaborato: {bld_res['rielaborato']}\n"
-        f"  - Pre-elaborato: {bld_res['pre_elaborato']}\n"
-        f"  - Errori concettuali: {bld_res['errori_concettuali']}"
+    options = PipelineOptions(
+        date=getattr(args, "date", None),
+        materia=getattr(args, "materia", None),
+        argomenti=getattr(args, "argomenti", None),
+        dest_dir=getattr(args, "dest_dir", None),
+        model=getattr(args, "model", None) or DEFAULT_MODEL,
+        skip_transcribe=getattr(args, "skip_transcribe", False),
+        force=getattr(args, "force", False),
+        mock=mock_mode,
+        with_review=with_review,
+        auto_accept=bool(getattr(args, "auto_accept", False)),
+        rename=getattr(args, "rename", True),
+        channel=getattr(args, "channel", None),
     )
-    _print_phase_action("build", bld_res, step=build_step_num, total_steps=total_steps, description="Finalizzazione deterministica Markdown", details=bld_details)
-    print("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
+    # La CLI usa la telemetria di processo: il riepilogo costi e i test la leggono da lì.
+    ctx = RunContext(reporter=CliReporter(steps=steps, total_steps=total_steps), telemetry=GLOBAL_TELEMETRY)
+    result = run_pipeline(raw_inputs, options, ctx, decisions=CliDecisionProvider(), notifiers=[TelegramBuildNotifier()])
 
-    if not mock_mode:
-        from rt.telegram.notify import notify_build_completed
-        final_dir = bld_res.get("lesson_dir") or lesson_dir
-        notify_build_completed(final_dir, bld_res, lesson_title=_get_lesson_title_for_notify(final_dir))
-        _prompt_and_launch_daemon_if_needed()
+    if result.status == PipelineStatus.FAILED:
+        if isinstance(result.error, SetupCancelled):
+            sys.exit(0)
+        if isinstance(result.error, SetupError):
+            print(f"❌ Errore durante l'ingest audio: {result.error}", file=sys.stderr)
+            sys.exit(1)
+        raise result.error
+    if result.status != PipelineStatus.COMPLETED:
+        return
 
-
-    from rt.llm.telemetry import GLOBAL_TELEMETRY
-    summary = GLOBAL_TELEMETRY.get_summary()
-    if summary["total_requests"] > 0:
-        print("\n" + "=" * 60)
-        print("💰 RIEPILOGO COSTI SESSIONE")
-        print("=" * 60)
-        for job_name, job_stats in summary["by_job"].items():
-            print(f"  {job_name:<16} {job_stats['requests']:>3} richieste  ${job_stats['estimated_cost_usd']:.6f}")
-        print(f"  {'TOTALE':<16}     ${summary['total_estimated_cost_usd']:.6f}")
-        print("=" * 60)
+    summary_text = format_cost_summary(GLOBAL_TELEMETRY.get_summary())
+    if summary_text:
+        print(summary_text)
 
 
 def cmd_telegram_daemon(args):
@@ -674,19 +617,19 @@ class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
 
 def cmd_config(args: argparse.Namespace) -> None:
     if getattr(args, "models", False):
-        from rt.pipeline.configure import run_models_management
+        from rt.tui.configure import run_models_management
         run_models_management()
     elif getattr(args, "telegram", False):
-        from rt.pipeline.configure import run_telegram_only
+        from rt.tui.configure import run_telegram_only
         run_telegram_only()
     elif getattr(args, "topics", False):
-        from rt.pipeline.configure import run_topics_management
+        from rt.tui.configure import run_topics_management
         run_topics_management()
     elif getattr(args, "theme", False):
-        from rt.pipeline.configure import run_theme_selection
+        from rt.tui.configure import run_theme_selection
         run_theme_selection()
     else:
-        from rt.pipeline.configure import run_config_wizard
+        from rt.tui.configure import run_config_wizard
         run_config_wizard()
 
 
@@ -710,7 +653,7 @@ def cmd_web(args: argparse.Namespace) -> None:
 
 def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.ArgumentParser]]:
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
-    from rt.pipeline.configure import configure_config_parser
+    from rt.tui.configure import configure_config_parser
 
     epilog_text = (
         "Fasi della pipeline:\n"
@@ -949,8 +892,8 @@ def main(argv: Optional[List[str]] = None) -> None:
         sys.exit(0)
     elif raw_args and raw_args[0] in ("-u", "--update"):
         from rt.core.version import run_update
-        run_update(_default_project_root())
-        sys.exit(0)
+        code = run_update(_default_project_root())
+        sys.exit(code if isinstance(code, int) else 0)
 
     load_env_file(override=True)
     parser, _ = build_parser()

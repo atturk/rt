@@ -210,7 +210,7 @@ def test_run_update_end_to_end_success(tmp_path, capsys):
         mock_subproc.return_value.returncode = 0
 
         with pytest.raises(SystemExit) as exc_info:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
         assert exc_info.value.code == 0
 
     captured = capsys.readouterr().out
@@ -253,7 +253,7 @@ def test_run_update_dependency_failure_keeps_old_version(tmp_path, capsys):
          patch("subprocess.run") as pip:
         pip.return_value.returncode = 1
         with pytest.raises(SystemExit) as exc_info:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
 
     assert exc_info.value.code == 1
     assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.7"
@@ -271,7 +271,7 @@ def test_run_update_repairs_dependencies_when_version_is_current(tmp_path, capsy
          patch("subprocess.run") as pip:
         pip.return_value.returncode = 0
         with pytest.raises(SystemExit) as exc_info:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
 
     assert exc_info.value.code == 0
     assert pip.call_args.args[0][0] == str(venv_bin / "python3")
@@ -300,7 +300,7 @@ def test_run_update_download_failure_preserves_installation(tmp_path, capsys):
 
     with patch("urllib.request.urlopen", side_effect=mock_urlopen):
         with pytest.raises(SystemExit) as exc_info:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
         assert exc_info.value.code == 1
 
     err = capsys.readouterr().err
@@ -322,7 +322,7 @@ def test_run_update_already_up_to_date(tmp_path, capsys):
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
         with pytest.raises(SystemExit) as exc_info:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
         assert exc_info.value.code == 0
 
     captured = capsys.readouterr().out
@@ -379,7 +379,7 @@ def test_update_refuses_development_checkout_before_network(tmp_path, git_is_fil
         (tmp_path / '.git').mkdir()
     with patch('urllib.request.urlopen') as network:
         with pytest.raises(SystemExit) as exc:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
     assert exc.value.code == 1
     network.assert_not_called()
 
@@ -415,7 +415,7 @@ def test_run_update_fast_forwards_clean_git_install_to_release(tmp_path):
          patch("rt.core.version.get_latest_remote_version", return_value="3.4.2"), \
          patch("rt.core.version._install_runtime_requirements", return_value=True) as install_deps:
         with pytest.raises(SystemExit) as exc:
-            run_update(str(install))
+            sys.exit(run_update(str(install)))
 
     assert exc.value.code == 0
     install_deps.assert_called_once_with(str(install))
@@ -436,7 +436,7 @@ def test_run_update_refuses_modified_git_install_before_network(tmp_path):
 
     with patch("rt.core.version.get_latest_remote_version") as remote:
         with pytest.raises(SystemExit) as exc:
-            run_update(str(tmp_path))
+            sys.exit(run_update(str(tmp_path)))
 
     assert exc.value.code == 1
     assert (tmp_path / "VERSION").read_text(encoding="utf-8") == "custom\n"

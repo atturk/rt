@@ -1,0 +1,34 @@
+{
+  "text": "Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando lipidi. Nel dettaglio analizzeremo i meccanismi molecolari e i principi fondamentali che regolano questo processo biologico. È opportuno osservare che la reazione avviene in condizioni fisiologiche precise con l'intervento di specifici cofattori enzimatici. In conclusione, questo passaggio metabolico si rivela essenziale per il bilancio energetico e l'omeostasi cellulare complessiva.",
+  "segments": [
+    {
+      "id": 1,
+      "seek": 0,
+      "start": 0,
+      "end": 8500,
+      "text": "Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando lipidi."
+    },
+    {
+      "id": 2,
+      "seek": 0,
+      "start": 8500,
+      "end": 24000,
+      "text": "Nel dettaglio analizzeremo i meccanismi molecolari e i principi fondamentali che regolano questo processo biologico."
+    },
+    {
+      "id": 3,
+      "seek": 24000,
+      "start": 24000,
+      "end": 45000,
+      "text": "È opportuno osservare che la reazione avviene in condizioni fisiologiche precise con l'intervento di specifici cofattori enzimatici."
+    },
+    {
+      "id": 4,
+      "seek": 45000,
+      "start": 45000,
+      "end": 62000,
+      "text": "In conclusione, questo passaggio metabolico si rivela essenziale per il bilancio energetico e l'omeostasi cellulare complessiva."
+    }
+  ],
+  "language": "it"
+}

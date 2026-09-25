@@ -212,3 +212,70 @@ Per evitare allucinazioni in cui il modello attribuisce ingiustamente al docente
 1. **`ERR_DOCENTE`** richiede forte riscontro testuale o lessicale nella trascrizione sorgente del docente (punteggio di grounding $\ge 0.65$). Viene corredato di domanda diplomatica per chiarimenti.
 2. **`ERR_RECONSTRUCTION`**: se il claim criticato non ha alcun riscontro nella sorgente ($\le 0.20$), il sistema lo riclassifica automaticamente come allucinazione del modello, sollevando il docente da colpe inesistenti.
 3. **`SCIENCE_CHECK`**: in presenza di evidenza parziale o ambigua, la critica viene instradata a revisione umana neutrale senza trarre conclusioni affrettate.
+
+---
+
+## 7. Service layer (RT 4.0, fase A)
+
+Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: le interfacce
+(CLI, Telegram, web, in futuro API e worker) passano da `rt/services/`.
+
+- **Eventi** (`rt/services/events.py`): `PhaseStarted`, `PhaseProgress`, `PhaseCompleted`,
+  `PhaseFailed` (messaggio già sanificato), `CostUpdated`, `DecisionRequired`, `Notice`. Chi
+  ascolta implementa il protocollo `Reporter` (`emit(event)`); ci sono `NullReporter`,
+  `ListReporter`, `CallbackReporter`, `FanOutReporter`.
+- **Contesto di esecuzione** (`rt/services/context.py`): `RunContext` con `lesson_dir`,
+  `force`, `force_mock`, `reporter`, `telemetry` (un `TelemetryStore` per run) e
+  `cancel_token`. `run_prepare/outline/rewrite/review/build` accettano `ctx=` opzionale:
+  emettono gli eventi di fase e, durante la fase, il client LLM registra i costi nella
+  telemetria del contesto (`rt.llm.telemetry.current_telemetry()`, `GLOBAL_TELEMETRY` se non
+  c'è contesto). Rewrite e review controllano l'annullamento tra un'unità e l'altra
+  (`RunCancelled`); le unità già elaborate restano nel checkpoint.
+- **Presentazione a terminale** (`rt/cli_reporter.py`): `CliReporter` traduce gli eventi
+  nelle stesse righe di sempre (`[n/N] FASE (...)`, `[SKIP]`, riepilogo costi).
+- **Orchestratore** (`rt/services/pipeline_service.py`): `run_pipeline(inputs, options, ctx,
+  decisions=None, notifiers=())` esegue setup (se l'input è audio) → prepare → outline →
+  rewrite → review (opzionale) → build e restituisce un `PipelineResult` con stato
+  `COMPLETED`, `WAITING_FOR_DECISION` (con la `DecisionRequired` pendente),
+  `SKIPPED_TRANSCRIPTION` o `FAILED` (con l'eccezione). Le decisioni umane passano da un
+  `DecisionProvider`: la CLI passa `CliDecisionProvider` (UI Textual/terminale o Telegram);
+  senza provider la pipeline si ferma sulla decisione, oppure con `auto_accept` approva
+  outline e issue. La notifica di fine build va ai `Notifier` registrati (la CLI registra
+  `TelegramBuildNotifier`). `cmd_run` in `rt/cli.py` fa solo parsing, banner, chiamata al
+  servizio, riepilogo costi ed exit code.
+- **Setup** (`rt/pipeline/setup.py`): `resolve_setup_request()` produce un `SetupRequest`
+  validato senza leggere da stdin. I campi mancanti si chiedono a un `SetupPrompter`
+  (implementato in `rt/cli_prompts.py` e passato dalla CLI solo con un TTY); senza prompter
+  si usano i default di sempre, oppure con `strict=True` si solleva `MissingSetupFields`
+  (l'orchestratore senza `DecisionProvider` la trasforma in `DecisionRequired(setup_metadata)`).
+  L'annullamento di un prompt è `SetupCancelled` (exit 0 in CLI), gli errori restano `SetupError`.
+- **Outline** (`rt/services/outline_service.py`): `get_outline_review()` (albero JSON e stato),
+  `approve_outline(lesson_dir, actor, channel)` (registrata in `_state/outline_approval.json`
+  con l'hash di `outline.json`, quindi una revisione la invalida), `is_outline_approved()`,
+  `request_outline_revision(lesson_dir, feedback, ctx)`. La UI da terminale (app Textual e
+  fallback testuale) è in `rt/tui/outline_review.py`; `rt/pipeline/outline_review.py` tiene
+  solo la regola di gating `outline_needs_approval()`.
+- **Review delle issue** (`rt/services/review_service.py`): punto unico per elencare le issue
+  pendenti con contesto (unità, timecode, finestra audio), registrare una decisione
+  (`record_review_decision`, con `channel` cli/telegram/web/api e `actor`), annullare
+  l'ultima (`undo_last_decision`), applicare l'auto-accept e sapere se la review è completa.
+  Ogni scrittura del ledger avviene sotto il lock a file `.rt.lock` della lezione, quindi CLI,
+  daemon Telegram e web possono decidere in parallelo senza perdere decisioni. Il ledger
+  resta `review_decisions.json` nello stesso formato: `channel`/`actor` compaiono solo nelle
+  decisioni che li hanno. L'app Textual è in `rt/tui/issue_review.py`, l'invio via Telegram
+  in `rt/telegram/review_channel.py` (porta `ReviewChannel`), la web usa
+  `rt/pipeline/review_actions.py` come adattatore sottile; `rt/pipeline/issue_review.py`
+  contiene solo regole pure e non importa più `rt.telegram`.
+- **Configurazione** (`rt/services/config_service.py`): percorsi (`config/` nella cwd o nel
+  progetto, `.env` accanto), lettura/validazione (`validate_config`) e scrittura atomica di
+  YAML e testo, `set_env_var` e `set_secret` (oggi `.env` con chmod 600; RT4-C1 lo sostituirà
+  con l'archivio cifrato). Il wizard `rt config` è in `rt/tui/configure/` e, come le
+  impostazioni web (`rt/web/settings.py`), scrive attraverso il servizio.
+- **Active Recall** (`rt/services/recall_service.py`): stato di sessione per lezione, batch
+  iniziale, prossima domanda con rifornimento, valutazione delle risposte, domande stale.
+  Canali: `rt/telegram/recall_channel.py` (Telegram) e `rt/tui/recall.py` (terminale e
+  revisione delle domande stale). `rt/core/version.run_update` restituisce il codice di
+  uscita invece di terminare il processo.
+- **Regola di layering** (`tests/test_layering.py`, bloccante dalla fine della fase A):
+  `rt/pipeline`, `rt/core` e `rt/services` non importano `textual`, `rich.prompt`,
+  `questionary`, `rt.telegram`, `rt.tui`, `rt.web` e non chiamano `input()` o `sys.exit()`.

@@ -1,0 +1,52 @@
+exit_code: 0
+--- stdout ---
+
+============================================================
+🚀 RT 2.0 — PIPELINE END-TO-END PER: <ROOT>/[2026-09-05] BIOCHIMICA - Lipidi
+============================================================
+
+[1/4] PREPARE (Parsing deterministico segmenti)...
+✔ Segmenti estratti: 6 (70.0s)
+
+[2/4] OUTLINE (Scaletta gerarchica didattica)...
+✔ Outline validata: 1 unità didattiche (100.0% copertura)
+
+============================================================
+📋 OUTLINE GENERATA — in attesa di conferma
+============================================================
+📋 Lezione Accademica Rielaborata
+
+1. Introduzione e concetti fondamentali
+  1.1 Panoramica generale e prima unità — Concetto chiave 1, Concetto chiave 2
+
+Azione [A=Approva / M=Richiedi modifiche]: Descrivi le modifiche desiderate: ⏳ Rigenerazione outline in corso...
+
+============================================================
+📋 OUTLINE GENERATA — in attesa di conferma
+============================================================
+📋 Lezione Accademica Rielaborata
+
+1. Introduzione e concetti fondamentali
+  1.1 Panoramica generale e prima unità — Concetto chiave 1, Concetto chiave 2
+
+Azione [A=Approva / M=Richiedi modifiche]: ✔ Outline approvata.
+
+[3/4] REWRITE (Rielaborazione fluida a finestre con provenance)...
+✔ Rielaborate 1/1 unità. Provenance verificata.
+
+[4/4] BUILD (Finalizzazione deterministica Markdown)...
+✔ File finali generati con successo:
+  - Rielaborato: <ROOT>/[2026-09-05] BIOCHIMICA - Lipidi/_state/rielaborato.md
+  - Pre-elaborato: <ROOT>/[2026-09-05] BIOCHIMICA - Lipidi/_state/pre-elaborato.md
+  - Errori concettuali: <ROOT>/[2026-09-05] BIOCHIMICA - Lipidi/Errori concettuali.md
+
+✨ PIPELINE COMPLETATA CON SUCCESSO!
+
+============================================================
+💰 RIEPILOGO COSTI SESSIONE
+============================================================
+  outline            2 richieste  $0.000000
+  rewrite            1 richieste  $0.000000
+  TOTALE               $0.000000
+============================================================
+--- stderr ---

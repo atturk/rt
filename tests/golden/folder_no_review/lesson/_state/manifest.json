@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "workflow_version": "2.0.0",
+  "lesson_id": "[2026-09-05] BIOCHIMICA - Lipidi",
+  "lesson_dir": "<ROOT>/[2026-09-05] BIOCHIMICA - Lipidi",
+  "date": "2026-09-05",
+  "subject": "BIOCHIMICA",
+  "topics": "Lipidi",
+  "audio_file": "lezione.m4a",
+  "audio_duration_seconds": 70.0,
+  "segment_count": 6,
+  "current_state": "completato",
+  "created_at": "<TS>",
+  "updated_at": "<TS>",
+  "model_info": {},
+  "coverage_stats": {
+    "total_segments": 6,
+    "duration_seconds": 70.0,
+    "valid": true,
+    "macro_count": 1,
+    "units_count": 1,
+    "covered_segments": 1,
+    "coverage_percentage": 16.67,
+    "omitted_count": 5,
+    "duplicate_count": 0,
+    "omitted_ranges": [
+      "2-6"
+    ]
+  },
+  "phase_records": {
+    "outline": {
+      "stale_reason": null,
+      "status": "VALID",
+      "source_fingerprint": "<SHA256>",
+      "processor_version": "outline_v1.0",
+      "updated_at": "<TS>",
+      "artifact_fingerprints": {
+        "outline.json": "<SHA256>"
+      },
+      "provider": null,
+      "model": null
+    },
+    "rewrite": {
+      "status": "VALID",
+      "stale_reason": null,
+      "source_fingerprint": "<SHA256>",
+      "processor_version": "rewrite_v1.0",
+      "updated_at": "<TS>",
+      "artifact_fingerprints": {
+        "draft.json": "<SHA256>"
+      },
+      "completed_items": [
+        "1.1"
+      ],
+      "provider": null,
+      "model": null
+    },
+    "build": {
+      "stale_reason": null,
+      "status": "VALID",
+      "source_fingerprint": "<SHA256>",
+      "processor_version": "build_v1.0",
+      "updated_at": "<TS>",
+      "artifact_fingerprints": {
+        "rielaborato.md": "<SHA256>"
+      }
+    }
+  }
+}

@@ -112,8 +112,8 @@ def test_telegram_review_quit_callback(tmp_path):
     context.bot_data = {"state_dir": state_dir}
     context.bot.send_message = AsyncMock()
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next, \
-         patch("rt.pipeline.issue_review.start_review_via_telegram") as mock_start:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next, \
+         patch("rt.telegram.review_channel.start_review_via_telegram") as mock_start:
         asyncio.run(handle_callback(update, context))
         assert not mock_send_next.called
         assert not mock_start.called
@@ -155,7 +155,7 @@ def test_telegram_review_back_callback_dispatched(tmp_path):
     context = MagicMock()
     context.bot_data = {"state_dir": state_dir}
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next:
         asyncio.run(handle_callback(update, context))
         assert mock_send_next.called, "'ib:' deve raggiungere _handle_issue_callback tramite il dispatcher, non essere ignorato"
 

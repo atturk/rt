@@ -8,7 +8,7 @@ import yaml
 import pytest
 from unittest.mock import patch, MagicMock
 
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     _configure_llm_provider_section,
     _apply_profile_to_job,
     _apply_fallback_to_job,
@@ -98,7 +98,7 @@ def test_same_profile_can_be_assigned_to_multiple_fallback_slots():
 @pytest.mark.anyio
 async def test_confirm_and_apply_writes_fallback_block_to_job_yaml(tmp_path):
     """Verifica che Conferma e applica scriva sia primary sia fallback: nel file YAML del job."""
-    from rt.pipeline.configure import _build_configure_roles_app
+    from rt.tui.configure import _build_configure_roles_app
 
     config_dir = os.path.join(tmp_path, "config")
     os.makedirs(config_dir, exist_ok=True)
@@ -138,7 +138,7 @@ async def test_confirm_and_apply_writes_fallback_block_to_job_yaml(tmp_path):
         "Fallback: rate-limit (429)",
     ]
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}), \
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}), \
          patch("questionary.select") as mock_q:
         mock_q.return_value.ask.side_effect = select_roles
         app = _build_configure_roles_app(config_dir, env_path)

@@ -38,6 +38,7 @@ from rt.core.idempotency import (
     get_phase_checkpoint,
     mark_downstream_stale,
 )
+from rt.services.context import RunContext, phase_scope
 
 LOG = logging.getLogger(__name__)
 
@@ -323,7 +324,13 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
     )
 
 
-def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False) -> Dict[str, Any]:
+def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+    """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx, se dato)."""
+    with phase_scope(ctx, "review") as scope:
+        return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
+
+
+def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
 
@@ -406,6 +413,9 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
     for idx, unit in enumerate(draft.units, start=1):
         if not force and unit.unit_id in reviewed_set:
             continue
+        if ctx is not None:
+            ctx.check_cancelled()
+            ctx.progress("review", current=idx, total=total_units, message=unit.unit_id)
 
         source_texts = []
         for s_id in unit.source_segment_ids:

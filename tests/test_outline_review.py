@@ -6,7 +6,7 @@ from rt.core.models import Outline, OutlineMacro, OutlineUnit
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
 from rt.pipeline.rewrite import run_rewrite
-from rt.pipeline.outline_review import confirm_or_revise_outline, build_outline_tree
+from rt.tui.outline_review import confirm_or_revise_outline, build_outline_tree
 from rt.telegram.formatting import render_outline_summary_text
 
 
@@ -56,7 +56,7 @@ def test_terminal_changes_requested_then_approve(synthetic_outline_lesson):
     lesson_dir = synthetic_outline_lesson
     # M -> feedback -> A
     with patch("builtins.input", side_effect=["M", "Aggiungi dettagli sulle lipasi", "A"]) as mock_input:
-        with patch("rt.pipeline.outline_review.run_outline_revision", wraps=__import__("rt.pipeline.outline", fromlist=["run_outline_revision"]).run_outline_revision) as mock_rev:
+        with patch("rt.services.outline_service.run_outline_revision", wraps=__import__("rt.pipeline.outline", fromlist=["run_outline_revision"]).run_outline_revision) as mock_rev:
             confirm_or_revise_outline(lesson_dir, force_mock=True)
             assert mock_input.call_count == 3
             assert mock_rev.call_count == 1
@@ -150,7 +150,7 @@ def test_build_outline_tree_diff():
 @pytest.mark.anyio
 async def test_textual_app_navigation_and_actions(synthetic_outline_lesson):
     """Verifica la navigazione, espansione, collasso e approvazione con Textual run_test()."""
-    from rt.pipeline.outline_review import OutlineReviewApp
+    from rt.tui.outline_review import OutlineReviewApp
 
     lesson_dir = synthetic_outline_lesson
     app = OutlineReviewApp(lesson_dir=lesson_dir, force_mock=True)
@@ -193,14 +193,14 @@ async def test_textual_app_navigation_and_actions(synthetic_outline_lesson):
 @pytest.mark.anyio
 async def test_textual_app_modify_cycle(synthetic_outline_lesson):
     """Verifica che premere 'm' esegua la revisione dell'outline e aggiorni lo stato senza errori."""
-    from rt.pipeline.outline_review import OutlineReviewApp
+    from rt.tui.outline_review import OutlineReviewApp
 
     lesson_dir = synthetic_outline_lesson
     app = OutlineReviewApp(lesson_dir=lesson_dir, force_mock=True)
 
     with patch("builtins.input", side_effect=["Aggiungi dettagli lipasi", "Altro feedback"]):
         async with app.run_test() as pilot:
-            with patch("rt.pipeline.outline_review.run_outline_revision", wraps=__import__("rt.pipeline.outline", fromlist=["run_outline_revision"]).run_outline_revision) as mock_rev:
+            with patch("rt.services.outline_service.run_outline_revision", wraps=__import__("rt.pipeline.outline", fromlist=["run_outline_revision"]).run_outline_revision) as mock_rev:
                 # 1° ciclo di modifica
                 await pilot.press("m")
                 assert mock_rev.call_count == 1
@@ -219,7 +219,7 @@ def test_confirm_via_terminal_tty_invokes_app(synthetic_outline_lesson):
     """Verifica che in ambiente TTY venga istanziata ed eseguita OutlineReviewApp."""
     lesson_dir = synthetic_outline_lesson
     with patch("sys.stdin.isatty", return_value=True), \
-         patch("rt.pipeline.outline_review.OutlineReviewApp.run") as mock_app_run:
+         patch("rt.tui.outline_review.OutlineReviewApp.run") as mock_app_run:
         confirm_or_revise_outline(lesson_dir, force_mock=True)
         mock_app_run.assert_called_once()
 

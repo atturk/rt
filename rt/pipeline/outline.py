@@ -33,6 +33,7 @@ from rt.core.idempotency import (
     record_phase_fingerprint,
     mark_downstream_stale,
 )
+from rt.services.context import RunContext, phase_scope
 
 
 def get_outline_path(lesson_dir: str) -> str:
@@ -96,7 +97,13 @@ def _generate_validated_outline(
     raise last_error
 
 
-def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
+def run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+    """Genera e valida l'outline della lezione (eventi su ctx, se dato)."""
+    with phase_scope(ctx, "outline") as scope:
+        return scope.complete(_run_outline(lesson_dir, force=force, force_mock=force_mock))
+
+
+def _run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False) -> Dict[str, Any]:
     """Genera e valida l'outline della lezione."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
     info = read_info_yaml(yaml_path)

@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "lesson_id": "[2026-09-05] BIOCHIMICA - Lipidi",
+  "audio_duration_seconds": 62.0,
+  "segments": [
+    {
+      "id": "seg_000001",
+      "index": 1,
+      "start_seconds": 0.0,
+      "end_seconds": 8.5,
+      "start_formatted": "00:00",
+      "end_formatted": "00:08",
+      "text_raw": "Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando lipidi.",
+      "source_file": "trascritto grezzo.json",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000002",
+      "index": 2,
+      "start_seconds": 8.5,
+      "end_seconds": 24.0,
+      "start_formatted": "00:08",
+      "end_formatted": "00:24",
+      "text_raw": "Nel dettaglio analizzeremo i meccanismi molecolari e i principi fondamentali che regolano questo processo biologico.",
+      "source_file": "trascritto grezzo.json",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000003",
+      "index": 3,
+      "start_seconds": 24.0,
+      "end_seconds": 45.0,
+      "start_formatted": "00:24",
+      "end_formatted": "00:45",
+      "text_raw": "È opportuno osservare che la reazione avviene in condizioni fisiologiche precise con l'intervento di specifici cofattori enzimatici.",
+      "source_file": "trascritto grezzo.json",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000004",
+      "index": 4,
+      "start_seconds": 45.0,
+      "end_seconds": 62.0,
+      "start_formatted": "00:45",
+      "end_formatted": "01:02",
+      "text_raw": "In conclusione, questo passaggio metabolico si rivela essenziale per il bilancio energetico e l'omeostasi cellulare complessiva.",
+      "source_file": "trascritto grezzo.json",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    }
+  ]
+}

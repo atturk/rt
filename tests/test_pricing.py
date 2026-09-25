@@ -110,7 +110,7 @@ def test_configure_pricing_section_with_detected_pricing_auto_save(tmp_path):
     """
     import yaml
     from unittest.mock import patch
-    from rt.pipeline.configure import _configure_pricing_section
+    from rt.tui.configure import _configure_pricing_section
 
     config_dir = str(tmp_path)
     detected = {
@@ -143,7 +143,7 @@ def test_configure_pricing_section_with_detected_pricing_modified(tmp_path):
     """
     import yaml
     from unittest.mock import patch
-    from rt.pipeline.configure import _configure_pricing_section
+    from rt.tui.configure import _configure_pricing_section
 
     config_dir = str(tmp_path)
     detected = {

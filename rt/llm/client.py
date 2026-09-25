@@ -22,7 +22,7 @@ from rt.core.config import load_config, RouteConfig, JobRoutingConfig
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.llm.providers import get_provider
 from rt.llm.pricing import calculate_cost
-from rt.llm.telemetry import LLMTelemetryRecord, GLOBAL_TELEMETRY
+from rt.llm.telemetry import LLMTelemetryRecord, current_telemetry
 from rt.llm.monitor import LiveTerminalMonitor
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.errors import (
@@ -179,7 +179,7 @@ class LLMClient:
                 streaming=False,
                 timeout_seconds_configured=primary_cfg.timeout_seconds
             )
-            GLOBAL_TELEMETRY.add(mock_rec)
+            current_telemetry().add(mock_rec)
             mock_resp = self._generate_mock_response(job_name, prompt, response_model)
             if lesson_dir:
                 _append_debug_log(lesson_dir, {
@@ -277,7 +277,7 @@ class LLMClient:
 
         history_len = sum(len(m.get("content", "")) if isinstance(m.get("content"), str) else 0 for m in history) if history else 0
         approx_in_tok = max(1, (len(full_system) + len(prompt) + history_len) // 4)
-        prev_session_cost = GLOBAL_TELEMETRY.get_summary().get("total_estimated_cost_usd", 0.0)
+        prev_session_cost = current_telemetry().get_summary().get("total_estimated_cost_usd", 0.0)
 
         # Retry config locale per timeout sulla stessa route
         cfg_retry = getattr(self.config, "retry", None)
@@ -847,7 +847,7 @@ class LLMClient:
                             estimated_cost=cost_est,
                             streaming=use_stream
                         )
-                        GLOBAL_TELEMETRY.add(telemetry_rec)
+                        current_telemetry().add(telemetry_rec)
 
                         if lesson_dir:
                             reas_full_text = "".join(reasoning_parts) if ('reasoning_parts' in locals() and reasoning_parts) else (reasoning_content if ('reasoning_content' in locals() and reasoning_content) else None)
@@ -980,7 +980,7 @@ class LLMClient:
                     streaming=use_stream,
                     fallback_reason=current_fallback_reason
                 )
-                GLOBAL_TELEMETRY.add(err_rec)
+                current_telemetry().add(err_rec)
 
                 if lesson_dir:
                     reas_full_text = "".join(reasoning_parts) if ('reasoning_parts' in locals() and reasoning_parts) else (reasoning_content if ('reasoning_content' in locals() and reasoning_content) else None)
@@ -1061,8 +1061,8 @@ class LLMClient:
                 )
                 if next_exec_route:
                     # Aggiorna telemetria precedente con metadata del fallback
-                    if GLOBAL_TELEMETRY.get_last():
-                        last_t = GLOBAL_TELEMETRY.get_last()
+                    if current_telemetry().get_last():
+                        last_t = current_telemetry().get_last()
                         last_t.fallback_to_provider = next_exec_route.provider
                         last_t.fallback_to_model = next_exec_route.model
                         last_t.fallback_to_credential = next_exec_route.credential

@@ -248,7 +248,7 @@ def test_start_review_via_telegram_registers_session(tmp_path, monkeypatch):
     _setup_review_lesson(lesson_dir)
 
     from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
-    from rt.pipeline.issue_review import start_review_via_telegram
+    from rt.telegram.review_channel import start_review_via_telegram
     from rt.telegram.config import TelegramConfig
 
     sci_issues = [
@@ -333,7 +333,7 @@ def test_start_review_callback_integration_registers_session(tmp_path, monkeypat
 
 
 def test_start_review_via_telegram_prevents_duplicate_active_session(tmp_path, monkeypatch):
-    from rt.pipeline.issue_review import start_review_via_telegram
+    from rt.telegram.review_channel import start_review_via_telegram
     from rt.telegram.config import TelegramConfig
     from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
     from rt.telegram import issue_queue as tg_queue
@@ -382,7 +382,7 @@ def test_start_review_via_telegram_prevents_duplicate_active_session(tmp_path, m
 
 
 def test_start_review_via_telegram_busy_different_activity(tmp_path, monkeypatch):
-    from rt.pipeline.issue_review import start_review_via_telegram
+    from rt.telegram.review_channel import start_review_via_telegram
     from rt.telegram.config import TelegramConfig
     from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
     from rt.telegram import issue_queue as tg_queue

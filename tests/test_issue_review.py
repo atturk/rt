@@ -15,7 +15,8 @@ from rt.pipeline.ledger import (
     resolve_science_accept_text, resolve_science_reject_text
 )
 from rt.telegram import issue_queue as tg_queue
-from rt.pipeline.issue_review import start_review_via_telegram, send_current_issue, run_interactive_review
+from rt.telegram.review_channel import start_review_via_telegram, send_current_issue
+from rt.tui.issue_review import run_interactive_review
 from rt.telegram.config import TelegramConfig
 from rt.cli import cmd_review
 
@@ -211,7 +212,7 @@ def test_telegram_callback_indietro(tmp_path, monkeypatch):
     context = MagicMock()
     context.bot_data = {"state_dir": state_dir}
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send:
         asyncio.run(_handle_issue_callback(update, context, "ib", short_id))
 
     # current_index decrements to 0
@@ -225,7 +226,7 @@ def test_telegram_callback_indietro(tmp_path, monkeypatch):
 
 @pytest.mark.anyio
 async def test_interactive_terminal_backward_navigation(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
@@ -253,7 +254,7 @@ async def test_interactive_terminal_backward_navigation(tmp_path):
 
 @pytest.mark.anyio
 async def test_history_mode_terminal_and_telegram(tmp_path, capsys):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
@@ -285,7 +286,7 @@ async def test_history_mode_terminal_and_telegram(tmp_path, capsys):
 
 @pytest.mark.anyio
 async def test_history_mode_backward_science_does_not_revert_untouched_historical_decision(tmp_path):
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
     lesson_dir = str(tmp_path)
     _create_sample_lesson(lesson_dir)
 
@@ -331,13 +332,13 @@ def test_cmd_run_with_review_does_not_build_when_review_deferred(tmp_path, monke
         skip_transcribe=False, auto_accept=False, rename=False,
     )
 
-    with patch("rt.cli.run_prepare", return_value={"skipped": True, "segment_count": 1, "duration_seconds": 1.0}), \
-         patch("rt.cli.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 1, "coverage_percentage": 100}}), \
+    with patch("rt.pipeline.prepare.run_prepare", return_value={"skipped": True, "segment_count": 1, "duration_seconds": 1.0}), \
+         patch("rt.pipeline.outline.run_outline", return_value={"skipped": True, "validation_report": {"units_count": 1, "coverage_percentage": 100}}), \
          patch("rt.cli.confirm_or_revise_outline", return_value=None), \
-         patch("rt.cli.run_rewrite", return_value={"skipped": True, "total_units": 1, "processed_units": 1}), \
-         patch("rt.cli.run_review", return_value={"skipped": True, "total_science_issues": 1, "concettuale_issues": 1}), \
+         patch("rt.pipeline.rewrite.run_rewrite", return_value={"skipped": True, "total_units": 1, "processed_units": 1}), \
+         patch("rt.pipeline.review.run_review", return_value={"skipped": True, "total_science_issues": 1, "concettuale_issues": 1}), \
          patch("rt.cli.run_interactive_review", return_value=False) as mock_review, \
-         patch("rt.cli.run_build", side_effect=fake_run_build):
+         patch("rt.pipeline.build.run_build", side_effect=fake_run_build):
         cmd_run(args)
 
     mock_review.assert_called_once()

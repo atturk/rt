@@ -5,7 +5,7 @@ Unit test per Task 37: inserimento chiavi API round-robin in batch separate da v
 import os
 import pytest
 from unittest.mock import patch, MagicMock
-from rt.pipeline.configure import _create_new_model_profile
+from rt.tui.configure import _create_new_model_profile
 
 
 def test_batch_api_keys_comma_separated(tmp_path):
@@ -24,7 +24,7 @@ def test_batch_api_keys_comma_separated(tmp_path):
                     mock_pass.return_value.ask.side_effect = ["key1, key2,key3", ""]
                     with patch("questionary.autocomplete") as mock_auto:
                         mock_auto.return_value.ask.return_value = "gemini-2.5-flash"
-                        with patch("rt.pipeline.configure._configure_pricing_section", return_value=None):
+                        with patch("rt.tui.configure._configure_pricing_section", return_value=None):
                             p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data)
 
     creds = general_data.get("credentials", [])
@@ -50,7 +50,7 @@ def test_batch_api_keys_empty_commas(tmp_path):
                     mock_pass.return_value.ask.side_effect = ["key1,,key2,", ""]
                     with patch("questionary.autocomplete") as mock_auto:
                         mock_auto.return_value.ask.return_value = "openrouter/free"
-                        with patch("rt.pipeline.configure._configure_pricing_section", return_value=None):
+                        with patch("rt.tui.configure._configure_pricing_section", return_value=None):
                             p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data)
 
     creds = general_data.get("credentials", [])
@@ -75,7 +75,7 @@ def test_batch_api_keys_multiple_prompts_continuation(tmp_path):
                     mock_pass.return_value.ask.side_effect = ["key1, key2", "key3", ""]
                     with patch("questionary.autocomplete") as mock_auto:
                         mock_auto.return_value.ask.return_value = "openrouter/free"
-                        with patch("rt.pipeline.configure._configure_pricing_section", return_value=None):
+                        with patch("rt.tui.configure._configure_pricing_section", return_value=None):
                             p_name, p_dict = _create_new_model_profile(config_dir, env_path, general_data)
 
     creds = general_data.get("credentials", [])

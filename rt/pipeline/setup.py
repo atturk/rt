@@ -13,7 +13,8 @@ import json
 import subprocess
 import datetime
 import time
-from typing import Dict, Any, List, Optional, Tuple, Union, Callable
+from typing import Dict, Any, List, Optional, Tuple, Union, Callable, Protocol
+from pydantic import BaseModel
 from rich.console import Console
 
 # Colori per il terminale
@@ -33,6 +34,39 @@ SUPPORTED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", "
 class SetupError(Exception):
     """Eccezione bloccante per errori irreversibili durante la fase di setup."""
     pass
+
+
+class MissingSetupFields(SetupError):
+    """Mancano metadati obbligatori e nessuno può chiederli (API, worker, stdin non TTY)."""
+
+    def __init__(self, fields: List[str], message: Optional[str] = None):
+        self.fields = list(fields)
+        super().__init__(message or f"Metadati di setup mancanti: {', '.join(self.fields)}")
+
+
+class SetupCancelled(SetupError):
+    """L'utente ha annullato la raccolta dei metadati (Ctrl+C/EOF su un prompt)."""
+
+
+class SetupPrompter(Protocol):
+    """Chiede all'utente i metadati mancanti. Implementato dalla CLI (rt.cli_prompts);
+    ogni metodo può sollevare SetupCancelled."""
+
+    def ask_audio(self) -> str: ...
+
+    def ask_date(self, default: str) -> str: ...
+
+    def invalid_date(self, raw: str) -> None: ...
+
+    def ask_materia(self, default_guess: str) -> str: ...
+
+
+class SetupRequest(BaseModel):
+    """Metadati di setup completi e validati, pronti per l'esecuzione non interattiva."""
+    audio: List[str]
+    date: str
+    materia: str
+    argomenti: str = ""
 
 
 def is_audio_file(path: str) -> bool:
@@ -70,23 +104,6 @@ def find_macparakeet_binary() -> str:
         if os.path.exists(c) and os.access(c, os.X_OK):
             return c
     return ""
-
-
-def prompt_clean(message: str, default: str = "") -> str:
-    """Prompt interattivo formattato per terminale."""
-    if not sys.stdin.isatty():
-        return default
-    if default:
-        prompt_text = f"{CYAN}?{RESET} {BOLD}{message}{RESET} [{YELLOW}{default}{RESET}]: "
-    else:
-        prompt_text = f"{CYAN}?{RESET} {BOLD}{message}{RESET}: "
-    
-    try:
-        val = input(prompt_text).strip()
-    except (KeyboardInterrupt, EOFError):
-        print(f"\n{YELLOW}Operazione annullata dall'utente.{RESET}")
-        sys.exit(0)
-    return val if val else default
 
 
 MONTHS_MAP = {
@@ -151,32 +168,6 @@ def parse_flexible_date(raw_input: str) -> str:
             return datetime.date(y, m, d).strftime("%Y-%m-%d")
 
     raise ValueError(f"Formato data non riconosciuto: '{raw_input}'")
-
-
-def _prompt_materia_select(default_guess: str = "") -> str:
-    """Propone le materie già mappate in config (telegram.topics) come selezione,
-    con una voce 'Altro' per materia libera. Degrada a prompt testuale libero se la
-    config non è disponibile, topics è vuoto, questionary fallisce, o non siamo in un TTY."""
-    try:
-        from rt.core.config import load_config
-        topic_keys = sorted(load_config().telegram.topics.keys())
-    except Exception:
-        topic_keys = []
-
-    ALTRO = "➕ Altro (nuova materia)"
-    if topic_keys:
-        try:
-            import questionary
-            default_choice = default_guess.upper() if default_guess.upper() in topic_keys else None
-            selection = questionary.select("Materia:", choices=topic_keys + [ALTRO], default=default_choice).ask()
-            if selection is None:
-                print(f"\nOperazione annullata dall'utente.")
-                sys.exit(0)
-            if selection != ALTRO:
-                return selection
-        except Exception:
-            pass
-    return prompt_clean("Materia (es. BIOINFORMATICA, BIOCHIMICA)", default=default_guess)
 
 
 def guess_subject_from_filename(filename: str) -> str:
@@ -314,6 +305,78 @@ def _run_transcribe_with_spinner(cmd: List[str], label: str) -> subprocess.Compl
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout="", stderr="")
 
 
+def resolve_setup_request(
+    audio: Union[str, List[str], None],
+    date: Optional[str] = None,
+    materia: Optional[str] = None,
+    argomenti: Optional[str] = None,
+    prompter: Optional[SetupPrompter] = None,
+    strict: bool = False,
+) -> SetupRequest:
+    """Raccoglie e valida i metadati di setup senza mai leggere da stdin.
+
+    Con un prompter chiede all'utente i campi mancanti o non validi. Senza prompter:
+    audio mancante -> MissingSetupFields; data/materia mancanti -> default (oggi, materia
+    dedotta dal nome del file o 'LEZIONE'), oppure MissingSetupFields se strict=True.
+    """
+    audio_list = [audio] if isinstance(audio, str) else list(audio or [])
+    cleaned_audios = [clean_input_path(a) for a in audio_list if a]
+
+    if not cleaned_audios:
+        if prompter is None:
+            raise MissingSetupFields(["audio"], "Nessun file audio specificato.")
+        cleaned_audios = [clean_input_path(prompter.ask_audio())]
+
+    for a in cleaned_audios:
+        if not os.path.isfile(a):
+            raise SetupError(f"File audio non trovato: '{a}'")
+
+    missing: List[str] = []
+
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    date_val = ""
+    if date:
+        try:
+            date_val = parse_flexible_date(date)
+        except ValueError as e:
+            if prompter is None:
+                raise SetupError(str(e))
+    while not date_val:
+        if prompter is not None:
+            raw_date = prompter.ask_date(today_str)
+            try:
+                date_val = parse_flexible_date(raw_date)
+            except ValueError:
+                prompter.invalid_date(raw_date)
+        elif strict:
+            missing.append("date")
+            break
+        else:
+            date_val = today_str
+
+    guess_subject = guess_subject_from_filename(os.path.basename(cleaned_audios[0]))
+    materia_val = materia.strip() if materia else ""
+    while not materia_val:
+        if prompter is not None:
+            materia_val = prompter.ask_materia(guess_subject)
+        elif strict:
+            missing.append("materia")
+            break
+        else:
+            materia_val = guess_subject if guess_subject else "LEZIONE"
+
+    if missing:
+        raise MissingSetupFields(missing)
+
+    return SetupRequest(
+        audio=cleaned_audios,
+        date=date_val,
+        materia=sanitize_filename_part(materia_val.upper()),
+        # Argomenti opzionali: se vuoti non vengono registrati né mostrati all'LLM.
+        argomenti=sanitize_filename_part(argomenti.strip()) if argomenti and argomenti.strip() else "",
+    )
+
+
 def run_setup(
     audio: Union[str, List[str]],
     date: Optional[str] = None,
@@ -325,7 +388,9 @@ def run_setup(
     force: bool = False,
     mock_asr: bool = False,
     interactive: bool = True,
-    on_progress: Optional[Callable[[str], None]] = None
+    on_progress: Optional[Callable[[str], None]] = None,
+    prompter: Optional[SetupPrompter] = None,
+    strict: bool = False,
 ) -> Dict[str, Any]:
     """
     Esegue l'ingest audio e il setup strutturato della lezione.
@@ -336,60 +401,20 @@ def run_setup(
     - Gestione coerente di --skip-transcribe (stato METADATA_ONLY)
     - Supporto a file audio singolo o lista di file audio (concatenazione deterministica con offset temporale cumulativo)
     """
-    # 1. Normalizzazione lista audio
+    # 1-2. Metadati (audio, data, materia, argomenti) validati, eventualmente chiesti al prompter
     if not model:
         model = DEFAULT_MODEL
-    audio_list = [audio] if isinstance(audio, str) else list(audio)
-    cleaned_audios = [clean_input_path(a) for a in audio_list if a]
-
-    if not cleaned_audios:
-        if interactive and sys.stdin.isatty():
-            raw_audio = prompt_clean("File audio (trascina il file qui o inserisci il percorso)")
-            cleaned_audios = [clean_input_path(raw_audio)]
-        else:
-            raise SetupError("Nessun file audio specificato.")
-
-    # Validazione esistenza file audio
-    for a in cleaned_audios:
-        if not os.path.isfile(a):
-            raise SetupError(f"File audio non trovato: '{a}'")
-
+    request = resolve_setup_request(
+        audio, date=date, materia=materia, argomenti=argomenti,
+        prompter=prompter if interactive else None, strict=strict,
+    )
+    cleaned_audios = request.audio
     primary_audio = cleaned_audios[0]
     primary_audio_name = os.path.basename(primary_audio)
     audio_dir = os.path.dirname(os.path.abspath(primary_audio))
-
-    # 2. Risoluzione Metadati (Data, Materia, Argomenti)
-    today_str = datetime.date.today().strftime("%Y-%m-%d")
-    date_val = ""
-    if date:
-        try:
-            date_val = parse_flexible_date(date)
-        except ValueError as e:
-            if not interactive or not sys.stdin.isatty():
-                raise SetupError(str(e))
-
-    while not date_val:
-        if interactive and sys.stdin.isatty():
-            raw_date = prompt_clean("Data lezione (es. '26 sett 2025', '3 marzo 2024')", default=today_str)
-            try:
-                date_val = parse_flexible_date(raw_date)
-            except ValueError:
-                print(f"  {RED}Formato data non valido.{RESET}")
-        else:
-            date_val = today_str
-
-    # Materia
-    guess_subject = guess_subject_from_filename(primary_audio_name)
-    materia_val = materia.strip() if materia else ""
-    while not materia_val:
-        if interactive and sys.stdin.isatty():
-            materia_val = _prompt_materia_select(default_guess=guess_subject)
-        else:
-            materia_val = guess_subject if guess_subject else "LEZIONE"
-    materia_val = sanitize_filename_part(materia_val.upper())
-
-    # Argomenti (opzionale: se lasciato vuoto, nessun argomento viene registrato né mostrato all'LLM)
-    argomenti_val = sanitize_filename_part(argomenti.strip()) if argomenti and argomenti.strip() else ""
+    date_val = request.date
+    materia_val = request.materia
+    argomenti_val = request.argomenti
 
     # 3. Risoluzione cartella di destinazione
     if dest_dir:
@@ -668,35 +693,3 @@ def configure_setup_parser(parser: Any) -> Any:
     parser.add_argument("--force", action="store_true", help="Forza la riscrittura della cartella se già esistente")
     parser.add_argument("--mock", action="store_true", help="Usa mock deterministico ASR per test offline")
     return parser
-
-
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Workflow accademico RT: Setup cartella, trascrizione macparakeet-cli e metadati YAML."
-    )
-    configure_setup_parser(parser)
-    args = parser.parse_args()
-
-    try:
-        res = run_setup(
-            audio=args.audio,
-            date=args.date,
-            materia=args.materia,
-            argomenti=args.argomenti,
-            dest_dir=args.dest_dir,
-            model=args.model,
-            skip_transcribe=args.skip_transcribe,
-            force=args.force,
-            mock_asr=args.mock,
-            interactive=True
-        )
-        print(f"\n{BOLD}{GREEN}✨ Setup completato con successo!{RESET}")
-        print(f"📁 Percorso lezione: {BOLD}{res['lesson_dir']}{RESET}\n")
-    except SetupError as se:
-        print(f"\n{RED}❌ Errore Setup: {se}{RESET}\n")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

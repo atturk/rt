@@ -8,7 +8,7 @@ import yaml
 import pytest
 from unittest.mock import patch, MagicMock
 
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     _configure_pricing_section,
     _build_configure_roles_app,
     ConfigurePhaseRolesApp,
@@ -57,7 +57,7 @@ async def test_phase_cards_navigation_and_confirmation(tmp_path):
     with open(rewrite_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         async with app.run_test() as pilot:
@@ -107,7 +107,7 @@ async def test_phase_cards_no_write_until_confirmation(tmp_path):
     with open(outline_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(initial_job_content, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         async with app.run_test() as pilot:
@@ -145,10 +145,10 @@ async def test_phase_cards_create_new_profile(tmp_path):
         "routes": [{"credential": "google_1", "model": "gemini-2.5-flash"}]
     }
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
-        with patch("rt.pipeline.configure._create_new_model_profile", return_value=("new_gemini", new_profile_dict, "primary")) as mock_create:
+        with patch("rt.tui.configure._create_new_model_profile", return_value=("new_gemini", new_profile_dict, "primary")) as mock_create:
             async with app.run_test() as pilot:
                 # DOWN -> DOWN -> ENTER (NEW_PROFILE) -> c -> ENTER (conferma)
                 await pilot.press("down")
@@ -178,7 +178,7 @@ async def test_phase_cards_cursor_preserved_across_cards(tmp_path):
     with open(rewrite_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump({"primary": {"provider": "openrouter", "model": "old_model"}}, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         async with app.run_test() as pilot:
@@ -210,7 +210,7 @@ async def test_phase_cards_remove_assigned_role(tmp_path):
     with open(outline_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump({"primary": {"provider": "openrouter", "model": "old_model"}}, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         app.pending_selections["outline"]["primary"] = "prof_a"
@@ -246,7 +246,7 @@ async def test_confirmation_screen_modify_phase_returns_to_card(tmp_path):
     with open(rewrite_job_file, "w", encoding="utf-8") as f:
         yaml.safe_dump({"primary": {"provider": "openrouter", "model": "old_model"}}, f)
 
-    with patch("rt.pipeline.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
+    with patch("rt.tui.configure.find_job_yaml_paths", return_value={"outline": outline_job_file, "rewrite": rewrite_job_file}):
         app = _build_configure_roles_app(config_dir, env_path)
         assert app is not None
         with patch("questionary.select") as mock_sel:

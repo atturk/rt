@@ -17,11 +17,9 @@ from rt.core.models import (
 from rt.core.manifest import init_or_update_manifest
 from rt.pipeline.recall import save_recall_bank, load_recall_bank, get_reserve_count
 from rt.core.models import RecallBank
-from rt.pipeline.recall_session import (
-    load_recall_session_state, save_recall_session_state,
-    start_recall_via_telegram, send_current_recall_question,
-    run_recall_terminal_session, handle_recall_answer, format_unit_reference,
-)
+from rt.services.recall_service import load_recall_session_state, save_recall_session_state, handle_recall_answer, format_unit_reference
+from rt.telegram.recall_channel import start_recall_via_telegram, send_current_recall_question
+from rt.tui.recall import run_recall_terminal_session
 from rt.telegram import registry, recall_preferences
 from rt.telegram.config import TelegramConfig
 from rt.telegram.daemon import (
@@ -179,8 +177,8 @@ class TestStartRecallViaTelegram:
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.send_message", side_effect=fake_send), \
              patch("rt.telegram.client.delete_message", side_effect=fake_delete), \
-             patch("rt.pipeline.recall_session._ensure_initial_batch", side_effect=fake_batch), \
-             patch("rt.pipeline.recall_session.send_current_recall_question"), \
+             patch("rt.services.recall_service.ensure_initial_batch", side_effect=fake_batch), \
+             patch("rt.telegram.recall_channel.send_current_recall_question"), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
             cfg_obj.telegram.state_dir = state_dir
@@ -206,8 +204,8 @@ class TestStartRecallViaTelegram:
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.send_message", return_value={"message_id": 105}), \
              patch("rt.telegram.client.delete_message", side_effect=Exception("Message already deleted")), \
-             patch("rt.pipeline.recall_session._ensure_initial_batch"), \
-             patch("rt.pipeline.recall_session.send_current_recall_question"), \
+             patch("rt.services.recall_service.ensure_initial_batch"), \
+             patch("rt.telegram.recall_channel.send_current_recall_question"), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
             cfg_obj.telegram.state_dir = state_dir
@@ -463,7 +461,7 @@ class TestSendUnitAudio:
             sent.append({"audio_path": audio_path_, "title": title, "reply_to_message_id": reply_to_message_id})
             return {"ok": True}
 
-        from rt.pipeline.recall_session import send_unit_audio
+        from rt.telegram.recall_channel import send_unit_audio
         fake_clip_path = str(tmp_path / "tmp_clip.mp3")
         with open(fake_clip_path, "wb") as f:
             f.write(b"clip bytes")
@@ -492,7 +490,7 @@ class TestSendUnitAudio:
         lesson_dir = str(tmp_path / "lesson")
         _setup_lesson(lesson_dir)  # nessun audio_file nel manifest
         question = _make_mirata_question(qid="recall_000002", unit_id="1.1")
-        from rt.pipeline.recall_session import send_unit_audio
+        from rt.telegram.recall_channel import send_unit_audio
         with pytest.raises(ValueError):
             send_unit_audio(lesson_dir, question)
 
@@ -611,7 +609,7 @@ class TestRecallPollAnswer:
         cfg = TelegramConfig(bot_token="TOK", chat_id=999)
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.stop_poll") as mock_stop, \
-             patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+             patch("rt.telegram.recall_channel.send_current_recall_question") as mock_next:
             asyncio.run(handle_poll_answer(update, context))
             assert mock_stop.called
             # Niente più avanzamento automatico: l'utente deve cliccare ⏭️.
@@ -663,7 +661,7 @@ class TestRecallActionCallbacks:
         update = _make_mock_callback_update(f"rsk:{short_id}")
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+        with patch("rt.telegram.recall_channel.send_current_recall_question") as mock_next:
             asyncio.run(handle_callback(update, context))
             assert mock_next.called
             # Passa exclude_id=question_id per non riproporre subito la domanda appena skippata.
@@ -683,7 +681,7 @@ class TestRecallActionCallbacks:
         bank = RecallBank(questions=[_make_mirata_question()])
         save_recall_bank(bank, lesson_dir)
         # handle_recall_answer risolve force_mock dalla sessione quando non passato esplicitamente
-        # (vedi rt.pipeline.recall_session.handle_recall_answer): senza questo, il ramo "rns" del
+        # (vedi rt.services.recall_service.handle_recall_answer): senza questo, il ramo "rns" del
         # daemon per mirata/vasta chiamerebbe l'LLM reale invece di restare mockato.
         save_recall_session_state(lesson_dir, {"order": "alternato", "unit_cursor": None, "current_question_id": None, "force_mock": True})
 
@@ -694,7 +692,7 @@ class TestRecallActionCallbacks:
         update = _make_mock_callback_update(f"rns:{short_id}")
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+        with patch("rt.telegram.recall_channel.send_current_recall_question") as mock_next:
             asyncio.run(handle_callback(update, context))
             # Niente più avanzamento automatico: l'utente deve cliccare ⏭️.
             assert not mock_next.called
@@ -723,7 +721,7 @@ class TestRecallActionCallbacks:
         cfg = TelegramConfig(bot_token="TOK", chat_id=999)
         with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
              patch("rt.telegram.client.stop_poll") as mock_stop, \
-             patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+             patch("rt.telegram.recall_channel.send_current_recall_question") as mock_next:
             asyncio.run(handle_callback(update, context))
             assert mock_stop.called
             assert not mock_next.called
@@ -751,7 +749,7 @@ class TestPostAnswerCallbacks:
         update = _make_mock_callback_update(f"rnx:{short_id}")
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next:
+        with patch("rt.telegram.recall_channel.send_current_recall_question") as mock_next:
             asyncio.run(handle_callback(update, context))
             assert mock_next.called
 
@@ -850,7 +848,7 @@ class TestPostAnswerCallbacks:
         update = _make_mock_callback_update(f"rua:{short_id}")
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_unit_audio") as mock_audio:
+        with patch("rt.telegram.recall_channel.send_unit_audio") as mock_audio:
             asyncio.run(handle_callback(update, context))
             assert mock_audio.called
 
@@ -871,7 +869,7 @@ class TestPostAnswerCallbacks:
         update = _make_mock_callback_update(f"rua:{short_id}")
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_unit_audio", side_effect=ValueError("audio non trovato")):
+        with patch("rt.telegram.recall_channel.send_unit_audio", side_effect=ValueError("audio non trovato")):
             asyncio.run(handle_callback(update, context))
 
         assert context.bot.send_message.called
@@ -910,7 +908,7 @@ class TestTextAndVoiceDispatch:
         update.message.reply_text = AsyncMock()
         context = _make_mock_context(state_dir)
 
-        with patch("rt.pipeline.recall_session.send_current_recall_question") as mock_next, \
+        with patch("rt.telegram.recall_channel.send_current_recall_question") as mock_next, \
              patch("rt.pipeline.recall.evaluate_recall_answer", return_value="Correttezza: 80%\nCompletezza: 60%\n\nOk."):
             asyncio.run(handle_text(update, context))
             # Niente più avanzamento automatico dopo una risposta reale: l'esito arriva con
@@ -1030,7 +1028,7 @@ class TestRecallCommand:
         context = _make_mock_context(state_dir)
 
         with patch("rt.core.config.load_config", return_value=self._mock_cfg()), \
-             patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+             patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
             asyncio.run(handle_recall_command(update, context))
             mock_start.assert_called_once_with(lesson_dir, "alternato", None, False)
 
@@ -1057,7 +1055,7 @@ class TestRecallCommand:
         context = _make_mock_context(state_dir)
 
         with patch("rt.core.config.load_config", return_value=self._mock_cfg(topics={"BIOCHIMICA": 555})), \
-             patch("rt.pipeline.recall_session.start_recall_via_telegram") as mock_start:
+             patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
             asyncio.run(handle_recall_command(update, context))
             mock_start.assert_called_once_with(override_dir, "alternato", None, False)
 
@@ -1184,7 +1182,7 @@ class TestTask10TelegramFloodingAndCleanup:
         context = _make_mock_context(state_dir)
         context.bot.delete_message = AsyncMock()
 
-        with patch("rt.pipeline.recall_session.send_current_recall_question"):
+        with patch("rt.telegram.recall_channel.send_current_recall_question"):
             asyncio.run(handle_callback(update, context))
 
         assert not context.bot.delete_message.called
@@ -1368,7 +1366,7 @@ class TestTask11PersistentUnitAudioButtons:
         context = _make_mock_context(state_dir)
         context.bot.delete_message = AsyncMock()
 
-        with patch("rt.pipeline.recall_session.send_unit_audio", return_value=[201, 202]):
+        with patch("rt.telegram.recall_channel.send_unit_audio", return_value=[201, 202]):
             # 1st click: sends audio messages
             asyncio.run(handle_callback(update, context))
             entry = registry.resolve_pending(short_id, state_dir)
@@ -1443,7 +1441,7 @@ class TestTask12StaleRecallCheck:
         from rt.telegram import session as tg_session
         tg_session.start_session(state_dir, 12345, None, "recall", lesson_dir)
 
-        from rt.pipeline.recall_session import run_stale_recall_check
+        from rt.tui.recall import run_stale_recall_check
         run_stale_recall_check(lesson_dir, state_dir=state_dir)
 
         out = capsys.readouterr().out
@@ -1451,7 +1449,7 @@ class TestTask12StaleRecallCheck:
 
     @pytest.mark.anyio
     async def test_check_interactive_mantieni_and_elimina_and_undo(self, tmp_path):
-        from rt.pipeline.recall_session import StaleRecallApp
+        from rt.tui.recall import StaleRecallApp
         from rt.pipeline.recall import _compute_units_fingerprint
 
         lesson_dir = str(tmp_path / "lesson")
@@ -1517,7 +1515,7 @@ class TestTask12StaleRecallCheck:
         assert len(b_undo.answers) == 1
 
     def test_run_stale_recall_check_non_interactive(self, tmp_path, monkeypatch, capsys):
-        from rt.pipeline.recall_session import run_stale_recall_check
+        from rt.tui.recall import run_stale_recall_check
         lesson_dir = str(tmp_path / "lesson")
         state_dir = str(tmp_path / "state")
         _setup_lesson(lesson_dir)

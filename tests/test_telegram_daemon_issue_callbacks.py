@@ -84,7 +84,7 @@ def test_issue_callback_accept(tmp_path):
     update = _make_mock_callback_update(f"ia:{short_id}")
     context = _make_mock_context(state_dir)
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next:
         asyncio.run(handle_callback(update, context))
         assert mock_send_next.called
 
@@ -112,7 +112,7 @@ def test_issue_callback_reject(tmp_path):
     update = _make_mock_callback_update(f"ir:{short_id}")
     context = _make_mock_context(state_dir)
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next:
         asyncio.run(handle_callback(update, context))
         assert mock_send_next.called
 
@@ -137,7 +137,7 @@ def test_issue_callback_skip(tmp_path):
     update = _make_mock_callback_update(f"is:{short_id}")
     context = _make_mock_context(state_dir)
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next:
         asyncio.run(handle_callback(update, context))
         assert mock_send_next.called
 
@@ -178,7 +178,7 @@ def test_issue_callback_edit_and_text_response(tmp_path):
     update_msg.message.text = "testo corretto manualmente"
     update_msg.message.reply_text = AsyncMock()
 
-    with patch("rt.pipeline.issue_review.send_current_issue") as mock_send_next:
+    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next:
         asyncio.run(handle_text(update_msg, context))
         assert mock_send_next.called
 
@@ -206,7 +206,7 @@ def test_start_review_callback(tmp_path):
     update = _make_mock_callback_update(f"ivr:{short_id}")
     context = _make_mock_context(state_dir)
 
-    with patch("rt.pipeline.issue_review.start_review_via_telegram") as mock_start:
+    with patch("rt.telegram.review_channel.start_review_via_telegram") as mock_start:
         asyncio.run(handle_callback(update, context))
         assert mock_start.called
         args, kwargs = mock_start.call_args

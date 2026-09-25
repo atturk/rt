@@ -88,7 +88,7 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             pass
 
     if kind == "recall" and lesson_dir:
-        from rt.pipeline.recall_session import load_recall_session_state
+        from rt.services.recall_service import load_recall_session_state
         from rt.telegram import formatting as tg_fmt
         sess_state = load_recall_session_state(lesson_dir)
         pa_short_id = sess_state.get("current_post_answer_short_id")
@@ -219,7 +219,7 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
                 if 1 <= idx_1based <= len(list_dirs):
                     target_lesson_dir = list_dirs[idx_1based - 1]
                     loop = asyncio.get_running_loop()
-                    from rt.pipeline.recall_session import start_recall_via_telegram
+                    from rt.telegram.recall_channel import start_recall_via_telegram
                     await loop.run_in_executor(None, start_recall_via_telegram, target_lesson_dir, "alternato", None, False)
                     return
                 else:
@@ -267,7 +267,7 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         loop = asyncio.get_running_loop()
-        from rt.pipeline.recall_session import start_recall_via_telegram
+        from rt.telegram.recall_channel import start_recall_via_telegram
         await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "alternato", None, False)
         return
 
@@ -301,7 +301,7 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
     elif len(matches) == 1:
         loop = asyncio.get_running_loop()
-        from rt.pipeline.recall_session import start_recall_via_telegram
+        from rt.telegram.recall_channel import start_recall_via_telegram
         await loop.run_in_executor(None, start_recall_via_telegram, matches[0].lesson_dir, "alternato", None, False)
         return
     elif len(matches) <= MAX_INLINE_DISAMBIGUATION:
@@ -401,7 +401,7 @@ async def _handle_recall_disambiguation_callback(update: Update, context: Contex
         pass
 
     loop = asyncio.get_running_loop()
-    from rt.pipeline.recall_session import start_recall_via_telegram
+    from rt.telegram.recall_channel import start_recall_via_telegram
     await loop.run_in_executor(None, start_recall_via_telegram, target_dir, "alternato", None, False)
 
 
@@ -472,7 +472,7 @@ async def _send_post_answer_result(
     msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
     if isinstance(msg_id, int):
         registry.update_pending(short_id, {"message_id": msg_id}, state_dir)
-        from rt.pipeline.recall_session import load_recall_session_state, save_recall_session_state
+        from rt.services.recall_service import load_recall_session_state, save_recall_session_state
         sess_state = load_recall_session_state(lesson_dir)
         sess_state["current_post_answer_short_id"] = short_id
         sess_state["current_post_answer_message_id"] = msg_id
@@ -502,7 +502,7 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
             pass
         from rt.pipeline.recall import skip_recall_question
         await loop.run_in_executor(None, skip_recall_question, lesson_dir, question_id)
-        from rt.pipeline.recall_session import send_current_recall_question
+        from rt.telegram.recall_channel import send_current_recall_question
         await loop.run_in_executor(None, send_current_recall_question, lesson_dir, None, question_id)
         return
 
@@ -541,7 +541,7 @@ async def _handle_recall_callback(update: Update, context: ContextTypes.DEFAULT_
         if question.pregenerated_material:
             esito += f"\n\n{question.pregenerated_material}"
     else:
-        from rt.pipeline.recall_session import handle_recall_answer
+        from rt.services.recall_service import handle_recall_answer
         evaluation = await loop.run_in_executor(None, handle_recall_answer, lesson_dir, question_id, "[Non lo so]", False)
         esito = evaluation or "🤷 Nessuna risposta."
 
@@ -581,7 +581,7 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         unit_text_visible = entry.get("unit_text_visible", False)
         if unit_text_visible and not unit_text:
             from rt.pipeline.recall import load_recall_bank
-            from rt.pipeline.recall_session import format_unit_reference
+            from rt.services.recall_service import format_unit_reference
             bank = await loop.run_in_executor(None, load_recall_bank, lesson_dir)
             question = next((q for q in bank.questions if q.id == question_id), None)
             if question:
@@ -624,7 +624,7 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         except Exception:
             pass
 
-        from rt.pipeline.recall_session import send_current_recall_question
+        from rt.telegram.recall_channel import send_current_recall_question
         await loop.run_in_executor(None, send_current_recall_question, lesson_dir)
         return
 
@@ -642,7 +642,7 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
         visible = not entry.get("unit_text_visible", False)
         unit_text = entry.get("unit_text")
         if visible and not unit_text:
-            from rt.pipeline.recall_session import format_unit_reference
+            from rt.services.recall_service import format_unit_reference
             raw_text = await loop.run_in_executor(None, format_unit_reference, lesson_dir, question)
             unit_text = raw_text.strip() or "⚠️ Nessun contenuto disponibile per questa unità."
             registry.update_pending(short_id, {"unit_text": unit_text, "unit_text_visible": True}, state_dir)
@@ -690,7 +690,7 @@ async def _handle_post_answer_callback(update: Update, context: ContextTypes.DEF
             registry.update_pending(short_id, {"audio_message_ids": []}, state_dir)
             return
         await update.callback_query.answer("🔊 Preparo l'audio...")
-        from rt.pipeline.recall_session import send_unit_audio
+        from rt.telegram.recall_channel import send_unit_audio
         try:
             sent_ids = await loop.run_in_executor(None, send_unit_audio, lesson_dir, question, thread_id, orig_msg_id)
             if sent_ids:
@@ -817,8 +817,8 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     if action == "ib":
         from rt.telegram import issue_queue as tg_queue
-        from rt.pipeline.ledger import revert_last_decision
-        from rt.pipeline.issue_review import send_current_issue
+        from rt.services.review_service import undo_last_decision, ReviewDecisionError
+        from rt.telegram.review_channel import send_current_issue
 
         queue = tg_queue.load_queue(lesson_dir)
         if queue is None or queue.current_index <= 0:
@@ -829,7 +829,10 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         tg_queue._save(queue, lesson_dir)
 
         prev_issue_id = queue.issue_ids[queue.current_index]
-        revert_last_decision(lesson_dir, prev_issue_id)
+        try:
+            undo_last_decision(lesson_dir, prev_issue_id)
+        except ReviewDecisionError:
+            pass
 
         await update.callback_query.answer("◀️ Tornato alla issue precedente.")
         try:
@@ -860,12 +863,13 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         await update.callback_query.answer("Saltata.")
     else:
         from rt.pipeline.ledger import (
-            record_decision, find_science_issue_by_id,
-            resolve_science_accept_text, resolve_science_reject_text,
+            find_science_issue_by_id, resolve_science_accept_text, resolve_science_reject_text,
         )
+        from rt.services.review_service import record_review_decision
         issue = find_science_issue_by_id(lesson_dir, issue_id)
         resolved = resolve_science_accept_text(issue) if action == "ia" else resolve_science_reject_text(issue)
-        record_decision(lesson_dir, issue_id, "accepted" if action == "ia" else "rejected", resolved_text=resolved)
+        record_review_decision(lesson_dir, issue_id, "accepted" if action == "ia" else "rejected", resolved,
+                               channel="telegram", actor=str(update.effective_user.id) if update.effective_user else "telegram")
         await update.callback_query.answer("✔ Registrato." if action == "ia" else "Registrato (mantenuto originale).")
 
     try:
@@ -874,7 +878,7 @@ async def _handle_issue_callback(update: Update, context: ContextTypes.DEFAULT_T
         pass
 
     from rt.telegram import issue_queue as tg_queue
-    from rt.pipeline.issue_review import send_current_issue
+    from rt.telegram.review_channel import send_current_issue
     tg_queue.advance(lesson_dir)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, send_current_issue, lesson_dir)
@@ -894,7 +898,7 @@ async def _handle_start_review_callback(update: Update, context: ContextTypes.DE
         pass
 
     from rt.pipeline.ledger import get_pending_issues
-    from rt.pipeline.issue_review import start_review_via_telegram
+    from rt.telegram.review_channel import start_review_via_telegram
     _, sci_to_review = get_pending_issues(lesson_dir)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, start_review_via_telegram, lesson_dir, None, sci_to_review)
@@ -905,7 +909,7 @@ async def _handle_recall_text_answer(update: Update, context: ContextTypes.DEFAU
     risposta alla domanda corrente (mirata/vasta). I quiz si rispondono con i bottoni."""
     state_dir = context.bot_data["state_dir"]
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
-    from rt.pipeline.recall_session import load_recall_session_state, handle_recall_answer
+    from rt.services.recall_service import load_recall_session_state, handle_recall_answer
 
     session_state = load_recall_session_state(lesson_dir)
     question_id = session_state.get("current_question_id")
@@ -946,7 +950,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     lesson_dir = active["lesson_dir"]
 
-    from rt.pipeline.recall_session import load_recall_session_state, handle_recall_answer
+    from rt.services.recall_service import load_recall_session_state, handle_recall_answer
     from rt.pipeline.recall import load_recall_bank
     from rt.core.models import RecallQuestionType
 
@@ -1041,15 +1045,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if kind == "issue_edit":
         issue_id = awaiting["extra"]["issue_id"]
-        from rt.pipeline.ledger import record_decision
-        record_decision(lesson_dir, issue_id, "edited", resolved_text=update.message.text)
+        from rt.services.review_service import record_review_decision
+        record_review_decision(lesson_dir, issue_id, "edited", update.message.text,
+                               channel="telegram", actor=str(update.effective_user.id) if update.effective_user else "telegram")
         convo.clear_awaiting_feedback(state_dir, chat_id)
         await _send_with_retry(lambda: update.message.reply_text(
             "✏️ Modifica registrata.",
             message_thread_id=update.effective_message.message_thread_id,
         ))
         from rt.telegram import issue_queue as tg_queue
-        from rt.pipeline.issue_review import send_current_issue
+        from rt.telegram.review_channel import send_current_issue
         tg_queue.advance(lesson_dir)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, send_current_issue, lesson_dir)

@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "lesson_id": "[2026-09-05] BIOCHIMICA - Lipidi",
+  "audio_duration_seconds": 70.0,
+  "segments": [
+    {
+      "id": "seg_000001",
+      "index": 1,
+      "start_seconds": 2.0,
+      "end_seconds": 14.0,
+      "start_formatted": "00:02",
+      "end_formatted": "00:14",
+      "text_raw": "Allora ieri abbiamo visto tutti questione, abbiamo visto",
+      "source_file": "trascritto grezzo.md",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000002",
+      "index": 2,
+      "start_seconds": 14.0,
+      "end_seconds": 22.0,
+      "start_formatted": "00:14",
+      "end_formatted": "00:22",
+      "text_raw": "I lipidi sono depositati nel tessuto adiposo.",
+      "source_file": "trascritto grezzo.md",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000003",
+      "index": 3,
+      "start_seconds": 22.0,
+      "end_seconds": 30.0,
+      "start_formatted": "00:22",
+      "end_formatted": "00:30",
+      "text_raw": "Quando c'è necessità di degradarli entra in gioco la lipasi.",
+      "source_file": "trascritto grezzo.md",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000004",
+      "index": 4,
+      "start_seconds": 30.0,
+      "end_seconds": 45.0,
+      "start_formatted": "00:30",
+      "end_formatted": "00:45",
+      "text_raw": "licorolo finansi converte il glicerolo libero in glicerolo 3 fosfato.",
+      "source_file": "trascritto grezzo.md",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000005",
+      "index": 5,
+      "start_seconds": 45.0,
+      "end_seconds": 55.0,
+      "start_formatted": "00:45",
+      "end_formatted": "00:55",
+      "text_raw": "Nei muscoli lisci ci sono sarcomeri per estrarre energia.",
+      "source_file": "trascritto grezzo.md",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    },
+    {
+      "id": "seg_000006",
+      "index": 6,
+      "start_seconds": 60.0,
+      "end_seconds": 70.0,
+      "start_formatted": "01:00",
+      "end_formatted": "01:10",
+      "text_raw": "La via prosegue con la beta-ossidazione mitocondriale degli acidi grassi.",
+      "source_file": "trascritto grezzo.md",
+      "speaker": null,
+      "confidence": null,
+      "flags": []
+    }
+  ]
+}

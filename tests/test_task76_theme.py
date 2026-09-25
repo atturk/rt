@@ -16,7 +16,7 @@ from rt.core.ui_theme import (
     get_configured_textual_theme,
     apply_saved_theme,
 )
-from rt.pipeline.configure import (
+from rt.tui.configure import (
     configure_config_parser,
     run_theme_selection,
     _maybe_prompt_theme_first_time,
@@ -132,7 +132,7 @@ def test_outline_review_app_theme(tmp_path):
             ],
         }, f)
 
-    from rt.pipeline.outline_review import OutlineReviewApp
+    from rt.tui.outline_review import OutlineReviewApp
 
     with patch("rt.core.ui_theme.get_configured_textual_theme", return_value="textual-light"):
         app = OutlineReviewApp(lesson_dir)
@@ -148,7 +148,7 @@ def test_issue_review_app_theme(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     os.makedirs(lesson_dir, exist_ok=True)
 
-    from rt.pipeline.issue_review import IssueReviewApp
+    from rt.tui.issue_review import IssueReviewApp
 
     with patch("rt.core.ui_theme.get_configured_textual_theme", return_value="textual-light"):
         app = IssueReviewApp(lesson_dir, to_review=[])
@@ -161,7 +161,7 @@ def test_issue_review_app_theme(tmp_path):
 
 def test_configure_phase_roles_app_theme():
     """Verifica che ConfigurePhaseRolesApp applichi il tema salvato."""
-    from rt.pipeline.configure import ConfigurePhaseRolesApp
+    from rt.tui.configure import ConfigurePhaseRolesApp
 
     with patch("rt.core.ui_theme.get_configured_textual_theme", return_value="textual-light"):
         app = ConfigurePhaseRolesApp(
@@ -197,7 +197,7 @@ def test_stale_recall_app_theme(tmp_path):
     lesson_dir = str(tmp_path / "lesson")
     os.makedirs(lesson_dir, exist_ok=True)
 
-    from rt.pipeline.recall_session import StaleRecallApp
+    from rt.tui.recall import StaleRecallApp
 
     with patch("rt.core.ui_theme.get_configured_textual_theme", return_value="textual-light"):
         app = StaleRecallApp(lesson_dir, stale_questions=[])
@@ -233,7 +233,7 @@ def test_configure_config_parser_theme_flag():
 def test_cmd_config_dispatches_theme():
     """Verifica che cmd_config invochi run_theme_selection quando args.theme=True."""
     args = argparse.Namespace(models=False, telegram=False, topics=False, theme=True)
-    with patch("rt.pipeline.configure.run_theme_selection") as mock_theme:
+    with patch("rt.tui.configure.run_theme_selection") as mock_theme:
         cmd_config(args)
         mock_theme.assert_called_once()
 
@@ -296,7 +296,7 @@ def test_maybe_prompt_theme_first_time(tmp_path):
     with open(gen_file, "w", encoding="utf-8") as f:
         yaml.safe_dump({"version": "2.0.0"}, f)
 
-    with patch("rt.pipeline.configure.run_theme_selection") as mock_sel:
+    with patch("rt.tui.configure.run_theme_selection") as mock_sel:
         _maybe_prompt_theme_first_time(cfg_dir)
         mock_sel.assert_called_once_with(config_dir=cfg_dir)
 
@@ -304,6 +304,6 @@ def test_maybe_prompt_theme_first_time(tmp_path):
     with open(gen_file, "w", encoding="utf-8") as f:
         yaml.safe_dump({"version": "2.0.0", "ui": {"theme": "dark"}}, f)
 
-    with patch("rt.pipeline.configure.run_theme_selection") as mock_sel:
+    with patch("rt.tui.configure.run_theme_selection") as mock_sel:
         _maybe_prompt_theme_first_time(cfg_dir)
         mock_sel.assert_not_called()

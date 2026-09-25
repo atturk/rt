@@ -20,7 +20,7 @@ from rt.core.models import (
 )
 from rt.core.manifest import init_or_update_manifest
 from rt.telegram import issue_queue as tg_queue
-from rt.pipeline.issue_review import send_current_issue
+from rt.telegram.review_channel import send_current_issue
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ def test_telegram_review_science_audio_deduplication(tmp_path):
     with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
          patch("rt.telegram.client.send_message") as mock_send_msg, \
          patch("rt.telegram.client.send_voice") as mock_send_voice, \
-         patch("rt.pipeline.issue_review.cut_clip", return_value="/tmp/clip.mp3") as mock_cut:
+         patch("rt.telegram.review_channel.cut_clip", return_value="/tmp/clip.mp3") as mock_cut:
 
         mock_send_msg.return_value = {"message_id": 100}
         mock_send_voice.return_value = {"message_id": 101}
@@ -282,7 +282,7 @@ def test_telegram_review_missing_audio_does_not_fail(tmp_path):
     with patch("rt.telegram.config.load_telegram_config", return_value=cfg), \
          patch("rt.telegram.client.send_message") as mock_send_msg, \
          patch("rt.telegram.client.send_voice") as mock_send_voice, \
-         patch("rt.pipeline.issue_review.cut_clip") as mock_cut:
+         patch("rt.telegram.review_channel.cut_clip") as mock_cut:
 
         mock_send_msg.return_value = {"message_id": 200}
 

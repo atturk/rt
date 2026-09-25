@@ -155,6 +155,8 @@ class ReviewDecision(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     notes: Optional[str] = None
     original_context: Optional[str] = None
+    channel: Optional[str] = Field(None, description="cli | telegram | web | api (assente nelle decisioni storiche)")
+    actor: Optional[str] = Field(None, description="Chi ha deciso (utente, auto_accept...)")
 
 
 class DecisionLedger(BaseModel):

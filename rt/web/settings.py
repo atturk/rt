@@ -13,65 +13,32 @@ import yaml
 
 from rt.core.config import JobRoutingConfig, KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, load_config
 from rt.llm.credentials import CredentialRef, GLOBAL_CREDENTIALS
+from rt.services import config_service
 
 
 def general_config_path(project_root: Path) -> Path:
     """Usa la stessa precedenza di load_config(): config/ nella cwd, poi nel progetto."""
-    local = Path.cwd() / "config"
-    return (local if local.is_dir() else project_root / "config") / "general.yaml"
+    return config_service.general_config_path(project_root)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"Configurazione non valida: {path.name}.")
-    return data
+    return config_service.read_yaml(path)
 
 
 def _atomic_yaml(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.stem}-", suffix=".yaml", dir=path.parent)
-    try:
-        if path.exists():
-            os.fchmod(fd, path.stat().st_mode & 0o777)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+    config_service.write_yaml_atomic(path, data)
 
 
 def _env_path(project_root: Path) -> Path:
-    config = general_config_path(project_root)
-    return config.parent.parent / ".env"
+    return config_service.env_path(project_root)
 
 
 def _save_secret(project_root: Path, env_var: str, secret: str) -> None:
-    _validate_secret(secret)
-    path = _env_path(project_root)
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    encoded = json.dumps(secret, ensure_ascii=False)
-    pattern = re.compile(rf"^(?:export\s+)?{re.escape(env_var)}\s*=")
-    updated = [f"{env_var}={encoded}" if pattern.match(line) else line for line in lines]
-    if not any(pattern.match(line) for line in lines):
-        updated.append(f"{env_var}={encoded}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".rt-env-", dir=path.parent)
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write("\n".join(updated) + "\n")
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
-    os.environ[env_var] = secret
+    config_service.set_secret(env_var, secret, path=_env_path(project_root))
 
 
 def _validate_secret(secret: str) -> None:
-    if not secret or any(char in secret for char in "\r\n\0"):
-        raise ValueError("La chiave non può essere vuota o contenere interruzioni di riga.")
+    config_service.validate_secret(secret)
 
 
 def credential_names(project_root: Path, provider: str | None = None) -> list[str]:
