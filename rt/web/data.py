@@ -187,7 +187,10 @@ def lesson_preview_html(lesson: Optional[LessonSummary], issue_id: Optional[str]
                 proposal = unit.content if unit else ''
             parts = [
                 '<aside class="rt-inline-comment" aria-label="Commento sulla issue">',
+                '<div class="rt-comment-head">',
                 f'<span class="rt-eyebrow">{escape(label)} · Unità {escape(issue.unit_id or "?")}</span>',
+                '<button type="button" class="rt-comment-close" data-comment-close="1" '
+                'aria-label="Chiudi commento">×</button></div>',
             ]
             if note:
                 parts.append(f'<p>{escape(note)}</p>')

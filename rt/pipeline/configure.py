@@ -845,7 +845,8 @@ _JOB_GROUPS: List[Tuple[str, List[str]]] = [
     ("rewrite", ["rewrite"]),
     ("review", ["review"]),
     ("immagini", ["image_description", "image_unit_judge"]),
-    ("recall", ["recall_quiz", "recall_mirata", "recall_vasta", "recall_eval_mirata", "recall_eval_vasta"]),
+    ("recall", ["recall", "recall_quiz", "recall_mirata", "recall_vasta",
+                "recall_eval_mirata", "recall_eval_vasta"]),
 ]
 
 
@@ -1359,7 +1360,12 @@ def _build_configure_roles_app(config_dir: str, env_path: str) -> Optional[Confi
     known_jobs: Set[str] = set()
     grouped_jobs: List[Tuple[str, List[str]]] = []
     for label, group_j_names in _JOB_GROUPS:
-        present = [jn for jn in group_j_names if jn in job_paths]
+        # I cinque file storici restano leggibili nelle installazioni aggiornate.
+        # Quando esiste il nuovo recall.yaml, il wizard mostra solo la route unica.
+        present = (["recall"] if label == "recall" and "recall" in job_paths
+                   else [jn for jn in group_j_names if jn in job_paths])
+        if label == "recall" and "recall" in job_paths:
+            known_jobs.update(jn for jn in group_j_names if jn in job_paths)
         if present:
             grouped_jobs.append((label, present))
             known_jobs.update(present)

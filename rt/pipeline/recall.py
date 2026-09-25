@@ -462,7 +462,7 @@ def generate_recall_batch(
             prompt=user_prompt,
             system_prompt=system_prompt,
             response_model=RecallQuestion,
-            job_name=f"recall_{qtype.value}",
+            job_name="recall",
             unit_id=", ".join(units[i].unit_id for i in group_idxs),
             lesson_dir=lesson_dir,
         )
@@ -535,7 +535,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             prompt=user_prompt,
             system_prompt=RECALL_EVAL_MIRATA_SYSTEM_PROMPT,
             response_model=RecallEvalMirataResult,
-            job_name="recall_eval_mirata",
+            job_name="recall",
             unit_id=question.unit_ids[0],
             lesson_dir=lesson_dir,
         )
@@ -555,7 +555,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             prompt=user_prompt,
             system_prompt=RECALL_EVAL_VASTA_SYSTEM_PROMPT,
             response_model=RecallEvalVastaResult,
-            job_name="recall_eval_vasta",
+            job_name="recall",
             unit_id=", ".join(question.unit_ids),
             lesson_dir=lesson_dir,
         )
@@ -577,4 +577,3 @@ def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = 
         if removed_ids:
             save_recall_bank(bank, lesson_dir)
         return len(removed_ids)
-

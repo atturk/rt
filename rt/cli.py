@@ -299,13 +299,7 @@ def cmd_recall(args):
     force_mock = getattr(args, "mock", False)
 
     if not force_mock:
-        cfg = _ensure_config_ready([])
-        from rt.telegram import recall_preferences
-        effective_style = style or recall_preferences.get_active_style(cfg.telegram.state_dir)
-        jobs_needed = [f"recall_{effective_style}"]
-        if effective_style in ("mirata", "vasta"):
-            jobs_needed.append(f"recall_eval_{effective_style}")
-        _ensure_config_ready(jobs_needed)
+        _ensure_config_ready(["recall"])
 
     channel = getattr(args, "channel", None)
     if not channel:

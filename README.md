@@ -104,6 +104,13 @@ collegati all'audio. La configurazione web salva provider, chiavi, modelli,
 Telegram e motore di trascrizione nei file locali di RT. Per dettagli, vedi
 [Prototipo web](docs/WEB_PROTOTYPE.md).
 
+Nella schermata Configurazione, **Crea connessione** salva il provider, il Base
+URL e le chiavi API (più chiavi vengono alternate). La tabella **Modelli per
+fase** permette poi di scegliere connessione e modello per Outline, Rewrite,
+Review, Recall e le due fasi immagini. Il pulsante **+** accanto a una fase
+aggiunge un modello alla connessione scelta. Le vecchie route Recall vengono
+lette automaticamente finché non salvi la nuova route unica.
+
 ### 2. Esecuzione End-to-End di una Lezione
 
 ```bash

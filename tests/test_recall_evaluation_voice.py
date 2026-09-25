@@ -49,7 +49,7 @@ class TestEvaluateRecallAnswer:
             result = evaluate_recall_answer(lesson_dir, "recall_1", "La transferrina.", force_mock=False)
 
         assert result == "Correttezza: 90%\nCompletezza: 85%\n\nOttima risposta, precisa."
-        assert captured_prompts["job_name"] == "recall_eval_mirata"
+        assert captured_prompts["job_name"] == "recall"
         assert "transferrina" in captured_prompts["prompt"]  # risposta studente inclusa
         assert "Metabolismo del ferro" in captured_prompts["prompt"]  # riferimento unita' incluso
 
@@ -74,7 +74,7 @@ class TestEvaluateRecallAnswer:
             result = evaluate_recall_answer(lesson_dir, "recall_2", "Viene assorbito e trasportato.", force_mock=False)
 
         assert result == "Copre 2 punti su 3, manca il deposito."
-        assert captured_prompts["job_name"] == "recall_eval_vasta"
+        assert captured_prompts["job_name"] == "recall"
         assert "ferritina" in captured_prompts["prompt"]  # scaletta ideale inclusa come riferimento
 
     def test_quiz_raises(self, tmp_path):

@@ -19,7 +19,7 @@ rt web
 
 Se la cartella delle lezioni non è impostata in `config/general.yaml`, l'app si
 apre sulla schermata Configurazione. Inserisci il percorso di una cartella
-esistente oppure scegli dove crearne una nuova e premi **Usa questa cartella**.
+esistente oppure scegli dove crearne una nuova e premi **Salva**.
 Il percorso viene salvato in `telegram.lessons_root`, mantenendo intatte le altre
 impostazioni. Per provarne un'altra solo per la sessione corrente:
 
@@ -59,15 +59,20 @@ file audio serviti. Premi Ctrl+C per fermare il server.
   vengono applicate al testo: il pannello segnala il numero e permette di aprire
   il JSON originale nell'app predefinita.
 - **Configurazione:** la cartella lezioni viene salvata in `config/general.yaml`
-  e riletta dopo un refresh. Si possono aggiungere chiavi OpenRouter, Google AI
-  Studio, DeepSeek o OpenAI-compatible, scegliere modello primario, secondario e
-  fallback per fase e abilitare la rotazione fra più chiavi dello stesso provider
-  per la route primaria. Le chiavi vengono salvate nel `.env` locale e non sono
-  mostrate dopo il salvataggio. Si possono inoltre configurare token, chat e topic
+  e riletta dopo un refresh. I pulsanti aprono form per lezioni, connessioni,
+  Telegram e trascrizione. Una connessione comprende provider, Base URL e una o
+  più chiavi; RT alterna le chiavi quando sono più di una. La tabella assegna a
+  ciascuna delle sei fasi una connessione e un modello ricercabile. Il pulsante
+  `+` aggiunge un ID modello alla connessione scelta. I cinque job LLM storici
+  di recall condividono ora la route `recall`; le vecchie configurazioni sono
+  lette automaticamente finché la nuova route non viene salvata. Le chiavi
+  restano nel `.env` locale e non sono mostrate dopo il salvataggio. Si possono
+  inoltre configurare token, chat e topic
   Telegram, ascoltare nuovi topic e avviare il bot in background dalla dashboard.
   Il motore STT predefinito può essere `macparakeet` oppure un server
   OpenAI-compatible che restituisce `verbose_json` con timestamp di segmento.
-  Le opzioni avanzate non esposte qui restano modificabili nei file YAML.
+  Le route secondarie e i fallback esistenti sono preservati; le opzioni avanzate
+  restano modificabili nei file YAML.
 - **Importa audio:** il pulsante nell'intestazione apre il setup non interattivo
   della CLI. Richiede data e materia; la trascrizione con `macparakeet-cli` è
   selezionabile. Una lezione esistente non viene sovrascritta.

@@ -62,8 +62,7 @@ def test_original_build_default_jobs_is_empty_shell():
     from tests.conftest import ORIGINAL_BUILD_DEFAULT_JOBS
     jobs = ORIGINAL_BUILD_DEFAULT_JOBS()
     for job_name in ("outline", "rewrite", "review",
-                     "recall_quiz", "recall_mirata", "recall_vasta",
-                     "recall_eval_mirata", "recall_eval_vasta"):
+                     "recall"):
         assert job_name in jobs
         assert jobs[job_name].primary.provider is None
         assert jobs[job_name].primary.model is None
@@ -75,8 +74,7 @@ def test_config_example_loads_as_empty_shell():
     cfg = _load_config_dir("config.example")
     assert cfg.version == "2.0.0"
     for job_name in ("outline", "rewrite", "review",
-                     "recall_quiz", "recall_mirata", "recall_vasta",
-                     "recall_eval_mirata", "recall_eval_vasta"):
+                     "recall"):
         job_cfg = cfg.jobs.get(job_name)
         assert job_cfg is not None, f"job '{job_name}' mancante in config.example/"
         assert job_cfg.primary is not None

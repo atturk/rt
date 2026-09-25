@@ -217,11 +217,7 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "review": empty_shell(max_tokens=8192, timeout=180),
         "image_description": empty_shell(max_tokens=2048, timeout=120),
         "image_unit_judge": empty_shell(max_tokens=8192, timeout=180),
-        "recall_quiz": empty_shell(max_tokens=8192, timeout=120),
-        "recall_mirata": empty_shell(max_tokens=8192, timeout=120),
-        "recall_vasta": empty_shell(max_tokens=8192, timeout=120),
-        "recall_eval_mirata": empty_shell(max_tokens=4096, timeout=120),
-        "recall_eval_vasta": empty_shell(max_tokens=4096, timeout=180),
+        "recall": empty_shell(max_tokens=8192, timeout=180),
     }
 
 
@@ -363,6 +359,29 @@ class RTConfig(BaseModel):
                     else:
                         normalized_jobs[job_name] = JobRoutingConfig(primary=job_val)
             if normalized_jobs:
+                legacy_names = ("recall_quiz", "recall_mirata", "recall_vasta",
+                                "recall_eval_mirata", "recall_eval_vasta")
+                if "recall" not in normalized_jobs:
+                    # I profili precedenti avevano cinque route per il recall.
+                    # Preferisci la prima route realmente configurata: i
+                    # template legacy possono contenere un guscio vuoto.
+                    selected = None
+                    for old_name in legacy_names:
+                        route = normalized_jobs.get(old_name)
+                        if isinstance(route, dict):
+                            route = (route.get("primary_routes") or [route.get("primary") or {}])[0]
+                            if isinstance(route, dict) and route.get("model"):
+                                selected = old_name
+                                break
+                        elif isinstance(route, JobRoutingConfig) and route.primary.model:
+                            selected = old_name
+                            break
+                    for old_name in ([selected] if selected else legacy_names):
+                        if old_name in normalized_jobs:
+                            normalized_jobs["recall"] = normalized_jobs[old_name]
+                            break
+                for old_name in legacy_names:
+                    normalized_jobs.pop(old_name, None)
                 data["jobs"] = normalized_jobs
                 if "llm" in data:
                     del data["llm"]
@@ -506,4 +525,3 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
         return _resolve_telegram_state_dir(_load_config_dir(root_config_dir), project_root)
 
     return _resolve_telegram_state_dir(RTConfig(), project_root)
-
