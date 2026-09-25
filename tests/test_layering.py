@@ -47,9 +47,6 @@ ALLOWLIST: Set[str] = {
     "rt/pipeline/recall_session.py: import rt.telegram.config",
     "rt/pipeline/recall_session.py: import textual.app",
     "rt/pipeline/recall_session.py: import textual.widgets",
-    "rt/pipeline/setup.py: call input()",
-    "rt/pipeline/setup.py: call sys.exit()",
-    "rt/pipeline/setup.py: import questionary",
 }
 
 

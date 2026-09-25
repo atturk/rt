@@ -157,28 +157,20 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     from rt.pipeline.prepare import run_prepare
     from rt.pipeline.review import run_review
     from rt.pipeline.rewrite import run_rewrite
-    from rt.pipeline.setup import DEFAULT_MODEL, run_setup
+    from rt.pipeline.setup import MissingSetupFields, run_setup
 
     force, mock = options.force, options.mock
     ctx.force, ctx.force_mock = force, mock
 
     if is_audio_input(raw_inputs):
-        with phase_scope(ctx, "setup") as scope:
-            setup_res = run_setup(
-                audio=raw_inputs,
-                date=options.date,
-                materia=options.materia,
-                argomenti=options.argomenti,
-                dest_dir=options.dest_dir,
-                model=options.model or DEFAULT_MODEL,
-                skip_transcribe=options.skip_transcribe,
-                force=force,
-                mock_asr=mock,
-                interactive=decisions is not None,
-                on_progress=lambda msg: ctx.emit(Notice(message=msg)),
-            )
-            setup_res = dict(setup_res, mock_asr=mock, skip_transcribe=options.skip_transcribe)
-            scope.complete(setup_res)
+        try:
+            with phase_scope(ctx, "setup") as scope:
+                setup_res = _setup(run_setup, raw_inputs, options, ctx, decisions)
+                scope.complete(setup_res)
+        except MissingSetupFields as exc:
+            # Nessuno può chiedere i metadati ora: la run aspetta che arrivino (API/worker).
+            _wait(result, ctx, "setup_metadata", "setup", {"inputs": raw_inputs, "missing": exc.fields})
+            return
         result.phase_results["setup"] = setup_res
         lesson_dir = setup_res["lesson_dir"]
         result.lesson_dir = lesson_dir
@@ -230,6 +222,28 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
         title = lesson_title(final_dir)
         for notifier in notifiers:
             notifier.build_completed(final_dir, bld_res, title)
+
+
+def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, decisions) -> Dict[str, Any]:
+    from rt.pipeline.setup import DEFAULT_MODEL
+    prompter = getattr(decisions, "setup_prompter", None) if decisions is not None else None
+    setup_res = run_setup(
+        audio=raw_inputs,
+        date=options.date,
+        materia=options.materia,
+        argomenti=options.argomenti,
+        dest_dir=options.dest_dir,
+        model=options.model or DEFAULT_MODEL,
+        skip_transcribe=options.skip_transcribe,
+        force=options.force,
+        mock_asr=options.mock,
+        interactive=prompter is not None,
+        on_progress=lambda msg: ctx.emit(Notice(message=msg)),
+        prompter=prompter,
+        # Senza DecisionProvider (API/worker) i metadati mancanti non si inventano.
+        strict=decisions is None,
+    )
+    return dict(setup_res, mock_asr=options.mock, skip_transcribe=options.skip_transcribe)
 
 
 def _pending(lesson_dir: str) -> List[Any]:

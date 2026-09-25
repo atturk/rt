@@ -243,3 +243,9 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   outline e issue. La notifica di fine build va ai `Notifier` registrati (la CLI registra
   `TelegramBuildNotifier`). `cmd_run` in `rt/cli.py` fa solo parsing, banner, chiamata al
   servizio, riepilogo costi ed exit code.
+- **Setup** (`rt/pipeline/setup.py`): `resolve_setup_request()` produce un `SetupRequest`
+  validato senza leggere da stdin. I campi mancanti si chiedono a un `SetupPrompter`
+  (implementato in `rt/cli_prompts.py` e passato dalla CLI solo con un TTY); senza prompter
+  si usano i default di sempre, oppure con `strict=True` si solleva `MissingSetupFields`
+  (l'orchestratore senza `DecisionProvider` la trasforma in `DecisionRequired(setup_metadata)`).
+  L'annullamento di un prompt è `SetupCancelled` (exit 0 in CLI), gli errori restano `SetupError`.

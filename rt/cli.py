@@ -380,7 +380,8 @@ def cmd_build(args):
 
 def cmd_setup(args):
     """Setup nativo per l'ingest di file audio, trascrizione macparakeet-cli e metadati."""
-    from rt.pipeline.setup import run_setup, SetupError, DEFAULT_MODEL
+    from rt.pipeline.setup import run_setup, SetupError, SetupCancelled, DEFAULT_MODEL
+    from rt.cli_prompts import terminal_setup_prompter
     try:
         res = run_setup(
             audio=args.audio,
@@ -392,9 +393,12 @@ def cmd_setup(args):
             skip_transcribe=args.skip_transcribe,
             force=args.force,
             mock_asr=args.mock,
-            interactive=True
+            interactive=True,
+            prompter=terminal_setup_prompter(),
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
+    except SetupCancelled:
+        sys.exit(0)
     except SetupError as e:
         print(f"❌ Errore Setup: {e}", file=sys.stderr)
         sys.exit(1)
@@ -504,6 +508,10 @@ def cmd_cost(args: argparse.Namespace) -> None:
 class CliDecisionProvider:
     """Decisioni umane di 'rt run' chieste con le UI da terminale (Textual/input) o Telegram."""
 
+    def __init__(self) -> None:
+        from rt.cli_prompts import terminal_setup_prompter
+        self.setup_prompter = terminal_setup_prompter()
+
     def approve_outline(self, lesson_dir: str, force: bool, force_mock: bool) -> None:
         confirm_or_revise_outline(lesson_dir, force=force, force_mock=force_mock)
 
@@ -522,7 +530,7 @@ class TelegramBuildNotifier:
 
 def cmd_run(args):
     """Pipeline end-to-end completa con idempotenza, cost protection e supporto audio/cartella."""
-    from rt.pipeline.setup import SetupError, DEFAULT_MODEL
+    from rt.pipeline.setup import SetupError, SetupCancelled, DEFAULT_MODEL
     from rt.cli_reporter import CliReporter, run_steps, format_cost_summary
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     from rt.services.context import RunContext
@@ -570,6 +578,8 @@ def cmd_run(args):
     result = run_pipeline(raw_inputs, options, ctx, decisions=CliDecisionProvider(), notifiers=[TelegramBuildNotifier()])
 
     if result.status == PipelineStatus.FAILED:
+        if isinstance(result.error, SetupCancelled):
+            sys.exit(0)
         if isinstance(result.error, SetupError):
             print(f"❌ Errore durante l'ingest audio: {result.error}", file=sys.stderr)
             sys.exit(1)
