@@ -344,3 +344,35 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
 
 Nuova migrazione: modificare `rt/db/models.py`, poi generare la revisione con Alembic
 (`alembic.command.revision(alembic_config(url), message, autogenerate=True)`) e rileggerla.
+
+## 9. Coda dei job e worker (RT 4.0, fase D)
+
+La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la porta `JobQueue`
+(`enqueue`, `cancel`, `get`, `list`, `events`, `stream_events`) e l'implementazione
+`DbJobQueue` sulle tabelle `jobs`, `job_events` e `workers` (migrazione `0003`).
+
+- **Stati**: `queued` → `running` → `succeeded` | `failed` | `cancelled`, più
+  `waiting_for_decision` quando la pipeline si ferma su una decisione umana.
+- **Lease**: `rt worker` prende un job con `claim` (su SQLite la transazione è
+  `BEGIN IMMEDIATE`, su Postgres `SELECT … FOR UPDATE SKIP LOCKED`) e un thread rinnova
+  `lease_until` ogni lease/3 secondi. Se il worker muore il lease scade, `requeue_expired`
+  rimette il job in coda (`job_requeued`) e un altro worker lo riprende: l'idempotenza per
+  fase e il checkpoint per unità del rewrite evitano di ripagare le chiamate LLM già fatte.
+  Dopo `max_attempts` prese (default 3) il job fallisce. Ctrl+C sul worker rimette subito
+  in coda il job in corso senza contarlo come tentativo.
+- **Una lezione, un job**: mentre un job è `running`, `jobs.active_lesson` vale il percorso
+  della lezione ed è `UNIQUE`, quindi il DB rifiuta un secondo job mutante sulla stessa
+  lezione. In più worker e `rt run` in processo prendono un `flock` su
+  `<lezione>/.rt.job.lock` (`rt/core/process_lock.py`), rilasciato dal sistema se il
+  processo muore: `rt run` su una lezione che un job sta elaborando si ferma con un messaggio,
+  e il worker rimette in coda un job la cui lezione è occupata da `rt run`.
+- **Eventi e annullamento**: `JobEventReporter` scrive ogni evento di `rt/services/events.py`
+  in `job_events` e aggiorna `jobs.progress`; l'id crescente dell'evento è il cursore per chi
+  segue il job (CLI, API/SSE). `cancel` annulla subito un job in coda o in attesa; per uno in
+  esecuzione imposta `cancel_requested`, che il worker vede al successivo evento o battito
+  e trasforma in `RunCancelled` tra un'unità e l'altra.
+- **Handler**: ogni tipo di job ha un handler registrato in `rt/services/job_handlers.py`
+  (`JobInfo`, `RunContext`) → `JobOutcome`. Errori sanificati in `jobs.error`.
+- **CLI**: `rt worker [--once] [--concurrency N] [--types …]` esegue i job;
+  `rt jobs [list|show ID|cancel ID]` li elenca, mostra e annulla. La tabella `workers` tiene
+  il battito dei worker (`has_live_worker`), così CLI e daemon sanno se possono accodare.

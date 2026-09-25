@@ -28,6 +28,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from rt.core.config import load_env_file, _default_project_root
 from rt.cli_secrets import configure_secrets_parser, cmd_secrets
+from rt.cli_jobs import cmd_jobs, cmd_worker, configure_jobs_parser, configure_worker_parser
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.encoding import fix_mojibake
 
@@ -577,7 +578,17 @@ def cmd_run(args):
     )
     # La CLI usa la telemetria di processo: il riepilogo costi e i test la leggono da lì.
     ctx = RunContext(reporter=CliReporter(steps=steps, total_steps=total_steps), telemetry=GLOBAL_TELEMETRY)
-    result = run_pipeline(raw_inputs, options, ctx, decisions=CliDecisionProvider(), notifiers=[TelegramBuildNotifier()])
+    from contextlib import nullcontext
+    from rt.core.process_lock import LessonBusy, lesson_work_lock
+    # Stesso lock per lezione del worker: 'rt run' e un job in coda non lavorano insieme
+    # sulla stessa cartella (per l'audio la cartella nasce durante il setup).
+    lock = lesson_work_lock(first_input) if not is_audio and os.path.isdir(first_input) else nullcontext()
+    try:
+        with lock:
+            result = run_pipeline(raw_inputs, options, ctx, decisions=CliDecisionProvider(), notifiers=[TelegramBuildNotifier()])
+    except LessonBusy as exc:
+        print(f"❌ {exc}: un job della coda la sta elaborando ('rt jobs' per vederlo).", file=sys.stderr)
+        sys.exit(1)
 
     if result.status == PipelineStatus.FAILED:
         if isinstance(result.error, SetupCancelled):
@@ -879,6 +890,14 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
     p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
     p_tgd.set_defaults(func=cmd_telegram_daemon)
+
+    # worker e coda dei job (fase D)
+    p_wrk = subparsers.add_parser("worker", help="Esegue i job in coda (pipeline, trascrizioni, recall) in background")
+    configure_worker_parser(p_wrk)
+    p_wrk.set_defaults(func=cmd_worker)
+    p_jobs = subparsers.add_parser("jobs", help="Elenca, mostra e annulla i job in coda")
+    configure_jobs_parser(p_jobs)
+    p_jobs.set_defaults(func=cmd_jobs)
 
     # Fasi della pipeline (help=argparse.SUPPRESS, documentati in epilog)
     # setup

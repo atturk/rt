@@ -6,7 +6,7 @@ rt/db/migrations/versions (tests/test_db_schema.py verifica che coincidano).
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -142,3 +142,65 @@ class StateDocument(Base):
     key: Mapped[str] = mapped_column(String(1024), primary_key=True)
     payload: Mapped[Any] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Job(Base):
+    """Job persistente della coda (fase D). active_lesson vale lesson_path solo mentre il job
+    è in esecuzione ed è UNIQUE: il DB stesso impedisce due job mutanti sulla stessa lezione
+    (NULL per i job fermi o conclusi, che non si contano). lease_until è la scadenza del
+    lease del worker: un job 'running' con lease scaduto torna in coda."""
+    __tablename__ = "jobs"
+    __table_args__ = (Index("ix_jobs_state_created", "state", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    type: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(32))
+    lesson_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True, index=True)
+    active_lesson: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True, unique=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    result: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    progress: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    decision: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    worker_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    events: Mapped[list["JobEvent"]] = relationship(back_populates="job", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class JobEvent(Base):
+    """Evento di rt/services/events.py serializzato (più gli eventi di ciclo di vita del job).
+    L'id crescente è il cursore per chi segue il job (CLI --queue, API/SSE)."""
+    __tablename__ = "job_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    job: Mapped[Job] = relationship(back_populates="events")
+
+
+class Worker(Base):
+    """Worker attivo o passato: last_seen è il battito, così CLI e daemon sanno se c'è un
+    worker vivo (altrimenti eseguono in processo)."""
+    __tablename__ = "workers"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    hostname: Mapped[str] = mapped_column(String(256), default="")
+    pid: Mapped[int] = mapped_column(Integer, default=0)
+    platform: Mapped[str] = mapped_column(String(32), default="")
+    job_types: Mapped[list[str]] = mapped_column(JSON, default=list)
+    current_job_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    stopped_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
