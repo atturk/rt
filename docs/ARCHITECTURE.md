@@ -298,6 +298,14 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   `LlmCall`, `Setting`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
 - **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
+- **Sincronizzazione** (`rt/db/sync.py`): `rt db sync` importa le lezioni di `lessons_root`
+  (info.yaml, fasi dal manifest, issue da `science_issues.json`, ledger) senza modificare i
+  file ed è idempotente; `rt db check` elenca le differenze tra DB e file. Il dual-write
+  (`dual_write_lesson`) aggiorna la lezione nel DB dopo ogni scrittura di `info.yaml`
+  (`rt/core/state.py`), `manifest.json` (`rt/core/manifest.py`) e del ledger: per lezione,
+  fasi e issue i file restano la fonte di verità, e un errore del DB diventa solo un avviso.
+  Le dashboard continuano a scansionare le cartelle perché mostrano la freschezza calcolata
+  al momento (`check_phase_status`), che il DB non conserva.
 - **Test**: `tests/conftest.py` spegne il DB per ogni test (`RT_DATABASE_URL=off`); la
   fixture `rt_db` ne crea uno temporaneo.
 

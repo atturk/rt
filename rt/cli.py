@@ -642,6 +642,9 @@ def cmd_db(args: argparse.Namespace) -> None:
         print("Database disattivato (RT_DATABASE_URL=off o database_url: off).")
         sys.exit(1)
     shown = sqlite_file(url) or url.split("@")[-1]
+    if args.db_command in ("sync", "check"):
+        _cmd_db_sync_or_check(args, url, shown)
+        return
     if args.db_command == "upgrade":
         db = get_database(create=True, url=url)
         if db is None:
@@ -654,6 +657,38 @@ def cmd_db(args: argparse.Namespace) -> None:
             print(f"Database non ancora creato: {shown}\nEsegui 'rt db upgrade' per crearlo.")
             return
         print(f"Database: {shown}\nRevisione: {current_revision(db.engine)} (ultima: {head_revision()})")
+
+
+def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> None:
+    from rt.core.config import load_config
+    from rt.db.engine import get_database
+    from rt.db.sync import check_all, sync_all
+
+    root = args.lessons_root or load_config().telegram.lessons_root
+    if not root or not os.path.isdir(os.path.expanduser(root)):
+        print("❌ Cartella delle lezioni non trovata: passa --lessons-root o imposta telegram.lessons_root.", file=sys.stderr)
+        sys.exit(1)
+    root = os.path.abspath(os.path.expanduser(root))
+    db = get_database(create=args.db_command == "sync", url=url)
+    if db is None:
+        print(f"❌ Database non disponibile: {shown}\nEsegui 'rt db upgrade' per crearlo.", file=sys.stderr)
+        sys.exit(1)
+    if args.db_command == "sync":
+        result = sync_all(db, root)
+        print(f"✅ Lezioni sincronizzate: {result['synced']} ({shown})")
+        for err in result["errors"]:
+            print(f"  ⚠️  {err}", file=sys.stderr)
+        if result["errors"]:
+            sys.exit(1)
+        return
+    diffs = check_all(db, root)
+    if not diffs:
+        print("✅ Database allineato ai file delle lezioni.")
+        return
+    print(f"⚠️  {len(diffs)} differenze tra database e file (esegui 'rt db sync' per riallinearli):")
+    for d in diffs:
+        print(f"  - {d}")
+    sys.exit(1)
 
 
 def _upgrade_database_quietly() -> None:
@@ -903,6 +938,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     db_sub = p_db.add_subparsers(dest="db_command", required=True, title="Comandi database")
     db_sub.add_parser("upgrade", help="Crea il database o applica le migrazioni mancanti")
     db_sub.add_parser("status", help="Mostra percorso e revisione del database")
+    for name, text in (("sync", "Importa nel database le lezioni di lessons_root (non modifica i file)"),
+                       ("check", "Confronta database e file delle lezioni e segnala le differenze")):
+        p_sub = db_sub.add_parser(name, help=text)
+        p_sub.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
     p_db.set_defaults(func=cmd_db)
 
     return parser, {

@@ -103,6 +103,9 @@ def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, path)
 
+    from rt.db.sync import dual_write_lesson
+    dual_write_lesson(lesson_dir)
+
 
 def record_decision(
     lesson_dir: str,
