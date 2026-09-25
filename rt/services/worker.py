@@ -44,6 +44,7 @@ def register_handler(job_type: str, handler: JobHandler) -> None:
 
 def registered_handlers() -> Dict[str, JobHandler]:
     import rt.services.job_handlers  # noqa: F401 - registra i tipi standard
+    import rt.services.api_jobs  # noqa: F401 - tipi usati dall'API (fase E)
     return dict(_HANDLERS)
 
 

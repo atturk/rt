@@ -103,3 +103,44 @@ def launch_daemon_in_terminal() -> None:
     cmd = f"{rt_path} telegram-daemon"
     script = f'tell application "Terminal" to do script "{cmd}"'
     subprocess.run(["osascript", "-e", script])
+
+
+def start_daemon_detached(cwd: str, logfile: str, wait_seconds: float = 5.0) -> int:
+    """Avvia 'rt telegram-daemon' in una sessione propria, scollegata da chi lo avvia (API,
+    web): il bot sopravvive alla chiusura del processo che l'ha lanciato. Il lock del PID
+    file impedisce i duplicati. Restituisce il PID o solleva RuntimeError."""
+    import time
+    running = get_daemon_pid()
+    if running is not None:
+        return running
+    os.makedirs(os.path.dirname(logfile), exist_ok=True)
+    with open(logfile, "a", encoding="utf-8") as output:
+        os.chmod(logfile, 0o600)
+        process = subprocess.Popen(
+            [sys.executable, "-m", "rt.cli", "telegram-daemon"], cwd=cwd,
+            stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    deadline = time.monotonic() + wait_seconds
+    while time.monotonic() < deadline:
+        pid = get_daemon_pid()
+        if pid is not None:
+            return pid
+        if process.poll() is not None:
+            raise RuntimeError(f"Il bot non si è avviato. Controlla {logfile}.")
+        time.sleep(0.1)
+    raise RuntimeError(f"Il bot non ha confermato l'avvio. Controlla {logfile}.")
+
+
+def stop_daemon(wait_seconds: float = 10.0) -> bool:
+    """Chiede al bot di terminare (SIGTERM) e attende. False se non era in esecuzione."""
+    import signal
+    import time
+    pid = get_daemon_pid()
+    if pid is None:
+        return False
+    os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + wait_seconds
+    while time.monotonic() < deadline and get_daemon_pid() is not None:
+        time.sleep(0.1)
+    return True

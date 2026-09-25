@@ -16,6 +16,8 @@ from rt.core.state import WorkflowState, compute_effective_workflow_state, read_
 from rt.pipeline.cost import compute_lesson_cost
 from rt.pipeline.ledger import load_ledger
 from rt.pipeline.review import load_science_issues
+# Spostate nel service layer (RT4-E2): le usano anche web e API.
+from rt.services.lesson_service import load_markdown_preview, strip_yaml_frontmatter  # noqa: F401
 
 PHASES = ["prepare", "outline", "rewrite", "review", "build"]
 
@@ -128,57 +130,3 @@ def discover_lessons(root: Optional[str]) -> List[LessonSummary]:
     summaries.sort(key=lambda s: s.mtime, reverse=True)
     return summaries
 
-
-def strip_yaml_frontmatter(content: str) -> str:
-    """Rimuove un eventuale blocco di frontmatter YAML in testa alla stringa
-    (es. '---\n...\n---\n') per evitare che appaia come testo corrotto nel widget
-    MarkdownViewer, preservando intatto il resto del Markdown."""
-    if not content or not content.startswith("---"):
-        return content
-    pattern = r"^---\r?\n.*?\r?\n---\r?\n?"
-    return re.sub(pattern, "", content, count=1, flags=re.DOTALL).lstrip("\r\n")
-
-
-def load_markdown_preview(lesson_dir: str) -> str:
-    """Markdown reale se la lezione è già stata 'build'ata; altrimenti un'anteprima
-    live generata al volo dallo stesso renderer usato da 'rt build' (riuso diretto,
-    nessuna duplicazione); altrimenti un placeholder onesto. Il frontmatter YAML
-    viene rimosso per visualizzazione pulita nella dashboard."""
-    rielab_path = lesson_path(lesson_dir, "rielaborato.md")
-    if os.path.isfile(rielab_path):
-        try:
-            with open(rielab_path, "r", encoding="utf-8") as f:
-                return strip_yaml_frontmatter(f.read())
-        except OSError:
-            pass
-
-    try:
-        from rt.core.segments import load_segments_json
-        from rt.pipeline.build import render_rielaborato_md
-        from rt.pipeline.ledger import apply_decisions_to_draft
-        from rt.pipeline.outline import load_outline
-        from rt.pipeline.rewrite import load_draft
-
-        outline = load_outline(lesson_dir)
-        draft = load_draft(lesson_dir)
-        segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-        ledger = load_ledger(lesson_dir)
-        science_issues = load_science_issues(lesson_dir)
-        resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
-        info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
-        rendered = render_rielaborato_md(
-            outline=outline,
-            draft=resolved_draft,
-            segments_data=segments_data,
-            date=info.get("data") or "",
-            subject=info.get("materia") or "",
-            topics=info.get("argomenti") or "",
-        )
-        return strip_yaml_frontmatter(rendered)
-    except Exception:
-        return (
-            "# Nessuna anteprima disponibile\n\n"
-            "Il documento Markdown di questa lezione non è ancora stato generato.\n\n"
-            "Serve almeno la fase di *rewrite* completata per un'anteprima live, "
-            "oppure la fase di *build* per il documento finale."
-        )

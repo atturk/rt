@@ -250,3 +250,20 @@ def _isolate_load_config_from_ambient_repo_config(monkeypatch, tmp_path):
     monkeypatch.setattr(rt.pipeline.review, "load_config", patched_load_config)
     monkeypatch.setattr(rt.pipeline.smoke_test, "load_config", patched_load_config)
 
+
+
+@pytest.fixture
+def api_token(rt_db):
+    """Token API valido per un DB temporaneo (RT4-E1)."""
+    from rt.api.auth import reset_token
+    return reset_token(rt_db)
+
+
+@pytest.fixture
+def api_client(api_token):
+    """TestClient dell'API autenticato con Bearer."""
+    from fastapi.testclient import TestClient
+    from rt.api.app import create_app
+    client = TestClient(create_app())
+    client.headers["Authorization"] = f"Bearer {api_token}"
+    return client

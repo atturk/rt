@@ -148,7 +148,7 @@ def cmd_outline(args):
 
 def cmd_validate_outline(args):
     outline = load_outline(args.lesson_dir)
-    seg_data = load_segments_json(os.path.join(args.lesson_dir, "segments.json"))
+    seg_data = load_segments_json(lesson_path(args.lesson_dir, "segments.json"))
     res = validate_outline(outline, seg_data)
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
@@ -167,7 +167,7 @@ def cmd_rewrite(args):
 def cmd_validate_draft(args):
     outline = load_outline(args.lesson_dir)
     draft = load_draft(args.lesson_dir)
-    seg_data = load_segments_json(os.path.join(args.lesson_dir, "segments.json"))
+    seg_data = load_segments_json(lesson_path(args.lesson_dir, "segments.json"))
     res = validate_draft(draft, outline, seg_data)
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
@@ -745,6 +745,15 @@ def cmd_web(args: argparse.Namespace) -> None:
     web_main(argv)
 
 
+def cmd_api(args: argparse.Namespace) -> None:
+    """Avvia l'API REST (FastAPI) su loopback."""
+    from rt.api.server import run
+    code = run(host=args.host, port=args.port, reset_token=args.reset_token,
+               no_auth=args.no_auth, dev_cors=args.dev_cors)
+    if code:
+        sys.exit(code)
+
+
 def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.ArgumentParser]]:
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
     from rt.tui.configure import configure_config_parser
@@ -767,6 +776,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  -u, --update        Aggiorna RT all'ultima versione disponibile\n\n"
         "Esempi:\n"
         "  rt web                          Avvia l'interfaccia web locale\n"
+        "  rt api                          Avvia l'API REST locale (http://127.0.0.1:8765/docs)\n"
         "  rt run lezione.m4a              Pipeline completa da un file audio\n"
         "  rt run <cartella_lezione>       Riprende una lezione già iniziata\n"
         "  rt review <cartella_lezione>    Critica scientifica indipendente\n"
@@ -787,6 +797,14 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_web.add_argument("--no-browser", action="store_true", help="Non aprire automaticamente il browser")
     p_web.add_argument("--log-file", help="Percorso del log diagnostico")
     p_web.set_defaults(func=cmd_web)
+
+    p_api = subparsers.add_parser("api", help="Avvia l'API REST locale (FastAPI, documentazione su /docs)")
+    p_api.add_argument("--host", default="127.0.0.1", help="Indirizzo di ascolto (default: 127.0.0.1, solo questo Mac)")
+    p_api.add_argument("--port", type=int, default=8765, help="Porta (default: 8765)")
+    p_api.add_argument("--reset-token", action="store_true", help="Genera e mostra un nuovo token API")
+    p_api.add_argument("--no-auth", action="store_true", help="Disattiva l'autenticazione (solo su 127.0.0.1)")
+    p_api.add_argument("--dev-cors", action="store_true", help="Consente le richieste dalla SPA in sviluppo (localhost:5173)")
+    p_api.set_defaults(func=cmd_api)
 
     # 1. config
     p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
