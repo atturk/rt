@@ -82,3 +82,38 @@ def test_daemon_pid_is_exclusive_across_processes(tmp_path):
     finally:
         remove_daemon_pid(path)
     assert get_daemon_pid(path) is None
+
+
+def test_model_offered_by_legacy_route_stays_selectable_after_reassignment(tmp_path, monkeypatch):
+    """I modelli ricavati dai vecchi file YAML non devono sparire quando nessuna fase li usa
+    più: la pagina li mostra ancora e sceglierli deve salvare l'assegnazione."""
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "general.yaml").write_text(
+        "credentials:\n  - name: old\n    provider: openrouter\n    env_var: OLD_KEY\n", encoding="utf-8")
+    for job, model in (("outline", "model-a"), ("rewrite", "model-b")):
+        (config / f"{job}.yaml").write_text(
+            f"primary:\n  provider: openrouter\n  credential: old\n  model: {model}\n", encoding="utf-8")
+    offered = model_names(tmp_path, "old")
+    assert offered == ["model-a", "model-b"]
+
+    assign_phase(tmp_path, "rewrite", "old", "model-a")
+    assign_phase(tmp_path, "outline", "old", "model-b")
+
+    assert phase_selection(tmp_path, "outline") == ("old", "model-b")
+    assert phase_selection(tmp_path, "rewrite") == ("old", "model-a")
+    assert model_names(tmp_path, "old") == offered
+
+
+def test_assign_phase_requires_a_model(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "general.yaml").write_text("credentials: []\n", encoding="utf-8")
+    (config / "outline.yaml").write_text("primary: {}\n", encoding="utf-8")
+    save_connection(tmp_path, "Studio", "google", "", ["key-one"])
+    import pytest
+    for empty in (None, "", "  "):
+        with pytest.raises(ValueError):
+            assign_phase(tmp_path, "outline", "Studio", empty)
