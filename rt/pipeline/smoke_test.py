@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from rt.core.config import load_config, get_api_key
 from rt.llm.client import LLMClient, LLMError
 from rt.llm.capabilities import get_capabilities
-from rt.llm.telemetry import GLOBAL_TELEMETRY
+from rt.llm.telemetry import current_telemetry
 
 
 class SmokeTestResponse(BaseModel):
@@ -125,7 +125,7 @@ def run_smoke_test(
             print(f"❌ ERRORE durante la chiamata a {target_provider} ({target_credential}): {e}", file=sys.stderr)
         raise
 
-    last_record = GLOBAL_TELEMETRY.get_last()
+    last_record = current_telemetry().get_last()
 
     cost_val = last_record.estimated_cost if last_record else None
     cost_str = f"${cost_val:.6f} (estimated)" if cost_val is not None else "pending"

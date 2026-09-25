@@ -120,29 +120,8 @@ def _print_phase_action(
     description: Optional[str] = None,
     details: Optional[str] = None,
 ):
-    action = res.get("action", "RUN")
-    reason = res.get("reason", "")
-    skipped = res.get("skipped", False) or action == "SKIP"
-
-    if step is not None and total_steps is not None:
-        header_desc = f" ({description})" if description else ""
-        print(f"\n[{step}/{total_steps}] {phase_name.upper()}{header_desc}...")
-        if skipped:
-            msg = details if details else f"{phase_name} già valido ({reason})"
-            print(f"⏩ [SKIP] {msg}")
-        elif action == "FORCE":
-            msg = details if details else f"{phase_name} completato (rigenerazione forzata)."
-            print(f"✔ [FORCE] {msg}")
-        else:
-            msg = details if details else f"{phase_name} completato."
-            print(f"✔ {msg}")
-    else:
-        if action == "SKIP":
-            print(f"\n[SKIP] {phase_name}\nReason: {reason}\n")
-        elif action == "FORCE":
-            print(f"\n[FORCE] {phase_name}\nReason: {reason}\n✔ {phase_name} completato (rigenerazione forzata).\n")
-        else:
-            print(f"\n[RUN] {phase_name}\nReason: {reason}\n✔ {phase_name} completato.\n")
+    from rt.cli_reporter import format_phase_action
+    print(format_phase_action(phase_name, res, step=step, total_steps=total_steps, description=description, details=details))
 
 
 def cmd_prepare(args):

@@ -212,3 +212,24 @@ Per evitare allucinazioni in cui il modello attribuisce ingiustamente al docente
 1. **`ERR_DOCENTE`** richiede forte riscontro testuale o lessicale nella trascrizione sorgente del docente (punteggio di grounding $\ge 0.65$). Viene corredato di domanda diplomatica per chiarimenti.
 2. **`ERR_RECONSTRUCTION`**: se il claim criticato non ha alcun riscontro nella sorgente ($\le 0.20$), il sistema lo riclassifica automaticamente come allucinazione del modello, sollevando il docente da colpe inesistenti.
 3. **`SCIENCE_CHECK`**: in presenza di evidenza parziale o ambigua, la critica viene instradata a revisione umana neutrale senza trarre conclusioni affrettate.
+
+---
+
+## 7. Service layer (RT 4.0, fase A)
+
+Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: le interfacce
+(CLI, Telegram, web, in futuro API e worker) passano da `rt/services/`.
+
+- **Eventi** (`rt/services/events.py`): `PhaseStarted`, `PhaseProgress`, `PhaseCompleted`,
+  `PhaseFailed` (messaggio già sanificato), `CostUpdated`, `DecisionRequired`, `Notice`. Chi
+  ascolta implementa il protocollo `Reporter` (`emit(event)`); ci sono `NullReporter`,
+  `ListReporter`, `CallbackReporter`, `FanOutReporter`.
+- **Contesto di esecuzione** (`rt/services/context.py`): `RunContext` con `lesson_dir`,
+  `force`, `force_mock`, `reporter`, `telemetry` (un `TelemetryStore` per run) e
+  `cancel_token`. `run_prepare/outline/rewrite/review/build` accettano `ctx=` opzionale:
+  emettono gli eventi di fase e, durante la fase, il client LLM registra i costi nella
+  telemetria del contesto (`rt.llm.telemetry.current_telemetry()`, `GLOBAL_TELEMETRY` se non
+  c'è contesto). Rewrite e review controllano l'annullamento tra un'unità e l'altra
+  (`RunCancelled`); le unità già elaborate restano nel checkpoint.
+- **Presentazione a terminale** (`rt/cli_reporter.py`): `CliReporter` traduce gli eventi
+  nelle stesse righe di sempre (`[n/N] FASE (...)`, `[SKIP]`, riepilogo costi).

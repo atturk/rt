@@ -11,7 +11,7 @@ Fase A: PREPARE (Completamente deterministica).
 """
 
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from rt.core.segments import (
     parse_segments_from_json,
     parse_segments_from_markdown,
@@ -29,9 +29,16 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.core.lesson_paths import lesson_path
+from rt.services.context import RunContext, phase_scope
 
 
-def run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
+def run_prepare(lesson_dir: str, force: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+    """Esegue la fase deterministica di preparazione della lezione (eventi su ctx, se dato)."""
+    with phase_scope(ctx, "prepare") as scope:
+        return scope.complete(_run_prepare(lesson_dir, force=force))
+
+
+def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione."""
     if not os.path.isdir(lesson_dir):
         raise FileNotFoundError(f"Directory della lezione non trovata: '{lesson_dir}'")

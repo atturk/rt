@@ -18,6 +18,7 @@ from rt.core.models import (
 from rt.core.timestamp import format_timestamp
 from rt.core.encoding import fix_mojibake
 from rt.core.lesson_paths import lesson_path
+from rt.services.context import RunContext, phase_scope
 
 
 class BuildError(Exception):
@@ -277,7 +278,13 @@ def _move_to_lessons_root_if_configured(current_dir: str) -> str:
     return dest_path
 
 
-def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False) -> Dict[str, Any]:
+def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+    """Finalizzazione deterministica della lezione (eventi su ctx, se dato)."""
+    with phase_scope(ctx, "build") as scope:
+        return scope.complete(_run_build(lesson_dir, force=force, rename_folder=rename_folder))
+
+
+def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False) -> Dict[str, Any]:
     """
     Esegue la finalizzazione deterministica della lezione.
     Assembla tutti i documenti Markdown finali applicando il Decision Ledger.
@@ -434,9 +441,9 @@ def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False)
     )
 
     # 9. Persistenza atomica della telemetria su disco
-    from rt.llm.telemetry import GLOBAL_TELEMETRY
+    from rt.llm.telemetry import current_telemetry
     telemetry_file = lesson_path(current_dir, "telemetry_summary.json")
-    GLOBAL_TELEMETRY.export_to_file(telemetry_file)
+    current_telemetry().export_to_file(telemetry_file)
 
     return {
         "status": "completed",

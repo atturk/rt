@@ -36,6 +36,7 @@ from rt.core.idempotency import (
     get_phase_checkpoint,
     mark_downstream_stale,
 )
+from rt.services.context import RunContext, phase_scope
 
 
 def get_draft_path(lesson_dir: str) -> str:
@@ -99,7 +100,20 @@ def run_rewrite(
     lesson_dir: str,
     target_unit_id: Optional[str] = None,
     force: bool = False,
-    force_mock: bool = False
+    force_mock: bool = False,
+    ctx: "Optional[RunContext]" = None,
+) -> Dict[str, Any]:
+    """Rielaborazione delle unità (eventi e annullamento tra unità su ctx, se dato)."""
+    with phase_scope(ctx, "rewrite") as scope:
+        return scope.complete(_run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx))
+
+
+def _run_rewrite(
+    lesson_dir: str,
+    target_unit_id: Optional[str] = None,
+    force: bool = False,
+    force_mock: bool = False,
+    ctx: "Optional[RunContext]" = None,
 ) -> Dict[str, Any]:
     """Esegue la rielaborazione delle unità didattiche a finestre scorrevoli con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
@@ -208,6 +222,11 @@ def run_rewrite(
     total_units_count = len(units_to_process)
     
     for idx, u in enumerate(units_to_process, start=1):
+        if ctx is not None:
+            # Annullamento solo tra un'unità e l'altra: le unità già elaborate sono nel
+            # checkpoint e una nuova run riprende da lì.
+            ctx.check_cancelled()
+            ctx.progress("rewrite", current=idx, total=total_units_count, message=f"{u.id} {u.title}".strip())
         start_seg = seg_by_id[u.start_segment_id]
         end_seg = seg_by_id[u.end_segment_id]
         

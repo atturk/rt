@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.pricing import calculate_cost
-from rt.llm.telemetry import LLMTelemetryRecord, GLOBAL_TELEMETRY
+from rt.llm.telemetry import LLMTelemetryRecord, current_telemetry
 
 DEFAULT_JEV_BASE_URL = "https://openrouter.ai/api/alpha/decisions"
 DEFAULT_JEV_MODEL = "typesafe/jev-1.13"
@@ -172,7 +172,7 @@ def call_jev(
             estimated_cost=cost_est,
             streaming=False,
         )
-        GLOBAL_TELEMETRY.add(record)
+        current_telemetry().add(record)
 
         if lesson_dir:
             _append_debug_log(lesson_dir, {

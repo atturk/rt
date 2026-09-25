@@ -5,7 +5,9 @@ Ogni richiesta produce un record strutturato con latenza, token, costo stimato e
 """
 
 import datetime
-from typing import Optional, List, Dict, Any
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Optional, List, Dict, Any, Iterator
 from pydantic import BaseModel, Field
 
 
@@ -168,3 +170,22 @@ class TelemetryStore:
 
 # Istanza singleton di telemetria globale per la sessione
 GLOBAL_TELEMETRY = TelemetryStore()
+
+# Telemetria della run corrente (RunContext.activate): quando non è impostata si usa
+# GLOBAL_TELEMETRY, così chi non usa il service layer resta invariato.
+_CURRENT_TELEMETRY: "ContextVar[Optional[TelemetryStore]]" = ContextVar("rt_current_telemetry", default=None)
+
+
+def current_telemetry() -> TelemetryStore:
+    """Archivio di telemetria da usare ora: quello del RunContext attivo o GLOBAL_TELEMETRY."""
+    return _CURRENT_TELEMETRY.get() or GLOBAL_TELEMETRY
+
+
+@contextmanager
+def use_telemetry(store: TelemetryStore) -> Iterator[TelemetryStore]:
+    """Imposta store come telemetria corrente per la durata del blocco (thread/task corrente)."""
+    token = _CURRENT_TELEMETRY.set(store)
+    try:
+        yield store
+    finally:
+        _CURRENT_TELEMETRY.reset(token)
