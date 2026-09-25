@@ -252,8 +252,16 @@ class TelegramRuntimeConfig(BaseModel):
         reserve_targets: Dict[str, int] = Field(default_factory=lambda: {"mirata": 4, "quiz": 6, "vasta": 2})
         refill_threshold: int = 3
         refill_batch_size: int = 4
-        stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'api'")
+        stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'custom' (il vecchio 'api' resta non implementato)")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
+
+
+class TranscriptionConfig(BaseModel):
+    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale."""
+    engine: Literal["macparakeet", "custom"] = "macparakeet"
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    timeout_seconds: int = Field(default=600, ge=10)
 
 
 class ReviewConfig(BaseModel):
@@ -287,6 +295,7 @@ class RTConfig(BaseModel):
     ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
     telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)
+    transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     mock_llm: bool = Field(default=False, description="Usa mock deterministico per test e CI")
     streaming: bool = Field(default=True, description="Abilita streaming SSE se supportato dal provider")
     show_monitor: bool = Field(default=True, description="Mostra il live terminal monitor durante le chiamate")
@@ -497,6 +506,4 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
         return _resolve_telegram_state_dir(_load_config_dir(root_config_dir), project_root)
 
     return _resolve_telegram_state_dir(RTConfig(), project_root)
-
-
 

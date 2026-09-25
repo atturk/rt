@@ -80,10 +80,10 @@ cp -r config.example config
 > I file YAML in `config.example/` sono volutamente senza commenti: il significato di ogni campo e le funzionalità opzionali (credenziali custom, pricing globale/per-route) sono documentati in [Guida alla Configurazione (CONFIGURATION_REFERENCE.md)](docs/CONFIGURATION_REFERENCE.md).
 
 
-#### Anteprima dell'interfaccia web locale
+#### Interfaccia web locale
 
-Per provare la nuova interfaccia Gradio (dashboard, review, importazione audio e
-configurazione), installa o aggiorna RT e avvia:
+Per usare la dashboard Gradio con review contestuale, audio, importazione e
+configurazione, installa o aggiorna RT e avvia:
 
 ```bash
 rt web
@@ -97,11 +97,11 @@ L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:
 Al primo avvio, se non è impostata una cartella lezioni, si apre la schermata
 Configurazione: puoi scegliere una cartella esistente o crearne una, e RT ne salva
 il percorso. Per usare temporaneamente un'altra cartella, passa
-`--lessons-root "/percorso/alle/lezioni"`. La review consente di accettare,
-mantenere l'originale, modificare e riaprire le decisioni: usa il ledger RT e
-registra le azioni in un log per lezione. La dashboard mostra gli appunti completi
-con timecode collegati all'audio; l'importazione riusa il setup RT. Le impostazioni
-si gestiscono ancora con i comandi RT. Per dettagli e limiti attuali, vedi
+`--lessons-root "/percorso/alle/lezioni"`. La review si apre accanto al testo:
+consente di accettare, mantenere l'originale, modificare e riaprire le decisioni,
+registrandole nel ledger RT. La dashboard mostra gli appunti completi con timecode
+collegati all'audio. La configurazione web salva provider, chiavi, modelli,
+Telegram e motore di trascrizione nei file locali di RT. Per dettagli, vedi
 [Prototipo web](docs/WEB_PROTOTYPE.md).
 
 ### 2. Esecuzione End-to-End di una Lezione

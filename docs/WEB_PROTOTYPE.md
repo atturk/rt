@@ -1,8 +1,7 @@
 # Prototipo web locale
 
-La nuova interfaccia Gradio è un'anteprima per valutare il flusso di lavoro prima di
-sostituire la TUI Textual. Si avvia localmente e legge i dati esistenti di RT:
-manifest, stato delle fasi, documento Markdown, questioni di review, ledger delle
+L'interfaccia Gradio si avvia localmente e legge i dati esistenti di RT:
+manifest, stato delle fasi, documento Markdown, issue di review, ledger delle
 decisioni, file audio e configurazione. La review scrive le decisioni nel ledger RT
 e aggiunge un registro delle azioni web nella stessa cartella della lezione.
 
@@ -46,20 +45,35 @@ file audio serviti. Premi Ctrl+C per fermare il server.
 - **Dashboard:** sidebar sovrapposta e regolabile con lezioni raggruppate per
   materia, stato delle cinque fasi, issue aperte e appunti completi. Durante il
   cambio lezione il controllo di chiusura e le altre lezioni restano bloccati fino
-  al caricamento. I timecode avviano il lettore nativo dell'audio integrale; le
-  frecce accanto al lettore passano tra le unità della lezione.
-- **Review:** elenco delle questioni, affermazione, proposta e diff, motivazione,
-  unità completa e citazione ASR espandibili, estratto audio relativo al segmento
-  quando disponibile. Accetta, mantiene l'originale o salva un testo modificato
-  nel ledger usato anche da CLI e Telegram. Una decisione presa dalla GUI si può
-  riaprire. La prossima questione in attesa viene selezionata automaticamente.
-- **Configurazione:** percorsi e modelli in uso, senza mostrare le chiavi API. Le
-  impostazioni si continuano a modificare dal wizard CLI.
+  al caricamento. I timecode avviano il player a forma d'onda dell'audio integrale;
+  le frecce accanto al lettore passano tra le unità della lezione. L'audio viene
+  servito con richieste HTTP a intervalli di byte per consentire la ricerca e
+  la riproduzione continua anche di file lunghi.
+- **Review contestuale:** il pulsante delle issue apre un pannello a destra del
+  documento, raggruppabile per unità o tipo. Cliccando una issue, RT evidenzia il
+  claim nel testo e mostra proposta modificabile, motivazione, domanda al docente
+  e azioni accetta/mantieni originale. Le segnalazioni sulla qualità ASR e sulla
+  fedeltà al parlato sono marcate come avvisi dell'unità, non come errori
+  concettuali confermati. Una decisione si può riaprire; la successiva issue in
+  attesa viene selezionata automaticamente. Le issue senza ancora valida non
+  vengono applicate al testo: il pannello segnala il numero e permette di aprire
+  il JSON originale nell'app predefinita.
+- **Configurazione:** la cartella lezioni viene salvata in `config/general.yaml`
+  e riletta dopo un refresh. Si possono aggiungere chiavi OpenRouter, Google AI
+  Studio, DeepSeek o OpenAI-compatible, scegliere modello primario, secondario e
+  fallback per fase e abilitare la rotazione fra più chiavi dello stesso provider
+  per la route primaria. Le chiavi vengono salvate nel `.env` locale e non sono
+  mostrate dopo il salvataggio. Si possono inoltre configurare token, chat e topic
+  Telegram, ascoltare nuovi topic e avviare il bot in background dalla dashboard.
+  Il motore STT predefinito può essere `macparakeet` oppure un server
+  OpenAI-compatible che restituisce `verbose_json` con timestamp di segmento.
+  Le opzioni avanzate non esposte qui restano modificabili nei file YAML.
 - **Importa audio:** il pulsante nell'intestazione apre il setup non interattivo
   della CLI. Richiede data e materia; la trascrizione con `macparakeet-cli` è
   selezionabile. Una lezione esistente non viene sovrascritta.
 
-L'interfaccia usa Seravek quando disponibile sul sistema, con font di riserva.
+L'interfaccia usa Seravek quando disponibile sul sistema, con font di riserva, e
+segue la modalità chiara o scura del sistema.
 La cartella originale delle lezioni resta esclusa dall'accesso diretto via web:
 RT prepara per Gradio solo l'audio della lezione scelta in una cartella temporanea.
 Se un file chiamato `.m4a` contiene in realtà AAC grezzo, RT lo rimette in un
@@ -75,15 +89,10 @@ esiste già nella radice di una lezione con il vecchio layout, RT usa quel file.
 
 ## Passi successivi
 
-1. Unificare ulteriormente le azioni di review della CLI e di Telegram attorno al
-   servizio usato dalla GUI, mantenendo le regole attuali dei tre canali.
-2. Estrarre la configurazione dal wizard CLI in servizi condivisi e rendere
-   modificabile la schermata delle impostazioni.
-3. Aggiungere stato e avanzamento strutturati all'importazione e alle altre azioni
-   di pipeline, senza lanciare comandi CLI come sottoprocessi dalla pagina.
-4. Verificare il flusso completo con le lezioni di prova e poi scegliere la modalità
-   di distribuzione. Docker è opzionale: il prototipo funziona nell'ambiente Python
-   locale già usato da RT.
+Restano da aggiungere stato e avanzamento strutturati all'importazione e alle
+altre azioni di pipeline, e da verificare end-to-end un server STT custom e un bot
+Telegram configurato da zero. Docker è opzionale: la web app funziona già
+nell'ambiente Python locale usato da RT.
 
 La TUI e la CLI restano disponibili durante la migrazione. Textual potrà essere
 rimosso quando la GUI coprirà le operazioni utili e il flusso sarà verificato.

@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from difflib import SequenceMatcher
+from concurrent.futures import Future, ThreadPoolExecutor
 from html import escape
 from hashlib import sha256
-import io
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import tempfile
-import wave
 from typing import Optional
 from urllib.parse import quote
 
@@ -22,9 +20,7 @@ from markdown_it import MarkdownIt
 from rt.core.audio_clip import resolve_audio_path
 from rt.core.models import ScienceType
 from rt.core.config import load_config
-from rt.pipeline.issue_review import _prepare_issue_context
-from rt.pipeline.issue_review import _is_no_diff_issue_type
-from rt.pipeline.ledger import load_ledger, sanitize_suggested_fix
+from rt.pipeline.ledger import load_ledger
 from rt.pipeline.review import load_science_issues
 from rt.pipeline.rewrite import load_draft
 from rt.tui.data import LessonSummary, discover_lessons, load_markdown_preview
@@ -37,6 +33,8 @@ PHASE_LABELS = {
 PHASE_COLORS = {"valid": "done", "partial": "warn", "stale": "warn", "invalid": "bad", "missing": "todo"}
 MARKDOWN = MarkdownIt("commonmark", {"html": False})
 _WEB_AUDIO_DIR: Optional[tempfile.TemporaryDirectory] = None
+_WAVE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rt-waveform")
+_WAVE_JOBS: dict[str, Future[list[int]]] = {}
 
 
 def web_audio_directory() -> str:
@@ -47,39 +45,11 @@ def web_audio_directory() -> str:
 
 
 @dataclass
-class IssueDetail:
-    heading: str = "<div class='rt-empty'>Nessuna issue da visualizzare.</div>"
-    claim: str = ""
-    proposal: str = ""
-    reason: str = ""
-    source_quote: str = ""
-    unit_text: str = ""
-    diff: str = ""
-    audio: object = None
+class IssueActionState:
     editor_initial: str = ""
     can_accept: bool = False
     can_reject: bool = False
-    can_edit: bool = False
     can_undo: bool = False
-
-
-def _word_diff(original: str, proposed: Optional[str]) -> str:
-    if not proposed:
-        return '<div class="rt-diff-empty">Nessuna sostituzione testuale automatica proposta.</div>'
-    old = re.findall(r"\s+|\S+", original)
-    new = re.findall(r"\s+|\S+", proposed)
-    parts = []
-    for tag, old_start, old_end, new_start, new_end in SequenceMatcher(None, old, new).get_opcodes():
-        before = escape("".join(old[old_start:old_end]))
-        after = escape("".join(new[new_start:new_end]))
-        if tag == "equal":
-            parts.append(before)
-        else:
-            if before:
-                parts.append(f"<del>{before}</del>")
-            if after:
-                parts.append(f"<ins>{after}</ins>")
-    return '<div class="rt-diff"><span class="rt-eyebrow">CONFRONTO DEL TESTO</span><p>' + "".join(parts) + "</p></div>"
 
 
 def _unit_for_issue(lesson_dir: str, issue):
@@ -182,9 +152,80 @@ def lesson_preview(lesson: Optional[LessonSummary]) -> str:
     return text
 
 
-def lesson_preview_html(lesson: Optional[LessonSummary]) -> str:
-    """Renderizza Markdown senza HTML grezzo; i timecode diventano controlli del player."""
-    return '<div class="rt-document">' + MARKDOWN.render(lesson_preview(lesson)) + '</div>'
+def lesson_preview_html(lesson: Optional[LessonSummary], issue_id: Optional[str] = None) -> str:
+    """Documento con un commento contestuale ancorato al claim o all'unità."""
+    rendered = MARKDOWN.render(lesson_preview(lesson))
+    if lesson and issue_id:
+        issues, decisions = review_issues(lesson.dir_path)
+        issue = next((item for item in issues if item.id == issue_id), None)
+        if issue:
+            warning = issue.type in WARNING_LABELS
+            claim = escape(issue.claim, quote=False)
+            anchor = '<mark class="rt-claim-highlight" id="rt-issue-anchor">'
+            anchored = False
+            if not warning and claim and claim in rendered:
+                rendered = rendered.replace(claim, anchor + claim + '</mark>', 1)
+                anchored = True
+            if not anchored and issue.unit_id:
+                heading = re.search(
+                    rf'<h[23][^>]*>[^<]*\b{re.escape(issue.unit_id)}\b[^<]*</h[23]>', rendered
+                )
+                if heading:
+                    rendered = (rendered[:heading.start()] + '<span id="rt-issue-anchor" '
+                                'class="rt-unit-anchor" title="Segnalazione per questa unità">⚠</span>'
+                                + rendered[heading.start():])
+                    anchored = True
+            if not anchored:
+                rendered = '<span id="rt-issue-anchor"></span>' + rendered
+
+            decision = decisions.get(issue.id)
+            label = WARNING_LABELS[issue.type][0] if warning else 'Errore concettuale'
+            note = WARNING_LABELS[issue.type][1] if warning else ''
+            proposal = (issue.suggested_fix or '').strip()
+            if warning:
+                unit = _unit_for_issue(lesson.dir_path, issue)
+                proposal = unit.content if unit else ''
+            parts = [
+                '<aside class="rt-inline-comment" aria-label="Commento sulla issue">',
+                f'<span class="rt-eyebrow">{escape(label)} · Unità {escape(issue.unit_id or "?")}</span>',
+            ]
+            if note:
+                parts.append(f'<p>{escape(note)}</p>')
+            if issue.claim and not warning:
+                parts.append(f'<p class="rt-comment-claim">{escape(issue.claim)}</p>')
+            if issue.reason:
+                parts.append(f'<p><strong>Motivo</strong><br>{escape(issue.reason)}</p>')
+            if issue.diplomatic_question:
+                parts.append(f'<p><strong>Domanda al docente</strong><br>{escape(issue.diplomatic_question)}</p>')
+            if decision:
+                parts.append(f'<p class="rt-comment-decided">Decisione: {escape(decision.decision)}</p>')
+                if decision.resolved_by == 'web':
+                    parts.append('<button type="button" data-review-action="undo">Riapri decisione</button>')
+            else:
+                parts.append('<label for="rt-comment-edit">' +
+                             ('Testo dell’unità' if warning else 'Correzione proposta') + '</label>')
+                parts.append(f'<textarea id="rt-comment-edit" rows="5">{escape(proposal)}</textarea>')
+                parts.append('<div class="rt-comment-actions">'
+                             '<button type="button" data-review-action="accept">' +
+                             ('Conferma unità' if warning else 'Accetta') + '</button>')
+                if not warning:
+                    parts.append('<button type="button" data-review-action="reject">Mantieni originale</button>')
+                parts.append('</div>')
+            parts.append('</aside>')
+            marker = '<span id="rt-issue-anchor"'
+            # Inserisce il commento dopo il paragrafo/heading che contiene l'ancora.
+            if '<mark class="rt-claim-highlight" id="rt-issue-anchor">' in rendered:
+                end = rendered.index('</mark>') + len('</mark>')
+                paragraph_end = rendered.find('</p>', end)
+                if paragraph_end >= 0:
+                    end = paragraph_end + len('</p>')
+            else:
+                end = rendered.index('</span>', rendered.index(marker)) + len('</span>')
+                heading_end = re.search(r'</h[23]>', rendered[end:])
+                if heading_end:
+                    end += heading_end.end()
+            rendered = rendered[:end] + ''.join(parts) + rendered[end:]
+    return '<div class="rt-document">' + rendered + '</div>'
 
 
 def lesson_audio_path(lesson: Optional[LessonSummary]) -> Optional[str]:
@@ -206,22 +247,64 @@ def lesson_audio_path(lesson: Optional[LessonSummary]) -> Optional[str]:
 
 
 def lesson_audio_html(lesson: Optional[LessonSummary]) -> str:
-    """Lettore nativo che scarica l'audio a richiesta, senza decodificarlo tutto."""
+    """Lettore della lezione con waveform calcolata in background."""
     path = lesson_audio_path(lesson)
     if not path:
         return '<div class="rt-audio-empty">Nessun audio disponibile per questa lezione.</div>'
-    url = '/gradio_api/file=' + quote(path, safe='/')
+    # Percorso opaco: il middleware espone solo copie/link selezionati nella
+    # directory temporanea, con FileResponse e supporto Range nativo.
+    url = '/rt-audio/' + quote(Path(path).name)
+    request_waveform(path)
     return (
         '<section class="rt-audio-player" aria-label="Audio della lezione">'
         '<div class="rt-audio-header"><span>♫</span><strong>Audio della lezione</strong></div>'
+        f'<canvas class="rt-waveform" data-peaks-url="{escape(url + ".peaks", quote=True)}" '
+        'height="76" aria-label="Forma d’onda: clicca per cercare un punto"></canvas>'
+        '<div class="rt-audio-times"><span data-audio-current>0:00</span><span data-audio-duration>0:00</span></div>'
         '<div class="rt-audio-controls">'
+        '<button type="button" class="rt-audio-small" data-audio-action="mute" aria-label="Attiva o disattiva audio">◖))</button>'
+        '<button type="button" class="rt-audio-small" data-audio-action="speed" aria-label="Velocità di riproduzione">1×</button>'
+        '<div class="rt-audio-transport">'
         '<button type="button" class="rt-audio-chapter" data-chapter="previous" '
         'aria-label="Unità precedente" title="Unità precedente">◀◀</button>'
-        f'<audio controls preload="metadata" src="{escape(url, quote=True)}"></audio>'
+        '<button type="button" class="rt-audio-play" data-audio-action="play" aria-label="Riproduci">▶</button>'
         '<button type="button" class="rt-audio-chapter" data-chapter="next" '
         'aria-label="Unità successiva" title="Unità successiva">▶▶</button>'
-        '</div></section>'
+        '</div><span class="rt-audio-spacer"></span></div>'
+        f'<audio preload="metadata" src="{escape(url, quote=True)}"></audio>'
+        '</section>'
     )
+
+
+def _compute_waveform(path: str) -> list[int]:
+    """Campiona l'ampiezza reale senza creare un file audio duplicato o bloccare la UI."""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-ac", "1", "-ar", "200",
+             "-f", "s16le", "pipe:1"], capture_output=True, check=True, timeout=120,
+        )
+        samples = np.frombuffer(result.stdout, dtype="<i2").astype(np.float32)
+        if samples.size == 0:
+            return []
+        chunks = np.array_split(np.abs(samples), min(300, samples.size))
+        levels = np.asarray([float(np.sqrt(np.mean(chunk * chunk))) for chunk in chunks])
+        quiet = float(np.percentile(levels, 10))
+        loud = max(float(np.percentile(levels, 90)), quiet + 1.0)
+        return [int(3 + 69 * np.clip((level - quiet) / (loud - quiet), 0, 1))
+                for level in levels]
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def request_waveform(path: str) -> None:
+    resolved = str(Path(path).resolve())
+    if resolved not in _WAVE_JOBS:
+        _WAVE_JOBS[resolved] = _WAVE_EXECUTOR.submit(_compute_waveform, resolved)
+
+
+def waveform_result(path: str) -> list[int] | None:
+    job = _WAVE_JOBS.get(str(Path(path).resolve()))
+    return job.result() if job and job.done() else None
 
 
 def _web_audio_path(lesson: LessonSummary, original: str) -> Optional[str]:
@@ -288,7 +371,8 @@ def _issue_anchor_available(issue, units: dict, segments: set[str]) -> bool:
     return True
 
 
-def issue_sidebar(lesson: Optional[LessonSummary], selected_issue: Optional[str]) -> str:
+def issue_sidebar(lesson: Optional[LessonSummary], selected_issue: Optional[str],
+                  group_by: str = "unit") -> str:
     """Elenco compatto: errori concettuali e segnalazioni di qualità restano distinti."""
     if lesson is None:
         return '<div class="rt-issue-sidebar"><p>Nessuna lezione selezionata.</p></div>'
@@ -304,7 +388,7 @@ def issue_sidebar(lesson: Optional[LessonSummary], selected_issue: Optional[str]
         segments = {s.id for s in load_segments_json(lesson_path(lesson.dir_path, "segments.json")).segments}
     except (OSError, ValueError, KeyError):
         segments = set()
-    rows = []
+    grouped: dict[str, list[str]] = {}
     orphan_count = 0
     for issue in issues:
         if not _issue_anchor_available(issue, units, segments):
@@ -316,7 +400,11 @@ def issue_sidebar(lesson: Optional[LessonSummary], selected_issue: Optional[str]
         marker = "⚠" if warning else "●"
         decided = " · valutata" if issue.id in decisions else ""
         active = " active" if issue.id == selected_issue else ""
-        rows.append(
+        group = (f"Unità {issue.unit_id or '?'}" if group_by == "unit"
+                 else "Errori concettuali" if not warning
+                 else "Fedeltà al parlato" if issue.type == ScienceType.ERR_REWRITE_DRIFT
+                 else "Qualità ASR")
+        grouped.setdefault(group, []).append(
             f'<button type="button" class="rt-issue-item{active}" data-issue-id="{escape(issue.id, quote=True)}" '
             f'title="{escape(title, quote=True)}">'
             f'<span class="rt-issue-marker" aria-hidden="true">{marker}</span>'
@@ -330,8 +418,12 @@ def issue_sidebar(lesson: Optional[LessonSummary], selected_issue: Optional[str]
         '<button type="button" data-open-issues-file="1">Apri file JSON</button></div>'
         if orphan_count else ''
     )
+    rows = ''.join(
+        f'<section class="rt-issue-group"><h3>{escape(group)}</h3>{"".join(items)}</section>'
+        for group, items in grouped.items()
+    )
     return ('<aside class="rt-issue-sidebar" aria-label="Issue della lezione">'
-            + (''.join(rows) or '<p class="rt-sidebar-empty">Nessuna issue ancorata.</p>')
+            + (rows or '<p class="rt-sidebar-empty">Nessuna issue ancorata.</p>')
             + orphan_note + '</aside>')
 
 
@@ -362,79 +454,23 @@ def issue_choices(lesson: Optional[LessonSummary]) -> tuple[list[tuple[str, str]
     return choices, pending or (choices[0][1] if choices else None)
 
 
-def issue_detail(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> IssueDetail:
+def issue_action_state(lesson: Optional[LessonSummary], issue_id: Optional[str]) -> IssueActionState:
     if lesson is None or not issue_id:
-        return IssueDetail()
+        return IssueActionState()
     issues, decisions = review_issues(lesson.dir_path)
     issue = next((item for item in issues if item.id == issue_id), None)
     if issue is None:
-        return IssueDetail()
-    try:
-        context = _prepare_issue_context(lesson.dir_path, issue, "science")
-    except (OSError, ValueError, KeyError):
-        context = {}
+        return IssueActionState()
     decision = decisions.get(issue.id)
-    status = f"Decisione già registrata: {escape(decision.decision)}" if decision else "Decisione in attesa"
-    heading = (
-        '<div class="rt-issue-heading">'
-        f'<span class="rt-eyebrow">{escape(issue.type.value)} · {escape(issue.severity.value.upper())}</span>'
-        f'<h2>{escape(context.get("unit_info") or issue.unit_id or "Issue")}</h2>'
-        f'<p class="rt-meta">{escape(issue.id)} · {escape(context.get("timecode") or "Audio disponibile sotto")}'
-        f' · {status}</p></div>'
-    )
     unit = _unit_for_issue(lesson.dir_path, issue)
-    is_asr = _is_no_diff_issue_type(issue)
-    concept_anchor = is_asr or bool(unit and issue.claim.strip() in unit.content)
-    source = issue.source_quote or context.get("sentence") or ""
-    proposal = decision.resolved_text if decision and decision.resolved_text else (issue.suggested_fix or "Nessuna proposta automatica")
-    reason = issue.reason or ""
-    start_s, end_s = context.get("start_s"), context.get("end_s")
-    if issue.segment_id:
-        try:
-            from rt.core.lesson_paths import lesson_path
-            from rt.core.segments import load_segments_json
-
-            segments = load_segments_json(lesson_path(lesson.dir_path, "segments.json"))
-            segment = next((part for part in segments.segments if part.id == issue.segment_id), None)
-            if segment:
-                start_s = max(0.0, segment.start_seconds - 5.0)
-                end_s = segment.end_seconds + 8.0
-        except (OSError, ValueError, KeyError):
-            pass
-    audio = audio_excerpt(lesson.dir_path, start_s, end_s)
-    return IssueDetail(
-        heading=heading, claim=issue.claim, proposal=proposal, reason=reason,
-        source_quote=source or "Nessuna citazione ASR disponibile.",
-        unit_text=unit.content if unit else "Unità non disponibile.",
-        diff=_word_diff(issue.claim, None if is_asr else sanitize_suggested_fix(issue.suggested_fix)),
-        audio=audio,
-        editor_initial=(unit.content if unit else issue.claim) if is_asr else issue.claim,
-        can_accept=decision is None and concept_anchor and (not is_asr or unit is not None),
-        can_reject=decision is None and concept_anchor and not is_asr,
-        can_edit=decision is None and concept_anchor,
+    warning = issue.type in WARNING_LABELS
+    anchored = bool(unit and (warning or issue.claim.strip() in unit.content))
+    return IssueActionState(
+        editor_initial=unit.content if warning and unit else (issue.suggested_fix or ""),
+        can_accept=decision is None and anchored,
+        can_reject=decision is None and anchored and not warning,
         can_undo=decision is not None and decision.resolved_by == "web",
     )
-
-
-def audio_excerpt(lesson_dir: str, start: Optional[float], end: Optional[float]):
-    """Estratto PCM in memoria: nessuna copia permanente del file audio della lezione."""
-    audio_path = resolve_audio_path(lesson_dir)
-    if not audio_path or start is None:
-        return None
-    start = max(0.0, float(start))
-    duration = min(max(float(end or start + 20) - start, 1.0), 35.0)
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-v", "error", "-ss", str(start), "-t", str(duration),
-             "-i", audio_path, "-f", "wav", "-acodec", "pcm_s16le", "-ac", "1",
-             "-ar", "22050", "pipe:1"],
-            capture_output=True, check=True, timeout=25,
-        )
-        with wave.open(io.BytesIO(result.stdout)) as wav:
-            samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16).copy()
-            return wav.getframerate(), samples
-    except (OSError, subprocess.SubprocessError, EOFError, wave.Error, ValueError):
-        return None
 
 
 def configuration_summary(root: str) -> str:
@@ -450,10 +486,8 @@ def configuration_summary(root: str) -> str:
             f'<span>{escape(model)}</span></div>'
         )
     return (
-        '<div class="rt-config-card"><span class="rt-eyebrow">PERCORSI E PREFERENZE</span>'
+        '<div class="rt-config-card"><span class="rt-eyebrow">LEZIONI</span>'
         f'<div class="rt-config-row"><span>Cartella lezioni</span><strong>{escape(root or "Da configurare")}</strong></div>'
-        f'<div class="rt-config-row"><span>Canale predefinito</span><strong>{escape(cfg.telegram.default_channel)}</strong></div>'
-        f'<div class="rt-config-row"><span>Tema terminale</span><strong>{escape(cfg.ui.theme)}</strong></div>'
         '</div><div class="rt-config-card"><span class="rt-eyebrow">MODELLI PER FASE</span>'
         + ''.join(routes) + '</div>'
     )

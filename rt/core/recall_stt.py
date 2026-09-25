@@ -66,9 +66,16 @@ def transcribe_voice_answer(audio_path: str, stt_engine: str = "macparakeet") ->
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    elif stt_engine == "custom":
+        from rt.core.config import load_config, load_env_file
+        from rt.core.custom_stt import transcribe_custom
+        load_env_file()
+        cfg = load_config().transcription
+        result = transcribe_custom(audio_path, cfg.base_url, cfg.model, cfg.timeout_seconds)
+        return result["rawTranscript"]
+
     elif stt_engine == "api":
-        raise NotImplementedError("STT via API non ancora configurato, usa macparakeet.")
+        raise NotImplementedError("Il vecchio motore 'api' non è implementato: scegli 'custom' nella configurazione.")
 
     else:
         raise ValueError(f"stt_engine non riconosciuto: '{stt_engine}'.")
-

@@ -39,6 +39,14 @@ telegram:
   topics: {}
   misc_topic_id: null
 
+# Motore usato dal setup delle lezioni. Un server custom deve supportare
+# POST /audio/transcriptions e restituire verbose_json con segmenti temporizzati.
+transcription:
+  engine: "macparakeet"  # oppure "custom"
+  base_url: null
+  model: null
+  timeout_seconds: 600
+
 ui:
   theme: "dark"
 
