@@ -576,6 +576,10 @@ def cmd_run(args):
         rename=getattr(args, "rename", True),
         channel=getattr(args, "channel", None),
     )
+    if getattr(args, "queue", False):
+        from rt.cli_jobs import run_queued
+        run_queued(raw_inputs, options, CliDecisionProvider())
+        return
     # La CLI usa la telemetria di processo: il riepilogo costi e i test la leggono da lì.
     ctx = RunContext(reporter=CliReporter(steps=steps, total_steps=total_steps), telemetry=GLOBAL_TELEMETRY)
     from contextlib import nullcontext
@@ -805,6 +809,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
     p_run.add_argument("--force", action="store_true", help="Forza l'intera pipeline ignorando i risultati precedenti")
     p_run.add_argument("--mock", action="store_true", help="Usa mock deterministico per ASR e LLM")
+    p_run.add_argument("--queue", action="store_true", help="Accoda la pipeline al worker ('rt worker') e ne segue il progresso")
     p_run.add_argument(
         "--with-review", nargs="?", const="all", choices=["all", "asr", "science"], default=None,
         dest="with_review",

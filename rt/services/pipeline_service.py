@@ -233,3 +233,81 @@ def _wait(result: PipelineResult, ctx: RunContext, kind: str, lesson_dir: str, p
     ctx.emit(decision)
     result.status = PipelineStatus.WAITING_FOR_DECISION
     result.decision = decision
+
+
+# ---------------------------------------------------------------- job singoli (fase D)
+
+RUNNABLE_PHASES = ("prepare", "outline", "rewrite", "review", "build")
+
+
+class TranscriptionUnavailable(RuntimeError):
+    """La trascrizione con macparakeet non può girare su questa macchina."""
+
+
+def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool = False) -> Optional[str]:
+    """Motivo per cui l'ingest audio non può trascrivere qui (None se può). macparakeet-cli
+    esiste solo su macOS; il motore STT 'custom' e la modalità mock girano ovunque."""
+    import sys
+    if mock or skip_transcribe or sys.platform == "darwin":
+        return None
+    try:
+        from rt.core.config import load_config
+        if load_config().transcription.engine == "custom":
+            return None
+    except Exception:
+        pass
+    return ("La trascrizione con macparakeet funziona solo su macOS: avvia 'rt worker' sul Mac "
+            "(oppure configura un motore STT custom).")
+
+
+def ingest_audio(inputs: Union[str, Sequence[str]], options: PipelineOptions, ctx: RunContext) -> PipelineResult:
+    """Solo setup + trascrizione (job ingest_audio). Metadati mancanti → WAITING_FOR_DECISION."""
+    from rt.pipeline.setup import MissingSetupFields, run_setup
+    raw_inputs = [inputs] if isinstance(inputs, str) else list(inputs)
+    reason = transcription_unavailable_reason(options.mock, options.skip_transcribe)
+    if reason:
+        raise TranscriptionUnavailable(reason)
+    result = PipelineResult(status=PipelineStatus.FAILED)
+    with ctx.activate():
+        try:
+            with phase_scope(ctx, "setup") as scope:
+                setup_res = _setup(run_setup, raw_inputs, options, ctx, None)
+                scope.complete(setup_res)
+        except MissingSetupFields as exc:
+            _wait(result, ctx, "setup_metadata", "setup", {"inputs": raw_inputs, "missing": exc.fields})
+            return result
+    result.phase_results["setup"] = setup_res
+    result.lesson_dir = setup_res["lesson_dir"]
+    result.status = (PipelineStatus.SKIPPED_TRANSCRIPTION if options.skip_transcribe and not options.mock
+                     else PipelineStatus.COMPLETED)
+    return result
+
+
+def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunContext) -> PipelineResult:
+    """Esegue una sola fase su una lezione esistente (job run_phase), con la stessa
+    idempotenza dei comandi 'rt prepare|outline|rewrite|review|build'."""
+    if phase not in RUNNABLE_PHASES:
+        raise ValueError(f"Fase sconosciuta: {phase} (valide: {', '.join(RUNNABLE_PHASES)})")
+    from rt.pipeline.build import run_build
+    from rt.pipeline.outline import run_outline
+    from rt.pipeline.prepare import run_prepare
+    from rt.pipeline.review import run_review
+    from rt.pipeline.rewrite import run_rewrite
+
+    force, mock = options.force, options.mock
+    ctx.lesson_dir, ctx.force, ctx.force_mock = lesson_dir, force, mock
+    result = PipelineResult(status=PipelineStatus.COMPLETED, lesson_dir=lesson_dir)
+    with ctx.activate():
+        if phase == "prepare":
+            res = run_prepare(lesson_dir, force=force, ctx=ctx)
+        elif phase == "outline":
+            res = run_outline(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+        elif phase == "rewrite":
+            res = run_rewrite(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+        elif phase == "review":
+            res = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+        else:
+            res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
+            result.lesson_dir = res.get("lesson_dir") or lesson_dir
+    result.phase_results[phase] = res
+    return result

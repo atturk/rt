@@ -66,11 +66,27 @@ def cmd_worker(args: argparse.Namespace) -> None:
         if not done:
             print("Nessun job in coda.")
         return
+    _stop_on_signals()
     print(f"👷 Worker RT avviato (pid {os.getpid()}, job: {', '.join(types)}). Ctrl+C per fermarlo.", flush=True)
     try:
         run_workers(_queue, concurrency=max(1, args.concurrency), **kwargs)
     except KeyboardInterrupt:
         print("\n⏹ Worker fermato: i job in corso tornano in coda.", file=sys.stderr)
+
+
+def _stop_on_signals() -> None:
+    """SIGTERM (launchd, kill) e SIGINT fermano il worker come Ctrl+C: il job in corso torna
+    subito in coda invece di aspettare la scadenza del lease."""
+    import signal
+
+    def _interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _interrupt)
+        except (ValueError, OSError):  # non nel thread principale
+            pass
 
 
 def _fmt_job(job) -> str:
@@ -122,3 +138,84 @@ def _find(queue, prefix: str):
         print(f"❌ Job '{prefix}' {'ambiguo' if matches else 'non trovato'}.", file=sys.stderr)
         sys.exit(1)
     return matches[0]
+
+
+# ---------------------------------------------------------------- rt run --queue
+
+def _render_event(event) -> None:
+    p = event.payload
+    t = event.type
+    if t == "phase_started":
+        print(f"▶ {p.get('phase')}", flush=True)
+    elif t == "phase_progress" and p.get("total"):
+        print(f"   {p.get('current')}/{p.get('total')} {p.get('message', '')}".rstrip(), flush=True)
+    elif t == "phase_completed":
+        print(f"{'⏭' if p.get('skipped') else '✔'} {p.get('phase')}", flush=True)
+    elif t == "phase_failed":
+        print(f"❌ {p.get('phase')}: {p.get('message')}", flush=True)
+    elif t == "notice":
+        print(p.get("message", ""), flush=True)
+    elif t == "job_started" and p.get("attempt", 1) > 1:
+        print(f"↻ Ripreso da un worker (tentativo {p['attempt']})", flush=True)
+
+
+def _answer_decision(job, options, decisions) -> bool:
+    """Chiede in terminale la decisione su cui il job è fermo. True se è stata presa (il job
+    è tornato in coda), False se il job resta in attesa."""
+    from rt.services import outline_service
+    from rt.services.jobs import resume_waiting_jobs
+    from rt.services.review_service import is_review_complete
+
+    kind = (job.decision or {}).get("kind")
+    lesson_dir = (job.decision or {}).get("payload", {}).get("lesson_dir") or job.lesson_path
+    if kind == "outline_approval":
+        decisions.approve_outline(lesson_dir, force=options.force, force_mock=options.mock)
+        if outline_service.is_outline_approved(lesson_dir):
+            resume_waiting_jobs(lesson_dir, "outline_approval")
+            return True
+    elif kind == "science_issue":
+        from rt.services.pipeline_service import _resolve_channel
+        channel = _resolve_channel(options.channel)
+        decisions.review_science_issues(lesson_dir, channel, "all" if options.auto_accept else None)
+        if is_review_complete(lesson_dir):
+            resume_waiting_jobs(lesson_dir, "science_issue")
+            return True
+    elif kind == "setup_metadata":
+        missing = ", ".join((job.decision or {}).get("payload", {}).get("missing") or [])
+        print(f"⏸ Mancano i metadati della lezione ({missing}): rilancia con -d/-m/-a.", file=sys.stderr)
+        return False
+    print(f"⏸ Il job {job.id[:12]} resta in attesa di una decisione ({kind}).")
+    return False
+
+
+def run_queued(raw_inputs, options, decisions) -> None:
+    """'rt run --queue': accoda la pipeline e ne segue il progresso dagli eventi del job.
+    Le decisioni (outline, issue) si prendono qui come in 'rt run'; Ctrl+C smette di seguire
+    ma il job continua nel worker."""
+    from rt.services.job_handlers import RUN_PIPELINE, pipeline_payload
+    from rt.services.pipeline_service import is_audio_input
+
+    queue = _queue()
+    lesson = None if is_audio_input(raw_inputs) else raw_inputs[0]
+    job_id = queue.enqueue(RUN_PIPELINE, lesson, pipeline_payload(raw_inputs, options), created_by="cli")
+    print(f"📥 Job {job_id[:12]} in coda.", flush=True)
+    if not queue.live_workers(RUN_PIPELINE):
+        print("⚠️  Nessun worker attivo: il job partirà quando avvii 'rt worker'.", flush=True)
+    cursor = 0
+    try:
+        while True:
+            for event in queue.stream_events(job_id, cursor, poll_interval=0.5):
+                cursor = event.id
+                _render_event(event)
+            job = queue.get(job_id)
+            if job.state == "succeeded":
+                print(f"✅ Job completato: {job.result.get('lesson_dir') or ''}".rstrip(), flush=True)
+                return
+            if job.state in ("failed", "cancelled"):
+                print(f"❌ Job {job.state}" + (f": {job.error}" if job.error else ""), file=sys.stderr)
+                sys.exit(1)
+            if job.state == "waiting_for_decision" and not _answer_decision(job, options, decisions):
+                return
+    except KeyboardInterrupt:
+        print(f"\n⏹ Smetto di seguire il job: continua nel worker ('rt jobs show {job_id[:12]}').", file=sys.stderr)
+        sys.exit(130)

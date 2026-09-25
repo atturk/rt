@@ -376,3 +376,27 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
 - **CLI**: `rt worker [--once] [--concurrency N] [--types …]` esegue i job;
   `rt jobs [list|show ID|cancel ID]` li elenca, mostra e annulla. La tabella `workers` tiene
   il battito dei worker (`has_live_worker`), così CLI e daemon sanno se possono accodare.
+
+### Pipeline come job e decisioni (RT4-D2)
+
+- **Tipi di job** (`rt/services/job_handlers.py`): `run_pipeline` (come `rt run`),
+  `ingest_audio` (setup + trascrizione), `run_phase` (`prepare|outline|rewrite|review|build`),
+  `add_images`, `recall_generate` (primo batch di domande) e `transcribe_voice` (risposta
+  vocale di Telegram).
+- **Pause**: quando `pipeline_service` si ferma con `WAITING_FOR_DECISION` il job passa in
+  `waiting_for_decision` con la `DecisionRequired` in `jobs.decision` e libera la lezione.
+  `outline_service.approve_outline` e `review_service.record_review_decision` (quando l'ultima
+  issue è decisa) chiamano `resume_waiting_jobs`, che rimette in coda il job: il worker lo
+  riprende e le fasi già fatte vanno in SKIP. I metadati mancanti di un audio
+  (`setup_metadata`) si passano con `DbJobQueue.resume(job_id, {"options": {...}})`.
+- **macOS**: la trascrizione con macparakeet esiste solo su macOS; `ingest_audio` e
+  `run_pipeline` su audio falliscono con un messaggio chiaro su un worker non macOS (salvo
+  mock, `--skip-transcribe` o motore STT `custom`).
+- **CLI**: `rt run --queue` accoda la pipeline e ne segue gli eventi; le decisioni si prendono
+  in terminale come in `rt run` e il job riparte da solo. Senza `--queue` tutto resta in
+  processo come prima.
+- **Telegram**: la generazione delle domande di recall e la trascrizione dei vocali passano da
+  `run_job_or_inline`: con un worker vivo (per i vocali, sulla stessa macchina, perché il file
+  è locale) accodano un job e aspettano il risultato in un thread dell'executor; senza worker,
+  o se nessuno prende il job entro 30 secondi, eseguono in processo come prima. L'avvio della
+  review su Telegram non ha passi lunghi (la review LLM è una fase della pipeline).

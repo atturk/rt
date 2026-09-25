@@ -71,6 +71,15 @@ def send_unit_audio(
     return sent_msg_ids
 
 
+def _generate_initial_batch(lesson_dir: str, force_mock: bool) -> None:
+    """Generazione del primo batch di domande: tramite la coda se c'è un worker vivo (il
+    daemon resta libero), altrimenti in processo come prima."""
+    from rt.services.jobs import run_job_or_inline
+    run_job_or_inline("recall_generate", lesson_dir, {"force_mock": force_mock},
+                      inline=lambda: recall_service.ensure_initial_batch(lesson_dir, force_mock=force_mock),
+                      created_by="telegram")
+
+
 def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: Optional[str] = None, force_mock: bool = False) -> None:
     try:
         from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
@@ -112,7 +121,7 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: 
         return
 
     recall_service.save_recall_session_state(lesson_dir, {"order": order, "unit_cursor": None, "current_question_id": None, "force_mock": force_mock})
-    recall_service.ensure_initial_batch(lesson_dir, force_mock=force_mock)
+    _generate_initial_batch(lesson_dir, force_mock)
 
     print(f"📤 Sessione di recall avviata su Telegram (ordine: {order}).")
     send_current_recall_question(lesson_dir, force_mock=force_mock)

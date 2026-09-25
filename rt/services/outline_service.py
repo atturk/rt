@@ -83,6 +83,9 @@ def approve_outline(lesson_dir: str, actor: str = "user", channel: str = "cli") 
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(record, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
+    # Un job della coda fermo su questa approvazione riparte da solo (fase D).
+    from rt.services.jobs import resume_waiting_jobs
+    resume_waiting_jobs(lesson_dir, "outline_approval")
     return record
 
 

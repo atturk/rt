@@ -376,7 +376,13 @@ class DbJobQueue:
             if row.state != JobState.WAITING_FOR_DECISION.value:
                 raise JobError(f"Job {job_id} non è in attesa di una decisione (stato: {row.state})")
             if payload_update:
-                row.payload = json_safe({**(row.payload or {}), **payload_update})
+                merged = dict(row.payload or {})
+                for key, value in payload_update.items():
+                    if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                        merged[key] = {**merged[key], **value}
+                    else:
+                        merged[key] = value
+                row.payload = json_safe(merged)
             row.state = JobState.QUEUED.value
             row.decision = None
             row.attempts = 0
@@ -424,14 +430,80 @@ def get_job_queue() -> DbJobQueue:
     return DbJobQueue(require_database())
 
 
-def has_live_worker(job_type: Optional[str] = None) -> bool:
-    """Vero se c'è un worker vivo per job_type; falso anche se il DB non è disponibile
-    (chi chiama esegue allora in processo, come prima della fase D)."""
+def _optional_queue() -> Optional[DbJobQueue]:
     from rt.db.engine import get_database
     db = get_database()
-    if db is None:
-        return False
+    return DbJobQueue(db) if db is not None else None
+
+
+def has_live_worker(job_type: Optional[str] = None, same_host: bool = False) -> bool:
+    """Vero se c'è un worker vivo per job_type (sulla stessa macchina, se same_host); falso
+    anche se il DB non è disponibile (chi chiama esegue allora in processo, come prima)."""
+    import socket
     try:
-        return bool(DbJobQueue(db).live_workers(job_type))
+        queue = _optional_queue()
+        if queue is None:
+            return False
+        workers = queue.live_workers(job_type)
     except Exception:
         return False
+    if same_host:
+        workers = [w for w in workers if w["hostname"] == socket.gethostname()]
+    return bool(workers)
+
+
+class JobFailed(RuntimeError):
+    """Il job accodato è fallito o è stato annullato (messaggio = errore del job)."""
+
+
+def run_job_or_inline(job_type: str, lesson_id: LessonRef, payload: Dict[str, Any], inline,
+                      *, created_by: Optional[str] = None, same_host: bool = False,
+                      pickup_timeout: float = 30.0, poll_interval: float = 0.5) -> Dict[str, Any]:
+    """Esegue un lavoro lungo tramite la coda se c'è un worker vivo, altrimenti in processo
+    chiamando inline() (comportamento di prima della fase D). Bloccante: chi è in un event
+    loop (daemon Telegram) la chiama in un executor. Se nessun worker prende il job entro
+    pickup_timeout secondi (worker appena morto) il job viene annullato e si esegue inline.
+    Restituisce il risultato del job (o {"inline": valore} quando esegue in processo)."""
+    queue = _optional_queue() if has_live_worker(job_type, same_host=same_host) else None
+    if queue is None:
+        return {"inline": inline()}
+    job_id = queue.enqueue(job_type, lesson_id, payload, created_by=created_by)
+    started = time.monotonic()
+    while True:
+        job = queue.get(job_id)
+        if job is None:
+            raise JobFailed(f"Job {job_id} scomparso")
+        if job.state == JobState.SUCCEEDED.value:
+            return job.result or {}
+        if job.state in (JobState.FAILED.value, JobState.CANCELLED.value):
+            raise JobFailed(job.error or f"Job {job.state}")
+        if job.state == JobState.WAITING_FOR_DECISION.value:
+            return job.result or {}
+        if job.state == JobState.QUEUED.value and time.monotonic() - started > pickup_timeout:
+            if queue.cancel(job_id).state == JobState.CANCELLED.value:
+                return {"inline": inline()}
+        time.sleep(poll_interval)
+
+
+def resume_waiting_jobs(lesson_dir: str, kind: str, condition=None) -> List[str]:
+    """Rimette in coda i job della lezione fermi sulla decisione 'kind' (la decisione è stata
+    presa: outline approvata, review completata); condition(), se data, viene valutata solo
+    quando ci sono job in attesa (es. "tutte le issue decise"). Mai bloccante: senza DB o con errori non fa
+    nulla. Restituisce gli id ripresi."""
+    import logging
+    try:
+        queue = _optional_queue()
+        if queue is None:
+            return []
+        waiting = [job for job in queue.list(state=JobState.WAITING_FOR_DECISION.value, lesson_id=lesson_dir, limit=100)
+                   if (job.decision or {}).get("kind") == kind]
+        if not waiting or (condition is not None and not condition()):
+            return []
+        resumed = []
+        for job in waiting:
+            queue.resume(job.id)
+            resumed.append(job.id)
+        return resumed
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Ripresa dei job in attesa non riuscita: %s", exc)
+        return []
