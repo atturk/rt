@@ -91,8 +91,9 @@ show_monitor_verbose: false
 ### Campo opzionale: `database_url`
 URL SQLAlchemy del database di RT (indice lezioni, decisioni di review, costi, stato Telegram).
 Se assente si usa SQLite in `<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`);
-`off` lo disattiva. La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea
-con `rt db upgrade` (o all'avvio di `rt web`); senza DB RT funziona solo sui file come prima.
+La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea e si aggiorna da solo
+al primo comando `rt`, che importa anche le lezioni esistenti: non serve alcun comando manuale.
+`off` lo disattiva (solo per sviluppo e test: la coda dei job e `rt worker` richiedono il DB).
 ```yaml
 database_url: "sqlite:////Users/io/Lezioni/.rt/rt.db"
 ```

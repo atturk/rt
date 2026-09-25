@@ -596,7 +596,6 @@ def cmd_run(args):
 
 def cmd_telegram_daemon(args):
     from rt.telegram.daemon import run_daemon
-    _upgrade_database_quietly()
     run_daemon(state_dir=getattr(args, "state_dir", None))
 
 
@@ -693,13 +692,24 @@ def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> Non
     sys.exit(1)
 
 
-def _upgrade_database_quietly() -> None:
-    """Crea o aggiorna il DB all'avvio dei processi di lunga durata (web, daemon)."""
+# Comandi che non passano da ensure_database(): 'db' è la diagnosi del database stesso
+# (deve funzionare anche con un DB rotto), 'config' e 'secrets' non toccano le lezioni e
+# possono cambiare lessons_root (quindi il percorso del DB).
+_COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets"}
+
+
+def _ensure_database_or_exit(command: Optional[str]) -> None:
+    """Crea/migra il DB e importa le lezioni al primo avvio; se il DB è illeggibile il
+    comando si ferma con le istruzioni per ripristinarlo."""
+    if command in _COMMANDS_WITHOUT_DATABASE:
+        return
+    from rt.db.bootstrap import ensure_database
+    from rt.db.engine import DatabaseUnavailable
     try:
-        from rt.db.engine import get_database
-        get_database(create=True)
-    except Exception:
-        pass
+        ensure_database(on_progress=lambda msg: print(msg, file=sys.stderr))
+    except DatabaseUnavailable as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_web(args: argparse.Namespace) -> None:
@@ -710,7 +720,6 @@ def cmd_web(args: argparse.Namespace) -> None:
         if exc.name == "gradio":
             raise SystemExit("Interfaccia web mancante. Esegui 'rt -u' per installare le dipendenze e riprova.") from exc
         raise
-    _upgrade_database_quietly()
     argv = ["--port", str(args.port)]
     if args.lessons_root:
         argv += ["--lessons-root", args.lessons_root]
@@ -987,6 +996,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     normalized_argv = normalize_review_cli_args(raw_args)
     args = parser.parse_args(normalized_argv)
+    _ensure_database_or_exit(args.command)
     if args.command is None:
         from rt.tui.app import run_app
         run_app()

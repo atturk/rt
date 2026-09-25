@@ -298,10 +298,17 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   `postgresql://…` (driver da installare a parte).
 - **SQLite**: WAL, `foreign_keys=ON`, `busy_timeout` 30 s e transazioni `BEGIN IMMEDIATE`,
   così CLI, daemon Telegram e web scrivono in coda senza errori di lock.
-- **Creazione**: solo esplicita, con `rt db upgrade`, oppure automatica all'avvio di `rt web`
-  e di `rt telegram-daemon`.
-  Finché il file non esiste, `get_database()` restituisce `None` e RT lavora solo sui file;
-  un DB illeggibile produce un avviso nei log e lo stesso comportamento.
+- **Creazione automatica** (fase D, `rt/db/bootstrap.py::ensure_database`): ogni comando `rt`
+  (tranne `db`, `config` e `secrets`) crea il DB se manca e applica le migrazioni pendenti
+  sotto il lock `rt.db.migrate.lock`; se è già aggiornato costa la sola lettura della
+  revisione. Al primo avvio con una `lessons_root` configurata importa da solo le lezioni
+  esistenti (come `rt db sync`, una volta, segnato in `settings` con `db.initial_import_done`).
+  L'utente non lancia mai comandi di database: `rt db upgrade|sync|check|status` restano per
+  la diagnosi. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
+  istruzioni per ripristinarlo da un backup o ricrearlo dai file. `RT_DATABASE_URL=off`
+  resta solo per sviluppo e test; la coda dei job (sezione 9) richiede il DB.
+  Nel codice di libreria `get_database()` resta tollerante (None se il DB manca o è rotto)
+  e `require_database()` è la variante che solleva.
 - **Modelli** (`rt/db/models.py`): `Lesson`, `PhaseRun`, `Issue`, `ReviewDecision`,
   `LlmCall`, `Setting`, `StateDocument`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
