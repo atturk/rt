@@ -135,3 +135,29 @@ def test_web_first_run_renders_configuration_screen():
     tabs = next(component for component in demo.config["components"]
                 if component["props"].get("elem_id") == "rt-pages")
     assert tabs["props"]["selected"] == "config"
+
+
+def test_page_reload_shows_phase_models_saved_after_startup(tmp_path, monkeypatch):
+    """Gradio riusa i valori iniziali dei componenti: al caricamento della pagina i modelli
+    per fase vanno riletti dal disco, altrimenti un refresh sembra annullare le modifiche."""
+    from rt.web.connections import add_model, assign_phase, save_connection
+
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "general.yaml").write_text("credentials: []\n", encoding="utf-8")
+    (config / "outline.yaml").write_text("primary: {}\n", encoding="utf-8")
+    save_connection(tmp_path, "Studio", "google", "", ["key-one"])
+    demo = build_app("")
+
+    add_model(tmp_path, "Studio", "gemini-test")
+    with patch("rt.web.app.PROJECT_ROOT", tmp_path):
+        assign_phase(tmp_path, "outline", "Studio", "gemini-test")
+        handler = next(block.fn for block in demo.fns.values()
+                       if getattr(block, "name", "") == "phase_dropdown_updates")
+        updates = handler()
+
+    outline_connection, outline_model = updates[0], updates[len(updates) // 2]
+    assert outline_connection["value"] == "Studio"
+    assert outline_model["value"] == "gemini-test"
+    assert "gemini-test" in outline_model["choices"]

@@ -793,6 +793,19 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 outputs=[*modal_outputs, phase_job, phase_connection,
                          phase_model_name, phase_model_status], show_progress="hidden")
 
+        def phase_dropdown_updates():
+            """Connessione e modello di ogni fase riletti dal disco."""
+            connection_updates = []
+            model_updates = []
+            names = connection_names(PROJECT_ROOT)
+            for phase, _ in PHASES:
+                selected_connection, selected_model = phase_selection(PROJECT_ROOT, phase)
+                connection_updates.append(gr.update(choices=names, value=selected_connection))
+                model_updates.append(gr.update(
+                    choices=model_names(PROJECT_ROOT, selected_connection) if selected_connection else [],
+                    value=selected_model, interactive=bool(selected_connection)))
+            return (*connection_updates, *model_updates)
+
         @log_action("configurazione.nuovo_modello")
         def add_phase_model_ui(job: str, connection: str, model: str):
             try:
@@ -800,17 +813,8 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                 status = assign_phase(PROJECT_ROOT, job, connection, saved_model)
             except (OSError, ValueError, KeyError) as exc:
                 raise gr.Error(str(exc)) from None
-            connection_updates = []
-            model_updates = []
-            for phase, _ in PHASES:
-                selected_connection, selected_model = phase_selection(PROJECT_ROOT, phase)
-                connection_updates.append(gr.update(choices=connection_names(PROJECT_ROOT),
-                                                    value=selected_connection))
-                model_updates.append(gr.update(
-                    choices=model_names(PROJECT_ROOT, selected_connection) if selected_connection else [],
-                    value=selected_model, interactive=bool(selected_connection)))
             return (gr.update(visible=False), "", status, configuration_summary(root),
-                    *connection_updates, *model_updates)
+                    *phase_dropdown_updates())
 
         save_phase_new_model.click(
             add_phase_model_ui, inputs=[phase_job, phase_connection, phase_model_name],
@@ -902,6 +906,10 @@ def build_app(root: str, blocked_paths: Optional[list[str]] = None,
                                         sidebar_list, *view_outputs, review_panel, pages,
                                         go_config, config_open, bot_button, go_upload,
                                         upload_open, settings_modal, lessons_form],
+                  show_progress="hidden")
+        # Anche i modelli per fase: senza questo un refresh mostrerebbe i valori letti
+        # all'avvio del server, come se le modifiche salvate fossero andate perse.
+        demo.load(phase_dropdown_updates, outputs=[*connection_dropdowns, *model_dropdowns],
                   show_progress="hidden")
     return demo
 
