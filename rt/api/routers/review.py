@@ -34,7 +34,9 @@ def revise_outline(lesson_id: int, body: schemas.OutlineRevision, lesson_dir: Le
 @router.post("/lessons/{lesson_id}/issues/{issue_id}/decision", response_model=schemas.Decision,
              summary="Decide un'issue: accepted, rejected o edited (con testo)")
 def decide_issue(lesson_id: int, issue_id: str, body: schemas.DecisionRequest, lesson_dir: LessonDir, actor: Actor):
-    from rt.services.review_service import ReviewDecisionError, record_review_decision
+    from rt.services.review_service import (
+        ReviewDecisionError, is_review_complete, mark_ready_to_build, record_review_decision,
+    )
     ensure_no_running_job(lesson_dir)
     try:
         decision = record_review_decision(
@@ -43,6 +45,8 @@ def decide_issue(lesson_id: int, issue_id: str, body: schemas.DecisionRequest, l
         )
     except ReviewDecisionError as exc:
         raise ApiError(409, "decision_rejected", str(exc))
+    if is_review_complete(lesson_dir):
+        mark_ready_to_build(lesson_dir)  # come a fine review da terminale o da Telegram
     return decision.model_dump(mode="json")
 
 

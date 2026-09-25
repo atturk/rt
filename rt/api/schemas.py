@@ -241,6 +241,20 @@ class RecallOverview(BaseModel):
     answers: int
 
 
+class RecallAnswerRecord(BaseModel):
+    question_id: str
+    answer_text: str
+    is_voice: bool = False
+    evaluation: Optional[str] = None
+    vote: Optional[str] = Field(None, description="up | down | lightning")
+    answered_at: str
+
+
+class RecallHistory(BaseModel):
+    questions: List[RecallQuestion]
+    answers: List[RecallAnswerRecord]
+
+
 class RecallGenerate(BaseModel):
     qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: riserva iniziale di tutti i tipi")
     count: Optional[int] = Field(None, ge=1, le=50)

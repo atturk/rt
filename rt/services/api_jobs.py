@@ -1,7 +1,7 @@
 """
 rt.services.api_jobs
 Tipi di job usati dall'API (fase E) oltre a quelli standard di rt/services/job_handlers.py:
-rewrite di una sola unità, batch di recall di un tipo, valutazione di una risposta aperta,
+rewrite di una sola unità, batch e rifornimento del recall, valutazione di una risposta aperta,
 revisione dell'outline, prova di una credenziale. Ogni handler chiama i servizi o le funzioni
 del motore che usa la CLI per lo stesso comando, così il risultato è identico. Un tipo già
 registrato non viene sostituito. Ai tipi standard che ricevono file caricati via API
@@ -19,6 +19,7 @@ from rt.services.worker import JobOutcome, _HANDLERS, register_handler
 REWRITE_UNIT = "rewrite_unit"
 RECALL_BATCH = "recall_batch"
 RECALL_EVALUATE = "recall_evaluate"
+RECALL_REFILL = "recall_refill"
 OUTLINE_REVISION = "outline_revision"
 CREDENTIAL_TEST = "credential_test"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images")
@@ -99,6 +100,16 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                  lesson_path=job.lesson_path)
 
 
+def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Rifornisce la riserva di un tipo sotto soglia (dopo una domanda mostrata)."""
+    from rt.core.models import RecallQuestionType
+    from rt.services.recall_service import recall_overview, refill_active_type_if_low
+    with ctx.activate():
+        refill_active_type_if_low(job.lesson_path, RecallQuestionType(job.payload["qtype"]),
+                                  force_mock=bool(job.payload.get("mock")))
+    return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
 def outline_revision_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.outline_service import get_outline_review, request_outline_revision
     ctx.force_mock = bool(job.payload.get("mock"))
@@ -137,6 +148,7 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 for _type, _handler in (
     (REWRITE_UNIT, rewrite_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
+    (RECALL_REFILL, recall_refill_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
 ):
     if _type not in _HANDLERS:

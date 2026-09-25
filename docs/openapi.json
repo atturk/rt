@@ -1719,6 +1719,57 @@
         "title": "RecallAnswer",
         "type": "object"
       },
+      "RecallAnswerRecord": {
+        "properties": {
+          "answer_text": {
+            "title": "Answer Text",
+            "type": "string"
+          },
+          "answered_at": {
+            "title": "Answered At",
+            "type": "string"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation"
+          },
+          "is_voice": {
+            "default": false,
+            "title": "Is Voice",
+            "type": "boolean"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          },
+          "vote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "up | down | lightning",
+            "title": "Vote"
+          }
+        },
+        "required": [
+          "question_id",
+          "answer_text",
+          "answered_at"
+        ],
+        "title": "RecallAnswerRecord",
+        "type": "object"
+      },
       "RecallGenerate": {
         "properties": {
           "count": {
@@ -1758,6 +1809,30 @@
           }
         },
         "title": "RecallGenerate",
+        "type": "object"
+      },
+      "RecallHistory": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/RecallAnswerRecord"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/RecallQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions",
+          "answers"
+        ],
+        "title": "RecallHistory",
         "type": "object"
       },
       "RecallOverview": {
@@ -4991,6 +5066,95 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/recall/history": {
+      "get": {
+        "operationId": "history_api_v1_lessons__lesson_id__recall_history_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Domande (con soluzione se già poste) e risposte date, con valutazioni e voti",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/recall/next": {
       "post": {
         "operationId": "next_question_api_v1_lessons__lesson_id__recall_next_post",
@@ -5052,6 +5216,18 @@
               ],
               "description": "Domanda appena saltata",
               "title": "Exclude Id"
+            }
+          },
+          {
+            "description": "Rifornimento della riserva in mock",
+            "in": "query",
+            "name": "mock",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Rifornimento della riserva in mock",
+              "title": "Mock",
+              "type": "boolean"
             }
           }
         ],
@@ -5122,7 +5298,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Prossima domanda del tipo scelto (404 se la riserva è vuota: usa /recall/generate)",
+        "summary": "Prossima domanda del tipo scelto; sotto soglia accoda un job recall_refill (404 se la riserva è vuota: usa /recall/generate)",
         "tags": [
           "recall"
         ]

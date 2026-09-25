@@ -148,7 +148,7 @@ def cmd_outline(args):
 
 def cmd_validate_outline(args):
     outline = load_outline(args.lesson_dir)
-    seg_data = load_segments_json(os.path.join(args.lesson_dir, "segments.json"))
+    seg_data = load_segments_json(lesson_path(args.lesson_dir, "segments.json"))
     res = validate_outline(outline, seg_data)
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
@@ -167,7 +167,7 @@ def cmd_rewrite(args):
 def cmd_validate_draft(args):
     outline = load_outline(args.lesson_dir)
     draft = load_draft(args.lesson_dir)
-    seg_data = load_segments_json(os.path.join(args.lesson_dir, "segments.json"))
+    seg_data = load_segments_json(lesson_path(args.lesson_dir, "segments.json"))
     res = validate_draft(draft, outline, seg_data)
     print(json.dumps(res, ensure_ascii=False, indent=2))
 

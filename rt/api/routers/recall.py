@@ -13,6 +13,14 @@ router = APIRouter(tags=["recall"])
 VOICE_SUFFIXES = {".m4a", ".mp3", ".wav", ".ogg", ".oga", ".opus", ".webm", ".aac", ".flac"}
 
 
+def _refill_later(lesson_dir: str, question, mock: bool, actor: str) -> None:
+    """Come il recall da terminale dopo ogni domanda mostrata: se la riserva del tipo è sotto
+    soglia, un job ne genera altre (la risposta non aspetta l'LLM)."""
+    from rt.services.recall_service import needs_refill
+    if question is not None and needs_refill(lesson_dir, question.type):
+        enqueue_job("recall_refill", lesson_dir, {"qtype": question.type.value, "mock": mock}, actor)
+
+
 def _require_draft(lesson_dir: str) -> None:
     from rt.core.idempotency import PhaseStatus, check_phase_status
     status, reason = check_phase_status(lesson_dir, "rewrite")
@@ -26,6 +34,13 @@ def overview(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return recall_overview(lesson_dir)
 
 
+@router.get("/lessons/{lesson_id}/recall/history", response_model=schemas.RecallHistory,
+            summary="Domande (con soluzione se già poste) e risposte date, con valutazioni e voti")
+def history(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_service import recall_history
+    return recall_history(lesson_dir)
+
+
 @router.post("/lessons/{lesson_id}/recall/generate", response_model=schemas.JobAccepted, status_code=202,
              summary="Genera domande: riserva iniziale (job recall_generate) o un tipo (job recall_batch)")
 def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir, actor: Actor):
@@ -36,17 +51,19 @@ def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir
 
 
 @router.post("/lessons/{lesson_id}/recall/next", response_model=schemas.RecallQuestion,
-             summary="Prossima domanda del tipo scelto (404 se la riserva è vuota: usa /recall/generate)")
-def next_question(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+             summary="Prossima domanda del tipo scelto; sotto soglia accoda un job recall_refill (404 se la riserva è vuota: usa /recall/generate)")
+def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
                   qtype: Literal["quiz", "mirata", "vasta"] = Query("quiz"),
                   order: Literal["alternato", "sequenziale", "casuale"] = Query("alternato"),
-                  exclude_id: Optional[str] = Query(None, description="Domanda appena saltata")):
+                  exclude_id: Optional[str] = Query(None, description="Domanda appena saltata"),
+                  mock: bool = Query(False, description="Rifornimento della riserva in mock")):
     from rt.core.models import RecallQuestionType
     from rt.services.recall_service import next_question_for, question_view
     _require_draft(lesson_dir)
     question = next_question_for(lesson_dir, RecallQuestionType(qtype), order=order, exclude_id=exclude_id)
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
+    _refill_later(lesson_dir, question, mock, actor)
     return question_view(question)
 
 

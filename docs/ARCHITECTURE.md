@@ -400,3 +400,27 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
   è locale) accodano un job e aspettano il risultato in un thread dell'executor; senza worker,
   o se nessuno prende il job entro 30 secondi, eseguono in processo come prima. L'avvio della
   review su Telegram non ha passi lunghi (la review LLM è una fase della pipeline).
+
+## 10. API REST (RT 4.0, fase E)
+
+- **Pacchetto** `rt/api`: app FastAPI (`create_app`), router sotto `/api/v1` (`system`,
+  `lessons`, `review`, `jobs`, `recall`, `settings`), errori uniformi
+  `{"error": {code, message, details}}` sanificati. `rt api` la avvia con uvicorn su
+  `127.0.0.1:8765`; la documentazione interattiva è su `/docs`. Endpoint e uso in
+  `docs/API.md`, schema in `docs/openapi.json` (`scripts/export_openapi.py`).
+- **Solo servizi**: i router chiamano `rt/services` e `rt/db`; nessuna logica di dominio in
+  `rt/api`. Per l'API sono passati in `rt/services` anche impostazioni e connessioni
+  (`settings_service`, `connections_service`, prima in `rt/web`) e la lettura delle lezioni
+  (`lesson_service`).
+- **Autenticazione**: token casuale mostrato una volta al primo avvio, hash salato nella
+  tabella `settings`; Bearer per gli script, cookie di sessione HttpOnly + CSRF per la SPA.
+  `--no-auth` solo su loopback.
+- **Id delle lezioni**: la riga `Lesson` del DB; `relocate_lesson` la conserva quando
+  `rt build` rinomina o sposta la cartella.
+- **Lavori lunghi**: l'endpoint accoda un job (risposta 202) e `rt worker` lo esegue; gli
+  eventi arrivano in Server-Sent Events da `/jobs/{id}/events` e riprendono da
+  `Last-Event-ID`. Le decisioni (outline, issue) registrano `channel=api`; la ripresa dei job
+  in attesa la fanno i servizi. Con un job in esecuzione sulla lezione le decisioni
+  rispondono 409. I tipi di job solo API stanno in `rt/services/api_jobs.py`.
+- **Parità**: `docs/RT4_PARITY.md` e i test `tests/test_api_parity.py` e
+  `tests/test_api_persistence.py` (sezione 9-bis del piano).

@@ -10,7 +10,7 @@ import os
 from typing import Any, List, Optional
 
 from rt.core.lesson_paths import lesson_path
-from rt.core.models import RecallQuestionType
+from rt.core.models import RecallQuestionStatus, RecallQuestionType
 
 
 def format_unit_reference(lesson_dir: str, question) -> str:
@@ -147,6 +147,21 @@ def refill_if_low(
         generate_recall_batch(lesson_dir, qtype, batch_size, examples, force_mock=force_mock)
 
 
+def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_mock: bool = False) -> None:
+    """refill_if_low con soglia e batch della configurazione (come dopo ogni risposta del
+    recall da terminale)."""
+    from rt.core.config import load_config
+    cfg = load_config()
+    refill_if_low(lesson_dir, qtype, cfg.telegram.recall.refill_threshold,
+                  cfg.telegram.recall.refill_batch_size, cfg.telegram.state_dir, force_mock=force_mock)
+
+
+def needs_refill(lesson_dir: str, qtype: RecallQuestionType) -> bool:
+    from rt.core.config import load_config
+    from rt.pipeline.recall import get_reserve_count
+    return get_reserve_count(lesson_dir, qtype) < load_config().telegram.recall.refill_threshold
+
+
 def is_question_stale(lesson_dir: str, question) -> bool:
     """La domanda è stata generata da un contenuto di unità poi modificato."""
     from rt.pipeline.recall import _compute_units_fingerprint
@@ -188,6 +203,15 @@ def recall_overview(lesson_dir: str) -> dict:
         by_status = counts.setdefault(q.type.value, {})
         by_status[q.status.value] = by_status.get(q.status.value, 0) + 1
     return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text])}
+
+
+def recall_history(lesson_dir: str) -> dict:
+    """Tutte le domande (soluzione visibile solo per quelle già poste) e le risposte date,
+    con valutazione e voto."""
+    from rt.pipeline.recall import load_recall_bank
+    bank = load_recall_bank(lesson_dir)
+    questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING) for q in bank.questions]
+    return {"questions": questions, "answers": [a.model_dump(mode="json") for a in bank.answers]}
 
 
 def next_question_for(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",

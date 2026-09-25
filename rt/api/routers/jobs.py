@@ -135,7 +135,9 @@ def add_images(
         input_path = None
         if files:
             saved = _save_uploads(files, IMAGE_SUFFIXES, target)
-            input_path = saved[0] if len(saved) == 1 else target
+            # un PDF da solo si passa com'è; le immagini come cartella (come 'rt add-images -i')
+            single_pdf = len(saved) == 1 and saved[0].lower().endswith(".pdf")
+            input_path = saved[0] if single_pdf else target
         payload = {"input_path": input_path, "web_search_count": web_search, "carousel": carousel, "mock": mock,
                    "upload_dir": target}
         return enqueue_job("add_images", lesson_dir, payload, actor)
