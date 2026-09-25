@@ -80,6 +80,13 @@ def _update_env_file(env_path: str, key: str, value: str) -> None:
     set_env_var(env_path, key, value)
 
 
+def _save_secret(env_path: str, key: str, value: str) -> None:
+    """Salva un segreto: nell'archivio cifrato se 'rt secrets init' è stato eseguito,
+    altrimenti in .env come _update_env_file."""
+    from rt.services.config_service import set_secret
+    set_secret(key, value, path=env_path, quote=False)
+
+
 def _resolve_or_bootstrap_config_paths() -> Tuple[str, str]:
     """
     Risolve i percorsi per la cartella config/ ed il file .env.
@@ -411,7 +418,7 @@ def _create_new_model_profile(
             cred_name = "google_1" if provider == "google" else f"{provider.lower()}_1"
 
         if api_key:
-            _update_env_file(env_path, env_var_name, api_key)
+            _save_secret(env_path, env_var_name, api_key)
             creds = general_data.get("credentials")
             if not isinstance(creds, list):
                 creds = []
@@ -441,7 +448,7 @@ def _create_new_model_profile(
 
         for cn, ce, key_val in collected_keys:
             if key_val:
-                _update_env_file(env_path, ce, key_val)
+                _save_secret(env_path, ce, key_val)
             found_c = False
             for c in creds:
                 if isinstance(c, dict) and (c.get("name") == cn or c.get("env_var") == ce):
@@ -1477,7 +1484,7 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
             print("⚠️  Bot token non inserito, sezione Telegram interrotta.")
             return {"configured": False}
         bot_token = token_input.strip()
-        _update_env_file(env_path, "RT_TELEGRAM_BOT_TOKEN", bot_token)
+        _save_secret(env_path, "RT_TELEGRAM_BOT_TOKEN", bot_token)
 
     # 2. Discovery Gruppo / Topic
     mode = questionary.select(
@@ -2032,7 +2039,7 @@ def _edit_model_profile(
                     default=curr_val
                 ).ask()
                 if new_key and new_key.strip():
-                    _update_env_file(env_path, env_var, new_key.strip())
+                    _save_secret(env_path, env_var, new_key.strip())
                     os.environ[env_var] = new_key.strip()
                     print(f"✅ API key per {env_var} aggiornata.")
 

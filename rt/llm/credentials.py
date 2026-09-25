@@ -8,7 +8,9 @@ Disaccoppia esplicitamente:
 - model
 
 RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
-- Le chiavi provengono ESCLUSIVAMENTE da environment variables o file .env locale.
+- Le chiavi provengono ESCLUSIVAMENTE da environment variables, dall'archivio cifrato
+  config/secrets.enc (rt.security.secrets, riversato in os.environ da load_env_file) o dal
+  file .env locale, in quest'ordine di priorità.
 - google_1 e google_2 sono progetti Google indipendenti con quote e chiavi distinte.
 - Nessun secret viene mai salvato o stampato in chiaro nei log, eccezioni o telemetria.
 """
@@ -60,6 +62,10 @@ class CredentialRegistry:
         return ref.env_var if ref else None
 
 
+    def registered_env_vars(self) -> set:
+        """Nomi delle variabili d'ambiente di tutte le credenziali registrate."""
+        return {ref.env_var for ref in self._credentials.values() if ref.env_var}
+
     def validate_credential(self, provider: str, credential_name: str) -> bool:
         """Valida a livello di configurazione che la credenziale esista e appartenga al provider specificato."""
         clean_p = provider.lower().strip()
@@ -76,8 +82,8 @@ class CredentialRegistry:
 
     def get_api_key(self, credential_name: str) -> Optional[str]:
         """
-        Recupera il valore della chiave API esclusivamente dall'ambiente.
-        Restituisce None se non impostata o non configurata.
+        Recupera il valore della chiave API dall'ambiente (dove load_env_file ha già riversato
+        l'archivio cifrato e .env). Restituisce None se non impostata o non configurata.
         """
         from rt.core.config import load_env_file
         load_env_file()
@@ -111,6 +117,13 @@ class CredentialRegistry:
                 secret_val = os.environ[ref.env_var].strip()
                 if len(secret_val) >= 8:
                     sanitized = sanitized.replace(secret_val, f"[REDACTED:{ref.name}]")
+
+        # 1-bis. Valori caricati dall'archivio cifrato (anche token non registrati come credenziali)
+        from rt.security.secrets import injected_secret_values
+        for secret_val in sorted(injected_secret_values(), key=len, reverse=True):
+            secret_val = secret_val.strip()
+            if len(secret_val) >= 8:
+                sanitized = sanitized.replace(secret_val, "[REDACTED]")
 
         # 2. Redazione Authorization Bearer (inclusi token precedentemente etichettati)
         sanitized = re.sub(r"Bearer\s+([^\s,;\"']+)", "Bearer [REDACTED]", sanitized)

@@ -286,6 +286,11 @@ else
     echo "${GREEN}✅ File .env creato.${RESET}"
 fi
 
+# RT4-C2: chiavi ancora in chiaro in .env e archivio cifrato assente → solo un suggerimento.
+if "${VENV_DIR}/bin/python" -c "import sys; sys.path.insert(0, sys.argv[1]); from rt.services.secrets_service import env_needs_migration as n; sys.exit(0 if n(sys.argv[1] + '/.env', sys.argv[1] + '/config/general.yaml') else 1)" "$REPO_DIR" >>"$LOG_FILE" 2>&1; then
+    echo "🔐 Le chiavi API sono in chiaro nel file .env: per cifrarle esegui 'rt secrets init' e poi 'rt secrets migrate'."
+fi
+
 echo "⚙️ Impostazione permessi di esecuzione su bin/rt..."
 chmod +x "${REPO_DIR}/bin/rt"
 echo "${GREEN}✅ Permessi impostati.${RESET}"

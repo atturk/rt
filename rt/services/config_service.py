@@ -5,8 +5,8 @@ per-job) e dei segreti, condivise dal wizard 'rt config' (rt/tui/configure) e da
 impostazioni web (rt/web/settings.py). Riusa rt.core.config per la precedenza dei percorsi
 e per la validazione.
 
-I segreti passano da set_secret(), che per ora li scrive nel file .env come sempre (chmod
-600): RT4-C1 lo sostituirà con un archivio cifrato senza toccare i chiamanti.
+I segreti passano da set_secret(): se l'archivio cifrato config/secrets.enc esiste (creato da
+'rt secrets init', RT4-C2) finiscono lì, altrimenti nel file .env come sempre (chmod 600).
 """
 import json
 import os
@@ -119,7 +119,17 @@ def set_env_var(path: PathLike, key: str, value: str, quote: bool = False) -> No
     os.environ[key] = value
 
 
-def set_secret(name: str, value: str, project_root: Optional[PathLike] = None, path: Optional[PathLike] = None) -> None:
-    """Salva un segreto (chiave API, token). Oggi: variabile nel file .env."""
+def set_secret(name: str, value: str, project_root: Optional[PathLike] = None, path: Optional[PathLike] = None,
+               quote: bool = True) -> str:
+    """Salva un segreto (chiave API, token): nell'archivio cifrato se inizializzato, altrimenti
+    nel file .env (path). Restituisce dove è finito: "store" o "env"."""
+    from rt.security.secrets import store_path_for_env_file
+    from rt.services import secrets_service
     validate_secret(value)
-    set_env_var(path or env_path(project_root), name, value, quote=True)
+    target_env = Path(path) if path else env_path(project_root)
+    store_path = store_path_for_env_file(target_env)
+    if store_path.is_file():
+        secrets_service.set_secret(name, value, path=store_path)
+        return "store"
+    set_env_var(target_env, name, value, quote=quote)
+    return "env"

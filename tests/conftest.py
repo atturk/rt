@@ -11,6 +11,23 @@ import rt.core.config
 ORIGINAL_BUILD_DEFAULT_JOBS = rt.core.config._build_default_jobs
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_encrypted_secret_store(tmp_path_factory):
+    """RT4-C1: load_env_file riversa in os.environ l'archivio cifrato config/secrets.enc.
+    Sulla macchina di sviluppo quel file contiene le chiavi vere e la chiave master sta nel
+    portachiavi: la suite punta RT_SECRETS_FILE a un percorso inesistente, così nessun test
+    legge segreti reali né interroga il portachiavi. I test di rt.security usano il loro file."""
+    missing = tmp_path_factory.mktemp("secrets") / "absent-secrets.enc"
+    previous = os.environ.get("RT_SECRETS_FILE")
+    os.environ["RT_SECRETS_FILE"] = str(missing)
+    os.environ.pop("RT_MASTER_KEY", None)
+    yield
+    if previous is None:
+        os.environ.pop("RT_SECRETS_FILE", None)
+    else:
+        os.environ["RT_SECRETS_FILE"] = previous
+
+
 @pytest.fixture(autouse=True)
 def _disable_real_telegram_notifications():
     """Impedisce che i test raggiungano il vero bot Telegram. rt/llm/credentials.py chiama

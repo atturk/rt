@@ -196,7 +196,8 @@ def save_telegram(project_root: Path, token: str, chat_id: str,
     if token.strip():
         _save_secret(project_root, "RT_TELEGRAM_BOT_TOKEN", token.strip())
     if chat_id.strip():
-        _save_secret(project_root, "RT_TELEGRAM_CHAT_ID", chat_id.strip())
+        # Il chat id non è un segreto: resta in .env anche con l'archivio cifrato.
+        config_service.set_env_var(_env_path(project_root), "RT_TELEGRAM_CHAT_ID", chat_id.strip(), quote=True)
     return "Impostazioni Telegram salvate."
 
 
