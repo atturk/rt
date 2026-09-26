@@ -23,6 +23,7 @@ from typing import Callable, Optional
 RELEASE_URL = "https://github.com/atturk/rt/releases/download/v{version}/{name}"
 SPA_REL_DIR = os.path.join("rt", "spa")
 VERSION_FILE = "VERSION"
+LOCAL_TARBALL_ENV = "RT_SPA_TARBALL"  # pacchetto locale al posto del download (fase G: CI, offline)
 
 
 class SpaReleaseMissing(Exception):
@@ -81,16 +82,23 @@ def install_spa(project_root: str, version: str, opener: Optional[Callable] = No
     """Scarica e installa la SPA della versione data in rt/spa. True se l'ha installata, False
     se c'era già. Solleva SpaReleaseMissing se la release non la allega, altre eccezioni per
     rete, sha256 o pacchetto non validi (rt/spa resta com'era)."""
+    local = os.environ.get(LOCAL_TARBALL_ENV, "").strip()
+    if local:
+        # installazione senza rete (CI dell'installer, sviluppo): pacchetto già compilato
+        with open(os.path.expanduser(local), "rb") as f:
+            data = f.read()
+        force = True
     if not force and installed_version(project_root) == version:
         return False
-    name = f"rt-spa-{version}.tar.gz"
-    sums = _download(RELEASE_URL.format(version=version, name="SHA256SUMS"), opener).decode("utf-8")
-    expected = _expected_sha(sums, name)
-    if expected is None:
-        raise SpaReleaseMissing(name)
-    data = _download(RELEASE_URL.format(version=version, name=name), opener)
-    if hashlib.sha256(data).hexdigest() != expected:
-        raise ValueError(f"sha256 di {name} diverso da SHA256SUMS: download corrotto")
+    if not local:
+        name = f"rt-spa-{version}.tar.gz"
+        sums = _download(RELEASE_URL.format(version=version, name="SHA256SUMS"), opener).decode("utf-8")
+        expected = _expected_sha(sums, name)
+        if expected is None:
+            raise SpaReleaseMissing(name)
+        data = _download(RELEASE_URL.format(version=version, name=name), opener)
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise ValueError(f"sha256 di {name} diverso da SHA256SUMS: download corrotto")
 
     target = spa_dir(project_root)
     parent = os.path.dirname(target)

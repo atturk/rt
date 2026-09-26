@@ -19,6 +19,9 @@ def configure_worker_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--lease", type=int, default=None, help="Durata del lease in secondi (default 60)")
     p.add_argument("--poll", type=float, default=1.0, help="Attesa tra due controlli della coda vuota (secondi)")
     p.add_argument("--mock", action="store_true", help="Esegue ogni job in mock (LLM e risposte vocali): per i test")
+    p.add_argument("--stt", default=os.environ.get("RT_WORKER_STT", "auto"),
+                   help="Motore di trascrizione di questo worker: auto (default), macparakeet, custom o none. "
+                        "Un worker senza trascrizione non prende i job che devono trascrivere audio")
 
 
 def configure_jobs_parser(p: argparse.ArgumentParser) -> None:
@@ -80,6 +83,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
         "poll_interval": args.poll,
         "on_message": lambda msg: print(msg, flush=True),
         "mock": bool(getattr(args, "mock", False)),
+        "stt": getattr(args, "stt", "auto"),
     }
     if args.once:
         done = Worker(_queue(), **kwargs).run(once=True)
@@ -88,7 +92,11 @@ def cmd_worker(args: argparse.Namespace) -> None:
         return
     _stop_on_signals()
     mode = " in mock" if kwargs["mock"] else ""
+    from rt.services.jobs import detect_stt_capability
+    stt = detect_stt_capability(kwargs["stt"], mock=kwargs["mock"])
     print(f"👷 Worker RT avviato{mode} (pid {os.getpid()}, job: {', '.join(types)}). Ctrl+C per fermarlo.", flush=True)
+    print(f"   Trascrizione: {stt}" if stt else
+          "   Trascrizione: nessuna (i job che devono trascrivere audio aspettano un worker sul Mac)", flush=True)
     try:
         run_workers(_queue, concurrency=max(1, args.concurrency), **kwargs)
     except KeyboardInterrupt:
@@ -220,7 +228,8 @@ def run_queued(raw_inputs, options, decisions) -> None:
     lesson = None if is_audio_input(raw_inputs) else raw_inputs[0]
     job_id = queue.enqueue(RUN_PIPELINE, lesson, pipeline_payload(raw_inputs, options), created_by="cli")
     print(f"📥 Job {job_id[:12]} in coda.", flush=True)
-    if not queue.live_workers(RUN_PIPELINE):
+    from rt.services.jobs import job_needs_stt
+    if not queue.live_workers(RUN_PIPELINE, needs_stt=job_needs_stt(RUN_PIPELINE, pipeline_payload(raw_inputs, options))):
         print("⚠️  Nessun worker attivo: il job partirà quando avvii 'rt worker'.", flush=True)
     cursor = 0
     try:

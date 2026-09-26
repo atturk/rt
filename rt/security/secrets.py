@@ -305,17 +305,12 @@ class EncryptedFileSecretStore(SecretStore):
 
 def default_store_path(project_root: Optional[PathLike] = None) -> Path:
     """RT_SECRETS_FILE, altrimenti secrets.enc nella cartella config/ in uso (stessa precedenza
-    di load_config: config/ nella cwd, poi nella project root)."""
+    di load_config, vedi rt.core.paths.config_home)."""
     explicit = os.environ.get(SECRETS_FILE_ENV, "").strip()
     if explicit:
         return Path(explicit).expanduser()
-    local = Path.cwd() / "config"
-    if local.is_dir():
-        return local / SECRETS_FILENAME
-    if project_root is None:
-        from rt.core.config import _default_project_root
-        project_root = _default_project_root()
-    return Path(project_root) / "config" / SECRETS_FILENAME
+    from rt.core.paths import config_dir
+    return Path(config_dir(os.fspath(project_root) if project_root is not None else None)) / SECRETS_FILENAME
 
 
 def store_path_for_env_file(env_file: PathLike) -> Path:

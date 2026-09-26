@@ -29,9 +29,11 @@ def job_view(info) -> Dict[str, Any]:
     return data
 
 
-def worker_available(job_type: str) -> bool:
-    from rt.services.jobs import has_live_worker
-    return has_live_worker(job_type)
+def worker_available(job_type: str, payload: Optional[Dict[str, Any]] = None,
+                     lesson_dir: Optional[str] = None) -> bool:
+    """C'è un worker vivo che può prendere il job (se deve trascrivere, uno con la STT: RT4-G1)."""
+    from rt.services.jobs import has_live_worker, job_needs_stt
+    return has_live_worker(job_type, needs_stt=job_needs_stt(job_type, payload, lesson_dir))
 
 
 def enqueue_job(job_type: str, lesson_dir: Optional[str], payload: Dict[str, Any],
@@ -46,7 +48,7 @@ def job_accepted(job_id: str) -> Dict[str, Any]:
     lesson_dir = info.lesson_path
     return {"job_id": job_id, "type": info.type, "state": info.state,
             "lesson_id": lesson_id_for_dir(lesson_dir) if lesson_dir and fs.isdir(lesson_dir) else None,
-            "worker_available": worker_available(info.type), "retry_of": info.retry_of}
+            "worker_available": worker_available(info.type, info.payload, lesson_dir), "retry_of": info.retry_of}
 
 
 def running_jobs(lesson_dir: str):

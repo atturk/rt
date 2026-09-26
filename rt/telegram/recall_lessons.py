@@ -17,11 +17,12 @@ from rt.storage import fs
 
 
 def _find_recall_lessons_yaml() -> Optional[str]:
-    from rt.core.config import _default_project_root
+    from rt.core.paths import config_dir as active_config_dir, project_root
 
     for config_dir in (
+        active_config_dir(),
         os.path.join(os.getcwd(), "config"),
-        os.path.join(_default_project_root(), "config"),
+        os.path.join(project_root(), "config"),
     ):
         candidate = os.path.join(config_dir, "telegram", "recall_lessons.yaml")
         if fs.isfile(candidate):

@@ -484,12 +484,35 @@ def daemon_start(_actor: Actor):
     from rt.telegram.daemon_status import get_default_pid_path, start_daemon_detached
     if not secret_is_set("RT_TELEGRAM_BOT_TOKEN") or not (os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip():
         raise ApiError(409, "telegram_not_configured", "Salva prima token e Chat ID del bot.")
+    from rt.services import service_manager as sm
+    if sm.supported() and sm.installed(["bot"]):
+        # fase G: il bot è un servizio launchd, lo avvia launchd (niente processo figlio dell'API)
+        try:
+            sm.start(["bot"])
+        except sm.ServiceError as exc:
+            raise ApiError(409, "telegram_start_failed", str(exc))
+        pid = _wait_daemon_pid()
+        if pid is None:
+            raise ApiError(409, "telegram_start_failed", "Il bot non si è avviato: controlla il log del servizio bot.")
+        return DaemonStatus(running=True, pid=pid)
     logfile = os.path.join(os.path.dirname(get_default_pid_path()), "telegram.log")
     try:
         pid = start_daemon_detached(str(general_config_path(_project_root()).parent.parent), logfile)
     except RuntimeError as exc:
         raise ApiError(409, "telegram_start_failed", str(exc))
     return DaemonStatus(running=True, pid=pid)
+
+
+def _wait_daemon_pid(seconds: float = 8.0):
+    import time
+    from rt.telegram.daemon_status import get_daemon_pid
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        pid = get_daemon_pid()
+        if pid is not None:
+            return pid
+        time.sleep(0.2)
+    return None
 
 
 @router.get("/telegram/notifications", response_model=List[Notification],
@@ -501,6 +524,12 @@ def notifications(_actor: Actor, limit: int = Query(20, ge=1, le=50)):
 
 @router.post("/telegram/daemon/stop", response_model=DaemonStatus, summary="Ferma il bot Telegram")
 def daemon_stop(_actor: Actor):
+    from rt.services import service_manager as sm
     from rt.telegram.daemon_status import stop_daemon
+    if sm.supported() and sm.installed(["bot"]):
+        try:
+            sm.stop(["bot"])  # scarica il servizio: launchd non lo rilancia
+        except sm.ServiceError:
+            pass
     stop_daemon()
     return daemon_status(_actor)

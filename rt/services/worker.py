@@ -156,9 +156,13 @@ class Worker:
     def __init__(self, queue: DbJobQueue, worker_id: Optional[str] = None,
                  job_types: Optional[Sequence[str]] = None, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                  poll_interval: float = 1.0, handlers: Optional[Dict[str, JobHandler]] = None,
-                 on_message: Optional[Callable[[str], None]] = None, mock: bool = False):
+                 on_message: Optional[Callable[[str], None]] = None, mock: bool = False,
+                 stt: Optional[str] = "auto"):
+        from rt.services.jobs import detect_stt_capability
         self.queue = queue
         self.mock = mock
+        # RT4-G1: motore di trascrizione del worker (None = non prende i job che trascrivono)
+        self.stt = detect_stt_capability(stt, mock=mock)
         self.handlers = dict(handlers) if handlers is not None else registered_handlers()
         self.job_types = list(job_types) if job_types else sorted(self.handlers)
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
@@ -170,7 +174,7 @@ class Worker:
     def register(self) -> None:
         if not self._registered:
             self.queue.register_worker(self.worker_id, socket.gethostname(), os.getpid(),
-                                       platform.system().lower(), self.job_types)
+                                       platform.system().lower(), self.job_types, {"stt": self.stt})
             self._registered = True
 
     def run(self, once: bool = False, stop_event: Optional[threading.Event] = None,
@@ -199,7 +203,8 @@ class Worker:
     def run_once(self) -> Optional[JobInfo]:
         """Prende ed esegue un job; None se la coda è vuota."""
         self.register()
-        job = self.queue.claim(self.worker_id, self.job_types, self.lease_seconds)
+        job = self.queue.claim(self.worker_id, self.job_types, self.lease_seconds,
+                               can_transcribe=bool(self.stt))
         if job is None:
             return None
         self.execute(job)

@@ -108,7 +108,8 @@ def get_terminal_bounds() -> Optional[Tuple[int, int, int, int]]:
 
 
 def get_mpv_last_position_path() -> str:
-    return os.path.expanduser("~/.rt/mpv_last_position.json")
+    from rt.core.paths import data_dir
+    return os.path.join(data_dir(), "mpv_last_position.json")
 
 
 def load_last_mpv_geometry() -> str:

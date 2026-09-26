@@ -1,0 +1,66 @@
+# RT con Docker Compose (RT4-G1). Avvio:   docker compose up -d
+# Accesso: docker compose exec api rt web --no-browser   (stampa un link di accesso monouso)
+# Profili facoltativi:  --profile telegram (bot)   --profile postgres (database PostgreSQL)
+# Dettagli, backup e limiti (trascrizione): docs/SELF_HOSTING.md
+name: rt
+
+x-rt: &rt
+  build: .
+  image: rt:local
+  volumes:
+    - rt-data:/data
+  environment: &rt-env
+    RT_DATA_DIR: /data
+    # chiave master dei segreti cifrati (nel container non c'è il portachiavi di macOS)
+    RT_MASTER_KEY: ${RT_MASTER_KEY:-}
+    # vuoto = SQLite in /data/rt.db; con il profilo postgres:
+    # postgresql+psycopg://rt:${RT_POSTGRES_PASSWORD:-rt}@postgres/rt
+    RT_DATABASE_URL: ${RT_DATABASE_URL:-}
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *rt
+    command: ["api", "--host", "0.0.0.0", "--port", "8765", "--service"]
+    ports:
+      - "127.0.0.1:${RT_PORT:-8765}:8765"
+
+  worker:
+    <<: *rt
+    command: ["worker", "--concurrency", "${RT_WORKER_CONCURRENCY:-2}"]
+    environment:
+      <<: *rt-env
+      # auto: trascrive solo con un motore STT "custom" configurato (macparakeet è solo macOS)
+      RT_WORKER_STT: ${RT_WORKER_STT:-auto}
+    healthcheck:
+      disable: true
+    depends_on:
+      api:
+        condition: service_healthy
+
+  bot:
+    <<: *rt
+    command: ["telegram-daemon", "--service"]
+    profiles: ["telegram"]
+    # esce con 0 se il bot non è configurato: non va rilanciato a vuoto
+    restart: on-failure
+    healthcheck:
+      disable: true
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: rt
+      POSTGRES_PASSWORD: ${RT_POSTGRES_PASSWORD:-rt}
+      POSTGRES_DB: rt
+    volumes:
+      - rt-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  rt-data:
+  rt-postgres:

@@ -223,6 +223,9 @@ class Worker(Base):
     pid: Mapped[int] = mapped_column(Integer, default=0)
     platform: Mapped[str] = mapped_column(String(32), default="")
     job_types: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # RT4-G1: cosa sa fare oltre ai tipi di job, es. {"stt": "macparakeet"}; NULL = worker di
+    # prima della G1, considerato capace di tutto
+    capabilities: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     current_job_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

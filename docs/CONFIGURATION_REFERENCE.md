@@ -90,7 +90,9 @@ show_monitor_verbose: false
 
 ### Campo opzionale: `database_url`
 URL SQLAlchemy del database di RT (indice lezioni, decisioni di review, costi, stato Telegram).
-Se assente si usa SQLite in `<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`);
+Se assente si usa SQLite in `<cartella dati>/rt.db` (`~/.rt` o `RT_DATA_DIR`, vedi
+[Self-hosting](SELF_HOSTING.md)); nelle installazioni 3.x non ancora migrate in
+`<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`).
 La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea e si aggiorna da solo
 al primo comando `rt`, che importa anche le lezioni esistenti: non serve alcun comando manuale.
 `off` lo disattiva (solo per sviluppo e test: la coda dei job e `rt worker` richiedono il DB).
@@ -119,6 +121,7 @@ invece che in chiaro nel `.env`. Senza archivio tutto funziona come prima.
 | `rt secrets migrate` | Copia nell'archivio le variabili dichiarate in `credentials:`, `RT_TELEGRAM_BOT_TOKEN` e `RT_STT_API_KEY` presenti nel `.env`, rilegge l'archivio per verificarle e solo dopo, se confermi (o con `--yes`), crea il backup `.env.bak-<data>` (permessi 600) e toglie quei valori dal `.env`. `--keep-env` copia senza toccare il `.env`. È idempotente: rieseguito non trova nulla da fare. Se l'archivio ha già un valore diverso per una chiave, resta quello dell'archivio. |
 | `rt secrets list` | Nomi e data di modifica, mai i valori. |
 | `rt secrets set NOME` / `unset NOME` | Salva (valore chiesto senza eco, o da stdin con `--stdin`) o rimuove un segreto. |
+| `rt secrets show-key` | Mostra la chiave master (con conferma, o `--yes`) per salvarla a parte: i backup di `rt backup` non la contengono. |
 | `rt secrets rotate` | Ricifra l'archivio con una chiave master nuova. Con il portachiavi lo aggiorna da solo; con `RT_MASTER_KEY` mostra la chiave nuova da sostituire. |
 
 **Priorità** quando lo stesso nome è in più posti: variabile esportata nell'ambiente >

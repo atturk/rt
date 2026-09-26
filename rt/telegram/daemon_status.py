@@ -14,7 +14,10 @@ if os.name == "nt":
 else:
     import fcntl
 
-DEFAULT_PID_PATH = os.path.expanduser("~/.rt/telegram_daemon.pid")
+# RT4-G1: nella cartella dati (RT_DATA_DIR o ~/.rt), come prima per chi non l'ha ancora
+from rt.core.paths import data_dir as _data_dir
+
+DEFAULT_PID_PATH = os.path.join(_data_dir(), "telegram_daemon.pid")
 _pid_handle = None
 
 

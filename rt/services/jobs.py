@@ -345,8 +345,10 @@ class DbJobQueue:
         return touched
 
     def claim(self, worker_id: str, job_types: Optional[Sequence[str]] = None,
-              lease_seconds: int = DEFAULT_LEASE_SECONDS, now: Optional[datetime] = None) -> Optional[JobInfo]:
-        """Prende il job in coda più vecchio eseguibile (tipo supportato, lezione libera).
+              lease_seconds: int = DEFAULT_LEASE_SECONDS, now: Optional[datetime] = None,
+              can_transcribe: bool = True) -> Optional[JobInfo]:
+        """Prende il job in coda più vecchio eseguibile (tipo supportato, lezione libera; i job
+        che devono trascrivere solo se can_transcribe, RT4-G1).
         Su SQLite la transazione è BEGIN IMMEDIATE (un solo scrittore: l'UPDATE è
         condizionato di fatto); su Postgres SELECT ... FOR UPDATE SKIP LOCKED. In ogni caso
         il vincolo UNIQUE su active_lesson è l'ultima garanzia."""
@@ -362,6 +364,8 @@ class DbJobQueue:
                 busy = set(s.scalars(select(Job.active_lesson).where(Job.active_lesson.is_not(None))))
                 for row in s.scalars(stmt).all():
                     if row.lesson_path and row.lesson_path in busy:
+                        continue
+                    if not can_transcribe and job_needs_stt(row.type, row.payload, row.lesson_path):
                         continue
                     row.state = JobState.RUNNING.value
                     row.worker_id = worker_id
@@ -453,7 +457,7 @@ class DbJobQueue:
     # ------------------------------------------------------------ registro dei worker
 
     def register_worker(self, worker_id: str, hostname: str, pid: int, platform: str,
-                        job_types: Sequence[str]) -> None:
+                        job_types: Sequence[str], capabilities: Optional[Dict[str, Any]] = None) -> None:
         now = utcnow()
         with session_scope(self.db) as s:
             row = s.get(Worker, worker_id)
@@ -461,6 +465,7 @@ class DbJobQueue:
                 row = Worker(id=worker_id)
                 s.add(row)
             row.hostname, row.pid, row.platform, row.job_types = hostname, pid, platform, list(job_types)
+            row.capabilities = dict(capabilities) if capabilities is not None else None
             row.started_at, row.last_seen, row.stopped_at, row.current_job_id = now, now, None, None
 
     def beat_worker(self, worker_id: str, current_job_id: Optional[str] = None) -> None:
@@ -473,16 +478,72 @@ class DbJobQueue:
             s.execute(update(Worker).where(Worker.id == worker_id)
                       .values(stopped_at=utcnow(), current_job_id=None))
 
-    def live_workers(self, job_type: Optional[str] = None, max_age_seconds: int = WORKER_ALIVE_SECONDS) -> List[Dict[str, Any]]:
-        """Worker con battito recente (e che eseguono job_type, se indicato)."""
+    def live_workers(self, job_type: Optional[str] = None, max_age_seconds: int = WORKER_ALIVE_SECONDS,
+                     needs_stt: bool = False) -> List[Dict[str, Any]]:
+        """Worker con battito recente (che eseguono job_type, se indicato, e sanno trascrivere,
+        se needs_stt)."""
         cutoff = utcnow() - timedelta(seconds=max_age_seconds)
         with session_scope(self.db) as s:
             rows = s.scalars(select(Worker).where(Worker.stopped_at.is_(None), Worker.last_seen >= cutoff))
             out = [{"id": w.id, "hostname": w.hostname, "pid": w.pid, "platform": w.platform,
-                    "job_types": list(w.job_types or []), "current_job_id": w.current_job_id} for w in rows]
+                    "job_types": list(w.job_types or []), "current_job_id": w.current_job_id,
+                    "capabilities": w.capabilities} for w in rows]
         if job_type:
             out = [w for w in out if not w["job_types"] or job_type in w["job_types"]]
+        if needs_stt:
+            out = [w for w in out if worker_can_transcribe(w["capabilities"])]
         return out
+
+
+# ---------------------------------------------------------------- capability dei worker (RT4-G1)
+
+STT_JOB_TYPES = ("ingest_audio", "run_pipeline", "transcribe_voice")
+
+
+def job_needs_stt(job_type: str, payload: Optional[Dict[str, Any]], lesson_path: Optional[str] = None) -> bool:
+    """Il job deve trascrivere audio? Solo allora serve un worker con stt: macparakeet gira
+    solo su macOS, quindi un worker in un container Linux senza motore STT non lo prende."""
+    if job_type not in STT_JOB_TYPES:
+        return False
+    payload = payload or {}
+    if job_type == "transcribe_voice":
+        return not (payload.get("mock") or payload.get("force_mock"))
+    options = payload.get("options") or {}
+    if payload.get("mock") or options.get("mock") or options.get("skip_transcribe"):
+        return False
+    from rt.services.pipeline_service import is_audio_input
+    if not is_audio_input(payload.get("inputs") or []):
+        return False
+    if job_type == "run_pipeline" and lesson_path:
+        # ripresa dopo una decisione: la lezione esiste già, la trascrizione è fatta
+        from rt.storage import fs
+        return not fs.isdir(lesson_path)
+    return True
+
+
+def worker_can_transcribe(capabilities: Optional[Dict[str, Any]]) -> bool:
+    """None = worker registrato prima della G1 (senza dichiarazione): come prima, sì."""
+    return capabilities is None or bool(capabilities.get("stt"))
+
+
+def detect_stt_capability(requested: Optional[str] = "auto", mock: bool = False) -> Optional[str]:
+    """Motore STT che il worker dichiara: 'none' → None; 'auto' → 'mock' in mock, 'custom' se
+    configurato, 'macparakeet' su macOS, altrimenti None (vedi transcription_unavailable_reason)."""
+    value = (requested or "auto").strip().lower()
+    if value in ("none", "off", "no", ""):
+        return None
+    if value != "auto":
+        return value
+    if mock:
+        return "mock"
+    try:
+        from rt.core.config import load_config
+        if load_config().transcription.engine == "custom":
+            return "custom"
+    except Exception:
+        pass
+    import sys
+    return "macparakeet" if sys.platform == "darwin" else None
 
 
 def retry_payload(job_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -508,15 +569,16 @@ def _optional_queue() -> Optional[DbJobQueue]:
     return DbJobQueue(db) if db is not None else None
 
 
-def has_live_worker(job_type: Optional[str] = None, same_host: bool = False) -> bool:
-    """Vero se c'è un worker vivo per job_type (sulla stessa macchina, se same_host); falso
-    anche se il DB non è disponibile (chi chiama esegue allora in processo, come prima)."""
+def has_live_worker(job_type: Optional[str] = None, same_host: bool = False, needs_stt: bool = False) -> bool:
+    """Vero se c'è un worker vivo per job_type (sulla stessa macchina, se same_host; capace di
+    trascrivere, se needs_stt); falso anche se il DB non è disponibile (chi chiama esegue
+    allora in processo, come prima)."""
     import socket
     try:
         queue = _optional_queue()
         if queue is None:
             return False
-        workers = queue.live_workers(job_type)
+        workers = queue.live_workers(job_type, needs_stt=needs_stt)
     except Exception:
         return False
     if same_host:
@@ -536,7 +598,8 @@ def run_job_or_inline(job_type: str, lesson_id: LessonRef, payload: Dict[str, An
     loop (daemon Telegram) la chiama in un executor. Se nessun worker prende il job entro
     pickup_timeout secondi (worker appena morto) il job viene annullato e si esegue inline.
     Restituisce il risultato del job (o {"inline": valore} quando esegue in processo)."""
-    queue = _optional_queue() if has_live_worker(job_type, same_host=same_host) else None
+    needs_stt = job_needs_stt(job_type, payload, lesson_id if isinstance(lesson_id, str) else None)
+    queue = _optional_queue() if has_live_worker(job_type, same_host=same_host, needs_stt=needs_stt) else None
     if queue is None:
         return {"inline": inline()}
     job_id = queue.enqueue(job_type, lesson_id, payload, created_by=created_by)

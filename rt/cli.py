@@ -29,6 +29,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from rt.core.config import load_env_file, _default_project_root
 from rt.cli_secrets import configure_secrets_parser, cmd_secrets
 from rt.cli_jobs import cmd_jobs, cmd_worker, configure_jobs_parser, configure_worker_parser
+from rt import cli_system
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.encoding import fix_mojibake
 
@@ -52,9 +53,8 @@ def _has_real_config_source() -> bool:
     """Vero se esiste una sorgente di configurazione reale (cartella config/) nella
     working directory corrente o nella project root reale. Usata dai comandi CLI che
     eseguono lavoro LLM reale per evitare di procedere silenziosamente con i default hardcoded."""
-    if fs.isdir(os.path.join(os.getcwd(), "config")):
-        return True
-    return fs.isdir(os.path.join(_default_project_root(), "config"))
+    from rt.core.paths import config_dir
+    return fs.isdir(config_dir())
 
 
 def _job_has_configured_route(job_cfg) -> bool:
@@ -67,7 +67,8 @@ def _job_config_hint(job_name: str) -> str:
     si trova il suo file .yaml è a scelta libera (vedi rt.core.config.find_job_yaml_paths),
     quindi punta al percorso reale se il file esiste già, altrimenti a config/ in generale."""
     from rt.core.config import find_job_yaml_paths
-    paths = find_job_yaml_paths(os.path.join(os.getcwd(), "config"))
+    from rt.core.paths import config_dir
+    paths = find_job_yaml_paths(config_dir())
     existing = paths.get(job_name)
     where = os.path.relpath(existing, os.getcwd()) if existing else f"config/{job_name}.yaml (in qualunque sottocartella di config/)"
     return (
@@ -676,6 +677,13 @@ def cmd_run(args):
 
 def cmd_telegram_daemon(args):
     from rt.telegram.daemon import run_daemon
+    if getattr(args, "service", False):
+        # servizio launchd (fase G): senza token e Chat ID esce con 0, così launchd non lo
+        # rilancia a vuoto; si riavvia da Impostazioni quando il bot è configurato
+        from rt.services.settings_service import telegram_configured
+        if not telegram_configured():
+            print("ℹ️  Bot Telegram non configurato: il servizio resta fermo.", file=sys.stderr)
+            return
     run_daemon(state_dir=getattr(args, "state_dir", None))
 
 
@@ -813,7 +821,10 @@ def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> Non
 # Comandi che non passano da ensure_database(): 'db' è la diagnosi del database stesso
 # (deve funzionare anche con un DB rotto), 'config' e 'secrets' non toccano le lezioni e
 # possono cambiare lessons_root (quindi il percorso del DB).
-_COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets"}
+_COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets",
+                              # fase G: la cartella dati va migrata prima di aprire il DB, e diagnosi,
+                              # servizi, ripristino e disinstallazione devono funzionare con un DB rotto
+                              "data", "service", "doctor", "restore", "uninstall"}
 
 
 def _ensure_database_or_exit(command: Optional[str]) -> None:
@@ -868,7 +879,7 @@ def cmd_api(args: argparse.Namespace) -> None:
     """Avvia l'API REST (FastAPI) su loopback."""
     from rt.api.server import run
     code = run(host=args.host, port=args.port, reset_token=args.reset_token,
-               no_auth=args.no_auth, dev_cors=args.dev_cors)
+               no_auth=args.no_auth, dev_cors=args.dev_cors, service=getattr(args, "service", False))
     if code:
         sys.exit(code)
 
@@ -891,6 +902,12 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n\n"
+        "Installazione e manutenzione:\n"
+        "  doctor              Controlla l'installazione e dice cosa sistemare\n"
+        "  backup / restore    Backup completo (database, media, configurazione) e ripristino\n"
+        "  service             Servizi in background con launchd: API, worker, bot\n"
+        "  data                Cartella dati di RT (~/.rt o RT_DATA_DIR)\n"
+        "  uninstall           Disinstalla RT lasciando i dati\n\n"
         "Opzioni generali:\n"
         "  -v, --version       Mostra la versione corrente e verifica aggiornamenti\n"
         "  -u, --update        Aggiorna RT all'ultima versione disponibile\n\n"
@@ -928,6 +945,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_api.add_argument("--reset-token", action="store_true", help="Genera e mostra un nuovo token API")
     p_api.add_argument("--no-auth", action="store_true", help="Disattiva l'autenticazione (solo su 127.0.0.1)")
     p_api.add_argument("--dev-cors", action="store_true", help="Consente le richieste dalla SPA in sviluppo (localhost:5173)")
+    p_api.add_argument("--service", action="store_true", help=argparse.SUPPRESS)  # avvio da launchd (rt service)
     p_api.set_defaults(func=cmd_api)
 
     # 1. config
@@ -1036,6 +1054,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     # 6. telegram-daemon
     p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
     p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
+    p_tgd.add_argument("--service", action="store_true", help=argparse.SUPPRESS)  # launchd: esce pulito se non configurato
     p_tgd.set_defaults(func=cmd_telegram_daemon)
 
     # worker e coda dei job (fase D)
@@ -1130,6 +1149,26 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_mig.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
     p_mig.add_argument("--dry-run", action="store_true", help="Mostra cosa verrebbe migrato senza modificare nulla")
     p_db.set_defaults(func=cmd_db)
+
+    # fase G: cartella dati, servizi, backup, diagnosi, disinstallazione
+    p_doc = subparsers.add_parser("doctor", help=argparse.SUPPRESS, description="Controlla l'installazione e dice cosa sistemare")
+    cli_system.configure_doctor_parser(p_doc)
+    p_doc.set_defaults(func=cli_system.cmd_doctor)
+    p_bak = subparsers.add_parser("backup", help=argparse.SUPPRESS, description="Backup di database, media, configurazione e segreti cifrati (incrementale per i media)")
+    cli_system.configure_backup_parser(p_bak)
+    p_bak.set_defaults(func=cli_system.cmd_backup)
+    p_rst = subparsers.add_parser("restore", help=argparse.SUPPRESS, description="Ripristina un backup fatto con 'rt backup'")
+    cli_system.configure_restore_parser(p_rst)
+    p_rst.set_defaults(func=cli_system.cmd_restore)
+    p_svc = subparsers.add_parser("service", help=argparse.SUPPRESS, description="Servizi in background (launchd): API, worker, bot")
+    cli_system.configure_service_parser(p_svc)
+    p_svc.set_defaults(func=cli_system.cmd_service)
+    p_data = subparsers.add_parser("data", help=argparse.SUPPRESS, description="Cartella dati di RT (RT_DATA_DIR o ~/.rt): stato, creazione, migrazione")
+    cli_system.configure_data_parser(p_data)
+    p_data.set_defaults(func=cli_system.cmd_data)
+    p_uni = subparsers.add_parser("uninstall", help=argparse.SUPPRESS, description="Disinstalla RT (servizi e ambiente Python; i dati restano)")
+    cli_system.configure_uninstall_parser(p_uni)
+    p_uni.set_defaults(func=cli_system.cmd_uninstall)
 
     p_exp = subparsers.add_parser("export", help="Esporta il Markdown finale (con immagini) o tutti i dati di una lezione")
     p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
