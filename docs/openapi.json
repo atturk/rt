@@ -2168,6 +2168,18 @@
             "title": "Credentials",
             "type": "array"
           },
+          "data_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cartella dati in uso da questo processo: rt.db e media/",
+            "title": "Data Dir"
+          },
           "lessons_root": {
             "anyOf": [
               {
@@ -2201,6 +2213,12 @@
           "secrets_encrypted": {
             "description": "True se i segreti sono nell'archivio cifrato (rt secrets init)",
             "title": "Secrets Encrypted",
+            "type": "boolean"
+          },
+          "setup_required": {
+            "default": false,
+            "description": "True se la cartella delle lezioni non è impostata o non esiste: la SPA apre la configurazione guidata",
+            "title": "Setup Required",
             "type": "boolean"
           },
           "telegram": {

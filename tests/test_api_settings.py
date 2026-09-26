@@ -50,6 +50,20 @@ def test_settings_snapshot(api_client, ws):
     assert data["transcription"]["engine"] == "macparakeet"
 
 
+def test_setup_required_and_data_dir(api_client, api_token, ws, tmp_path):
+    """La SPA apre la configurazione guidata finché la cartella delle lezioni non esiste (RT4-F5)."""
+    import os
+    data = api_client.get("/api/v1/settings").json()
+    assert data["setup_required"] is False
+    from rt.storage import fs
+    assert data["data_dir"] == fs.data_dir() and os.path.isabs(data["data_dir"])
+    import shutil
+    shutil.rmtree(ws)
+    assert fresh(api_token).get("/api/v1/settings").json()["setup_required"] is True
+    assert api_client.put("/api/v1/settings/lessons-root", json={"path": ws}).status_code == 200
+    assert fresh(api_token).get("/api/v1/settings").json()["setup_required"] is False
+
+
 def test_connection_and_all_six_phases_persist(api_client, api_token, ws):
     res = api_client.post("/api/v1/settings/connections",
                           json={"name": "Studio", "provider": "openrouter", "api_keys": [KEY_A, KEY_B]})

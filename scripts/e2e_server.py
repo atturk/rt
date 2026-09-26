@@ -67,7 +67,9 @@ def main() -> int:
     args = parser.parse_args()
     sys.path.insert(0, ROOT)
 
-    root = _workspace(os.path.abspath(args.dir))
+    # realpath: su macOS la cartella temporanea è un link (/var -> /private/var) e l'API salva
+    # la cartella delle lezioni risolta; i test la confrontano con quella di server.json.
+    root = _workspace(os.path.realpath(args.dir))
     from rt.api import auth
     from rt.api.launcher import run_spa
     from rt.db.bootstrap import ensure_database

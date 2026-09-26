@@ -1774,6 +1774,11 @@ export interface components {
             connections: components["schemas"]["Connection"][];
             /** Credentials */
             credentials: components["schemas"]["CredentialState"][];
+            /**
+             * Data Dir
+             * @description Cartella dati in uso da questo processo: rt.db e media/
+             */
+            data_dir?: string | null;
             /** Lessons Root */
             lessons_root?: string | null;
             /**
@@ -1794,6 +1799,12 @@ export interface components {
              * @description True se i segreti sono nell'archivio cifrato (rt secrets init)
              */
             secrets_encrypted: boolean;
+            /**
+             * Setup Required
+             * @description True se la cartella delle lezioni non è impostata o non esiste: la SPA apre la configurazione guidata
+             * @default false
+             */
+            setup_required: boolean;
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
         };

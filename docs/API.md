@@ -71,7 +71,7 @@ segreto: solo `set: true/false`.
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
-| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing | `rt config` |
+| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing; `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
 | `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
 | `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
 | `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
