@@ -137,3 +137,55 @@ export function useCancelJob(lessonId: number) {
     onSettled: () => client.invalidateQueries({ queryKey: lessonKeys.jobs(lessonId) }),
   })
 }
+
+// ---------------------------------------------------------------- review contestuale (RT4-F3)
+
+export const reviewKeys = {
+  issues: (id: number) => ['lesson', id, 'issues'] as const,
+  decisions: (id: number) => ['lesson', id, 'decisions'] as const,
+}
+
+export function useIssues(id: number) {
+  return useQuery({
+    queryKey: reviewKeys.issues(id),
+    queryFn: () =>
+      unwrap(api.GET('/api/v1/lessons/{lesson_id}/issues', { params: { path: { lesson_id: id }, query: { status: 'all' } } })),
+  })
+}
+
+export function useDecisions(id: number) {
+  return useQuery({
+    queryKey: reviewKeys.decisions(id),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/decisions', { params: { path: { lesson_id: id } } })),
+  })
+}
+
+export type DecisionRequest = Schemas['DecisionRequest']
+
+/** Decisione su un'issue: dopo la scrittura rilegge issue, ledger, documento, fasi e job. */
+export function useDecideIssue(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: ({ issueId, ...body }: { issueId: string } & DecisionRequest) =>
+      unwrap(
+        api.POST('/api/v1/lessons/{lesson_id}/issues/{issue_id}/decision', {
+          params: { path: { lesson_id: id, issue_id: issueId } },
+          body,
+        }),
+      ),
+    onSettled: () => {
+      void refresh()
+    },
+  })
+}
+
+export function useUndoDecision(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: (issueId: string) =>
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/decisions/undo', { params: { path: { lesson_id: id } }, body: { issue_id: issueId } })),
+    onSettled: () => {
+      void refresh()
+    },
+  })
+}

@@ -5,14 +5,58 @@ import { activeUnit } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
 import { useLessonAudio } from './audio'
 
-type Props = { document: Schemas['LessonDocument']; hasAudio: boolean; lessonId: number }
+type Props = {
+  document: Schemas['LessonDocument']
+  hasAudio: boolean
+  lessonId: number
+  /** Passaggio da evidenziare (review) e unità in cui cercarlo. */
+  highlightText?: string | null
+  highlightUnit?: string | null
+}
+
+const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+/** Elementi del blocco di un'unità: l'intestazione e quelli che seguono fino alla prossima. */
+function unitBlock(root: HTMLElement, unitId: string): Element[] {
+  const first = root.querySelector(`[data-unit-id="${CSS.escape(unitId)}"]`)
+  const out: Element[] = []
+  let el: Element | null = first
+  while (el && (el === first || !/^H[1-3]$/.test(el.tagName))) {
+    out.push(el)
+    el = el.nextElementSibling
+  }
+  return out
+}
+
+/** Avvolge in <mark> la prima occorrenza del testo (o del suo inizio) dentro gli elementi. */
+function markText(elements: Element[], text: string): HTMLElement | null {
+  const needles = [norm(text), norm(text).slice(0, 80), norm(text).slice(0, 40)].filter((n) => n.length >= 8)
+  for (const needle of needles) {
+    for (const el of elements) {
+      const walker = window.document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+      for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+        const value = node.data.replace(/\s+/g, ' ')
+        const at = value.indexOf(needle)
+        if (at < 0 || value.length !== node.data.length) continue
+        const range = window.document.createRange()
+        range.setStart(node, at)
+        range.setEnd(node, at + needle.length)
+        const mark = window.document.createElement('mark')
+        mark.className = 'rt-claim'
+        range.surroundContents(mark)
+        return mark
+      }
+    }
+  }
+  return null
+}
 
 /**
  * Documento della lezione: l'HTML arriva già sanificato dall'API, con le intestazioni delle
  * unità marcate (data-unit-id). I timecode cliccabili vengono dai secondi strutturati di
  * `sections`, non dal testo; il blocco dell'unità in ascolto si evidenzia.
  */
-export function DocumentView({ document: doc, hasAudio, lessonId }: Props) {
+export function DocumentView({ document: doc, hasAudio, lessonId, highlightText, highlightUnit }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
@@ -49,6 +93,21 @@ export function DocumentView({ document: doc, hasAudio, lessonId }: Props) {
       el = el.nextElementSibling
     }
   }, [current, doc])
+
+  // Passaggio dell'issue selezionata: evidenziato e portato in vista.
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    root.querySelectorAll('mark.rt-claim').forEach((m) => m.replaceWith(...Array.from(m.childNodes)))
+    root.querySelectorAll('.rt-claim-unit').forEach((el) => el.classList.remove('rt-claim-unit'))
+    root.normalize()
+    if (!highlightText) return
+    const block = highlightUnit ? unitBlock(root, highlightUnit) : []
+    const target = markText(block.length ? block : [root], highlightText) ?? markText([root], highlightText)
+    if (!target) block.forEach((el) => el.classList.add('rt-claim-unit'))
+    const visible = target ?? block[0]
+    visible?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [highlightText, highlightUnit, doc])
 
   return (
     <article
