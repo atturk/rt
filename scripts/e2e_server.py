@@ -7,7 +7,8 @@ Uso (lo lancia frontend/playwright.config.ts):
 
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
-Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati.
+Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
+--mock (LLM e risposte vocali finti) e il bot Telegram è finto (RT_TELEGRAM_FAKE=1).
 """
 import argparse
 import json
@@ -39,6 +40,8 @@ def _workspace(base: str) -> str:
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
     os.environ["HOME"] = home
+    os.environ["RT_TELEGRAM_FAKE"] = "1"
+    os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [ROOT, os.environ.get("PYTHONPATH")]))
     os.environ.pop("RT_DATABASE_URL", None)
     os.environ["RT_SECRETS_FILE"] = os.path.join(work, "config", "secrets.enc")
     os.chdir(work)
@@ -86,7 +89,7 @@ def main() -> int:
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"base_url": base_url, "token": token, "lessons_root": root}, f)
     print(f"Server e2e su {base_url} (lezioni in {root})", flush=True)
-    return run_spa(port=args.port, open_browser=False)
+    return run_spa(port=args.port, open_browser=False, worker_args=["--mock"])
 
 
 if __name__ == "__main__":

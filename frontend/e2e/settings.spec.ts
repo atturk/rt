@@ -127,6 +127,8 @@ test('Telegram: token, chat, topic per materia dal link, topic generale', async 
   await expect(card.getByLabel('Materia 2', { exact: true })).toHaveValue('FISIOLOGIA')
   await expect(card.getByLabel('Topic 2', { exact: true })).toHaveValue('27')
   await expect(card.getByLabel('Topic generale (facoltativo)')).toHaveValue('3')
+  // Il pannello del bot (RT4-F6) sta anche nelle impostazioni.
+  await expect(page.getByTestId('telegram-bot')).toBeVisible()
   await expect(card.getByLabel('Token del bot')).toHaveValue('')
   await expect(card.getByText('Impostata')).toBeVisible()
   const tg = (await settings(page)).telegram

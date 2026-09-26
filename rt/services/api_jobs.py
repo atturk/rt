@@ -83,15 +83,21 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
 
+MOCK_VOICE_TRANSCRIPT = "Risposta vocale di prova (trascrizione mock)."
+
+
 def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Valuta una risposta aperta (scritta o vocale) e la salva, come il recall da terminale."""
     from rt.services.recall_service import handle_recall_answer
     p = job.payload
     answer, is_voice = p.get("answer") or "", False
     if p.get("audio_path"):
-        from rt.core.config import load_config
-        from rt.core.recall_stt import transcribe_voice_answer
-        answer = transcribe_voice_answer(p["audio_path"], load_config().telegram.recall.stt_engine)
+        if p.get("mock"):
+            answer = MOCK_VOICE_TRANSCRIPT  # in mock niente STT: il file resta solo una prova
+        else:
+            from rt.core.config import load_config
+            from rt.core.recall_stt import transcribe_voice_answer
+            answer = transcribe_voice_answer(p["audio_path"], load_config().telegram.recall.stt_engine)
         is_voice = True
         _cleanup_upload(p)
     evaluation = handle_recall_answer(job.lesson_path, p["question_id"], answer, is_voice=is_voice,

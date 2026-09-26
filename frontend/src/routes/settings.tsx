@@ -8,6 +8,7 @@ import { LessonsRootSection, TelegramSection, TranscriptionSection } from '@/com
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, NewConnectionSection, PhasesSection, RoutesSection } from '@/components/settings/models'
 import { SetupWizard } from '@/components/settings/wizard'
+import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { Alert } from '@/components/ui/alert'
 import { cn } from '@/lib/utils'
 import type { Area } from './types'
@@ -90,6 +91,7 @@ export const settingsArea: Area = {
               <LessonsRootSection settings={s} />
               <TranscriptionSection settings={s} />
               <TelegramSection settings={s} />
+              <TelegramBotPanel />
             </>
           )),
         },

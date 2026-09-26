@@ -103,6 +103,7 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons/{id}/jobs` `{type: run_pipeline}` | Pipeline completa | `rt run <cartella>` |
 | `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
 | `POST /lessons/{id}/images` (multipart `files`, `web_search`) | Job `add_images` | `rt add-images` |
+| `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento finale) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
 | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento | `rt jobs` |
 | `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
 | `GET /workers` | Worker attivi | — |
@@ -120,6 +121,11 @@ Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in
 `<lessons_root>/.rt/uploads/` e si cancellano quando il job finisce (restano se si ferma su una decisione); il limite di
 dimensione è `RT_API_MAX_UPLOAD_MB` (default 2048).
+
+`rt worker --mock` esegue ogni job in mock qualunque cosa chieda il client (LLM finto, risposte
+vocali senza trascrizione, giudice delle immagini che le mette nella prima macro-sezione): lo
+usa il server dei test end-to-end della SPA (`scripts/e2e_server.py`), insieme al bot Telegram
+finto (`RT_TELEGRAM_FAKE=1`: prende il PID file ma non contatta Telegram).
 
 ## Parità con la CLI (RT4-E5)
 
