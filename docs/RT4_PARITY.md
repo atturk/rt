@@ -14,11 +14,11 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 
 | Processo CLI oggi | Endpoint API (fase E) | Schermata SPA (fase F) | Parità (E5) | Persistenza (E5) | SPA (F7) |
 |---|---|---|---|---|---|
-| `rt run` (audio o cartella, `--mock`, `--auto-accept`, `--force`) | `POST /lessons` (`run=true`), `POST /lessons/{id}/jobs` tipo `run_pipeline` | Importazione + avvio pipeline | ✅ `test_row_run_folder_pipeline` | ✅ `test_job_writes_persist` | — |
-| `rt setup` / trascrizione | `POST /lessons` → job `ingest_audio` | Importazione con upload | ✅ `test_row_setup_audio` | ✅ `test_job_writes_persist` | — |
+| `rt run` (audio o cartella, `--mock`, `--auto-accept`, `--force`) | `POST /lessons` (`run=true`), `POST /lessons/{id}/jobs` tipo `run_pipeline` | Importazione + avvio pipeline | ✅ `test_row_run_folder_pipeline` | ✅ `test_job_writes_persist` | ✅ `ingest.spec.ts` (importa, segue gli eventi, approva, arriva alla review) |
+| `rt setup` / trascrizione | `POST /lessons` → job `ingest_audio` | Importazione con upload | ✅ `test_row_setup_audio` | ✅ `test_job_writes_persist` | ✅ `ingest.spec.ts` (solo trascrizione, errori di formato) |
 | `rt prepare`, `outline`, `rewrite` (anche `--unit`), `review`, `build` singoli | `POST /lessons/{id}/jobs` tipo `run_phase` | Pulsanti per fase nella vista lezione | ✅ `test_row_single_phases`, `test_row_rewrite_single_unit` | ✅ `test_job_writes_persist` | — |
 | `validate-outline`, `validate-draft` | `GET /lessons/{id}/phases` | Stato fasi con errori leggibili | ✅ `test_row_validate_outline_and_draft` | lettura | — |
-| Approvazione/revisione outline | `GET /outline`, `POST /outline/approve`, `/outline/revise` | Vista outline ad albero | ✅ `test_row_outline_revise_and_approve` | ✅ `test_outline_and_review_decisions_persist` | — |
+| Approvazione/revisione outline | `GET /outline`, `POST /outline/approve`, `/outline/revise` | Vista outline ad albero | ✅ `test_row_outline_revise_and_approve` | ✅ `test_outline_and_review_decisions_persist` | ✅ `ingest.spec.ts` (approva, richiedi modifiche) |
 | Review interattiva delle issue (accetta, rifiuta, modifica, annulla) | `GET /issues`, `POST /issues/{id}/decision`, `POST /decisions/undo` | Review contestuale | ✅ `test_row_interactive_review` | ✅ `test_outline_and_review_decisions_persist` | — |
 | `rt add-images` | `POST /lessons/{id}/images` → job `add_images` | Sezione immagini della lezione | ✅ `test_row_add_images` | ✅ `test_images_job_persists` | — |
 | `rt recall` (quiz, mirata, vasta; risposta scritta o vocale) | `GET /recall`, `/recall/history`, `POST /recall/generate`, `/next`, `/answer`, `/answer-voice`, `/vote`, `/skip` | Sessione di recall | ✅ `test_row_recall_quiz_and_open_answer` | ✅ `test_recall_writes_persist` | — |
@@ -31,6 +31,8 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 Sessione del browser (login e logout): `test_browser_session_persists_and_logout_revokes`;
 nella SPA (RT4-F1) accesso con link monouso o token, logout e dashboard con filtri sono in
 `frontend/e2e/foundation.spec.ts`. La colonna "SPA (F7)" si riempie con le schermate F2-F6.
+Job in coda e annullamento (`rt jobs`, `rt jobs cancel`) sono nella pagina Job della SPA
+(RT4-F4, `frontend/e2e/ingest.spec.ts`).
 
 ## Differenze trovate e corrette con i test di parità
 
@@ -38,6 +40,9 @@ nella SPA (RT4-F1) accesso con link monouso o token, logout e dashboard con filt
   lezione invece che in `_state/`: fallivano su ogni lezione attuale.
 - Dopo l'ultima decisione presa via API `info.yaml` restava `in_attesa_revisione_umana`: ora
   passa a `pronto_per_build` come a fine review da terminale o da Telegram.
+- Un `rt run` da audio accodato (`POST /lessons` con `run=true`) falliva alla ripresa dopo
+  l'approvazione della scaletta: rifaceva il setup sulla cartella già creata. Ora riparte dalla
+  lezione (trovato dal test Playwright di RT4-F4).
 - `POST /lessons/{id}/images` con una sola immagine la passava come file, formato che
   `add-images` non accetta: le immagini vanno sempre come cartella (un PDF da solo resta file).
 - Il recall da terminale rifornisce la riserva dopo ogni domanda mostrata; ora anche

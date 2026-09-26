@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/client'
 import { useLesson, useLessons } from '@/api/hooks'
 import { PhaseBadges } from '@/components/PhaseBadges'
+import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -139,6 +140,7 @@ export function LessonPage() {
         </p>
         <PhaseBadges phases={l.phases} />
       </Card>
+      <LessonJobBanner lessonId={l.id} />
     </section>
   )
 }
