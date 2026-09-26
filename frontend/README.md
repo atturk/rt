@@ -65,6 +65,8 @@ sostituisci l'host con `localhost:5173`.
   `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, bot Telegram finto, microfono finto di Chromium nei test vocali), con ricarica della pagina
   dopo ogni modifica e verifica rileggendo dall'API. Aggiorna la colonna "SPA (F7)" di
   `docs/RT4_PARITY.md` per le righe coperte.
+- **Accessibilità controllata con axe** (`e2e/a11y.spec.ts`): ogni pagina nuova va aggiunta
+  all'elenco del test, che la controlla nei due temi con le regole WCAG 2 A/AA.
 
 Playwright usa il Chromium che installa `npx playwright install chromium`; per usarne un
 altro imposta `PW_CHROMIUM_PATH`. L'interprete Python del server di prova è `RT_PYTHON`

@@ -22,7 +22,7 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 | Review interattiva delle issue (accetta, rifiuta, modifica, annulla) | `GET /issues`, `POST /issues/{id}/decision`, `POST /decisions/undo` | Review contestuale | ✅ `test_row_interactive_review` | ✅ `test_outline_and_review_decisions_persist` | ✅ `review.spec.ts` (decisioni, annulla, ripartenza della pipeline in attesa) |
 | `rt add-images` | `POST /lessons/{id}/images` → job `add_images`; `GET /lessons/{id}/images`, `/assets/images/{nome}` | Immagini della lezione (`/lezioni/{id}/immagini`) | ✅ `test_row_add_images` | ✅ `test_images_job_persists` | ✅ `recall-images-bot.spec.ts` (PDF, job, anteprima) |
 | `rt recall` (quiz, mirata, vasta; risposta scritta o vocale) | `GET /recall`, `/recall/history`, `POST /recall/generate`, `/next`, `/answer`, `/answer-voice`, `/vote`, `/skip` | Sessione di recall (`/lezioni/{id}/recall`) | ✅ `test_row_recall_quiz_and_open_answer` | ✅ `test_recall_writes_persist` | ✅ `recall-images-bot.spec.ts` (quiz, voto, salto, scritta, vocale) |
-| `rt export` (Markdown finale con immagini, `--all`, `--zip`) | `GET /lessons/{id}/export` (`format=markdown\|zip`, `scope=final\|all`) | Download dalla vista lezione | ✅ `test_row_export` | lettura | — |
+| `rt export` (Markdown finale con immagini, `--all`, `--zip`) | `GET /lessons/{id}/export` (`format=markdown\|zip`, `scope=final\|all`) | Download dalla vista lezione | ✅ `test_row_export` | lettura | ✅ `lesson-view.spec.ts` (Markdown e zip uguali all'API) |
 | `rt status`, `rt cost` | `GET /lessons/{id}`, `GET /costs` | Dashboard e vista lezione | ✅ `test_row_status_and_cost` | lettura | ✅ `foundation.spec.ts` (dashboard), `lesson-view.spec.ts` (fasi, costi) |
 | `rt config` (provider, chiavi, modelli per le sei fasi, pricing, Telegram, trascrizione, lessons_root) | endpoint di RT4-E4 (`/settings/...`, `/secrets/{name}`) | Impostazioni | ✅ `test_row_config_written_by_api_is_read_by_cli` | ✅ `test_settings_writes_persist` | ✅ `settings.spec.ts` |
 | `rt telegram-daemon` (avvio, stato) | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato del bot (`/bot`, pannello riusabile nelle impostazioni) | ✅ `test_row_telegram_daemon_status` | PID file del demone | ✅ `recall-images-bot.spec.ts` (bot finto) |
@@ -30,7 +30,11 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 
 Sessione del browser (login e logout): `test_browser_session_persists_and_logout_revokes`;
 nella SPA (RT4-F1) accesso con link monouso o token, logout e dashboard con filtri sono in
-`frontend/e2e/foundation.spec.ts`. La colonna "SPA (F7)" si riempie con le schermate F2-F6 (test in `frontend/e2e/`).
+`frontend/e2e/foundation.spec.ts`. La colonna "SPA (F7)" copre le schermate F2-F6 (test in `frontend/e2e/`).
+Il percorso completo di una lezione nuova (link di accesso, importazione dell'audio, scaletta,
+review di tutte le issue, build, documento con audio, recall), con ricarica dopo ogni passo, è
+in `frontend/e2e/journey.spec.ts`; l'accessibilità di base (axe, regole WCAG 2 A/AA, temi chiaro
+e scuro, focus da tastiera) su ogni pagina in `frontend/e2e/a11y.spec.ts`.
 Job in coda e annullamento (`rt jobs`, `rt jobs cancel`) sono nella pagina Job della SPA
 (RT4-F4, `frontend/e2e/ingest.spec.ts`).
 
