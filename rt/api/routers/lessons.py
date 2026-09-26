@@ -1,8 +1,9 @@
-"""Lezioni: elenco, dettaglio, stato delle fasi, documento, audio, outline, issue, costi."""
+"""Lezioni: elenco, dettaglio, stato delle fasi, documento, audio, export, outline, issue, costi."""
+import os
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
@@ -55,6 +56,33 @@ def get_audio(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     if path is None:
         raise ApiError(404, "audio_not_found", "Nessun audio disponibile per questa lezione.")
     return FileResponse(path)
+
+
+@router.get("/lessons/{lesson_id}/export", summary="Scarica il Markdown finale o un archivio con i dati della lezione",
+            response_class=Response,
+            responses={200: {"content": {"text/markdown": {}, "application/zip": {}},
+                             "description": "File da salvare (Content-Disposition: attachment)"}})
+def export_lesson(
+    lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+    format: Literal["markdown", "zip"] = Query("markdown", description="markdown: solo il documento finale; "
+                                               "zip: archivio con i file scelti da scope"),
+    scope: Literal["final", "all"] = Query("final", description="final: Markdown finale, errori concettuali e "
+                                           "immagini richiamate; all: tutti i file della lezione, audio compreso"),
+):
+    from urllib.parse import quote
+    from rt.storage.export import ExportError, export_zip, final_markdown
+    try:
+        if format == "markdown":
+            filename, content = final_markdown(lesson_dir)
+            media_type = "text/markdown; charset=utf-8"
+        else:
+            content = export_zip(lesson_dir, scope)
+            filename = f"{os.path.basename(lesson_dir)}.zip"
+            media_type = "application/zip"
+    except ExportError as exc:
+        raise ApiError(404, "export_not_available", str(exc))
+    disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
+    return Response(content=content, media_type=media_type, headers={"Content-Disposition": disposition})
 
 
 @router.get("/lessons/{lesson_id}/outline", response_model=schemas.Outline,

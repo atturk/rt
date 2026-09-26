@@ -46,7 +46,8 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 | `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio | `rt status`, `rt cost` |
 | `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione | `rt validate-outline`, `rt validate-draft` |
 | `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`) | anteprima / file finale |
-| `GET /lessons/{id}/audio` | Audio della lezione, con `Range`; solo file audio dentro la cartella | — |
+| `GET /lessons/{id}/audio` | Audio della lezione, con `Range`; solo file audio della lezione (cartella o `media/`) | — |
+| `GET /lessons/{id}/export?format=markdown\|zip&scope=final\|all` | Download: Markdown finale (`markdown`), oppure zip con Markdown, errori concettuali e immagini (`final`) o con tutti i file della lezione (`all`) | `rt export` |
 | `GET /lessons/{id}/outline` | Albero dell'outline e approvazione | approvazione outline |
 | `GET /lessons/{id}/issues?status=pending\|all` | Issue con contesto (unità, timecode, finestra audio) e decisione | `rt review` |
 | `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |

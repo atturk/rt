@@ -192,6 +192,31 @@ def test_row_setup_audio(api, cli):
     assert lesson_files(api_dir)["trascritto grezzo.md"] != "<MISSING>"
 
 
+def test_row_export(api, cli, pair, tmp_path):
+    """rt export <lezione> ⇔ GET /lessons/{id}/export (Markdown finale e archivio zip)."""
+    import io
+    import zipfile
+    cli_dir, api_dir = pair
+    cli.rt("run", cli_dir, "--mock", "--auto-accept", "--with-review", "--channel", "terminal", "--no-rename",
+           stdin="a\n")
+    lesson_id = api.lesson_id()
+    job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "auto_accept": True,
+                                                       "with_review": True, "rename": False})
+    assert job["state"] == "succeeded", job
+    out = tmp_path / "export"
+    cli.rt("export", cli_dir, "-o", str(out))
+    exported = sorted(os.listdir(out / LESSON_NAME))
+    titled = next(n for n in exported if n.startswith("[2026-09-05]"))
+    res = api.client.get(f"/api/v1/lessons/{lesson_id}/export")
+    assert res.status_code == 200, res.text
+    assert titled in res.headers["content-disposition"].replace("%20", " ").replace("%5B", "[").replace("%5D", "]")
+    with open(out / LESSON_NAME / titled, encoding="utf-8") as f:
+        assert normalize_text(f.read(), cli.root) == normalize_text(res.text, api.root)
+    res = api.client.get(f"/api/v1/lessons/{lesson_id}/export", params={"format": "zip"})
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        assert sorted(n.split("/", 1)[1] for n in zf.namelist()) == exported
+
+
 def test_row_single_phases(api, cli, pair):
     """rt prepare/outline/rewrite/review/build ⇔ POST /lessons/{id}/jobs run_phase (+ decisioni)."""
     cli_dir, api_dir = pair

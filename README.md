@@ -137,6 +137,25 @@ processo separato, avvia un worker e accoda la pipeline:
 Senza `--queue`, `rt run` lavora in processo come sempre. Con un worker attivo anche il daemon
 Telegram gli passa la generazione delle domande di recall e la trascrizione dei vocali.
 
+### 2-ter. Dove finiscono le lezioni
+
+Le nuove lezioni non creano più una cartella di lavoro: testi e metadati stanno nel database
+di RT e audio e immagini originali nella cartella `media/` accanto a `rt.db`. Il Markdown
+finale (e, se servono, tutti gli altri dati) si scarica quando serve:
+
+```bash
+./bin/rt export "[2026-09-05] BIOCHIMICA - Lipidi" -o ~/Desktop   # Markdown finale con immagini
+./bin/rt export "[2026-09-05] BIOCHIMICA - Lipidi" --all --zip    # tutti i dati in uno zip
+```
+
+Le lezioni create prima restano nelle loro cartelle e funzionano come sempre. Per portarle nel
+database (una volta sola, con backup; le cartelle originali vengono spostate, non cancellate):
+
+```bash
+./bin/rt db migrate-storage --dry-run   # mostra cosa verrebbe spostato
+./bin/rt db migrate-storage
+```
+
 ### 3. Esecuzione Passo-Passo
 
 ```bash

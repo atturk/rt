@@ -3894,6 +3894,124 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/export": {
+      "get": {
+        "operationId": "export_lesson_api_v1_lessons__lesson_id__export_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "markdown: solo il documento finale; zip: archivio con i file scelti da scope",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "description": "markdown: solo il documento finale; zip: archivio con i file scelti da scope",
+              "enum": [
+                "markdown",
+                "zip"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "final",
+              "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso",
+              "enum": [
+                "final",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {},
+              "text/markdown": {}
+            },
+            "description": "File da salvare (Content-Disposition: attachment)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scarica il Markdown finale o un archivio con i dati della lezione",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/images": {
       "post": {
         "operationId": "add_images_api_v1_lessons__lesson_id__images_post",
