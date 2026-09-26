@@ -35,7 +35,7 @@ export function SecretsSection({ settings }: { settings: Settings }) {
       description={
         <>
           Le chiavi si possono solo scrivere: la pagina mostra se sono impostate, mai il valore. Sono salvate{' '}
-          {settings.secrets_encrypted ? "nell'archivio cifrato di RT" : 'nel file .env (rt secrets init le sposta in un archivio cifrato)'}.
+          {settings.secrets_encrypted ? "nell'archivio cifrato di RT" : "in un file non cifrato (.env) sul Mac: l'installazione di RT le sposta in un archivio cifrato"}.
         </>
       }
     >

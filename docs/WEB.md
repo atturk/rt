@@ -12,6 +12,32 @@ Il comando avvia in un solo processo l'API REST (`rt api`, vedi [API.md](API.md)
 `rt worker` per i job (trascrizione, pipeline, immagini, recall) e l'interfaccia, servita
 dall'API sulla stessa origine. Ctrl+C li ferma tutti. Tutto ascolta solo su `127.0.0.1`.
 
+## Novità della fase FA
+
+La fase FA ha consolidato la web dopo il primo uso reale. In breve:
+
+- **Job più robusti (FA1):** una risposta del modello fuori schema dà un errore leggibile; **Riprova** riprende un job fallito dalla fase in cui si era fermato;
+  il worker avvisa su Telegram a fine lezione; i job su lezioni diverse girano in parallelo
+  (numero regolabile in Impostazioni).
+- **Documento come conferma (FA2):** il documento finale è la conferma dell'anteprima e non
+  dipende più dalla revisione, che dà solo avvisi nel dialogo di conferma. Recall, immagini e
+  download funzionano già dopo la rielaborazione.
+- **Anteprima modificabile (FA3, beta):** il timecode sta sotto il titolo di ogni unità e la
+  matita sul documento apre un editor Markdown (vedi "Modificare l'anteprima").
+- **Navigazione (FA4):** ricerca immediata anche per materia e data, barra laterale riducibile
+  a icone per materia, sezione **Review** con le lezioni che hanno issue da valutare.
+- **Impostazioni (FA5):** modelli per fase anche nella configurazione guidata, **Prova** del
+  modello prima di salvarlo, pricing con avvisi, SearXNG per la ricerca immagini da
+  Impostazioni › Ricerca web, campi segreti che non attivano il portachiavi del Mac.
+- **Cartella dati e Telegram (FA6):** scelta della cartella con Finder o con il navigatore,
+  anteprima di token e Chat ID, topic con il nome della materia, prova e pulizia dei messaggi.
+- **Recall e immagini (FA7):** la sessione di recall si termina con un riepilogo e si può
+  avviare o interrompere su Telegram; le immagini dal web si cercano per unità, sulle unità
+  scelte.
+- **Revisione e player (FA8):** revisione ordinabile per tipo e gravità, velocità del player
+  regolabile da 0.5× a 3×.
+- **Chiusura (FA9):** l'interfaccia non cita più comandi del terminale; un test lo controlla.
+
 ## Accesso
 
 All'avvio `rt web` crea un link monouso (`/login?code=...`, valido 5 minuti) e apre il browser

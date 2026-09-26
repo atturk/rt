@@ -43,6 +43,21 @@ rilanciare lo stesso comando da terminale, che riprende dai checkpoint: API in
 `tests/test_job_retry_and_notify.py`, SPA in `frontend/e2e/retry.spec.ts` (job in mock fatto
 fallire, Riprova dal dettaglio del job e dal pannello della lezione, ricarica).
 
+## Funzioni aggiunte o cambiate nella fase FA
+
+Le righe della tabella sopra sono aggiornate; qui il riepilogo di cosa è cambiato in FA, con il
+suo equivalente nei tre canali.
+
+| Funzione | CLI | API | SPA | Test |
+|---|---|---|---|---|
+| Documento come conferma finale (FA2): il build non dipende più dalla review, che dà solo avvisi | `rt build`, avvisi in `rt status` | `POST /lessons/{id}/jobs` `run_phase` `build`; `warnings` del build in `GET /lessons/{id}/phases` | Dialogo "Creare il documento finale?" con gli avvisi e **Crea il documento comunque** | `test_build_confirm.py`; `lesson-view.spec.ts`, `journey.spec.ts` |
+| Riprova di un job fallito (FA1), dalla fase fallita | rilanciare lo stesso comando (riprende dai checkpoint) | `POST /jobs/{id}/retry` | **Riprova** nel dettaglio del job e nel pannello della lezione | `test_job_retry_and_notify.py`; `retry.spec.ts` |
+| Anteprima modificabile (FA3, beta): testo, titoli e timecode | modifica del Markdown esportato con un editor esterno | `POST /lessons/{id}/document/check`, `PUT /lessons/{id}/document/draft` | Matita sul documento: editor Markdown con anteprima | `test_document_edit.py`; `document-edit.spec.ts` |
+| Sessioni di recall con riepilogo, avvio e interruzione su Telegram (FA7) | `rt recall`, `rt recall --channel telegram`, `/quit` nel bot | `/recall/session`, `/recall/session/end`, `/recall/telegram/...` | Termina sessione, luogo Qui/Telegram, Interrompi | `test_api_recall_sessions.py`; `recall-sessions.spec.ts` |
+| Immagini dal web per unità, sulle unità scelte (FA7) | `rt add-images --web-search N --units 1.1,2.3` | `POST /lessons/{id}/images` (`web_search` per unità, `units`) | Immagini della lezione: numero per unità e scelta delle unità | `test_row_add_images_web_search_per_unit`; `recall-images-bot.spec.ts` |
+| SearXNG per la ricerca immagini (FA5) | `searxng_base_url` in `config/general.yaml` | `PUT /settings/web-search`, `POST /settings/web-search/test` | Impostazioni › Ricerca web, con **Prova** | `test_api_settings_probes.py`; `settings.spec.ts` |
+| Prova di connessione e modello prima di salvarli (FA5) | — (nel terminale un modello si verifica alla prima chiamata reale) | `POST /settings/models/test` | **Prova** accanto a ogni fase in Modelli e nella configurazione guidata | `test_api_settings_probes.py`; `settings.spec.ts` |
+
 ## Differenze trovate e corrette con i test di parità
 
 - `rt validate-outline` e `rt validate-draft` cercavano `segments.json` nella radice della

@@ -33,8 +33,17 @@ SUPPORTED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", "
 
 
 class SetupError(Exception):
-    """Eccezione bloccante per errori irreversibili durante la fase di setup."""
-    pass
+    """Eccezione bloccante per errori irreversibili durante la fase di setup.
+
+    Il messaggio vale per ogni canale (web, Telegram, terminale); cli_hint, se c'è, è il
+    suggerimento con le opzioni della CLI che solo il terminale aggiunge (RT4-FA9)."""
+
+    def __init__(self, message: str = "", cli_hint: str = ""):
+        super().__init__(message)
+        self.cli_hint = cli_hint
+
+    def cli_message(self) -> str:
+        return f"{self} {self.cli_hint}".strip()
 
 
 class MissingSetupFields(SetupError):
@@ -453,13 +462,14 @@ def run_setup(
         if has_protected_work and not force:
             raise SetupError(
                 f"La cartella '{target_folder_path}' esiste già e contiene una lezione RT con avanzamenti "
-                f"o decisioni umane protette. Operazione rifiutata per prevenire perdite di dati. "
-                f"Usa il flag --force per confermare la ripreparazione."
+                f"o decisioni umane protette. Operazione rifiutata per prevenire perdite di dati.",
+                cli_hint="Usa il flag --force per confermare la ripreparazione.",
             )
         elif fs.isfile(existing_info) and not force:
             raise SetupError(
-                f"La cartella '{target_folder_path}' è già inizializzata come lezione RT. "
-                f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'."
+                f"La cartella '{target_folder_path}' è già inizializzata come lezione RT: apri la lezione "
+                f"esistente o importa con argomenti diversi.",
+                cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
             )
 
     if fs.is_db_lesson(target_folder_path) or (not os.path.isdir(target_folder_path) and fs.new_lessons_use_db()):

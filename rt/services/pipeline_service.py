@@ -296,8 +296,8 @@ def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool =
             return None
     except Exception:
         pass
-    return ("La trascrizione con macparakeet funziona solo su macOS: avvia 'rt worker' sul Mac "
-            "(oppure configura un motore STT custom).")
+    return ("La trascrizione con macparakeet funziona solo su macOS: avvia RT sul Mac "
+            "(oppure configura un motore di trascrizione compatibile nelle impostazioni).")
 
 
 def ingest_audio(inputs: Union[str, Sequence[str]], options: PipelineOptions, ctx: RunContext) -> PipelineResult:

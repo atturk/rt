@@ -86,7 +86,7 @@ def send_current_issue(lesson_dir: str) -> None:
             thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
             from rt.telegram import session as tg_session
             tg_session.end_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id)
-            tg_client.send_message(tg_cfg, text="✨ Review completata. Esegui 'rt build' quando vuoi.", message_thread_id=thread_id)
+            tg_client.send_message(tg_cfg, text="✨ Review completata. Crea il documento finale quando vuoi (fase Documento nella pagina della lezione).", message_thread_id=thread_id)
         except TelegramConfigError:
             pass
         except Exception:
