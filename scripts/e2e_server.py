@@ -89,7 +89,9 @@ def main() -> int:
     args = parser.parse_args()
     sys.path.insert(0, ROOT)
 
-    root = _workspace(os.path.abspath(args.dir))
+    # realpath: su macOS la cartella temporanea è un link (/var -> /private/var) e l'API salva
+    # la cartella delle lezioni risolta; i test la confrontano con quella di server.json.
+    root = _workspace(os.path.realpath(args.dir))
     from rt.api import auth
     from rt.api.launcher import run_spa
     from rt.db.bootstrap import ensure_database
@@ -97,6 +99,9 @@ def main() -> int:
 
     ensure_database()
     _lessons(root)
+    # Bot API finta per "Ascolta i topic" (RT4-F5): API e worker la ereditano dall'ambiente.
+    from tests.api_support import fake_telegram_server
+    _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
     token = auth.reset_token(get_database())
     base_url = f"http://127.0.0.1:{args.port}"
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)

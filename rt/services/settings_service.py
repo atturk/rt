@@ -329,7 +329,8 @@ def snapshot(project_root: Path) -> dict[str, Any]:
                                 "env_var": env_var, "set": bool(env_var) and secret_is_set(env_var)})
     set_by_name = {c["name"]: c["set"] for c in credentials}
     connections = []
-    for conn in list_connections(project_root):
+    all_connections = list_connections(project_root)  # legge molti YAML: una volta sola
+    for conn in all_connections:
         connections.append({
             "name": conn["name"], "provider": conn.get("provider") or "", "base_url": conn.get("base_url") or "",
             "models": list(conn.get("models") or []),
@@ -337,7 +338,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         })
     phases = []
     for job, label in PHASES:
-        connection, model = phase_selection(project_root, job)
+        connection, model = phase_selection(project_root, job, all_connections)
         phases.append({"job": job, "label": label, "connection": connection, "model": model})
     return {
         "lessons_root": cfg.telegram.lessons_root,
@@ -357,7 +358,21 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "credentials": credentials,
         "pricing": general.get("pricing") or {},
         "secrets_encrypted": default_store_path().is_file(),
+        "data_dir": _data_dir(),
+        "setup_required": not (cfg.telegram.lessons_root
+                               and os.path.isdir(os.path.expanduser(cfg.telegram.lessons_root))),
     }
+
+
+def _data_dir() -> str | None:
+    """Cartella di rt.db e media/ per questo processo (None se il DB è disattivato). Cambiando
+    la cartella delle lezioni, il DB predefinito si sposta al prossimo avvio di RT."""
+    from rt.db.engine import current_database_url
+    from rt.storage import fs
+    try:
+        return fs.data_dir() if current_database_url() else None
+    except Exception:  # noqa: BLE001 - configurazione illeggibile: la pagina mostra solo il resto
+        return None
 
 
 def save_pricing(project_root: Path, pricing: dict[str, dict[str, dict[str, Any]]]) -> dict[str, Any]:

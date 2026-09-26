@@ -24,7 +24,7 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 | `rt recall` (quiz, mirata, vasta; risposta scritta o vocale) | `GET /recall`, `/recall/history`, `POST /recall/generate`, `/next`, `/answer`, `/answer-voice`, `/vote`, `/skip` | Sessione di recall (`/lezioni/{id}/recall`) | ✅ `test_row_recall_quiz_and_open_answer` | ✅ `test_recall_writes_persist` | ✅ `recall-images-bot.spec.ts` (quiz, voto, salto, scritta, vocale) |
 | `rt export` (Markdown finale con immagini, `--all`, `--zip`) | `GET /lessons/{id}/export` (`format=markdown\|zip`, `scope=final\|all`) | Download dalla vista lezione | ✅ `test_row_export` | lettura | — |
 | `rt status`, `rt cost` | `GET /lessons/{id}`, `GET /costs` | Dashboard e vista lezione | ✅ `test_row_status_and_cost` | lettura | ✅ `foundation.spec.ts` (dashboard), `lesson-view.spec.ts` (fasi, costi) |
-| `rt config` (provider, chiavi, modelli per le sei fasi, pricing, Telegram, trascrizione, lessons_root) | endpoint di RT4-E4 (`/settings/...`, `/secrets/{name}`) | Impostazioni | ✅ `test_row_config_written_by_api_is_read_by_cli` | ✅ `test_settings_writes_persist` | — |
+| `rt config` (provider, chiavi, modelli per le sei fasi, pricing, Telegram, trascrizione, lessons_root) | endpoint di RT4-E4 (`/settings/...`, `/secrets/{name}`) | Impostazioni | ✅ `test_row_config_written_by_api_is_read_by_cli` | ✅ `test_settings_writes_persist` | ✅ `settings.spec.ts` |
 | `rt telegram-daemon` (avvio, stato) | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato del bot (`/bot`, pannello riusabile nelle impostazioni) | ✅ `test_row_telegram_daemon_status` | PID file del demone | ✅ `recall-images-bot.spec.ts` (bot finto) |
 | `rt -u` (aggiornamento) | fuori scope per la web | — | — | — | — |
 
