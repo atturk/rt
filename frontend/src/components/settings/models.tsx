@@ -12,6 +12,7 @@ import {
   useRoute,
   useSaveRoute,
   useTestCredential,
+  useTestModel,
   type RouteOut,
   type Settings,
 } from '@/api/settings'
@@ -19,6 +20,7 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
 import { PROVIDERS, ROUTE_ROLES, defaultBaseUrl, providerLabel, type Provider } from '@/lib/settings'
 import { Checkbox, Field, SaveFeedback, SecretBadge, Section } from './common'
@@ -33,15 +35,23 @@ export function PhasesSection({ settings }: { settings: Settings }) {
     <Section
       id="fasi"
       title="Modelli per fase"
-      description="Connessione e modello usati da ciascuna delle sei fasi. Un modello nuovo viene aggiunto alla connessione."
+      description="Connessione e modello usati da ciascuna delle sei fasi. Un modello nuovo viene aggiunto alla connessione. Prova fa una chiamata minima, anche prima di salvare."
     >
       {settings.connections.length === 0 && <Alert tone="warning">Crea prima una connessione qui sotto.</Alert>}
-      <div className="flex flex-col divide-y">
-        {settings.phases.map((phase) => (
-          <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}`} phase={phase} connections={settings.connections} />
-        ))}
-      </div>
+      <PhaseRows settings={settings} />
     </Section>
+  )
+}
+
+/** Le sei fasi, ognuna con connessione, modello, Salva e Prova. Usate anche dalla configurazione
+ * guidata ("Scegli per ogni fase"). */
+export function PhaseRows({ settings }: { settings: Settings }) {
+  return (
+    <div className="flex flex-col divide-y">
+      {settings.phases.map((phase) => (
+        <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}`} phase={phase} connections={settings.connections} />
+      ))}
+    </div>
   )
 }
 
@@ -59,7 +69,7 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
   return (
     <form
       onSubmit={submit}
-      className="grid grid-cols-1 items-end gap-2 py-3 first:pt-0 sm:grid-cols-[10rem_1fr_1fr_auto]"
+      className="grid grid-cols-1 items-end gap-2 py-3 first:pt-0 sm:grid-cols-[10rem_1fr_1fr_auto_auto]"
       data-testid="phase-row"
       data-job={phase.job}
       aria-label={`Fase ${phase.label}`}
@@ -111,12 +121,73 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
         Salva
       </Button>
+      <ModelTest connection={connection} model={model} label={phase.label} className="contents" resultClassName="sm:col-span-5" />
       {assign.isError && (
-        <Alert tone="danger" className="sm:col-span-4">
+        <Alert tone="danger" className="sm:col-span-5">
           {errorMessage(assign.error)}
         </Alert>
       )}
     </form>
+  )
+}
+
+// ------------------------------------------------------------------ prova di un modello
+
+/** Pulsante "Prova": chiamata minima a connessione e modello scritti nel form (anche non
+ * salvati) con esito, latenza ed eventuale errore del provider. L'esito resta finché non si
+ * cambia connessione o modello. */
+export function ModelTest({
+  connection,
+  model,
+  label,
+  className,
+  resultClassName,
+}: {
+  connection: string
+  model: string
+  label?: string
+  className?: string
+  resultClassName?: string
+}) {
+  const test = useTestModel()
+  const tested = test.variables
+  const current = !!tested && tested.connection === connection && tested.model === model.trim()
+  let outcome = null
+  if (current && test.isPending) {
+    outcome = (
+      <p role="status" className="text-xs text-muted-foreground">
+        Prova in corso…
+      </p>
+    )
+  } else if (current && test.isError) {
+    outcome = <Alert tone="danger">{errorMessage(test.error)}</Alert>
+  } else if (current && test.data) {
+    const r = test.data
+    const latency = r.latency_ms != null ? `${r.latency_ms} ms` : null
+    outcome = r.ok ? (
+      <p role="status" className="text-xs text-success" data-testid="model-test-result">
+        Raggiungibile{latency ? ` · ${latency}` : ''} · {r.message}
+      </p>
+    ) : (
+      <Alert tone="danger" data-testid="model-test-result">
+        Non raggiungibile{latency ? ` (${latency})` : ''}: {r.message}
+      </Alert>
+    )
+  }
+  return (
+    <div className={className}>
+      <Button
+        variant="outline"
+        aria-label={label ? `Prova il modello di ${label}` : 'Prova il modello'}
+        disabled={!connection || !model.trim() || (current && test.isPending)}
+        onClick={() => test.mutate({ connection, model: model.trim() })}
+      >
+        Prova
+      </Button>
+      {outcome && (
+<div className={resultClassName}>{outcome}</div>
+      )}
+    </div>
   )
 }
 
@@ -225,10 +296,8 @@ export function NewConnectionForm({ onCreated, submitLabel = 'Crea connessione' 
       <div className="flex flex-col gap-2">
         {keys.map((key, i) => (
           <Field key={i} label={`Chiave API ${i + 1}`} htmlFor={`conn-key-${i}`}>
-            <Input
+            <SecretInput
               id={`conn-key-${i}`}
-              type="password"
-              autoComplete="off"
               value={key}
               required={i === 0}
               onChange={(e) => setKeys((c) => c.map((k, j) => (j === i ? e.target.value : k)))}

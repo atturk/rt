@@ -85,6 +85,8 @@ test('review: con l\'ultima decisione la pipeline in attesa riparte', async ({ p
 
 const SEVERITY_RANK = ['high', 'medium', 'low']
 const pendingList = (page: Page) => page.getByRole('list', { name: 'Da decidere' }).getByRole('button')
+// Letto con expect.poll: l'elenco si riordina al render dopo il cambio di ?ordine=.
+const pendingIds = (page: Page) => pendingList(page).evaluateAll((els) => els.map((e) => e.getAttribute('data-issue')))
 
 test('review: ordina per gravità, avanza secondo l\'ordine e lo mantiene dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
@@ -107,7 +109,7 @@ test('review: ordina per gravità, avanza secondo l\'ordine e lo mantiene dopo l
   await page.getByRole('button', { name: 'Tipo e gravità' }).click()
   await expect(page).toHaveURL(/ordine=gravita/)
   await expect(pendingList(page)).toHaveCount(bySeverity.length)
-  expect(await pendingList(page).evaluateAll((els) => els.map((e) => e.getAttribute('data-issue')))).toEqual(bySeverity)
+  await expect.poll(() => pendingIds(page)).toEqual(bySeverity)
 
   // Scegli la prima dell'elenco, decidi: si passa alla seconda secondo la gravità.
   await pendingList(page).first().click()
@@ -120,7 +122,7 @@ test('review: ordina per gravità, avanza secondo l\'ordine e lo mantiene dopo l
   await page.reload()
   await expect(page).toHaveURL(/ordine=gravita/)
   await expect(page.getByRole('button', { name: 'Tipo e gravità' })).toHaveAttribute('aria-pressed', 'true')
-  expect(await pendingList(page).evaluateAll((els) => els.map((e) => e.getAttribute('data-issue')))).toEqual(bySeverity.slice(1))
+  await expect.poll(() => pendingIds(page)).toEqual(bySeverity.slice(1))
   await expect(page.getByTestId('issue-detail')).toHaveAttribute('data-issue-id', bySeverity[1])
 
   // Il ritorno al cronologico toglie il parametro.

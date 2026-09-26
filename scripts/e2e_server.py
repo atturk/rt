@@ -8,7 +8,8 @@ Uso (lo lancia frontend/playwright.config.ts):
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
 Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
---mock (LLM e risposte vocali finti) e il bot Telegram è finto (RT_TELEGRAM_FAKE=1).
+--mock (LLM e risposte vocali finti), il bot Telegram è finto (RT_TELEGRAM_FAKE=1), la "Prova"
+dei modelli è in mock (RT_API_MOCK=1) e SearXNG è un server finto (searxng_url in server.json).
 """
 import argparse
 import json
@@ -102,11 +103,15 @@ def main() -> int:
     # Bot API finta per "Ascolta i topic" (RT4-F5): API e worker la ereditano dall'ambiente.
     from tests.api_support import fake_telegram_server
     _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
+    # "Prova" dei modelli in mock (nessuna chiamata LLM) e SearXNG finto per la ricerca web (RT4-FA5).
+    os.environ["RT_API_MOCK"] = "1"
+    from tests.api_support import fake_searxng_server
+    _searxng, searxng_url = fake_searxng_server(results=3)
     token = auth.reset_token(get_database())
     base_url = f"http://127.0.0.1:{args.port}"
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
     with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"base_url": base_url, "token": token, "lessons_root": root}, f)
+        json.dump({"base_url": base_url, "token": token, "lessons_root": root, "searxng_url": searxng_url}, f)
     print(f"Server e2e su {base_url} (lezioni in {root})", flush=True)
     return run_spa(port=args.port, open_browser=False, worker_args=["--mock"])
 
