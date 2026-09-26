@@ -74,6 +74,25 @@ def sqlite_file(url: str) -> Optional[str]:
     return db
 
 
+def _enable_wal(cur) -> None:
+    """PRAGMA journal_mode=WAL con i tentativi: se un altro processo sta aprendo lo stesso DB
+    nuovo (es. 'rt web' avvia API e worker insieme), SQLite può rispondere 'database is locked'
+    subito, senza passare dal busy_timeout. Si riprova fino allo stesso limite."""
+    import sqlite3
+    import time
+    deadline = time.monotonic() + SQLITE_BUSY_TIMEOUT_MS / 1000
+    while True:
+        try:
+            cur.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) and "busy" not in str(exc):
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
 def _configure_sqlite(engine: Engine) -> None:
     """WAL, foreign key e busy_timeout per ogni connessione; transazioni BEGIN IMMEDIATE
     così CLI, daemon e web che scrivono insieme si mettono in coda invece di fallire."""
@@ -87,7 +106,7 @@ def _configure_sqlite(engine: Engine) -> None:
             # che aprono insieme un DB nuovo, senza attesa fallirebbe subito con 'database is locked'
             cur.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
             if sqlite_file(str(engine.url)):
-                cur.execute("PRAGMA journal_mode=WAL")
+                _enable_wal(cur)
             cur.execute("PRAGMA foreign_keys=ON")
             cur.execute("PRAGMA synchronous=NORMAL")
         finally:
