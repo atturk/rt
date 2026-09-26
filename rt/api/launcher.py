@@ -22,6 +22,15 @@ def worker_command(extra: Optional[List[str]] = None) -> List[str]:
     return [sys.executable, os.path.join(_PROJECT_ROOT, "bin", "rt"), "worker"] + list(extra or [])
 
 
+def worker_concurrency() -> int:
+    """Job in parallelo scelti in Impostazioni > Generali (worker.concurrency, default 2)."""
+    try:
+        from rt.core.config import load_config
+        return max(1, min(4, int(load_config().worker.concurrency)))
+    except Exception:
+        return 2
+
+
 def _open_when_ready(base: str, url: str, say: Callable[[str], None], open_browser: bool) -> None:
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
@@ -59,8 +68,12 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
 
     child = None
     if worker:
-        child = subprocess.Popen(worker_command(worker_args))
-        say(f"👷 Worker avviato (pid {child.pid}).")
+        args = list(worker_args or [])
+        concurrency = worker_concurrency() if "--concurrency" not in args else None
+        if concurrency:
+            args += ["--concurrency", str(concurrency)]
+        child = subprocess.Popen(worker_command(args))
+        say(f"👷 Worker avviato (pid {child.pid}" + (f", {concurrency} job in parallelo)." if concurrency else ")."))
     threading.Thread(target=_open_when_ready, args=(base, login_url, say, open_browser), daemon=True).start()
     say(f"🚀 RT su {base}  ·  API {base}/api/v1  ·  Ctrl+C per fermare API e worker")
     try:

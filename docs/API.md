@@ -52,27 +52,37 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 
 | Metodo e percorso | Cosa restituisce | Equivalente CLI |
 |---|---|---|
-| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo | dashboard `rt` |
-| `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio | `rt status`, `rt cost` |
-| `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione | `rt validate-outline`, `rt validate-draft` |
-| `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`); nell'HTML l'intestazione di ogni unità ha `data-unit-id` e la riga del suo timecode `data-unit-timecode` | anteprima / file finale |
+| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo (`q`: testo su cartella, titolo, argomenti, materia; la SPA carica l'elenco completo e filtra nel browser) | dashboard `rt` |
+| `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio; `actions` dice se recall, immagini e download sono disponibili e, se no, cosa manca (bastano prepare, outline e rewrite VALID) | `rt status`, `rt cost` |
+| `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione; la fase `build` ha `warnings`, gli avvisi di integrità della revisione (review non aggiornata, incompleta o mancante, issue da valutare, issue orfane) che non bloccano il build | `rt validate-outline`, `rt validate-draft`, `rt status` |
+| `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`); nell'HTML l'intestazione di ogni unità ha `data-unit-id` e la riga del suo timecode `data-unit-timecode`. `final` è vero solo con il documento finale aggiornato; altrimenti è l'anteprima, cioè quello che il build produrrebbe ora | anteprima / file finale |
 | `GET /lessons/{id}/audio` | Audio della lezione, con `Range`; solo file audio della lezione (cartella o `media/`) | — |
-| `GET /lessons/{id}/export?format=markdown\|zip&scope=final\|all` | Download: Markdown finale (`markdown`), oppure zip con Markdown, errori concettuali e immagini (`final`) o con tutti i file della lezione (`all`) | `rt export` |
+| `GET /lessons/{id}/export?format=markdown\|zip&scope=final\|all` | Download: Markdown finale (`markdown`), oppure zip con Markdown, errori concettuali e immagini (`final`) o con tutti i file della lezione (`all`). Senza documento finale aggiornato, con la bozza pronta, esporta l'anteprima: "(anteprima)" nel nome dei file e un `LEGGIMI - anteprima.txt` nello zip | `rt export` |
 | `GET /lessons/{id}/outline` | Albero dell'outline e approvazione | approvazione outline |
 | `GET /lessons/{id}/issues?status=pending\|all` | Issue con contesto (unità, timecode, finestra audio) e decisione | `rt review` |
 | `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |
 | `GET /costs` | Costi LLM di tutte le lezioni, per lezione e per job | `rt cost` |
 
+Il riepilogo di ogni lezione in `GET /lessons` (freschezza delle fasi, issue pendenti, costi)
+richiede centinaia di letture; il processo dell'API lo tiene in cache per lezione. La chiave è
+un'impronta degli input calcolata a ogni richiesta con due query (nome, hash, mtime e
+dimensione dei file della lezione nel DB; numero e ultimo id delle chiamate LLM) più uno `stat`
+dei file per le lezioni ancora in cartella: ogni scrittura, anche dal worker, dalla CLI o dal bot,
+cambia l'impronta e la lezione si ricalcola. Con 20 lezioni la prima richiesta costa circa
+0,9 s, le successive circa 40 ms.
+
 ### Impostazioni (RT4-E4)
 
 La logica vive in `rt/services/settings_service.py` e `rt/services/connections_service.py`
 (spostati da `rt/web/`, che li reimporta per Gradio). Nessuna risposta contiene un valore
-segreto: solo `set: true/false`.
+segreto: solo `set: true/false` (per token e Chat ID di Telegram anche un'anteprima con primi e
+ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
-| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing; `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
+| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
 | `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
+| `PUT /settings/worker` | Job in parallelo del worker di `rt web` (1-4, default 2); `GET /settings` riporta anche i worker attivi ora | `rt worker --concurrency` |
 | `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
 | `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
 | `POST /settings/connections` | Nuova connessione (provider, base URL, chiavi) | `rt config --models` |
@@ -80,8 +90,18 @@ segreto: solo `set: true/false`.
 | `PUT /settings/phases/{job}` | Connessione e modello per outline, rewrite, review, recall, image_description, image_unit_judge | `rt config --models` |
 | `GET/PUT /settings/routes/{job}/{role}` | Route primaria, secondaria, fallback | file `config/*.yaml` |
 | `PUT /settings/pricing` | Pricing custom per provider e modello | `rt config` |
+| `POST /settings/models/test` | Prova connessione e modello (anche non salvati): chiamata minima e sincrona (prompt di poche parole, 16 token di uscita, timeout 20 s) con esito, latenza, stato HTTP ed errore del provider sanificato; con `mock` o `RT_API_MOCK=1` risponde subito senza rete | — |
+| `PUT /settings/web-search` | URL base di SearXNG (`searxng_base_url` in `general.yaml`, vuoto lo toglie); letto da `add_images` | `config/general.yaml` |
+| `POST /settings/web-search/test` | Ricerca immagini di prova su SearXNG (timeout 10 s): numero di risultati, o l'errore (anche il formato json non abilitato) | — |
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
 | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
+| `POST /settings/telegram/reveal` `{field: bot_token\|chat_id}` | Valore completo del token o del Chat ID, solo su richiesta esplicita (`Cache-Control: no-store`); `GET /settings` ne dà solo l'anteprima (`bot_token_preview`, `chat_id_preview`, es. `1234…wXyZ`) | — |
+| `POST /settings/telegram/test-topic` `{topic_id, materia}` | Invia nel topic "Questo è il topic di MATERIA"; esito nella risposta | — |
+| `GET /settings/telegram/listen-messages` | Messaggi ricevuti durante l'ultimo ascolto riuscito dei topic (quanti, se già cancellati) | — |
+| `POST /settings/telegram/listen-messages/delete` | `deleteMessage` solo di quei messaggi (mai quelli di servizio): quanti eliminati e quali no, con il motivo (più vecchi di 48 ore, permessi) | — |
+| `GET /telegram/notifications?limit=` | Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic), dal registro `notifications.jsonl` nella cartella di stato Telegram | — |
+| `POST /system/choose-folder` `{start?}` | Finestra di Finder (`osascript` 'choose folder') e percorso POSIX scelto; `unavailable` fuori da macOS (o con `RT_NATIVE_FOLDER_PICKER=0`), `cancelled` se annullata. Solo da loopback | — |
+| `GET /system/folders?path=` | Sottocartelle (niente file, niente cartelle nascoste) di una cartella della home, per il navigatore della SPA. Solo da loopback e dentro la home | — |
 
 Il bot parte come processo separato in una sessione propria (sopravvive all'API) e il lock
 del PID file in `~/.rt/` impedisce i duplicati; lo stop invia SIGTERM. Un servizio launchd
@@ -103,8 +123,9 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons/{id}/jobs` `{type: run_pipeline}` | Pipeline completa | `rt run <cartella>` |
 | `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
 | `POST /lessons/{id}/images` (multipart `files`, `web_search`, `units`) | Job `add_images`: `web_search` è il numero di immagini da cercare sul web **per ogni unità** (una ricerca per unità, 1-10), `units` limita la ricerca alle unità scelte (vuoto = tutte). Senza SearXNG configurato risponde subito `409 searxng_not_configured`, senza accodare il job | `rt add-images [--web-search N] [--units 1.1,2.3]` |
-| `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento finale) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
-| `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento | `rt jobs` |
+| `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento mostrato da `/document`) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
+| `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento; `retry_of` e `retried_by` collegano un job fallito e il suo nuovo tentativo | `rt jobs` |
+| `POST /jobs/{id}/retry` | Riprova un job fallito (RT4-FA1): job nuovo con lo stesso tipo e payload (senza `force` per pipeline e fasi), che riparte dalla fase fallita; `409 lesson_busy` se sulla lezione c'è un altro job attivo, `409 already_retried` (con il job nuovo) se è già stato ripreso, `409 retry_unavailable` se i file caricati non ci sono più | rilanciare lo stesso comando |
 | `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
 | `GET /workers` | Worker attivi | — |
 | `POST /lessons/{id}/outline/approve` | Approva l'outline; il job in attesa riparte da solo | approvazione outline |
@@ -120,7 +141,20 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons/{id}/recall/telegram/start` `{qtype}` | Chiede al bot di avviare il recall nel topic della materia (202; l'esito in `/recall/session`); 409 se il bot non è configurato o è fermo, o se c'è già una sessione | `rt recall --channel telegram`, `/recall` nel bot |
 | `POST /recall/telegram/sessions/{id}/stop` | Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic «Sessione interrotta dall'app» | `/quit` nel bot |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
-| `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti | web Gradio "Ascolta topic" |
+| `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti, `names` (nome del topic da `forum_topic_created`/`forum_topic_edited` o dal `reply_to_message`), `materie` (materia nota che coincide con il nome) e `messages` (chat e message id dei messaggi degli utenti, per la cancellazione) | web Gradio "Ascolta topic" |
+
+Il build (`run_phase` con `phase: build`) richiede prepare, outline e rewrite aggiornati; la
+review non è una dipendenza (i suoi problemi sono gli avvisi di `GET /phases`). Il job
+`add_images` lavora sulla bozza: salva il posizionamento delle immagini
+(`assets/images/placement.json`), che l'anteprima mostra subito e il build successivo include;
+un documento finale già creato diventa STALE.
+
+Nelle fasi a unità gli eventi `phase_progress` portano `current`/`total` (posizione dell'unità
+nella lezione), `unit_id`, `unit_title` e `failed` (unità non riuscite finora); `phase_completed`
+ha `partial: true` se alcune unità sono fallite (`result.failed_units` con unità, etichetta e
+messaggio). Una fase parziale ferma la pipeline e il job fallisce con il motivo leggibile.
+`POST /lessons/{id}/jobs` accetta `mock_fail_once` (`rewrite` o `review`, solo con `mock=true`)
+per i test: la prima unità di quella fase fallisce una volta con una risposta fuori schema.
 
 **Sessioni di recall (RT4-FA7).** La tabella `recall_sessions` è il registro condiviso delle
 sessioni: la web app apre la sua con la prima domanda (`/recall/next`) e la chiude con

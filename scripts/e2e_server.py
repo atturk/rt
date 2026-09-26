@@ -8,8 +8,11 @@ Uso (lo lancia frontend/playwright.config.ts):
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
 Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
---mock (LLM, risposte vocali e immagini dal web finti) e il bot Telegram è finto
-(RT_TELEGRAM_FAKE=1: esegue le richieste della web app sulla Bot API finta).
+--mock (LLM, risposte vocali e immagini dal web finti), il bot Telegram è finto
+(RT_TELEGRAM_FAKE=1: esegue le richieste della web app) e il Bot API anche
+(tests/api_support.fake_telegram_server), la "Prova" dei modelli è in mock (RT_API_MOCK=1),
+SearXNG è un server finto (searxng_url in server.json); niente finestra di Finder per la scelta
+cartella.
 """
 import argparse
 import json
@@ -41,7 +44,12 @@ def _workspace(base: str) -> str:
     general["searxng_base_url"] = "http://127.0.0.1:9"
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
+    # Cartelle per il navigatore della scelta cartella (RT4-FA6): la finestra di Finder è
+    # disattivata, come su Linux, così anche su macOS i test usano il ripiego della SPA.
+    for folder in ("Documenti/RT Lezioni e2e", "Documenti/Università", "Scrivania"):
+        os.makedirs(os.path.join(home, folder))
     os.environ["HOME"] = home
+    os.environ["RT_NATIVE_FOLDER_PICKER"] = "0"
     os.environ["RT_TELEGRAM_FAKE"] = "1"
     os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [ROOT, os.environ.get("PYTHONPATH")]))
     os.environ.pop("RT_DATABASE_URL", None)
@@ -62,9 +70,23 @@ def _plain_lesson(root: str, date: str, materia: str, argomenti: str) -> str:
     return folder
 
 
+def _stale_review(lesson: str) -> None:
+    """Review come nelle lezioni revisionate prima di RT 3.3.2: impronta calcolata con
+    review_v1.1, quindi STALE (il caso di Patologia del primo test reale, RT4-FA2)."""
+    from rt.core.manifest import load_manifest, save_manifest
+    manifest = load_manifest(lesson)
+    record = manifest.phase_records["review"]
+    record["processor_version"] = "review_v1.1"
+    record["source_fingerprint"] = "0" * 64
+    record.pop("input_hashes", None)
+    save_manifest(manifest, lesson)
+
+
 def _lessons(root: str) -> None:
     """BIOCHIMICA completa con audio; FISIOLOGIA solo setup; FARMACOLOGIA e PATOLOGIA con
-    l'outline approvata e 10 issue della review da decidere (per la review contestuale)."""
+    l'outline approvata e 10 issue della review da decidere (per la review contestuale);
+    ANATOMIA come PATOLOGIA ma con la review non aggiornata e senza documento finale (build
+    con conferma, recall e immagini prima del build)."""
     from rt.services.outline_service import approve_outline
     from tests.api_support import add_audio, make_lesson, run_mock_pipeline
     done = make_lesson(root)
@@ -78,6 +100,11 @@ def _lessons(root: str) -> None:
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sull'outline
         approve_outline(lesson, channel="api")
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sulle issue
+    anatomia = _plain_lesson(root, "2026-09-21", "ANATOMIA", "Cuore")
+    run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
+    approve_outline(anatomia, channel="api")
+    run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
+    _stale_review(anatomia)
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)
@@ -106,11 +133,15 @@ def main() -> int:
     # (RT4-FA7): API, worker e bot finto la ereditano dall'ambiente.
     from tests.api_support import fake_telegram_server
     _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
+    # "Prova" dei modelli in mock (nessuna chiamata LLM) e SearXNG finto per la ricerca web (RT4-FA5).
+    os.environ["RT_API_MOCK"] = "1"
+    from tests.api_support import fake_searxng_server
+    _searxng, searxng_url = fake_searxng_server(results=3)
     token = auth.reset_token(get_database())
     base_url = f"http://127.0.0.1:{args.port}"
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
     with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"base_url": base_url, "token": token, "lessons_root": root}, f)
+        json.dump({"base_url": base_url, "token": token, "lessons_root": root, "searxng_url": searxng_url}, f)
     print(f"Server e2e su {base_url} (lezioni in {root})", flush=True)
     return run_spa(port=args.port, open_browser=False, worker_args=["--mock"])
 

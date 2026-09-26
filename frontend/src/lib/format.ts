@@ -65,3 +65,9 @@ export function groupBySubject(lessons: Lesson[]): [string, Lesson[]][] {
       [...items].sort((a, b) => (b.data || '').localeCompare(a.data || '') || lessonTitle(b).localeCompare(lessonTitle(a))),
     ])
 }
+
+/** Data e ora brevi in italiano ('' se non valida). */
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })
+}

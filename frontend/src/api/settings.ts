@@ -39,6 +39,10 @@ export function useSaveLessonsRoot() {
   )
 }
 
+export function useSaveWorker() {
+  return useSettingsMutation((concurrency: number) => unwrap(api.PUT('/api/v1/settings/worker', { body: { concurrency } })))
+}
+
 export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
 }
@@ -100,6 +104,29 @@ export function useSaveRoute() {
   })
 }
 
+export function useSaveWebSearch() {
+  return useSettingsMutation((searxng_base_url: string) => unwrap(api.PUT('/api/v1/settings/web-search', { body: { searxng_base_url } })))
+}
+
+/** "Prova" di connessione e modello indicati nel form, anche prima di salvarli: chiamata minima
+ * e sincrona. L'esito è solo una prova, non un'impostazione: non invalida nulla. */
+export type ModelTestResult = Schemas['ModelTestOut']
+
+export function useTestModel() {
+  return useMutation({
+    mutationFn: (body: { connection: string; model: string }) =>
+      unwrap(api.POST('/api/v1/settings/models/test', { body: { ...body, mock: false } })),
+  })
+}
+
+/** Ricerca immagini di prova su SearXNG con l'URL scritto nel form. */
+export function useTestWebSearch() {
+  return useMutation({
+    mutationFn: (searxng_base_url: string) =>
+      unwrap(api.POST('/api/v1/settings/web-search/test', { body: { searxng_base_url, mock: false } })),
+  })
+}
+
 /** Prova di una credenziale: accoda il job credential_test; l'esito si legge da useJob. */
 export function useTestCredential() {
   return useMutation({
@@ -107,14 +134,26 @@ export function useTestCredential() {
   })
 }
 
-/** "Ascolta i topic": job che legge per 20 secondi i messaggi arrivati al bot. */
-export type ListenResult = { ok: boolean; message: string; chat_id?: string | null; topics?: number[] }
+/** "Ascolta i topic": job che legge per 20 secondi i messaggi arrivati al bot. Con names
+ * (nome del topic dal Bot API) e materie (materia nota che coincide con il nome). */
+export type ListenResult = {
+  ok: boolean
+  message: string
+  chat_id?: string | null
+  topics?: number[]
+  names?: Record<string, string>
+  materie?: Record<string, string>
+}
+
+export const telegramSettingsKeys = { listenMessages: ['settings', 'telegram', 'listen-messages'] as const }
 
 export function useListenTopics() {
+  const client = useQueryClient()
   return useMutation({
+    onSettled: () => client.invalidateQueries({ queryKey: telegramSettingsKeys.listenMessages }),
     mutationFn: async (): Promise<ListenResult> => {
       const accepted = await unwrap(api.POST('/api/v1/settings/telegram/listen-topics'))
-      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: avvia rt worker e riprova.' }
+      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: riavvia RT con la web e riprova.' }
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
         const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: accepted.job_id } } }))
@@ -138,5 +177,62 @@ export function useJob(id: string | undefined) {
     queryFn: () => unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: id! } } })),
     enabled: !!id,
     refetchInterval: (query) => (isTerminal(query.state.data?.state) ? false : 1000),
+  })
+}
+
+/** Messaggi ricevuti durante l'ultimo ascolto dei topic (quanti e se già cancellati). */
+export function useListenMessages(enabled = true) {
+  return useQuery({
+    queryKey: telegramSettingsKeys.listenMessages,
+    queryFn: () => unwrap(api.GET('/api/v1/settings/telegram/listen-messages')),
+    enabled,
+  })
+}
+
+/** Cancella dal gruppo solo i messaggi dell'ultimo ascolto. */
+export function useDeleteListenMessages() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/v1/settings/telegram/listen-messages/delete')),
+    onSettled: () => client.invalidateQueries({ queryKey: telegramSettingsKeys.listenMessages }),
+  })
+}
+
+/** Valore completo del token del bot o del Chat ID: solo su richiesta esplicita (pulsante occhio). */
+export function useRevealTelegram() {
+  return useMutation({
+    mutationFn: (field: 'bot_token' | 'chat_id') => unwrap(api.POST('/api/v1/settings/telegram/reveal', { body: { field } })),
+  })
+}
+
+/** "Prova": messaggio "Questo è il topic di <materia>" nel topic; l'esito è la risposta. */
+export function useTestTopic() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Schemas['TopicTestIn']) => unwrap(api.POST('/api/v1/settings/telegram/test-topic', { body })),
+    onSettled: () => client.invalidateQueries({ queryKey: ['telegram', 'notifications'] }),
+  })
+}
+
+/** "Prova" di un topic dal form o dalla pagina Bot: la mutation e se l'id è valido. */
+export function useTopicTest(topicId: string, materia: string) {
+  const test = useTestTopic()
+  const valid = /^\d+$/.test(topicId.trim()) && Number(topicId) > 0
+  return { test, valid, run: () => test.mutate({ topic_id: Number(topicId.trim()), materia: materia.trim() }) }
+}
+
+/** Finestra di Finder (macOS) per scegliere una cartella; 'unavailable' altrove. */
+export function useChooseFolder() {
+  return useMutation({
+    mutationFn: (start: string | null) => unwrap(api.POST('/api/v1/system/choose-folder', { body: { start } })),
+  })
+}
+
+/** Sottocartelle di una cartella della home, per il navigatore (ripiego della finestra nativa). */
+export function useFolders(path: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['system', 'folders', path ?? ''],
+    queryFn: () => unwrap(api.GET('/api/v1/system/folders', { params: { query: path ? { path } : {} } })),
+    enabled,
   })
 }

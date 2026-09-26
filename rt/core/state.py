@@ -164,14 +164,16 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     alle decisioni del Decision Ledger.
     
     Invariante fondamentale:
-    WorkflowState.COMPLETED è vero SOLO se:
-    1. build è VALID
-    2. prepare, outline e rewrite sono VALID; review_asr e review_science sono VALID
-       oppure semplicemente MAI generate (MISSING: sono opzionali, disaccoppiate dalla
-       run di default) — solo se STALE/INVALID (generate ma superate da modifiche a
-       monte) fanno retrocedere lo stato
-    3. tutte le review ASR (YELLOW/RED) e Science EFFETTIVAMENTE generate sono state
-       decise (0 pendenti; se non generate affatto, non c'è nulla da decidere)
+    WorkflowState.COMPLETED è vero SOLO se prepare, outline e rewrite sono VALID e build è
+    VALID. Il build è la conferma dell'utente ("l'anteprima diventa il documento finale"):
+    una review STALE/PARTIAL o con issue pendenti non lo blocca e, una volta confermato,
+    non fa retrocedere lo stato (resta un avviso, vedi build_warnings).
+
+    Senza un build aggiornato lo stato si ferma alla prima cosa da fare:
+    - review generata ma STALE/INVALID/PARTIAL -> DRAFT_VALIDATED (MISSING è ammessa:
+      la review è opzionale);
+    - issue ancora da decidere -> HUMAN_REVIEW_REQUIRED;
+    - altrimenti READY_TO_BUILD.
     
     Se una fase a monte è STALE o INVALID, lo stato retrocede coerentemente
     alla prima fase che richiede attenzione.
@@ -207,12 +209,17 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     if st_rew != PhaseStatus.VALID:
         return WorkflowState.OUTLINE_VALIDATED
 
-    # 4. Review — opzionale: MISSING non blocca il completamento; solo STALE/INVALID retrocede lo stato.
+    # 4. Documento confermato: completato anche con avvisi della revisione.
+    st_bld, _ = check_phase_status(lesson_dir, "build")
+    if st_bld == PhaseStatus.VALID:
+        return WorkflowState.COMPLETED
+
+    # 5. Review — opzionale: MISSING non blocca il completamento; solo STALE/INVALID retrocede lo stato.
     st_rev, _ = check_phase_status(lesson_dir, "review")
     if st_rev not in (PhaseStatus.VALID, PhaseStatus.MISSING):
         return WorkflowState.DRAFT_VALIDATED
 
-    # 5. Verifica Decisioni Umane (Science Issues)
+    # 6. Verifica Decisioni Umane (Science Issues)
     ledger = load_ledger(lesson_dir)
     decided_ids = {d.issue_id for d in ledger.decisions}
     sci_issues = load_science_issues(lesson_dir)
@@ -225,11 +232,6 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     if pending_sci:
         return WorkflowState.HUMAN_REVIEW_REQUIRED
 
-    # 6. Build
-    st_bld, _ = check_phase_status(lesson_dir, "build")
-    if st_bld != PhaseStatus.VALID:
-        return WorkflowState.READY_TO_BUILD
-
-    return WorkflowState.COMPLETED
+    return WorkflowState.READY_TO_BUILD
 
 

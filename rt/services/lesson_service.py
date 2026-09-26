@@ -5,9 +5,11 @@ report di validazione, documento Markdown con timecode strutturati, audio, costi
 calcola dai file della lezione (fonte di verità per artefatti e freschezza delle fasi); il
 DB dà l'id stabile della lezione (Lesson.id) e l'elenco delle cartelle note.
 """
+import copy
 import os
 import re
-from typing import Any, Dict, List, Optional
+import threading
+from typing import Any, Dict, List, Optional, Tuple
 
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
@@ -123,11 +125,86 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     return out
 
 
+# Cache dei riepiloghi per l'elenco: Lesson.id -> (impronta degli input, riepilogo). Il
+# riepilogo costa centinaia di letture per lezione (freschezza delle fasi con gli hash dei
+# file, issue, costi); l'impronta costa due query per tutto l'elenco più uno stat per file
+# delle lezioni in cartella. Ogni scrittura, anche da un altro processo (worker, CLI, bot),
+# cambia l'impronta: file della lezione (hash e mtime, nel DB o su disco) e chiamate LLM.
+_summary_cache: Dict[int, Tuple[str, Dict[str, Any]]] = {}
+_summary_lock = threading.Lock()
+
+
+def _folder_fingerprint(lesson_dir: str) -> str:
+    parts: List[str] = []
+    for top, dirs, files in os.walk(lesson_dir):
+        dirs.sort()
+        for name in sorted(files):
+            try:
+                st = os.stat(os.path.join(top, name))
+            except OSError:
+                continue
+            parts.append(f"{os.path.relpath(os.path.join(top, name), lesson_dir)}|{st.st_size}|{st.st_mtime_ns}")
+    return "\n".join(parts)
+
+
+def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
+    """Impronta degli input del riepilogo di ogni lezione (vedi _summary_cache)."""
+    import hashlib
+    from sqlalchemy import func, select
+    from rt.db.models import Lesson, LessonFile, LlmCall
+    from rt.db.session import read_scope
+    lesson_ids = list(ids.values())
+    rows: Dict[int, List[str]] = {i: [] for i in lesson_ids}
+    with read_scope(_require_db()) as s:
+        storage = dict(s.execute(select(Lesson.id, Lesson.storage).where(Lesson.id.in_(lesson_ids))).all())
+        for lesson_id, name, sha, mtime, size in s.execute(
+                select(LessonFile.lesson_id, LessonFile.name, LessonFile.sha256, LessonFile.mtime, LessonFile.size)
+                .where(LessonFile.lesson_id.in_(lesson_ids)).order_by(LessonFile.lesson_id, LessonFile.name)):
+            rows[lesson_id].append(f"{name}|{sha}|{mtime}|{size}")
+        for lesson_id, count, last in s.execute(
+                select(LlmCall.lesson_id, func.count(LlmCall.id), func.max(LlmCall.id))
+                .where(LlmCall.lesson_id.in_(lesson_ids)).group_by(LlmCall.lesson_id)):
+            rows[lesson_id].append(f"llm|{count}|{last}")
+    out: Dict[int, str] = {}
+    for path, lesson_id in ids.items():
+        if storage.get(lesson_id) != fs.STORAGE_DB:
+            rows[lesson_id].append(_folder_fingerprint(path))
+        body = f"{path}\n{storage.get(lesson_id)}\n" + "\n".join(rows[lesson_id])
+        out[lesson_id] = hashlib.sha256(body.encode("utf-8", "surrogateescape")).hexdigest()
+    return out
+
+
+def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
+    fingerprints = _input_fingerprints(ids)
+    items = []
+    for path, lesson_id in ids.items():
+        key = fingerprints[lesson_id]
+        with _summary_lock:
+            hit = _summary_cache.get(lesson_id)
+        if hit is not None and hit[0] == key:
+            items.append(copy.deepcopy(hit[1]))
+            continue
+        summary = lesson_summary(lesson_id, path)
+        if summary["error"] is None:  # un errore si ricalcola alla richiesta successiva
+            with _summary_lock:
+                _summary_cache[lesson_id] = (key, copy.deepcopy(summary))
+        items.append(summary)
+    with _summary_lock:
+        for stale in set(_summary_cache) - set(fingerprints):
+            del _summary_cache[stale]
+    return items
+
+
+def clear_summary_cache() -> None:
+    with _summary_lock:
+        _summary_cache.clear()
+
+
 def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
                  text: Optional[str] = None) -> List[Dict[str, Any]]:
     with fs.read_snapshot():  # centinaia di letture per lezione, una query ciascuna senza
         ids = ensure_indexed(known_lesson_dirs())
-        items = [lesson_summary(lesson_id, path) for path, lesson_id in ids.items()]
+        items = _cached_summaries(ids)
     if materia:
         items = [i for i in items if i["materia"] == materia.strip().upper()]
     if state:
@@ -149,10 +226,19 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.rewrite import get_draft_path, load_draft
     from rt.pipeline.validator import validate_draft, validate_outline
 
+    from rt.services.review_service import build_warnings
+
     phases = []
     for ph in PHASES:
         status, reason = check_phase_status(lesson_dir, ph)
-        phases.append({"phase": ph, "status": status.value, "reason": reason})
+        item = {"phase": ph, "status": status.value, "reason": reason, "warnings": []}
+        if ph == "build":
+            try:
+                item["warnings"] = build_warnings(lesson_dir)
+            except Exception as exc:
+                item["warnings"] = [{"code": "check_failed", "count": None,
+                                     "message": f"Controlli della revisione non riusciti: {exc}."}]
+        phases.append(item)
     report: Dict[str, Any] = {"phases": phases, "outline_validation": None, "draft_validation": None}
     seg_path = lesson_path(lesson_dir, "segments.json")
     try:
@@ -177,7 +263,42 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     out["outline_approved"] = is_outline_approved(lesson_dir)
     out["has_audio"] = lesson_audio_file(lesson_dir) is not None
     out["cost"] = compute_lesson_cost(lesson_dir)
+    out["actions"] = lesson_actions(lesson_dir)
     return out
+
+
+def lesson_actions(lesson_dir: str) -> Dict[str, Dict[str, Any]]:
+    """Azioni di studio e download della vista lezione: se sono disponibili e, se no, cosa
+    manca. Recall, immagini e download richiedono solo la bozza pronta (prepare, outline e
+    rewrite VALID), non il documento finale; il download usa il documento finale se è
+    aggiornato, altrimenti l'anteprima."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    from rt.storage.export import ExportError, export_mode
+    status, _reason = check_phase_status(lesson_dir, "rewrite")
+    ready = status == PhaseStatus.VALID
+    if ready:
+        missing = None
+    elif status == PhaseStatus.PARTIAL:
+        missing = "La rielaborazione non è completa: servono tutte le unità della bozza."
+    elif status == PhaseStatus.MISSING:
+        missing = "Serve prima la rielaborazione della lezione (fase Rielaborazione)."
+    else:
+        missing = "La bozza non è aggiornata: rifai la rielaborazione."
+    try:
+        mode = export_mode(lesson_dir)
+    except ExportError:
+        mode = "none"
+    download = {
+        "available": mode != "none",
+        "reason": None if mode != "none" else missing,
+        "preview": mode == "preview",
+    }
+    return {
+        "recall": {"available": ready, "reason": missing, "preview": False},
+        "images": {"available": ready, "reason": missing, "preview": False},
+        "export_markdown": dict(download),
+        "export_zip": dict(download),
+    }
 
 
 # ---------------------------------------------------------------- documento
@@ -192,44 +313,46 @@ def strip_yaml_frontmatter(content: str) -> str:
     return re.sub(pattern, "", content, count=1, flags=re.DOTALL).lstrip("\r\n")
 
 
-def load_markdown_preview(lesson_dir: str) -> str:
-    """Markdown reale se la lezione è già stata 'build'ata; altrimenti un'anteprima
-    live generata al volo dallo stesso renderer usato da 'rt build' (riuso diretto,
-    nessuna duplicazione); altrimenti un placeholder onesto. Il frontmatter YAML
-    viene rimosso per visualizzazione pulita nella dashboard."""
-    rielab_path = lesson_path(lesson_dir, "rielaborato.md")
-    if fs.isfile(rielab_path):
-        try:
-            with fs.open(rielab_path, "r", encoding="utf-8") as f:
-                return strip_yaml_frontmatter(f.read())
-        except OSError:
-            pass
+def _document_is_final(lesson_dir: str) -> bool:
+    """True se il documento finale esiste ed è aggiornato (build VALID)."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    return (fs.isfile(lesson_path(lesson_dir, "rielaborato.md"))
+            and check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID)
 
+
+def _read_rielaborato(lesson_dir: str) -> Optional[str]:
     try:
-        from rt.core.segments import load_segments_json
-        from rt.core.state import read_info_yaml
-        from rt.pipeline.build import render_rielaborato_md
-        from rt.pipeline.ledger import apply_decisions_to_draft, load_ledger
-        from rt.pipeline.outline import load_outline
-        from rt.pipeline.review import load_science_issues
-        from rt.pipeline.rewrite import load_draft
+        with fs.open(lesson_path(lesson_dir, "rielaborato.md"), "r", encoding="utf-8") as f:
+            return strip_yaml_frontmatter(f.read())
+    except OSError:
+        return None
 
-        outline = load_outline(lesson_dir)
-        draft = load_draft(lesson_dir)
-        segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-        ledger = load_ledger(lesson_dir)
-        science_issues = load_science_issues(lesson_dir)
-        resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
-        info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
-        rendered = render_rielaborato_md(
-            outline=outline,
-            draft=resolved_draft,
-            segments_data=segments_data,
-            date=info.get("data") or "",
-            subject=info.get("materia") or "",
-            topics=info.get("argomenti") or "",
-        )
-        return strip_yaml_frontmatter(rendered)
+
+def load_markdown_preview(lesson_dir: str) -> str:
+    """Il documento da mostrare, senza frontmatter YAML:
+    1. il documento finale, se esiste ed è aggiornato (build VALID);
+    2. altrimenti, con la bozza pronta (rewrite VALID), l'anteprima: lo stesso Markdown che
+       il build scriverebbe ora (bozza, decisioni della revisione, immagini posizionate);
+    3. altrimenti il documento finale superato, se c'è, o un placeholder onesto."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    if _document_is_final(lesson_dir):
+        final = _read_rielaborato(lesson_dir)
+        if final is not None:
+            return final
+    if check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID:
+        try:
+            from rt.pipeline.build import render_lesson_documents
+            return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
+        except Exception:
+            pass
+    if fs.isfile(lesson_path(lesson_dir, "rielaborato.md")):
+        final = _read_rielaborato(lesson_dir)
+        if final is not None:
+            return final
+    try:
+        # bozza non ancora valida (es. rewrite parziale): anteprima di quello che c'è
+        from rt.pipeline.build import render_lesson_documents
+        return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
     except Exception:
         return (
             "# Nessuna anteprima disponibile\n\n"
@@ -268,7 +391,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     from markdown_it import MarkdownIt
     markdown = load_markdown_preview(lesson_dir)
-    final = fs.isfile(lesson_path(lesson_dir, "rielaborato.md"))
+    final = _document_is_final(lesson_dir)
     sections = document_sections(lesson_dir)
     # html=False: l'HTML grezzo del Markdown viene escapato, quindi l'output è sicuro.
     md = MarkdownIt("commonmark", {"html": False})

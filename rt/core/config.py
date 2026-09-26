@@ -229,6 +229,11 @@ class TelegramRuntimeConfig(BaseModel):
         default_factory=dict,
         description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. \"Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato).\""
     )
+    topic_names: Dict[int, str] = Field(
+        default_factory=dict,
+        description="Nome del topic Telegram (message_thread_id -> nome), rilevato dalla web con "
+                    "'Ascolta i topic'. Solo informativo: l'instradamento usa 'topics'."
+    )
     misc_topic_id: Optional[int] = Field(
         default=None,
         description="message_thread_id del topic 'Varie/Generale' per lezioni la cui materia "
@@ -265,6 +270,11 @@ class ReviewConfig(BaseModel):
     asr_statistical_floor: float = Field(default=0.35, description="Soglia assoluta di sicurezza per confidenza ASR")
 
 
+class WorkerConfig(BaseModel):
+    concurrency: int = Field(default=2, ge=1, le=4,
+                             description="Job eseguiti in parallelo dal worker avviato da 'rt web' (su lezioni diverse)")
+
+
 class UiConfig(BaseModel):
     theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
 
@@ -289,6 +299,7 @@ class RTConfig(BaseModel):
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
     jev: JevConfig = Field(default_factory=JevConfig, description="Configurazione del pre-filtro Jev (System One) per la review scientifica")
     ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")
+    worker: WorkerConfig = Field(default_factory=WorkerConfig, description="Worker dei job della web ('rt web')")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)
     telegram: TelegramRuntimeConfig = Field(default_factory=TelegramRuntimeConfig)
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)

@@ -1,4 +1,4 @@
-import { parseTopicLink, pricingToRows, rowsToPricing, rowsToTopics, topicsToRows } from './settings'
+import { matchesPreview, mergeListenedTopics, parseTopicLink, pricingToRows, rowsToPricing, rowsToTopicNames, rowsToTopics, topicsToRows } from './settings'
 
 describe('parseTopicLink', () => {
   it('ricava chat (con -100) e topic dal link di un messaggio', () => {
@@ -22,6 +22,31 @@ describe('topic per materia', () => {
   it('errori leggibili', () => {
     expect(() => rowsToTopics([{ materia: 'X', topic: 'dodici' }])).toThrow('deve essere un numero')
     expect(() => rowsToTopics([{ materia: '', topic: '3' }])).toThrow('Manca la materia')
+  })
+})
+
+describe('topic rilevati (RT4-FA6)', () => {
+  it('nomi salvati nelle righe e ritorno per il salvataggio', () => {
+    const rows = topicsToRows({ BIOCHIMICA: 12, FISIOLOGIA: 27 }, { '12': 'Biochimica' })
+    expect(rows).toEqual([{ materia: 'BIOCHIMICA', topic: '12', name: 'Biochimica' }, { materia: 'FISIOLOGIA', topic: '27' }])
+    expect(rowsToTopicNames([...rows, { materia: 'X', topic: 'abc', name: 'no' }])).toEqual({ '12': 'Biochimica' })
+  })
+  it('aggiunge i topic ascoltati con nome e materia se coincide, senza duplicare', () => {
+    const merged = mergeListenedTopics([{ materia: 'BIOCHIMICA', topic: '12' }, { materia: '', topic: '' }], {
+      topics: [12, 27, 33],
+      names: { '12': 'Biochimica', '27': 'Anatomia umana' },
+      materie: { '12': 'BIOCHIMICA' },
+    })
+    expect(merged).toEqual([
+      { materia: 'BIOCHIMICA', topic: '12', name: 'Biochimica' },
+      { materia: '', topic: '27', name: 'Anatomia umana' },
+      { materia: '', topic: '33' },
+    ])
+  })
+  it("confronta un valore con l'anteprima dell'API", () => {
+    expect(matchesPreview('-1001234567890', '-100…7890')).toBe(true)
+    expect(matchesPreview('-1009999999999', '-100…7890')).toBe(false)
+    expect(matchesPreview('-1001', null)).toBe(true)
   })
 })
 

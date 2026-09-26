@@ -1,7 +1,7 @@
 """recall sessions registry and app -> Telegram bot commands
 
-Revision ID: 0005
-Revises: 0004
+Revision ID: 0006
+Revises: 0005
 Create Date: 2026-09-26
 """
 from typing import Sequence, Union
@@ -10,13 +10,24 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '0005'
-down_revision: Union[str, None] = '0004'
+revision: str = '0006'
+down_revision: Union[str, None] = '0005'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Le FA1 e FA7 sono nate in parallelo con due migrazioni '0005'. Un DB portato a '0005' dal
+    # ramo della FA7 ha già queste tabelle ma non jobs.retry_of: qui si completa in entrambi i casi.
+    inspector = sa.inspect(op.get_bind())
+    job_columns = {c['name'] for c in inspector.get_columns('jobs')}
+    if 'retry_of' not in job_columns:
+        with op.batch_alter_table('jobs', schema=None) as batch_op:
+            batch_op.add_column(sa.Column('retry_of', sa.String(length=36), nullable=True))
+            batch_op.create_index(batch_op.f('ix_jobs_retry_of'), ['retry_of'], unique=False)
+    if inspector.has_table('recall_sessions'):
+        return
+
     op.create_table('recall_sessions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('lesson_path', sa.String(length=1024), nullable=False),

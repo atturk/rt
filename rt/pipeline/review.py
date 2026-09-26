@@ -39,6 +39,8 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
+from rt.services.events import Notice
+from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 
 LOG = logging.getLogger(__name__)
@@ -325,6 +327,69 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
     )
 
 
+def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int, seg_by_id: dict,
+                 st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
+                 _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool) -> None:
+    """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
+    source_texts = []
+    for s_id in unit.source_segment_ids:
+        s = seg_by_id.get(s_id)
+        if s:
+            source_texts.append(f"[{s.id}] {s.text_raw}")
+    source_context = "\n".join(source_texts)
+
+    # Pre-filtro Jev (System One): due valutazioni indipendenti PRIMA della critica LLM
+    # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
+    # ma non saltano né creano nulla: il comportamento resta identico a Jev disattivato.
+    skip_expensive_llm = False
+    if _cfg.jev.enabled:
+        verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
+        verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
+
+        if not shadow_jev:
+            if verdict_b is not None and verdict_b.is_high_confidence_drift:
+                all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
+            if verdict_a is not None and verdict_a.should_skip_expensive_llm:
+                skip_expensive_llm = True
+
+    if not skip_expensive_llm:
+        asr_risk_context = None
+        if asr_llm and unit.unit_id in st_issues_by_unit:
+            unit_st = st_issues_by_unit[unit.unit_id][0]
+            asr_risk_context = (
+                f"SEGMENTO A RISCHIO ASR RILEVATO STATISTICAMENTE IN QUESTA UNITÀ:\n"
+                f"Trascrizione raw: \"{unit_st.claim}\"\n"
+                f"Dettaglio: {unit_st.reason}\n\n"
+                f"ECCEZIONE PER QUESTO PUNTO SPECIFICO: la tua istruzione generale è di ignorare artefatti ASR isolati — "
+                f"per QUESTO segmento specifico, invece, valuta se il testo rielaborato corrispondente riflette fedelmente "
+                f"questa trascrizione raw o se sembra un'invenzione/allucinazione introdotta durante la riscrittura. "
+                f"Se sospetti fabbricazione o travisamento, genera una issue con \"type\": \"ERR_ASR_LLM\", "
+                f"\"segment_id\": \"{unit_st.segment_id or ''}\", \"claim\": \"{unit_st.claim}\", \"reason\": la tua motivazione, "
+                f"\"suggested_fix\": null. Se non sospetti nulla, non generare alcuna issue per questo punto."
+            )
+
+        prompt = build_science_review_user_prompt(
+            unit_id=unit.unit_id,
+            rewritten_content=unit.content,
+            asr_risk_context=asr_risk_context,
+        )
+
+        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
+        if len(unit_title) > 28:
+            unit_title = unit_title[:25] + "..."
+        unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
+
+        for iss in _validated_review_issues(client, unit, prompt, lesson_dir, unit_label):
+            iss.unit_id = unit.unit_id
+            if iss.segment_id and iss.segment_id not in unit.source_segment_ids:
+                LOG.warning("Segmento %s fuori dall'unità %s: ricalcolo ancora review",
+                            iss.segment_id, unit.unit_id)
+                iss.segment_id = None
+            if not iss.segment_id:
+                iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
+            all_science_issues.append(iss)
+
+
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx, se dato)."""
     with phase_scope(ctx, "review") as scope:
@@ -410,71 +475,36 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
     total_units = len(draft.units)
-    
+    failures = UnitFailureTracker()
+    stopped_early = False
+
     for idx, unit in enumerate(draft.units, start=1):
         if not force and unit.unit_id in reviewed_set:
             continue
+        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
         if ctx is not None:
             ctx.check_cancelled()
-            ctx.progress("review", current=idx, total=total_units, message=unit.unit_id)
-
-        source_texts = []
-        for s_id in unit.source_segment_ids:
-            s = seg_by_id.get(s_id)
-            if s:
-                source_texts.append(f"[{s.id}] {s.text_raw}")
-        source_context = "\n".join(source_texts)
-
-        # Pre-filtro Jev (System One): due valutazioni indipendenti PRIMA della critica LLM
-        # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
-        # ma non saltano né creano nulla: il comportamento resta identico a Jev disattivato.
-        skip_expensive_llm = False
-        if _cfg.jev.enabled:
-            verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
-            verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
-
-            if not shadow_jev:
-                if verdict_b is not None and verdict_b.is_high_confidence_drift:
-                    all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
-                if verdict_a is not None and verdict_a.should_skip_expensive_llm:
-                    skip_expensive_llm = True
-
-        if not skip_expensive_llm:
-            asr_risk_context = None
-            if asr_llm and unit.unit_id in st_issues_by_unit:
-                unit_st = st_issues_by_unit[unit.unit_id][0]
-                asr_risk_context = (
-                    f"SEGMENTO A RISCHIO ASR RILEVATO STATISTICAMENTE IN QUESTA UNITÀ:\n"
-                    f"Trascrizione raw: \"{unit_st.claim}\"\n"
-                    f"Dettaglio: {unit_st.reason}\n\n"
-                    f"ECCEZIONE PER QUESTO PUNTO SPECIFICO: la tua istruzione generale è di ignorare artefatti ASR isolati — "
-                    f"per QUESTO segmento specifico, invece, valuta se il testo rielaborato corrispondente riflette fedelmente "
-                    f"questa trascrizione raw o se sembra un'invenzione/allucinazione introdotta durante la riscrittura. "
-                    f"Se sospetti fabbricazione o travisamento, genera una issue con \"type\": \"ERR_ASR_LLM\", "
-                    f"\"segment_id\": \"{unit_st.segment_id or ''}\", \"claim\": \"{unit_st.claim}\", \"reason\": la tua motivazione, "
-                    f"\"suggested_fix\": null. Se non sospetti nulla, non generare alcuna issue per questo punto."
-                )
-
-            prompt = build_science_review_user_prompt(
-                unit_id=unit.unit_id,
-                rewritten_content=unit.content,
-                asr_risk_context=asr_risk_context,
-            )
-
-            unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
-            if len(unit_title) > 28:
-                unit_title = unit_title[:25] + "..."
-            unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
-
-            for iss in _validated_review_issues(client, unit, prompt, lesson_dir, unit_label):
-                iss.unit_id = unit.unit_id
-                if iss.segment_id and iss.segment_id not in unit.source_segment_ids:
-                    LOG.warning("Segmento %s fuori dall'unità %s: ricalcolo ancora review",
-                                iss.segment_id, unit.unit_id)
-                    iss.segment_id = None
-                if not iss.segment_id:
-                    iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
-                all_science_issues.append(iss)
+            ctx.progress("review", current=idx, total=total_units, message=f"{unit.unit_id} {unit_title}".strip(),
+                         unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
+        issues_before = len(all_science_issues)
+        try:
+            _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, all_science_issues,
+                         _cfg, lesson_dir, asr_llm, shadow_jev)
+        except Exception as exc:
+            if not is_unit_failure(exc):
+                raise
+            # L'unità resta fuori dal checkpoint (e le sue issue parziali fuori dal file):
+            # una nuova run la rifà, le altre proseguono.
+            del all_science_issues[issues_before:]
+            failure = failures.failed(unit.unit_id, f"{idx}/{total_units} ({unit.unit_id}{': ' + unit_title if unit_title else ''})", exc)
+            LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
+            if ctx is not None:
+                ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
+            if failures.too_many():
+                stopped_early = True
+                break
+            continue
+        failures.succeeded()
 
         # Numerazione deterministica progressiva
         for s_idx, iss in enumerate(all_science_issues, start=1):
@@ -501,6 +531,18 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     # Finalizzazione se tutte le unità del draft sono state esaminate
     all_draft_unit_ids = [u.unit_id for u in draft.units]
     is_fully_reviewed = all(uid in reviewed_set for uid in all_draft_unit_ids)
+    if failures.failures:
+        # Le unità non riuscite restano nel manifest: lo stato della fase le mostra e
+        # una nuova run rifà solo quelle (e le eventuali non ancora esaminate).
+        sci_path = get_science_issues_path(lesson_dir)
+        record_phase_checkpoint(
+            lesson_dir=lesson_dir,
+            phase_name="review",
+            source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
+            artifact_fingerprints={"science_issues.json": compute_file_sha256(sci_path)} if fs.isfile(sci_path) else None,
+            completed_items=reviewed_unit_ids,
+            metadata={"failed_units": failures.as_dicts()},
+        )
 
     if is_fully_reviewed:
         all_science_issues = [iss for iss in all_science_issues if iss.type != ScienceType.ERR_ASR_ST]
@@ -555,5 +597,9 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
         "rewrite_drift_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_REWRITE_DRIFT),
         "next_state": next_state,
-        "issues_path": get_science_issues_path(lesson_dir)
+        "issues_path": get_science_issues_path(lesson_dir),
+        "completed_units": len(reviewed_set & set(all_draft_unit_ids)),
+        "expected_units": len(all_draft_unit_ids),
+        "failed_units": failures.as_dicts(),
+        "stopped_early": stopped_early,
     }

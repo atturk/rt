@@ -4,9 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWaveform } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
 import { formatTime, neighbourStart, type TimedSection } from '@/lib/audio'
+import { clampRate, formatRate, loadRate, RATE_MAX, RATE_MIN, RATE_STEP, saveRate } from '@/lib/playbackRate'
 import { useLessonAudio } from './audio'
-
-const SPEEDS = [1, 1.25, 1.5, 2, 0.75]
 
 function drawWaveform(canvas: HTMLCanvasElement, peaks: number[], progress: number) {
   const width = Math.max(1, canvas.clientWidth)
@@ -30,6 +29,72 @@ function drawWaveform(canvas: HTMLCanvasElement, peaks: number[], progress: numb
   })
 }
 
+/** Valore della velocità che apre uno slider (0.5×–3×); si chiude con Esc o con un clic fuori. */
+function SpeedControl({ rate, onChange }: { rate: number; onChange: (rate: number) => void }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    window.document.addEventListener('pointerdown', onPointer)
+    return () => window.document.removeEventListener('pointerdown', onPointer)
+  }, [open])
+
+  return (
+    <div ref={rootRef} className="relative w-14">
+      <Button
+        ref={buttonRef}
+        variant="ghost"
+        size="sm"
+        className="w-14 tabular-nums"
+        aria-label={`Velocità di riproduzione: ${formatRate(rate)}`}
+        aria-expanded={open}
+        aria-controls="rt-speed-popover"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {formatRate(rate)}
+      </Button>
+      {open && (
+        <div
+          id="rt-speed-popover"
+          className="absolute bottom-full left-0 z-20 mb-2 flex w-64 items-center gap-3 rounded-lg border bg-card px-3 py-2 shadow-md"
+          data-testid="speed-popover"
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.preventDefault()
+            e.stopPropagation()
+            setOpen(false)
+            buttonRef.current?.focus()
+          }}
+        >
+          <label htmlFor="rt-speed" className="sr-only">
+            Velocità di riproduzione
+          </label>
+          <input
+            id="rt-speed"
+            type="range"
+            autoFocus
+            min={RATE_MIN}
+            max={RATE_MAX}
+            step={RATE_STEP}
+            value={rate}
+            aria-valuetext={formatRate(rate)}
+            className="min-w-0 flex-1 accent-primary"
+            onChange={(e) => onChange(clampRate(Number(e.currentTarget.value)))}
+          />
+          <output htmlFor="rt-speed" className="w-12 text-right text-sm tabular-nums" data-testid="speed-value">
+            {formatRate(rate)}
+          </output>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Player dell'audio della lezione (sostituisce rt/web/player.js). */
 export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections: TimedSection[] }) {
   const { audioRef, currentTime, setCurrentTime, seek } = useLessonAudio()
@@ -37,7 +102,7 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
   const waveform = useWaveform(lessonId, true)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(NaN)
-  const [speed, setSpeed] = useState(1)
+  const [speed, setSpeed] = useState(loadRate)
   const [error, setError] = useState(false)
   const progress = Number.isFinite(duration) && duration > 0 ? currentTime / duration : 0
   const peaks = useMemo(() => waveform.data?.peaks ?? [], [waveform.data])
@@ -50,6 +115,18 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
     observer.observe(canvas)
     return () => observer.disconnect()
   }, [peaks, progress])
+
+  // La velocità vale anche dopo un nuovo caricamento dell'audio (defaultPlaybackRate).
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    el.defaultPlaybackRate = speed
+    el.playbackRate = speed
+  }, [audioRef, speed])
+  const changeSpeed = (rate: number) => {
+    setSpeed(rate)
+    saveRate(rate)
+  }
 
   const audio = audioRef.current
   const toggle = () => {
@@ -70,7 +147,10 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
         preload="metadata"
         onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
         onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration)
+          e.currentTarget.playbackRate = speed
+        }}
         onDurationChange={(e) => setDuration(e.currentTarget.duration)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
@@ -100,19 +180,7 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
         <span>{formatTime(duration)}</span>
       </div>
       <div className="mt-2 flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-14 tabular-nums"
-          aria-label="Velocità di riproduzione"
-          onClick={() => {
-            const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]
-            setSpeed(next)
-            if (audio) audio.playbackRate = next
-          }}
-        >
-          {speed}×
-        </Button>
+        <SpeedControl rate={speed} onChange={changeSpeed} />
         <div className="mx-auto flex items-center gap-1">
           <Button variant="ghost" size="icon" aria-label="Unità precedente" title="Unità precedente" onClick={() => jump(-1)}>
             <SkipBack />

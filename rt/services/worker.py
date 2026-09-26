@@ -78,9 +78,11 @@ class JobEventReporter:
         if isinstance(event, PhaseStarted):
             progress = {"phase": event.phase, "step": event.step, "total_steps": event.total_steps}
         elif isinstance(event, PhaseProgress):
-            progress = {"phase": event.phase, "current": event.current, "total": event.total, "message": event.message}
+            progress = {"phase": event.phase, "current": event.current, "total": event.total, "message": event.message,
+                        "unit_id": event.unit_id, "unit_title": event.unit_title, "failed": event.failed}
         elif isinstance(event, PhaseCompleted):
-            progress = {"phase": event.phase, "completed": True, "step": event.step, "total_steps": event.total_steps}
+            progress = {"phase": event.phase, "completed": True, "partial": event.partial, "step": event.step,
+                        "total_steps": event.total_steps}
         try:
             cancel = self.queue.add_event(self.job_id, event.type, event.model_dump(mode="json"), progress=progress)
             if cancel and self.cancel_token is not None:
@@ -89,6 +91,20 @@ class JobEventReporter:
             if not self._warned:
                 self._warned = True
                 logger.warning("Evento del job %s non salvato: %s", self.job_id, exc)
+
+
+def job_error_message(exc: BaseException) -> str:
+    """Errore del job come lo legge l'utente: i messaggi già scritti per l'interfaccia (fase
+    incompleta, errori del modello spiegati) senza il nome della classe Python."""
+    from rt.llm.errors import LLMFailure, describe_llm_failure
+    from rt.pipeline.unit_failures import PhaseIncomplete
+    if isinstance(exc, PhaseIncomplete):
+        return str(exc)
+    if isinstance(exc, LLMFailure):
+        where = f" (unità {exc.unit_id})" if exc.unit_id else ""
+        text = describe_llm_failure(exc)
+        return f"Errore del modello{where}: {text}"
+    return f"{type(exc).__name__}: {exc}"
 
 
 def _sanitize(message: str) -> str:
@@ -221,7 +237,7 @@ class Worker:
                 outcome = JobOutcome(state=JobState.CANCELLED)
             except Exception as exc:  # noqa: BLE001 - l'errore diventa lo stato del job
                 logger.exception("Job %s fallito", job.id)
-                outcome = JobOutcome(state=JobState.FAILED, error=_sanitize(f"{type(exc).__name__}: {exc}"))
+                outcome = JobOutcome(state=JobState.FAILED, error=_sanitize(job_error_message(exc)))
             except BaseException:
                 # Ctrl+C / arresto del worker: il job torna in coda e un altro worker lo
                 # riprende dai checkpoint già salvati.

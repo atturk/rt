@@ -30,6 +30,10 @@ class LLMFailure(Exception):
         self.http_status = http_status
         self.raw_error = raw_error
         self.failure_class = "error"
+        # Contesto per messaggi leggibili (impostati dal client quando la chiamata fallisce)
+        self.response_excerpt: Optional[str] = None
+        self.resolved_model: Optional[str] = None
+        self.unit_id: Optional[str] = None
 
     def __str__(self) -> str:
         return self.message
@@ -117,6 +121,33 @@ class UnknownProviderFailure(LLMFailure):
     def __init__(self, message: str, **kwargs):
         super().__init__(message, **kwargs)
         self.failure_class = "unknown_error"
+
+
+def response_excerpt(text: Optional[str], max_lines: int = 3, max_chars: int = 240) -> str:
+    """Prime righe non vuote di una risposta, su una riga sola (' / '), accorciate e senza
+    segreti: per spiegare nei messaggi d'errore che cosa ha risposto il modello."""
+    lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()][:max_lines]
+    out = " / ".join(lines)
+    if len(out) > max_chars:
+        out = out[: max_chars - 1].rstrip() + "…"
+    return GLOBAL_CREDENTIALS.sanitize_secrets(out)
+
+
+def describe_llm_failure(exc: BaseException) -> str:
+    """Spiegazione breve e leggibile di un errore LLM: modello, cosa è successo e, per le
+    risposte fuori schema, l'inizio della risposta."""
+    if not isinstance(exc, LLMFailure):
+        return GLOBAL_CREDENTIALS.sanitize_secrets(f"{type(exc).__name__}: {exc}")[:400]
+    model = exc.model or "?"
+    if exc.resolved_model and exc.resolved_model != exc.model:
+        model = f"{model} (servito da {exc.resolved_model})"
+    if isinstance(exc, SchemaFailure):
+        if exc.response_excerpt:
+            return (f"il modello {model} non ha risposto con il JSON richiesto. "
+                    f"Inizio della risposta: «{exc.response_excerpt}»")
+        return f"il modello {model} ha restituito una risposta vuota o non conforme allo schema"
+    message = exc.message if len(exc.message) <= 300 else exc.message[:299] + "…"
+    return f"il modello {model} ha dato errore ({exc.failure_class}): {message}"
 
 
 # Alias retrocompatibili con il codice storico
