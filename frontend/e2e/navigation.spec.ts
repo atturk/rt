@@ -135,8 +135,10 @@ test('barra laterale ridotta usabile da tastiera', async ({ page }) => {
   await toggle.focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('button', { name: 'Espandi la barra laterale' })).toBeFocused()
-  await page.keyboard.press('Tab')
+  // Il Tab va alle icone solo quando ci sono: prima si aspetta che la barra ridotta le mostri.
   const first = rail(page).getByRole('button').first()
+  await expect(first).toBeVisible()
+  await page.keyboard.press('Tab')
   await expect(first).toBeFocused()
   await expect(page.getByRole('tooltip')).toBeVisible()
   const target = rail(page).getByRole('button', { name: /^FISIOLOGIA:/ })
