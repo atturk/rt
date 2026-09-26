@@ -1,21 +1,80 @@
-# Prototipo web locale
+# Web app di RT
+
+`rt web` avvia tutto quello che serve alla web app e apre il browser già autenticato:
+
+```bash
+rt web                 # http://127.0.0.1:8765
+rt web --port 9000     # altra porta
+rt web --no-browser    # stampa il link di accesso invece di aprire il browser
+```
+
+Il comando avvia in un solo processo l'API REST (`rt api`, vedi [API.md](API.md)), un
+`rt worker` per i job (trascrizione, pipeline, immagini, recall) e l'interfaccia, servita
+dall'API sulla stessa origine. Ctrl+C li ferma tutti. Tutto ascolta solo su `127.0.0.1`.
+
+## Accesso
+
+All'avvio `rt web` crea un link monouso (`/login?code=...`, valido 5 minuti) e apre il browser
+già autenticato; la sessione resta con un cookie. Se il link è scaduto, riavvia `rt web` oppure
+incolla nella pagina di accesso il token dell'API (stampato al primo avvio di `rt api`). **Esci**
+chiude la sessione anche sul backend.
+
+## Cosa si fa dalla web
+
+La web fa tutto quello che si fa nel terminale; la tabella di parità, con i test che lo
+verificano, è in [RT4_PARITY.md](RT4_PARITY.md). Tutto quello che salvi vive nel backend (DB e
+cartella `media/`) e resta dopo la ricarica della pagina.
+
+- **Dashboard:** lezioni raggruppate per materia con filtri, stato delle fasi, issue da
+  valutare e costi.
+- **Importa:** carichi l'audio, scegli data e materia e, se vuoi, avvii subito la pipeline.
+- **Job:** i job in coda e in corso con gli eventi in tempo reale; si possono annullare. Se
+  nessun worker è attivo la pagina lo segnala.
+- **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda, fasi
+  con validazioni, avvio di una singola fase, costi, download del Markdown o dello zip.
+- **Scaletta:** vista ad albero dell'outline, approvazione o richiesta di modifiche.
+- **Revisione:** le issue della review scientifica accanto al testo, con diff, frase
+  evidenziata e audio al punto giusto; accetta, mantieni l'originale, modifica, annulla (anche
+  da tastiera: `a`, `r`, `e`, `u`, frecce). Con l'ultima decisione la pipeline in attesa
+  riparte da sola.
+- **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
+- **Immagini:** slide, foto o PDF da integrare nel documento finale.
+- **Bot Telegram:** stato, avvio e arresto del bot.
+- **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
+  Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+
+## Installazione e aggiornamento
+
+`install.sh` e `rt -u` installano la web app compilata dalla GitHub Release della versione
+(`rt-spa-<versione>.tar.gz`, verificata con `SHA256SUMS`) nella cartella `rt/spa`. Se la
+release non la contiene, `rt web` avvia comunque API e worker e l'indirizzo risponde con un
+messaggio che spiega come ottenerla.
+
+In un checkout di sviluppo la web app si compila da `frontend/` (`npm install && npm run build`,
+vedi [frontend/README.md](../frontend/README.md)); la build in `frontend/dist` viene usata se
+`rt/spa` non c'è. `RT_SPA_DIR` sceglie un'altra cartella.
+
+## Interfaccia legacy (Gradio, deprecata)
+
+`rt web --legacy` avvia ancora la vecchia interfaccia Gradio per questa release, con un avviso:
+verrà rimossa nella prossima. Accetta `--lessons-root`, `--port` (default 7860), `--no-browser`
+e `--log-file`.
 
 L'interfaccia Gradio si avvia localmente e legge i dati esistenti di RT:
 manifest, stato delle fasi, documento Markdown, issue di review, ledger delle
 decisioni, file audio e configurazione. La review scrive le decisioni nel ledger RT
 e aggiunge un registro delle azioni web nella stessa cartella della lezione.
 
-## Avvio
+### Avvio
 
 Dopo aver installato o aggiornato RT:
 
 ```bash
-rt web
+rt web --legacy
 ```
 
-`rt -u` installa anche le dipendenze web e verifica quelle mancanti quando RT
-è già aggiornato. In un checkout di sviluppo, installa manualmente
-`requirements-web.txt` nel virtualenv e avvia `./bin/rt web`.
+Gradio non è più tra le dipendenze standard: per usarla installa
+`requirements-web.txt` nel virtualenv (`./.venv/bin/python -m pip install -r requirements-web.txt`).
 
 Se la cartella delle lezioni non è impostata in `config/general.yaml`, l'app si
 apre sulla schermata Configurazione. Inserisci il percorso di una cartella
@@ -24,14 +83,13 @@ Il percorso viene salvato in `telegram.lessons_root`, mantenendo intatte le altr
 impostazioni. Per provarne un'altra solo per la sessione corrente:
 
 ```bash
-rt web --lessons-root "/percorso/alle/lezioni"
+rt web --legacy --lessons-root "/percorso/alle/lezioni"
 ```
 
 L'app si apre su `http://127.0.0.1:7860`. Si può usare `--port 7868` per cambiare
 porta o `--no-browser` per non aprire automaticamente il browser. `bin/rt-web`
 resta disponibile come avvio diretto equivalente. Il server ascolta
-solo su `127.0.0.1` e non genera un link pubblico Gradio. Gradio fa parte delle
-dipendenze standard di RT; `requirements-web.txt` resta come alias compatibile.
+solo su `127.0.0.1` e non genera un link pubblico Gradio.
 
 Il terminale mostra avvio, richieste HTTP, durata delle azioni, errori Python e
 segnalazioni dal browser. Gli stessi eventi vengono salvati in un file locale a
@@ -40,7 +98,7 @@ nel percorso scelto con `--log-file`. `RT_WEB_LOG` permette la stessa scelta via
 variabile d'ambiente. I log non includono corpi delle richieste né il percorso dei
 file audio serviti. Premi Ctrl+C per fermare il server.
 
-## Schermate
+### Schermate
 
 - **Dashboard:** sidebar sovrapposta e regolabile con lezioni raggruppate per
   materia, stato delle cinque fasi, issue aperte e appunti completi. Durante il
@@ -91,13 +149,3 @@ stata salvata, riletta dalla dashboard e poi riaperta. Il ledger è tornato a 18
 questioni in attesa. Il log `web_review_events.jsonl` conserva entrambi gli eventi
 (`recorded` e `reverted`) nella sottocartella `_state/` della lezione. Se un log
 esiste già nella radice di una lezione con il vecchio layout, RT usa quel file.
-
-## Passi successivi
-
-Restano da aggiungere stato e avanzamento strutturati all'importazione e alle
-altre azioni di pipeline, e da verificare end-to-end un server STT custom e un bot
-Telegram configurato da zero. Docker è opzionale: la web app funziona già
-nell'ambiente Python locale usato da RT.
-
-La TUI e la CLI restano disponibili durante la migrazione. Textual potrà essere
-rimosso quando la GUI coprirà le operazioni utili e il flusso sarà verificato.

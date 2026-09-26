@@ -42,7 +42,7 @@ export function WorkerWarning() {
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
       <span>
         Nessun worker attivo: i job restano in coda finché non avvii <code>rt worker</code> (oppure usa{' '}
-        <code>rt web --spa</code>, che avvia API e worker insieme).
+        <code>rt web</code>, che avvia API e worker insieme).
       </span>
     </Alert>
   )

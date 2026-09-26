@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-/** Accesso di ripiego: di solito 'rt web --spa' apre il browser già autenticato. */
+/** Accesso di ripiego: di solito 'rt web' apre il browser già autenticato. */
 export function LoginPage() {
   const [params] = useSearchParams()
   const location = useLocation()
@@ -30,12 +30,12 @@ export function LoginPage() {
           rt<span className="text-success">.</span>
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Avvia RT con <code className="rounded bg-muted px-1">rt web --spa</code>: il browser si apre già autenticato. In
+          Avvia RT con <code className="rounded bg-muted px-1">rt web</code>: il browser si apre già autenticato. In
           alternativa incolla il token mostrato da <code className="rounded bg-muted px-1">rt api</code>.
         </p>
         {params.get('error') === 'link' && (
           <Alert tone="warning" className="mt-4">
-            Il link di accesso è scaduto o è già stato usato. Riavvia <code>rt web --spa</code> o usa il token.
+            Il link di accesso è scaduto o è già stato usato. Riavvia <code>rt web</code> o usa il token.
           </Alert>
         )}
         <form onSubmit={submit} className="mt-5 flex flex-col gap-2">

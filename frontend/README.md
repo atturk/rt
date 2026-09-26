@@ -2,13 +2,13 @@
 
 Interfaccia web di RT 4.0: React + TypeScript + Vite, Tailwind CSS, componenti in stile
 shadcn/ui (`src/components/ui`), TanStack Query, React Router. Parla solo con l'API
-(`rt api`, `/api/v1`, vedi `docs/API.md`) e sostituisce la web Gradio (`rt/web`) quando la
-parità di `docs/RT4_PARITY.md` è completa.
+(`rt api`, `/api/v1`, vedi `docs/API.md`). Da RT4-F8 è la web di RT (`rt web`, vedi
+`docs/WEB.md`); la web Gradio (`rt/web`) resta solo con `rt web --legacy`.
 
 ## Avvio
 
 ```bash
-rt web --spa              # API + worker + SPA su http://127.0.0.1:8765, browser già autenticato
+rt web              # API + worker + SPA su http://127.0.0.1:8765, browser già autenticato
 ```
 
 Sviluppo con ricarica a caldo:

@@ -34,8 +34,8 @@ cp -r config.example config
 | `transcription.base_url` / `transcription.model` | Indirizzo del server e ID modello quando `engine: custom`. Il server deve fornire `/audio/transcriptions` con risposta `verbose_json` e `segments` temporizzati. |
 | `transcription.timeout_seconds` | Tempo massimo della richiesta STT custom (default 600 s). |
 
-La schermata Configurazione di `rt web` consente di gestire cartella lezioni,
-credenziali, modelli, fallback, rotazione delle chiavi, bot Telegram e motore STT.
+La pagina Impostazioni di `rt web` consente di gestire cartella lezioni,
+credenziali, modelli, prezzi, bot Telegram e motore STT.
 Le chiavi sono salvate nell'archivio cifrato `config/secrets.enc` se è stato creato con
 `rt secrets init`, altrimenti nel `.env` locale (vedi "Segreti cifrati a riposo" qui sotto);
 per il server STT custom la variabile facoltativa è `RT_STT_API_KEY`.

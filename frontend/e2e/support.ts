@@ -20,7 +20,7 @@ export async function apiGet<T>(request: APIRequestContext, path: string): Promi
   return (await res.json()) as T
 }
 
-/** Link monouso come quello che apre 'rt web --spa'. */
+/** Link monouso come quello che apre 'rt web'. */
 export async function loginLink(request: APIRequestContext): Promise<string> {
   const res = await request.post('/api/v1/auth/login-link', { headers: authHeaders() })
   expect(res.ok()).toBeTruthy()

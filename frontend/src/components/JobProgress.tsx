@@ -61,7 +61,7 @@ export function JobProgress({
         </div>
       )}
       {state === 'queued' && workers.data?.length === 0 && (
-        <Alert tone="warning">Nessun worker attivo: il job parte quando avvii RT con <code>rt web --spa</code> o <code>rt worker</code>.</Alert>
+        <Alert tone="warning">Nessun worker attivo: il job parte quando avvii RT con <code>rt web</code> o <code>rt worker</code>.</Alert>
       )}
     </div>
   )

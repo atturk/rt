@@ -8,7 +8,7 @@ Autenticazione a utente singolo (RT4-E1).
 - SPA: POST /api/v1/auth/session con il token imposta un cookie di sessione HttpOnly,
   SameSite=Strict, e un cookie CSRF leggibile; le richieste che modificano dati con il
   cookie devono ripetere il valore CSRF nell'header X-CSRF-Token (double submit).
-- Link monouso (RT4-F1): 'rt web --spa' (o POST /api/v1/auth/login-link con il token) crea un
+- Link monouso (RT4-F1): 'rt web' (o POST /api/v1/auth/login-link con il token) crea un
   codice valido pochi minuti; GET /login?code=... lo consuma e apre la sessione, così il
   browser si apre già autenticato senza incollare il token (come Jupyter).
 """

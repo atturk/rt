@@ -260,7 +260,7 @@ fi
 
 echo "📦 Aggiornamento pip e installazione dipendenze in .venv..."
 if "${VENV_DIR}/bin/python" -m pip install --upgrade pip -q >>"$LOG_FILE" 2>&1 && \
-   "${VENV_DIR}/bin/pip" install -r requirements-web.txt -q >>"$LOG_FILE" 2>&1; then
+   "${VENV_DIR}/bin/pip" install -r requirements.txt -q >>"$LOG_FILE" 2>&1; then
     echo "${GREEN}✅ Dipendenze Python installate con successo.${RESET}"
 else
     echo "${RED}❌ Installazione dipendenze Python fallita — vedi install.log per i dettagli.${RESET}" >&2
@@ -289,6 +289,12 @@ fi
 # RT4-C2: chiavi ancora in chiaro in .env e archivio cifrato assente → solo un suggerimento.
 if "${VENV_DIR}/bin/python" -c "import sys; sys.path.insert(0, sys.argv[1]); from rt.services.secrets_service import env_needs_migration as n; sys.exit(0 if n(sys.argv[1] + '/.env', sys.argv[1] + '/config/general.yaml') else 1)" "$REPO_DIR" >>"$LOG_FILE" 2>&1; then
     echo "🔐 Le chiavi API sono in chiaro nel file .env: per cifrarle esegui 'rt secrets init' e poi 'rt secrets migrate'."
+fi
+
+# RT4-F8: web app compilata (rt web) dalla release della versione installata.
+echo "🌐 Installazione della web app..."
+if ! "${VENV_DIR}/bin/python" -c "import sys; sys.path.insert(0, sys.argv[1]); from rt.core.spa_release import main; sys.exit(main(sys.argv[1]))" "$REPO_DIR" 2>&1 | tee -a "$LOG_FILE"; then
+    echo "${YELLOW}⚠️  Web app non installata: riprova più tardi con 'rt -u'.${RESET}"
 fi
 
 echo "⚙️ Impostazione permessi di esecuzione su bin/rt..."
