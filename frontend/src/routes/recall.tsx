@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Brain, SkipForward, ThumbsDown, ThumbsUp, Zap } from 'lucide-react'
+import { Brain, Monitor, Send, SkipForward, Square, ThumbsDown, ThumbsUp, Zap } from 'lucide-react'
 import { useCallback, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
@@ -9,14 +9,20 @@ import {
   recallKeys,
   useAnswer,
   useAnswerVoice,
+  useEndSession,
   useGenerateRecall,
   useNextQuestion,
   useRecallHistory,
   useRecallOverview,
+  useRecallSession,
   useSkip,
+  useStartTelegram,
+  useStopTelegram,
+  useTelegramRecall,
   useVote,
   type RecallAnswerRecord,
   type RecallQuestion,
+  type RecallSessionInfo,
   type RecallType,
   type Vote,
 } from '@/api/recall'
@@ -28,6 +34,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { SlideToggle, type SlideOption } from '@/components/ui/slide-toggle'
 import { lessonTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Area } from './types'
@@ -256,21 +263,100 @@ function OpenAnswerForm({
   )
 }
 
+type Place = 'telegram' | 'qui'
+
+const PLACES: SlideOption<Place>[] = [
+  { value: 'telegram', label: 'Telegram', icon: <Send aria-hidden="true" /> },
+  { value: 'qui', label: 'Qui', icon: <Monitor aria-hidden="true" /> },
+]
+const TYPE_OPTIONS: SlideOption<RecallType>[] = RECALL_TYPES.map((t) => ({ value: t.value, label: t.label }))
+
+function startedAt(iso: string) {
+  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Riepilogo salvato dal backend alla chiusura della sessione. */
+function SessionSummary({ session }: { session: RecallSessionInfo }) {
+  const s = session.summary
+  if (!s) return null
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 px-4 py-3" data-testid="session-summary" data-session-id={session.id}>
+      <h3 className="text-sm font-bold">Sessione terminata</h3>
+      <dl className="grid grid-cols-3 gap-2 text-center">
+        {[
+          ['Domande', s.questions, 'questions'],
+          ['Risposte date', s.answered, 'answered'],
+          ['Quiz giusti', `${s.correct} su ${s.quiz_answered}`, 'correct'],
+        ].map(([label, value, key]) => (
+          <div key={key} className="flex flex-col rounded-md bg-card px-2 py-1.5">
+            <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
+            <dd className="text-lg font-bold tabular-nums" data-summary={key}>
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
+/** Una sessione in corso su Telegram, con "Interrompi". */
+function TelegramSessionRow({ session, current }: { session: RecallSessionInfo; current: boolean }) {
+  const stop = useStopTelegram()
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-accent-foreground/30 bg-accent px-3 py-2 text-sm text-accent-foreground"
+      data-testid="telegram-session"
+      data-session-id={session.id}
+      data-lesson-id={session.lesson_id ?? ''}
+    >
+      <Send className="size-4 shrink-0" aria-hidden="true" />
+      <span className="mr-auto">
+        {current ? 'Sessione in corso su Telegram' : <>In corso su Telegram: <strong>{session.lesson_title || 'altra lezione'}</strong></>}
+        {session.qtype && <> · {typeLabel(session.qtype)}</>} · dalle {startedAt(session.started_at)}
+      </span>
+      {!current && session.lesson_id != null && (
+        <Link to={`/lezioni/${session.lesson_id}/recall`} className="text-xs underline-offset-4 hover:underline">
+          Apri
+        </Link>
+      )}
+      <Button size="sm" variant="outline" disabled={stop.isPending} onClick={() => stop.mutate(session.id)}>
+        <Square aria-hidden="true" /> Interrompi
+      </Button>
+      {stop.isError && <span className="w-full text-xs text-danger">{errorMessage(stop.error)}</span>}
+    </div>
+  )
+}
+
 function Session({ lessonId }: { lessonId: number }) {
   const [params, setParams] = useSearchParams()
   const qtype = (RECALL_TYPES.some((t) => t.value === params.get('tipo')) ? params.get('tipo') : 'quiz') as RecallType
   const questionId = params.get('domanda')
   const evaluationJob = params.get('valutazione')
   const history = useRecallHistory(lessonId)
+  const session = useRecallSession(lessonId)
+  const bot = useTelegramRecall()
   const next = useNextQuestion(lessonId)
   const skip = useSkip(lessonId)
   const answer = useAnswer(lessonId)
   const voice = useAnswerVoice(lessonId)
+  const end = useEndSession(lessonId)
+  const startTelegram = useStartTelegram(lessonId)
   const client = useQueryClient()
   const refresh = useCallback(() => client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }), [client, lessonId])
 
   const question = history.data?.questions.find((q) => q.id === questionId)
   const given = history.data?.answers.find((a) => a.question_id === questionId)
+  const web = session.data?.web ?? null
+  const telegram = session.data?.telegram ?? null
+  const command = session.data?.command ?? null
+  const botReady = !!bot.data?.configured && !!bot.data?.running
+  const requested = params.get('luogo')
+  const place: Place = requested === 'telegram' || requested === 'qui' ? requested : telegram ? 'telegram' : 'qui'
+  const placeLocked = !botReady && !telegram
+  const effectivePlace: Place = placeLocked ? 'qui' : place
+  const others = (bot.data?.sessions ?? []).filter((s) => s.lesson_id !== lessonId)
+  const commandPending = command?.kind === 'start_recall' && (command.state === 'pending' || command.state === 'running')
 
   function update(changes: Record<string, string | null>) {
     const nextParams = new URLSearchParams(params)
@@ -290,75 +376,161 @@ function Session({ lessonId }: { lessonId: number }) {
     skip.mutate(questionId, { onSuccess: () => askNext(questionId) })
   }
 
+  function endSession() {
+    end.mutate(undefined, { onSuccess: () => update({ domanda: null, valutazione: null }) })
+  }
+
   const noQuestions = next.error instanceof ApiError && next.error.code === 'no_questions'
   const busy = answer.isPending || voice.isPending
   const writeError = answer.error ?? voice.error ?? skip.error
+  const hint = RECALL_TYPES.find((t) => t.value === qtype)!
+  const placeHelp = !bot.data ? null : !bot.data.configured ? (
+    <>
+      Per il recall su Telegram configura il bot in{' '}
+      <Link to="/impostazioni" className="underline underline-offset-2">
+        Impostazioni
+      </Link>
+      .
+    </>
+  ) : !bot.data.running ? (
+    <>
+      Il bot Telegram è fermo: avvialo dalla pagina{' '}
+      <Link to="/bot" className="underline underline-offset-2">
+        Bot Telegram
+      </Link>
+      .
+    </>
+  ) : null
 
   return (
     <Card className="flex flex-col gap-4 p-5" aria-labelledby="session-title">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 id="session-title" className="mr-auto text-base font-bold">
-          Sessione
-        </h2>
-        <div role="radiogroup" aria-label="Tipo di domanda" className="flex gap-1">
-          {RECALL_TYPES.map((t) => (
-            <Button
-              key={t.value}
-              size="sm"
-              role="radio"
-              aria-checked={qtype === t.value}
-              variant={qtype === t.value ? 'default' : 'outline'}
-              title={t.hint}
-              onClick={() => update({ tipo: t.value })}
-            >
-              {t.label}
-            </Button>
-          ))}
+      <h2 id="session-title" className="text-base font-bold">
+        Sessione
+      </h2>
+
+      {others.map((s) => (
+        <TelegramSessionRow key={s.id} session={s} current={false} />
+      ))}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <SlideToggle
+            label="Dove fare il recall"
+            options={PLACES}
+            value={effectivePlace}
+            onChange={(v) => update({ luogo: v })}
+            disabled={placeLocked}
+            description={effectivePlace === 'telegram' ? 'Recall su Telegram' : 'Recall qui'}
+            testId="place-toggle"
+          />
+          {placeLocked && placeHelp && <p className="text-xs text-warning">{placeHelp}</p>}
         </div>
-        <Button size="sm" onClick={() => askNext()} disabled={next.isPending}>
-          Prossima domanda
-        </Button>
+        <SlideToggle
+          label="Tipo di domanda"
+          options={TYPE_OPTIONS}
+          value={qtype}
+          onChange={(v) => update({ tipo: v })}
+          description={
+            <>
+              <strong className="font-semibold text-foreground">{hint.label}</strong>: {hint.hint}
+            </>
+          }
+          testId="type-toggle"
+        />
       </div>
 
-      {noQuestions && <Alert tone="warning">Nessuna domanda di questo tipo da porre: generane altre dalla riserva.</Alert>}
-      {next.isError && !noQuestions && <Alert tone="danger">{errorMessage(next.error)}</Alert>}
-      {history.isError && <Alert tone="danger">{errorMessage(history.error)}</Alert>}
-      {!questionId && !noQuestions && (
-        <p className="text-sm text-muted-foreground">Scegli il tipo e chiedi la prossima domanda.</p>
-      )}
-      {questionId && history.isSuccess && !question && <Alert tone="warning">Domanda non trovata: chiedi la prossima.</Alert>}
-
-      {question && (
-        <article className="flex flex-col gap-3" data-testid="recall-question" data-question-id={question.id} data-type={question.type}>
-          <div className="flex items-center gap-2">
-            <Badge>{typeLabel(question.type)}</Badge>
-            <span className="text-xs text-muted-foreground">{question.unit_ids.join(', ')}</span>
-          </div>
-          <p className="text-base font-medium leading-relaxed">{question.question_text}</p>
-
-          {given ? (
-            <AnsweredQuestion question={question} answer={given} lessonId={lessonId} />
-          ) : evaluationJob ? (
-            <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={refresh} />
-          ) : question.type === 'quiz' ? (
-            <QuizForm question={question} pending={busy} onAnswer={(choice) => answer.mutate({ questionId: question.id, choice })} />
+      {effectivePlace === 'telegram' ? (
+        <div className="flex flex-col gap-3" data-testid="telegram-panel">
+          {telegram ? (
+            <TelegramSessionRow session={telegram} current />
           ) : (
-            <OpenAnswerForm
-              pending={busy}
-              onWritten={(text) =>
-                answer.mutate({ questionId: question.id, answer: text }, { onSuccess: (r) => r.job && update({ valutazione: r.job.job_id }) })
-              }
-              onVoice={(audio) => voice.mutate({ questionId: question.id, audio }, { onSuccess: (j) => update({ valutazione: j.job_id }) })}
-            />
+            <>
+              <p className="text-sm text-muted-foreground">
+                Il bot apre la sessione nel topic della materia: rispondi dal telefono.
+              </p>
+              <Button
+                className="self-start"
+                onClick={() => startTelegram.mutate(qtype)}
+                disabled={!botReady || !!web || commandPending || startTelegram.isPending}
+              >
+                <Send aria-hidden="true" /> Avvia su Telegram
+              </Button>
+              {web && <Alert tone="warning">C'è una sessione in corso qui: terminala prima di passare a Telegram.</Alert>}
+              {commandPending && <Alert>Richiesta inviata al bot…</Alert>}
+              {command?.kind === 'start_recall' && command.state === 'failed' && (
+                <Alert tone="danger">Il bot non ha avviato la sessione: {command.error}</Alert>
+              )}
+              {startTelegram.isError && <Alert tone="danger">{errorMessage(startTelegram.error)}</Alert>}
+            </>
           )}
-
-          {writeError && <Alert tone="danger">{errorMessage(writeError)}</Alert>}
-          {!given && !evaluationJob && (
-            <Button variant="ghost" size="sm" className="self-start" onClick={doSkip} disabled={skip.isPending || next.isPending}>
-              <SkipForward /> Salta
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4" data-testid="web-panel">
+          {telegram && (
+            <>
+              <Alert tone="warning">C'è una sessione in corso su Telegram per questa lezione: interrompila per continuare qui.</Alert>
+              <TelegramSessionRow session={telegram} current />
+            </>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => askNext()} disabled={next.isPending || !!telegram}>
+              Prossima domanda
             </Button>
+            {web && (
+              <Button size="sm" variant="outline" onClick={endSession} disabled={end.isPending}>
+                <Square aria-hidden="true" /> Termina sessione
+              </Button>
+            )}
+            {web && (
+              <span className="text-xs text-muted-foreground" data-testid="web-session" data-session-id={web.id}>
+                Sessione in corso dalle {startedAt(web.started_at)} · domande poste: {web.questions}
+              </span>
+            )}
+          </div>
+          {end.isError && <Alert tone="danger">{errorMessage(end.error)}</Alert>}
+          {!web && session.data?.last && <SessionSummary session={session.data.last} />}
+
+          {noQuestions && <Alert tone="warning">Nessuna domanda di questo tipo da porre: generane altre dalla riserva.</Alert>}
+          {next.isError && !noQuestions && <Alert tone="danger">{errorMessage(next.error)}</Alert>}
+          {history.isError && <Alert tone="danger">{errorMessage(history.error)}</Alert>}
+          {!questionId && !noQuestions && !session.data?.last && (
+            <p className="text-sm text-muted-foreground">Scegli il tipo e chiedi la prossima domanda.</p>
           )}
-        </article>
+          {questionId && history.isSuccess && !question && <Alert tone="warning">Domanda non trovata: chiedi la prossima.</Alert>}
+
+          {question && (
+            <article className="flex flex-col gap-3" data-testid="recall-question" data-question-id={question.id} data-type={question.type}>
+              <div className="flex items-center gap-2">
+                <Badge>{typeLabel(question.type)}</Badge>
+                <span className="text-xs text-muted-foreground">{question.unit_ids.join(', ')}</span>
+              </div>
+              <p className="text-base font-medium leading-relaxed">{question.question_text}</p>
+
+              {given ? (
+                <AnsweredQuestion question={question} answer={given} lessonId={lessonId} />
+              ) : evaluationJob ? (
+                <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={refresh} />
+              ) : question.type === 'quiz' ? (
+                <QuizForm question={question} pending={busy} onAnswer={(choice) => answer.mutate({ questionId: question.id, choice })} />
+              ) : (
+                <OpenAnswerForm
+                  pending={busy}
+                  onWritten={(text) =>
+                    answer.mutate({ questionId: question.id, answer: text }, { onSuccess: (r) => r.job && update({ valutazione: r.job.job_id }) })
+                  }
+                  onVoice={(audio) => voice.mutate({ questionId: question.id, audio }, { onSuccess: (j) => update({ valutazione: j.job_id }) })}
+                />
+              )}
+
+              {writeError && <Alert tone="danger">{errorMessage(writeError)}</Alert>}
+              {!given && !evaluationJob && (
+                <Button variant="ghost" size="sm" className="self-start" onClick={doSkip} disabled={skip.isPending || next.isPending}>
+                  <SkipForward /> Salta
+                </Button>
+              )}
+            </article>
+          )}
+        </div>
       )}
     </Card>
   )

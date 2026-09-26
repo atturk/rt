@@ -49,6 +49,26 @@ def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return lesson_service.lesson_document(lesson_dir)
 
 
+@router.post("/lessons/{lesson_id}/document/check", response_model=schemas.DocumentEditCheck,
+             summary="Anteprima e controllo del Markdown modificato, senza salvare (funzione beta)")
+def check_document(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.document_edit_service import check_document_edit
+    return check_document_edit(lesson_dir, body.markdown)
+
+
+@router.put("/lessons/{lesson_id}/document/draft", response_model=schemas.DocumentEditResult,
+            summary="Salva l'anteprima modificata nella bozza: testo, titoli, timecode, immagini (funzione beta)")
+def put_document_draft(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: LessonDir, _actor: Actor):
+    from rt.api.jobs import ensure_no_running_job
+    from rt.services.document_edit_service import DocumentEditError, save_document_edit
+    ensure_no_running_job(lesson_dir)
+    try:
+        return save_document_edit(lesson_dir, body.markdown)
+    except DocumentEditError as exc:
+        raise ApiError(422, "document_invalid", "L'anteprima modificata non si può salvare: " + str(exc),
+                       {"errors": exc.errors})
+
+
 @router.get("/lessons/{lesson_id}/audio", summary="Audio della lezione (supporta Range)",
             response_class=FileResponse, responses={200: {"content": {"audio/*": {}}}, 206: {"description": "Contenuto parziale"}})
 def get_audio(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):

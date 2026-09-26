@@ -141,7 +141,10 @@
   display: none;
 }
 .rt-document .rt-timecode {
-  margin-left: 0.4rem;
+  /* sotto il titolo dell'unità, allineato a sinistra */
+  display: block;
+  width: fit-content;
+  margin-top: 0.3rem;
   border-radius: 4px;
   background: var(--accent);
   color: var(--accent-foreground);
@@ -149,7 +152,6 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  vertical-align: 1px;
 }
 .rt-document .rt-timecode:hover:not(:disabled) {
   text-decoration: underline;
@@ -177,4 +179,35 @@
  * così Safari non propone le password del portachiavi. */
 .secret-mask {
   -webkit-text-security: disc;
+}
+
+/* Editor Markdown dell'anteprima (CodeMirror 6) */
+.rt-md-editor .cm-editor {
+  min-height: 24rem;
+  max-height: 75vh;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 13px;
+}
+.rt-md-editor .cm-editor.cm-focused {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.rt-md-editor .cm-scroller {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.55;
+}
+.rt-md-editor .cm-gutters {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-right: 1px solid var(--border);
+}
+.rt-md-editor .cm-activeLine,
+.rt-md-editor .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+.rt-md-editor .cm-content {
+  caret-color: var(--foreground);
 }

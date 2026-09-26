@@ -59,7 +59,11 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
                   mock: bool = Query(False, description="Rifornimento della riserva in mock")):
     from rt.core.models import RecallQuestionType
     from rt.services.recall_service import next_question_for, question_view
+    from rt.services.recall_sessions import TELEGRAM, list_sessions
     _require_draft(lesson_dir)
+    if list_sessions(channel=TELEGRAM, lesson_dir=lesson_dir):
+        raise ApiError(409, "telegram_session_active",
+                       "C'è una sessione in corso su Telegram per questa lezione: interrompila per continuare qui.")
     question = next_question_for(lesson_dir, RecallQuestionType(qtype), order=order, exclude_id=exclude_id)
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
@@ -124,3 +128,73 @@ def skip(lesson_id: int, body: schemas.RecallSkip, lesson_dir: LessonDir, _actor
     from rt.services.recall_service import skip_question
     skip_question(lesson_dir, body.question_id)
     return {"message": "Domanda rimessa in coda."}
+
+
+# ---------------------------------------------------------------- sessioni (web e Telegram)
+
+def _session_error(exc) -> ApiError:
+    status = 404 if exc.code in ("no_active_session", "session_not_found") else 409
+    return ApiError(status, exc.code, str(exc))
+
+
+@router.get("/lessons/{lesson_id}/recall/session", response_model=schemas.RecallSessionState,
+            summary="Sessione in corso qui e su Telegram, ultimo riepilogo e ultima richiesta al bot")
+def session_state(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_sessions import TELEGRAM, WEB, last_ended_web_session, latest_command, list_sessions
+    web = list_sessions(channel=WEB, lesson_dir=lesson_dir)
+    telegram = list_sessions(channel=TELEGRAM, lesson_dir=lesson_dir)
+    return {"web": web[0] if web else None, "last": last_ended_web_session(lesson_dir),
+            "telegram": telegram[0] if telegram else None, "command": latest_command(lesson_dir)}
+
+
+@router.post("/lessons/{lesson_id}/recall/session/end", response_model=schemas.RecallSessionInfo,
+             summary="Termina la sessione in corso nella web app e ne salva il riepilogo (404 se non ce n'è una)")
+def end_session(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_sessions import RecallSessionError, end_web_session
+    try:
+        return end_web_session(lesson_dir)
+    except RecallSessionError as exc:
+        raise _session_error(exc)
+
+
+def _bot_state() -> dict:
+    import os
+    from rt.services.settings_service import secret_is_set
+    from rt.telegram.daemon_status import is_daemon_running
+    configured = secret_is_set("RT_TELEGRAM_BOT_TOKEN") and bool((os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip())
+    return {"configured": configured, "running": is_daemon_running()}
+
+
+@router.get("/recall/telegram", response_model=schemas.TelegramRecallStatus,
+            summary="Bot pronto per il recall (configurato e in esecuzione) e sessioni in corso su Telegram")
+def telegram_status(_actor: Actor):
+    from rt.services.recall_sessions import TELEGRAM, list_sessions
+    return {**_bot_state(), "sessions": list_sessions(channel=TELEGRAM)}
+
+
+@router.post("/lessons/{lesson_id}/recall/telegram/start", response_model=schemas.TelegramCommandInfo, status_code=202,
+             summary="Chiede al bot di avviare il recall nel topic della materia (l'esito arriva in /recall/session)")
+def telegram_start(lesson_id: int, body: schemas.TelegramRecallStart, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.recall_sessions import RecallSessionError, WEB, list_sessions, request_telegram_start
+    _require_draft(lesson_dir)
+    bot = _bot_state()
+    if not bot["configured"]:
+        raise ApiError(409, "telegram_not_configured", "Configura il bot Telegram in Impostazioni.")
+    if not bot["running"]:
+        raise ApiError(409, "telegram_not_running", "Il bot Telegram è fermo: avvialo prima.")
+    if list_sessions(channel=WEB, lesson_dir=lesson_dir):
+        raise ApiError(409, "web_session_active", "C'è una sessione in corso qui: terminala prima di passare a Telegram.")
+    try:
+        return request_telegram_start(lesson_dir, body.qtype, actor, mock=body.mock)
+    except RecallSessionError as exc:
+        raise _session_error(exc)
+
+
+@router.post("/recall/telegram/sessions/{session_id}/stop", response_model=schemas.RecallSessionInfo,
+             summary="Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic che è stata interrotta dall'app")
+def telegram_stop(session_id: int, actor: Actor):
+    from rt.services.recall_sessions import RecallSessionError, interrupt_telegram_session
+    try:
+        return interrupt_telegram_session(session_id, actor)
+    except RecallSessionError as exc:
+        raise _session_error(exc)

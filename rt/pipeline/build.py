@@ -109,6 +109,16 @@ def render_pre_elaborato_md(
     return "\n".join(lines)
 
 
+def clean_unit_content(content: str) -> str:
+    """Testo di un'unità come compare nel documento: senza marker residui e con gli spazi
+    compattati. Le righe vuote fra paragrafi restano (anche quelle scritte nell'anteprima)."""
+    content = re.sub(r"\s*\(\s*(?:⁉️|⚠️|⁉|⚠)\s*(?:AMB|ERR)\d+.*?\)", "", content)
+    content = re.sub(r"[ \t]{2,}", " ", content)
+    content = re.sub(r"[ \t]*\n[ \t]*", "\n", content)
+    content = re.sub(r"\n{3,}", "\n\n", content)
+    return content.strip()
+
+
 def render_rielaborato_md(
     outline: Outline,
     draft: Draft,
@@ -117,12 +127,15 @@ def render_rielaborato_md(
     subject: str,
     topics: str,
     images_by_macro: Optional[Dict[str, List[dict]]] = None,
-    carousel: bool = False,
+    edits: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Renderizza rielaborato.md pulito e pronto per lo studio/Obsidian/Telegram.
-    I timestamp derivano sempre da segments_data.
+    I timestamp derivano sempre da segments_data. edits: modifiche fatte a mano
+    nell'anteprima (titoli e segmento d'inizio delle unità, rt.pipeline.document_edits).
     """
+    from rt.pipeline.document_edits import macro_title, unit_start_segment, unit_title
+    edits = edits or {}
     seg_by_id: Dict[str, Segment] = {s.id: s for s in segments_data.segments}
     draft_by_unit_id = {u.unit_id: u for u in draft.units}
     
@@ -145,39 +158,32 @@ def render_rielaborato_md(
     ]
     
     for macro in outline.macro_sections:
-        lines.append(f"## {macro.id}. {macro.title}\n")
+        lines.append(f"## {macro.id}. {macro_title(edits, macro.id, macro.title)}\n")
         
         macro_id_str = str(macro.id)
         if images_by_macro and macro_id_str in images_by_macro and images_by_macro[macro_id_str]:
-            imgs = images_by_macro[macro_id_str]
-            if carousel:
-                lines.append("```napkin-notes")
-                wikilinks = [f"[[{img['filename']}]]" for img in imgs]
-                lines.append("\n\n".join(wikilinks))
-                lines.append("```\n")
-            else:
-                for img in imgs:
-                    alt = img.get("alt_text", "")
-                    lines.append(f"![{alt}]({img['filename']})")
-                lines.append("")
+            # link Markdown uno sotto l'altro: la formattazione la sceglie l'utente
+            for img in images_by_macro[macro_id_str]:
+                alt = img.get("alt_text", "")
+                lines.append(f"![{alt}]({img['filename']})")
+            lines.append("")
         
         for unit in macro.units:
-            start_seg = seg_by_id.get(unit.start_segment_id)
+            start_seg_id = unit_start_segment(edits, unit.id, unit.start_segment_id)
+            start_seg = seg_by_id.get(start_seg_id)
             if not start_seg:
-                raise BuildError(f"Segmento di inizio '{unit.start_segment_id}' inesistente per unità '{unit.id}'")
+                raise BuildError(f"Segmento di inizio '{start_seg_id}' inesistente per unità '{unit.id}'")
             
             # DERIVAZIONE DETERMINISTICA DEL TIMESTAMP
             derived_timestamp = format_timestamp(start_seg.start_seconds)
             
-            lines.append(f"### {unit.id} {unit.title}")
+            lines.append(f"### {unit.id} {unit_title(edits, unit.id, unit.title)}")
             lines.append(f"{derived_timestamp}\n")
             
             draft_unit = draft_by_unit_id.get(unit.id)
             content = draft_unit.content.strip() if draft_unit else ""
             
-            # Pulizia di qualsiasi eventuale marker residuo
-            content = re.sub(r"\s*\(\s*(?:⁉️|⚠️|⁉|⚠)\s*(?:AMB|ERR)\d+.*?\)", "", content)
-            content = re.sub(r"\s{2,}", " ", content).strip()
+            content = clean_unit_content(content)
             
             lines.append(content)
             lines.append("")
@@ -290,6 +296,7 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.rewrite import load_draft
     from rt.pipeline.review import load_science_issues
     from rt.pipeline.ledger import load_ledger, apply_decisions_to_draft
+    from rt.pipeline.document_edits import load_document_edits
 
     info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     date_val = info.get("data", "0000-00-00")
@@ -312,8 +319,10 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     ledger = load_ledger(lesson_dir)
     science_issues = load_science_issues(lesson_dir)
     # Applicazione deterministica del decision ledger
-    resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
-    images_by_macro, carousel = images_for_document(lesson_dir, outline)
+    edits = load_document_edits(lesson_dir)
+    edited = {uid for uid, v in edits["units"].items() if v.get("edited")}
+    resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues, edited)
+    images_by_macro, _carousel = images_for_document(lesson_dir, outline)
 
     return {
         "outline": outline,
@@ -328,7 +337,7 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
             subject=subject_val, topics=topics_val, science_issues=science_issues),
         "rielaborato": render_rielaborato_md(
             outline=outline, draft=resolved_draft, segments_data=segments_data, date=date_val,
-            subject=subject_val, topics=topics_val, images_by_macro=images_by_macro, carousel=carousel),
+            subject=subject_val, topics=topics_val, images_by_macro=images_by_macro, edits=edits),
         "errori_concettuali": render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger),
     }
 

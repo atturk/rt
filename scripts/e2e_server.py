@@ -8,8 +8,9 @@ Uso (lo lancia frontend/playwright.config.ts):
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
 Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
---mock (LLM e risposte vocali finti), il bot Telegram è finto (RT_TELEGRAM_FAKE=1) e il Bot API
-anche (tests/api_support.fake_telegram_server), la "Prova" dei modelli è in mock (RT_API_MOCK=1),
+--mock (LLM, risposte vocali e immagini dal web finti), il bot Telegram è finto
+(RT_TELEGRAM_FAKE=1: esegue le richieste della web app) e il Bot API anche
+(tests/api_support.fake_telegram_server), la "Prova" dei modelli è in mock (RT_API_MOCK=1),
 SearXNG è un server finto (searxng_url in server.json); niente finestra di Finder per la scelta
 cartella.
 """
@@ -39,6 +40,8 @@ def _workspace(base: str) -> str:
     with open(general_path, encoding="utf-8") as f:
         general = yaml.safe_load(f) or {}
     general.setdefault("telegram", {})["lessons_root"] = lessons
+    # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
+    general["searxng_base_url"] = "http://127.0.0.1:9"
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
     # Cartelle per il navigatore della scelta cartella (RT4-FA6): la finestra di Finder è
@@ -83,7 +86,8 @@ def _lessons(root: str) -> None:
     """BIOCHIMICA completa con audio; FISIOLOGIA solo setup; FARMACOLOGIA e PATOLOGIA con
     l'outline approvata e 10 issue della review da decidere (per la review contestuale);
     ANATOMIA come PATOLOGIA ma con la review non aggiornata e senza documento finale (build
-    con conferma, recall e immagini prima del build)."""
+    con conferma, recall e immagini prima del build); CHIRURGIA completa come BIOCHIMICA, solo
+    per la modifica dell'anteprima (RT4-FA3), che rende il documento da ricreare."""
     from rt.services.outline_service import approve_outline
     from tests.api_support import add_audio, make_lesson, run_mock_pipeline
     done = make_lesson(root)
@@ -102,6 +106,9 @@ def _lessons(root: str) -> None:
     approve_outline(anatomia, channel="api")
     run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
     _stale_review(anatomia)
+    chirurgia = _plain_lesson(root, "2026-09-01", "CHIRURGIA", "Suture")
+    add_audio(chirurgia)
+    run_mock_pipeline(chirurgia, with_review=True, auto_accept=True)
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)
@@ -126,7 +133,8 @@ def main() -> int:
 
     ensure_database()
     _lessons(root)
-    # Bot API finta per "Ascolta i topic" (RT4-F5): API e worker la ereditano dall'ambiente.
+    # Bot API finta per "Ascolta i topic" (RT4-F5) e per il recall su Telegram avviato dalla web
+    # (RT4-FA7): API, worker e bot finto la ereditano dall'ambiente.
     from tests.api_support import fake_telegram_server
     _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
     # "Prova" dei modelli in mock (nessuna chiamata LLM) e SearXNG finto per la ricerca web (RT4-FA5).

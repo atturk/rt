@@ -90,3 +90,58 @@ export function useSkip(id: number) {
     unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/skip', { params: path(id), body: { question_id: questionId } })),
   )
 }
+
+export type RecallSessionInfo = Schemas['RecallSessionInfo']
+export type RecallSessionState = Schemas['RecallSessionState']
+export type TelegramRecallStatus = Schemas['TelegramRecallStatus']
+
+export const sessionKeys = {
+  lesson: (id: number) => ['recall', id, 'session'] as const,
+  telegram: ['recall-telegram'] as const,
+}
+
+/** Sessione qui e su Telegram. Mentre il bot esegue una richiesta si rilegge spesso. */
+export function useRecallSession(id: number) {
+  return useQuery({
+    queryKey: sessionKeys.lesson(id),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/session', { params: path(id) })),
+    refetchInterval: (query) => {
+      const state = query.state.data?.command?.state
+      return state === 'pending' || state === 'running' ? 1_000 : 10_000
+    },
+  })
+}
+
+/** Bot pronto per il recall e sessioni in corso su Telegram (tutte le lezioni). */
+export function useTelegramRecall() {
+  return useQuery({
+    queryKey: sessionKeys.telegram,
+    queryFn: () => unwrap(api.GET('/api/v1/recall/telegram')),
+    refetchInterval: 10_000,
+  })
+}
+
+function useSessionMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () =>
+      Promise.all([client.invalidateQueries({ queryKey: ['recall'] }), client.invalidateQueries({ queryKey: sessionKeys.telegram })]),
+  })
+}
+
+export function useEndSession(id: number) {
+  return useSessionMutation(() => unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/session/end', { params: path(id) })))
+}
+
+export function useStartTelegram(id: number) {
+  return useSessionMutation((qtype: RecallType) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/telegram/start', { params: path(id), body: { qtype, mock: false } })),
+  )
+}
+
+export function useStopTelegram() {
+  return useSessionMutation((sessionId: number) =>
+    unwrap(api.POST('/api/v1/recall/telegram/sessions/{session_id}/stop', { params: { path: { session_id: sessionId } } })),
+  )
+}

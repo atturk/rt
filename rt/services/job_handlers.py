@@ -101,9 +101,9 @@ def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     p = job.payload
     with ctx.activate():
         res = run_add_images(_lesson_dir(job), input_path=p.get("input_path"),
-                             web_search_count=p.get("web_search_count"), carousel=bool(p.get("carousel")),
+                             web_search_count=p.get("web_search_count"), unit_ids=p.get("unit_ids"),
                              force_mock=bool(p.get("mock")), tolerate_failures=True)
-    # Il documento è già scritto con le immagini riuscite; il job fallisce con l'elenco delle
+    # Il posizionamento è già scritto con le immagini riuscite; il job fallisce con l'elenco delle
     # altre e 'Riprova' elabora solo quelle mancanti (le descrizioni sono in cache per hash).
     from rt.pipeline.unit_failures import raise_if_incomplete
     raise_if_incomplete("add_images", res)

@@ -106,7 +106,7 @@ async def handle_quit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 pass
 
     convo.clear_awaiting_feedback(state_dir, chat_id)
-    tg_session.end_session(state_dir, chat_id, thread_id)
+    tg_session.end_session(state_dir, chat_id, thread_id, ended_by="telegram")
 
     if kind == "issue_review":
         await _send_with_retry(lambda: update.effective_message.reply_text(
@@ -1075,18 +1075,35 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     convo.clear_awaiting_feedback(state_dir, chat_id)
 
 
+async def _process_app_commands(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Richieste della web app (avvia o interrompi un recall), vedi rt.telegram.app_commands."""
+    from rt.telegram.app_commands import process_pending_commands
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, process_pending_commands)
+    except Exception as exc:
+        print(f"⚠️  Richieste dalla web app non eseguite: {exc}", file=sys.stderr)
+
+
 def _run_fake_daemon() -> None:
     """RT_TELEGRAM_FAKE=1 (test end-to-end della SPA): il bot prende il PID file come quello
-    vero ma non contatta Telegram; SIGTERM lo ferma e libera il PID file."""
+    vero ma non riceve aggiornamenti da Telegram; esegue le richieste della web app (con le
+    domande in mock e la Bot API di RT_TELEGRAM_API_URL). SIGTERM lo ferma e libera il PID file."""
     import signal
     import threading
+    from rt.services.recall_sessions import requeue_running_commands
+    from rt.telegram.app_commands import process_pending_commands
     from rt.telegram.daemon_status import remove_daemon_pid
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     print("🤖 Bot Telegram finto (RT_TELEGRAM_FAKE=1): nessuna connessione a Telegram.", file=sys.stderr, flush=True)
     try:
+        requeue_running_commands()
         while not stop.wait(0.5):
-            pass
+            try:
+                process_pending_commands(force_mock=True)
+            except Exception as exc:
+                print(f"⚠️  Richieste dalla web app non eseguite: {exc}", file=sys.stderr, flush=True)
     finally:
         remove_daemon_pid()
 
@@ -1116,6 +1133,9 @@ def run_daemon(state_dir: str = None) -> None:
         application.add_handler(PollAnswerHandler(handle_poll_answer))
         application.add_handler(MessageReactionHandler(handle_message_reaction))
         application.job_queue.run_repeating(_write_heartbeat, interval=15, first=0)
+        from rt.services.recall_sessions import requeue_running_commands
+        requeue_running_commands()
+        application.job_queue.run_repeating(_process_app_commands, interval=2, first=1)
 
         print(f"🤖 RT Telegram daemon in ascolto (state_dir='{resolved_state_dir}')...", file=sys.stderr)
         application.run_polling(allowed_updates=Update.ALL_TYPES)

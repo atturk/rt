@@ -117,3 +117,46 @@ def test_fake_telegram_daemon_start_stop(tmp_path, monkeypatch):
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+def test_web_search_requires_searxng_before_enqueue(api_client, ws, rt_db):
+    """RT4-FA7: senza SearXNG l'errore arriva subito e rimanda alle Impostazioni."""
+    run_mock_pipeline(make_lesson(ws))
+    lid = _lesson_id(api_client)
+    res = api_client.post(f"/api/v1/lessons/{lid}/images", data={"web_search": "2"})
+    assert res.status_code == 409
+    error = res.json()["error"]
+    assert error["code"] == "searxng_not_configured"
+    assert "Impostazioni" in error["message"] and "yaml" not in error["message"]
+    assert api_client.get("/api/v1/jobs").json() == [] or all(
+        j["type"] != "add_images" for j in api_client.get("/api/v1/jobs").json())
+
+
+def test_web_search_per_unit_on_selected_units(api_client, ws, rt_db):
+    """N immagini per unità, solo sulle unità scelte, passate nel payload del job."""
+    with open(os.path.join("config", "general.yaml"), "a", encoding="utf-8") as f:
+        f.write("searxng_base_url: http://127.0.0.1:9\n")
+    run_mock_pipeline(make_lesson(ws))
+    lid = _lesson_id(api_client)
+    outline = api_client.get(f"/api/v1/lessons/{lid}/outline").json()
+    units = [u["id"] for m in outline["macro_sections"] for u in m["units"]]
+    chosen = units[:1]  # la lezione in mock ha una sola unità: la selezione multipla è in test_add_images
+
+    res = api_client.post(f"/api/v1/lessons/{lid}/images", data={"web_search": "2", "units": ["nessuna"]})
+    assert res.status_code == 422 and "nessuna" in res.json()["error"]["message"]
+    assert api_client.post(f"/api/v1/lessons/{lid}/images", data={"web_search": "11"}).status_code == 422
+
+    res = api_client.post(f"/api/v1/lessons/{lid}/images", data={"web_search": "2", "units": chosen})
+    assert res.status_code == 202, res.text
+    job_id = res.json()["job_id"]
+    job = api_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["payload"]["unit_ids"] == chosen and job["payload"]["web_search_count"] == 2
+    assert "carousel" not in job["payload"]
+    drain(Worker(DbJobQueue(rt_db), worker_id="w", mock=True))
+    job = api_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["state"] == "succeeded", job
+    assert job["result"]["web_images_by_unit"] == {u: 2 for u in chosen}
+    images = api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]
+    assert len(images) == 2 and all(i["source"].startswith("websearch:") for i in images)
+    document = api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
+    assert "napkin-notes" not in document and document.count("](assets/images/") == 2

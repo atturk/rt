@@ -5,6 +5,7 @@ progetto). Deliberatamente NON usa python-telegram-bot: questo lato è invocato 
 processi effimeri (rt run) che devono solo mandare 1-2 messaggi, non gestire un
 intero Application asyncio.
 """
+import os
 import time
 from typing import Optional, Dict, Any
 import requests
@@ -14,11 +15,10 @@ _API_BASE = "https://api.telegram.org/bot{token}/{method}"
 
 
 def _api_url(token: str, method: str) -> str:
-    """URL della Bot API; RT_TELEGRAM_API_URL la sostituisce (Bot API finta dei test)."""
-    import os
-    base = os.environ.get("RT_TELEGRAM_API_URL", "").strip().rstrip("/")
+    """RT_TELEGRAM_API_URL sostituisce https://api.telegram.org (Bot API finta nei test)."""
+    base = os.environ.get("RT_TELEGRAM_API_URL")
     if base:
-        return f"{base}/bot{token}/{method}"
+        return f"{base.rstrip('/')}/bot{token}/{method}"
     return _API_BASE.format(token=token, method=method)
 
 

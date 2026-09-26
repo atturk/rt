@@ -125,6 +125,26 @@ def start_session(
         _save_sessions(state_dir, data)
     finally:
         _release_lock(state_dir)
+    if kind == "recall":
+        _registry_started(state_dir, abs_lesson, chat_id, thread_id)
+
+
+def _registry_started(state_dir: str, lesson_dir: str, chat_id, thread_id) -> None:
+    """Registro condiviso delle sessioni (DB): la web app vede la sessione in corso."""
+    try:
+        from rt.services.recall_sessions import telegram_session_started
+        from rt.telegram.recall_preferences import get_active_style
+        telegram_session_started(lesson_dir, chat_id, thread_id, qtype=get_active_style(state_dir))
+    except Exception as exc:  # il registro non deve mai bloccare il bot
+        print(f"⚠️  Registro delle sessioni non aggiornato: {exc}")
+
+
+def _registry_ended(chat_id, thread_id, lesson_dir: Optional[str], ended_by: str) -> None:
+    try:
+        from rt.services.recall_sessions import telegram_session_ended
+        telegram_session_ended(chat_id, thread_id, lesson_dir=lesson_dir, ended_by=ended_by)
+    except Exception as exc:
+        print(f"⚠️  Registro delle sessioni non aggiornato: {exc}")
 
 
 def update_session_message(
@@ -150,18 +170,23 @@ def end_session(
     state_dir: str,
     chat_id: Union[int, str],
     thread_id: Optional[Union[int, str]] = None,
+    ended_by: str = "telegram",
 ) -> None:
-    """Rimuove la sessione attiva per il topic specificato se presente."""
+    """Rimuove la sessione attiva per il topic specificato se presente. Una sessione di
+    recall si chiude anche nel registro condiviso (ended_by: chi l'ha chiusa)."""
+    removed = None
     _acquire_lock(state_dir)
     try:
         data = _load_sessions(state_dir)
         sessions = data.setdefault("sessions", {})
         key = _session_key(chat_id, thread_id)
         if key in sessions:
-            del sessions[key]
+            removed = sessions.pop(key)
             _save_sessions(state_dir, data)
     finally:
         _release_lock(state_dir)
+    if removed is not None and removed.get("kind") == "recall":
+        _registry_ended(chat_id, thread_id, removed.get("lesson_dir"), ended_by)
 
 
 def get_active_session_for_lesson(

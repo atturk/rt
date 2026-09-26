@@ -84,6 +84,15 @@ class WorkerIn(BaseModel):
     concurrency: int = Field(ge=1, le=4)
 
 
+class NoticeSettings(BaseModel):
+    dismissed: List[str] = Field(description="Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)")
+
+
+class NoticeIn(BaseModel):
+    notice: Literal["preview_edit_beta", "preview_edit_issues"]
+    dismissed: bool = True
+
+
 class WebSearchSettings(BaseModel):
     searxng_base_url: Optional[str] = Field(None, description="URL base di SearXNG per la ricerca immagini web")
 
@@ -91,6 +100,7 @@ class WebSearchSettings(BaseModel):
 class Settings(BaseModel):
     lessons_root: Optional[str] = None
     worker: WorkerSettings
+    notices: NoticeSettings
     transcription: Transcription
     telegram: TelegramSettings
     phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna delle sei fasi LLM")
@@ -274,6 +284,14 @@ def put_lessons_root(body: LessonsRootIn, _actor: Actor):
 def put_worker(body: WorkerIn, _actor: Actor):
     from rt.services.settings_service import save_worker_concurrency, snapshot
     _call(save_worker_concurrency, _project_root(), body.concurrency)
+    return snapshot(_project_root())
+
+
+@router.put("/settings/notices", response_model=Settings,
+            summary="Nasconde o rimostra un avviso della web ('Non mostrare più'), per tutti i browser")
+def put_notice(body: NoticeIn, _actor: Actor):
+    from rt.services.settings_service import save_notice, snapshot
+    _call(save_notice, _project_root(), body.notice, body.dismissed)
     return snapshot(_project_root())
 
 

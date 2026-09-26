@@ -8,7 +8,7 @@ import os
 import re
 import json
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.core.lesson_paths import lesson_path
@@ -198,11 +198,14 @@ def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
 def apply_decisions_to_draft(
     draft: Draft,
     ledger: DecisionLedger,
-    science_issues: List[ScienceIssue]
+    science_issues: List[ScienceIssue],
+    edited_units: Optional[Set[str]] = None,
 ) -> Draft:
     """
     Applica deterministicamente al draft le decisioni convalidate dal ledger.
     Ogni sostituzione viene applicata una sola volta garantendo idempotenza e conformità UTF-8.
+    Le unità in edited_units hanno il testo scritto dall'utente nell'anteprima, con le
+    decisioni già dentro (rt.pipeline.document_edits): restano come sono.
     """
     decisions_map: Dict[str, ReviewDecision] = {d.issue_id: d for d in ledger.decisions}
     sci_by_id = {iss.id: iss for iss in science_issues}
@@ -210,6 +213,9 @@ def apply_decisions_to_draft(
     updated_units = []
     for unit in draft.units:
         content = fix_mojibake(unit.content)
+        if edited_units and unit.unit_id in edited_units:
+            updated_units.append(unit.model_copy(update={"title": fix_mojibake(unit.title), "content": content}))
+            continue
         
         # Applica decisioni su Science Issues
         for iss_id, dec in decisions_map.items():
@@ -273,10 +279,12 @@ def load_resolved_draft(lesson_dir: str) -> Draft:
     from rt.pipeline.rewrite import load_draft
     from rt.pipeline.review import load_science_issues
 
+    from rt.pipeline.document_edits import edited_unit_ids
+
     draft = load_draft(lesson_dir)
     ledger = load_ledger(lesson_dir)
     science_issues = load_science_issues(lesson_dir)
-    return apply_decisions_to_draft(draft, ledger, science_issues)
+    return apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_ids(lesson_dir))
 
 
 def extract_context_sentence(content: str, target: str, fallback_target: str = "", highlight: bool = True) -> str:

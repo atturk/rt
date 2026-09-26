@@ -22,7 +22,8 @@ type Image = { name: string; url: string; in_document: boolean }
 
 async function builtLesson(page: Page): Promise<Lesson> {
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
-  const lesson = lessons.find((l) => l.phases.build === 'VALID')
+  // Le immagini aggiunte da un test precedente rendono da rifare il documento (RT4-FA2).
+  const lesson = lessons.find((l) => l.phases.build === 'VALID' || l.phases.build === 'STALE')
   expect(lesson, 'la lezione di prova completata').toBeTruthy()
   return lesson!
 }
@@ -204,6 +205,56 @@ test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel docum
   expect(await docImage.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth)).toBeGreaterThan(0)
   await page.getByRole('link', { name: 'Recall' }).last().click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/recall$`))
+})
+
+test('immagini: N immagini per unità dal web sulle unità scelte, riletto dopo la ricarica', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await builtLesson(page)
+  await page.goto(`/lezioni/${lesson.id}/immagini`)
+  const before = (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images
+  const outline = await apiGet<{ macro_sections: { id: string; title: string; units: { id: string }[] }[] }>(
+    page.request,
+    `/lessons/${lesson.id}/outline`,
+  )
+  const section = outline.macro_sections[0]
+
+  // il campo si svuota e non diventa "03"
+  const count = page.getByLabel('Immagini per unità')
+  await expect(count).toHaveValue('0')
+  // cursore dopo lo 0 (su macOS il tasto Fine non lo sposta nei campi di testo)
+  await count.focus()
+  await count.evaluate((el: HTMLInputElement) => el.setSelectionRange(el.value.length, el.value.length))
+  await count.pressSequentially('3')
+  await expect(count).toHaveValue('3')
+  await count.fill('')
+  await expect(count).toHaveValue('')
+  await count.pressSequentially('11')
+  await page.getByRole('button', { name: 'Aggiungi le immagini' }).click()
+  await expect(page.getByText('Scrivi un numero da 0 a 10.')).toBeVisible()
+  await count.fill('2')
+
+  await expect(page.getByLabel('Tutte le unità')).toBeChecked()
+  await page.getByLabel('Scegli le unità').check()
+  await page.getByRole('button', { name: 'Aggiungi le immagini' }).click()
+  await expect(page.getByText("Scegli almeno un'unità")).toBeVisible()
+  await page.getByLabel(`Seleziona sezione ${section.id}. ${section.title}`).check()
+  for (const unit of section.units) await expect(page.getByTestId('unit-picker').locator(`[data-unit-id="${unit.id}"]`)).toBeChecked()
+  await expect(page.getByText(`Unità scelte: ${section.units.length}`)).toBeVisible()
+  await page.getByRole('button', { name: 'Aggiungi le immagini' }).click()
+  await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: 30_000 })
+
+  const jobId = new URL(page.url()).searchParams.get('job')!
+  await page.reload()
+  const job = await apiGet<{ payload: Record<string, unknown>; result: Record<string, unknown> }>(page.request, `/jobs/${jobId}`)
+  const chosen = section.units.map((u) => u.id)
+  expect(job.payload.unit_ids).toEqual(chosen)
+  expect(job.payload.web_search_count).toBe(2)
+  expect(job.payload).not.toHaveProperty('carousel')
+  expect(job.result.web_images_by_unit).toEqual(Object.fromEntries(chosen.map((id) => [id, 2])))
+  const images = (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images
+  expect(images.length).toBe(before.length + 2 * chosen.length)
+  await expect(page.getByTestId('lesson-image')).toHaveCount(images.length)
+  await expect(page.getByText('carosello')).toHaveCount(0)
 })
 
 test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricarica', async ({ page }) => {

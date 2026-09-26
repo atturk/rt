@@ -258,6 +258,24 @@ def save_worker_concurrency(project_root: Path, concurrency: int) -> str:
     return "Job in parallelo salvati."
 
 
+# Avvisi della web che si possono nascondere con "Non mostrare più" (salvati in ui.dismissed_notices).
+NOTICES = ("preview_edit_beta", "preview_edit_issues")
+
+
+def save_notice(project_root: Path, notice: str, dismissed: bool) -> str:
+    """Nasconde (o rimostra) un avviso della web per tutti i browser: vale lato server."""
+    if notice not in NOTICES:
+        raise ValueError(f"Avviso sconosciuto: {notice}.")
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    ui = dict(data.get("ui") or {})
+    current = [n for n in (ui.get("dismissed_notices") or []) if n in NOTICES and n != notice]
+    ui["dismissed_notices"] = sorted(current + ([notice] if dismissed else []))
+    data["ui"] = ui
+    _atomic_yaml(path, data)
+    return "Preferenza salvata."
+
+
 def save_lessons_root(raw_path: str, project_root: Path) -> str:
     """Imposta solo telegram.lessons_root e crea la cartella se necessario."""
     if not raw_path or not raw_path.strip():
@@ -402,6 +420,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "default_channel": cfg.telegram.default_channel,
         },
         "worker": {"concurrency": cfg.worker.concurrency, "running": _running_workers()},
+        "notices": {"dismissed": [n for n in cfg.ui.dismissed_notices if n in NOTICES]},
         "phases": phases,
         "connections": connections,
         "credentials": credentials,

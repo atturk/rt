@@ -25,7 +25,7 @@ export function useJobStatus(jobId: string | null | undefined) {
 }
 
 /** Corpo multipart per gli endpoint con upload: openapi-fetch passa il FormData così com'è. */
-export function formData(fields: Record<string, string | number | boolean | Blob | Blob[] | null | undefined>): FormData {
+export function formData(fields: Record<string, string | number | boolean | Blob | (string | Blob)[] | null | undefined>): FormData {
   const form = new FormData()
   for (const [key, value] of Object.entries(fields)) {
     if (value === null || value === undefined) continue

@@ -93,6 +93,7 @@ ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 | `POST /settings/models/test` | Prova connessione e modello (anche non salvati): chiamata minima e sincrona (prompt di poche parole, 16 token di uscita, timeout 20 s) con esito, latenza, stato HTTP ed errore del provider sanificato; con `mock` o `RT_API_MOCK=1` risponde subito senza rete | — |
 | `PUT /settings/web-search` | URL base di SearXNG (`searxng_base_url` in `general.yaml`, vuoto lo toglie); letto da `add_images` | `config/general.yaml` |
 | `POST /settings/web-search/test` | Ricerca immagini di prova su SearXNG (timeout 10 s): numero di risultati, o l'errore (anche il formato json non abilitato) | — |
+| `PUT /settings/notices` `{notice, dismissed}` | "Non mostrare più" per gli avvisi della SPA (`preview_edit_beta`, `preview_edit_issues`), salvato in `ui.dismissed_notices` di `general.yaml`; `GET /settings` li riporta in `notices.dismissed` | — |
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
 | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
 | `POST /settings/telegram/reveal` `{field: bot_token\|chat_id}` | Valore completo del token o del Chat ID, solo su richiesta esplicita (`Cache-Control: no-store`); `GET /settings` ne dà solo l'anteprima (`bot_token_preview`, `chat_id_preview`, es. `1234…wXyZ`) | — |
@@ -122,7 +123,9 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons` (multipart: `audio`, `date`, `materia`, `argomenti`, `mock`, `run`) | Job `ingest_audio` (solo setup e trascrizione); con `run=true` job `run_pipeline` dall'audio | `rt setup`, `rt run lezione.m4a` |
 | `POST /lessons/{id}/jobs` `{type: run_pipeline}` | Pipeline completa | `rt run <cartella>` |
 | `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
-| `POST /lessons/{id}/images` (multipart `files`, `web_search`) | Job `add_images` | `rt add-images` |
+| `POST /lessons/{id}/document/check` `{markdown}` | Anteprima renderizzata (HTML sanificato) del Markdown in modifica ed errori che ne impedirebbero il salvataggio, `[{line, message}]`; non salva niente | — |
+| `PUT /lessons/{id}/document/draft` `{markdown}` | Modifica dell'anteprima (RT4-FA3, beta): riporta il Markdown nella bozza per unità. Titoli di sezioni e unità e timecode vanno in `document_edits.json`; il timecode (riga sotto il titolo dell'unità, `MM:SS` o `H:MM:SS`) deve stare nella durata dell'audio, crescere da un'unità alla successiva e viene spostato all'inizio del segmento che lo contiene. Le unità cambiate non ricevono più le decisioni della revisione (sono già nel testo); le issue il cui testo non c'è più diventano orfane, non si cancellano. Il documento finale diventa da ricreare (`build_status: STALE`). Errori: `422 document_invalid` con `details.errors` `[{line, message}]` (sezioni o unità aggiunte, tolte o spostate, timecode fuori dall'audio o fuori ordine, unità vuote, immagini inesistenti, rielaborazione non aggiornata); `409` con un job in corso sulla lezione | modifica a mano del Markdown esportato |
+| `POST /lessons/{id}/images` (multipart `files`, `web_search`, `units`) | Job `add_images`: `web_search` è il numero di immagini da cercare sul web **per ogni unità** (una ricerca per unità, 1-10), `units` limita la ricerca alle unità scelte (vuoto = tutte). Senza SearXNG configurato risponde subito `409 searxng_not_configured`, senza accodare il job | `rt add-images [--web-search N] [--units 1.1,2.3]` |
 | `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento mostrato da `/document`) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
 | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento; `retry_of` e `retried_by` collegano un job fallito e il suo nuovo tentativo | `rt jobs` |
 | `POST /jobs/{id}/retry` | Riprova un job fallito (RT4-FA1): job nuovo con lo stesso tipo e payload (senza `force` per pipeline e fasi), che riparte dalla fase fallita; `409 lesson_busy` se sulla lezione c'è un altro job attivo, `409 already_retried` (con il job nuovo) se è già stato ripreso, `409 retry_unavailable` se i file caricati non ci sono più | rilanciare lo stesso comando |
@@ -135,6 +138,11 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `GET /lessons/{id}/recall`, `GET .../recall/history` | Riserva per tipo e stato; domande (con soluzione se già poste) e risposte con valutazione e voto | `rt recall` |
 | `POST .../recall/generate`, `POST .../recall/next` | Generazione (job `recall_generate`, o `recall_batch` con `qtype`); prossima domanda, che sotto soglia accoda il rifornimento (job `recall_refill`) come il terminale | `rt recall` |
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
+| `GET /lessons/{id}/recall/session` | Sessione in corso qui (`web`) e su Telegram (`telegram`), ultimo riepilogo (`last`), ultima richiesta al bot (`command`) | — |
+| `POST .../recall/session/end` | Termina la sessione della web app e ne salva il riepilogo (domande, risposte date, quiz giusti); 404 se non ce n'è una | uscita da `rt recall` |
+| `GET /recall/telegram` | Bot pronto per il recall (`configured`, `running`) e sessioni in corso su Telegram per tutte le lezioni | — |
+| `POST /lessons/{id}/recall/telegram/start` `{qtype}` | Chiede al bot di avviare il recall nel topic della materia (202; l'esito in `/recall/session`); 409 se il bot non è configurato o è fermo, o se c'è già una sessione | `rt recall --channel telegram`, `/recall` nel bot |
+| `POST /recall/telegram/sessions/{id}/stop` | Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic «Sessione interrotta dall'app» | `/quit` nel bot |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
 | `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti, `names` (nome del topic da `forum_topic_created`/`forum_topic_edited` o dal `reply_to_message`), `materie` (materia nota che coincide con il nome) e `messages` (chat e message id dei messaggi degli utenti, per la cancellazione) | web Gradio "Ascolta topic" |
 
@@ -151,15 +159,25 @@ messaggio). Una fase parziale ferma la pipeline e il job fallisce con il motivo 
 `POST /lessons/{id}/jobs` accetta `mock_fail_once` (`rewrite` o `review`, solo con `mock=true`)
 per i test: la prima unità di quella fase fallisce una volta con una risposta fuori schema.
 
+**Sessioni di recall (RT4-FA7).** La tabella `recall_sessions` è il registro condiviso delle
+sessioni: la web app apre la sua con la prima domanda (`/recall/next`) e la chiude con
+`/recall/session/end`; il daemon Telegram registra e chiude le sue (da `/recall`, `/quit`, fine
+della riserva o interruzione dall'app). L'API non parla con Telegram: scrive le richieste nella
+tabella `telegram_commands` e il daemon le esegue ogni due secondi, scrivendone l'esito. Mentre
+una sessione è su Telegram la web non pone domande di quella lezione (`409
+telegram_session_active`), e viceversa.
+
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in
 `<lessons_root>/.rt/uploads/` e si cancellano quando il job finisce (restano se si ferma su una decisione); il limite di
 dimensione è `RT_API_MAX_UPLOAD_MB` (default 2048).
 
 `rt worker --mock` esegue ogni job in mock qualunque cosa chieda il client (LLM finto, risposte
-vocali senza trascrizione, giudice delle immagini che le mette nella prima macro-sezione): lo
-usa il server dei test end-to-end della SPA (`scripts/e2e_server.py`), insieme al bot Telegram
-finto (`RT_TELEGRAM_FAKE=1`: prende il PID file ma non contatta Telegram).
+vocali senza trascrizione, immagini dal web generate senza SearXNG, giudice delle immagini che
+le mette nella prima macro-sezione): lo usa il server dei test end-to-end della SPA
+(`scripts/e2e_server.py`), insieme al bot Telegram finto (`RT_TELEGRAM_FAKE=1`: prende il PID
+file, non riceve aggiornamenti ed esegue le richieste della web app con domande in mock sulla
+Bot API di `RT_TELEGRAM_API_URL`).
 
 ## Parità con la CLI (RT4-E5)
 

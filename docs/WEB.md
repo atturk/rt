@@ -74,8 +74,21 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   nell'indirizzo) e dopo ogni decisione si passa alla successiva in quell'ordine. Con l'ultima
   decisione la pipeline in attesa riparte da sola.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
-- **Immagini:** slide, foto o PDF da integrare nel documento; si aggiungono alla bozza e
-  compaiono subito nell'anteprima.
+  Due selettori a slitta scelgono dove fare il recall (**Telegram** o **Qui**) e il tipo di
+  domanda (Quiz, Mirata, Vasta, anche con le frecce della tastiera); sotto ciascuno c'è la
+  scelta attiva. **Qui:** la sessione parte con la prima domanda e **Termina sessione** la
+  chiude, con il riepilogo (domande, risposte date, quiz giusti) che resta dopo la ricarica.
+  **Telegram:** **Avvia su Telegram** chiede al bot di aprire la sessione nel topic della
+  materia; serve il bot configurato e avviato, altrimenti l'interruttore è disabilitato e la
+  pagina dice cosa manca. Una sessione in corso su Telegram, avviata dall'app o dal bot, si vede
+  nella pagina della lezione (e in quelle delle altre lezioni) e **Interrompi** la chiude:
+  nel topic arriva «Sessione interrotta dall'app».
+- **Immagini:** slide, foto o PDF da integrare nel documento, e immagini dal web:
+  **Immagini per unità** è quante cercarne per ogni unità (0 = nessuna ricerca), su tutte le
+  unità o su quelle scelte (caselle raggruppate per sezione, con «seleziona sezione»). Le
+  immagini entrano nel documento come link Markdown, una sotto l'altra. La ricerca web richiede
+  SearXNG: se manca, la pagina rimanda alle Impostazioni. Si aggiungono alla bozza e compaiono
+  subito nell'anteprima.
 - **Bot Telegram:** stato, avvio e arresto del bot; il gruppo configurato (Chat ID e token con
   l'occhio per vederli per intero); i topic per materia, ciascuno con il pulsante **Prova**; le
   ultime notifiche inviate (lezione pronta, issue da rivedere, prove dei topic); un link alle
@@ -149,7 +162,7 @@ diventa l'elaborato finale.
   **Annulla**. La pipeline completa si comporta come prima: si ferma sulle issue da decidere e
   crea il documento dopo l'ultima decisione.
 - **Quando va rifatto:** il documento resta aggiornato finché non cambiano bozza, scaletta,
-  segmenti, decisioni della revisione o immagini; una nuova revisione da sola non lo rende
+  segmenti, decisioni della revisione, immagini o modifiche fatte a mano all'anteprima; una nuova revisione da sola non lo rende
   superato (servono le decisioni sulle sue issue).
 - **Prima del documento finale:** recall, immagini e download funzionano già dopo la
   rielaborazione. Il download usa il documento finale se esiste ed è aggiornato, altrimenti
@@ -159,6 +172,38 @@ diventa l'elaborato finale.
 
 `rt status` segue la stessa regola: mostra la fase `build` indipendente dalla review e, sotto
 le fasi, gli stessi avvisi.
+
+## Modificare l'anteprima (beta)
+
+Nella pagina della lezione, in alto a destra del documento, la matita (**Modifica
+l'anteprima**) trasforma l'anteprima in un editor Markdown, con l'anteprima renderizzata
+accanto. Prima di entrare compaiono due avvisi, ciascuno con **Non mostrare più** (salvato
+nelle impostazioni, vale su ogni browser): se la lezione ha issue da valutare, che modificare a
+mano un passaggio segnalato può rendere orfana la sua issue; sempre, che è una funzione beta e
+che per modifiche importanti conviene creare il documento, scaricare il Markdown e modificarlo
+in un editor esterno.
+
+Nell'editor si cambiano titoli, testo, link e percorsi delle immagini. La struttura resta
+quella della scaletta: non si aggiungono né si tolgono sezioni (`## 1. Titolo`) o unità
+(`### 1.1 Titolo`). Il timecode di un'unità è la riga subito sotto il suo titolo, da solo:
+
+```markdown
+### 1.2 Il ciclo di Krebs
+12:30
+
+Testo dell'unità…
+```
+
+Si scrive `MM:SS` o `H:MM:SS`. Cambiarlo sposta l'inizio dell'unità nell'audio: deve stare
+dentro la durata della registrazione e crescere da un'unità alla successiva; RT lo porta
+all'inizio della frase dell'audio in cui cade. Gli errori compaiono sopra l'editor mentre
+scrivi, con la riga (il link porta alla riga) e il motivo.
+
+**Fine** o un clic fuori dall'editor salvano, **Esc** o **Annulla** lasciano tutto com'era.
+Dopo il salvataggio la pagina ricorda che il documento finale va ricreato (fase Documento) e,
+se il testo di qualche issue non c'è più, quante issue sono diventate orfane: restano
+nell'elenco e compaiono negli avvisi della conferma del documento. Le decisioni della revisione
+già prese sono dentro il testo che hai modificato e non vengono riapplicate.
 
 ## Cartella dati e Telegram nelle impostazioni
 

@@ -277,6 +277,8 @@ class WorkerConfig(BaseModel):
 
 class UiConfig(BaseModel):
     theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
+    dismissed_notices: List[str] = Field(default_factory=list,
+                                         description="Avvisi della web con 'Non mostrare più' (es. preview_edit_beta)")
 
 
 class JevConfig(BaseModel):

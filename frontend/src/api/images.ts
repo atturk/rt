@@ -17,18 +17,20 @@ export function useLessonImages(id: number) {
   })
 }
 
+/** perUnit: immagini da cercare sul web per ogni unità (0 = nessuna ricerca); units: le unità
+ *  scelte, null = tutte. */
 export function useAddImages(id: number) {
   return useMutation({
-    mutationFn: (vars: { files: File[]; webSearch: number; carousel: boolean }) =>
+    mutationFn: (vars: { files: File[]; perUnit: number; units: string[] | null }) =>
       unwrap(
         api.POST('/api/v1/lessons/{lesson_id}/images', {
           params: path(id),
-          body: { carousel: vars.carousel, mock: false },
+          body: { mock: false },
           bodySerializer: () =>
             formData({
               files: vars.files.length ? vars.files : null,
-              web_search: vars.webSearch > 0 ? vars.webSearch : null,
-              carousel: vars.carousel,
+              web_search: vars.perUnit > 0 ? vars.perUnit : null,
+              units: vars.perUnit > 0 && vars.units ? vars.units : null,
             }),
         }),
       ),

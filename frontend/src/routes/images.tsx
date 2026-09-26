@@ -2,9 +2,11 @@ import { Images } from 'lucide-react'
 import { useCallback, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument } from '@/api/hooks'
 import { useAddImages, useLessonImages, useRefreshImages } from '@/api/images'
+import { useOutline } from '@/api/jobs'
+import { CountInput } from '@/components/CountInput'
 import { JobProgress } from '@/components/JobProgress'
 import { LessonPicker } from '@/components/LessonPicker'
 import { Alert } from '@/components/ui/alert'
@@ -14,6 +16,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { lessonTitle } from '@/lib/format'
+import { PER_UNIT_MAX, PER_UNIT_MIN, parseCount } from '@/lib/count'
 import { withImageUrls } from '@/lib/images'
 import type { Area } from './types'
 
@@ -31,17 +34,116 @@ function ImagesIndex() {
   )
 }
 
+type Outline = Schemas['Outline']
+
+/** Scelta delle unità per la ricerca web: tutte, oppure caselle raggruppate per sezione. */
+function UnitPicker({
+  outline,
+  selected,
+  onChange,
+}: {
+  outline: Outline
+  selected: Set<string>
+  onChange: (next: Set<string>) => void
+}) {
+  function toggle(ids: string[], on: boolean) {
+    const next = new Set(selected)
+    ids.forEach((id) => (on ? next.add(id) : next.delete(id)))
+    onChange(next)
+  }
+  return (
+    <div className="flex max-h-80 flex-col gap-3 overflow-y-auto rounded-md border p-3" data-testid="unit-picker">
+      {outline.macro_sections.map((macro) => {
+        const ids = macro.units.map((u) => u.id)
+        const count = ids.filter((id) => selected.has(id)).length
+        return (
+          <fieldset key={macro.id} className="flex flex-col gap-1" data-testid="unit-section" data-section-id={macro.id}>
+            <legend className="w-full">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={count === ids.length && ids.length > 0}
+                  ref={(el) => {
+                    if (el) el.indeterminate = count > 0 && count < ids.length
+                  }}
+                  onChange={(e) => toggle(ids, e.target.checked)}
+                  aria-label={`Seleziona sezione ${macro.id}. ${macro.title}`}
+                />
+                <span>
+                  {macro.id}. {macro.title}
+                </span>
+                <span className="ml-auto text-xs font-normal text-muted-foreground">seleziona sezione</span>
+              </label>
+            </legend>
+            <ul className="flex flex-col gap-1 pl-6">
+              {macro.units.map((unit) => (
+                <li key={unit.id}>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={selected.has(unit.id)}
+                      onChange={(e) => toggle([unit.id], e.target.checked)}
+                      data-unit-id={unit.id}
+                    />
+                    <span>
+                      <span className="tabular-nums text-muted-foreground">{unit.id}</span> {unit.title}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </fieldset>
+        )
+      })}
+    </div>
+  )
+}
+
+function SearxngError({ error }: { error: unknown }) {
+  if (error instanceof ApiError && error.code === 'searxng_not_configured') {
+    return (
+      <Alert tone="danger">
+        {error.message}{' '}
+        <Link to="/impostazioni" className="font-medium underline underline-offset-2">
+          Apri le Impostazioni
+        </Link>
+      </Alert>
+    )
+  }
+  return <Alert tone="danger">{errorMessage(error)}</Alert>
+}
+
 function UploadForm({ lessonId, onStarted }: { lessonId: number; onStarted: (jobId: string) => void }) {
   const add = useAddImages(lessonId)
+  const outline = useOutline(lessonId)
   const [files, setFiles] = useState<File[]>([])
-  const [webSearch, setWebSearch] = useState(0)
-  const [carousel, setCarousel] = useState(false)
+  const [perUnit, setPerUnit] = useState('0')
+  const [scope, setScope] = useState<'all' | 'some'>('all')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [formError, setFormError] = useState<string | null>(null)
   const [inputKey, setInputKey] = useState(0)
+  const parsed = parseCount(perUnit)
+  const searching = parsed.ok && parsed.value > 0
 
   function submit(e: FormEvent) {
     e.preventDefault()
+    if (!parsed.ok) {
+      setFormError(parsed.error)
+      return
+    }
+    if (parsed.value > 0 && scope === 'some' && selected.size === 0) {
+      setFormError("Scegli almeno un'unità, oppure cerca per tutte le unità.")
+      return
+    }
+    if (files.length === 0 && parsed.value === 0) {
+      setFormError('Carica un file o scegli quante immagini cercare sul web.')
+      return
+    }
+    setFormError(null)
+    const order = outline.data?.macro_sections.flatMap((m) => m.units.map((u) => u.id)) ?? []
     add.mutate(
-      { files, webSearch, carousel },
+      { files, perUnit: parsed.value, units: scope === 'some' ? order.filter((id) => selected.has(id)) : null },
       {
         onSuccess: (accepted) => {
           setFiles([])
@@ -53,7 +155,7 @@ function UploadForm({ lessonId, onStarted }: { lessonId: number; onStarted: (job
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3">
+    <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
       <div className="flex flex-col gap-1">
         <Label htmlFor="image-files">PDF o foto</Label>
         <Input
@@ -70,26 +172,53 @@ function UploadForm({ lessonId, onStarted }: { lessonId: number; onStarted: (job
           nella sezione giusta del documento.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="web-search">Immagini da cercare sul web</Label>
-          <Input
-            id="web-search"
-            type="number"
-            min={0}
-            max={20}
-            value={webSearch}
-            onChange={(e) => setWebSearch(Math.max(0, Math.min(20, Number(e.target.value) || 0)))}
-          />
-          <p className="text-xs text-muted-foreground">0 = nessuna ricerca. Serve SearXNG configurato.</p>
-        </div>
-        <label className="flex items-center gap-2 self-center text-sm">
-          <input type="checkbox" checked={carousel} onChange={(e) => setCarousel(e.target.checked)} />
-          Mostra le immagini come carosello (Obsidian)
-        </label>
+      <div className="flex flex-col gap-1 sm:max-w-xs">
+        <Label htmlFor="web-search">Immagini per unità</Label>
+        <CountInput
+          id="web-search"
+          value={perUnit}
+          onChange={(v) => {
+            setPerUnit(v)
+            setFormError(null)
+          }}
+          invalid={!parsed.ok}
+          aria-describedby="web-search-help"
+        />
+        <p id="web-search-help" className="text-xs text-muted-foreground">
+          Immagini da cercare sul web per ogni unità, da {PER_UNIT_MIN} a {PER_UNIT_MAX}; 0 = nessuna ricerca.
+        </p>
       </div>
-      {add.isError && <Alert tone="danger">{errorMessage(add.error)}</Alert>}
-      <Button type="submit" className="self-start" disabled={add.isPending || (files.length === 0 && webSearch === 0)}>
+      {searching && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-medium">Unità in cui cercare</legend>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="unit-scope" checked={scope === 'all'} onChange={() => setScope('all')} />
+              Tutte le unità
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="unit-scope" checked={scope === 'some'} onChange={() => setScope('some')} />
+              Scegli le unità
+            </label>
+          </div>
+          {scope === 'some' &&
+            (outline.isError ? (
+              <Alert tone="danger">{errorMessage(outline.error)}</Alert>
+            ) : outline.data ? (
+              <>
+                <UnitPicker outline={outline.data} selected={selected} onChange={setSelected} />
+                <p className="text-xs text-muted-foreground" aria-live="polite">
+                  Unità scelte: {selected.size}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Carico le unità…</p>
+            ))}
+        </fieldset>
+      )}
+      {formError && <Alert tone="danger">{formError}</Alert>}
+      {add.isError && <SearxngError error={add.error} />}
+      <Button type="submit" className="self-start" disabled={add.isPending}>
         Aggiungi le immagini
       </Button>
     </form>

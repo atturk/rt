@@ -97,17 +97,19 @@ FAKE_TELEGRAM_UPDATES = [
 
 
 def fake_telegram_server(updates=None):
-    """Bot API finta su una porta libera di 127.0.0.1: getUpdates (rilevamento topic),
-    sendMessage e deleteMessage. Restituisce (server, base_url): basta
-    RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' -> 401. server.calls registra tutte le
-    chiamate [(metodo, corpo)], server.sent quelle accettate, server.deleted gli id cancellati
-    (un secondo deleteMessage -> 400)."""
+    """Bot API finta su una porta libera di 127.0.0.1: getUpdates (rilevamento topic) e i
+    metodi di invio (sendMessage, sendPoll, deleteMessage, ...). Restituisce (server, base_url):
+    basta RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' -> 401. server.calls registra tutte
+    le chiamate [(metodo, corpo)], server.sent quelle accettate, server.deleted gli id
+    cancellati (un secondo deleteMessage -> 400)."""
     import copy
+    import itertools
     import json as _json
     import threading
     import time
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     payload = FAKE_TELEGRAM_UPDATES if updates is None else updates
+    message_ids = itertools.count(100)
 
     def dated():
         now = int(time.time())
@@ -134,16 +136,16 @@ def fake_telegram_server(updates=None):
 
         def do_POST(self):  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
-            body = _json.loads(self.rfile.read(length) or b"{}")
+            raw = self.rfile.read(length) if length else b""
+            try:
+                body = _json.loads(raw) if raw else {}
+            except ValueError:
+                body = {}
             method = self.path.rsplit("/", 1)[-1]
             server.calls.append((method, body))
             if "rifiutato" in self.path:
                 return self._reply(401, {"ok": False, "error_code": 401, "description": "Unauthorized"})
             server.sent.append((method, body))
-            if method == "sendMessage":
-                count = sum(1 for m, _ in server.sent if m == "sendMessage")
-                return self._reply(200, {"ok": True, "result": {"message_id": 1000 + count, "chat": CHAT,
-                                                                "text": body.get("text")}})
             if method == "deleteMessage":
                 key = (str(body.get("chat_id")), int(body.get("message_id")))
                 if key in server.deleted:
@@ -151,7 +153,15 @@ def fake_telegram_server(updates=None):
                                              "description": "Bad Request: message to delete not found"})
                 server.deleted.add(key)
                 return self._reply(200, {"ok": True, "result": True})
-            self._reply(404, {"ok": False, "error_code": 404, "description": "Not Found"})
+            if method == "editMessageReplyMarkup":
+                return self._reply(200, {"ok": True, "result": True})
+            message_id = next(message_ids)
+            result = {"message_id": message_id}
+            if method == "sendMessage":
+                result.update(chat=CHAT, text=body.get("text"))
+            if method == "sendPoll":
+                result["poll"] = {"id": f"poll-{message_id}"}
+            self._reply(200, {"ok": True, "result": result})
 
         def log_message(self, *args):
             pass

@@ -329,6 +329,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/document/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Anteprima e controllo del Markdown modificato, senza salvare (funzione beta) */
+        post: operations["check_document_api_v1_lessons__lesson_id__document_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/document/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Salva l'anteprima modificata nella bozza: testo, titoli, timecode, immagini (funzione beta) */
+        put: operations["put_document_draft_api_v1_lessons__lesson_id__document_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/export": {
         parameters: {
             query?: never;
@@ -588,6 +622,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/recall/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sessione in corso qui e su Telegram, ultimo riepilogo e ultima richiesta al bot */
+        get: operations["session_state_api_v1_lessons__lesson_id__recall_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/recall/session/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Termina la sessione in corso nella web app e ne salva il riepilogo (404 se non ce n'è una) */
+        post: operations["end_session_api_v1_lessons__lesson_id__recall_session_end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/recall/skip": {
         parameters: {
             query?: never;
@@ -605,6 +673,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/recall/telegram/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chiede al bot di avviare il recall nel topic della materia (l'esito arriva in /recall/session) */
+        post: operations["telegram_start_api_v1_lessons__lesson_id__recall_telegram_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/recall/vote": {
         parameters: {
             query?: never;
@@ -616,6 +701,40 @@ export interface paths {
         put?: never;
         /** Voto su una domanda (👍 👎 ⚡) */
         post: operations["vote_api_v1_lessons__lesson_id__recall_vote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bot pronto per il recall (configurato e in esecuzione) e sessioni in corso su Telegram */
+        get: operations["telegram_status_api_v1_recall_telegram_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/telegram/sessions/{session_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic che è stata interrotta dall'app */
+        post: operations["telegram_stop_api_v1_recall_telegram_sessions__session_id__stop_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -718,6 +837,23 @@ export interface paths {
         put?: never;
         /** Prova connessione e modello con una chiamata minima (anche prima di salvarli) */
         post: operations["post_model_test_api_v1_settings_models_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Nasconde o rimostra un avviso della web ('Non mostrare più'), per tutti i browser */
+        put: operations["put_notice_api_v1_settings_notices_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1089,11 +1225,6 @@ export interface components {
         /** Body_add_images_api_v1_lessons__lesson_id__images_post */
         Body_add_images_api_v1_lessons__lesson_id__images_post: {
             /**
-             * Carousel
-             * @default false
-             */
-            carousel: boolean;
-            /**
              * Files
              * @description PDF o immagini
              */
@@ -1104,8 +1235,13 @@ export interface components {
              */
             mock: boolean;
             /**
+             * Units
+             * @description Unità per cui cercare sul web (id dell'outline); vuoto = tutte
+             */
+            units?: string[] | null;
+            /**
              * Web Search
-             * @description Immagini da cercare sul web
+             * @description Immagini da cercare sul web per ogni unità
              */
             web_search?: number | null;
         };
@@ -1303,6 +1439,62 @@ export interface components {
             message_id: number;
             /** Reason */
             reason: string;
+        };
+        /** DocumentEditCheck */
+        DocumentEditCheck: {
+            /**
+             * Errors
+             * @description Errori che impedirebbero il salvataggio
+             */
+            errors: components["schemas"]["DocumentEditProblem"][];
+            /**
+             * Html
+             * @description HTML sanificato del Markdown in modifica
+             */
+            html: string;
+        };
+        /** DocumentEditIn */
+        DocumentEditIn: {
+            /**
+             * Markdown
+             * @description Markdown dell'anteprima modificato (senza frontmatter)
+             */
+            markdown: string;
+        };
+        /** DocumentEditProblem */
+        DocumentEditProblem: {
+            /**
+             * Line
+             * @description Riga del Markdown (da 1), se l'errore ne ha una
+             */
+            line?: number | null;
+            /** Message */
+            message: string;
+        };
+        /** DocumentEditResult */
+        DocumentEditResult: {
+            /** Build Reason */
+            build_reason: string;
+            /**
+             * Build Status
+             * @description Stato del documento finale dopo il salvataggio (STALE se va ricreato)
+             */
+            build_status: string;
+            /**
+             * Changed
+             * @description False se il Markdown era uguale all'anteprima
+             */
+            changed: boolean;
+            /**
+             * Orphan Issues
+             * @description Issue il cui testo non è più nella bozza
+             */
+            orphan_issues: string[];
+            /**
+             * Units Changed
+             * @description Unità il cui testo è cambiato nella bozza
+             */
+            units_changed: string[];
         };
         /** DocumentSection */
         DocumentSection: {
@@ -1915,6 +2107,27 @@ export interface components {
              */
             status_code?: number | null;
         };
+        /** NoticeIn */
+        NoticeIn: {
+            /**
+             * Dismissed
+             * @default true
+             */
+            dismissed: boolean;
+            /**
+             * Notice
+             * @enum {string}
+             */
+            notice: "preview_edit_beta" | "preview_edit_issues";
+        };
+        /** NoticeSettings */
+        NoticeSettings: {
+            /**
+             * Dismissed
+             * @description Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)
+             */
+            dismissed: string[];
+        };
         /** Notification */
         Notification: {
             /**
@@ -2158,10 +2371,85 @@ export interface components {
             /** Unit Ids */
             unit_ids: string[];
         };
+        /** RecallSessionInfo */
+        RecallSessionInfo: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "web" | "telegram";
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Ended By
+             * @description web | telegram | app
+             */
+            ended_by?: string | null;
+            /** Id */
+            id: number;
+            /** Lesson Id */
+            lesson_id?: number | null;
+            /**
+             * Lesson Title
+             * @default
+             */
+            lesson_title: string;
+            /** Qtype */
+            qtype?: string | null;
+            /**
+             * Questions
+             * @description Domande chieste finora dalla web app
+             * @default 0
+             */
+            questions: number;
+            /** Started At */
+            started_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "ended" | "interrupted";
+            /** @description Riepilogo salvato alla chiusura */
+            summary?: components["schemas"]["RecallSummary"] | null;
+        };
+        /** RecallSessionState */
+        RecallSessionState: {
+            /** @description Ultima richiesta al bot per questa lezione */
+            command?: components["schemas"]["TelegramCommandInfo"] | null;
+            /** @description Ultima sessione web chiusa, con il riepilogo */
+            last?: components["schemas"]["RecallSessionInfo"] | null;
+            /** @description Sessione in corso su Telegram per questa lezione */
+            telegram?: components["schemas"]["RecallSessionInfo"] | null;
+            /** @description Sessione in corso nella web app */
+            web?: components["schemas"]["RecallSessionInfo"] | null;
+        };
         /** RecallSkip */
         RecallSkip: {
             /** Question Id */
             question_id: string;
+        };
+        /** RecallSummary */
+        RecallSummary: {
+            /**
+             * Answered
+             * @description Risposte date
+             */
+            answered: number;
+            /**
+             * Correct
+             * @description Quiz con la risposta giusta
+             */
+            correct: number;
+            /**
+             * Questions
+             * @description Domande poste nella sessione
+             */
+            questions: number;
+            /**
+             * Quiz Answered
+             * @description Quiz a cui si è risposto
+             */
+            quiz_answered: number;
         };
         /** RecallVote */
         RecallVote: {
@@ -2286,6 +2574,7 @@ export interface components {
             data_dir?: string | null;
             /** Lessons Root */
             lessons_root?: string | null;
+            notices: components["schemas"]["NoticeSettings"];
             /**
              * Phases
              * @description Modello assegnato a ciascuna delle sei fasi LLM
@@ -2315,6 +2604,27 @@ export interface components {
             web_search: components["schemas"]["WebSearchSettings"];
             worker: components["schemas"]["WorkerSettings"];
         };
+        /** TelegramCommandInfo */
+        TelegramCommandInfo: {
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "start_recall" | "stop_recall";
+            /** Processed At */
+            processed_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "done" | "failed";
+        };
         /** TelegramIn */
         TelegramIn: {
             /**
@@ -2340,6 +2650,38 @@ export interface components {
             topics?: {
                 [key: string]: number;
             };
+        };
+        /** TelegramRecallStart */
+        TelegramRecallStart: {
+            /**
+             * Mock
+             * @default false
+             */
+            mock: boolean;
+            /**
+             * Qtype
+             * @default quiz
+             * @enum {string}
+             */
+            qtype: "quiz" | "mirata" | "vasta";
+        };
+        /** TelegramRecallStatus */
+        TelegramRecallStatus: {
+            /**
+             * Configured
+             * @description Token e chat del bot salvati
+             */
+            configured: boolean;
+            /**
+             * Running
+             * @description Bot in esecuzione
+             */
+            running: boolean;
+            /**
+             * Sessions
+             * @description Sessioni di recall in corso su Telegram, per tutte le lezioni
+             */
+            sessions: components["schemas"]["RecallSessionInfo"][];
         };
         /** TelegramSettings */
         TelegramSettings: {
@@ -3784,6 +4126,150 @@ export interface operations {
             };
         };
     };
+    check_document_api_v1_lessons__lesson_id__document_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditCheck"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_document_draft_api_v1_lessons__lesson_id__document_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditResult"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     export_lesson_api_v1_lessons__lesson_id__export_get: {
         parameters: {
             query?: {
@@ -4926,6 +5412,142 @@ export interface operations {
             };
         };
     };
+    session_state_api_v1_lessons__lesson_id__recall_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallSessionState"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    end_session_api_v1_lessons__lesson_id__recall_session_end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallSessionInfo"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     skip_api_v1_lessons__lesson_id__recall_skip_post: {
         parameters: {
             query?: never;
@@ -4998,6 +5620,78 @@ export interface operations {
             };
         };
     };
+    telegram_start_api_v1_lessons__lesson_id__recall_telegram_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramRecallStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramCommandInfo"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     vote_api_v1_lessons__lesson_id__recall_vote_post: {
         parameters: {
             query?: never;
@@ -5021,6 +5715,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    telegram_status_api_v1_recall_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramRecallStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    telegram_stop_api_v1_recall_telegram_sessions__session_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallSessionInfo"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5435,6 +6261,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_notice_api_v1_settings_notices_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
