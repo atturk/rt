@@ -16,21 +16,21 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 |---|---|---|---|---|---|
 | `rt run` (audio o cartella, `--mock`, `--auto-accept`, `--force`) | `POST /lessons` (`run=true`), `POST /lessons/{id}/jobs` tipo `run_pipeline` | Importazione + avvio pipeline | ✅ `test_row_run_folder_pipeline` | ✅ `test_job_writes_persist` | — |
 | `rt setup` / trascrizione | `POST /lessons` → job `ingest_audio` | Importazione con upload | ✅ `test_row_setup_audio` | ✅ `test_job_writes_persist` | — |
-| `rt prepare`, `outline`, `rewrite` (anche `--unit`), `review`, `build` singoli | `POST /lessons/{id}/jobs` tipo `run_phase` | Pulsanti per fase nella vista lezione | ✅ `test_row_single_phases`, `test_row_rewrite_single_unit` | ✅ `test_job_writes_persist` | — |
-| `validate-outline`, `validate-draft` | `GET /lessons/{id}/phases` | Stato fasi con errori leggibili | ✅ `test_row_validate_outline_and_draft` | lettura | — |
+| `rt prepare`, `outline`, `rewrite` (anche `--unit`), `review`, `build` singoli | `POST /lessons/{id}/jobs` tipo `run_phase` | Pulsanti per fase nella vista lezione | ✅ `test_row_single_phases`, `test_row_rewrite_single_unit` | ✅ `test_job_writes_persist` | ✅ `lesson-view.spec.ts` (avvio di una fase) |
+| `validate-outline`, `validate-draft` | `GET /lessons/{id}/phases` | Stato fasi con errori leggibili | ✅ `test_row_validate_outline_and_draft` | lettura | ✅ `lesson-view.spec.ts` (fasi e validazioni) |
 | Approvazione/revisione outline | `GET /outline`, `POST /outline/approve`, `/outline/revise` | Vista outline ad albero | ✅ `test_row_outline_revise_and_approve` | ✅ `test_outline_and_review_decisions_persist` | — |
 | Review interattiva delle issue (accetta, rifiuta, modifica, annulla) | `GET /issues`, `POST /issues/{id}/decision`, `POST /decisions/undo` | Review contestuale | ✅ `test_row_interactive_review` | ✅ `test_outline_and_review_decisions_persist` | — |
 | `rt add-images` | `POST /lessons/{id}/images` → job `add_images` | Sezione immagini della lezione | ✅ `test_row_add_images` | ✅ `test_images_job_persists` | — |
 | `rt recall` (quiz, mirata, vasta; risposta scritta o vocale) | `GET /recall`, `/recall/history`, `POST /recall/generate`, `/next`, `/answer`, `/answer-voice`, `/vote`, `/skip` | Sessione di recall | ✅ `test_row_recall_quiz_and_open_answer` | ✅ `test_recall_writes_persist` | — |
 | `rt export` (Markdown finale con immagini, `--all`, `--zip`) | `GET /lessons/{id}/export` (`format=markdown\|zip`, `scope=final\|all`) | Download dalla vista lezione | ✅ `test_row_export` | lettura | — |
-| `rt status`, `rt cost` | `GET /lessons/{id}`, `GET /costs` | Dashboard e vista lezione | ✅ `test_row_status_and_cost` | lettura | — |
+| `rt status`, `rt cost` | `GET /lessons/{id}`, `GET /costs` | Dashboard e vista lezione | ✅ `test_row_status_and_cost` | lettura | ✅ `foundation.spec.ts` (dashboard), `lesson-view.spec.ts` (fasi, costi) |
 | `rt config` (provider, chiavi, modelli per le sei fasi, pricing, Telegram, trascrizione, lessons_root) | endpoint di RT4-E4 (`/settings/...`, `/secrets/{name}`) | Impostazioni | ✅ `test_row_config_written_by_api_is_read_by_cli` | ✅ `test_settings_writes_persist` | — |
 | `rt telegram-daemon` (avvio, stato) | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato del bot nelle impostazioni | ✅ `test_row_telegram_daemon_status` | PID file del demone | — |
 | `rt -u` (aggiornamento) | fuori scope per la web | — | — | — | — |
 
 Sessione del browser (login e logout): `test_browser_session_persists_and_logout_revokes`;
 nella SPA (RT4-F1) accesso con link monouso o token, logout e dashboard con filtri sono in
-`frontend/e2e/foundation.spec.ts`. La colonna "SPA (F7)" si riempie con le schermate F2-F6.
+`frontend/e2e/foundation.spec.ts`. La colonna "SPA (F7)" si riempie con le schermate F2-F6 (test in `frontend/e2e/`).
 
 ## Differenze trovate e corrette con i test di parità
 

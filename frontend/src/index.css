@@ -81,3 +81,84 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* Documento della lezione (HTML dall'API, stile come la web Gradio). */
+.rt-document {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.rt-document h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  letter-spacing: -0.01em;
+}
+.rt-document h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 1.6rem 0 0.6rem;
+}
+.rt-document h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.4rem;
+  scroll-margin-top: 1rem;
+}
+.rt-document p,
+.rt-document ul,
+.rt-document ol,
+.rt-document blockquote {
+  margin: 0 0 0.75rem;
+}
+.rt-document ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.rt-document ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.rt-document blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.8rem;
+  color: var(--muted-foreground);
+}
+.rt-document code {
+  background: var(--muted);
+  border-radius: 4px;
+  padding: 0 0.25rem;
+}
+.rt-document img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+.rt-document a {
+  text-decoration: underline;
+}
+.rt-document [data-unit-timecode],
+.rt-document > h1:first-child {
+  /* timecode sostituito dal pulsante; titolo già nell'intestazione della pagina */
+  display: none;
+}
+.rt-document .rt-timecode {
+  margin-left: 0.4rem;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  padding: 1px 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  vertical-align: 1px;
+}
+.rt-document .rt-timecode:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.rt-document .rt-timecode:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.rt-document .rt-unit-active {
+  background: color-mix(in srgb, var(--warning-soft) 70%, transparent);
+  box-shadow: -10px 0 0 color-mix(in srgb, var(--warning-soft) 70%, transparent);
+}
