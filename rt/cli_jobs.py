@@ -18,6 +18,7 @@ def configure_worker_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--types", default=None, help="Tipi di job da eseguire, separati da virgola (default: tutti)")
     p.add_argument("--lease", type=int, default=None, help="Durata del lease in secondi (default 60)")
     p.add_argument("--poll", type=float, default=1.0, help="Attesa tra due controlli della coda vuota (secondi)")
+    p.add_argument("--mock", action="store_true", help="Esegue ogni job in mock (LLM e risposte vocali): per i test")
 
 
 def configure_jobs_parser(p: argparse.ArgumentParser) -> None:
@@ -60,6 +61,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
         "lease_seconds": args.lease or DEFAULT_LEASE_SECONDS,
         "poll_interval": args.poll,
         "on_message": lambda msg: print(msg, flush=True),
+        "mock": bool(getattr(args, "mock", False)),
     }
     if args.once:
         done = Worker(_queue(), **kwargs).run(once=True)
@@ -67,7 +69,8 @@ def cmd_worker(args: argparse.Namespace) -> None:
             print("Nessun job in coda.")
         return
     _stop_on_signals()
-    print(f"👷 Worker RT avviato (pid {os.getpid()}, job: {', '.join(types)}). Ctrl+C per fermarlo.", flush=True)
+    mode = " in mock" if kwargs["mock"] else ""
+    print(f"👷 Worker RT avviato{mode} (pid {os.getpid()}, job: {', '.join(types)}). Ctrl+C per fermarlo.", flush=True)
     try:
         run_workers(_queue, concurrency=max(1, args.concurrency), **kwargs)
     except KeyboardInterrupt:

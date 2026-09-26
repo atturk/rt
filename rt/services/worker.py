@@ -8,6 +8,7 @@ Un job si esegue tramite un handler registrato per il suo tipo (rt/services/job_
 che riceve JobInfo e RunContext e restituisce un JobOutcome. Gli eventi del RunContext
 diventano righe di job_events (JobEventReporter), così CLI e API seguono il progresso.
 """
+import dataclasses
 import logging
 import os
 import platform
@@ -37,6 +38,17 @@ class JobOutcome:
 
 JobHandler = Callable[[JobInfo, RunContext], JobOutcome]
 _HANDLERS: Dict[str, JobHandler] = {}
+
+
+def mock_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """'rt worker --mock': ogni job gira con l'LLM (e la STT delle risposte vocali) in mock,
+    qualunque cosa chieda il client. Serve ai test end-to-end della SPA."""
+    out = dict(payload or {})
+    out["mock"] = True
+    out["force_mock"] = True
+    if isinstance(out.get("options"), dict):
+        out["options"] = {**out["options"], "mock": True}
+    return out
 
 
 def register_handler(job_type: str, handler: JobHandler) -> None:
@@ -128,8 +140,9 @@ class Worker:
     def __init__(self, queue: DbJobQueue, worker_id: Optional[str] = None,
                  job_types: Optional[Sequence[str]] = None, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                  poll_interval: float = 1.0, handlers: Optional[Dict[str, JobHandler]] = None,
-                 on_message: Optional[Callable[[str], None]] = None):
+                 on_message: Optional[Callable[[str], None]] = None, mock: bool = False):
         self.queue = queue
+        self.mock = mock
         self.handlers = dict(handlers) if handlers is not None else registered_handlers()
         self.job_types = list(job_types) if job_types else sorted(self.handlers)
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
@@ -177,6 +190,8 @@ class Worker:
         return self.queue.get(job.id)
 
     def execute(self, job: JobInfo) -> None:
+        if self.mock:
+            job = dataclasses.replace(job, payload=mock_payload(job.payload))
         handler = self.handlers.get(job.type)
         if handler is None:
             self.queue.finish(job.id, self.worker_id, JobState.FAILED, error=f"Tipo di job sconosciuto: {job.type}")

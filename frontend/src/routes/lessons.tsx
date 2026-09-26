@@ -1,4 +1,4 @@
-import { Download, LayoutDashboard } from 'lucide-react'
+import { Brain, Download, Images, LayoutDashboard } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
@@ -150,6 +150,18 @@ export function LessonPage() {
                 {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
               </p>
             </div>
+            <div className="flex flex-wrap gap-2" aria-label="Studio">
+              {l.phases.rewrite === 'VALID' && (
+                <Link className={linkButton} to={`/lezioni/${id}/recall`}>
+                  <Brain className="size-4" aria-hidden /> Recall
+                </Link>
+              )}
+              {l.phases.build === 'VALID' && (
+                <Link className={linkButton} to={`/lezioni/${id}/immagini`}>
+                  <Images className="size-4" aria-hidden /> Immagini
+                </Link>
+              )}
+            </div>
             {document.data?.final && (
               <div className="flex flex-wrap gap-2" aria-label="Scarica">
                 <a className={linkButton} href={`/api/v1/lessons/${id}/export?format=markdown`} download>
@@ -203,7 +215,7 @@ export function LessonPage() {
                   {!document.data.final && (
                     <Alert className="mb-4">Anteprima dalla bozza: il documento finale arriva con la fase Documento (build).</Alert>
                   )}
-                  <DocumentView document={document.data} hasAudio={l.has_audio} />
+                  <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
                 </>
               )}
             </Card>

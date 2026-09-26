@@ -282,7 +282,7 @@ export function ReviewPage() {
           <div className="flex min-w-0 flex-col gap-4">
             {l.has_audio && <AudioPlayer lessonId={id} sections={document.data?.sections ?? []} />}
             <Card className="max-h-[75vh] overflow-y-auto px-6 py-5">
-              {document.data && <DocumentView document={document.data} hasAudio={l.has_audio} highlightText={claim} highlightUnit={unitOfClaim} />}
+              {document.data && <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} highlightText={claim} highlightUnit={unitOfClaim} />}
             </Card>
           </div>
           <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">

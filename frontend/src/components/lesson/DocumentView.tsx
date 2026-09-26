@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react'
 
 import type { Schemas } from '@/api/client'
 import { activeUnit } from '@/lib/audio'
+import { withImageUrls } from '@/lib/images'
 import { useLessonAudio } from './audio'
 
 type Props = {
   document: Schemas['LessonDocument']
   hasAudio: boolean
+  lessonId: number
   /** Passaggio da evidenziare (review) e unità in cui cercarlo. */
   highlightText?: string | null
   highlightUnit?: string | null
@@ -54,7 +56,7 @@ function markText(elements: Element[], text: string): HTMLElement | null {
  * unità marcate (data-unit-id). I timecode cliccabili vengono dai secondi strutturati di
  * `sections`, non dal testo; il blocco dell'unità in ascolto si evidenzia.
  */
-export function DocumentView({ document: doc, hasAudio, highlightText, highlightUnit }: Props) {
+export function DocumentView({ document: doc, hasAudio, lessonId, highlightText, highlightUnit }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
@@ -117,7 +119,7 @@ export function DocumentView({ document: doc, hasAudio, highlightText, highlight
         const target = (e.target as HTMLElement).closest<HTMLElement>('[data-seconds]')
         if (target) seek(Number(target.dataset.seconds))
       }}
-      dangerouslySetInnerHTML={{ __html: doc.html }}
+      dangerouslySetInnerHTML={{ __html: withImageUrls(doc.html, lessonId) }}
     />
   )
 }

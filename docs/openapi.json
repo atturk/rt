@@ -1263,6 +1263,64 @@
         "title": "LessonDocument",
         "type": "object"
       },
+      "LessonImage": {
+        "properties": {
+          "alt_text": {
+            "default": "",
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "in_document": {
+            "description": "True se il documento finale la richiama",
+            "title": "In Document",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Nome del file in assets/images",
+            "title": "Name",
+            "type": "string"
+          },
+          "slide_title": {
+            "default": "",
+            "title": "Slide Title",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "description": "Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>",
+            "title": "Source",
+            "type": "string"
+          },
+          "url": {
+            "description": "Percorso dell'API che serve il file",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "in_document"
+        ],
+        "title": "LessonImage",
+        "type": "object"
+      },
+      "LessonImages": {
+        "properties": {
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/LessonImage"
+            },
+            "title": "Images",
+            "type": "array"
+          }
+        },
+        "required": [
+          "images"
+        ],
+        "title": "LessonImages",
+        "type": "object"
+      },
       "LessonSummary": {
         "properties": {
           "argomenti": {
@@ -3604,6 +3662,100 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/assets/images/{name}": {
+      "get": {
+        "operationId": "get_image_api_v1_lessons__lesson_id__assets_images__name__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/*": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "File di un'immagine della lezione",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/audio": {
       "get": {
         "operationId": "get_audio_api_v1_lessons__lesson_id__audio_get",
@@ -4181,6 +4333,93 @@
       }
     },
     "/api/v1/lessons/{lesson_id}/images": {
+      "get": {
+        "operationId": "list_images_api_v1_lessons__lesson_id__images_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonImages"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Immagini della lezione con descrizione e presenza nel documento finale",
+        "tags": [
+          "immagini"
+        ]
+      },
       "post": {
         "operationId": "add_images_api_v1_lessons__lesson_id__images_post",
         "parameters": [
