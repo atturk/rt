@@ -71,7 +71,7 @@ segreto: solo `set: true/false`.
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
-| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing; `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
+| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
 | `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
 | `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
 | `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
@@ -80,6 +80,9 @@ segreto: solo `set: true/false`.
 | `PUT /settings/phases/{job}` | Connessione e modello per outline, rewrite, review, recall, image_description, image_unit_judge | `rt config --models` |
 | `GET/PUT /settings/routes/{job}/{role}` | Route primaria, secondaria, fallback | file `config/*.yaml` |
 | `PUT /settings/pricing` | Pricing custom per provider e modello | `rt config` |
+| `POST /settings/models/test` | Prova connessione e modello (anche non salvati): chiamata minima e sincrona (prompt di poche parole, 16 token di uscita, timeout 20 s) con esito, latenza, stato HTTP ed errore del provider sanificato; con `mock` o `RT_API_MOCK=1` risponde subito senza rete | — |
+| `PUT /settings/web-search` | URL base di SearXNG (`searxng_base_url` in `general.yaml`, vuoto lo toglie); letto da `add_images` | `config/general.yaml` |
+| `POST /settings/web-search/test` | Ricerca immagini di prova su SearXNG (timeout 10 s): numero di risultati, o l'errore (anche il formato json non abilitato) | — |
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
 | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
 

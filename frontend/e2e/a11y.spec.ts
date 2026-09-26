@@ -30,6 +30,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['modelli', '/impostazioni/modelli'],
     ['chiavi', '/impostazioni/chiavi'],
     ['costi', '/impostazioni/costi'],
+    ['ricerca web', '/impostazioni/ricerca-web'],
     ['configurazione guidata', '/impostazioni/configurazione'],
     ['pagina inesistente', '/non-esiste'],
   ]

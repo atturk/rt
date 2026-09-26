@@ -687,6 +687,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/models/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prova connessione e modello con una chiamata minima (anche prima di salvarli) */
+        post: operations["post_model_test_api_v1_settings_models_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/phases/{job}": {
         parameters: {
             query?: never;
@@ -801,6 +818,40 @@ export interface paths {
         /** Motore di trascrizione */
         put: operations["put_transcription_api_v1_settings_transcription_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/web-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Ricerca web: URL base di SearXNG */
+        put: operations["put_web_search_api_v1_settings_web_search_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/web-search/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ricerca immagini di prova su SearXNG: quanti risultati tornano */
+        post: operations["post_web_search_test_api_v1_settings_web_search_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1544,6 +1595,49 @@ export interface components {
             /** Model */
             model: string;
         };
+        /** ModelTestIn */
+        ModelTestIn: {
+            /** Connection */
+            connection: string;
+            /**
+             * Mock
+             * @default false
+             */
+            mock: boolean;
+            /** Model */
+            model: string;
+        };
+        /** ModelTestOut */
+        ModelTestOut: {
+            /** Connection */
+            connection: string;
+            /**
+             * Latency Ms
+             * @description Durata della chiamata in millisecondi
+             */
+            latency_ms?: number | null;
+            /**
+             * Message
+             * @description Esito leggibile, anche l'errore del provider (sanificato)
+             */
+            message: string;
+            /** Model */
+            model: string;
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            /**
+             * Reply
+             * @description Inizio della risposta del modello
+             */
+            reply?: string | null;
+            /**
+             * Status Code
+             * @description Stato HTTP della risposta del provider
+             */
+            status_code?: number | null;
+        };
         /** Outline */
         Outline: {
             /** Approval */
@@ -1881,6 +1975,7 @@ export interface components {
             setup_required: boolean;
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
+            web_search: components["schemas"]["WebSearchSettings"];
         };
         /** TelegramIn */
         TelegramIn: {
@@ -1980,6 +2075,47 @@ export interface components {
              * @description False mentre il calcolo è in corso: riprova tra poco
              */
             ready: boolean;
+        };
+        /** WebSearchIn */
+        WebSearchIn: {
+            /**
+             * Searxng Base Url
+             * @description Vuoto per rimuoverlo
+             * @default
+             */
+            searxng_base_url: string;
+        };
+        /** WebSearchSettings */
+        WebSearchSettings: {
+            /**
+             * Searxng Base Url
+             * @description URL base di SearXNG per la ricerca immagini web
+             */
+            searxng_base_url?: string | null;
+        };
+        /** WebSearchTestIn */
+        WebSearchTestIn: {
+            /**
+             * Mock
+             * @default false
+             */
+            mock: boolean;
+            /** Searxng Base Url */
+            searxng_base_url: string;
+        };
+        /** WebSearchTestOut */
+        WebSearchTestOut: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Results
+             * @description Immagini restituite dalla ricerca di prova
+             */
+            results: number;
         };
         /** WorkerInfo */
         WorkerInfo: {
@@ -4806,6 +4942,75 @@ export interface operations {
             };
         };
     };
+    post_model_test_api_v1_settings_models_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     put_phase_api_v1_settings_phases__job__put: {
         parameters: {
             query?: never;
@@ -5315,6 +5520,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_web_search_api_v1_settings_web_search_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSearchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_web_search_test_api_v1_settings_web_search_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSearchTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSearchTestOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

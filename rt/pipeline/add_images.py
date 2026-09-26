@@ -254,8 +254,8 @@ def fetch_web_images(
     """Cerca ed estrae immagini dal web via SearXNG."""
     if not base_url and not force_mock:
         raise ValueError(
-            "Impossibile eseguire la ricerca immagini web (--web-search): 'searxng_base_url' "
-            "non è configurato in config/general.yaml."
+            "Impossibile eseguire la ricerca immagini web: l'URL di SearXNG non è configurato "
+            "(searxng_base_url). Impostalo in Impostazioni › Ricerca web."
         )
 
     queries = build_macro_search_queries(outline)
@@ -272,10 +272,12 @@ def fetch_web_images(
                 extracted.append(ExtractedImage(image_bytes=dummy_bytes, source_label=f"websearch:{query}#{i+1}"))
         return extracted[:total_count]
 
+    search_errors: List[str] = []
     for macro_id, query in queries.items():
         try:
             web_results = search_images(base_url, query, count=count_per_macro)
-        except Exception:
+        except Exception as exc:
+            search_errors.append(str(exc))
             continue
         for res in web_results:
             try:
@@ -285,6 +287,9 @@ def fetch_web_images(
             except Exception:
                 continue
 
+    if search_errors and len(search_errors) == len(queries):
+        # Nessuna ricerca riuscita (SearXNG spento, formato json disattivato…): meglio dirlo.
+        raise ValueError(f"Ricerca immagini web non riuscita: {search_errors[-1]}")
     return extracted[:total_count]
 
 

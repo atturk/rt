@@ -1074,7 +1074,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_addimg.add_argument(
         "--web-search", nargs="?", const=5, type=int, default=None,
         help="Cerca e integra N immagini dal web via SearXNG (default 5 se il flag è usato senza valore). "
-             "Combinabile con -i. Richiede 'searxng_base_url' configurato in config/general.yaml."
+             "Combinabile con -i. Richiede l'URL di SearXNG (web: Impostazioni › Ricerca web; oppure searxng_base_url in config/general.yaml)."
     )
     p_addimg.add_argument("--carousel", action="store_true", help="Raggruppa le immagini di ogni sezione in un blocco carosello (plugin Obsidian napkin-notes) invece di righe immagine singole")
     p_addimg.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM/vision reale)")
