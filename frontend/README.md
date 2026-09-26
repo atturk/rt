@@ -47,6 +47,12 @@ sostituisci l'host con `localhost:5173`.
 - **Una area, un file di rotte.** `src/routes/<area>.tsx` esporta un `Area` (rotte sotto il
   layout autenticato e voci di menu); `src/routes/index.tsx` li elenca. Così le schermate
   delle fasi F2-F6 si sviluppano in parallelo senza toccare gli stessi file.
+- **Job ed eventi live.** `src/api/jobs.ts`: `useJobEvents` apre `GET /jobs/{id}/events`
+  con `EventSource` (unica eccezione al client generato: openapi-fetch non fa streaming; il
+  percorso resta tipizzato). Il browser riprende da solo con `Last-Event-ID`; ogni evento fa
+  rileggere il job dall'API, la fine anche lezioni e scaletta. Chi mostra l'avanzamento di un
+  job (es. la vista lezione) usa `<JobLive jobId=… />` invece del polling. Gli upload passano da
+  `xhrFetch` (`src/api/upload.ts`) per avere la barra di avanzamento, sempre con `api.POST`.
 - **Aree attuali**: `lessons` (dashboard e lezione), `recall` (`/recall`, `/lezioni/:id/recall`),
   `images` (`/immagini`, `/lezioni/:id/immagini`), `telegram` (`/bot`; il pannello
   `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni). Gli hook di un'area

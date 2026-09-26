@@ -95,12 +95,15 @@ export function useWaveform(id: number, enabled: boolean) {
   })
 }
 
-/** Job della lezione, riletti ogni 1,5 s finché uno è in coda o in esecuzione. */
+/**
+ * Job della lezione. Mentre uno è attivo li aggiornano gli eventi SSE (JobsPanel); il
+ * controllo lento resta solo come ripiego se lo stream non arriva.
+ */
 export function useLessonJobs(id: number) {
   return useQuery({
     queryKey: lessonKeys.jobs(id),
     queryFn: () => unwrap(api.GET('/api/v1/jobs', { params: { query: { lesson_id: id, limit: 10 } } })),
-    refetchInterval: (query) => (query.state.data?.some((j) => isActiveJob(j.state)) ? 1500 : false),
+    refetchInterval: (query) => (query.state.data?.some((j) => isActiveJob(j.state)) ? 10_000 : false),
   })
 }
 

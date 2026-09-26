@@ -83,10 +83,12 @@ def _configure_sqlite(engine: Engine) -> None:
         dbapi_conn.isolation_level = None
         cur = dbapi_conn.cursor()
         try:
+            # busy_timeout prima di tutto: il passaggio a WAL chiede un lock e, con più processi
+            # che aprono insieme un DB nuovo, senza attesa fallirebbe subito con 'database is locked'
+            cur.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
             if sqlite_file(str(engine.url)):
                 cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
             cur.execute("PRAGMA synchronous=NORMAL")
         finally:
             cur.close()

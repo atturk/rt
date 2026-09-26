@@ -10,6 +10,7 @@ import { DocumentView } from '@/components/lesson/DocumentView'
 import { JobsPanel } from '@/components/lesson/JobsPanel'
 import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
+import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -203,6 +204,7 @@ export function LessonPage() {
           </dl>
           {l.error && <p className="mt-2 text-xs text-danger">{l.error}</p>}
         </Card>
+        <LessonJobBanner lessonId={l.id} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex min-w-0 flex-col gap-4">
