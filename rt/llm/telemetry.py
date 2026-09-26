@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Optional, List, Dict, Any, Iterator
 from pydantic import BaseModel, Field
+from rt.storage import fs
 
 
 class LLMTelemetryRecord(BaseModel):
@@ -160,12 +161,12 @@ class TelemetryStore:
         import os
         summary_data = self.get_summary()
         target_dir = os.path.dirname(os.path.abspath(target_path))
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir, exist_ok=True)
+        if not fs.exists(target_dir):
+            fs.makedirs(target_dir, exist_ok=True)
         tmp_path = target_path + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        with fs.open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, target_path)
+        fs.replace(tmp_path, target_path)
 
 
 # Istanza singleton di telemetria globale per la sessione

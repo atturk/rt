@@ -16,6 +16,7 @@ from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.core.config import load_config
 from rt.core.lesson_paths import lesson_path
+from rt.storage import fs
 
 # -----------------------------------------------------------------------
 # Atomic write helper (same pattern as ledger.py / save_asr_issues)
@@ -23,9 +24,9 @@ from rt.core.lesson_paths import lesson_path
 
 def _atomic_write(path: str, data: dict) -> None:
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 # -----------------------------------------------------------------------
 # Recall bank persistence per lesson
@@ -41,15 +42,15 @@ def get_recall_bank_lock_path(lesson_dir: str) -> str:
 
 def recall_bank_lock(lesson_dir: str, retries: int = 30, backoff: float = 0.1, stale_sec: float = 30.0):
     from rt.core.filelock import file_lock
-    return file_lock(get_recall_bank_lock_path(lesson_dir), retries=retries, backoff=backoff, stale_sec=stale_sec)
+    return file_lock(fs.lock_path(get_recall_bank_lock_path(lesson_dir)), retries=retries, backoff=backoff, stale_sec=stale_sec)
 
 
 def load_recall_bank(lesson_dir: str) -> RecallBank:
     path = get_recall_bank_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return RecallBank()
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return RecallBank.model_validate(data)
     except Exception:
@@ -247,10 +248,10 @@ def get_fewshot_path(state_dir: Optional[str] = None) -> str:
 
 def _load_fewshot(state_dir: Optional[str] = None) -> dict:
     path = get_fewshot_path(state_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return {"quiz": [], "mirata": [], "vasta": []}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {"quiz": [], "mirata": [], "vasta": []}

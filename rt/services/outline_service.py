@@ -13,6 +13,7 @@ from rt.core.idempotency import compute_file_sha256
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.outline import get_outline_path, load_outline, run_outline_revision
 from rt.services.context import RunContext, phase_scope
+from rt.storage import fs
 
 APPROVAL_FILE = "outline_approval.json"
 
@@ -46,15 +47,15 @@ def get_outline_review(lesson_dir: str) -> Dict[str, Any]:
 
 def _outline_hash(lesson_dir: str) -> Optional[str]:
     path = get_outline_path(lesson_dir)
-    return compute_file_sha256(path) if os.path.isfile(path) else None
+    return compute_file_sha256(path) if fs.isfile(path) else None
 
 
 def get_outline_approval(lesson_dir: str) -> Optional[Dict[str, Any]]:
     path = lesson_path(lesson_dir, APPROVAL_FILE)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return None
@@ -80,9 +81,9 @@ def approve_outline(lesson_dir: str, actor: str = "user", channel: str = "cli") 
     }
     path = lesson_path(lesson_dir, APPROVAL_FILE)
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    with fs.open(tmp, "w", encoding="utf-8") as f:
         json.dump(record, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    fs.replace(tmp, path)
     # Un job della coda fermo su questa approvazione riparte da solo (fase D).
     from rt.services.jobs import resume_waiting_jobs
     resume_waiting_jobs(lesson_dir, "outline_approval")

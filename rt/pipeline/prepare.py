@@ -30,6 +30,7 @@ from rt.core.idempotency import (
 )
 from rt.core.lesson_paths import lesson_path
 from rt.services.context import RunContext, phase_scope
+from rt.storage import fs
 
 
 def run_prepare(lesson_dir: str, force: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
@@ -40,11 +41,11 @@ def run_prepare(lesson_dir: str, force: bool = False, ctx: "Optional[RunContext]
 
 def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione."""
-    if not os.path.isdir(lesson_dir):
+    if not fs.isdir(lesson_dir):
         raise FileNotFoundError(f"Directory della lezione non trovata: '{lesson_dir}'")
 
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-    if not os.path.isfile(yaml_path):
+    if not fs.isfile(yaml_path):
         raise FileNotFoundError(f"File critico 'info.yaml' mancante in '{lesson_dir}'")
 
     info = read_info_yaml(yaml_path)
@@ -63,7 +64,7 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
         lesson_path(lesson_dir, "segments_raw.json"),
         lesson_path(lesson_dir, "transcript.json"),
     ]
-    has_valid_json = any(os.path.isfile(jc) and os.path.getsize(jc) > 10 for jc in json_candidates)
+    has_valid_json = any(fs.isfile(jc) and fs.getsize(jc) > 10 for jc in json_candidates)
     if current_state_raw in (WorkflowState.METADATA_ONLY.value, "in_attesa_di_trascrizione") and not has_valid_json:
         raise ValueError(
             f"Trascrizione non disponibile per '{lesson_dir}': la lezione è in stato METADATA_ONLY "
@@ -97,13 +98,13 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     source_path = None
     
     for jc in json_candidates:
-        if os.path.isfile(jc) and os.path.getsize(jc) > 10:
+        if fs.isfile(jc) and fs.getsize(jc) > 10:
             source_type = "json"
             source_path = jc
             break
             
     if not source_path:
-        if os.path.isfile(md_path) and os.path.getsize(md_path) > 10:
+        if fs.isfile(md_path) and fs.getsize(md_path) > 10:
             source_type = "markdown"
             source_path = md_path
         else:
@@ -116,7 +117,7 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     if source_type == "json":
         segments = parse_segments_from_json(source_path)
         # Se esiste anche il Markdown, verifichiamo la coerenza per trasparenza diagnostica
-        if os.path.isfile(md_path):
+        if fs.isfile(md_path):
             try:
                 md_segs = parse_segments_from_markdown(md_path)
                 if md_segs and len(md_segs) != len(segments):

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from rt.services.context import RunContext
 from rt.services.jobs import JobInfo, JobState, json_safe
 from rt.services.worker import JobOutcome, _HANDLERS, register_handler
+from rt.storage import fs
 
 REWRITE_UNIT = "rewrite_unit"
 RECALL_BATCH = "recall_batch"
@@ -46,7 +47,7 @@ def _cleanup_upload(payload: Dict[str, Any]) -> None:
     import shutil
     upload_dir = payload.get("upload_dir")
     if upload_dir and os.path.basename(os.path.dirname(upload_dir)) == "uploads":
-        shutil.rmtree(upload_dir, ignore_errors=True)
+        fs.rmtree(upload_dir, ignore_errors=True)
 
 
 def with_upload_cleanup(handler: Callable[[JobInfo, RunContext], JobOutcome]):

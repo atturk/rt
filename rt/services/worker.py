@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, Optional, Sequence
 from rt.services.context import CancelToken, RunCancelled, RunContext
 from rt.services.events import Event, PhaseCompleted, PhaseProgress, PhaseStarted
 from rt.services.jobs import DEFAULT_LEASE_SECONDS, DbJobQueue, JobInfo, JobState
+from rt.storage import fs
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ class Worker:
             self.queue.finish(job.id, self.worker_id, JobState.FAILED, error=f"Tipo di job sconosciuto: {job.type}")
             return
         lock = None
-        if job.lesson_path and os.path.isdir(job.lesson_path):
+        if job.lesson_path and fs.isdir(job.lesson_path):
             from rt.core.process_lock import LessonBusy, lesson_work_lock
             lock = lesson_work_lock(job.lesson_path)
             try:

@@ -44,6 +44,7 @@ from rt.pipeline.review import run_review, load_science_issues
 from rt.tui.issue_review import run_interactive_review
 from rt.pipeline.ledger import load_ledger
 from rt.pipeline.build import run_build
+from rt.storage import fs
 
 
 
@@ -51,9 +52,9 @@ def _has_real_config_source() -> bool:
     """Vero se esiste una sorgente di configurazione reale (cartella config/) nella
     working directory corrente o nella project root reale. Usata dai comandi CLI che
     eseguono lavoro LLM reale per evitare di procedere silenziosamente con i default hardcoded."""
-    if os.path.isdir(os.path.join(os.getcwd(), "config")):
+    if fs.isdir(os.path.join(os.getcwd(), "config")):
         return True
-    return os.path.isdir(os.path.join(_default_project_root(), "config"))
+    return fs.isdir(os.path.join(_default_project_root(), "config"))
 
 
 def _job_has_configured_route(job_cfg) -> bool:
@@ -413,7 +414,7 @@ def cmd_status(args):
     from rt.core.models import ScienceType
     lesson_dir = args.lesson_dir
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-    info = read_info_yaml(yaml_path) if os.path.isfile(yaml_path) else {}
+    info = read_info_yaml(yaml_path) if fs.isfile(yaml_path) else {}
     manifest = load_manifest(lesson_dir)
     
     ledger = load_ledger(lesson_dir)
@@ -508,6 +509,52 @@ def cmd_cost(args: argparse.Namespace) -> None:
         print(render_cost_report(cost_data, split=split))
 
 
+def _resolve_lesson_arg(value: str) -> str:
+    """Lezione indicata come percorso, id del database o nome sotto lessons_root."""
+    from rt.core.config import load_config
+    if value.isdigit() and not fs.exists(value):
+        from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
+        try:
+            return resolve_lesson_dir(int(value))
+        except (LessonNotFound, RuntimeError):
+            pass
+    path = os.path.abspath(os.path.expanduser(value))
+    if fs.isdir(path):
+        return path
+    root = load_config().telegram.lessons_root
+    if root:
+        candidate = os.path.join(os.path.abspath(os.path.expanduser(root)), value)
+        if fs.isdir(candidate):
+            return candidate
+    return path
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    """Esporta il Markdown finale (con immagini) o tutti i dati della lezione."""
+    from rt.storage.export import ExportError, export_to_dir, export_zip
+    lesson_dir = _resolve_lesson_arg(args.lesson)
+    if not fs.isdir(lesson_dir):
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    scope = "all" if args.all else "final"
+    out_dir = os.path.abspath(os.path.expanduser(args.output or os.getcwd()))
+    try:
+        if args.zip:
+            os.makedirs(out_dir, exist_ok=True)
+            target = os.path.join(out_dir, f"{os.path.basename(lesson_dir)}.zip")
+            with open(target, "wb") as f:
+                f.write(export_zip(lesson_dir, scope))
+            written = [target]
+        else:
+            written = export_to_dir(lesson_dir, out_dir, scope)
+    except ExportError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"✅ Esportati {len(written)} file:")
+    for path in written:
+        print(f"  - {path}")
+
+
 class CliDecisionProvider:
     """Decisioni umane di 'rt run' chieste con le UI da terminale (Textual/input) o Telegram."""
 
@@ -586,7 +633,7 @@ def cmd_run(args):
     from rt.core.process_lock import LessonBusy, lesson_work_lock
     # Stesso lock per lezione del worker: 'rt run' e un job in coda non lavorano insieme
     # sulla stessa cartella (per l'audio la cartella nasce durante il setup).
-    lock = lesson_work_lock(first_input) if not is_audio and os.path.isdir(first_input) else nullcontext()
+    lock = lesson_work_lock(first_input) if not is_audio and fs.isdir(first_input) else nullcontext()
     try:
         with lock:
             result = run_pipeline(raw_inputs, options, ctx, decisions=CliDecisionProvider(), notifiers=[TelegramBuildNotifier()])
@@ -658,6 +705,9 @@ def cmd_db(args: argparse.Namespace) -> None:
         print("Database disattivato (RT_DATABASE_URL=off o database_url: off).")
         sys.exit(1)
     shown = sqlite_file(url) or url.split("@")[-1]
+    if args.db_command == "migrate-storage":
+        _cmd_db_migrate_storage(args)
+        return
     if args.db_command in ("sync", "check"):
         _cmd_db_sync_or_check(args, url, shown)
         return
@@ -675,13 +725,48 @@ def cmd_db(args: argparse.Namespace) -> None:
         print(f"Database: {shown}\nRevisione: {current_revision(db.engine)} (ultima: {head_revision()})")
 
 
+def _cmd_db_migrate_storage(args: argparse.Namespace) -> None:
+    """Sposta le lezioni in cartella nel database (testi) e in media/ (audio e immagini)."""
+    from rt.core.config import load_config
+    from rt.storage.migrate import migrate_storage
+
+    root = args.lessons_root or load_config().telegram.lessons_root
+    report = migrate_storage(root, dry_run=args.dry_run, on_progress=print)
+    if not report.plans:
+        print("✅ Nessuna lezione in cartella da migrare: sono già tutte nel database.")
+        return
+
+    def _mb(n: int) -> str:
+        return f"{n / 1_000_000:.1f} MB"
+
+    if args.dry_run:
+        print(f"Lezioni da migrare: {len(report.plans)} (nessuna modifica eseguita, --dry-run)")
+        for plan in report.plans:
+            print(f"  - {os.path.basename(plan.lesson_dir)}: {len(plan.files)} file, "
+                  f"testi {_mb(plan.text_bytes)} nel database, media {_mb(plan.media_bytes)} in media/")
+            for skipped in plan.skipped:
+                print(f"      ignorato: {skipped}")
+        text = sum(p.text_bytes for p in report.plans)
+        media = sum(p.media_bytes for p in report.plans)
+        print(f"Totale: testi {_mb(text)}, media {_mb(media)}. Rilancia senza --dry-run per migrare.")
+        return
+    print(f"✅ Lezioni migrate nel database: {len(report.migrated)} di {len(report.plans)}")
+    if report.database_backup:
+        print(f"  Backup del database: {report.database_backup}")
+    print(f"  Cartelle originali spostate (non cancellate) in: {os.path.join(report.backup_dir, 'lezioni')}")
+    for err in report.errors:
+        print(f"  ⚠️  {err}", file=sys.stderr)
+    if report.errors:
+        sys.exit(1)
+
+
 def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> None:
     from rt.core.config import load_config
     from rt.db.engine import get_database
     from rt.db.sync import check_all, sync_all
 
     root = args.lessons_root or load_config().telegram.lessons_root
-    if not root or not os.path.isdir(os.path.expanduser(root)):
+    if not root or not fs.isdir(os.path.expanduser(root)):
         print("❌ Cartella delle lezioni non trovata: passa --lessons-root o imposta telegram.lessons_root.", file=sys.stderr)
         sys.exit(1)
     root = os.path.abspath(os.path.expanduser(root))
@@ -768,6 +853,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  add-images          Integra slide/foto o immagini web nel documento finale\n\n"
         "Comandi diagnostici:\n"
         "  cost                Mostra il costo stimato cumulativo di una lezione\n"
+        "  export              Esporta il Markdown finale o tutti i dati di una lezione\n"
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n\n"
@@ -1000,7 +1086,17 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
                        ("check", "Confronta database e file delle lezioni e segnala le differenze")):
         p_sub = db_sub.add_parser(name, help=text)
         p_sub.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
+    p_mig = db_sub.add_parser("migrate-storage", help="Sposta le lezioni in cartella nel database (testi) e in media/ (audio e immagini), con backup")
+    p_mig.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
+    p_mig.add_argument("--dry-run", action="store_true", help="Mostra cosa verrebbe migrato senza modificare nulla")
     p_db.set_defaults(func=cmd_db)
+
+    p_exp = subparsers.add_parser("export", help="Esporta il Markdown finale (con immagini) o tutti i dati di una lezione")
+    p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_exp.add_argument("-o", "--output", help="Cartella di destinazione (default: cartella corrente)")
+    p_exp.add_argument("--all", action="store_true", help="Esporta tutti i file della lezione (testi, stato, audio, immagini)")
+    p_exp.add_argument("--zip", action="store_true", help="Crea un archivio .zip invece di una cartella")
+    p_exp.set_defaults(func=cmd_export)
 
     return parser, {
         "web": p_web,

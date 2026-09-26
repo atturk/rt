@@ -26,6 +26,7 @@ from rt.pipeline.ledger import (
     revert_last_decision,
     sanitize_suggested_fix,
 )
+from rt.storage import fs
 
 CHANNELS = ("cli", "telegram", "web", "api")
 LOCK_FILE = ".rt.lock"
@@ -51,7 +52,7 @@ class ReviewDecisionError(ValueError):
 @contextmanager
 def lesson_lock(lesson_dir: str) -> Iterator[None]:
     """Lock esclusivo per lezione, valido tra processi e thread."""
-    with file_lock(os.path.join(lesson_dir, LOCK_FILE), retries=100, backoff=0.05):
+    with file_lock(fs.lock_path(os.path.join(lesson_dir, LOCK_FILE)), retries=100, backoff=0.05):
         yield
 
 
@@ -62,7 +63,7 @@ def issue_context(lesson_dir: str, issue: ScienceIssue) -> Dict[str, Any]:
 
     seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
-    draft = load_draft(lesson_dir) if os.path.isfile(get_draft_path(lesson_dir)) else None
+    draft = load_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
     seg_to_unit, unit_by_id = {}, {}
     if draft:
         for u in draft.units:
@@ -120,7 +121,7 @@ def is_review_complete(lesson_dir: str) -> bool:
 def mark_ready_to_build(lesson_dir: str) -> None:
     from rt.core.state import WorkflowState, transition_to
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-    if os.path.isfile(yaml_path):
+    if fs.isfile(yaml_path):
         try:
             transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
         except Exception:

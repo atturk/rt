@@ -39,6 +39,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
+from rt.storage import fs
 
 LOG = logging.getLogger(__name__)
 
@@ -56,9 +57,9 @@ LEGACY_TYPE_MAP = {
 
 def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
     path = get_science_issues_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return []
-    with open(path, "r", encoding="utf-8") as f:
+    with fs.open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, list):
         cleaned_data = sanitize_object_encoding(data)
@@ -80,9 +81,9 @@ def save_science_issues(issues: List[ScienceIssue], lesson_dir: str) -> None:
     path = get_science_issues_path(lesson_dir)
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding([iss.model_dump(mode="json") for iss in issues])
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 
 def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:

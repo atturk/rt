@@ -11,6 +11,7 @@ import re
 from rt.core.models import Segment, SegmentsData
 from rt.core.timestamp import parse_timestamp, format_timestamp, parse_interval
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
+from rt.storage import fs
 
 MD_TIMESTAMP_PATTERN = re.compile(r"^\*(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[-–—]\s*\d{1,2}:\d{2}(?::\d{2})?)?)\*$")
 
@@ -28,7 +29,7 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
     2. Formato lista: [ { "text": "...", "timestamp": "00:02-00:12" } ]
     3. Formato lista SegmentsData già normalizzato.
     """
-    with open(json_path, "r", encoding="utf-8") as f:
+    with fs.open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     
     raw_list: List[Dict[str, Any]] = []
@@ -159,7 +160,7 @@ def parse_segments_from_markdown(md_path: str) -> List[Segment]:
     *00:02-00:06*
     testo del segmento...
     """
-    with open(md_path, "r", encoding="utf-8") as f:
+    with fs.open(md_path, "r", encoding="utf-8") as f:
         content = f.read()
     
     # Rimuove eventuale blocco YAML frontmatter iniziale
@@ -277,16 +278,16 @@ def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Opt
     )
     
     tmp_path = output_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(sanitize_object_encoding(data.model_dump(mode="json")), f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, output_path)
+    fs.replace(tmp_path, output_path)
 
 
 def load_segments_json(segments_path: str) -> SegmentsData:
     """Carica segments.json."""
-    if not os.path.isfile(segments_path):
+    if not fs.isfile(segments_path):
         raise FileNotFoundError(f"segments.json non trovato in '{segments_path}'")
-    with open(segments_path, "r", encoding="utf-8") as f:
+    with fs.open(segments_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     cleaned_data = sanitize_object_encoding(data)
     return SegmentsData.model_validate(cleaned_data)
@@ -301,6 +302,6 @@ def export_normalized_transcript_md(segments: List[Segment], output_path: str) -
         lines.append(f"{seg.text_raw}\n\n")
         
     tmp_path = output_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         f.writelines(lines)
-    os.replace(tmp_path, output_path)
+    fs.replace(tmp_path, output_path)

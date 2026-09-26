@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from rt.core.models import Segment, ScienceIssue, ScienceType, ScienceSeverity, Draft
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.rewrite import load_draft
+from rt.storage import fs
 
 
 def _calculate_p10(vals: List[float]) -> float:
@@ -54,11 +55,11 @@ def detect_statistical_asr_risks(
     e genera una ScienceIssue di tipo ERR_ASR_ST per ciascuna unità didattica interessata.
     """
     raw_json_path = lesson_path(lesson_dir, "trascritto grezzo.json")
-    if not os.path.isfile(raw_json_path):
+    if not fs.isfile(raw_json_path):
         return []
 
     try:
-        with open(raw_json_path, "r", encoding="utf-8") as f:
+        with fs.open(raw_json_path, "r", encoding="utf-8") as f:
             raw_data = json.load(f)
     except Exception:
         return []

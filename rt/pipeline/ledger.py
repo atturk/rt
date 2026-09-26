@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.core.lesson_paths import lesson_path
+from rt.storage import fs
 
 
 def sanitize_suggested_fix(text: Optional[str]) -> Optional[str]:
@@ -76,13 +77,13 @@ def load_ledger(lesson_dir: str, strict: bool = False) -> DecisionLedger:
     """Carica il ledger. Un file illeggibile vale come ledger vuoto, oppure (strict=True)
     solleva l'errore: chi sta per scrivere non deve sovrascrivere dati che non sa leggere."""
     path = get_ledger_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return DecisionLedger(schema_version="1.0", decisions=[])
     if strict:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             return DecisionLedger.model_validate(sanitize_object_encoding(json.load(f)))
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         cleaned_data = sanitize_object_encoding(data)
         return DecisionLedger.model_validate(cleaned_data)
@@ -100,9 +101,9 @@ def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
             if dec.get(key) is None:
                 dec.pop(key, None)
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 
 def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:

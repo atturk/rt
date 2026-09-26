@@ -9,6 +9,9 @@ per un file di stato, se esiste già alla radice (layout piatto di una lezione
 vecchia) si continua a usare quella posizione, sia in lettura che in scrittura —
 nessuna migrazione automatica, nessuno stato "misto" root/_state per la stessa
 lezione. Una lezione mai toccata dal codice vecchio usa da subito `_state/`.
+
+Le lezioni con storage "db" (rt/storage/fs.py) non hanno cartella: lesson_path restituisce
+il percorso piatto <lezione>/<file>, che rt.storage.fs risolve nel database.
 """
 import os
 from typing import Set
@@ -60,6 +63,10 @@ def lesson_path(lesson_dir: str, filename: str) -> str:
     root_path = os.path.join(lesson_dir, filename)
     if filename not in _STATE_ENTRIES:
         return root_path
+
+    from rt.storage import fs
+    if fs.is_db_path(lesson_dir):
+        return root_path  # lezione nel database: nessuna sottocartella, nomi piatti
 
     if os.path.exists(root_path):
         return root_path

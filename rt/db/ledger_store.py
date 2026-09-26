@@ -14,6 +14,7 @@ from rt.db.engine import get_database
 from rt.db.repositories import DecisionRepository, LessonRepository
 from rt.db.session import session_scope
 from rt.db import sync as db_sync
+from rt.storage import fs
 
 NO_DATABASE = object()
 
@@ -41,7 +42,7 @@ def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any])
             for row in repo.active(lesson)
         ])
         write_ledger_file(ledger, lesson_dir)
-        with open(get_ledger_path(lesson_dir), "rb") as f:
+        with fs.open(get_ledger_path(lesson_dir), "rb") as f:
             lesson.ledger_sha = hashlib.sha256(f.read()).hexdigest()
     return result
 

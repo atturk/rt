@@ -7,6 +7,7 @@ from typing import List
 import os
 from rt.core.state import read_info_yaml
 from rt.core.lesson_paths import lesson_path
+from rt.storage import fs
 
 
 @dataclass
@@ -24,14 +25,14 @@ def scan_lessons(lessons_root: str) -> List[LessonEntry]:
     annidamento) con un info.yaml leggibile. Cartelle senza info.yaml valido sono
     ignorate silenziosamente."""
     entries = []
-    if not lessons_root or not os.path.isdir(lessons_root):
+    if not lessons_root or not fs.isdir(lessons_root):
         return entries
-    for name in sorted(os.listdir(lessons_root)):
+    for name in sorted(fs.listdir(lessons_root)):
         full = os.path.join(lessons_root, name)
-        if not os.path.isdir(full):
+        if not fs.isdir(full):
             continue
         yaml_path = lesson_path(full, "info.yaml")
-        if not os.path.isfile(yaml_path):
+        if not fs.isfile(yaml_path):
             continue
         try:
             info = read_info_yaml(yaml_path)

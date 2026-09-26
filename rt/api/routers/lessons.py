@@ -8,6 +8,7 @@ from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
 from rt.services import lesson_service
+from rt.storage import fs
 
 router = APIRouter(tags=["lezioni"])
 
@@ -62,7 +63,7 @@ def get_outline(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     from rt.pipeline.outline import get_outline_path
     from rt.services.outline_service import get_outline_review
     import os
-    if not os.path.isfile(get_outline_path(lesson_dir)):
+    if not fs.isfile(get_outline_path(lesson_dir)):
         raise ApiError(404, "outline_not_found", "Outline non ancora generata.")
     return get_outline_review(lesson_dir)
 

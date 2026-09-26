@@ -4,6 +4,8 @@ Processo persistente in polling: unico componente che riceve bottoni cliccati e
 messaggi di feedback. Risolve short_id -> lesson_dir tramite rt.telegram.registry.
 """
 import os
+
+from rt.storage import fs
 import sys
 import json
 import time
@@ -245,12 +247,12 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
         materia = next((m for m, tid in (runtime_cfg.topics or {}).items() if tid == thread_id), None)
         if materia:
             override = get_lesson_override(materia)
-            if override and os.path.isdir(override):
+            if override and fs.isdir(override):
                 lesson_dir = override
 
         if not lesson_dir:
             auto = get_last_lesson(state_dir, chat_id, thread_id)
-            if auto and os.path.isdir(auto):
+            if auto and fs.isdir(auto):
                 lesson_dir = auto
 
         if not lesson_dir:

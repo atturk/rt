@@ -6,7 +6,7 @@ rt/db/migrations/versions (tests/test_db_schema.py verifica che coincidano).
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -30,6 +30,10 @@ class Lesson(Base):
     titolo: Mapped[str] = mapped_column(Text, default="")
     argomenti: Mapped[str] = mapped_column(Text, default="")
     workflow_state: Mapped[str] = mapped_column(String(64), default="")
+    # "folder": i file vivono nella cartella path (layout storico). "db": nessuna cartella,
+    # path è solo l'identificativo; testi e metadati stanno in lesson_files, i media in
+    # <cartella dati>/media (vedi rt/storage/fs.py).
+    storage: Mapped[str] = mapped_column(String(16), default="folder", server_default="folder")
     # sha256 dell'ultimo review_decisions.json esportato dal DB (o importato): se il file
     # cambia fuori da RT, al prossimo accesso il DB lo reimporta.
     ledger_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -39,6 +43,23 @@ class Lesson(Base):
     phase_runs: Mapped[list["PhaseRun"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
     issues: Mapped[list["Issue"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
     decisions: Mapped[list["ReviewDecision"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class LessonFile(Base):
+    """Un file di una lezione con storage "db". name è il percorso relativo alla lezione
+    (posix, senza il prefisso storico _state/). I testi hanno content; i media (audio,
+    immagini) hanno media_path, relativo alla cartella media, e content NULL."""
+    __tablename__ = "lesson_files"
+    __table_args__ = (UniqueConstraint("lesson_id", "name", name="uq_lesson_files_lesson_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(1024))
+    content: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    media_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    mtime: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class PhaseRun(Base):

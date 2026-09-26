@@ -23,6 +23,7 @@ from rt.db.repositories import (
     PhaseRunRepository, normalize_lesson_path,
 )
 from rt.db.session import session_scope
+from rt.storage import fs
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,9 @@ _warned_dual_write = False
 def ledger_file_sha(lesson_dir: str) -> str:
     from rt.pipeline.ledger import get_ledger_path
     path = get_ledger_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return MISSING_LEDGER_SHA
-    with open(path, "rb") as f:
+    with fs.open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
 
 
@@ -47,7 +48,7 @@ def lesson_fields_from_files(lesson_dir: str) -> Optional[Dict[str, Any]]:
     from rt.core.lesson_paths import lesson_path
     from rt.core.state import read_info_yaml
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-    if not os.path.isfile(yaml_path):
+    if not fs.isfile(yaml_path):
         return None
     info = read_info_yaml(yaml_path)
     return {

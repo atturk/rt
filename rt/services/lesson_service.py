@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from rt.core.lesson_paths import lesson_path
+from rt.storage import fs
 
 PHASES = ("prepare", "outline", "rewrite", "review", "build")
 AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".opus", ".mp4", ".webm", ".aiff", ".aif"}
@@ -64,7 +65,7 @@ def known_lesson_dirs() -> List[str]:
     dirs = [normalize_lesson_path(e.lesson_dir) for e in scan_lessons(lessons_root() or "")]
     with session_scope(_require_db()) as session:
         for lesson in LessonRepository(session).list_all():
-            if lesson.path not in dirs and os.path.isfile(lesson_path(lesson.path, "info.yaml")):
+            if lesson.path not in dirs and fs.isfile(lesson_path(lesson.path, "info.yaml")):
                 dirs.append(lesson.path)
     return dirs
 
@@ -75,7 +76,7 @@ def resolve_lesson_dir(lesson_id: int) -> str:
     with session_scope(_require_db()) as session:
         lesson = session.get(Lesson, lesson_id)
         path = lesson.path if lesson is not None else None
-    if not path or not os.path.isdir(path):
+    if not path or not fs.isdir(path):
         raise LessonNotFound(f"Lezione {lesson_id} non trovata.")
     return path
 
@@ -149,10 +150,10 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
     report: Dict[str, Any] = {"phases": phases, "outline_validation": None, "draft_validation": None}
     seg_path = lesson_path(lesson_dir, "segments.json")
     try:
-        if os.path.isfile(get_outline_path(lesson_dir)) and os.path.isfile(seg_path):
+        if fs.isfile(get_outline_path(lesson_dir)) and fs.isfile(seg_path):
             outline, segments = load_outline(lesson_dir), load_segments_json(seg_path)
             report["outline_validation"] = validate_outline(outline, segments)
-            if os.path.isfile(get_draft_path(lesson_dir)):
+            if fs.isfile(get_draft_path(lesson_dir)):
                 report["draft_validation"] = validate_draft(load_draft(lesson_dir), outline, segments)
     except Exception as exc:
         report["validation_error"] = str(exc)
@@ -191,9 +192,9 @@ def load_markdown_preview(lesson_dir: str) -> str:
     nessuna duplicazione); altrimenti un placeholder onesto. Il frontmatter YAML
     viene rimosso per visualizzazione pulita nella dashboard."""
     rielab_path = lesson_path(lesson_dir, "rielaborato.md")
-    if os.path.isfile(rielab_path):
+    if fs.isfile(rielab_path):
         try:
-            with open(rielab_path, "r", encoding="utf-8") as f:
+            with fs.open(rielab_path, "r", encoding="utf-8") as f:
                 return strip_yaml_frontmatter(f.read())
         except OSError:
             pass
@@ -261,7 +262,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     from markdown_it import MarkdownIt
     markdown = load_markdown_preview(lesson_dir)
-    final = os.path.isfile(lesson_path(lesson_dir, "rielaborato.md"))
+    final = fs.isfile(lesson_path(lesson_dir, "rielaborato.md"))
     # html=False: l'HTML grezzo del Markdown viene escapato, quindi l'output è sicuro.
     html = MarkdownIt("commonmark", {"html": False}).render(markdown)
     return {"final": final, "markdown": markdown, "html": html, "sections": document_sections(lesson_dir)}
@@ -285,11 +286,21 @@ def lesson_audio_file(lesson_dir: str) -> Optional[str]:
             candidates.append(os.path.join(lesson_dir, os.path.basename(str(raw))))
     except Exception:
         pass
+    if fs.is_db_lesson(lesson_dir):
+        # lezione nel database: l'audio è un media registrato della lezione
+        for cand in candidates:
+            if cand and os.path.splitext(cand)[1].lower() in AUDIO_SUFFIXES:
+                if os.path.dirname(cand) == fs.media_dir() and os.path.isfile(cand):
+                    return cand
+                real = fs.real_path(os.path.join(lesson_dir, os.path.basename(cand)))
+                if real:
+                    return real
+        return None
     for cand in candidates:
         if not cand:
             continue
         real = os.path.realpath(cand)
-        if (os.path.isfile(real) and os.path.commonpath([root, real]) == root
+        if (fs.isfile(real) and os.path.commonpath([root, real]) == root
                 and os.path.splitext(real)[1].lower() in AUDIO_SUFFIXES):
             return real
     return None

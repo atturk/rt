@@ -6,6 +6,7 @@ Funzioni pure: non scrivono nella cartella della lezione, ritornano bytes in mem
 from dataclasses import dataclass
 from typing import List
 import os
+from rt.storage import fs
 
 SUPPORTED_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
@@ -21,7 +22,7 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0) -> List[ExtractedI
     Solleva FileNotFoundError se pdf_path non esiste, ValueError se il PDF
     non si apre o non ha pagine."""
     import fitz
-    if not os.path.isfile(pdf_path):
+    if not fs.isfile(pdf_path):
         raise FileNotFoundError(f"File PDF non trovato: '{pdf_path}'")
     try:
         doc = fitz.open(pdf_path)
@@ -46,17 +47,17 @@ def extract_images_from_folder(folder_path: str) -> List[ExtractedImage]:
     """Enumera ricorsivamente le immagini in folder_path (estensioni in
     SUPPORTED_IMAGE_EXTENSIONS, case-insensitive, ignora dotfile), lette da disco as-is.
     Solleva FileNotFoundError se folder_path non esiste o non è una cartella."""
-    if not os.path.isdir(folder_path):
+    if not fs.isdir(folder_path):
         raise FileNotFoundError(f"Cartella non trovata: '{folder_path}'")
     results = []
-    for root, _dirs, files in os.walk(folder_path):
+    for root, _dirs, files in fs.walk(folder_path):
         for fn in sorted(files):
             if fn.startswith("."):
                 continue
             if not fn.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS):
                 continue
             full = os.path.join(root, fn)
-            with open(full, "rb") as f:
+            with fs.open(full, "rb") as f:
                 data = f.read()
             results.append(ExtractedImage(image_bytes=data, source_label=f"folder:{fn}"))
     return results
@@ -66,7 +67,7 @@ def extract_images(input_path: str) -> List[ExtractedImage]:
     """Dispatcher: se input_path è un file .pdf usa extract_images_from_pdf, se è una
     cartella usa extract_images_from_folder. Solleva ValueError per un file non-PDF singolo
     (non supportato come input diretto, solo cartelle o PDF)."""
-    if os.path.isdir(input_path):
+    if fs.isdir(input_path):
         return extract_images_from_folder(input_path)
     if input_path.lower().endswith(".pdf"):
         return extract_images_from_pdf(input_path)

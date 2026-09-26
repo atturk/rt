@@ -34,6 +34,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
+from rt.storage import fs
 
 
 def get_outline_path(lesson_dir: str) -> str:
@@ -42,9 +43,9 @@ def get_outline_path(lesson_dir: str) -> str:
 
 def load_outline(lesson_dir: str) -> Outline:
     path = get_outline_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         raise FileNotFoundError(f"outline.json non trovato in '{lesson_dir}'")
-    with open(path, "r", encoding="utf-8") as f:
+    with fs.open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     cleaned_data = sanitize_object_encoding(data)
     return Outline.model_validate(cleaned_data)
@@ -54,9 +55,9 @@ def save_outline(outline: Outline, lesson_dir: str) -> None:
     path = get_outline_path(lesson_dir)
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding(outline.model_dump(mode="json"))
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 
 def _generate_validated_outline(
@@ -112,7 +113,7 @@ def _run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False)
     topics_val = info.get("argomenti") or None
     
     segments_path = lesson_path(lesson_dir, "segments.json")
-    if not os.path.isfile(segments_path):
+    if not fs.isfile(segments_path):
         raise FileNotFoundError(f"segments.json mancante. Esegui prima 'rt prepare' su '{lesson_dir}'")
         
     segments_data = load_segments_json(segments_path)

@@ -37,6 +37,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
+from rt.storage import fs
 
 
 def get_draft_path(lesson_dir: str) -> str:
@@ -45,9 +46,9 @@ def get_draft_path(lesson_dir: str) -> str:
 
 def load_draft(lesson_dir: str) -> Draft:
     path = get_draft_path(lesson_dir)
-    if not os.path.exists(path):
+    if not fs.exists(path):
         raise FileNotFoundError(f"draft.json non trovato in {lesson_dir}")
-    with open(path, "r", encoding="utf-8") as f:
+    with fs.open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     cleaned_data = sanitize_object_encoding(data)
     return Draft.model_validate(cleaned_data)
@@ -57,9 +58,9 @@ def save_draft(draft: Draft, lesson_dir: str) -> None:
     path = get_draft_path(lesson_dir)
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding(draft.model_dump(mode="json"))
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 
 def extract_context_window(
@@ -129,7 +130,7 @@ def _run_rewrite(
 
     # Carica o inizializza draft
     draft_path = get_draft_path(lesson_dir)
-    if os.path.isfile(draft_path):
+    if fs.isfile(draft_path):
         try:
             draft = load_draft(lesson_dir)
         except Exception:
@@ -183,7 +184,7 @@ def _run_rewrite(
             # Ricostruisce ordinamento e ripulisce draft se necessario
             ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
             draft.units = ordered_units
-            if len(draft.units) != len(draft_units_map) or (os.path.isfile(draft_path) and compute_file_sha256(draft_path) != ckpt.get("artifact_fingerprints", {}).get("draft.json")):
+            if len(draft.units) != len(draft_units_map) or (fs.isfile(draft_path) and compute_file_sha256(draft_path) != ckpt.get("artifact_fingerprints", {}).get("draft.json")):
                 save_draft(draft, lesson_dir)
             if draft_units_map:
                 print(f"🔄 [CHECKPOINT RESUME] {len(draft_units_map)}/{len(all_outline_units)} unità didattiche già completate e verificate.")

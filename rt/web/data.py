@@ -24,6 +24,7 @@ from rt.pipeline.ledger import load_ledger
 from rt.pipeline.review import load_science_issues
 from rt.pipeline.rewrite import load_draft
 from rt.tui.data import LessonSummary, discover_lessons, load_markdown_preview
+from rt.storage import fs
 
 
 PHASE_LABELS = {
@@ -331,14 +332,14 @@ def _web_audio_path(lesson: LessonSummary, original: str) -> Optional[str]:
                      '-c:a', 'copy', '-movflags', '+faststart', str(temporary)],
                     check=True, capture_output=True, timeout=90,
                 )
-                os.replace(temporary, target)
+                fs.replace(temporary, target)
             finally:
                 temporary.unlink(missing_ok=True)
         else:
             try:
                 os.link(source, target)
             except OSError:
-                shutil.copyfile(source, target)
+                fs.copyfile(source, target)
     return str(target)
 
 
