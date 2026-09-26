@@ -162,3 +162,13 @@
   background: color-mix(in srgb, var(--warning-soft) 70%, transparent);
   box-shadow: -10px 0 0 color-mix(in srgb, var(--warning-soft) 70%, transparent);
 }
+.rt-document mark.rt-claim {
+  background: #fce9a8;
+  color: #3c311b;
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+.rt-document .rt-claim-unit {
+  outline: 2px dashed #e0b84a;
+  outline-offset: 3px;
+}

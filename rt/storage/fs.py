@@ -44,6 +44,8 @@ _lock = threading.RLock()
 # url del DB -> {path della lezione -> id}: solo risultati positivi (una lezione "db" resta
 # tale finché non viene cancellata da questo processo, che svuota la voce).
 _known: Dict[str, Dict[str, int]] = {}
+# Istantanea di lettura attiva nel thread (vedi read_snapshot).
+_snapshot = threading.local()
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,9 @@ def resolve(path) -> Optional[DbTarget]:
     if db is None:
         return None
     p = _norm(path)
+    missing = getattr(_snapshot, "missing", None)
+    if missing is not None and p in missing:
+        return None
     candidates = _ancestors(p)
     with _lock:
         known = _known.setdefault(db.url, {})
@@ -105,6 +110,8 @@ def resolve(path) -> Optional[DbTarget]:
         rows = s.execute(select(Lesson.id, Lesson.path).where(
             Lesson.storage == STORAGE_DB, Lesson.path.in_(candidates))).all()
     if not rows:
+        if missing is not None:
+            missing.add(p)
         return None
     lesson_id, lesson_path = max(rows, key=lambda r: len(r[1]))
     with _lock:
@@ -167,11 +174,72 @@ def lock_path(path) -> str:
     return target
 
 
+# ---------------------------------------------------------------- istantanea di lettura
+
+@contextmanager
+def read_snapshot() -> Iterator[None]:
+    """Dentro il blocco ogni lezione "db" legge i suoi file dal DB con una query sola (poi
+    dalla memoria del thread), e i percorsi fuori dal DB non vengono richiesti due volte.
+    Serve a chi legge molti file di molte lezioni (riepiloghi, elenco lezioni): senza, ogni
+    isfile/open è una query. Una scrittura nel blocco svuota l'istantanea. Rientrante."""
+    if getattr(_snapshot, "rows", None) is not None:
+        yield
+        return
+    _snapshot.rows, _snapshot.missing = {}, set()
+    try:
+        yield
+    finally:
+        _snapshot.rows = _snapshot.missing = None
+
+
+def _drop_snapshot() -> None:
+    if getattr(_snapshot, "rows", None) is not None:
+        _snapshot.rows, _snapshot.missing = {}, set()
+
+
+@dataclass(frozen=True)
+class _SnapRow:
+    content: Optional[bytes]
+    media_path: Optional[str]
+    size: Optional[int]
+    sha256: Optional[str]
+    mtime: Optional[float]
+
+
+def _snapshot_rows(t: DbTarget) -> Optional[Dict[str, _SnapRow]]:
+    rows = getattr(_snapshot, "rows", None)
+    if rows is None:
+        return None
+    if t.lesson_id not in rows:
+        from sqlalchemy import select
+        from rt.db.models import LessonFile
+        with _reader(t) as s:
+            rows[t.lesson_id] = {
+                name: _SnapRow(content, media_path, size, sha, mtime)
+                for name, content, media_path, size, sha, mtime in s.execute(select(
+                    LessonFile.name, LessonFile.content, LessonFile.media_path, LessonFile.size,
+                    LessonFile.sha256, LessonFile.mtime).where(LessonFile.lesson_id == t.lesson_id))}
+    return rows[t.lesson_id]
+
+
+def _read_row(t: DbTarget):
+    """Riga del file t.rel (o None) per le sole letture: dall'istantanea se attiva."""
+    rows = _snapshot_rows(t)
+    if rows is not None:
+        return rows.get(t.rel)
+    with _reader(t) as s:
+        row = _row(s, t)
+        if row is None:
+            return None
+        return _SnapRow(row.content, row.media_path, row.size, row.sha256, row.mtime)
+
+
 # ---------------------------------------------------------------- righe lesson_files
 
 def _session(t: DbTarget):
     """Sessione per scrivere: si unisce alla transazione già aperta nel thread, se c'è."""
     from rt.db.session import joined_scope
+    _drop_snapshot()
     return joined_scope(t.db)
 
 
@@ -188,6 +256,9 @@ def _row(s, t: DbTarget, name: Optional[str] = None):
 
 
 def _names(t: DbTarget) -> List[str]:
+    rows = _snapshot_rows(t)
+    if rows is not None:
+        return list(rows)
     from sqlalchemy import select
     from rt.db.models import LessonFile
     with _reader(t) as s:
@@ -195,6 +266,9 @@ def _names(t: DbTarget) -> List[str]:
 
 
 def _has_prefix(t: DbTarget, prefix: str) -> bool:
+    rows = _snapshot_rows(t)
+    if rows is not None:
+        return any(name.startswith(prefix + "/") for name in rows)
     from sqlalchemy import select
     from rt.db.models import LessonFile
     with _reader(t) as s:
@@ -273,15 +347,12 @@ def _register_media_file(t: DbTarget, real_file: str, move: bool) -> None:
 
 
 def _load(t: DbTarget) -> bytes:
-    with _reader(t) as s:
-        row = _row(s, t)
-        if row is None:
-            raise FileNotFoundError(2, "No such file or directory", os.path.join(t.lesson_path, t.rel))
-        if row.media_path:
-            media = _media_abspath(t, row.media_path)
-        else:
-            return bytes(row.content or b"")
-    with io.open(media, "rb") as f:
+    row = _read_row(t)
+    if row is None:
+        raise FileNotFoundError(2, "No such file or directory", os.path.join(t.lesson_path, t.rel))
+    if not row.media_path:
+        return bytes(row.content or b"")
+    with io.open(_media_abspath(t, row.media_path), "rb") as f:
         return f.read()
 
 
@@ -348,8 +419,7 @@ def _named(buf, t: DbTarget):
 def _is_file(t: DbTarget) -> bool:
     if t.rel == "":
         return False
-    with _reader(t) as s:
-        return _row(s, t) is not None
+    return _read_row(t) is not None
 
 
 def exists(path) -> bool:
@@ -478,24 +548,22 @@ def getmtime(path) -> float:
     t = resolve(path)
     if t is None:
         return os.path.getmtime(path)
-    with _reader(t) as s:
-        row = _row(s, t)
-        if row is None:
-            if isdir(path):
-                return time.time()
-            raise FileNotFoundError(2, "No such file or directory", os.fspath(path))
-        return float(row.mtime or 0.0)
+    row = _read_row(t)
+    if row is None:
+        if isdir(path):
+            return time.time()
+        raise FileNotFoundError(2, "No such file or directory", os.fspath(path))
+    return float(row.mtime or 0.0)
 
 
 def getsize(path) -> int:
     t = resolve(path)
     if t is None:
         return os.path.getsize(path)
-    with _reader(t) as s:
-        row = _row(s, t)
-        if row is None:
-            raise FileNotFoundError(2, "No such file or directory", os.fspath(path))
-        return int(row.size or 0)
+    row = _read_row(t)
+    if row is None:
+        raise FileNotFoundError(2, "No such file or directory", os.fspath(path))
+    return int(row.size or 0)
 
 
 def sha256(path) -> str:
@@ -509,9 +577,8 @@ def sha256(path) -> str:
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
         return h.hexdigest()
-    with _reader(t) as s:
-        row = _row(s, t)
-        return row.sha256 if row is not None else ""
+    row = _read_row(t)
+    return row.sha256 if row is not None else ""
 
 
 def rmtree(path, ignore_errors: bool = False) -> None:
@@ -695,6 +762,7 @@ def create_db_lesson(lesson_dir) -> str:
         raise RuntimeError("Il database è spento: una lezione nel database richiede il DB.")
     from rt.db.repositories import LessonRepository
     from rt.db.session import session_scope
+    _drop_snapshot()
     with session_scope(db) as s:
         lesson = LessonRepository(s).get_or_create(os.fspath(lesson_dir))
         lesson.storage = STORAGE_DB

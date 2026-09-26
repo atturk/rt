@@ -35,7 +35,8 @@ test('accesso di ripiego con il token', async ({ page }) => {
   await page.getByRole('button', { name: 'Accedi' }).click()
   await expect(page).toHaveURL(/\/$/)
   await page.reload()
-  await expect(page.getByTestId('lesson-card')).toHaveCount(2)
+  const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
+  await expect(page.getByTestId('lesson-card')).toHaveCount(lessons.length)
 })
 
 test('la dashboard mostra le lezioni dell\'API, con filtri', async ({ page }) => {
