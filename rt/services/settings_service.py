@@ -295,12 +295,12 @@ def save_lessons_root(raw_path: str, project_root: Path) -> str:
     try:
         data = yaml.safe_load(original) if original.strip() else {}
     except yaml.YAMLError as exc:
-        raise ValueError("config/general.yaml contiene YAML non valido.") from exc
+        raise ValueError("Il file di configurazione generale di RT contiene YAML non valido.") from exc
     if not isinstance(data, dict):
-        raise ValueError("config/general.yaml non contiene una mappa YAML valida.")
+        raise ValueError("Il file di configurazione generale di RT non contiene una mappa YAML valida.")
     telegram = data.get("telegram")
     if telegram is not None and not isinstance(telegram, dict):
-        raise ValueError("La sezione telegram di config/general.yaml non è modificabile dalla web app.")
+        raise ValueError("La sezione telegram della configurazione generale non è modificabile dalla web app.")
 
     lines = original.splitlines(keepends=True)
     scalar = json.dumps(str(root), ensure_ascii=False)

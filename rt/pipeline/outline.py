@@ -114,7 +114,7 @@ def _run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False)
     
     segments_path = lesson_path(lesson_dir, "segments.json")
     if not fs.isfile(segments_path):
-        raise FileNotFoundError(f"segments.json mancante. Esegui prima 'rt prepare' su '{lesson_dir}'")
+        raise FileNotFoundError(f"Segmenti della trascrizione mancanti per '{lesson_dir}': esegui prima la fase Preparazione.")
         
     segments_data = load_segments_json(segments_path)
     

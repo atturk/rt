@@ -67,8 +67,8 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     has_valid_json = any(fs.isfile(jc) and fs.getsize(jc) > 10 for jc in json_candidates)
     if current_state_raw in (WorkflowState.METADATA_ONLY.value, "in_attesa_di_trascrizione") and not has_valid_json:
         raise ValueError(
-            f"Trascrizione non disponibile per '{lesson_dir}': la lezione è in stato METADATA_ONLY "
-            f"(--skip-transcribe). Esegui prima la trascrizione ASR con macparakeet-cli per generare trascritto grezzo.json."
+            f"Trascrizione non disponibile per '{lesson_dir}': la lezione è stata creata senza trascrivere "
+            f"l'audio. Trascrivi prima l'audio (macparakeet) per avere il trascritto grezzo."
         )
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato

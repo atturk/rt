@@ -1,11 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, loginViaLink, tinyPdf } from './support'
 
-// RT4-F7: il percorso completo di una lezione nuova solo dalla SPA, come 'rt run' da terminale:
-// accesso con il link, importazione dell'audio, scaletta, review di tutte le issue, build,
-// lettura del documento con l'audio, recall, modifica delle impostazioni. Dopo ogni passo la pagina si ricarica e quello che
+// RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
+// 'rt run' da terminale: accesso con il link, importazione dell'audio, scaletta, review di tutte
+// le issue, documento, recall, immagini e documento ricreato come conferma finale (FA2), modifica
+// delle impostazioni. Dopo ogni passo la pagina si ricarica e quello che
 // mostra deve venire dal backend.
 
 const AUDIO = fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url))
@@ -27,8 +28,8 @@ async function waitJob(page: Page, id: string, check: (j: Job) => boolean) {
   await expect.poll(async () => check(await job(page, id)), { timeout: LONG, intervals: [500] }).toBe(true)
 }
 
-test('percorso completo: dall\'audio al recall, con ricarica dopo ogni passo', async ({ page }) => {
-  test.setTimeout(8 * LONG)
+test('percorso completo: dall\'audio al documento con le immagini, con ricarica dopo ogni passo', async ({ page }) => {
+  test.setTimeout(10 * LONG)
 
   // 1. Accesso con il link monouso: la sessione resta dopo la ricarica.
   await loginViaLink(page)
@@ -107,7 +108,32 @@ test('percorso completo: dall\'audio al recall, con ricarica dopo ogni passo', a
   expect(history.questions.find((q) => q.id === questionId)?.status).toBe('answered')
   expect(history.answers.some((a) => a.question_id === questionId)).toBe(true)
 
-  // 7. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
+  // 7. Immagini dopo il documento: entrano nell'anteprima e il documento diventa da ricreare.
+  await page.goto(`/lezioni/${lessonId}/immagini`)
+  await page.getByLabel('PDF o foto').setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  await page.getByRole('button', { name: 'Aggiungi le immagini' }).click()
+  await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: LONG })
+  await page.reload()
+  const images = (await apiGet<{ images: { url: string; in_document: boolean }[] }>(page.request, `/lessons/${lessonId}/images`)).images
+  const placed = images.filter((i) => i.in_document)
+  expect(placed.length).toBeGreaterThan(0)
+  expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).phases.build).toBe('STALE')
+
+  // 8. Documento come conferma finale: Esegui Documento (con il dialogo, se ci sono avvisi) e
+  //    documento aggiornato con le immagini dopo la ricarica.
+  await page.goto(`/lezioni/${lessonId}`)
+  const build = page.locator('[data-phase-row="build"]')
+  await expect(build).toHaveAttribute('data-status', 'STALE')
+  await page.getByRole('button', { name: 'Esegui Documento' }).click()
+  const confirm = page.getByRole('dialog', { name: 'Creare il documento finale?' })
+  if (await confirm.isVisible()) await confirm.getByRole('button', { name: 'Crea il documento comunque' }).click()
+  await expect(build).toHaveAttribute('data-status', 'VALID', { timeout: LONG })
+  await page.reload()
+  await expect(build).toHaveAttribute('data-status', 'VALID')
+  expect((await apiGet<{ final: boolean }>(page.request, `/lessons/${lessonId}/document`)).final).toBe(true)
+  await expect(page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`)).toBeVisible()
+
+  // 9. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
   await page.goto('/impostazioni')
   const card = page.getByRole('region', { name: 'Trascrizione', exact: true })
   const before = (await apiGet<Settings>(page.request, '/settings')).transcription

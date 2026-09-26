@@ -407,7 +407,7 @@ def cmd_setup(args):
     except SetupCancelled:
         sys.exit(0)
     except SetupError as e:
-        print(f"❌ Errore Setup: {e}", file=sys.stderr)
+        print(f"❌ Errore Setup: {e.cli_message()}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -663,7 +663,7 @@ def cmd_run(args):
         if isinstance(result.error, SetupCancelled):
             sys.exit(0)
         if isinstance(result.error, SetupError):
-            print(f"❌ Errore durante l'ingest audio: {result.error}", file=sys.stderr)
+            print(f"❌ Errore durante l'ingest audio: {result.error.cli_message()}", file=sys.stderr)
             sys.exit(1)
         raise result.error
     if result.status != PipelineStatus.COMPLETED:
