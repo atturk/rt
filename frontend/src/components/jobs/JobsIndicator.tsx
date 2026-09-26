@@ -1,4 +1,3 @@
-import { Activity } from 'lucide-react'
 import { Link } from 'react-router'
 
 import { useJobs, useWorkers } from '@/api/jobs'
@@ -6,8 +5,11 @@ import { Alert } from '@/components/ui/alert'
 import { decisionLabel, decisionLink, isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
-/** Pannello globale nell'intestazione: job attivi e decisioni in attesa, da ogni pagina. */
-export function JobsIndicator() {
+/**
+ * Badge sulla voce "Job" del menu: numero di job attivi e decisioni in attesa, da ogni pagina.
+ * Il testo per i lettori di schermo completa il nome del link ("Job: 2 job attivi, ...").
+ */
+export function JobsNavBadge() {
   const jobs = useJobs({ limit: 50 }, { poll: 5_000 })
   const workers = useWorkers()
   const active = (jobs.data ?? []).filter((j) => isActive(j.state)).length
@@ -20,24 +22,22 @@ export function JobsIndicator() {
   ]
     .filter(Boolean)
     .join(', ')
+  const count = active + waiting
   return (
-    <Link
-      to="/job"
-      aria-label={`Job: ${label}`}
-      title={label}
-      data-testid="jobs-indicator"
-      className={cn(
-        'relative inline-flex size-9 items-center justify-center rounded-md border border-input bg-card hover:bg-muted',
-        (waiting > 0 || noWorker) && 'border-warning text-warning',
-      )}
-    >
-      <Activity className={cn('size-4', active > 0 && 'animate-pulse')} aria-hidden />
-      {active + waiting > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-bold leading-4 text-primary-foreground">
-          {active + waiting}
+    <span data-testid="jobs-indicator" data-active={active} data-waiting={waiting} title={label} className="inline-flex">
+      <span className="sr-only">: {label}</span>
+      {(count > 0 || noWorker) && (
+        <span
+          aria-hidden
+          className={cn(
+            'min-w-4 rounded-full px-1 text-center text-[10px] font-bold leading-4',
+            waiting > 0 || noWorker ? 'bg-warning text-background' : 'bg-primary text-primary-foreground',
+          )}
+        >
+          {noWorker && count === 0 ? '!' : count}
         </span>
       )}
-    </Link>
+    </span>
   )
 }
 

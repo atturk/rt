@@ -7,7 +7,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
-import { Tooltip } from '@/components/ui/tooltip'
+import { InlineTooltip } from '@/components/ui/inline-tooltip'
 import { EXTRA_SECRETS, pricingToRows, providerLabel, rowsToPricing, type Pricing, type PricingRow } from '@/lib/settings'
 import { SaveFeedback, SecretBadge, Section } from './common'
 import { CredentialTest } from './models'
@@ -174,11 +174,11 @@ function PricingFields({
         <span>Provider</span>
         <span>Modello</span>
         {PRICE_COLUMNS.map((c) => (
-          <Tooltip key={c.key} id={`pricing-tip-${c.key}`} content={c.hint}>
+          <InlineTooltip key={c.key} id={`pricing-tip-${c.key}`} content={c.hint}>
             <span tabIndex={0} aria-describedby={`pricing-tip-${c.key}`} className="cursor-help underline decoration-dotted underline-offset-2">
               {c.label}
             </span>
-          </Tooltip>
+          </InlineTooltip>
         ))}
         <span />
       </div>
@@ -269,14 +269,14 @@ function SuggestedInput({
         onChange={(e) => onChange(e.target.value)}
       />
       {warn && (
-        <Tooltip
+        <InlineTooltip
           id={tipId}
           content={warning}
           className="absolute left-2 top-1/2 -translate-y-1/2"
           bubbleClassName="group-focus-within/field:block"
         >
           <TriangleAlert className="size-4 text-warning" role="img" aria-label={warning} data-testid="field-warning" />
-        </Tooltip>
+        </InlineTooltip>
       )}
     </div>
   )
