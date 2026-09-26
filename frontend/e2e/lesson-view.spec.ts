@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, authHeaders, loginViaLink } from './support'
 
 type Lesson = { id: number; materia: string }
 type PhaseReport = { phases: { phase: string; status: string; reason: string }[] }
@@ -74,4 +75,24 @@ test('avvio di una fase: il job gira sul worker e lo stato resta dopo la ricaric
   const report = await apiGet<PhaseReport>(page.request, `/lessons/${id}/phases`)
   expect(report.phases.find((p) => p.phase === 'prepare')?.status).toBe('VALID')
   await expect(page.getByTestId('jobs-panel')).toContainText('completato')
+})
+
+test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', async ({ page }) => {
+  await loginViaLink(page)
+  const id = await lessonId(page, 'BIOCHIMICA')
+  await page.goto(`/lezioni/${id}`)
+
+  let download = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Markdown' }).click()
+  const markdown = readFileSync((await (await download).path())!, 'utf-8')
+  const fromApi = await page.request.get(`/api/v1/lessons/${id}/export?format=markdown`, { headers: authHeaders() })
+  expect(markdown).toBe(await fromApi.text())
+  expect(markdown).toContain('# ')
+
+  download = page.waitForEvent('download')
+  await page.getByRole('link', { name: /zip/i }).click()
+  const zip = readFileSync((await (await download).path())!)
+  expect((await download).suggestedFilename()).toMatch(/\.zip$/)
+  expect(zip.subarray(0, 2).toString()).toBe('PK')
+  expect(zip.includes(Buffer.from('info.yaml'))).toBeTruthy()
 })
