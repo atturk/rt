@@ -22,7 +22,8 @@ type Image = { name: string; url: string; in_document: boolean }
 
 async function builtLesson(page: Page): Promise<Lesson> {
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
-  const lesson = lessons.find((l) => l.phases.build === 'VALID')
+  // Le immagini aggiunte da un test precedente rendono da rifare il documento (RT4-FA2).
+  const lesson = lessons.find((l) => l.phases.build === 'VALID' || l.phases.build === 'STALE')
   expect(lesson, 'la lezione di prova completata').toBeTruthy()
   return lesson!
 }

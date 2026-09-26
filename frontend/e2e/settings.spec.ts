@@ -525,7 +525,8 @@ test('ricerca web: SearXNG provato, salvato e riletto dopo la ricarica', async (
   const card = await section(page, 'Ricerca web')
   const field = card.getByLabel('URL base di SearXNG')
   await expect(field).toHaveAttribute('placeholder', 'http://localhost:8088')
-  await expect(field).toHaveValue('')
+  // Il server e2e parte con un SearXNG configurato (le immagini per unità di FA7 lo richiedono).
+  await expect(field).toHaveValue('http://127.0.0.1:9')
 
   // Prova contro un server chiuso: errore leggibile.
   await field.fill('http://127.0.0.1:9')
