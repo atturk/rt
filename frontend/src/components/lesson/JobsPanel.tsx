@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef } from 'react'
 
 import { errorMessage } from '@/api/client'
-import { isActiveJob, useCancelJob, useLessonJobs, useRefreshLesson } from '@/api/hooks'
+import { isActiveJob, lessonKeys, useCancelJob, useLessonJobs, useRefreshLesson } from '@/api/hooks'
+import { useJobEvents } from '@/api/jobs'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,8 +35,16 @@ function jobLabel(type: string, payload: Record<string, unknown>): string {
   return (JOB_TYPES[type] ?? type) + unit
 }
 
+/** Segue un job attivo con lo stream SSE (RT4-F4): ogni evento fa rileggere i job della lezione. */
+function JobStream({ jobId, lessonId, state }: { jobId: string; lessonId: number; state: string }) {
+  const client = useQueryClient()
+  const onEvent = useCallback(() => void client.invalidateQueries({ queryKey: lessonKeys.jobs(lessonId) }), [client, lessonId])
+  useJobEvents(jobId, { state, lesson_id: lessonId }, 0, onEvent)
+  return null
+}
+
 /**
- * Job della lezione con avanzamento (polling di GET /jobs; lo stream SSE arriva con F4).
+ * Job della lezione con avanzamento dal vivo (eventi SSE dei job attivi).
  * Quando un job finisce la pagina rilegge lezione, fasi, documento e costi dall'API.
  */
 export function JobsPanel({ lessonId }: { lessonId: number }) {
@@ -54,6 +64,11 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
   return (
     <Card className="flex flex-col gap-2 p-4" data-testid="jobs-panel">
       <h2 className="text-sm font-bold">Job recenti</h2>
+      {jobs.data
+        .filter((j) => isActiveJob(j.state))
+        .map((j) => (
+          <JobStream key={j.id} jobId={j.id} lessonId={lessonId} state={j.state} />
+        ))}
       <ul className="flex flex-col gap-2">
         {jobs.data.slice(0, 5).map((job) => {
           const [label, tone] = JOB_STATES[job.state] ?? [job.state, 'neutral']

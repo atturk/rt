@@ -33,6 +33,7 @@ export function Layout({ areas }: { areas: Area[] }) {
   }
 
   const nav = areas.flatMap((a) => a.nav ?? [])
+  const headers = areas.flatMap((a) => (a.header ? [a.header] : []))
   return (
     <div className="flex min-h-dvh">
       <aside
@@ -78,6 +79,9 @@ export function Layout({ areas }: { areas: Area[] }) {
               </NavLink>
             ))}
           </nav>
+          {headers.map((Header, i) => (
+            <Header key={i} />
+          ))}
           <Button
             variant="outline"
             size="icon"

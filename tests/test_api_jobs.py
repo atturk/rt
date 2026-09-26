@@ -97,6 +97,14 @@ def test_upload_with_run_runs_whole_pipeline(api_client, ws, worker):
     assert waiting["state"] == "waiting_for_decision" and waiting["decision"]["kind"] == "outline_approval"
     assert waiting["lesson_id"] is not None
 
+    # Approvata la scaletta, lo stesso job riparte dalla lezione creata (non rifà il setup).
+    assert api_client.post(f"/api/v1/lessons/{waiting['lesson_id']}/outline/approve").status_code == 200
+    drain(worker)
+    resumed = job(api_client, accepted["job_id"])
+    assert resumed["state"] == "waiting_for_decision", resumed
+    assert resumed["decision"]["kind"] == "science_issue"
+    assert resumed["lesson_id"] == waiting["lesson_id"]
+
 
 def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
     res = api_client.post("/api/v1/lessons", files={"audio": ("note.txt", b"ciao", "text/plain")},

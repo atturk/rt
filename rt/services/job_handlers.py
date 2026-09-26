@@ -55,8 +55,13 @@ def run_pipeline_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.pipeline_service import (
         TranscriptionUnavailable, is_audio_input, run_pipeline, transcription_unavailable_reason,
     )
+    from rt.storage import fs
     inputs = job.payload.get("inputs") or ([job.lesson_path] if job.lesson_path else [])
     options = pipeline_options(job.payload.get("options") or {})
+    if is_audio_input(inputs) and job.lesson_path and fs.isdir(job.lesson_path):
+        # Ripresa dopo una decisione (es. scaletta approvata): la lezione è già stata creata
+        # dall'audio, si riparte da lì invece di rifare il setup sulla stessa cartella.
+        inputs = [job.lesson_path]
     if is_audio_input(inputs):
         reason = transcription_unavailable_reason(options.mock, options.skip_transcribe)
         if reason:
