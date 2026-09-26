@@ -10,9 +10,10 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { Field, SecretBadge } from './common'
+import { Field } from './common'
 import { LessonsRootForm } from './general'
 import { NewConnectionForm } from './models'
+import { RevealableValue } from './telegram'
 
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
@@ -28,7 +29,7 @@ function stepDone(settings: Settings, index: number): boolean {
     case 2:
       return settings.phases.every((p) => !!p.model)
     case 3:
-      return settings.telegram.bot_token_set && !!settings.telegram.chat_id
+      return settings.telegram.bot_token_set && settings.telegram.chat_id_set
     default:
       return false
   }
@@ -201,7 +202,7 @@ function TelegramStep({ settings, onDone }: { settings: Settings; onDone: () => 
   const save = useSaveTelegram()
   const tg = settings.telegram
   const [token, setToken] = useState('')
-  const [chatId, setChatId] = useState(tg.chat_id ?? '')
+  const [chatId, setChatId] = useState('')
   function submit(e: FormEvent) {
     e.preventDefault()
     save.mutate(
@@ -215,11 +216,16 @@ function TelegramStep({ settings, onDone }: { settings: Settings; onDone: () => 
         Facoltativo: il bot manda i documenti e le domande di recall nel gruppo Telegram. I topic per materia si assegnano dalle impostazioni.
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Token del bot" htmlFor="wizard-tg-token" hint={<>Token: <SecretBadge set={tg.bot_token_set} /></>}>
+        <Field label="Token del bot" htmlFor="wizard-tg-token" hint={<>Token salvato: <RevealableValue field="bot_token" preview={tg.bot_token_preview} /></>}>
           <Input id="wizard-tg-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
         </Field>
-        <Field label="Chat ID del gruppo" htmlFor="wizard-tg-chat">
-          <Input id="wizard-tg-chat" value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="-1001234567890" />
+        <Field label="Chat ID del gruppo" htmlFor="wizard-tg-chat" hint={<>Chat ID salvato: <RevealableValue field="chat_id" preview={tg.chat_id_preview} /></>}>
+          <Input
+            id="wizard-tg-chat"
+            value={chatId}
+            onChange={(e) => setChatId(e.target.value)}
+            placeholder={tg.chat_id_set ? 'Lascia vuoto per mantenere quello salvato' : '-1001234567890'}
+          />
         </Field>
       </div>
       {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}

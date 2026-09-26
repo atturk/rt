@@ -7,6 +7,12 @@ from typing import Dict, Any
 from rt.storage import fs
 
 
+def _record(kind: str, text: str, thread_id, state_dir: str) -> None:
+    """Ultime notifiche per la pagina Bot Telegram della web (RT4-FA6)."""
+    from rt.telegram.notify_log import record_notification
+    record_notification(kind, text, thread_id, state_dir=state_dir)
+
+
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
     import os
     from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
@@ -52,6 +58,7 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
 
         text = "\n".join(lines)
         send_message(cfg, text=text, message_thread_id=message_thread_id)
+        _record("lezione_pronta", text, message_thread_id, runtime_cfg.state_dir)
 
         from rt.telegram.last_lesson import record_last_lesson
         record_last_lesson(runtime_cfg.state_dir, cfg.chat_id, message_thread_id, lesson_dir)
@@ -78,11 +85,9 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
         label = "ASR" if issue_type == "asr" else "scientifiche"
 
         if count <= 0:
-            tg_client.send_message(
-                cfg,
-                text=f"✅ Nessuna issue {label} trovata.",
-                message_thread_id=thread_id,
-            )
+            text = f"✅ Nessuna issue {label} trovata."
+            tg_client.send_message(cfg, text=text, message_thread_id=thread_id)
+            _record("issue", text, thread_id, runtime_cfg.state_dir)
             return
 
         active = tg_session.get_active_session(runtime_cfg.state_dir, cfg.chat_id, thread_id)
@@ -104,12 +109,14 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
             lesson_dir, round_=1, kind="start_issue_review", state_dir=runtime_cfg.state_dir, message_thread_id=thread_id
         )
         keyboard = tg_fmt.build_start_review_keyboard(short_id)
+        text = f"🔎 {count} issue {label} pronte per la review."
         res = tg_client.send_message(
             cfg,
-            text=f"🔎 {count} issue {label} pronte per la review.",
+            text=text,
             reply_markup=keyboard,
             message_thread_id=thread_id
         )
+        _record("issue", text, thread_id, runtime_cfg.state_dir)
         msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
         if msg_id is not None:
             tg_session.update_session_message(runtime_cfg.state_dir, cfg.chat_id, thread_id, msg_id)

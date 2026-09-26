@@ -1,14 +1,16 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
-import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, type Settings } from '@/api/settings'
+import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, useTopicTest, type Settings } from '@/api/settings'
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { parseTopicLink, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
+import { matchesPreview, mergeListenedTopics, parseTopicLink, rowsToTopicNames, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
+import { FolderField } from './folders'
+import { ListenCleanup, RevealableValue, TopicTestButton, TopicTestResult } from './telegram'
 
 /** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
  * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
@@ -39,9 +41,7 @@ function LessonsRootFields({ initial, pending, submitLabel, onSubmit }: { initia
         onSubmit(path.trim())
       }}
     >
-      <Field label="Cartella delle lezioni" htmlFor="lessons-root" hint="Percorso assoluto, per esempio ~/RT Lezioni. Se non esiste RT la crea.">
-        <Input id="lessons-root" value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/RT Lezioni" required />
-      </Field>
+      <FolderField id="lessons-root" value={path} onChange={setPath} />
       <div>
         <Button type="submit" disabled={pending || !path.trim()}>
           {submitLabel}
@@ -166,14 +166,22 @@ function TelegramFields({
 }: {
   settings: Settings
   pending: boolean
-  onSubmit: (body: { bot_token: string | null; chat_id: string | null; topics: Record<string, number>; misc_topic_id: number | null }) => void
+  onSubmit: (body: {
+    bot_token: string | null
+    chat_id: string | null
+    topics: Record<string, number>
+    misc_topic_id: number | null
+    topic_names: Record<string, string>
+  }) => void
   onError: (message: string | null) => void
 }) {
   const tg = settings.telegram
   const [token, setToken] = useState('')
-  const [chatId, setChatId] = useState(tg.chat_id ?? '')
+  // Il Chat ID salvato non arriva nella risposta delle impostazioni (solo l'anteprima): il
+  // campo resta vuoto e, se non lo si cambia, il backend mantiene quello salvato.
+  const [chatId, setChatId] = useState('')
   const [rows, setRows] = useState<TopicRow[]>(() => {
-    const saved = topicsToRows(tg.topics)
+    const saved = topicsToRows(tg.topics, tg.topic_names)
     return saved.length ? saved : [{ materia: '', topic: '' }]
   })
   const [misc, setMisc] = useState(tg.misc_topic_id == null ? '' : String(tg.misc_topic_id))
@@ -189,12 +197,10 @@ function TelegramFields({
     listen.mutate(undefined, {
       onSuccess: (result) => {
         if (!result.ok) return
-        if (result.chat_id) setChatId((current) => current.trim() || result.chat_id!)
-        setRows((current) => {
-          const known = new Set(current.map((r) => r.topic.trim()))
-          const added = (result.topics ?? []).filter((t) => !known.has(String(t))).map((t) => ({ materia: '', topic: String(t) }))
-          return [...current.filter((r) => r.materia.trim() || r.topic.trim()), ...added]
-        })
+        const detected = result.chat_id
+        // Come prima dell'anteprima: il Chat ID rilevato riempie il campo solo se non ce n'è uno salvato.
+        if (detected && !tg.chat_id_set) setChatId((current) => current.trim() || detected)
+        setRows((current) => mergeListenedTopics(current, result))
       },
     })
   }
@@ -202,7 +208,8 @@ function TelegramFields({
   function addFromLink() {
     const parsed = parseTopicLink(link)
     if (!parsed) return onError('Incolla un link a un messaggio del topic, per esempio https://t.me/c/1234567890/12/34.')
-    if (chatId.trim() && chatId.trim() !== parsed.chatId) return onError('Questo topic appartiene a un gruppo diverso dal Chat ID configurato.')
+    const configured = chatId.trim() ? chatId.trim() === parsed.chatId : matchesPreview(parsed.chatId, tg.chat_id_preview)
+    if (!configured) return onError('Questo topic appartiene a un gruppo diverso dal Chat ID configurato.')
     onError(null)
     setChatId(parsed.chatId)
     if (!rows.some((r) => r.topic.trim() === String(parsed.topicId))) {
@@ -225,13 +232,14 @@ function TelegramFields({
       chat_id: chatId.trim() || null,
       topics,
       misc_topic_id: misc.trim() ? Number(misc.trim()) : null,
+      topic_names: rowsToTopicNames(rows),
     })
   }
 
   return (
     <form className="flex flex-col gap-3" onSubmit={submit}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Token del bot" htmlFor="tg-token" hint={<>Token: <SecretBadge set={tg.bot_token_set} /></>}>
+        <Field label="Token del bot" htmlFor="tg-token" hint={<>Token salvato: <RevealableValue field="bot_token" preview={tg.bot_token_preview} /></>}>
           <Input
             id="tg-token"
             type="password"
@@ -241,28 +249,26 @@ function TelegramFields({
             placeholder={tg.bot_token_set ? 'Lascia vuoto per mantenere quello salvato' : '123456:ABC…'}
           />
         </Field>
-        <Field label="Chat ID del gruppo" htmlFor="tg-chat">
-          <Input id="tg-chat" value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="-1001234567890" />
+        <Field label="Chat ID del gruppo" htmlFor="tg-chat" hint={<>Chat ID salvato: <RevealableValue field="chat_id" preview={tg.chat_id_preview} /></>}>
+          <Input
+            id="tg-chat"
+            value={chatId}
+            onChange={(e) => setChatId(e.target.value)}
+            placeholder={tg.chat_id_set ? 'Lascia vuoto per mantenere quello salvato' : '-1001234567890'}
+          />
         </Field>
       </div>
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-xs font-semibold text-muted-foreground">Topic per materia</legend>
         {rows.map((row, i) => (
-          <div key={i} className="flex items-center gap-2" data-testid="topic-row">
-            <Input aria-label={`Materia ${i + 1}`} value={row.materia} placeholder="BIOCHIMICA" onChange={(e) => update(i, { materia: e.target.value })} />
-            <Input
-              aria-label={`Topic ${i + 1}`}
-              value={row.topic}
-              inputMode="numeric"
-              placeholder="12"
-              className="w-28"
-              onChange={(e) => update(i, { topic: e.target.value })}
-            />
-            <Button variant="ghost" size="icon" aria-label={`Rimuovi topic ${i + 1}`} onClick={() => setRows((c) => c.filter((_, j) => j !== i))}>
-              <Trash2 />
-            </Button>
-          </div>
+          <TopicRowFields
+            key={i}
+            index={i}
+            row={row}
+            onChange={(patch) => update(i, patch)}
+            onRemove={() => setRows((c) => c.filter((_, j) => j !== i))}
+          />
         ))}
         <div>
           <Button variant="outline" size="sm" onClick={() => setRows((c) => [...c, { materia: '', topic: '' }])}>
@@ -281,14 +287,17 @@ function TelegramFields({
       </div>
 
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           <Button variant="outline" onClick={startListening} disabled={!tg.bot_token_set || listen.isPending}>
             Ascolta i topic per 20 secondi
           </Button>
-          <span className="text-[11px] text-muted-foreground">
-            {tg.bot_token_set ? 'Poi scrivi un messaggio in ogni topic dal telefono.' : 'Salva prima il token del bot.'}
-          </span>
+          <ListenCleanup enabled={tg.bot_token_set} />
         </div>
+        <span className="text-[11px] text-muted-foreground">
+          {tg.bot_token_set
+            ? 'Poi scrivi un messaggio in ogni topic dal telefono. Finito, puoi cancellare dal gruppo i messaggi usati per il rilevamento.'
+            : 'Salva prima il token del bot.'}
+        </span>
         {listen.isPending && (
           <p role="status" className="text-xs text-muted-foreground">
             In ascolto…
@@ -316,5 +325,29 @@ function TelegramFields({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** Riga materia/topic con cestino e "Prova"; sotto il nome su Telegram e l'esito della prova. */
+function TopicRowFields({ index, row, onChange, onRemove }: { index: number; row: TopicRow; onChange: (patch: Partial<TopicRow>) => void; onRemove: () => void }) {
+  const test = useTopicTest(row.topic, row.materia || row.name || '')
+  const n = index + 1
+  return (
+    <div className="flex flex-col gap-1" data-testid="topic-row">
+      <div className="flex items-center gap-2">
+        <Input aria-label={`Materia ${n}`} value={row.materia} placeholder="BIOCHIMICA" onChange={(e) => onChange({ materia: e.target.value })} />
+        <Input aria-label={`Topic ${n}`} value={row.topic} inputMode="numeric" placeholder="12" className="w-28" onChange={(e) => onChange({ topic: e.target.value })} />
+        <Button variant="ghost" size="icon" aria-label={`Rimuovi topic ${n}`} onClick={onRemove}>
+          <Trash2 />
+        </Button>
+        <TopicTestButton state={test} label={`topic ${n}`} />
+      </div>
+      {row.name && (
+        <p className="text-[11px] text-muted-foreground" data-testid="topic-name">
+          Nome su Telegram: <strong>{row.name}</strong>
+        </p>
+      )}
+      <TopicTestResult state={test} />
+    </div>
   )
 }

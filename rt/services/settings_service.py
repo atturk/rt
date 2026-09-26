@@ -177,7 +177,8 @@ def save_route(project_root: Path, job: str, role: str, provider: str,
 
 
 def save_telegram(project_root: Path, token: str, chat_id: str,
-                  topics: list[list[str]], misc_topic: str) -> str:
+                  topics: list[list[str]], misc_topic: str,
+                  topic_names: dict[int, str] | None = None) -> str:
     if token.strip():
         _validate_secret(token.strip())
     if chat_id.strip():
@@ -193,6 +194,16 @@ def save_telegram(project_root: Path, token: str, chat_id: str,
             continue
         mapped[str(row[0]).strip().upper()] = int(row[1])
     telegram["topics"] = mapped
+    # Nomi dei topic rilevati da "Ascolta i topic" (RT4-FA6), solo per i topic salvati.
+    if topic_names is not None:
+        previous = telegram.get("topic_names") if isinstance(telegram.get("topic_names"), dict) else {}
+        names = {**{int(k): str(v) for k, v in previous.items()},
+                 **{int(k): str(v).strip() for k, v in topic_names.items() if str(v).strip()}}
+        kept = {k: v for k, v in names.items() if k in set(mapped.values())}
+        if kept:
+            telegram["topic_names"] = kept
+        else:
+            telegram.pop("topic_names", None)
     telegram["misc_topic_id"] = int(misc_topic) if str(misc_topic).strip() else None
     if chat_id.strip():
         if not re.fullmatch(r"-?\d+", chat_id.strip()):
@@ -313,6 +324,24 @@ def secret_is_set(env_var: str) -> bool:
     return bool(value) and value != "test-disabled-token"
 
 
+def telegram_value(field: str) -> str:
+    """Valore completo del token del bot o del Chat ID ("" se non impostato). Solo per
+    l'endpoint di rivelazione su richiesta esplicita: snapshot() ne espone solo l'anteprima."""
+    from rt.core.config import load_env_file
+    load_env_file()
+    env_var = {"bot_token": "RT_TELEGRAM_BOT_TOKEN", "chat_id": "RT_TELEGRAM_CHAT_ID"}[field]
+    value = (os.environ.get(env_var) or "").strip()
+    return "" if value == "test-disabled-token" else value
+
+
+def mask_value(value: str) -> str | None:
+    """Anteprima parzialmente nascosta: primi e ultimi caratteri (es. 1234…wXyZ)."""
+    if not value:
+        return None
+    n = 4 if len(value) >= 12 else 2 if len(value) >= 6 else 0
+    return f"{value[:n]}…{value[-n:]}" if n else "…"
+
+
 def snapshot(project_root: Path) -> dict[str, Any]:
     """Tutte le impostazioni modificabili, come le mostra la pagina Impostazioni."""
     from rt.core.config import load_env_file
@@ -348,8 +377,12 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         },
         "telegram": {
             "bot_token_set": secret_is_set("RT_TELEGRAM_BOT_TOKEN"),
-            "chat_id": (os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip() or None,
+            "bot_token_preview": mask_value(telegram_value("bot_token")),
+            "chat_id_set": bool(telegram_value("chat_id")),
+            "chat_id_preview": mask_value(telegram_value("chat_id")),
             "topics": dict(cfg.telegram.topics or {}),
+            "topic_names": {str(k): v for k, v in (cfg.telegram.topic_names or {}).items()
+                            if k in set((cfg.telegram.topics or {}).values())},
             "misc_topic_id": cfg.telegram.misc_topic_id,
             "default_channel": cfg.telegram.default_channel,
         },

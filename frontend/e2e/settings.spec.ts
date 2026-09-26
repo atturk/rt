@@ -11,7 +11,15 @@ type Settings = {
   data_dir: string | null
   setup_required: boolean
   transcription: { engine: string; base_url: string | null; model: string | null; api_key_set: boolean }
-  telegram: { bot_token_set: boolean; chat_id: string | null; topics: Record<string, number>; misc_topic_id: number | null }
+  telegram: {
+    bot_token_set: boolean
+    bot_token_preview: string | null
+    chat_id_set: boolean
+    chat_id_preview: string | null
+    topics: Record<string, number>
+    topic_names: Record<string, string>
+    misc_topic_id: number | null
+  }
   phases: Phase[]
   connections: { name: string; provider: string; base_url: string; models: string[]; credentials: { name: string; set: boolean }[] }[]
   credentials: { name: string; provider: string; env_var: string; set: boolean }[]
@@ -41,23 +49,43 @@ async function section(page: Page, title: string) {
 
 test.describe.configure({ mode: 'serial' })
 
-test('cartella dati: scrivi, ricarica, rileggi (e ripristina)', async ({ page }) => {
+test('cartella dati: scegli dal navigatore, ricarica, rileggi (e ripristina a mano)', async ({ page }) => {
   const original = serverState().lessons_root
+  // HOME del server e2e: accanto alla cartella delle lezioni (scripts/e2e_server.py).
+  const home = original.replace(/\/lessons$/, '/home')
   await loginViaLink(page)
   await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
   await expect(page).toHaveURL(/\/impostazioni$/)
   const card = await section(page, 'Cartella dati')
   await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(original)
+  await expect(card.getByLabel('Cartella delle lezioni')).toHaveAttribute('readonly', '')
   await expect(card.getByTestId('data-dir')).toHaveText((await settings(page)).data_dir!)
 
-  const other = `${original}-altra`
-  await card.getByLabel('Cartella delle lezioni').fill(other)
+  // Senza Finder (server e2e, come su Linux) "Scegli cartella…" apre il navigatore della home.
+  await card.getByRole('button', { name: 'Scegli cartella…' }).click()
+  const browser = card.getByRole('group', { name: 'Navigatore delle cartelle' })
+  await expect(browser.getByTestId('browser-path')).toHaveText(home)
+  const folders = browser.getByRole('list', { name: 'Sottocartelle' })
+  await expect(folders.getByRole('button')).toHaveText(['Documenti', 'Scrivania'])
+  await folders.getByRole('button', { name: 'Documenti' }).click()
+  await expect(browser.getByTestId('browser-path')).toHaveText(`${home}/Documenti`)
+  await expect(folders.getByRole('button')).toHaveText(['RT Lezioni e2e', 'Università'])
+  await browser.getByRole('button', { name: 'Cartella superiore' }).click()
+  await expect(browser.getByTestId('browser-path')).toHaveText(home)
+  await folders.getByRole('button', { name: 'Documenti' }).click()
+  await folders.getByRole('button', { name: 'RT Lezioni e2e' }).click()
+  await browser.getByRole('button', { name: 'Usa questa cartella' }).click()
+  await expect(browser).toBeHidden()
+  const chosen = `${home}/Documenti/RT Lezioni e2e`
+  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(chosen)
   await card.getByRole('button', { name: 'Salva' }).click()
   await expect(card.getByRole('status')).toHaveText('Salvato.')
   await page.reload()
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(other)
-  expect((await settings(page)).lessons_root).toBe(other)
+  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(chosen)
+  expect((await settings(page)).lessons_root).toBe(chosen)
 
+  // Il percorso a mano resta l'alternativa.
+  await card.getByRole('button', { name: 'Inserisci il percorso a mano' }).click()
   await card.getByLabel('Cartella delle lezioni').fill(original)
   await card.getByRole('button', { name: 'Salva' }).click()
   await expect(card.getByRole('status')).toHaveText('Salvato.')
@@ -104,7 +132,7 @@ test('Telegram: token, chat, topic per materia dal link, topic generale', async 
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const card = await section(page, 'Telegram')
-  await card.getByLabel('Token del bot').fill(BOT_TOKEN)
+  await card.getByLabel('Token del bot', { exact: true }).fill(BOT_TOKEN)
   await card.getByLabel('Link a un messaggio del topic').fill('https://t.me/c/1234567890/12/34')
   await card.getByRole('button', { name: 'Aggiungi dal link' }).click()
   await expect(card.getByLabel('Chat ID del gruppo')).toHaveValue('-1001234567890')
@@ -120,7 +148,6 @@ test('Telegram: token, chat, topic per materia dal link, topic generale', async 
   await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
 
   await page.reload()
-  await expect(card.getByLabel('Chat ID del gruppo')).toHaveValue('-1001234567890')
   await expect(rows).toHaveCount(2)
   await expect(card.getByLabel('Materia 1', { exact: true })).toHaveValue('BIOCHIMICA')
   await expect(card.getByLabel('Topic 1', { exact: true })).toHaveValue('12')
@@ -129,29 +156,84 @@ test('Telegram: token, chat, topic per materia dal link, topic generale', async 
   await expect(card.getByLabel('Topic generale (facoltativo)')).toHaveValue('3')
   // Il pannello del bot (RT4-F6) sta anche nelle impostazioni.
   await expect(page.getByTestId('telegram-bot')).toBeVisible()
-  await expect(card.getByLabel('Token del bot')).toHaveValue('')
-  await expect(card.getByText('Impostata')).toBeVisible()
   const tg = (await settings(page)).telegram
-  expect(tg).toMatchObject({ bot_token_set: true, chat_id: '-1001234567890', topics: { BIOCHIMICA: 12, FISIOLOGIA: 27 }, misc_topic_id: 3 })
+  expect(tg).toMatchObject({ bot_token_set: true, chat_id_set: true, topics: { BIOCHIMICA: 12, FISIOLOGIA: 27 }, misc_topic_id: 3 })
+
+  // Token e Chat ID: campi vuoti, anteprima parzialmente nascosta e occhio per il valore completo
+  // (chiesto all'API solo al clic: la risposta delle impostazioni ha solo l'anteprima).
+  await expect(card.getByLabel('Token del bot', { exact: true })).toHaveValue('')
+  await expect(card.getByLabel('Chat ID del gruppo')).toHaveValue('')
+  await expect(card.getByTestId('bot_token-value')).toHaveText('1234…-xyz')
+  await expect(card.getByTestId('chat_id-value')).toHaveText('-100…7890')
+  expect(tg).toMatchObject({ bot_token_preview: '1234…-xyz', chat_id_preview: '-100…7890' })
+  await expectNoSecretIn(page)
+  await card.getByRole('button', { name: 'Mostra token del bot' }).click()
+  await expect(card.getByTestId('bot_token-value')).toHaveText(BOT_TOKEN)
+  await card.getByRole('button', { name: 'Mostra Chat ID' }).click()
+  await expect(card.getByTestId('chat_id-value')).toHaveText('-1001234567890')
+  await card.getByRole('button', { name: 'Nascondi token del bot' }).click()
+  await expect(card.getByTestId('bot_token-value')).toHaveText('1234…-xyz')
   await expectNoSecretIn(page)
 
-  // Un topic tolto sparisce anche dal backend.
+  // Un topic tolto sparisce anche dal backend (qui tutti: li ritrova l'ascolto).
   await card.getByRole('button', { name: 'Rimuovi topic 2' }).click()
   await card.getByRole('button', { name: 'Salva Telegram' }).click()
   await page.reload()
   await expect(rows).toHaveCount(1)
   expect((await settings(page)).telegram.topics).toEqual({ BIOCHIMICA: 12 })
-
-  // "Ascolta i topic": job del worker contro la Bot API finta del server e2e (topic 12 e 27).
-  await card.getByRole('button', { name: 'Ascolta i topic per 20 secondi' }).click()
-  await expect(card.getByTestId('listen-result')).toHaveText('Rilevati 2 topic. Assegna una materia a ciascuno e salva.', { timeout: 30_000 })
-  await expect(rows).toHaveCount(2)
-  await expect(card.getByLabel('Topic 2', { exact: true })).toHaveValue('27')
-  await card.getByLabel('Materia 2', { exact: true }).fill('FISIOLOGIA')
+  await card.getByRole('button', { name: 'Rimuovi topic 1' }).click()
   await card.getByRole('button', { name: 'Salva Telegram' }).click()
+  await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+  expect((await settings(page)).telegram.topics).toEqual({})
+
+  // "Ascolta i topic": job del worker contro la Bot API finta del server e2e. Il nome del topic
+  // arriva da Telegram; BIOCHIMICA coincide con una materia nota e viene proposta.
   await page.reload()
-  await expect(rows).toHaveCount(2)
-  expect((await settings(page)).telegram.topics).toEqual({ BIOCHIMICA: 12, FISIOLOGIA: 27 })
+  await card.getByRole('button', { name: 'Ascolta i topic per 20 secondi' }).click()
+  await expect(card.getByTestId('listen-result')).toHaveText('Rilevati 3 topic. Assegna una materia a ciascuno e salva.', { timeout: 30_000 })
+  await expect(rows).toHaveCount(3)
+  await expect(card.getByLabel('Topic 1', { exact: true })).toHaveValue('12')
+  await expect(card.getByLabel('Materia 1', { exact: true })).toHaveValue('BIOCHIMICA')
+  await expect(rows.nth(0).getByTestId('topic-name')).toHaveText('Nome su Telegram: Biochimica')
+  await expect(card.getByLabel('Topic 2', { exact: true })).toHaveValue('27')
+  await expect(card.getByLabel('Materia 2', { exact: true })).toHaveValue('')
+  await expect(rows.nth(1).getByTestId('topic-name')).toHaveText('Nome su Telegram: Anatomia umana')
+  await expect(card.getByLabel('Topic 3', { exact: true })).toHaveValue('33')
+  await expect(rows.nth(2).getByTestId('topic-name')).toHaveCount(0) // nome non recuperabile
+  await card.getByLabel('Materia 2', { exact: true }).fill('ANATOMIA')
+  await card.getByRole('button', { name: 'Rimuovi topic 3' }).click()
+  await card.getByRole('button', { name: 'Salva Telegram' }).click()
+  await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+  await page.reload()
+  await expect(rows).toHaveCount(2) // in ordine di materia
+  await expect(card.getByLabel('Materia 1', { exact: true })).toHaveValue('ANATOMIA')
+  await expect(rows.nth(0).getByTestId('topic-name')).toHaveText('Nome su Telegram: Anatomia umana')
+  await expect(rows.nth(1).getByTestId('topic-name')).toHaveText('Nome su Telegram: Biochimica')
+  const saved = (await settings(page)).telegram
+  expect(saved.topics).toEqual({ ANATOMIA: 27, BIOCHIMICA: 12 })
+  expect(saved.topic_names).toEqual({ '12': 'Biochimica', '27': 'Anatomia umana' })
+
+  // "Prova" accanto al cestino: messaggio nel topic, esito visibile.
+  await rows.nth(0).getByRole('button', { name: 'Prova topic 1' }).click()
+  await expect(rows.nth(0).getByTestId('topic-test-result')).toHaveText('Messaggio inviato nel topic 27.')
+
+  // Cancellazione dei soli messaggi ricevuti durante l'ascolto, dopo conferma.
+  await card.getByRole('button', { name: 'Cancella i messaggi di rilevamento' }).click()
+  const confirm = card.getByRole('group', { name: 'Conferma cancellazione' })
+  await expect(confirm).toContainText("i 5 messaggi ricevuti durante l'ultimo ascolto")
+  await confirm.getByRole('button', { name: 'Annulla' }).click()
+  await expect(confirm).toBeHidden()
+  await card.getByRole('button', { name: 'Cancella i messaggi di rilevamento' }).click()
+  await confirm.getByRole('button', { name: 'Sì, cancella' }).click()
+  const cleanup = card.getByTestId('cleanup-result')
+  await expect(cleanup).toContainText('Eliminati 4 messaggi.')
+  await expect(cleanup).toContainText('Non eliminati: 1')
+  await expect(cleanup).toContainText('Messaggio 42: più vecchio di 48 ore (limite di Telegram)')
+  await page.reload()
+  await expect(card.getByRole('button', { name: 'Cancella i messaggi di rilevamento' })).toBeDisabled()
+  await expect(card.getByText("I messaggi dell'ultimo ascolto sono già stati cancellati.")).toBeVisible()
+  const listened = await apiGet<{ count: number; cleaned: boolean }>(page.request, '/settings/telegram/listen-messages')
+  expect(listened).toMatchObject({ count: 5, cleaned: true })
   await expectNoSecretIn(page)
 })
 
@@ -304,6 +386,11 @@ test('configurazione guidata: passi salvati sul backend e ripresi dopo la ricari
   await page.getByRole('link', { name: 'Configurazione guidata' }).click()
   await expect(page).toHaveURL(/\/impostazioni\/configurazione$/)
   await expect(page.getByLabel('Cartella delle lezioni')).toHaveValue(root)
+  // Anche qui la scelta predefinita è il pulsante (navigatore senza Finder), il percorso a mano l'alternativa.
+  await page.getByRole('button', { name: 'Scegli cartella…' }).click()
+  await expect(page.getByRole('group', { name: 'Navigatore delle cartelle' })).toBeVisible()
+  await page.getByRole('button', { name: 'Chiudi' }).click()
+  await expect(page.getByRole('button', { name: 'Inserisci il percorso a mano' })).toBeVisible()
   await page.getByRole('button', { name: 'Salva e continua' }).click()
   await expect(page).toHaveURL(/passo=2/)
 
@@ -320,6 +407,10 @@ test('configurazione guidata: passi salvati sul backend e ripresi dopo la ricari
   await expect(page).toHaveURL(/passo=4/)
   expect((await settings(page)).phases.every((p) => p.connection === CONNECTION && p.model === 'modello/unico')).toBe(true)
 
+  // Telegram già configurato: anteprime con l'occhio anche nel passo guidato.
+  await expect(page.getByTestId('chat_id-value')).toHaveText('-100…7890')
+  await page.getByRole('button', { name: 'Mostra Chat ID' }).click()
+  await expect(page.getByTestId('chat_id-value')).toHaveText('-1001234567890')
   await page.getByRole('button', { name: 'Salta' }).click()
   await expect(page).toHaveURL(/passo=5/)
   await page.reload()
@@ -339,6 +430,7 @@ test('le scritture non valide mostrano il messaggio dell\'API', async ({ page })
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const card = await section(page, 'Cartella dati')
+  await card.getByRole('button', { name: 'Inserisci il percorso a mano' }).click()
   await card.getByLabel('Cartella delle lezioni').fill('relativa/non/valida')
   await card.getByRole('button', { name: 'Salva' }).click()
   await expect(card.getByRole('alert')).toContainText('percorso assoluto')

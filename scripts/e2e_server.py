@@ -8,7 +8,8 @@ Uso (lo lancia frontend/playwright.config.ts):
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
 Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
---mock (LLM e risposte vocali finti) e il bot Telegram è finto (RT_TELEGRAM_FAKE=1).
+--mock (LLM e risposte vocali finti), il bot Telegram è finto (RT_TELEGRAM_FAKE=1) e il Bot API
+anche (tests/api_support.fake_telegram_server); niente finestra di Finder per la scelta cartella.
 """
 import argparse
 import json
@@ -38,7 +39,12 @@ def _workspace(base: str) -> str:
     general.setdefault("telegram", {})["lessons_root"] = lessons
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
+    # Cartelle per il navigatore della scelta cartella (RT4-FA6): la finestra di Finder è
+    # disattivata, come su Linux, così anche su macOS i test usano il ripiego della SPA.
+    for folder in ("Documenti/RT Lezioni e2e", "Documenti/Università", "Scrivania"):
+        os.makedirs(os.path.join(home, folder))
     os.environ["HOME"] = home
+    os.environ["RT_NATIVE_FOLDER_PICKER"] = "0"
     os.environ["RT_TELEGRAM_FAKE"] = "1"
     os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [ROOT, os.environ.get("PYTHONPATH")]))
     os.environ.pop("RT_DATABASE_URL", None)

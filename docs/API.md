@@ -67,7 +67,8 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 
 La logica vive in `rt/services/settings_service.py` e `rt/services/connections_service.py`
 (spostati da `rt/web/`, che li reimporta per Gradio). Nessuna risposta contiene un valore
-segreto: solo `set: true/false`.
+segreto: solo `set: true/false` (per token e Chat ID di Telegram anche un'anteprima con primi e
+ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
@@ -82,6 +83,13 @@ segreto: solo `set: true/false`.
 | `PUT /settings/pricing` | Pricing custom per provider e modello | `rt config` |
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
 | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
+| `POST /settings/telegram/reveal` `{field: bot_token\|chat_id}` | Valore completo del token o del Chat ID, solo su richiesta esplicita (`Cache-Control: no-store`); `GET /settings` ne dà solo l'anteprima (`bot_token_preview`, `chat_id_preview`, es. `1234…wXyZ`) | — |
+| `POST /settings/telegram/test-topic` `{topic_id, materia}` | Invia nel topic "Questo è il topic di MATERIA"; esito nella risposta | — |
+| `GET /settings/telegram/listen-messages` | Messaggi ricevuti durante l'ultimo ascolto riuscito dei topic (quanti, se già cancellati) | — |
+| `POST /settings/telegram/listen-messages/delete` | `deleteMessage` solo di quei messaggi (mai quelli di servizio): quanti eliminati e quali no, con il motivo (più vecchi di 48 ore, permessi) | — |
+| `GET /telegram/notifications?limit=` | Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic), dal registro `notifications.jsonl` nella cartella di stato Telegram | — |
+| `POST /system/choose-folder` `{start?}` | Finestra di Finder (`osascript` 'choose folder') e percorso POSIX scelto; `unavailable` fuori da macOS (o con `RT_NATIVE_FOLDER_PICKER=0`), `cancelled` se annullata. Solo da loopback | — |
+| `GET /system/folders?path=` | Sottocartelle (niente file, niente cartelle nascoste) di una cartella della home, per il navigatore della SPA. Solo da loopback e dentro la home | — |
 
 Il bot parte come processo separato in una sessione propria (sopravvive all'API) e il lock
 del PID file in `~/.rt/` impedisce i duplicati; lo stop invia SIGTERM. Un servizio launchd
@@ -115,7 +123,7 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST .../recall/generate`, `POST .../recall/next` | Generazione (job `recall_generate`, o `recall_batch` con `qtype`); prossima domanda, che sotto soglia accoda il rifornimento (job `recall_refill`) come il terminale | `rt recall` |
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
-| `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti | web Gradio "Ascolta topic" |
+| `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti, `names` (nome del topic da `forum_topic_created`/`forum_topic_edited` o dal `reply_to_message`), `materie` (materia nota che coincide con il nome) e `messages` (chat e message id dei messaggi degli utenti, per la cancellazione) | web Gradio "Ascolta topic" |
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in

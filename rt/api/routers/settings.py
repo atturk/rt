@@ -3,7 +3,7 @@ Nessuna risposta contiene mai il valore di un segreto: solo "impostato sì/no"."
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, Field
 
 from rt.api.deps import Actor
@@ -64,8 +64,12 @@ class Transcription(BaseModel):
 
 class TelegramSettings(BaseModel):
     bot_token_set: bool
-    chat_id: Optional[str] = None
+    bot_token_preview: Optional[str] = Field(None, description="Primi e ultimi caratteri del token (es. 1234…wXyZ); "
+                                                               "il valore completo solo con POST /settings/telegram/reveal")
+    chat_id_set: bool = False
+    chat_id_preview: Optional[str] = Field(None, description="Primi e ultimi caratteri del Chat ID")
     topics: Dict[str, int]
+    topic_names: Dict[str, str] = Field(default_factory=dict, description="id del topic -> nome rilevato da Telegram")
     misc_topic_id: Optional[int] = None
     default_channel: str
 
@@ -100,6 +104,53 @@ class TelegramIn(BaseModel):
     chat_id: Optional[str] = None
     topics: Dict[str, int] = Field(default_factory=dict, description="MATERIA -> id del topic")
     misc_topic_id: Optional[int] = None
+    topic_names: Optional[Dict[str, str]] = Field(None, description="id del topic -> nome rilevato (facoltativo)")
+
+
+class RevealIn(BaseModel):
+    field: Literal["bot_token", "chat_id"]
+
+
+class RevealOut(BaseModel):
+    field: str
+    value: Optional[str] = Field(None, description="Valore completo, null se non impostato")
+
+
+class TopicTestIn(BaseModel):
+    topic_id: int = Field(ge=1)
+    materia: str = ""
+
+
+class TopicTestOut(BaseModel):
+    ok: bool
+    message: str
+    text: str = Field(description="Testo inviato nel topic")
+
+
+class ListenMessages(BaseModel):
+    job_id: Optional[str] = Field(None, description="Ultimo ascolto dei topic concluso")
+    finished_at: Optional[str] = None
+    count: int = Field(description="Messaggi ricevuti durante quell'ascolto (esclusi quelli di servizio)")
+    cleaned: bool = Field(description="True se sono già stati cancellati")
+
+
+class DeleteFailure(BaseModel):
+    message_id: int
+    reason: str
+
+
+class ListenMessagesDeleted(BaseModel):
+    job_id: str
+    deleted: int
+    failed: List[DeleteFailure]
+
+
+class Notification(BaseModel):
+    sent_at: str
+    kind: str = Field(description="lezione_pronta, issue o prova")
+    text: str
+    topic_id: Optional[int] = None
+    ok: bool = True
 
 
 class ConnectionIn(BaseModel):
@@ -181,8 +232,81 @@ def put_telegram(body: TelegramIn, _actor: Actor):
     from rt.services.settings_service import save_telegram, snapshot
     topics = [[k, v] for k, v in body.topics.items()]
     misc = "" if body.misc_topic_id is None else str(body.misc_topic_id)
-    _call(save_telegram, _project_root(), body.bot_token or "", body.chat_id or "", topics, misc)
+    names = None if body.topic_names is None else {int(k): v for k, v in body.topic_names.items() if str(k).isdigit()}
+    _call(save_telegram, _project_root(), body.bot_token or "", body.chat_id or "", topics, misc, names)
     return snapshot(_project_root())
+
+
+@router.post("/settings/telegram/reveal", response_model=RevealOut,
+             summary="Valore completo del token del bot o del Chat ID, solo su richiesta esplicita")
+def reveal_telegram(body: RevealIn, response: Response, _actor: Actor):
+    from rt.services.settings_service import telegram_value
+    response.headers["Cache-Control"] = "no-store"
+    return RevealOut(field=body.field, value=telegram_value(body.field) or None)
+
+
+@router.post("/settings/telegram/test-topic", response_model=TopicTestOut,
+             summary="Invia nel topic il messaggio di prova 'Questo è il topic di <materia>'")
+def test_topic(body: TopicTestIn, _actor: Actor):
+    from rt.services.telegram_topics import TopicListenError, send_topic_test
+    from rt.telegram.notify_log import record_notification
+    try:
+        result = send_topic_test(body.topic_id, body.materia)
+    except TopicListenError as exc:
+        raise ApiError(409, "telegram_not_configured", str(exc))
+    record_notification("prova", result["text"], body.topic_id, ok=result["ok"])
+    return result
+
+
+LISTEN_CLEANED_KEY = "telegram.listen_cleaned"
+
+
+def _last_listen():
+    """Ultimo job 'Ascolta i topic' riuscito e i messaggi che ha ricevuto."""
+    from rt.api.jobs import queue
+    for info in queue().list(state="succeeded", job_type="telegram_listen_topics", limit=20):
+        result = info.result or {}
+        if result.get("ok"):
+            return info, [m for m in result.get("messages") or [] if isinstance(m, dict)]
+    return None, []
+
+
+def _cleaned_job() -> Optional[str]:
+    from rt.db.engine import get_database
+    from rt.db.repositories import SettingRepository
+    from rt.db.session import session_scope
+    with session_scope(get_database()) as s:
+        return (SettingRepository(s).get(LISTEN_CLEANED_KEY) or {}).get("job_id")
+
+
+@router.get("/settings/telegram/listen-messages", response_model=ListenMessages,
+            summary="Messaggi ricevuti durante l'ultimo ascolto dei topic")
+def listen_messages(_actor: Actor):
+    info, messages = _last_listen()
+    if info is None:
+        return ListenMessages(count=0, cleaned=False)
+    finished = info.finished_at.isoformat() if info.finished_at else None
+    return ListenMessages(job_id=info.id, finished_at=finished, count=len(messages),
+                          cleaned=_cleaned_job() == info.id)
+
+
+@router.post("/settings/telegram/listen-messages/delete", response_model=ListenMessagesDeleted,
+             summary="Cancella dal gruppo solo i messaggi ricevuti durante l'ultimo ascolto dei topic")
+def delete_listen_messages(_actor: Actor):
+    from rt.db.engine import get_database
+    from rt.db.repositories import SettingRepository
+    from rt.db.session import session_scope
+    from rt.services.telegram_topics import TopicListenError, delete_listen_messages as delete
+    info, messages = _last_listen()
+    if info is None or not messages:
+        raise ApiError(404, "no_listen_messages", "Nessun messaggio di rilevamento da cancellare.")
+    try:
+        outcome = delete(messages)
+    except TopicListenError as exc:
+        raise ApiError(409, "telegram_not_configured", str(exc))
+    with session_scope(get_database()) as s:
+        SettingRepository(s).set(LISTEN_CLEANED_KEY, {"job_id": info.id, "deleted": outcome["deleted"]})
+    return ListenMessagesDeleted(job_id=info.id, deleted=len(outcome["deleted"]), failed=outcome["failed"])
 
 
 @router.post("/settings/connections", response_model=Settings, status_code=201,
@@ -270,6 +394,13 @@ def daemon_start(_actor: Actor):
     except RuntimeError as exc:
         raise ApiError(409, "telegram_start_failed", str(exc))
     return DaemonStatus(running=True, pid=pid)
+
+
+@router.get("/telegram/notifications", response_model=List[Notification],
+            summary="Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic)")
+def notifications(_actor: Actor, limit: int = Query(20, ge=1, le=50)):
+    from rt.telegram.notify_log import recent_notifications
+    return recent_notifications(limit)
 
 
 @router.post("/telegram/daemon/stop", response_model=DaemonStatus, summary="Ferma il bot Telegram")

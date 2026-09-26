@@ -229,6 +229,11 @@ class TelegramRuntimeConfig(BaseModel):
         default_factory=dict,
         description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. \"Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato).\""
     )
+    topic_names: Dict[int, str] = Field(
+        default_factory=dict,
+        description="Nome del topic Telegram (message_thread_id -> nome), rilevato dalla web con "
+                    "'Ascolta i topic'. Solo informativo: l'instradamento usa 'topics'."
+    )
     misc_topic_id: Optional[int] = Field(
         default=None,
         description="message_thread_id del topic 'Varie/Generale' per lezioni la cui materia "
