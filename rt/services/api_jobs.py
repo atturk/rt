@@ -39,6 +39,8 @@ def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     ctx.lesson_dir, ctx.force, ctx.force_mock = job.lesson_path, force, mock
     with ctx.activate():
         res = run_rewrite(job.lesson_path, target_unit_id=job.payload["unit"], force=force, force_mock=mock, ctx=ctx)
+    from rt.pipeline.unit_failures import raise_if_incomplete
+    raise_if_incomplete("rewrite", res)
     return _done({"phase": "rewrite", "unit": job.payload["unit"], "result": res}, lesson_path=job.lesson_path)
 
 
@@ -53,11 +55,13 @@ def _cleanup_upload(payload: Dict[str, Any]) -> None:
 
 def with_upload_cleanup(handler: Callable[[JobInfo, RunContext], JobOutcome]):
     """Pulisce la cartella di upload quando il job finisce (non se si ferma su una decisione:
-    i file servono ancora alla ripresa)."""
+    i file servono ancora alla ripresa; non se fallisce: servono a 'Riprova', e li pulisce il
+    job ripreso quando finisce, o sweep_stale_uploads dopo UPLOAD_MAX_AGE_DAYS)."""
     def wrapped(job: JobInfo, ctx: RunContext) -> JobOutcome:
+        from rt.services.context import RunCancelled
         try:
             outcome = handler(job, ctx)
-        except Exception:  # fallito o annullato; un arresto del worker (BaseException) lo rimette in coda
+        except RunCancelled:
             _cleanup_upload(job.payload)
             raise
         if outcome.state != JobState.WAITING_FOR_DECISION:
@@ -65,6 +69,29 @@ def with_upload_cleanup(handler: Callable[[JobInfo, RunContext], JobOutcome]):
         return outcome
     wrapped.upload_cleanup = True
     return wrapped
+
+
+UPLOAD_MAX_AGE_DAYS = 7
+
+
+def sweep_stale_uploads(uploads_root: str, queue, max_age_days: float = UPLOAD_MAX_AGE_DAYS) -> int:
+    """Cancella le cartelle di upload più vecchie di max_age_days che nessun job attivo usa
+    (restano quelle dei job falliti non ripresi). Restituisce quante ne ha cancellate."""
+    import time
+    from rt.services.jobs import ACTIVE_STATES
+    if not fs.isdir(uploads_root):
+        return 0
+    in_use = {os.path.abspath(j.payload.get("upload_dir")) for j in queue.list(state=list(ACTIVE_STATES), limit=500)
+              if j.payload.get("upload_dir")}
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    for name in os.listdir(uploads_root):
+        path = os.path.abspath(os.path.join(uploads_root, name))
+        if path in in_use or not os.path.isdir(path) or os.path.getmtime(path) > cutoff:
+            continue
+        fs.rmtree(path, ignore_errors=True)
+        removed += 1
+    return removed
 
 
 def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:

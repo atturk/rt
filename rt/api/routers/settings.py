@@ -70,14 +70,30 @@ class TelegramSettings(BaseModel):
     default_channel: str
 
 
+class WorkerSettings(BaseModel):
+    concurrency: int = Field(description="Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): "
+                                         "vale dal prossimo avvio")
+    running: int = Field(0, description="Worker attivi ora (uno per job eseguibile insieme)")
+
+
+class WorkerIn(BaseModel):
+    concurrency: int = Field(ge=1, le=4)
+
+
+class WebSearchSettings(BaseModel):
+    searxng_base_url: Optional[str] = Field(None, description="URL base di SearXNG per la ricerca immagini web")
+
+
 class Settings(BaseModel):
     lessons_root: Optional[str] = None
+    worker: WorkerSettings
     transcription: Transcription
     telegram: TelegramSettings
     phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna delle sei fasi LLM")
     connections: List[Connection]
     credentials: List[CredentialState]
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
+    web_search: WebSearchSettings
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
     setup_required: bool = Field(False, description="True se la cartella delle lezioni non è impostata o non esiste: "
@@ -147,6 +163,39 @@ class SecretSaved(BaseModel):
     stored_in: Literal["store", "env"]
 
 
+class ModelTestIn(BaseModel):
+    connection: str
+    model: str
+    mock: bool = False
+
+
+class ModelTestOut(BaseModel):
+    ok: bool
+    connection: str
+    provider: str
+    model: str
+    latency_ms: Optional[int] = Field(None, description="Durata della chiamata in millisecondi")
+    status_code: Optional[int] = Field(None, description="Stato HTTP della risposta del provider")
+    reply: Optional[str] = Field(None, description="Inizio della risposta del modello")
+    message: str = Field(description="Esito leggibile, anche l'errore del provider (sanificato)")
+
+
+class WebSearchIn(BaseModel):
+    searxng_base_url: str = Field("", description="Vuoto per rimuoverlo")
+
+
+class WebSearchTestIn(BaseModel):
+    searxng_base_url: str
+    mock: bool = False
+
+
+class WebSearchTestOut(BaseModel):
+    ok: bool
+    results: int = Field(description="Immagini restituite dalla ricerca di prova")
+    latency_ms: Optional[int] = None
+    message: str
+
+
 class DaemonStatus(BaseModel):
     running: bool
     pid: Optional[int] = None
@@ -166,6 +215,14 @@ def get_settings(_actor: Actor):
 def put_lessons_root(body: LessonsRootIn, _actor: Actor):
     from rt.services.settings_service import save_lessons_root, snapshot
     _call(save_lessons_root, body.path, _project_root())
+    return snapshot(_project_root())
+
+
+@router.put("/settings/worker", response_model=Settings,
+            summary="Job in parallelo del worker avviato con la web (vale dal prossimo avvio)")
+def put_worker(body: WorkerIn, _actor: Actor):
+    from rt.services.settings_service import save_worker_concurrency, snapshot
+    _call(save_worker_concurrency, _project_root(), body.concurrency)
     return snapshot(_project_root())
 
 
@@ -234,6 +291,27 @@ def put_pricing(body: Dict[str, Dict[str, Dict[str, Any]]], _actor: Actor):
     from rt.services.settings_service import save_pricing, snapshot
     _call(save_pricing, _project_root(), body)
     return snapshot(_project_root())
+
+
+@router.post("/settings/models/test", response_model=ModelTestOut,
+             summary="Prova connessione e modello con una chiamata minima (anche prima di salvarli)")
+def post_model_test(body: ModelTestIn, _actor: Actor):
+    from rt.services.probes import probe_model
+    return _call(probe_model, _project_root(), body.connection, body.model, body.mock)
+
+
+@router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG")
+def put_web_search(body: WebSearchIn, _actor: Actor):
+    from rt.services.settings_service import save_web_search, snapshot
+    _call(save_web_search, _project_root(), body.searxng_base_url)
+    return snapshot(_project_root())
+
+
+@router.post("/settings/web-search/test", response_model=WebSearchTestOut,
+             summary="Ricerca immagini di prova su SearXNG: quanti risultati tornano")
+def post_web_search_test(body: WebSearchTestIn, _actor: Actor):
+    from rt.services.probes import probe_searxng
+    return _call(probe_searxng, body.searxng_base_url, body.mock)
 
 
 @router.put("/secrets/{name}", response_model=SecretSaved,

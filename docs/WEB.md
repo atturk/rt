@@ -27,25 +27,109 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 
 - **Dashboard:** lezioni raggruppate per materia con filtri, stato delle fasi, issue da
   valutare e costi.
+- **Ricerca:** la dashboard e gli elenchi di Recall, Immagini e Review hanno la stessa barra:
+  testo, materia e stato. Il testo cerca nel titolo, negli argomenti, nella materia e nella data,
+  che si può scrivere come `2026-09-26`, `26/09/2026`, `26-09-2026` o `26 settembre 2026`; con
+  più parole compaiono le lezioni che le contengono tutte. Il punto interrogativo accanto a
+  **Cerca** lo ricorda (al passaggio del mouse e al focus da tastiera). Il filtro lavora
+  nel browser sull'elenco già caricato, quindi risponde subito a ogni tasto; i filtri restano
+  nell'indirizzo (`?q=&materia=&stato=`) e dopo la ricarica.
 - **Importa:** carichi l'audio, scegli data e materia e, se vuoi, avvii subito la pipeline.
 - **Job:** i job in coda e in corso con gli eventi in tempo reale; si possono annullare. Se
-  nessun worker è attivo la pagina lo segnala.
-- **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda, fasi
+  nessun worker è attivo la pagina lo segnala. La voce **Job** del menu porta un badge con il
+  numero di job attivi più quelli in attesa di una tua decisione (arancione se c'è una decisione
+  da prendere o nessun worker attivo).
+  Nelle fasi a unità (rielaborazione, revisione) il dettaglio mostra l'unità in lavorazione sul totale, per esempio "Revisione · 8/31".
+  L'elenco degli eventi segue gli ultimi finché sei in fondo; se scorri verso l'alto per
+  leggere si ferma e il pulsante **Vai agli ultimi** lo riporta in coda.
+- **Riprova:** un job fallito ha il pulsante **Riprova** accanto allo stato "Fallito", nel
+  dettaglio del job e nel pannello job della lezione. Crea un job nuovo con lo stesso tipo e le
+  stesse opzioni, collegato al vecchio (i due dettagli si linkano a vicenda), che riparte dalla
+  fase fallita: le fasi già valide si saltano e le unità già fatte non si rifanno (una pipeline o
+  una fase forzata non riparte da zero). Se sulla lezione sta già lavorando un altro job, Riprova
+  lo dice e non crea nulla. I file caricati di un job fallito restano per il nuovo tentativo e si
+  cancellano quando questo finisce (quelli mai ripresi dopo 7 giorni).
+- **Risposte fuori schema:** se un modello risponde con testo invece del JSON richiesto (nel
+  primo test reale `openrouter/free` ha risposto "User Safety: safe / Response Safety: safe"), RT
+  ripete la richiesta sulla stessa route ricordando il formato e poi passa alle altre route
+  configurate. Se un'unità non riesce comunque, le altre proseguono: la fase finisce parziale e
+  il job fallisce con un messaggio che dice modello, unità e inizio della risposta. Riprova rifà
+  solo le unità mancanti.
+- **Notifica Telegram:** a fine pipeline, e dopo il solo documento, il worker manda la notifica
+  "Lezione pronta" come da terminale (se Telegram è configurato; in modalità prova no). Se
+  l'invio non riesce il job resta completato e l'errore compare tra gli eventi.
+- **Review:** le lezioni con issue della review scientifica da valutare, con il numero per
+  ciascuna; un clic apre la revisione della lezione.
+- **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda (clic
+  sulla velocità: slider da 0.5× a 3×, anche da tastiera; la scelta resta nel browser), fasi
   con validazioni, avvio di una singola fase, costi, download del Markdown o dello zip.
   Nell'intestazione **Recall**, **Immagini**, **Markdown** e **Tutti i dati (zip)** stanno sempre
   nello stesso ordine e posto: quando un'azione non è ancora disponibile il pulsante resta
   visibile, disabilitato, e il suo suggerimento dice cosa manca.
 - **Scaletta:** vista ad albero dell'outline, approvazione o richiesta di modifiche.
 - **Revisione:** le issue della review scientifica accanto al testo, con diff, frase
-  evidenziata e audio al punto giusto; accetta, mantieni l'originale, modifica, annulla (anche
-  da tastiera: `a`, `r`, `e`, `u`, frecce). Con l'ultima decisione la pipeline in attesa
-  riparte da sola.
+  evidenziata e audio dal timecode dell'unità; accetta, mantieni l'originale, modifica, annulla
+  (anche da tastiera: `a`, `r`, `e`, `u`, frecce). Le issue da decidere si ordinano per
+  timecode o per tipo e gravità (prima gli errori concettuali più gravi; `?ordine=gravita`
+  nell'indirizzo) e dopo ogni decisione si passa alla successiva in quell'ordine. Con l'ultima
+  decisione la pipeline in attesa riparte da sola.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
 - **Immagini:** slide, foto o PDF da integrare nel documento; si aggiungono alla bozza e
   compaiono subito nell'anteprima.
 - **Bot Telegram:** stato, avvio e arresto del bot.
-- **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
-  Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+- **Impostazioni:** cartella lezioni, job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
+  ricerca web, Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello
+  che manca; si riapre dal link **Configurazione guidata →** in cima alle impostazioni.
+  - **Modelli:** nel passo Modelli della configurazione guidata si usa di norma lo stesso modello
+    per tutte le fasi; **Scegli per ogni fase** mostra le sei fasi (Outline, Rewrite, Review,
+    Recall, Descrizione immagine, Giudice immagini) con connessione e modello ciascuna, come nella
+    scheda Modelli. Accanto a ogni **Salva** c'è **Prova**: una chiamata minima (prompt di poche
+    parole, pochi token di uscita, costo quasi nullo) alla connessione e al modello scritti nel
+    form, anche prima di salvarli. Mostra se il modello risponde, la latenza e l'eventuale errore
+    del provider.
+  - **Costi:** il provider si sceglie tra quelli delle connessioni e il modello tra quelli in uso
+    nelle fasi. Un valore diverso mostra un'icona di avviso nel campo ("Provider non configurato",
+    "Modello non in uso"), ma si salva lo stesso. IN, OUT e R sono i prezzi per milione di token
+    in input, in output e di ragionamento (se il provider lo fa pagare a parte). La stima non
+    considera il caching dei token: il costo reale può essere più basso.
+  - **Ricerca web:** l'URL base di un'istanza SearXNG (per esempio `http://localhost:8088`) per
+    cercare immagini da aggiungere alle lezioni. **Prova** fa una ricerca immagini di prova e dice
+    quante ne tornano; **Salva** lo registra nelle impostazioni, che l'aggiunta immagini rilegge a
+    ogni job. SearXNG deve avere il formato json abilitato (`search.formats` nel suo
+    `settings.yml`): se manca, la prova e la ricerca lo segnalano.
+  - I campi delle chiavi e del token del bot sono mascherati ma non sono campi password, così
+    Safari e il portachiavi di iCloud non propongono password salvate.
+
+## Job in parallelo
+
+Il worker avviato da `rt web` esegue fino a **2** job insieme (Impostazioni > Generali, "Job in
+parallelo", da 1 a 4; si salva in `config/general.yaml`, `worker.concurrency`). Due job sulla
+stessa lezione non girano mai insieme: il secondo aspetta (vincolo `active_lesson` della coda),
+quindi il parallelismo vale tra lezioni diverse, per esempio la trascrizione di una lezione nuova
+mentre un'altra è in revisione. Il valore si applica al riavvio: `rt web` lo legge all'avvio e lo
+passa al worker (`rt worker --concurrency N`). `rt worker` lanciato a mano resta a 1 thread se
+non si indica `--concurrency`.
+
+## Barra laterale
+
+La barra a sinistra elenca le lezioni per materia. Il pulsante in alto la **riduce** a una
+colonna di icone, una per materia, e la riespande; la scelta resta nel browser anche dopo la
+ricarica. Da ridotta:
+
+- ogni icona mostra il nome completo della materia al passaggio del mouse e al focus;
+- clic o Invio aprono accanto un pannello con le lezioni della materia, senza espandere la
+  barra; un clic su una lezione la apre, Esc o un clic fuori chiudono il pannello;
+- da tastiera: Tab arriva alle icone, frecce su e giù (Home, Fine) passano fra le materie.
+
+Riespandendo la barra, le materie aperte o chiuse e la lezione selezionata restano come prima.
+Su schermi stretti la barra resta il menu a comparsa di sempre.
+
+Le icone sono le iniziali delle prime quattro parole significative del nome della materia,
+senza articoli, preposizioni e congiunzioni (anche elise: *Medicina d'urgenza* → MU); numeri e
+numeri romani in fondo restano (*Patologia generale 1* → PG1). Una iniziale è centrata, due
+affiancate, tre due sopra e una sotto, quattro in griglia 2×2. Il colore pastello viene dal
+nome: è sempre lo stesso per la stessa materia e materie con le stesse iniziali hanno colori
+diversi.
 
 ## Documento finale: la conferma
 

@@ -1,14 +1,16 @@
-import { Link } from 'react-router'
+import { ArrowDown } from 'lucide-react'
+import { Link, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
 import { useCancelJob, useJob, useJobEvents, type StreamStatus } from '@/api/jobs'
-import { JobStateBadge, ProgressBar } from '@/components/jobs/JobParts'
+import { JobStateBadge, ProgressBar, RetryButton } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { lessonTitle } from '@/lib/format'
-import { decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressPercent } from '@/lib/jobs'
+import { useFollowTail } from '@/lib/followTail'
+import { decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel, progressPercent } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
 const STREAM_LABELS: Record<StreamStatus, string> = {
@@ -33,12 +35,15 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   const { events, status } = useJobEvents(jobId, job.data, job.dataUpdatedAt)
   const cancel = useCancelJob()
   const lessons = useLessons()
+  const navigate = useNavigate()
+  const { ref: logRef, onScroll: onLogScroll, following, jumpToLatest } = useFollowTail<HTMLOListElement>(events.length)
 
   if (job.isPending) return <p className="text-sm text-muted-foreground">Carico il job…</p>
   if (job.isError) return <Alert tone="danger">{errorMessage(job.error)}</Alert>
   const j = job.data
   const lesson = lessons.data?.find((l) => l.id === j.lesson_id)
   const percent = progressPercent(j.progress)
+  const progress = progressLabel(j.progress)
   const link = j.state === 'waiting_for_decision' ? decisionLink(j) : null
   const canCancel = !isTerminal(j.state) && !j.cancel_requested
 
@@ -47,6 +52,9 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
       <div className="flex flex-wrap items-center gap-3">
         <h2 className={cn('mr-auto font-bold tracking-tight', compact ? 'text-base' : 'text-lg')}>{jobTypeLabel(j)}</h2>
         <JobStateBadge state={j.state} />
+        {j.state === 'failed' && !j.retried_by && (
+          <RetryButton jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
+        )}
         {canCancel && (
           <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(j.id)}>
             Annulla job
@@ -63,13 +71,27 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
         )}
         {j.created_at && ` · creato alle ${formatTime(j.created_at)}`}
         {j.cancel_requested && !isTerminal(j.state) && ' · annullamento richiesto'}
+        {j.retry_of && (
+          <>
+            {' · '}
+            <Link to={`/job/${j.retry_of}`} className="underline" data-testid="retry-of">
+              nuovo tentativo di un job fallito
+            </Link>
+          </>
+        )}
       </p>
 
       {isActive(j.state) && (
         <div className="flex flex-col gap-1">
+          {j.state === 'running' && progress.phase && (
+            <span className="text-sm font-semibold" data-testid="job-progress-title">
+              {progress.phase}
+              {progress.count && <span className="tabular-nums"> · {progress.count}</span>}
+            </span>
+          )}
           <ProgressBar value={j.state === 'queued' ? 0 : percent} label="Avanzamento del job" />
           <span className="text-xs text-muted-foreground">
-            {j.state === 'queued' ? 'In attesa del worker' : String(j.progress?.message ?? '') || 'In lavorazione'}
+            {j.state === 'queued' ? 'In attesa del worker' : progress.detail || 'In lavorazione'}
           </span>
         </div>
       )}
@@ -84,7 +106,19 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           )}
         </Alert>
       )}
-      {j.state === 'failed' && j.error && <Alert tone="danger">{j.error}</Alert>}
+      {j.state === 'failed' && j.error && (
+        <Alert tone="danger" data-testid="job-error">
+          {j.error}
+        </Alert>
+      )}
+      {j.retried_by && (
+        <Alert data-testid="retried-by">
+          Hai già riprovato questo job.{' '}
+          <Link to={`/job/${j.retried_by}`} className="font-semibold underline">
+            Segui il nuovo tentativo
+          </Link>
+        </Alert>
+      )}
       {j.state === 'succeeded' && j.lesson_id != null && !compact && (
         <Alert>
           Job completato.{' '}
@@ -102,22 +136,33 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
             {STREAM_LABELS[status]}
           </span>
         </div>
-        <ol
-          role="log"
-          aria-label="Eventi del job"
-          className={cn('flex flex-col gap-1 overflow-y-auto rounded-lg bg-muted/60 p-3 font-mono text-xs', compact ? 'max-h-40' : 'max-h-96')}
-        >
-          {events.length === 0 && <li className="text-muted-foreground">Nessun evento per ora.</li>}
-          {events.map((event) => {
-            const { text, tone } = describeEvent(event)
-            return (
-              <li key={event.id} data-event-type={event.type} className={cn('flex gap-3', TONE_CLASSES[tone])}>
-                <span className="shrink-0 text-muted-foreground">{formatTime(event.created_at)}</span>
-                <span>{text}</span>
-              </li>
-            )
-          })}
-        </ol>
+        <div className="relative">
+          <ol
+            ref={logRef}
+            onScroll={onLogScroll}
+            role="log"
+            aria-label="Eventi del job"
+            data-following={following}
+            className={cn('flex flex-col gap-1 overflow-y-auto rounded-lg bg-muted/60 p-3 font-mono text-xs', compact ? 'max-h-40' : 'max-h-96')}
+          >
+            {events.length === 0 && <li className="text-muted-foreground">Nessun evento per ora.</li>}
+            {events.map((event) => {
+              const { text, tone } = describeEvent(event)
+              return (
+                <li key={event.id} data-event-type={event.type} className={cn('flex gap-3', TONE_CLASSES[tone])}>
+                  <span className="shrink-0 text-muted-foreground">{formatTime(event.created_at)}</span>
+                  <span>{text}</span>
+                </li>
+              )
+            })}
+          </ol>
+          {!following && events.length > 0 && (
+            <Button size="sm" variant="outline" className="absolute bottom-2 right-4 h-7 shadow-sm" onClick={jumpToLatest}>
+              <ArrowDown aria-hidden />
+              Vai agli ultimi
+            </Button>
+          )}
+        </div>
       </div>
     </Card>
   )

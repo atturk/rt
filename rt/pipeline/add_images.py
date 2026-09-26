@@ -30,6 +30,7 @@ from rt.llm.prompts import (
     build_image_descriptions_context_message,
     build_image_unit_judge_user_prompt,
 )
+from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 
 
@@ -134,6 +135,7 @@ def describe_new_images(
     new_images: List[Tuple[ExtractedImage, str]],
     lesson_context: Optional[str] = None,
     force_mock: bool = False,
+    failures: Optional[UnitFailureTracker] = None,
 ) -> None:
     """Per ogni immagine nuova (ExtractedImage, hash), genera la descrizione strutturata
     via LLM con o senza contesto a seconda della sorgente, salva l'immagine grezza e
@@ -160,14 +162,26 @@ def describe_new_images(
             sys_prompt = IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT
             user_prompt = build_image_description_user_prompt(context=None)
 
-        desc: ImageDescription = client.call_structured(
-            prompt=user_prompt,
-            system_prompt=sys_prompt,
-            response_model=ImageDescription,
-            job_name="image_description",
-            image_data_url=image_data_url,
-            lesson_dir=lesson_dir,
-        )
+        try:
+            desc: ImageDescription = client.call_structured(
+                prompt=user_prompt,
+                system_prompt=sys_prompt,
+                response_model=ImageDescription,
+                job_name="image_description",
+                image_data_url=image_data_url,
+                lesson_dir=lesson_dir,
+            )
+        except Exception as exc:
+            # Con un tracker (job): l'immagine resta senza descrizione, le altre proseguono e
+            # una nuova esecuzione descrive solo quelle mancanti (cache per hash).
+            if failures is None or not is_unit_failure(exc):
+                raise
+            failures.failed(img_hash[:12], f"immagine {img.source_label}", exc)
+            if failures.too_many():
+                break
+            continue
+        if failures is not None:
+            failures.succeeded()
 
         rel_path = save_raw_image(lesson_dir, img.image_bytes, img_hash, ext=ext)
 
@@ -183,7 +197,8 @@ def describe_new_images(
         save_image_descriptions(lesson_dir, existing_descriptions)
 
 
-def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = False) -> Dict[str, List[str]]:
+def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = False,
+                          failures: Optional[UnitFailureTracker] = None) -> Dict[str, List[str]]:
     """Per ogni macro-sezione di 'outline', esegue UNA chiamata a call_structured con la history
     condivisa (messaggio 1: descriptions.json completo, messaggio 2: ack dell'assistant) e il
     prompt specifico della macro-sezione. Ritorna {macro_id: [hash, ...]}. Se descriptions.json
@@ -210,14 +225,25 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
         units_text = "\n".join(unit_lines)
 
         user_prompt = build_image_unit_judge_user_prompt(macro.title, units_text)
-        res: ImageUnitJudgeResult = client.call_structured(
-            prompt=user_prompt,
-            system_prompt=IMAGE_UNIT_JUDGE_SYSTEM_PROMPT,
-            response_model=ImageUnitJudgeResult,
-            job_name="image_unit_judge",
-            history=history,
-            lesson_dir=lesson_dir,
-        )
+        try:
+            res: ImageUnitJudgeResult = client.call_structured(
+                prompt=user_prompt,
+                system_prompt=IMAGE_UNIT_JUDGE_SYSTEM_PROMPT,
+                response_model=ImageUnitJudgeResult,
+                job_name="image_unit_judge",
+                history=history,
+                lesson_dir=lesson_dir,
+            )
+        except Exception as exc:
+            # Con un tracker: la macro-sezione resta senza immagini, le altre proseguono.
+            if failures is None or not is_unit_failure(exc):
+                raise
+            failures.failed(macro_id, f"sezione {macro_id} ({macro.title})", exc)
+            if failures.too_many():
+                break
+            continue
+        if failures is not None:
+            failures.succeeded()
         results[macro_id] = res.image_hashes
 
     if client.force_mock and results and not any(results.values()):
@@ -259,8 +285,8 @@ def fetch_web_images(
     """Cerca ed estrae immagini dal web via SearXNG."""
     if not base_url and not force_mock:
         raise ValueError(
-            "Impossibile eseguire la ricerca immagini web (--web-search): 'searxng_base_url' "
-            "non è configurato in config/general.yaml."
+            "Impossibile eseguire la ricerca immagini web: l'URL di SearXNG non è configurato "
+            "(searxng_base_url). Impostalo in Impostazioni › Ricerca web."
         )
 
     queries = build_macro_search_queries(outline)
@@ -277,10 +303,12 @@ def fetch_web_images(
                 extracted.append(ExtractedImage(image_bytes=dummy_bytes, source_label=f"websearch:{query}#{i+1}"))
         return extracted[:total_count]
 
+    search_errors: List[str] = []
     for macro_id, query in queries.items():
         try:
             web_results = search_images(base_url, query, count=count_per_macro)
-        except Exception:
+        except Exception as exc:
+            search_errors.append(str(exc))
             continue
         for res in web_results:
             try:
@@ -290,6 +318,9 @@ def fetch_web_images(
             except Exception:
                 continue
 
+    if search_errors and len(search_errors) == len(queries):
+        # Nessuna ricerca riuscita (SearXNG spento, formato json disattivato…): meglio dirlo.
+        raise ValueError(f"Ricerca immagini web non riuscita: {search_errors[-1]}")
     return extracted[:total_count]
 
 
@@ -299,8 +330,12 @@ def run_add_images(
     web_search_count: Optional[int] = None,
     carousel: bool = False,
     force_mock: bool = False,
+    tolerate_failures: bool = False,
 ) -> Dict[str, Any]:
-    """Orchestratore principale di 'rt add-images'."""
+    """Orchestratore principale di 'rt add-images'. Con tolerate_failures (job del worker)
+    un'immagine o una sezione che il modello non riesce a elaborare non ferma le altre: il
+    documento si scrive con le immagini riuscite e il risultato elenca le non riuscite
+    (failed_units)."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     from rt.pipeline.image_placement import get_placement_path, save_image_placement
     from rt.pipeline.outline import load_outline
@@ -316,6 +351,8 @@ def run_add_images(
 
     outline = load_outline(lesson_dir)
     extracted: List[ExtractedImage] = []
+    tracker = UnitFailureTracker() if tolerate_failures else None
+    tolerant = {"failures": tracker} if tracker is not None else {}
 
     if input_path:
         extracted.extend(extract_images(input_path))
@@ -337,9 +374,10 @@ def run_add_images(
         new_images, _cached = partition_new_vs_cached_images(lesson_dir, extracted)
         if new_images:
             lesson_context = get_lesson_context(lesson_dir)
-            describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock)
+            describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock,
+                                **tolerant)
 
-    assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock)
+    assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock, **tolerant)
 
     descriptions = load_image_descriptions(lesson_dir)
     placement: Dict[str, List[str]] = {}
@@ -358,4 +396,5 @@ def run_add_images(
         "placement": get_placement_path(lesson_dir),
         "placement_changed": changed,
         "build_stale": build_stale,
+        "failed_units": tracker.as_dicts() if tracker else [],
     }

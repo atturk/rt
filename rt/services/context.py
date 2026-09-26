@@ -60,8 +60,10 @@ class RunContext:
     def check_cancelled(self) -> None:
         self.cancel_token.raise_if_cancelled()
 
-    def progress(self, phase: str, current: Optional[int] = None, total: Optional[int] = None, message: str = "") -> None:
-        self.emit(PhaseProgress(phase=phase, current=current, total=total, message=message))
+    def progress(self, phase: str, current: Optional[int] = None, total: Optional[int] = None, message: str = "",
+                 **unit: Any) -> None:
+        """unit: unit_id, unit_title, failed (fasi a unità)."""
+        self.emit(PhaseProgress(phase=phase, current=current, total=total, message=message, **unit))
 
     def emit_cost(self) -> None:
         s = self.telemetry.get_summary()
@@ -97,7 +99,7 @@ class _PhaseScope:
         if self.ctx is not None:
             skipped = bool(result.get("skipped")) or result.get("action") == "SKIP"
             self.ctx.emit(PhaseCompleted(
-                phase=self.phase, result=result, skipped=skipped,
+                phase=self.phase, result=result, skipped=skipped, partial=bool(result.get("failed_units")),
                 step=self.step, total_steps=self.total_steps,
             ))
         return result

@@ -44,6 +44,18 @@ def outcome_from_pipeline(result) -> JobOutcome:
     return JobOutcome(state=JobState.SUCCEEDED, result=data, lesson_path=result.lesson_dir)
 
 
+def _mock_failure(job: JobInfo, options):
+    """Solo in mock: 'mock_fail_once' nel payload (fase rewrite o review) fa fallire una volta
+    la prima unità di quella fase con una risposta fuori schema, come nel test reale con
+    openrouter/free. Serve ai test end-to-end di 'Riprova'."""
+    from contextlib import nullcontext
+    phase = job.payload.get("mock_fail_once")
+    if not options.mock or phase not in ("rewrite", "review"):
+        return nullcontext()
+    from rt.llm.client import mock_failure_once
+    return mock_failure_once(phase)
+
+
 def _lesson_dir(job: JobInfo) -> str:
     lesson_dir = job.lesson_path or job.payload.get("lesson_dir")
     if not lesson_dir:
@@ -53,7 +65,7 @@ def _lesson_dir(job: JobInfo) -> str:
 
 def run_pipeline_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.pipeline_service import (
-        TranscriptionUnavailable, is_audio_input, run_pipeline, transcription_unavailable_reason,
+        TranscriptionUnavailable, build_notifiers, is_audio_input, run_pipeline, transcription_unavailable_reason,
     )
     from rt.storage import fs
     inputs = job.payload.get("inputs") or ([job.lesson_path] if job.lesson_path else [])
@@ -66,7 +78,8 @@ def run_pipeline_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         reason = transcription_unavailable_reason(options.mock, options.skip_transcribe)
         if reason:
             raise TranscriptionUnavailable(reason)
-    return outcome_from_pipeline(run_pipeline(inputs, options, ctx))
+    with _mock_failure(job, options):
+        return outcome_from_pipeline(run_pipeline(inputs, options, ctx, notifiers=build_notifiers()))
 
 
 def ingest_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -76,9 +89,11 @@ def ingest_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 def run_phase_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    from rt.services.pipeline_service import run_phase
+    from rt.services.pipeline_service import build_notifiers, run_phase
     options = pipeline_options(job.payload.get("options") or {})
-    return outcome_from_pipeline(run_phase(_lesson_dir(job), job.payload["phase"], options, ctx))
+    with _mock_failure(job, options):
+        return outcome_from_pipeline(run_phase(_lesson_dir(job), job.payload["phase"], options, ctx,
+                                               notifiers=build_notifiers()))
 
 
 def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -87,7 +102,11 @@ def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     with ctx.activate():
         res = run_add_images(_lesson_dir(job), input_path=p.get("input_path"),
                              web_search_count=p.get("web_search_count"), carousel=bool(p.get("carousel")),
-                             force_mock=bool(p.get("mock")))
+                             force_mock=bool(p.get("mock")), tolerate_failures=True)
+    # Il documento è già scritto con le immagini riuscite; il job fallisce con l'elenco delle
+    # altre e 'Riprova' elabora solo quelle mancanti (le descrizioni sono in cache per hash).
+    from rt.pipeline.unit_failures import raise_if_incomplete
+    raise_if_incomplete("add_images", res)
     return JobOutcome(state=JobState.SUCCEEDED, result=json_safe(res))
 
 

@@ -53,6 +53,22 @@ class JobError(RuntimeError):
     """Operazione non valida sulla coda (job inesistente, stato incompatibile)."""
 
 
+class JobAlreadyRetried(JobError):
+    """Il job fallito è già stato ripreso: job_id è il nuovo tentativo."""
+
+    def __init__(self, job_id: str):
+        super().__init__("Questo job è già stato ripreso.")
+        self.job_id = job_id
+
+
+class LessonHasActiveJob(JobError):
+    """Sulla lezione c'è già un job attivo (job_id)."""
+
+    def __init__(self, job_id: str):
+        super().__init__("Un altro job è in corso su questa lezione: riprova quando ha finito.")
+        self.job_id = job_id
+
+
 @dataclass
 class JobInfo:
     id: str
@@ -72,6 +88,8 @@ class JobInfo:
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    retry_of: Optional[str] = None
+    retried_by: Optional[str] = None
 
     @property
     def finished(self) -> bool:
@@ -93,6 +111,7 @@ class JobInfo:
             max_attempts=row.max_attempts, worker_id=row.worker_id,
             cancel_requested=bool(row.cancel_requested), created_by=row.created_by,
             created_at=row.created_at, started_at=row.started_at, finished_at=row.finished_at,
+            retry_of=row.retry_of,
         )
 
 
@@ -167,21 +186,61 @@ class DbJobQueue:
     # ------------------------------------------------------------ porta
 
     def enqueue(self, job_type: str, lesson_id: LessonRef = None, payload: Optional[Dict[str, Any]] = None,
-                *, created_by: Optional[str] = None, max_attempts: int = DEFAULT_MAX_ATTEMPTS) -> str:
+                *, created_by: Optional[str] = None, max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+                retry_of: Optional[str] = None) -> str:
         job_id = uuid.uuid4().hex
         with session_scope(self.db) as s:
             job = Job(id=job_id, type=job_type, state=JobState.QUEUED.value,
                       lesson_path=self._lesson_path(s, lesson_id), payload=json_safe(payload or {}),
-                      attempts=0, max_attempts=max_attempts, cancel_requested=False, created_by=created_by)
+                      attempts=0, max_attempts=max_attempts, cancel_requested=False, created_by=created_by,
+                      retry_of=retry_of)
             s.add(job)
             s.flush()
-            s.add(JobEvent(job_id=job_id, type="job_queued", payload={"job_type": job_type}))
+            event = {"job_type": job_type}
+            if retry_of:
+                event["retry_of"] = retry_of
+            s.add(JobEvent(job_id=job_id, type="job_queued", payload=event))
         return job_id
+
+    def retry(self, job_id: str, *, created_by: Optional[str] = None) -> str:
+        """'Riprova' (RT4-FA1): un job nuovo con lo stesso tipo, lezione e payload di un job
+        fallito, collegato a quello (retry_of). Riparte dalla fase fallita grazie
+        all'idempotenza delle fasi: quelle valide si saltano, le unità già fatte non si rifanno.
+        JobError se il job non è fallito o è già stato ripreso; LessonHasActiveJob se sulla lezione
+        c'è un altro job attivo."""
+        with session_scope(self.db) as s:
+            row = s.get(Job, job_id)
+            if row is None:
+                raise JobError(f"Job {job_id} inesistente")
+            if row.state != JobState.FAILED.value:
+                raise JobError("Si può riprovare solo un job fallito.")
+            again = s.scalar(select(Job.id).where(Job.retry_of == job_id).limit(1))
+            if again:
+                raise JobAlreadyRetried(again)
+            if row.lesson_path:
+                busy = s.scalar(select(Job.id).where(Job.lesson_path == row.lesson_path,
+                                                     Job.state.in_(list(ACTIVE_STATES))).limit(1))
+                if busy:
+                    raise LessonHasActiveJob(busy)
+            job_type, lesson_path, payload = row.type, row.lesson_path, retry_payload(row.type, row.payload or {})
+            max_attempts = row.max_attempts
+        return self.enqueue(job_type, lesson_path, payload, created_by=created_by, max_attempts=max_attempts,
+                            retry_of=job_id)
+
+    def _with_retries(self, s, infos: List[JobInfo]) -> List[JobInfo]:
+        """Completa retried_by (il job nato da 'Riprova') con una sola query."""
+        ids = [i.id for i in infos]
+        if ids:
+            rows = s.execute(select(Job.retry_of, Job.id).where(Job.retry_of.in_(ids)).order_by(Job.created_at))
+            by = {old: new for old, new in rows}
+            for info in infos:
+                info.retried_by = by.get(info.id)
+        return infos
 
     def get(self, job_id: str) -> Optional[JobInfo]:
         with session_scope(self.db) as s:
             row = s.get(Job, job_id)
-            return JobInfo.from_row(row) if row is not None else None
+            return self._with_retries(s, [JobInfo.from_row(row)])[0] if row is not None else None
 
     def list(self, state: Optional[Union[str, Sequence[str]]] = None, lesson_id: LessonRef = None,
              limit: int = 50) -> List[JobInfo]:
@@ -192,7 +251,7 @@ class DbJobQueue:
                 stmt = stmt.where(Job.state.in_(states))
             if lesson_id is not None:
                 stmt = stmt.where(Job.lesson_path == self._lesson_path(s, lesson_id))
-            return [JobInfo.from_row(r) for r in s.scalars(stmt)]
+            return self._with_retries(s, [JobInfo.from_row(r) for r in s.scalars(stmt)])
 
     def cancel(self, job_id: str) -> JobInfo:
         """Un job in coda o in attesa di decisione si annulla subito; uno in esecuzione
@@ -422,6 +481,17 @@ class DbJobQueue:
         if job_type:
             out = [w for w in out if not w["job_types"] or job_type in w["job_types"]]
         return out
+
+
+def retry_payload(job_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Payload del nuovo tentativo: lo stesso, ma una pipeline o una fase forzata non riparte
+    da zero. Il job fallito ha già rifatto (e salvato nel checkpoint) una parte delle unità:
+    senza 'force' l'idempotenza salta le fasi valide e le unità già fatte. Il rewrite di una
+    sola unità resta forzato: è l'unità stessa da rifare."""
+    out = json_safe(payload)
+    if job_type in ("run_pipeline", "run_phase") and isinstance(out.get("options"), dict):
+        out["options"] = {**out["options"], "force": False}
+    return out
 
 
 def get_job_queue() -> DbJobQueue:

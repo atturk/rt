@@ -18,8 +18,12 @@ async function pages(page: Page): Promise<[string, string][]> {
   const review = await lessonId(page, 'FARMACOLOGIA')
   return [
     ['dashboard', '/'],
+    ['review (elenco)', '/review'],
+    ['recall (elenco)', '/recall'],
+    ['immagini (elenco)', '/immagini'],
     ['lezione', `/lezioni/${done}`],
     ['revisione', `/lezioni/${review}/revisione`],
+    ['revisione per gravità', `/lezioni/${review}/revisione?ordine=gravita`],
     ['outline', `/lezioni/${done}/outline`],
     ['recall', `/lezioni/${done}/recall`],
     ['immagini', `/lezioni/${done}/immagini`],
@@ -30,6 +34,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['modelli', '/impostazioni/modelli'],
     ['chiavi', '/impostazioni/chiavi'],
     ['costi', '/impostazioni/costi'],
+    ['ricerca web', '/impostazioni/ricerca-web'],
     ['configurazione guidata', '/impostazioni/configurazione'],
     ['pagina inesistente', '/non-esiste'],
   ]
@@ -59,6 +64,24 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByText(/^Carico/)).toHaveCount(0)
       await expectNoViolations(page, name)
     }
+    // Slider della velocità aperto nel player.
+    await page.goto(`/lezioni/${await lessonId(page, 'BIOCHIMICA')}`)
+    await page.getByRole('button', { name: /^Velocità di riproduzione/ }).click()
+    await expect(page.getByRole('slider', { name: 'Velocità di riproduzione' })).toBeVisible()
+    await expectNoViolations(page, 'velocità del player')
+
+    // Barra laterale ridotta con il pannello di una materia aperto e il suggerimento del nome.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Riduci la barra laterale' }).click()
+    const subject = page.getByRole('navigation', { name: 'Materie' }).getByRole('button').first()
+    await subject.focus()
+    await expect(page.getByRole('tooltip')).toBeVisible()
+    await expectNoViolations(page, 'barra laterale ridotta')
+    await subject.click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expectNoViolations(page, 'pannello della materia')
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Espandi la barra laterale' }).click()
   })
 }
 

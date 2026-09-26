@@ -50,5 +50,7 @@ transcription:
 ui:
   theme: "dark"
 
-# URL base dell'istanza SearXNG per la ricerca immagini web (richiesta da `rt add-images --web-search`)
-# searxng_base_url: "http://localhost:8080"
+# URL base dell'istanza SearXNG per la ricerca immagini web (richiesta da `rt add-images --web-search`).
+# Si imposta anche dalla web: Impostazioni › Ricerca web. SearXNG deve avere il formato json
+# abilitato (search.formats in settings.yml di SearXNG).
+searxng_base_url: null  # es. "http://localhost:8088"
