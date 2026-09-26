@@ -189,6 +189,8 @@ jobs:
           tar -C dist -czf "$RT_SPA_TARBALL" .
       - name: RT 3.5.0 con una lezione
         run: |
+          # un'installazione 3.5.0 ha già ffmpeg (lo installava il suo install.sh)
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install ffmpeg
           OLD="$HOME/rt-old"
           mkdir -p "$OLD" "$HOME/Lezioni-old"
           curl -fsSL https://github.com/atturk/rt/archive/refs/tags/v3.5.0.tar.gz | tar -xz -C "$OLD" --strip-components=1
