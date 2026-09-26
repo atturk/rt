@@ -14,7 +14,7 @@ from rt.pipeline.add_images import (
     partition_new_vs_cached_images,
     describe_new_images,
     judge_images_by_macro,
-    build_macro_search_queries,
+    build_unit_search_queries,
     fetch_web_images,
     run_add_images,
     get_lesson_context,
@@ -297,7 +297,7 @@ def test_run_add_images_end_to_end(built_synthetic_lesson, tmp_path):
 
     from unittest.mock import patch
     with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=mock_judge):
-        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=False, force_mock=True)
+        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), force_mock=True)
 
     assert res["images_added"] == 1
     assert "1" in res["macros_with_images"]
@@ -311,50 +311,127 @@ def test_run_add_images_end_to_end(built_synthetic_lesson, tmp_path):
     assert "assets/images" not in pre_content
 
 
-def test_run_add_images_carousel(built_synthetic_lesson, tmp_path):
+def test_run_add_images_plain_markdown_links(built_synthetic_lesson, tmp_path):
+    """Niente carosello: le immagini sono link Markdown, una per riga, e basta."""
     photos_dir = tmp_path / "photos"
     photos_dir.mkdir()
     (photos_dir / "slide1.png").write_bytes(b"png slide bytes 2")
-
-    h = compute_image_hash(b"png slide bytes 2")
+    (photos_dir / "slide2.png").write_bytes(b"png slide bytes 3")
+    h1, h2 = compute_image_hash(b"png slide bytes 2"), compute_image_hash(b"png slide bytes 3")
 
     def mock_judge(lesson_dir, outline, force_mock=False):
-        return {"1": [h]}
+        return {"1": [h1, h2]}
 
     from unittest.mock import patch
     with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=mock_judge):
-        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=True, force_mock=True)
+        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), force_mock=True)
 
     rielab_content = open(res["rielaborato_md"], "r", encoding="utf-8").read()
-    assert "```napkin-notes" in rielab_content
-    assert f"[[assets/images/{h[:16]}.png]]" in rielab_content
+    assert "napkin-notes" not in rielab_content and "[[assets/images" not in rielab_content
+    lines = rielab_content.splitlines()
+    first = next(i for i, line in enumerate(lines) if f"assets/images/{h1[:16]}.png" in line)
+    assert lines[first].startswith("![") and lines[first].endswith(f"(assets/images/{h1[:16]}.png)")
+    assert lines[first + 1].startswith("![") and lines[first + 1].endswith(f"(assets/images/{h2[:16]}.png)")
+    with pytest.raises(TypeError):
+        run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=True, force_mock=True)
 
 
-def test_build_macro_search_queries():
+def test_build_unit_search_queries():
     outline = MockOutline(
         macro_sections=[
-            MockMacro(id="1", title="Macro 1", units=[MockUnit(id="1.1", title="U1.1", key_concepts=["K1", "K2", "K3", "K4"])]),
-            MockMacro(id="2", title="Macro 2 (Senza KC)", units=[MockUnit(id="2.1", title="U2.1", key_concepts=[])]),
+            MockMacro(id="1", title="Macro 1", units=[
+                MockUnit(id="1.1", title="U1.1", key_concepts=["K1", "K2", "K3", "K4"]),
+                MockUnit(id="1.2", title="Senza: KC", key_concepts=[]),
+            ]),
+            MockMacro(id="2", title="Macro 2", units=[MockUnit(id="2.1", title="U2.1", key_concepts=["K5", "K5"])]),
         ]
     )
-    queries = build_macro_search_queries(outline)
-    assert queries["1"] == "K1 K2 K3"
-    assert queries["2"] == "Macro 2 (Senza KC)"
+    assert build_unit_search_queries(outline) == {"1.1": "K1 K2 K3", "1.2": "Senza  KC", "2.1": "K5"}
+    assert build_unit_search_queries(outline, ["2.1", "1.1"]) == {"1.1": "K1 K2 K3", "2.1": "K5"}
+    with pytest.raises(ValueError, match="9.9"):
+        build_unit_search_queries(outline, ["1.1", "9.9"])
 
 
 def test_fetch_web_images():
     outline = MockOutline(
         macro_sections=[
-            MockMacro(id="1", title="M1", units=[MockUnit(id="1.1", title="U1", key_concepts=["K1"])]),
+            MockMacro(id="1", title="M1", units=[MockUnit(id="1.1", title="U1", key_concepts=["K1"]),
+                                                 MockUnit(id="1.2", title="U2", key_concepts=["K2"])]),
         ]
     )
     with pytest.raises(ValueError) as exc_info:
-        fetch_web_images("dummy_dir", outline, total_count=3, base_url=None, force_mock=False)
-    assert "searxng_base_url" in str(exc_info.value)
+        fetch_web_images("dummy_dir", outline, per_unit=3, base_url=None, force_mock=False)
+    assert "Impostazioni" in str(exc_info.value) and "general.yaml" not in str(exc_info.value)
 
-    web_imgs = fetch_web_images("dummy_dir", outline, total_count=3, base_url=None, force_mock=True)
-    assert len(web_imgs) == 3
+    web_imgs, found = fetch_web_images("dummy_dir", outline, per_unit=3, base_url=None, force_mock=True)
+    assert len(web_imgs) == 6 and found == {"1.1": 3, "1.2": 3}
     assert web_imgs[0].source_label.startswith("websearch:")
+    assert web_imgs[0].image_bytes.startswith(b"\x89PNG")
+    assert len({img.image_bytes for img in web_imgs}) == 6
+
+    only, found = fetch_web_images("dummy_dir", outline, per_unit=2, force_mock=True, unit_ids=["1.2"])
+    assert found == {"1.2": 2} and all("K2" in img.source_label for img in only)
+
+
+def fake_searxng_server(results_per_query=10):
+    """SearXNG finto: /search?format=json restituisce results_per_query immagini per query,
+    servite dallo stesso server. server.queries registra le query ricevute."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs, urlparse
+    from rt.pipeline.add_images import _mock_png
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            url = urlparse(self.path)
+            if url.path == "/search":
+                q = parse_qs(url.query)["q"][0]
+                self.server.queries.append(q)
+                base = f"http://127.0.0.1:{self.server.server_address[1]}"
+                body = _json.dumps({"results": [
+                    {"img_src": f"{base}/img/{len(self.server.queries)}-{i}.png", "title": q, "url": base}
+                    for i in range(results_per_query)]}).encode()
+                ctype = "application/json"
+            else:
+                body, ctype = _mock_png(url.path), "image/png"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.queries = []
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def test_fetch_web_images_per_unit_with_fake_searxng():
+    """N risultati per unità, una query per unità, solo sulle unità scelte."""
+    outline = MockOutline(
+        macro_sections=[
+            MockMacro(id="1", title="M1", units=[MockUnit(id="1.1", title="U1", key_concepts=["Lipidi"]),
+                                                 MockUnit(id="1.2", title="U2", key_concepts=["Steroidi"])]),
+            MockMacro(id="2", title="M2", units=[MockUnit(id="2.1", title="U3", key_concepts=["Cere"])]),
+        ]
+    )
+    server, url = fake_searxng_server()
+    try:
+        images, found = fetch_web_images("dummy_dir", outline, per_unit=2, base_url=url)
+        assert server.queries == ["Lipidi", "Steroidi", "Cere"]
+        assert found == {"1.1": 2, "1.2": 2, "2.1": 2} and len(images) == 6
+        assert [img.source_label for img in images[:2]] == ["websearch:Lipidi"] * 2
+
+        server.queries.clear()
+        images, found = fetch_web_images("dummy_dir", outline, per_unit=3, base_url=url, unit_ids=["2.1", "1.1"])
+        assert server.queries == ["Lipidi", "Cere"]
+        assert found == {"1.1": 3, "2.1": 3} and len(images) == 6
+    finally:
+        server.shutdown()
 
 
 def test_run_add_images_web_search(built_synthetic_lesson):
@@ -362,3 +439,12 @@ def test_run_add_images_web_search(built_synthetic_lesson):
     assert "rielaborato_md" in res
     assert os.path.isfile(res["rielaborato_md"])
 
+    from rt.pipeline.outline import load_outline
+    units = [str(u.id) for m in load_outline(built_synthetic_lesson).macro_sections for u in m.units]
+    assert res["web_images_by_unit"] == {u: 2 for u in units}
+
+    first = units[0]
+    res = run_add_images(built_synthetic_lesson, web_search_count=1, unit_ids=[first], force_mock=True)
+    assert res["web_images_by_unit"] == {first: 1}
+    with pytest.raises(ValueError):
+        run_add_images(built_synthetic_lesson, web_search_count=1, unit_ids=["nessuna"], force_mock=True)

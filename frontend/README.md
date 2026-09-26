@@ -58,6 +58,9 @@ sostituisci l'host con `localhost:5173`.
   `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni). Gli hook di un'area
   stanno in `src/api/<area>.ts`; `src/api/jobStatus.ts` segue un job (`GET /jobs/{id}`) e
   `components/JobProgress.tsx` ne mostra l'avanzamento.
+- **Selettori a slitta.** `components/ui/slide-toggle.tsx` (`SlideToggle`) è il selettore a due
+  o più stati del recall (luogo e tipo di domanda): radiogroup con le frecce, Home e Fine, un solo
+  tab stop e il testo della scelta sotto la pista. Usalo per le scelte brevi ed esclusive.
 - **Lezioni per id.** Solo gli id numerici e gli endpoint dell'API: mai percorsi di cartelle
   o file su disco.
 - **Testi in italiano**, etichette accessibili (`aria-label`, `<label>`), tema chiaro e scuro.

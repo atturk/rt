@@ -5,12 +5,21 @@ progetto). Deliberatamente NON usa python-telegram-bot: questo lato è invocato 
 processi effimeri (rt run) che devono solo mandare 1-2 messaggi, non gestire un
 intero Application asyncio.
 """
+import os
 import time
 from typing import Optional, Dict, Any
 import requests
 from rt.telegram.config import TelegramConfig
 
 _API_BASE = "https://api.telegram.org/bot{token}/{method}"
+
+
+def _api_url(token: str, method: str) -> str:
+    """RT_TELEGRAM_API_URL sostituisce https://api.telegram.org (Bot API finta nei test)."""
+    base = os.environ.get("RT_TELEGRAM_API_URL")
+    if base:
+        return f"{base.rstrip('/')}/bot{token}/{method}"
+    return _API_BASE.format(token=token, method=method)
 
 
 class TelegramAPIError(Exception):
@@ -52,7 +61,7 @@ def _execute_request(method: str, url: str, request_kwargs: Dict[str, Any], max_
 
 
 def _call(cfg: TelegramConfig, method: str, payload: Dict[str, Any], timeout: float = 15.0, max_retries: int = 1) -> Dict[str, Any]:
-    url = _API_BASE.format(token=cfg.bot_token, method=method)
+    url = _api_url(cfg.bot_token, method)
     return _execute_request(method, url, {"json": payload, "timeout": timeout}, max_retries=max_retries)
 
 
@@ -88,7 +97,7 @@ def send_voice(
     max_retries: int = 1
 ) -> Dict[str, Any]:
     """Invia un file audio vocale multipart tramite il metodo sendVoice dell'API Telegram."""
-    url = _API_BASE.format(token=cfg.bot_token, method="sendVoice")
+    url = _api_url(cfg.bot_token, "sendVoice")
     data: Dict[str, Any] = {
         "chat_id": cfg.chat_id,
     }
@@ -199,7 +208,7 @@ def send_audio(
     """Invia un file audio tramite sendAudio (mostra titolo/artista, player stile playlist,
     si accoda alla coda musicale Telegram — a differenza di sendVoice che mostra una bolla
     vocale con forma d'onda). Usato per l'audio delle unità didattiche su richiesta esplicita."""
-    url = _API_BASE.format(token=cfg.bot_token, method="sendAudio")
+    url = _api_url(cfg.bot_token, "sendAudio")
     data: Dict[str, Any] = {"chat_id": cfg.chat_id, "title": title}
     if performer:
         data["performer"] = performer

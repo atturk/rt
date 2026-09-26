@@ -225,3 +225,44 @@ class Worker(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     stopped_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class RecallSession(Base):
+    """Sessione di Active Recall, dalla web app (channel "web") o sul bot Telegram
+    (channel "telegram"). È il registro condiviso delle sessioni: il daemon Telegram lo
+    aggiorna quando una sessione parte o si chiude, l'API lo legge. state: active | ended
+    (chiusa da chi la stava usando) | interrupted (chiusa dall'app mentre era su Telegram).
+    Gli orari sono ISO locali come answered_at del recall_bank, per contare le risposte date
+    durante la sessione."""
+    __tablename__ = "recall_sessions"
+    __table_args__ = (Index("ix_recall_sessions_state_channel", "state", "channel"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_path: Mapped[str] = mapped_column(String(1024), index=True)
+    channel: Mapped[str] = mapped_column(String(16))
+    state: Mapped[str] = mapped_column(String(16))
+    qtype: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    chat_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    thread_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    question_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    summary: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[str] = mapped_column(String(64))
+    ended_at: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    ended_by: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+
+class TelegramCommand(Base):
+    """Richiesta dell'app al bot Telegram (avvia o interrompi una sessione di recall): il
+    daemon le esegue in ordine e ne scrive l'esito. state: pending | done | failed."""
+    __tablename__ = "telegram_commands"
+    __table_args__ = (Index("ix_telegram_commands_state", "state", "id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    lesson_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True, index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    state: Mapped[str] = mapped_column(String(16), default="pending")
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

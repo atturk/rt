@@ -81,7 +81,9 @@ def _generate_initial_batch(lesson_dir: str, force_mock: bool) -> None:
                       created_by="telegram")
 
 
-def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: Optional[str] = None, force_mock: bool = False) -> None:
+def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: Optional[str] = None, force_mock: bool = False) -> Optional[str]:
+    """Avvia la sessione nel topic della materia. Restituisce None se la sessione è partita (o
+    era già in corso per questa lezione), altrimenti il motivo per cui non è partita."""
     try:
         from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
         from rt.telegram import client as tg_client, session as tg_session, recall_preferences
@@ -97,12 +99,14 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: 
                 busy_msg = f"C'è già un'attività in corso in questo topic ({active.get('kind')}). Usa /quit per chiuderla prima."
                 tg_client.send_message(tg_cfg, text=busy_msg, message_thread_id=thread_id)
                 print(f"⚠️  {busy_msg}")
-                return
+                return f"C'è già un'altra attività in corso nel topic della materia ({active.get('kind')})."
             else:
                 reminder_msg = "ℹ️ Sessione di recall già in corso per questa lezione su questo topic. Continua dal messaggio precedente, oppure usa /quit per annullarla."
+                # sessione nata prima del registro condiviso: la web app deve vederla
+                tg_session.start_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, "recall", lesson_dir)
                 tg_client.send_message(tg_cfg, text=reminder_msg, message_thread_id=thread_id)
                 print(f"ℹ️  {reminder_msg}")
-                return
+                return None
 
         tg_session.start_session(runtime_cfg.state_dir, tg_cfg.chat_id, thread_id, "recall", lesson_dir)
         if style:
@@ -116,10 +120,10 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: 
         gen_msg_id = gen_msg.get("message_id") if isinstance(gen_msg, dict) else getattr(gen_msg, "message_id", None)
     except TelegramConfigError:
         print("⚠️  Telegram non configurato: impossibile avviare il recall su Telegram. Usa --channel terminal.")
-        return
+        return "Il bot Telegram non è configurato."
     except Exception as e:
         print(f"⚠️  Impossibile avviare la sessione Telegram: {e}")
-        return
+        return f"Impossibile avviare la sessione su Telegram: {e}"
 
     recall_service.save_recall_session_state(lesson_dir, {"order": order, "unit_cursor": None, "current_question_id": None, "force_mock": force_mock})
     _generate_initial_batch(lesson_dir, force_mock)
@@ -133,6 +137,7 @@ def start_recall_via_telegram(lesson_dir: str, order: str = "alternato", style: 
             tg_client.delete_message(tg_cfg, gen_msg_id)
         except Exception:
             pass
+    return None
 
 
 def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = None, exclude_id: Optional[str] = None) -> None:

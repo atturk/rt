@@ -38,7 +38,20 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   da tastiera: `a`, `r`, `e`, `u`, frecce). Con l'ultima decisione la pipeline in attesa
   riparte da sola.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
-- **Immagini:** slide, foto o PDF da integrare nel documento finale.
+  Due selettori a slitta scelgono dove fare il recall (**Telegram** o **Qui**) e il tipo di
+  domanda (Quiz, Mirata, Vasta, anche con le frecce della tastiera); sotto ciascuno c'è la
+  scelta attiva. **Qui:** la sessione parte con la prima domanda e **Termina sessione** la
+  chiude, con il riepilogo (domande, risposte date, quiz giusti) che resta dopo la ricarica.
+  **Telegram:** **Avvia su Telegram** chiede al bot di aprire la sessione nel topic della
+  materia; serve il bot configurato e avviato, altrimenti l'interruttore è disabilitato e la
+  pagina dice cosa manca. Una sessione in corso su Telegram, avviata dall'app o dal bot, si vede
+  nella pagina della lezione (e in quelle delle altre lezioni) e **Interrompi** la chiude:
+  nel topic arriva «Sessione interrotta dall'app».
+- **Immagini:** slide, foto o PDF da integrare nel documento finale, e immagini dal web:
+  **Immagini per unità** è quante cercarne per ogni unità (0 = nessuna ricerca), su tutte le
+  unità o su quelle scelte (caselle raggruppate per sezione, con «seleziona sezione»). Le
+  immagini entrano nel documento come link Markdown, una sotto l'altra. La ricerca web richiede
+  SearXNG: se manca, la pagina rimanda alle Impostazioni.
 - **Bot Telegram:** stato, avvio e arresto del bot.
 - **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
   Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.

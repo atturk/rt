@@ -117,7 +117,6 @@ def render_rielaborato_md(
     subject: str,
     topics: str,
     images_by_macro: Optional[Dict[str, List[dict]]] = None,
-    carousel: bool = False,
 ) -> str:
     """
     Renderizza rielaborato.md pulito e pronto per lo studio/Obsidian/Telegram.
@@ -149,17 +148,11 @@ def render_rielaborato_md(
         
         macro_id_str = str(macro.id)
         if images_by_macro and macro_id_str in images_by_macro and images_by_macro[macro_id_str]:
-            imgs = images_by_macro[macro_id_str]
-            if carousel:
-                lines.append("```napkin-notes")
-                wikilinks = [f"[[{img['filename']}]]" for img in imgs]
-                lines.append("\n\n".join(wikilinks))
-                lines.append("```\n")
-            else:
-                for img in imgs:
-                    alt = img.get("alt_text", "")
-                    lines.append(f"![{alt}]({img['filename']})")
-                lines.append("")
+            # link Markdown uno sotto l'altro: la formattazione la sceglie l'utente
+            for img in images_by_macro[macro_id_str]:
+                alt = img.get("alt_text", "")
+                lines.append(f"![{alt}]({img['filename']})")
+            lines.append("")
         
         for unit in macro.units:
             start_seg = seg_by_id.get(unit.start_segment_id)

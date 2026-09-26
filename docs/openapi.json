@@ -3,11 +3,6 @@
     "schemas": {
       "Body_add_images_api_v1_lessons__lesson_id__images_post": {
         "properties": {
-          "carousel": {
-            "default": false,
-            "title": "Carousel",
-            "type": "boolean"
-          },
           "files": {
             "anyOf": [
               {
@@ -29,10 +24,25 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "units": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità per cui cercare sul web (id dell'outline); vuoto = tutte",
+            "title": "Units"
+          },
           "web_search": {
             "anyOf": [
               {
-                "maximum": 20.0,
+                "maximum": 10.0,
                 "minimum": 1.0,
                 "type": "integer"
               },
@@ -40,7 +50,7 @@
                 "type": "null"
               }
             ],
-            "description": "Immagini da cercare sul web",
+            "description": "Immagini da cercare sul web per ogni unità",
             "title": "Web Search"
           }
         },
@@ -2010,6 +2020,160 @@
         "title": "RecallQuestion",
         "type": "object"
       },
+      "RecallSessionInfo": {
+        "properties": {
+          "channel": {
+            "enum": [
+              "web",
+              "telegram"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "ended_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "web | telegram | app",
+            "title": "Ended By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "lesson_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesson Id"
+          },
+          "lesson_title": {
+            "default": "",
+            "title": "Lesson Title",
+            "type": "string"
+          },
+          "qtype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qtype"
+          },
+          "questions": {
+            "default": 0,
+            "description": "Domande chieste finora dalla web app",
+            "title": "Questions",
+            "type": "integer"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "ended",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Riepilogo salvato alla chiusura"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "state",
+          "started_at"
+        ],
+        "title": "RecallSessionInfo",
+        "type": "object"
+      },
+      "RecallSessionState": {
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TelegramCommandInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima richiesta al bot per questa lezione"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima sessione web chiusa, con il riepilogo"
+          },
+          "telegram": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sessione in corso su Telegram per questa lezione"
+          },
+          "web": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sessione in corso nella web app"
+          }
+        },
+        "title": "RecallSessionState",
+        "type": "object"
+      },
       "RecallSkip": {
         "properties": {
           "question_id": {
@@ -2021,6 +2185,38 @@
           "question_id"
         ],
         "title": "RecallSkip",
+        "type": "object"
+      },
+      "RecallSummary": {
+        "properties": {
+          "answered": {
+            "description": "Risposte date",
+            "title": "Answered",
+            "type": "integer"
+          },
+          "correct": {
+            "description": "Quiz con la risposta giusta",
+            "title": "Correct",
+            "type": "integer"
+          },
+          "questions": {
+            "description": "Domande poste nella sessione",
+            "title": "Questions",
+            "type": "integer"
+          },
+          "quiz_answered": {
+            "description": "Quiz a cui si è risposto",
+            "title": "Quiz Answered",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "questions",
+          "answered",
+          "quiz_answered",
+          "correct"
+        ],
+        "title": "RecallSummary",
         "type": "object"
       },
       "RecallVote": {
@@ -2298,6 +2494,72 @@
         "title": "Settings",
         "type": "object"
       },
+      "TelegramCommandInfo": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "start_recall",
+              "stop_recall"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed At"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state"
+        ],
+        "title": "TelegramCommandInfo",
+        "type": "object"
+      },
       "TelegramIn": {
         "properties": {
           "bot_token": {
@@ -2344,6 +2606,56 @@
           }
         },
         "title": "TelegramIn",
+        "type": "object"
+      },
+      "TelegramRecallStart": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "qtype": {
+            "default": "quiz",
+            "enum": [
+              "quiz",
+              "mirata",
+              "vasta"
+            ],
+            "title": "Qtype",
+            "type": "string"
+          }
+        },
+        "title": "TelegramRecallStart",
+        "type": "object"
+      },
+      "TelegramRecallStatus": {
+        "properties": {
+          "configured": {
+            "description": "Token e chat del bot salvati",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "running": {
+            "description": "Bot in esecuzione",
+            "title": "Running",
+            "type": "boolean"
+          },
+          "sessions": {
+            "description": "Sessioni di recall in corso su Telegram, per tutte le lezioni",
+            "items": {
+              "$ref": "#/components/schemas/RecallSessionInfo"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "configured",
+          "running",
+          "sessions"
+        ],
+        "title": "TelegramRecallStatus",
         "type": "object"
       },
       "TelegramSettings": {
@@ -5847,6 +6159,184 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/recall/session": {
+      "get": {
+        "operationId": "session_state_api_v1_lessons__lesson_id__recall_session_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallSessionState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sessione in corso qui e su Telegram, ultimo riepilogo e ultima richiesta al bot",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/session/end": {
+      "post": {
+        "operationId": "end_session_api_v1_lessons__lesson_id__recall_session_end_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallSessionInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Termina la sessione in corso nella web app e ne salva il riepilogo (404 se non ce n'è una)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/recall/skip": {
       "post": {
         "operationId": "skip_api_v1_lessons__lesson_id__recall_skip_post",
@@ -5946,6 +6436,105 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/recall/telegram/start": {
+      "post": {
+        "operationId": "telegram_start_api_v1_lessons__lesson_id__recall_telegram_start_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramRecallStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramCommandInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chiede al bot di avviare il recall nel topic della materia (l'esito arriva in /recall/session)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/recall/vote": {
       "post": {
         "operationId": "vote_api_v1_lessons__lesson_id__recall_vote_post",
@@ -6040,6 +6629,169 @@
           }
         ],
         "summary": "Voto su una domanda (👍 👎 ⚡)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/recall/telegram": {
+      "get": {
+        "operationId": "telegram_status_api_v1_recall_telegram_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramRecallStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bot pronto per il recall (configurato e in esecuzione) e sessioni in corso su Telegram",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/recall/telegram/sessions/{session_id}/stop": {
+      "post": {
+        "operationId": "telegram_stop_api_v1_recall_telegram_sessions__session_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallSessionInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic che è stata interrotta dall'app",
         "tags": [
           "recall"
         ]

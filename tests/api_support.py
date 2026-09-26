@@ -74,14 +74,37 @@ FAKE_TELEGRAM_UPDATES = [
 
 
 def fake_telegram_server(updates=None):
-    """Bot API finta per getUpdates (rilevamento topic) su una porta libera di 127.0.0.1.
-    Restituisce (server, base_url): basta RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' -> 401."""
+    """Bot API finta su una porta libera di 127.0.0.1: getUpdates (rilevamento topic) e i
+    metodi di invio (sendMessage, sendPoll, ...), che registra in server.calls come
+    (metodo, payload JSON). Restituisce (server, base_url): basta RT_TELEGRAM_API_URL=base_url.
+    Token 'rifiutato' -> 401."""
+    import itertools
     import json as _json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     payload = FAKE_TELEGRAM_UPDATES if updates is None else updates
+    message_ids = itertools.count(100)
 
     class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            method = self.path.rsplit("/", 1)[-1]
+            raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            try:
+                data = _json.loads(raw) if "json" in (self.headers.get("Content-Type") or "") else {}
+            except ValueError:
+                data = {}
+            self.server.calls.append((method, data))
+            message_id = next(message_ids)
+            result = True if method in ("deleteMessage", "editMessageReplyMarkup") else {"message_id": message_id}
+            if method == "sendPoll":
+                result["poll"] = {"id": f"poll-{message_id}"}
+            body = _json.dumps({"ok": True, "result": result}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):  # noqa: N802
             ok = "/getUpdates" in self.path and "rifiutato" not in self.path
             body = _json.dumps({"ok": True, "result": payload} if ok
@@ -96,5 +119,6 @@ def fake_telegram_server(updates=None):
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.calls = []
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
