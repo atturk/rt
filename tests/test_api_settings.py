@@ -115,7 +115,7 @@ def test_lessons_root_transcription_telegram_pricing_persist(api_client, api_tok
     assert data["lessons_root"] == str(new_root.resolve())
     assert data["transcription"] == {"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                      "model": "whisper", "api_key_set": True}
-    assert data["telegram"]["bot_token_set"] is True and data["telegram"]["chat_id"] == "-100777"
+    assert data["telegram"]["bot_token_set"] is True and data["telegram"]["chat_id_preview"] == "-1…77"
     assert data["telegram"]["topics"] == {"BIOCHIMICA": 12} and data["telegram"]["misc_topic_id"] == 3
     assert data["pricing"] == pricing
     bad = api_client.put("/api/v1/settings/pricing", json={"openrouter": {"m": {"input_per_million": "tanto"}}})

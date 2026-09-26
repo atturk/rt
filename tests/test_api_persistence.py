@@ -118,8 +118,8 @@ def test_settings_writes_persist(api_client, api_token, ws, tmp_path):
     assert snap["transcription"] == {"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                      "model": "whisper", "api_key_set": True}
     assert snap["telegram"]["bot_token_set"] is True
-    assert (snap["telegram"]["chat_id"], snap["telegram"]["topics"], snap["telegram"]["misc_topic_id"]) == (
-        "-100123", {"FISICA": 4}, 9)
+    assert (snap["telegram"]["chat_id_preview"], snap["telegram"]["topics"], snap["telegram"]["misc_topic_id"]) == (
+        "-1…23", {"FISICA": 4}, 9)
     assert snap["pricing"] == pricing
     assert next(x for x in snap["credentials"] if x["env_var"] == secret_var)["set"] is True
     assert KEY not in json.dumps(data) and BOT not in json.dumps(data) and STT not in json.dumps(data)

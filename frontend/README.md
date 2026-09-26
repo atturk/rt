@@ -55,14 +55,16 @@ sostituisci l'host con `localhost:5173`.
   `xhrFetch` (`src/api/upload.ts`) per avere la barra di avanzamento, sempre con `api.POST`.
 - **Aree attuali**: `lessons` (dashboard e lezione), `recall` (`/recall`, `/lezioni/:id/recall`),
   `images` (`/immagini`, `/lezioni/:id/immagini`), `telegram` (`/bot`; il pannello
-  `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni). Gli hook di un'area
+  `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni; anteprima con occhio,
+  "Prova" e pulizia dei messaggi di rilevamento in `components/settings/telegram.tsx`, scelta
+  della cartella in `components/settings/folders.tsx`). Gli hook di un'area
   stanno in `src/api/<area>.ts`; `src/api/jobStatus.ts` segue un job (`GET /jobs/{id}`) e
   `components/JobProgress.tsx` ne mostra l'avanzamento.
 - **Lezioni per id.** Solo gli id numerici e gli endpoint dell'API: mai percorsi di cartelle
   o file su disco.
 - **Testi in italiano**, etichette accessibili (`aria-label`, `<label>`), tema chiaro e scuro.
 - **Playwright per ogni schermata** (`e2e/`): contro l'API vera servita da
-  `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, bot Telegram finto, microfono finto di Chromium nei test vocali), con ricarica della pagina
+  `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, bot Telegram e Bot API finti, niente finestra di Finder per la scelta cartella, microfono finto di Chromium nei test vocali), con ricarica della pagina
   dopo ogni modifica e verifica rileggendo dall'API. Aggiorna la colonna "SPA (F7)" di
   `docs/RT4_PARITY.md` per le righe coperte.
 - **Accessibilità controllata con axe** (`e2e/a11y.spec.ts`): ogni pagina nuova va aggiunta

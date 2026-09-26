@@ -39,9 +39,48 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   riparte da sola.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
 - **Immagini:** slide, foto o PDF da integrare nel documento finale.
-- **Bot Telegram:** stato, avvio e arresto del bot.
+- **Bot Telegram:** stato, avvio e arresto del bot; il gruppo configurato (Chat ID e token con
+  l'occhio per vederli per intero); i topic per materia, ciascuno con il pulsante **Prova**; le
+  ultime notifiche inviate (lezione pronta, issue da rivedere, prove dei topic); un link alle
+  impostazioni di Telegram.
 - **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
   Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+
+### Cartella dati
+
+Nelle impostazioni e nel primo passo della configurazione guidata la cartella si sceglie con
+**Scegli cartella…**, senza scrivere il percorso. Su macOS si apre la finestra di Finder; dove non
+è disponibile (o se la chiudi con Annulla) compare un piccolo navigatore delle cartelle della
+tua home: entri nelle cartelle, torni su, e premi **Usa questa cartella**. Il navigatore mostra
+solo cartelle, mai file, e solo dentro la home. **Inserisci il percorso a mano** resta
+l'alternativa (per esempio per un disco esterno). Poi **Salva**: se la cartella non esiste RT la
+crea.
+
+### Telegram
+
+- **Token del bot e Chat ID:** dopo il salvataggio i campi restano vuoti (lasciali vuoti per
+  mantenere i valori salvati) e sotto compare un'anteprima parzialmente nascosta, per esempio
+  `1234…wXyZ` o `-100…7890`. Il pulsante con l'occhio mostra il valore completo, che la pagina
+  chiede al backend solo in quel momento; premendolo di nuovo torna l'anteprima. Vale anche
+  nella configurazione guidata.
+- **Ascolta i topic per 20 secondi:** mentre ascolta, scrivi un messaggio in ogni topic dal
+  telefono. RT aggiunge i topic trovati con il loro nome su Telegram e, se il nome coincide con
+  una materia che RT conosce già (maiuscole e accenti non contano), propone anche la materia.
+  Se Telegram non dice il nome (per esempio per un messaggio in risposta a un altro), il topic
+  arriva senza nome e la materia la scrivi tu. I nomi si salvano con i topic.
+- **Prova:** accanto al cestino di ogni topic invia nel topic il messaggio "Questo è il topic di
+  MATERIA" e mostra l'esito.
+- **Cancella i messaggi di rilevamento:** dopo una conferma elimina dal gruppo solo i messaggi
+  ricevuti durante l'ultimo ascolto (mai altri messaggi, né quelli con cui Telegram crea i
+  topic). Serve che il bot sia amministratore del gruppo; Telegram non permette di cancellare i
+  messaggi più vecchi di 48 ore. Alla fine la pagina dice quanti messaggi ha eliminato e quali no,
+  con il motivo.
+
+### Esportare o ripulire la chat di un topic (non disponibile)
+
+Un bot di Telegram non può leggere lo storico di una chat: riceve solo i messaggi che arrivano
+mentre è in ascolto. Per esportare tutti i messaggi di un topic o ripulirlo servirebbe un
+client che accede con il tuo account Telegram; per ora RT non lo fa.
 
 ## Installazione e aggiornamento
 

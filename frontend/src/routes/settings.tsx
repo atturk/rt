@@ -1,5 +1,5 @@
 import { Settings as SettingsIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router'
 
 import { errorMessage } from '@/api/client'
@@ -75,7 +75,25 @@ function SettingsLayout() {
   )
 }
 
-const page = (render: (s: Settings) => ReactNode) => <WithSettings>{(s) => <div className="flex flex-col gap-4">{render(s)}</div>}</WithSettings>
+/** Link con ancora (es. /impostazioni#telegram dalla pagina Bot): scorre alla sezione quando è pronta. */
+function ScrollToHash() {
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView({ block: 'start' })
+  }, [hash])
+  return null
+}
+
+const page = (render: (s: Settings) => ReactNode) => (
+  <WithSettings>
+    {(s) => (
+      <div className="flex flex-col gap-4">
+        {render(s)}
+        <ScrollToHash />
+      </div>
+    )}
+  </WithSettings>
+)
 
 export const settingsArea: Area = {
   routes: [

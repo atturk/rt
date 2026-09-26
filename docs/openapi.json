@@ -126,6 +126,24 @@
         "title": "Body_create_lesson_api_v1_lessons_post",
         "type": "object"
       },
+      "ChooseFolderIn": {
+        "properties": {
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cartella da cui partire (facoltativa)",
+            "title": "Start"
+          }
+        },
+        "title": "ChooseFolderIn",
+        "type": "object"
+      },
       "Connection": {
         "properties": {
           "base_url": {
@@ -465,6 +483,24 @@
         "title": "DecisionRequest",
         "type": "object"
       },
+      "DeleteFailure": {
+        "properties": {
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "reason"
+        ],
+        "title": "DeleteFailure",
+        "type": "object"
+      },
       "DocumentSection": {
         "properties": {
           "end_seconds": {
@@ -563,6 +599,93 @@
           "error"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "FolderChoice": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percorso POSIX assoluto della cartella scelta",
+            "title": "Path"
+          },
+          "status": {
+            "description": "unavailable: niente finestra nativa (non macOS), la SPA usa il navigatore",
+            "enum": [
+              "chosen",
+              "cancelled",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "FolderChoice",
+        "type": "object"
+      },
+      "FolderEntry": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "FolderEntry",
+        "type": "object"
+      },
+      "FolderListing": {
+        "properties": {
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/FolderEntry"
+            },
+            "title": "Folders",
+            "type": "array"
+          },
+          "home": {
+            "title": "Home",
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cartella superiore; null nella home",
+            "title": "Parent"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "home",
+          "folders"
+        ],
+        "title": "FolderListing",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1425,6 +1548,75 @@
         "title": "LessonsRootIn",
         "type": "object"
       },
+      "ListenMessages": {
+        "properties": {
+          "cleaned": {
+            "description": "True se sono già stati cancellati",
+            "title": "Cleaned",
+            "type": "boolean"
+          },
+          "count": {
+            "description": "Messaggi ricevuti durante quell'ascolto (esclusi quelli di servizio)",
+            "title": "Count",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultimo ascolto dei topic concluso",
+            "title": "Job Id"
+          }
+        },
+        "required": [
+          "count",
+          "cleaned"
+        ],
+        "title": "ListenMessages",
+        "type": "object"
+      },
+      "ListenMessagesDeleted": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/DeleteFailure"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "deleted",
+          "failed"
+        ],
+        "title": "ListenMessagesDeleted",
+        "type": "object"
+      },
       "LoginLink": {
         "properties": {
           "expires_in": {
@@ -1482,6 +1674,46 @@
           "model"
         ],
         "title": "ModelIn",
+        "type": "object"
+      },
+      "Notification": {
+        "properties": {
+          "kind": {
+            "description": "lezione_pronta, issue o prova",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sent_at": {
+            "title": "Sent At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          }
+        },
+        "required": [
+          "sent_at",
+          "kind",
+          "text"
+        ],
+        "title": "Notification",
         "type": "object"
       },
       "Outline": {
@@ -2046,6 +2278,48 @@
         "title": "RecallVote",
         "type": "object"
       },
+      "RevealIn": {
+        "properties": {
+          "field": {
+            "enum": [
+              "bot_token",
+              "chat_id"
+            ],
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "RevealIn",
+        "type": "object"
+      },
+      "RevealOut": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Valore completo, null se non impostato",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "RevealOut",
+        "type": "object"
+      },
       "RouteIn": {
         "properties": {
           "base_url": {
@@ -2334,6 +2608,21 @@
             ],
             "title": "Misc Topic Id"
           },
+          "topic_names": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "id del topic -> nome rilevato (facoltativo)",
+            "title": "Topic Names"
+          },
           "topics": {
             "additionalProperties": {
               "type": "integer"
@@ -2348,11 +2637,7 @@
       },
       "TelegramSettings": {
         "properties": {
-          "bot_token_set": {
-            "title": "Bot Token Set",
-            "type": "boolean"
-          },
-          "chat_id": {
+          "bot_token_preview": {
             "anyOf": [
               {
                 "type": "string"
@@ -2361,7 +2646,29 @@
                 "type": "null"
               }
             ],
-            "title": "Chat Id"
+            "description": "Primi e ultimi caratteri del token (es. 1234…wXyZ); il valore completo solo con POST /settings/telegram/reveal",
+            "title": "Bot Token Preview"
+          },
+          "bot_token_set": {
+            "title": "Bot Token Set",
+            "type": "boolean"
+          },
+          "chat_id_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primi e ultimi caratteri del Chat ID",
+            "title": "Chat Id Preview"
+          },
+          "chat_id_set": {
+            "default": false,
+            "title": "Chat Id Set",
+            "type": "boolean"
           },
           "default_channel": {
             "title": "Default Channel",
@@ -2378,6 +2685,14 @@
             ],
             "title": "Misc Topic Id"
           },
+          "topic_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "id del topic -> nome rilevato da Telegram",
+            "title": "Topic Names",
+            "type": "object"
+          },
           "topics": {
             "additionalProperties": {
               "type": "integer"
@@ -2392,6 +2707,49 @@
           "default_channel"
         ],
         "title": "TelegramSettings",
+        "type": "object"
+      },
+      "TopicTestIn": {
+        "properties": {
+          "materia": {
+            "default": "",
+            "title": "Materia",
+            "type": "string"
+          },
+          "topic_id": {
+            "minimum": 1.0,
+            "title": "Topic Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "topic_id"
+        ],
+        "title": "TopicTestIn",
+        "type": "object"
+      },
+      "TopicTestOut": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "text": {
+            "description": "Testo inviato nel topic",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "message",
+          "text"
+        ],
+        "title": "TopicTestOut",
         "type": "object"
       },
       "Transcription": {
@@ -6964,6 +7322,158 @@
         ]
       }
     },
+    "/api/v1/settings/telegram/listen-messages": {
+      "get": {
+        "operationId": "listen_messages_api_v1_settings_telegram_listen_messages_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListenMessages"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Messaggi ricevuti durante l'ultimo ascolto dei topic",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/telegram/listen-messages/delete": {
+      "post": {
+        "operationId": "delete_listen_messages_api_v1_settings_telegram_listen_messages_delete_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListenMessagesDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancella dal gruppo solo i messaggi ricevuti durante l'ultimo ascolto dei topic",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/telegram/listen-topics": {
       "post": {
         "operationId": "telegram_listen_topics_api_v1_settings_telegram_listen_topics_post",
@@ -7037,6 +7547,178 @@
         "summary": "Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)",
         "tags": [
           "job",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/telegram/reveal": {
+      "post": {
+        "operationId": "reveal_telegram_api_v1_settings_telegram_reveal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Valore completo del token del bot o del Chat ID, solo su richiesta esplicita",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/telegram/test-topic": {
+      "post": {
+        "operationId": "test_topic_api_v1_settings_telegram_test_topic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invia nel topic il messaggio di prova 'Questo è il topic di <materia>'",
+        "tags": [
           "impostazioni"
         ]
       }
@@ -7211,6 +7893,186 @@
         "summary": "Motore di trascrizione",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/system/choose-folder": {
+      "post": {
+        "operationId": "choose_folder_api_v1_system_choose_folder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChooseFolderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderChoice"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/folders": {
+      "get": {
+        "operationId": "list_folders_api_v1_system_folders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderListing"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sottocartelle di una cartella della home, per il navigatore della SPA (solo loopback)",
+        "tags": [
+          "sistema"
         ]
       }
     },
@@ -7437,6 +8299,100 @@
           }
         ],
         "summary": "Ferma il bot Telegram",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/telegram/notifications": {
+      "get": {
+        "operationId": "notifications_api_v1_telegram_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Notification"
+                  },
+                  "title": "Response Notifications Api V1 Telegram Notifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic)",
         "tags": [
           "impostazioni"
         ]

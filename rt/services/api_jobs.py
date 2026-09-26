@@ -156,7 +156,7 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Ascolta i messaggi al bot per rilevare chat e topic: l'esito (anche un errore) è il risultato."""
-    from rt.services.telegram_topics import TopicListenError, listen_topics
+    from rt.services.telegram_topics import TopicListenError, known_materie, listen_topics, match_materia
     try:
         found = listen_topics(seconds=int(job.payload.get("seconds") or 20))
     except TopicListenError as exc:
@@ -164,6 +164,10 @@ def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     n = len(found["topics"])
     message = (f"Rilevati {n} topic. Assegna una materia a ciascuno e salva." if n
                else "Nessun topic rilevato. Invia un messaggio in un topic e riprova.")
+    # Nome del topic dal Bot API e, se coincide con una materia nota, la materia proposta.
+    materie = known_materie() if found.get("names") else []
+    found["materie"] = {topic: m for topic, name in found.get("names", {}).items()
+                        if (m := match_materia(name, materie))}
     return _done({"ok": True, "message": message, **found})
 
 

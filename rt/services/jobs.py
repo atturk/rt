@@ -131,7 +131,7 @@ class JobQueue(Protocol):
     def get(self, job_id: str) -> Optional[JobInfo]: ...
 
     def list(self, state: Optional[Union[str, Sequence[str]]] = None, lesson_id: LessonRef = None,
-             limit: int = 50) -> List[JobInfo]: ...
+             limit: int = 50, job_type: Optional[str] = None) -> List[JobInfo]: ...
 
     def events(self, job_id: str, after_id: int = 0) -> List[JobEventInfo]: ...
 
@@ -184,9 +184,11 @@ class DbJobQueue:
             return JobInfo.from_row(row) if row is not None else None
 
     def list(self, state: Optional[Union[str, Sequence[str]]] = None, lesson_id: LessonRef = None,
-             limit: int = 50) -> List[JobInfo]:
+             limit: int = 50, job_type: Optional[str] = None) -> List[JobInfo]:
         with session_scope(self.db) as s:
             stmt = select(Job).order_by(Job.created_at.desc(), Job.id).limit(limit)
+            if job_type:
+                stmt = stmt.where(Job.type == job_type)
             if state:
                 states = [state] if isinstance(state, str) else list(state)
                 stmt = stmt.where(Job.state.in_(states))
