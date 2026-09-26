@@ -397,7 +397,7 @@ export function CredentialTest({ credential, settings }: { credential: string; s
   else if (test.data && !isTerminal(state)) {
     outcome = (
       <p role="status" className="text-xs text-muted-foreground">
-        {test.data.worker_available ? 'Prova in corso…' : 'Nessun worker attivo: la prova resta in coda finché non avvii rt worker.'}
+        {test.data.worker_available ? 'Prova in corso…' : 'Nessun worker attivo: la prova resta in coda finché RT non viene riavviato con la web.'}
       </p>
     )
   } else if (state === 'succeeded' && result) {

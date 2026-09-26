@@ -124,7 +124,7 @@ export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schem
       </label>
       {run.isError && <Alert tone="danger">{errorMessage(run.error)}</Alert>}
       {run.data && !run.data.worker_available && (
-        <Alert tone="warning">Nessun worker attivo: il job resta in coda finché non avvii rt worker (o rt web).</Alert>
+        <Alert tone="warning">Nessun worker attivo: il job resta in coda finché RT non viene riavviato con la web.</Alert>
       )}
       {workers.data?.length === 0 && !run.data && (
         <p className="text-xs text-muted-foreground">Nessun worker attivo: i job partiranno quando ne avvii uno.</p>

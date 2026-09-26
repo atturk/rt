@@ -10,6 +10,7 @@ Ogni unità riceve:
 Salva draft.json garantendo l'integrità della provenance (source_segment_ids).
 """
 
+import logging
 import os
 import json
 from typing import Dict, Any, List, Optional, Tuple
@@ -37,7 +38,11 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
+from rt.services.events import Notice
+from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
+
+LOG = logging.getLogger(__name__)
 
 
 def get_draft_path(lesson_dir: str) -> str:
@@ -221,13 +226,20 @@ def _run_rewrite(
                 
     processed_count = 0
     total_units_count = len(units_to_process)
-    
+    outline_position = {ou.id: pos for pos, ou in enumerate(all_outline_units, start=1)}
+    failures = UnitFailureTracker()
+    stopped_early = False
+
     for idx, u in enumerate(units_to_process, start=1):
+        # Posizione nella lezione (es. 8/31), anche quando si riprende da un checkpoint
+        position, of_total = ((idx, total_units_count) if target_unit_id
+                              else (outline_position.get(u.id, idx), len(all_outline_units)))
         if ctx is not None:
             # Annullamento solo tra un'unità e l'altra: le unità già elaborate sono nel
             # checkpoint e una nuova run riprende da lì.
             ctx.check_cancelled()
-            ctx.progress("rewrite", current=idx, total=total_units_count, message=f"{u.id} {u.title}".strip())
+            ctx.progress("rewrite", current=position, total=of_total, message=f"{u.id} {u.title}".strip(),
+                         unit_id=u.id, unit_title=(u.title or "").strip() or None, failed=len(failures.failures))
         start_seg = seg_by_id[u.start_segment_id]
         end_seg = seg_by_id[u.end_segment_id]
         
@@ -262,14 +274,30 @@ def _run_rewrite(
             u_title = u_title[:25] + "..."
         unit_label = f"unit {idx}/{total_units_count} ({u.id}: {u_title})" if u_title else f"unit {idx}/{total_units_count} ({u.id})"
 
-        unit_draft = client.call_structured(
-            prompt=prompt,
-            system_prompt=REWRITE_SYSTEM_PROMPT,
-            response_model=DraftUnit,
-            job_name="rewrite",
-            unit_id=unit_label,
-            lesson_dir=lesson_dir
-        )
+        try:
+            unit_draft = client.call_structured(
+                prompt=prompt,
+                system_prompt=REWRITE_SYSTEM_PROMPT,
+                response_model=DraftUnit,
+                job_name="rewrite",
+                unit_id=unit_label,
+                lesson_dir=lesson_dir
+            )
+        except Exception as exc:
+            if not is_unit_failure(exc):
+                raise
+            # L'unità resta fuori dal draft e dal checkpoint: le altre proseguono e una nuova
+            # run rifà solo le unità mancanti.
+            title = (u.title or "").strip()
+            failure = failures.failed(u.id, f"{position}/{of_total} ({u.id}{': ' + title if title else ''})", exc)
+            LOG.error("Rewrite unità %s non riuscita: %s", u.id, failure.message)
+            if ctx is not None:
+                ctx.emit(Notice(level="warning", message=f"Rielaborazione dell'unità {failure.label} non riuscita: {failure.message}"))
+            if failures.too_many():
+                stopped_early = True
+                break
+            continue
+        failures.succeeded()
 
         # Forziamo rigorosamente la rispondenza della provenance prima del commit
         unit_draft.start_segment_id = u.start_segment_id
@@ -319,6 +347,15 @@ def _run_rewrite(
 
     all_outline_uids = [ou.id for ou in all_outline_units]
     is_fully_covered = all(uid in draft_units_map for uid in all_outline_uids)
+    if failures.failures:
+        record_phase_checkpoint(
+            lesson_dir=lesson_dir,
+            phase_name="rewrite",
+            source_fingerprint=compute_source_fingerprint(lesson_dir, "rewrite"),
+            artifact_fingerprints={"draft.json": compute_file_sha256(draft_path)} if fs.isfile(draft_path) else None,
+            completed_items=[ou.unit_id for ou in draft.units],
+            metadata={"failed_units": failures.as_dicts()},
+        )
 
     if target_unit_id:
         source_fp = compute_source_fingerprint(lesson_dir, "rewrite", target_unit_id=target_unit_id)
@@ -378,7 +415,7 @@ def _run_rewrite(
             topics=info.get("argomenti", "Argomenti"),
             current_state=WorkflowState.DRAFT_VALIDATED.value
         )
-        transition_to(yaml_path, WorkflowState.DRAFT_VALIDATED, allow_force=(force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID)))
+        transition_to(yaml_path, WorkflowState.DRAFT_VALIDATED, allow_force=(force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL)))
         status_msg = "draft_validated"
     else:
         validation_report = {"valid": False, "reason": "Draft parziale"}
@@ -391,6 +428,10 @@ def _run_rewrite(
         "reason": "explicit user-requested rerun" if force else f"processed {processed_count} unit(s)",
         "processed_units": processed_count,
         "total_units": len(draft.units),
-        "validation_report": validation_report
+        "validation_report": validation_report,
+        "completed_units": len(draft.units),
+        "expected_units": len(all_outline_uids),
+        "failed_units": failures.as_dicts(),
+        "stopped_early": stopped_early,
     }
 

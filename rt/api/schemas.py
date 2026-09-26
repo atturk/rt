@@ -181,6 +181,8 @@ class Job(BaseModel):
     created_at: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    retry_of: Optional[str] = Field(None, description="Job fallito di cui questo è il nuovo tentativo (Riprova)")
+    retried_by: Optional[str] = Field(None, description="Job nuovo creato con Riprova da questo job fallito")
 
 
 class JobAccepted(BaseModel):
@@ -189,6 +191,7 @@ class JobAccepted(BaseModel):
     state: str
     lesson_id: Optional[int] = None
     worker_available: bool = Field(description="False se nessun 'rt worker' è attivo: il job resta in coda")
+    retry_of: Optional[str] = None
 
 
 class JobEvent(BaseModel):
@@ -209,6 +212,9 @@ class JobRequest(BaseModel):
     with_review: bool = True
     auto_accept: bool = False
     rename: bool = True
+    mock_fail_once: Optional[Literal["rewrite", "review"]] = Field(
+        None, description="Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta "
+                          "con una risposta fuori schema (poi Riprova va a buon fine)")
 
 
 class WorkerInfo(BaseModel):

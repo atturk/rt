@@ -572,10 +572,11 @@ class CliDecisionProvider:
 class TelegramBuildNotifier:
     """Notifica Telegram di fine build, poi proposta di avviare il demone (solo da TTY)."""
 
-    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
+    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> bool:
         from rt.telegram.notify import notify_build_completed
-        notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title)
+        sent = notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title)
         _prompt_and_launch_daemon_if_needed()
+        return False if sent is None else sent
 
 
 def cmd_run(args):
@@ -1160,6 +1161,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         run_app()
         return
     from rt.llm.errors import LLMFailure
+    from rt.pipeline.unit_failures import PhaseIncomplete
     from pydantic import ValidationError
     try:
         args.func(args)
@@ -1196,6 +1198,9 @@ def main(argv: Optional[List[str]] = None) -> None:
             "cambiare modello, o aggiungere un blocco 'fallback' se disponibile un'alternativa).\n",
             file=sys.stderr
         )
+        sys.exit(1)
+    except PhaseIncomplete as e:
+        print(f"\n⚠️  {e}".replace("Riprova rifà", "rilanciare lo stesso comando rifà"), file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         # Chi solleva volontariamente Ctrl+C (es. l'attesa di conferma outline via

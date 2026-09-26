@@ -36,7 +36,10 @@ review di tutte le issue, build, documento con audio, recall), con ricarica dopo
 in `frontend/e2e/journey.spec.ts`; l'accessibilità di base (axe, regole WCAG 2 A/AA, temi chiaro
 e scuro, focus da tastiera) su ogni pagina in `frontend/e2e/a11y.spec.ts`.
 Job in coda e annullamento (`rt jobs`, `rt jobs cancel`) sono nella pagina Job della SPA
-(RT4-F4, `frontend/e2e/ingest.spec.ts`).
+(RT4-F4, `frontend/e2e/ingest.spec.ts`). "Riprova" di un job fallito (RT4-FA1) equivale a
+rilanciare lo stesso comando da terminale, che riprende dai checkpoint: API in
+`tests/test_job_retry_and_notify.py`, SPA in `frontend/e2e/retry.spec.ts` (job in mock fatto
+fallire, Riprova dal dettaglio del job e dal pannello della lezione, ricarica).
 
 ## Differenze trovate e corrette con i test di parità
 

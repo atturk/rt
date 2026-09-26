@@ -88,7 +88,7 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
   const p = (event.payload ?? {}) as Record<string, unknown>
   switch (event.type) {
     case 'job_queued':
-      return { text: 'In coda', tone: 'neutral' }
+      return { text: p.retry_of ? 'In coda (nuovo tentativo di un job fallito)' : 'In coda', tone: 'neutral' }
     case 'job_started':
       return { text: Number(p.attempt ?? 1) > 1 ? `Avviato (tentativo ${p.attempt})` : 'Avviato dal worker', tone: 'neutral' }
     case 'job_requeued':
@@ -112,8 +112,14 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
       const count = p.current != null && p.total ? ` ${p.current}/${p.total}` : ''
       return { text: `${phaseName(p)}:${count} ${String(p.message ?? '')}`.trim(), tone: 'neutral' }
     }
-    case 'phase_completed':
+    case 'phase_completed': {
+      if (p.partial) {
+        const r = (p.result ?? {}) as Record<string, unknown>
+        const count = r.completed_units != null && r.expected_units ? ` (${r.completed_units}/${r.expected_units} unità)` : ''
+        return { text: `${phaseName(p)}: parziale${count}`, tone: 'warning' }
+      }
       return { text: `${phaseName(p)}: ${p.skipped ? 'già aggiornata' : 'completata'}`, tone: 'success' }
+    }
     case 'phase_failed':
       return { text: `${phaseName(p)}: errore. ${String(p.message ?? '')}`.trim(), tone: 'danger' }
     case 'cost_updated':
@@ -125,6 +131,32 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
     default:
       return { text: event.type, tone: 'neutral' }
   }
+}
+
+/**
+ * Etichetta dell'avanzamento dai dati strutturati di jobs.progress (evento phase_progress):
+ * fase e, nelle fasi a unità, unità in lavorazione sul totale ("Revisione · 8/31"), poi
+ * l'unità e le eventuali unità fallite. Mai dedotta dal testo del messaggio.
+ */
+export function progressLabel(progress: Job['progress']): { phase: string | null; count: string | null; detail: string | null } {
+  if (!progress) return { phase: null, count: null, detail: null }
+  const p = progress as Record<string, unknown>
+  const phase = typeof p.phase === 'string' ? (PHASE_LABELS[p.phase] ?? (p.phase === 'setup' ? 'Trascrizione e setup' : p.phase)) : null
+  const current = Number(p.current)
+  const total = Number(p.total)
+  const count = Number.isFinite(current) && Number.isFinite(total) && total > 0 && !p.completed ? `${current}/${total}` : null
+  const unit = typeof p.unit_id === 'string' ? [p.unit_id, typeof p.unit_title === 'string' ? p.unit_title : null].filter(Boolean).join(' ') : null
+  const failed = Number(p.failed)
+  const parts = [unit ?? (typeof p.message === 'string' && p.message ? p.message : null)]
+  if (Number.isFinite(failed) && failed > 0) parts.push(failed === 1 ? '1 unità non riuscita' : `${failed} unità non riuscite`)
+  const detail = parts.filter(Boolean).join(' · ') || null
+  return { phase, count, detail }
+}
+
+/** "Revisione · 8/31" (fase e unità sul totale), per la riga sopra la barra. */
+export function progressTitle(progress: Job['progress']): string | null {
+  const { phase, count } = progressLabel(progress)
+  return [phase, count].filter(Boolean).join(' · ') || null
 }
 
 /** Avanzamento del job (0-100) dalla colonna progress, se c'è. */

@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
-import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, type Settings } from '@/api/settings'
+import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, useSaveWorker, type Settings } from '@/api/settings'
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -66,6 +66,53 @@ export function LessonsRootSection({ settings }: { settings: Settings }) {
         </p>
       )}
     </Section>
+  )
+}
+
+const WORKER_CONCURRENCY_OPTIONS = [1, 2, 3, 4]
+
+/** "Job in parallelo": quanti job il worker avviato con la web esegue insieme (vale dal prossimo avvio). */
+export function WorkerSection({ settings }: { settings: Settings }) {
+  const save = useSaveWorker()
+  const saved = settings.worker.concurrency
+  const running = settings.worker.running
+  return (
+    <Section id="job-paralleli" title="Job">
+      <WorkerFields key={saved} saved={saved} pending={save.isPending} onSubmit={(n) => save.mutate(n)} />
+      <p className="text-xs text-muted-foreground">
+        Quanti lavori (pipeline, immagini, recall…) RT esegue insieme, sempre su lezioni diverse: due lavori sulla stessa
+        lezione aspettano il proprio turno. La modifica vale dal prossimo avvio di RT.
+        {running > 0 && running !== saved && ` Ora ne esegue fino a ${running} insieme.`}
+      </p>
+      <SaveFeedback mutation={save} success="Salvato: vale dal prossimo avvio di RT." />
+    </Section>
+  )
+}
+
+function WorkerFields({ saved, pending, onSubmit }: { saved: number; pending: boolean; onSubmit: (n: number) => void }) {
+  const [value, setValue] = useState(saved)
+  return (
+    <form
+      className="flex flex-wrap items-center gap-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSubmit(value)
+      }}
+    >
+      <label htmlFor="worker-concurrency" className="text-sm font-medium">
+        Job in parallelo
+      </label>
+      <Select id="worker-concurrency" className="w-20" value={value} onChange={(e) => setValue(Number(e.target.value))}>
+        {WORKER_CONCURRENCY_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </Select>
+      <Button type="submit" variant="outline" size="sm" disabled={pending || value === saved}>
+        Salva
+      </Button>
+    </form>
   )
 }
 
