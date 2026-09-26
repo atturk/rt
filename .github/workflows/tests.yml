@@ -197,8 +197,9 @@ jobs:
           cp -r "$OLD/config.example" "$OLD/config"
           : > "$OLD/.env"
           printf '\ntelegram:\n  lessons_root: %s\n' "$HOME/Lezioni-old" >> "$OLD/config/general.yaml"
-          "$OLD/bin/rt" run "$GITHUB_WORKSPACE/tests/fixtures/demo_lecture.wav" -d 2026-09-20 -m FISIOLOGIA \
-            -a "Il rene" -o "$HOME/Lezioni-old" --mock --auto-accept --channel terminal < /dev/null
+          # la 3.5.0 chiede di approvare la scaletta anche con --auto-accept: 'a' = approva
+          printf 'a\n' | "$OLD/bin/rt" run "$GITHUB_WORKSPACE/tests/fixtures/demo_lecture.wav" -d 2026-09-20 \
+            -m FISIOLOGIA -a "Il rene" -o "$HOME/Lezioni-old" --mock --auto-accept --channel terminal
           ls "$HOME/Lezioni-old"
       - name: Il 'rt -u' della 3.5.0 sincronizza il codice nuovo e le dipendenze
         run: |
