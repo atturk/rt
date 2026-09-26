@@ -98,3 +98,84 @@ def fake_telegram_server(updates=None):
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def _serve(handler_cls):
+    import threading
+    from http.server import ThreadingHTTPServer
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def fake_searxng_server(results=3, json_enabled=True):
+    """SearXNG finto su 127.0.0.1: /search?format=json con `results` immagini; con
+    json_enabled=False risponde 403 come SearXNG quando il formato json non è abilitato."""
+    import json as _json
+    from http.server import BaseHTTPRequestHandler
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            if not self.path.startswith("/search"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            if not json_enabled:
+                body, status, ctype = b"<h1>403 Forbidden</h1>", 403, "text/html"
+            else:
+                items = [{"title": f"Immagine {i}", "url": f"http://example.invalid/p{i}",
+                          "img_src": f"http://example.invalid/{i}.png"} for i in range(results)]
+                body, status, ctype = _json.dumps({"results": items}).encode(), 200, "application/json"
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    return _serve(Handler)
+
+
+def fake_llm_server():
+    """Provider OpenAI-compatible finto: POST /v1/chat/completions. Il modello 'inesistente'
+    risponde 404 con un errore nel formato OpenAI; 'lento' non risponde per 5 secondi.
+    Le richieste ricevute restano in server.requests (per controllare prompt e max_tokens)."""
+    import json as _json
+    import time as _time
+    from http.server import BaseHTTPRequestHandler
+    received = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = _json.loads(self.rfile.read(length) or b"{}")
+            received.append({"path": self.path, "auth": self.headers.get("Authorization"), "json": payload})
+            model = payload.get("model")
+            if model == "lento":
+                _time.sleep(5)
+            if model == "inesistente":
+                status = 404
+                body = {"error": {"message": "The model `inesistente` does not exist", "type": "invalid_request_error"}}
+            else:
+                status = 200
+                body = {"id": "x", "model": model, "choices": [{"index": 0, "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "ok"}}],
+                        "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}}
+            data = _json.dumps(body).encode()
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def log_message(self, *args):
+            pass
+
+    server, url = _serve(Handler)
+    server.requests = received
+    return server, url
