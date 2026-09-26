@@ -151,7 +151,10 @@ Le lezioni rimaste in cartella dalla 3.x non sono nel backup: `rt backup` le seg
 Docker serve per far girare RT su un server Linux o per provarlo isolato. Sul Mac il default
 resta nativo: in un container Linux `macparakeet` non gira.
 
+Si usa da un clone del repository (l'archivio della release non contiene i file Docker):
+
 ```bash
+git clone https://github.com/atturk/rt.git && cd rt
 docker compose up -d                          # API + web app e worker, dati nel volume rt-data
 docker compose exec api rt web --no-browser   # stampa il link di accesso monouso
 docker compose --profile telegram up -d       # anche il bot
