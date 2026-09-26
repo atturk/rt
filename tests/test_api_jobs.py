@@ -233,6 +233,36 @@ def test_credential_test_job_mock(api_client, ws, worker):
     assert job(api_client, res.json()["job_id"])["result"]["ok"] is True
 
 
+def test_telegram_listen_topics_job(api_client, ws, worker, monkeypatch):
+    """RT4-F5: 'Ascolta topic' della web come job; il token non esce mai nel risultato."""
+    from tests.api_support import fake_telegram_server
+    server, base = fake_telegram_server()
+    monkeypatch.setenv("RT_TELEGRAM_API_URL", base)
+    try:
+        monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "test-disabled-token")
+        res = api_client.post("/api/v1/settings/telegram/listen-topics")
+        assert res.status_code == 202 and res.json()["type"] == "telegram_listen_topics"
+        drain(worker)
+        result = job(api_client, res.json()["job_id"])["result"]
+        assert result["ok"] is False and "token" in result["message"]
+
+        monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "123:segreto-bot")
+        res = api_client.post("/api/v1/settings/telegram/listen-topics")
+        drain(worker)
+        got = job(api_client, res.json()["job_id"])
+        assert got["result"] == {"ok": True, "message": "Rilevati 2 topic. Assegna una materia a ciascuno e salva.",
+                                 "chat_id": "-1001234567890", "chats": 1, "topics": [12, 27]}
+        assert "segreto-bot" not in str(got)
+
+        monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "123:rifiutato")
+        res = api_client.post("/api/v1/settings/telegram/listen-topics")
+        drain(worker)
+        result = job(api_client, res.json()["job_id"])["result"]
+        assert result["ok"] is False and "non ha accettato" in result["message"]
+    finally:
+        server.shutdown()
+
+
 def test_images_upload_validation(api_client, lesson):
     lesson_id, _ = lesson
     assert api_client.post(f"/api/v1/lessons/{lesson_id}/images").status_code == 422

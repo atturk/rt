@@ -94,7 +94,7 @@ Le operazioni lunghe sono job della coda della fase D (`rt/services/jobs.py`), e
 worker è attivo: il job resta in coda finché non ne parte uno). I tipi standard
 (`run_pipeline`, `ingest_audio`, `run_phase`, `add_images`, `recall_generate`) sono quelli di
 `rt/services/job_handlers.py`; quelli aggiuntivi usati solo dall'API (`rewrite_unit`,
-`recall_batch`, `recall_refill`, `recall_evaluate`, `outline_revision`, `credential_test`) stanno in
+`recall_batch`, `recall_refill`, `recall_evaluate`, `outline_revision`, `credential_test`, `telegram_listen_topics`) stanno in
 `rt/services/api_jobs.py`.
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
@@ -114,6 +114,7 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST .../recall/generate`, `POST .../recall/next` | Generazione (job `recall_generate`, o `recall_batch` con `qtype`); prossima domanda, che sotto soglia accoda il rifornimento (job `recall_refill`) come il terminale | `rt recall` |
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
+| `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti | web Gradio "Ascolta topic" |
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in

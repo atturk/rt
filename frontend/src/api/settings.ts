@@ -107,6 +107,24 @@ export function useTestCredential() {
   })
 }
 
+/** "Ascolta i topic": job che legge per 20 secondi i messaggi arrivati al bot. */
+export type ListenResult = { ok: boolean; message: string; chat_id?: string | null; topics?: number[] }
+
+export function useListenTopics() {
+  return useMutation({
+    mutationFn: async (): Promise<ListenResult> => {
+      const accepted = await unwrap(api.POST('/api/v1/settings/telegram/listen-topics'))
+      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: avvia rt worker e riprova.' }
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: accepted.job_id } } }))
+        if (job.state === 'succeeded') return job.result as ListenResult
+        if (isTerminal(job.state)) return { ok: false, message: `Ascolto non eseguito: ${job.error ?? job.state}` }
+      }
+    },
+  })
+}
+
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled'])
 
 export function isTerminal(state: string | undefined) {

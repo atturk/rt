@@ -139,6 +139,18 @@ test('Telegram: token, chat, topic per materia dal link, topic generale', async 
   await page.reload()
   await expect(rows).toHaveCount(1)
   expect((await settings(page)).telegram.topics).toEqual({ BIOCHIMICA: 12 })
+
+  // "Ascolta i topic": job del worker contro la Bot API finta del server e2e (topic 12 e 27).
+  await card.getByRole('button', { name: 'Ascolta i topic per 20 secondi' }).click()
+  await expect(card.getByTestId('listen-result')).toHaveText('Rilevati 2 topic. Assegna una materia a ciascuno e salva.', { timeout: 30_000 })
+  await expect(rows).toHaveCount(2)
+  await expect(card.getByLabel('Topic 2', { exact: true })).toHaveValue('27')
+  await card.getByLabel('Materia 2', { exact: true }).fill('FISIOLOGIA')
+  await card.getByRole('button', { name: 'Salva Telegram' }).click()
+  await page.reload()
+  await expect(rows).toHaveCount(2)
+  expect((await settings(page)).telegram.topics).toEqual({ BIOCHIMICA: 12, FISIOLOGIA: 27 })
+  await expectNoSecretIn(page)
 })
 
 test('connessione nuova e un modello per ciascuna delle sei fasi', async ({ page }) => {

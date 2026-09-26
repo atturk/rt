@@ -64,3 +64,37 @@ def run_mock_pipeline(lesson_dir: str, with_review: bool = True, auto_accept: bo
     options = PipelineOptions(mock=True, with_review=with_review, auto_accept=auto_accept,
                               rename=False, channel="terminal")
     return run_pipeline([lesson_dir], options, RunContext())
+
+
+FAKE_TELEGRAM_UPDATES = [
+    {"update_id": 1, "message": {"chat": {"id": -1001234567890}, "message_thread_id": 12, "text": "biochimica"}},
+    {"update_id": 2, "message": {"chat": {"id": -1001234567890}, "message_thread_id": 27, "text": "fisiologia"}},
+    {"update_id": 3, "message": {"chat": {"id": -1001234567890}, "text": "generale"}},
+]
+
+
+def fake_telegram_server(updates=None):
+    """Bot API finta per getUpdates (rilevamento topic) su una porta libera di 127.0.0.1.
+    Restituisce (server, base_url): basta RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' -> 401."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    payload = FAKE_TELEGRAM_UPDATES if updates is None else updates
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            ok = "/getUpdates" in self.path and "rifiutato" not in self.path
+            body = _json.dumps({"ok": True, "result": payload} if ok
+                               else {"ok": False, "description": "Unauthorized"}).encode()
+            self.send_response(200 if ok else 401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"

@@ -77,6 +77,9 @@ def main() -> int:
 
     ensure_database()
     _lessons(root)
+    # Bot API finta per "Ascolta i topic" (RT4-F5): API e worker la ereditano dall'ambiente.
+    from tests.api_support import fake_telegram_server
+    _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
     token = auth.reset_token(get_database())
     base_url = f"http://127.0.0.1:{args.port}"
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)

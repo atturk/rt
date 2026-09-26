@@ -1,7 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
-import { useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, type Settings } from '@/api/settings'
+import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, type Settings } from '@/api/settings'
+import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -182,6 +183,22 @@ function TelegramFields({
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)))
   }
 
+  // Ascolto dei topic: a job concluso aggiunge al form chat e topic rilevati (da salvare).
+  const listen = useListenTopics()
+  function startListening() {
+    listen.mutate(undefined, {
+      onSuccess: (result) => {
+        if (!result.ok) return
+        if (result.chat_id) setChatId((current) => current.trim() || result.chat_id!)
+        setRows((current) => {
+          const known = new Set(current.map((r) => r.topic.trim()))
+          const added = (result.topics ?? []).filter((t) => !known.has(String(t))).map((t) => ({ materia: '', topic: String(t) }))
+          return [...current.filter((r) => r.materia.trim() || r.topic.trim()), ...added]
+        })
+      },
+    })
+  }
+
   function addFromLink() {
     const parsed = parseTopicLink(link)
     if (!parsed) return onError('Incolla un link a un messaggio del topic, per esempio https://t.me/c/1234567890/12/34.')
@@ -261,6 +278,33 @@ function TelegramFields({
         <Button variant="outline" onClick={addFromLink} disabled={!link.trim()}>
           Aggiungi dal link
         </Button>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={startListening} disabled={!tg.bot_token_set || listen.isPending}>
+            Ascolta i topic per 20 secondi
+          </Button>
+          <span className="text-[11px] text-muted-foreground">
+            {tg.bot_token_set ? 'Poi scrivi un messaggio in ogni topic dal telefono.' : 'Salva prima il token del bot.'}
+          </span>
+        </div>
+        {listen.isPending && (
+          <p role="status" className="text-xs text-muted-foreground">
+            In ascolto…
+          </p>
+        )}
+        {listen.isError && <Alert tone="danger">{errorMessage(listen.error)}</Alert>}
+        {listen.data &&
+          (listen.data.ok ? (
+            <p role="status" className="text-xs text-success" data-testid="listen-result">
+              {listen.data.message}
+            </p>
+          ) : (
+            <Alert tone="danger" data-testid="listen-result">
+              {listen.data.message}
+            </Alert>
+          ))}
       </div>
 
       <Field label="Topic generale (facoltativo)" htmlFor="tg-misc" hint="Per le lezioni di materie senza topic.">
