@@ -1,7 +1,8 @@
 import { Brain, Download, Images, LayoutDashboard } from 'lucide-react'
+import { useId, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
@@ -151,28 +152,7 @@ export function LessonPage() {
                 {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2" aria-label="Studio">
-              {l.phases.rewrite === 'VALID' && (
-                <Link className={linkButton} to={`/lezioni/${id}/recall`}>
-                  <Brain className="size-4" aria-hidden /> Recall
-                </Link>
-              )}
-              {l.phases.build === 'VALID' && (
-                <Link className={linkButton} to={`/lezioni/${id}/immagini`}>
-                  <Images className="size-4" aria-hidden /> Immagini
-                </Link>
-              )}
-            </div>
-            {document.data?.final && (
-              <div className="flex flex-wrap gap-2" aria-label="Scarica">
-                <a className={linkButton} href={`/api/v1/lessons/${id}/export?format=markdown`} download>
-                  <Download className="size-4" aria-hidden /> Markdown
-                </a>
-                <a className={linkButton} href={`/api/v1/lessons/${id}/export?format=zip&scope=all`} download>
-                  <Download className="size-4" aria-hidden /> Tutti i dati (zip)
-                </a>
-              </div>
-            )}
+            <LessonActions lessonId={id} actions={l.actions} />
           </div>
           <div className="mt-3">
             <PhaseBadges phases={l.phases} />
@@ -215,7 +195,9 @@ export function LessonPage() {
               {document.data && (
                 <>
                   {!document.data.final && (
-                    <Alert className="mb-4">Anteprima dalla bozza: il documento finale arriva con la fase Documento (build).</Alert>
+                    <Alert className="mb-4">
+                      Anteprima dalla bozza: è quello che diventerà il documento finale quando esegui la fase Documento.
+                    </Alert>
                   )}
                   <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
                 </>
@@ -235,6 +217,72 @@ export function LessonPage() {
 
 const linkButton =
   'inline-flex h-8 items-center gap-2 rounded-md border border-input bg-card px-3 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring'
+
+type ActionState = Schemas['LessonAction']
+const NOT_LOADED: ActionState = { available: false, reason: 'Stato della lezione non disponibile.', preview: false }
+const PREVIEW_HINT = 'Anteprima dalla bozza: il documento finale non è ancora stato creato o non è aggiornato.'
+
+/** Un'azione dell'intestazione: sempre nello stesso posto; se non è disponibile resta
+ * visibile, disabilitata, con il motivo nel tooltip (e per i lettori di schermo). */
+function ActionSlot({ action, label, icon, children }: { action: ActionState; label: string; icon: ReactNode; children: (content: ReactNode, title?: string) => ReactNode }) {
+  const reasonId = useId()
+  const content = (
+    <>
+      {icon} {label}
+    </>
+  )
+  if (action.available) return children(content, action.preview ? PREVIEW_HINT : undefined)
+  return (
+    <span title={action.reason ?? undefined} className="inline-flex" data-action-disabled={label}>
+      <button type="button" disabled aria-describedby={reasonId} className={`${linkButton} cursor-not-allowed opacity-50`}>
+        {content}
+      </button>
+      <span id={reasonId} className="sr-only">
+        {action.reason}
+      </span>
+    </span>
+  )
+}
+
+function LessonActions({ lessonId, actions }: { lessonId: number; actions?: Schemas['LessonActions'] | null }) {
+  const a = actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="lesson-actions">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Studio">
+        <ActionSlot action={a.recall} label="Recall" icon={<Brain className="size-4" aria-hidden />}>
+          {(content) => (
+            <Link className={linkButton} to={`/lezioni/${lessonId}/recall`}>
+              {content}
+            </Link>
+          )}
+        </ActionSlot>
+        <ActionSlot action={a.images} label="Immagini" icon={<Images className="size-4" aria-hidden />}>
+          {(content) => (
+            <Link className={linkButton} to={`/lezioni/${lessonId}/immagini`}>
+              {content}
+            </Link>
+          )}
+        </ActionSlot>
+      </div>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Scarica">
+        <ActionSlot action={a.export_markdown} label="Markdown" icon={<Download className="size-4" aria-hidden />}>
+          {(content, title) => (
+            <a className={linkButton} href={`/api/v1/lessons/${lessonId}/export?format=markdown`} download title={title}>
+              {content}
+            </a>
+          )}
+        </ActionSlot>
+        <ActionSlot action={a.export_zip} label="Tutti i dati (zip)" icon={<Download className="size-4" aria-hidden />}>
+          {(content, title) => (
+            <a className={linkButton} href={`/api/v1/lessons/${lessonId}/export?format=zip&scope=all`} download title={title}>
+              {content}
+            </a>
+          )}
+        </ActionSlot>
+      </div>
+    </div>
+  )
+}
 
 export const lessonsArea: Area = {
   routes: [

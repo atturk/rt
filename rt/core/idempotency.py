@@ -40,13 +40,43 @@ PROCESSOR_VERSIONS = {
 # - review dipende da prepare e rewrite: agisce come critic avversario indipendente,
 #   valutando il draft rielaborato (non vede più la trascrizione grezza, solo il draft).
 #   Se il draft cambia, la critica deve essere rigenerata.
-# - build dipende da tutte le fasi precedenti (prepare, outline, rewrite, review).
+# - build dipende da prepare, outline e rewrite: è la conferma dell'utente che l'anteprima
+#   (bozza con le decisioni prese e le immagini) diventa il documento finale. La review non
+#   blocca: se è STALE, PARTIAL o ha issue pendenti o orfane il build si fa lo stesso e questi
+#   problemi diventano avvisi (build_warnings). Il documento resta aggiornato finché non
+#   cambiano bozza, scaletta, segmenti, decisioni prese o immagini (vedi BUILD_INPUT_FILES).
 UPSTREAM_DEPENDENCIES = {
     "prepare": [],
     "outline": ["prepare"],
     "rewrite": ["prepare", "outline"],
     "review": ["prepare", "rewrite"],
-    "build": ["prepare", "outline", "rewrite", "review"],
+    "build": ["prepare", "outline", "rewrite"],
+}
+
+# Posizionamento delle immagini nel documento (scritto da 'rt add-images', letto dal build).
+IMAGE_PLACEMENT_FILE = "assets/images/placement.json"
+
+# Input del documento finale: quello che cambia il testo dell'anteprima. science_issues.json
+# non c'è: una nuova review non cambia il documento finché non si decide sulle sue issue.
+BUILD_INPUT_FILES = ["segments.json", "outline.json", "draft.json", "review_decisions.json", IMAGE_PLACEMENT_FILE]
+# Impronta del build fino a RT 4.0 (con science_issues.json e senza immagini): ancora
+# accettata per i documenti creati prima, finché la lezione non ha immagini posizionate.
+_LEGACY_BUILD_INPUT_FILES = ["segments.json", "outline.json", "draft.json", "science_issues.json", "review_decisions.json"]
+
+# File di input per fase registrati con l'impronta (input_hashes), per dire nel motivo di uno
+# stato STALE quale file è cambiato.
+PHASE_INPUT_FILES = {
+    "rewrite": ["segments.json", "outline.json"],
+    "review": ["draft.json", "segments.json"],
+    "build": BUILD_INPUT_FILES,
+}
+
+INPUT_LABELS = {
+    "segments.json": "segmenti (segments.json)",
+    "outline.json": "scaletta (outline.json)",
+    "draft.json": "bozza (draft.json)",
+    "review_decisions.json": "decisioni della revisione",
+    IMAGE_PLACEMENT_FILE: "immagini",
 }
 
 
@@ -159,13 +189,51 @@ def compute_source_fingerprint(
         return compute_string_sha256(f"{draft_hash}|{seg_hash}|{proc_ver}")
 
     elif phase_name == "build":
-        in_hashes = []
-        for fn in ["segments.json", "outline.json", "draft.json", "science_issues.json", "review_decisions.json"]:
-            p = lesson_path(lesson_dir, fn)
-            in_hashes.append(compute_file_sha256(p))
-        return compute_string_sha256("|".join(in_hashes) + f"|{proc_ver}")
+        in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in BUILD_INPUT_FILES]
+        return compute_string_sha256("|".join(in_hashes) + f"|inputs_v2|{proc_ver}")
 
     return compute_string_sha256(f"unknown_{phase_name}|{proc_ver}")
+
+
+def _legacy_build_fingerprint(lesson_dir: str) -> Optional[str]:
+    """Impronta del build nel formato precedente, valida solo senza immagini posizionate."""
+    if fs.isfile(lesson_path(lesson_dir, IMAGE_PLACEMENT_FILE)):
+        return None
+    in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in _LEGACY_BUILD_INPUT_FILES]
+    return compute_string_sha256("|".join(in_hashes) + f"|{PROCESSOR_VERSIONS['build']}")
+
+
+def accepted_fingerprints(lesson_dir: str, phase_name: str) -> List[str]:
+    """Impronte che rendono aggiornata la fase con i file attuali."""
+    if phase_name in ("prepare", "outline"):
+        return _metadata_fingerprints(lesson_dir, phase_name)
+    accepted = [compute_source_fingerprint(lesson_dir, phase_name)]
+    if phase_name == "build":
+        legacy = _legacy_build_fingerprint(lesson_dir)
+        if legacy:
+            accepted.append(legacy)
+    return accepted
+
+
+def phase_input_hashes(lesson_dir: str, phase_name: str) -> Dict[str, str]:
+    return {fn: compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in PHASE_INPUT_FILES.get(phase_name, [])}
+
+
+def stale_reason(lesson_dir: str, phase_name: str, record: Dict[str, Any], generic: str) -> str:
+    """Motivo di un'impronta superata: versione del processore cambiata, oppure quali input
+    sono cambiati (se registrati), altrimenti il motivo generico della fase."""
+    recorded_ver = record.get("processor_version")
+    current_ver = PROCESSOR_VERSIONS.get(phase_name)
+    if recorded_ver and current_ver and recorded_ver != current_ver:
+        return (f"Eseguita con una versione precedente di RT ({recorded_ver}, ora {current_ver}): "
+                "va rifatta per aggiornarla")
+    recorded = record.get("input_hashes")
+    if isinstance(recorded, dict) and recorded:
+        current = phase_input_hashes(lesson_dir, phase_name)
+        changed = [fn for fn in PHASE_INPUT_FILES.get(phase_name, []) if recorded.get(fn, "") != current.get(fn, "")]
+        if changed:
+            return "Modificati dopo l'ultima esecuzione: " + ", ".join(INPUT_LABELS.get(fn, fn) for fn in changed)
+    return generic
 
 
 def check_phase_status(
@@ -299,7 +367,8 @@ def check_phase_status(
         current_fp = compute_source_fingerprint(lesson_dir, "rewrite")
         recorded_fp = current_rec.get("source_fingerprint")
         if recorded_fp and recorded_fp != current_fp:
-            return PhaseStatus.STALE, "outline.json o segments.json modificati dopo la generazione del draft"
+            return PhaseStatus.STALE, stale_reason(
+                lesson_dir, "rewrite", current_rec, "outline.json o segments.json modificati dopo la generazione del draft")
 
         # Se richiesta specifica unità
         if target_unit_id:
@@ -347,7 +416,8 @@ def check_phase_status(
         current_fp = compute_source_fingerprint(lesson_dir, "review")
         recorded_fp = current_rec.get("source_fingerprint")
         if recorded_fp and recorded_fp != current_fp:
-            return PhaseStatus.STALE, "draft.json o segments.json modificati dopo la revisione scientifica"
+            return PhaseStatus.STALE, stale_reason(
+                lesson_dir, "review", current_rec, "draft.json o segments.json modificati dopo la revisione scientifica")
 
         # Controllo hash artefatto se parziale
         if current_rec.get("status") == PhaseStatus.PARTIAL.value:
@@ -382,10 +452,11 @@ def check_phase_status(
             if not fs.isfile(p) or fs.getsize(p) == 0:
                 return PhaseStatus.MISSING, f"Artefatto build mancante o vuoto: {rf}"
 
-        current_fp = compute_source_fingerprint(lesson_dir, "build")
         recorded_fp = current_rec.get("source_fingerprint")
-        if recorded_fp and recorded_fp != current_fp:
-            return PhaseStatus.STALE, "Uno o più input della build (draft, outline, review, ledger) sono stati modificati"
+        if recorded_fp and recorded_fp not in accepted_fingerprints(lesson_dir, "build"):
+            return PhaseStatus.STALE, stale_reason(
+                lesson_dir, "build", current_rec,
+                "Uno o più input del documento (bozza, scaletta, decisioni, immagini) sono stati modificati")
         return PhaseStatus.VALID, "Documenti Markdown finali completi e aggiornati"
 
     return PhaseStatus.MISSING, f"Fase sconosciuta: {phase_name}"
@@ -450,6 +521,8 @@ def record_phase_fingerprint(
 
     record["processor_version"] = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
     record["updated_at"] = datetime.now().isoformat()
+    if phase_name in PHASE_INPUT_FILES:
+        record["input_hashes"] = phase_input_hashes(lesson_dir, phase_name)
 
     if artifact_fingerprints:
         rec_art = record.get("artifact_fingerprints", {})
@@ -488,6 +561,8 @@ def record_phase_checkpoint(
     record["source_fingerprint"] = source_fingerprint
     record["processor_version"] = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
     record["updated_at"] = datetime.now().isoformat()
+    if phase_name in PHASE_INPUT_FILES:
+        record["input_hashes"] = phase_input_hashes(lesson_dir, phase_name)
 
     if artifact_fingerprints:
         rec_art = record.get("artifact_fingerprints", {})
@@ -523,10 +598,7 @@ def get_phase_checkpoint(
         return None, PhaseStatus.MISSING, f"Nessun checkpoint per fase {phase_name}"
 
     recorded_fp = record.get("source_fingerprint")
-    if phase_name in ("prepare", "outline"):
-        accepted = _metadata_fingerprints(lesson_dir, phase_name)
-    else:
-        accepted = [compute_source_fingerprint(lesson_dir, phase_name)]
+    accepted = accepted_fingerprints(lesson_dir, phase_name)
     if not recorded_fp or recorded_fp not in accepted:
         return record, PhaseStatus.STALE, "Input a monte o configurazione modificati rispetto al checkpoint"
 
@@ -561,7 +633,8 @@ def mark_downstream_stale(
         "prepare": ["outline", "rewrite", "review", "build"],
         "outline": ["rewrite", "review", "build"],
         "rewrite": ["review", "build"],
-        "review": ["build"],
+        # la review non invalida il documento: il build non ne dipende (vedi UPSTREAM_DEPENDENCIES)
+        "review": [],
         "build": []
     }
 

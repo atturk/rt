@@ -23,10 +23,36 @@ class LessonSummary(BaseModel):
     error: Optional[str] = None
 
 
+class PhaseWarning(BaseModel):
+    code: str = Field(description="review_missing | review_stale | review_partial | review_invalid | "
+                                  "pending_issues | orphan_issues | check_failed")
+    message: str = Field(description="Testo per l'utente (italiano)")
+    count: Optional[int] = Field(None, description="Numero di issue, se l'avviso le conta")
+
+
 class PhaseState(BaseModel):
     phase: str
     status: str
     reason: str
+    warnings: List[PhaseWarning] = Field(
+        default_factory=list,
+        description="Solo per build: avvisi di integrità della revisione (review non aggiornata o "
+                    "incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li "
+                    "mostra nel dialogo di conferma.")
+
+
+class LessonAction(BaseModel):
+    available: bool
+    reason: Optional[str] = Field(None, description="Cosa manca, se non disponibile")
+    preview: bool = Field(False, description="Per i download: l'export è l'anteprima dalla bozza, "
+                                             "non il documento finale")
+
+
+class LessonActions(BaseModel):
+    recall: LessonAction
+    images: LessonAction
+    export_markdown: LessonAction
+    export_zip: LessonAction
 
 
 class LessonDetail(LessonSummary):
@@ -35,6 +61,8 @@ class LessonDetail(LessonSummary):
     outline_approved: bool = False
     has_audio: bool = False
     cost: Optional[Dict[str, Any]] = Field(None, description="Stesso report di 'rt cost --json'")
+    actions: Optional[LessonActions] = Field(
+        None, description="Recall, immagini e download: disponibili dopo il rewrite, senza build")
 
 
 class PhaseReport(BaseModel):
@@ -55,7 +83,8 @@ class DocumentSection(BaseModel):
 
 
 class LessonDocument(BaseModel):
-    final: bool = Field(description="True se è il documento di 'rt build', False se anteprima dal draft")
+    final: bool = Field(description="True se è il documento di 'rt build' ed è aggiornato, False se "
+                                    "anteprima dal draft (quello che il build produrrebbe ora)")
     markdown: str
     html: str = Field(description="HTML sanificato (l'HTML grezzo del Markdown è escapato)")
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")

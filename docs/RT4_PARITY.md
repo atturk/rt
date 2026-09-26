@@ -16,14 +16,14 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 |---|---|---|---|---|---|
 | `rt run` (audio o cartella, `--mock`, `--auto-accept`, `--force`) | `POST /lessons` (`run=true`), `POST /lessons/{id}/jobs` tipo `run_pipeline` | Importazione + avvio pipeline | ✅ `test_row_run_folder_pipeline` | ✅ `test_job_writes_persist` | ✅ `ingest.spec.ts` (importa, segue gli eventi, approva, arriva alla review) |
 | `rt setup` / trascrizione | `POST /lessons` → job `ingest_audio` | Importazione con upload | ✅ `test_row_setup_audio` | ✅ `test_job_writes_persist` | ✅ `ingest.spec.ts` (solo trascrizione, errori di formato) |
-| `rt prepare`, `outline`, `rewrite` (anche `--unit`), `review`, `build` singoli | `POST /lessons/{id}/jobs` tipo `run_phase` | Pulsanti per fase nella vista lezione | ✅ `test_row_single_phases`, `test_row_rewrite_single_unit` | ✅ `test_job_writes_persist` | ✅ `lesson-view.spec.ts` (avvio di una fase) |
+| `rt prepare`, `outline`, `rewrite` (anche `--unit`), `review`, `build` singoli | `POST /lessons/{id}/jobs` tipo `run_phase` | Pulsanti per fase nella vista lezione; il build chiede conferma se ci sono avvisi della revisione | ✅ `test_row_single_phases`, `test_row_rewrite_single_unit`; regola del build in `test_build_confirm.py` | ✅ `test_job_writes_persist` | ✅ `lesson-view.spec.ts` (avvio di una fase; Documento con revisione non aggiornata: dialogo, conferma, VALID dopo la ricarica) |
 | `validate-outline`, `validate-draft` | `GET /lessons/{id}/phases` | Stato fasi con errori leggibili | ✅ `test_row_validate_outline_and_draft` | lettura | ✅ `lesson-view.spec.ts` (fasi e validazioni) |
 | Approvazione/revisione outline | `GET /outline`, `POST /outline/approve`, `/outline/revise` | Vista outline ad albero | ✅ `test_row_outline_revise_and_approve` | ✅ `test_outline_and_review_decisions_persist` | ✅ `ingest.spec.ts` (approva, richiedi modifiche) |
 | Review interattiva delle issue (accetta, rifiuta, modifica, annulla) | `GET /issues`, `POST /issues/{id}/decision`, `POST /decisions/undo` | Review contestuale | ✅ `test_row_interactive_review` | ✅ `test_outline_and_review_decisions_persist` | ✅ `review.spec.ts` (decisioni, annulla, ripartenza della pipeline in attesa) |
-| `rt add-images` | `POST /lessons/{id}/images` → job `add_images`; `GET /lessons/{id}/images`, `/assets/images/{nome}` | Immagini della lezione (`/lezioni/{id}/immagini`) | ✅ `test_row_add_images` | ✅ `test_images_job_persists` | ✅ `recall-images-bot.spec.ts` (PDF, job, anteprima) |
-| `rt recall` (quiz, mirata, vasta; risposta scritta o vocale) | `GET /recall`, `/recall/history`, `POST /recall/generate`, `/next`, `/answer`, `/answer-voice`, `/vote`, `/skip` | Sessione di recall (`/lezioni/{id}/recall`) | ✅ `test_row_recall_quiz_and_open_answer` | ✅ `test_recall_writes_persist` | ✅ `recall-images-bot.spec.ts` (quiz, voto, salto, scritta, vocale) |
-| `rt export` (Markdown finale con immagini, `--all`, `--zip`) | `GET /lessons/{id}/export` (`format=markdown\|zip`, `scope=final\|all`) | Download dalla vista lezione | ✅ `test_row_export` | lettura | ✅ `lesson-view.spec.ts` (Markdown e zip uguali all'API) |
-| `rt status`, `rt cost` | `GET /lessons/{id}`, `GET /costs` | Dashboard e vista lezione | ✅ `test_row_status_and_cost` | lettura | ✅ `foundation.spec.ts` (dashboard), `lesson-view.spec.ts` (fasi, costi) |
+| `rt add-images` (dopo il rewrite, senza build) | `POST /lessons/{id}/images` → job `add_images`; `GET /lessons/{id}/images`, `/assets/images/{nome}` | Immagini della lezione (`/lezioni/{id}/immagini`) | ✅ `test_row_add_images`; senza build `test_api_images_job_works_without_build` | ✅ `test_images_job_persists` | ✅ `recall-images-bot.spec.ts` (PDF, job, anteprima), `lesson-view.spec.ts` (Immagini prima del build) |
+| `rt recall` (quiz, mirata, vasta; risposta scritta o vocale; dopo il rewrite) | `GET /recall`, `/recall/history`, `POST /recall/generate`, `/next`, `/answer`, `/answer-voice`, `/vote`, `/skip` | Sessione di recall (`/lezioni/{id}/recall`) | ✅ `test_row_recall_quiz_and_open_answer` | ✅ `test_recall_writes_persist` | ✅ `recall-images-bot.spec.ts` (quiz, voto, salto, scritta, vocale), `lesson-view.spec.ts` (Recall prima del build) |
+| `rt export` (Markdown finale con immagini, `--all`, `--zip`; anteprima dalla bozza senza build aggiornato) | `GET /lessons/{id}/export` (`format=markdown\|zip`, `scope=final\|all`) | Download dalla vista lezione (pulsanti sempre visibili, disabilitati con il motivo) | ✅ `test_row_export`; anteprima `test_api_export_without_build_is_the_preview` | lettura | ✅ `lesson-view.spec.ts` (Markdown e zip uguali all'API, anteprima prima del build) |
+| `rt status` (con gli avvisi del build), `rt cost` | `GET /lessons/{id}`, `GET /lessons/{id}/phases` (`warnings` del build), `GET /costs` | Dashboard e vista lezione | ✅ `test_row_status_and_cost`; avvisi `test_rt_status_shows_warnings`, `test_api_phase_report_exposes_build_warnings` | lettura | ✅ `foundation.spec.ts` (dashboard), `lesson-view.spec.ts` (fasi, costi, avvisi) |
 | `rt config` (provider, chiavi, modelli per le sei fasi, pricing, Telegram, trascrizione, lessons_root) | endpoint di RT4-E4 (`/settings/...`, `/secrets/{name}`) | Impostazioni | ✅ `test_row_config_written_by_api_is_read_by_cli` | ✅ `test_settings_writes_persist` | ✅ `settings.spec.ts` |
 | `rt telegram-daemon` (avvio, stato) | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato del bot (`/bot`, pannello riusabile nelle impostazioni) | ✅ `test_row_telegram_daemon_status` | PID file del demone | ✅ `recall-images-bot.spec.ts` (bot finto) |
 | `rt -u` (aggiornamento) | fuori scope per la web | — | — | — | — |
@@ -52,6 +52,14 @@ Job in coda e annullamento (`rt jobs`, `rt jobs cancel`) sono nella pagina Job d
 - Il recall da terminale rifornisce la riserva dopo ogni domanda mostrata; ora anche
   `POST /recall/next` accoda il rifornimento (job `recall_refill`) quando la riserva è sotto
   soglia.
+
+- (RT4-FA2) Il build dipendeva dalla review: con una review STALE (lezioni revisionate con
+  una versione precedente di RT) il documento restava STALE anche dopo averlo rifatto. Ora il
+  build dipende da prepare, outline e rewrite, la review dà solo avvisi, uguali in `rt status`
+  e nella web.
+- (RT4-FA2) `rt add-images` riscriveva il documento finale, e il build successivo (per esempio
+  dopo una decisione) lo rigenerava senza immagini. Ora il posizionamento è un input del
+  build, che le include sempre.
 
 ## Note
 

@@ -149,10 +149,19 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.rewrite import get_draft_path, load_draft
     from rt.pipeline.validator import validate_draft, validate_outline
 
+    from rt.services.review_service import build_warnings
+
     phases = []
     for ph in PHASES:
         status, reason = check_phase_status(lesson_dir, ph)
-        phases.append({"phase": ph, "status": status.value, "reason": reason})
+        item = {"phase": ph, "status": status.value, "reason": reason, "warnings": []}
+        if ph == "build":
+            try:
+                item["warnings"] = build_warnings(lesson_dir)
+            except Exception as exc:
+                item["warnings"] = [{"code": "check_failed", "count": None,
+                                     "message": f"Controlli della revisione non riusciti: {exc}."}]
+        phases.append(item)
     report: Dict[str, Any] = {"phases": phases, "outline_validation": None, "draft_validation": None}
     seg_path = lesson_path(lesson_dir, "segments.json")
     try:
@@ -177,7 +186,42 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     out["outline_approved"] = is_outline_approved(lesson_dir)
     out["has_audio"] = lesson_audio_file(lesson_dir) is not None
     out["cost"] = compute_lesson_cost(lesson_dir)
+    out["actions"] = lesson_actions(lesson_dir)
     return out
+
+
+def lesson_actions(lesson_dir: str) -> Dict[str, Dict[str, Any]]:
+    """Azioni di studio e download della vista lezione: se sono disponibili e, se no, cosa
+    manca. Recall, immagini e download richiedono solo la bozza pronta (prepare, outline e
+    rewrite VALID), non il documento finale; il download usa il documento finale se è
+    aggiornato, altrimenti l'anteprima."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    from rt.storage.export import ExportError, export_mode
+    status, _reason = check_phase_status(lesson_dir, "rewrite")
+    ready = status == PhaseStatus.VALID
+    if ready:
+        missing = None
+    elif status == PhaseStatus.PARTIAL:
+        missing = "La rielaborazione non è completa: servono tutte le unità della bozza."
+    elif status == PhaseStatus.MISSING:
+        missing = "Serve prima la rielaborazione della lezione (fase Rielaborazione)."
+    else:
+        missing = "La bozza non è aggiornata: rifai la rielaborazione."
+    try:
+        mode = export_mode(lesson_dir)
+    except ExportError:
+        mode = "none"
+    download = {
+        "available": mode != "none",
+        "reason": None if mode != "none" else missing,
+        "preview": mode == "preview",
+    }
+    return {
+        "recall": {"available": ready, "reason": missing, "preview": False},
+        "images": {"available": ready, "reason": missing, "preview": False},
+        "export_markdown": dict(download),
+        "export_zip": dict(download),
+    }
 
 
 # ---------------------------------------------------------------- documento
@@ -192,44 +236,46 @@ def strip_yaml_frontmatter(content: str) -> str:
     return re.sub(pattern, "", content, count=1, flags=re.DOTALL).lstrip("\r\n")
 
 
-def load_markdown_preview(lesson_dir: str) -> str:
-    """Markdown reale se la lezione è già stata 'build'ata; altrimenti un'anteprima
-    live generata al volo dallo stesso renderer usato da 'rt build' (riuso diretto,
-    nessuna duplicazione); altrimenti un placeholder onesto. Il frontmatter YAML
-    viene rimosso per visualizzazione pulita nella dashboard."""
-    rielab_path = lesson_path(lesson_dir, "rielaborato.md")
-    if fs.isfile(rielab_path):
-        try:
-            with fs.open(rielab_path, "r", encoding="utf-8") as f:
-                return strip_yaml_frontmatter(f.read())
-        except OSError:
-            pass
+def _document_is_final(lesson_dir: str) -> bool:
+    """True se il documento finale esiste ed è aggiornato (build VALID)."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    return (fs.isfile(lesson_path(lesson_dir, "rielaborato.md"))
+            and check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID)
 
+
+def _read_rielaborato(lesson_dir: str) -> Optional[str]:
     try:
-        from rt.core.segments import load_segments_json
-        from rt.core.state import read_info_yaml
-        from rt.pipeline.build import render_rielaborato_md
-        from rt.pipeline.ledger import apply_decisions_to_draft, load_ledger
-        from rt.pipeline.outline import load_outline
-        from rt.pipeline.review import load_science_issues
-        from rt.pipeline.rewrite import load_draft
+        with fs.open(lesson_path(lesson_dir, "rielaborato.md"), "r", encoding="utf-8") as f:
+            return strip_yaml_frontmatter(f.read())
+    except OSError:
+        return None
 
-        outline = load_outline(lesson_dir)
-        draft = load_draft(lesson_dir)
-        segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-        ledger = load_ledger(lesson_dir)
-        science_issues = load_science_issues(lesson_dir)
-        resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
-        info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
-        rendered = render_rielaborato_md(
-            outline=outline,
-            draft=resolved_draft,
-            segments_data=segments_data,
-            date=info.get("data") or "",
-            subject=info.get("materia") or "",
-            topics=info.get("argomenti") or "",
-        )
-        return strip_yaml_frontmatter(rendered)
+
+def load_markdown_preview(lesson_dir: str) -> str:
+    """Il documento da mostrare, senza frontmatter YAML:
+    1. il documento finale, se esiste ed è aggiornato (build VALID);
+    2. altrimenti, con la bozza pronta (rewrite VALID), l'anteprima: lo stesso Markdown che
+       il build scriverebbe ora (bozza, decisioni della revisione, immagini posizionate);
+    3. altrimenti il documento finale superato, se c'è, o un placeholder onesto."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    if _document_is_final(lesson_dir):
+        final = _read_rielaborato(lesson_dir)
+        if final is not None:
+            return final
+    if check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID:
+        try:
+            from rt.pipeline.build import render_lesson_documents
+            return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
+        except Exception:
+            pass
+    if fs.isfile(lesson_path(lesson_dir, "rielaborato.md")):
+        final = _read_rielaborato(lesson_dir)
+        if final is not None:
+            return final
+    try:
+        # bozza non ancora valida (es. rewrite parziale): anteprima di quello che c'è
+        from rt.pipeline.build import render_lesson_documents
+        return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
     except Exception:
         return (
             "# Nessuna anteprima disponibile\n\n"
@@ -268,7 +314,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     from markdown_it import MarkdownIt
     markdown = load_markdown_preview(lesson_dir)
-    final = fs.isfile(lesson_path(lesson_dir, "rielaborato.md"))
+    final = _document_is_final(lesson_dir)
     sections = document_sections(lesson_dir)
     # html=False: l'HTML grezzo del Markdown viene escapato, quindi l'output è sicuro.
     md = MarkdownIt("commonmark", {"html": False})

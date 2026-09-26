@@ -53,11 +53,11 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 | Metodo e percorso | Cosa restituisce | Equivalente CLI |
 |---|---|---|
 | `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo | dashboard `rt` |
-| `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio | `rt status`, `rt cost` |
-| `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione | `rt validate-outline`, `rt validate-draft` |
-| `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`); nell'HTML l'intestazione di ogni unità ha `data-unit-id` e la riga del suo timecode `data-unit-timecode` | anteprima / file finale |
+| `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio; `actions` dice se recall, immagini e download sono disponibili e, se no, cosa manca (bastano prepare, outline e rewrite VALID) | `rt status`, `rt cost` |
+| `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione; la fase `build` ha `warnings`, gli avvisi di integrità della revisione (review non aggiornata, incompleta o mancante, issue da valutare, issue orfane) che non bloccano il build | `rt validate-outline`, `rt validate-draft`, `rt status` |
+| `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`); nell'HTML l'intestazione di ogni unità ha `data-unit-id` e la riga del suo timecode `data-unit-timecode`. `final` è vero solo con il documento finale aggiornato; altrimenti è l'anteprima, cioè quello che il build produrrebbe ora | anteprima / file finale |
 | `GET /lessons/{id}/audio` | Audio della lezione, con `Range`; solo file audio della lezione (cartella o `media/`) | — |
-| `GET /lessons/{id}/export?format=markdown\|zip&scope=final\|all` | Download: Markdown finale (`markdown`), oppure zip con Markdown, errori concettuali e immagini (`final`) o con tutti i file della lezione (`all`) | `rt export` |
+| `GET /lessons/{id}/export?format=markdown\|zip&scope=final\|all` | Download: Markdown finale (`markdown`), oppure zip con Markdown, errori concettuali e immagini (`final`) o con tutti i file della lezione (`all`). Senza documento finale aggiornato, con la bozza pronta, esporta l'anteprima: "(anteprima)" nel nome dei file e un `LEGGIMI - anteprima.txt` nello zip | `rt export` |
 | `GET /lessons/{id}/outline` | Albero dell'outline e approvazione | approvazione outline |
 | `GET /lessons/{id}/issues?status=pending\|all` | Issue con contesto (unità, timecode, finestra audio) e decisione | `rt review` |
 | `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |
@@ -103,7 +103,7 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons/{id}/jobs` `{type: run_pipeline}` | Pipeline completa | `rt run <cartella>` |
 | `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
 | `POST /lessons/{id}/images` (multipart `files`, `web_search`) | Job `add_images` | `rt add-images` |
-| `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento finale) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
+| `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento mostrato da `/document`) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
 | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento | `rt jobs` |
 | `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
 | `GET /workers` | Worker attivi | — |
@@ -116,6 +116,12 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
 | `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti | web Gradio "Ascolta topic" |
+
+Il build (`run_phase` con `phase: build`) richiede prepare, outline e rewrite aggiornati; la
+review non è una dipendenza (i suoi problemi sono gli avvisi di `GET /phases`). Il job
+`add_images` lavora sulla bozza: salva il posizionamento delle immagini
+(`assets/images/placement.json`), che l'anteprima mostra subito e il build successivo include;
+un documento finale già creato diventa STALE.
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in

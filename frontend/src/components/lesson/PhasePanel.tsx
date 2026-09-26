@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { PHASE_LABELS, phaseTone } from '@/lib/format'
@@ -65,10 +66,22 @@ export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schem
   const run = useRunJob(lessonId)
   const [force, setForce] = useState(false)
   const [unit, setUnit] = useState('')
+  const [confirmBuild, setConfirmBuild] = useState(false)
   const busy = (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending
+  // Avvisi di integrità della revisione calcolati dall'API: non bloccano il documento finale,
+  // ma l'utente li vede prima di confermarlo.
+  const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
 
   const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; unit?: string }) =>
     run.mutate({ ...body, force, mock: false, with_review: true, auto_accept: false, rename: true })
+
+  const runPhase = (phase: Phase) => {
+    if (phase === 'build' && buildWarnings.length > 0) {
+      setConfirmBuild(true)
+      return
+    }
+    start({ type: 'run_phase', phase, unit: phase === 'rewrite' && unit ? unit : undefined })
+  }
 
   return (
     <Card className="flex flex-col gap-3 p-4" data-testid="phase-panel">
@@ -94,12 +107,19 @@ export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schem
                 className="ml-auto"
                 disabled={busy}
                 aria-label={`Esegui ${PHASE_LABELS[p.phase] ?? p.phase}`}
-                onClick={() => start({ type: 'run_phase', phase: p.phase as Phase, unit: p.phase === 'rewrite' && unit ? unit : undefined })}
+                onClick={() => runPhase(p.phase as Phase)}
               >
                 Esegui
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">{p.reason}</p>
+            {p.phase === 'build' && (p.warnings ?? []).length > 0 && (
+              <ul className="flex flex-col gap-0.5 text-xs text-warning" data-testid="build-warnings" aria-label="Avvisi per il documento">
+                {(p.warnings ?? []).map((w) => (
+                  <li key={w.code}>⚠ {w.message}</li>
+                ))}
+              </ul>
+            )}
             {p.phase === 'rewrite' && units.length > 0 && (
               <div className="flex items-center gap-2">
                 <Label htmlFor="rewrite-unit" className="shrink-0">
@@ -132,6 +152,23 @@ export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schem
       {phases.data?.validation_error && <Alert tone="danger">{phases.data.validation_error}</Alert>}
       <Validation title="outline" report={phases.data?.outline_validation} />
       <Validation title="draft" report={phases.data?.draft_validation} />
+      <ConfirmDialog
+        open={confirmBuild}
+        title="Creare il documento finale?"
+        confirmLabel="Crea il documento comunque"
+        onCancel={() => setConfirmBuild(false)}
+        onConfirm={() => {
+          setConfirmBuild(false)
+          start({ type: 'run_phase', phase: 'build' })
+        }}
+      >
+        <p>Il documento finale sarà uguale all'anteprima che vedi ora. Prima di confermarlo, controlla:</p>
+        <ul className="mt-2 list-disc pl-5" data-testid="build-confirm-warnings">
+          {buildWarnings.map((w) => (
+            <li key={w.code}>{w.message}</li>
+          ))}
+        </ul>
+      </ConfirmDialog>
     </Card>
   )
 }

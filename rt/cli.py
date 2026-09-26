@@ -317,8 +317,11 @@ def cmd_add_images(args):
     except Exception as e:
         print(f"❌ {e}", file=sys.stderr)
         sys.exit(1)
-    print(f"✔ {res['images_added']} immagini aggiunte, {len(res['macros_with_images'])} sezioni coinvolte.")
-    print(f"  - {res['deliverable_md']}")
+    print(f"✔ {res['images_added']} immagini posizionate, {len(res['macros_with_images'])} sezioni coinvolte.")
+    if res.get("build_stale"):
+        print("  Il documento finale non è più aggiornato: 'rt build' lo ricrea con le immagini.")
+    else:
+        print("  Le immagini sono nell'anteprima ('rt export'); 'rt build' le include nel documento finale.")
 
 
 def _normalize_with_review(value) -> Tuple[bool, bool]:
@@ -455,6 +458,17 @@ def cmd_status(args):
         }
         print(f"  [{st.value:<7}] {ph:<15} - {reason}")
     print()
+    from rt.services.review_service import build_warnings
+    try:
+        warnings = build_warnings(lesson_dir)
+    except Exception as exc:
+        warnings = [{"message": f"Controlli della revisione non riusciti: {exc}."}]
+    if warnings:
+        # stessa regola della web: la review non blocca il build, i suoi problemi sono avvisi
+        print("Avvisi per il documento finale (non bloccano 'rt build'):")
+        for w in warnings:
+            print(f"  ⚠️  {w['message']}")
+        print()
 
     if getattr(args, "issues", False):
         print("=" * 60)
@@ -487,7 +501,8 @@ def cmd_status(args):
         "science_issues_total": len(sci_issues),
         "decisions_recorded": len(ledger.decisions),
         "pending_issues_total": total_pending,
-        "phase_statuses": phase_statuses
+        "phase_statuses": phase_statuses,
+        "build_warnings": warnings,
     }
     if getattr(args, "issues", False):
         res["issues_breakdown"] = {
@@ -531,7 +546,7 @@ def _resolve_lesson_arg(value: str) -> str:
 
 def cmd_export(args: argparse.Namespace) -> None:
     """Esporta il Markdown finale (con immagini) o tutti i dati della lezione."""
-    from rt.storage.export import ExportError, export_to_dir, export_zip
+    from rt.storage.export import ExportError, export_to_dir, export_zip, is_preview, zip_name
     lesson_dir = _resolve_lesson_arg(args.lesson)
     if not fs.isdir(lesson_dir):
         print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
@@ -541,7 +556,7 @@ def cmd_export(args: argparse.Namespace) -> None:
     try:
         if args.zip:
             os.makedirs(out_dir, exist_ok=True)
-            target = os.path.join(out_dir, f"{os.path.basename(lesson_dir)}.zip")
+            target = os.path.join(out_dir, zip_name(lesson_dir))
             with open(target, "wb") as f:
                 f.write(export_zip(lesson_dir, scope))
             written = [target]
@@ -553,6 +568,8 @@ def cmd_export(args: argparse.Namespace) -> None:
     print(f"✅ Esportati {len(written)} file:")
     for path in written:
         print(f"  - {path}")
+    if is_preview(lesson_dir):
+        print("ℹ️  Anteprima dalla bozza: il documento finale non c'è o non è aggiornato ('rt build' lo crea).")
 
 
 class CliDecisionProvider:

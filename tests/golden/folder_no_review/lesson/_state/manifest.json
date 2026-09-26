@@ -46,6 +46,10 @@
       "source_fingerprint": "<SHA256>",
       "processor_version": "rewrite_v1.0",
       "updated_at": "<TS>",
+      "input_hashes": {
+        "segments.json": "<SHA256>",
+        "outline.json": "<SHA256>"
+      },
       "artifact_fingerprints": {
         "draft.json": "<SHA256>"
       },
@@ -61,6 +65,13 @@
       "source_fingerprint": "<SHA256>",
       "processor_version": "build_v1.0",
       "updated_at": "<TS>",
+      "input_hashes": {
+        "segments.json": "<SHA256>",
+        "outline.json": "<SHA256>",
+        "draft.json": "<SHA256>",
+        "review_decisions.json": "",
+        "assets/images/placement.json": ""
+      },
       "artifact_fingerprints": {
         "rielaborato.md": "<SHA256>"
       }
