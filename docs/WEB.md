@@ -162,7 +162,7 @@ diventa l'elaborato finale.
   **Annulla**. La pipeline completa si comporta come prima: si ferma sulle issue da decidere e
   crea il documento dopo l'ultima decisione.
 - **Quando va rifatto:** il documento resta aggiornato finché non cambiano bozza, scaletta,
-  segmenti, decisioni della revisione o immagini; una nuova revisione da sola non lo rende
+  segmenti, decisioni della revisione, immagini o modifiche fatte a mano all'anteprima; una nuova revisione da sola non lo rende
   superato (servono le decisioni sulle sue issue).
 - **Prima del documento finale:** recall, immagini e download funzionano già dopo la
   rielaborazione. Il download usa il documento finale se esiste ed è aggiornato, altrimenti
@@ -172,6 +172,38 @@ diventa l'elaborato finale.
 
 `rt status` segue la stessa regola: mostra la fase `build` indipendente dalla review e, sotto
 le fasi, gli stessi avvisi.
+
+## Modificare l'anteprima (beta)
+
+Nella pagina della lezione, in alto a destra del documento, la matita (**Modifica
+l'anteprima**) trasforma l'anteprima in un editor Markdown, con l'anteprima renderizzata
+accanto. Prima di entrare compaiono due avvisi, ciascuno con **Non mostrare più** (salvato
+nelle impostazioni, vale su ogni browser): se la lezione ha issue da valutare, che modificare a
+mano un passaggio segnalato può rendere orfana la sua issue; sempre, che è una funzione beta e
+che per modifiche importanti conviene creare il documento, scaricare il Markdown e modificarlo
+in un editor esterno.
+
+Nell'editor si cambiano titoli, testo, link e percorsi delle immagini. La struttura resta
+quella della scaletta: non si aggiungono né si tolgono sezioni (`## 1. Titolo`) o unità
+(`### 1.1 Titolo`). Il timecode di un'unità è la riga subito sotto il suo titolo, da solo:
+
+```markdown
+### 1.2 Il ciclo di Krebs
+12:30
+
+Testo dell'unità…
+```
+
+Si scrive `MM:SS` o `H:MM:SS`. Cambiarlo sposta l'inizio dell'unità nell'audio: deve stare
+dentro la durata della registrazione e crescere da un'unità alla successiva; RT lo porta
+all'inizio della frase dell'audio in cui cade. Gli errori compaiono sopra l'editor mentre
+scrivi, con la riga (il link porta alla riga) e il motivo.
+
+**Fine** o un clic fuori dall'editor salvano, **Esc** o **Annulla** lasciano tutto com'era.
+Dopo il salvataggio la pagina ricorda che il documento finale va ricreato (fase Documento) e,
+se il testo di qualche issue non c'è più, quante issue sono diventate orfane: restano
+nell'elenco e compaiono negli avvisi della conferma del documento. Le decisioni della revisione
+già prese sono dentro il testo che hai modificato e non vengono riapplicate.
 
 ## Cartella dati e Telegram nelle impostazioni
 

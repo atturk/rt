@@ -72,6 +72,13 @@ sostituisci l'host con `localhost:5173`.
 - **Selettori a slitta.** `components/ui/slide-toggle.tsx` (`SlideToggle`) è il selettore a due
   o più stati del recall (luogo e tipo di domanda): radiogroup con le frecce, Home e Fine, un solo
   tab stop e il testo della scelta sotto la pista. Usalo per le scelte brevi ed esclusive.
+- **Editor Markdown.** `components/lesson/MarkdownEditor.tsx` è CodeMirror 6 (`@codemirror/*`,
+  linguaggio markdown, numeri di riga per gli errori con riga del backend); lo usa
+  `DocumentEditor.tsx`, caricato solo quando si entra in modifica (`React.lazy`) per non
+  appesantire il bundle iniziale. L'anteprima e gli errori vengono dal backend
+  (`POST /document/check`): il frontend non valida la struttura.
+- **Avvisi "Non mostrare più".** Sono impostazioni del server (`PUT /settings/notices`,
+  `useDismissNotice` in `src/api/documentEdit.ts`), non `localStorage`.
 - **Lezioni per id.** Solo gli id numerici e gli endpoint dell'API: mai percorsi di cartelle
   o file su disco.
 - **Testi in italiano**, etichette accessibili (`aria-label`, `<label>`), tema chiaro e scuro.

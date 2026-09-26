@@ -329,6 +329,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/document/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Anteprima e controllo del Markdown modificato, senza salvare (funzione beta) */
+        post: operations["check_document_api_v1_lessons__lesson_id__document_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/document/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Salva l'anteprima modificata nella bozza: testo, titoli, timecode, immagini (funzione beta) */
+        put: operations["put_document_draft_api_v1_lessons__lesson_id__document_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/export": {
         parameters: {
             query?: never;
@@ -803,6 +837,23 @@ export interface paths {
         put?: never;
         /** Prova connessione e modello con una chiamata minima (anche prima di salvarli) */
         post: operations["post_model_test_api_v1_settings_models_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Nasconde o rimostra un avviso della web ('Non mostrare più'), per tutti i browser */
+        put: operations["put_notice_api_v1_settings_notices_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1388,6 +1439,62 @@ export interface components {
             message_id: number;
             /** Reason */
             reason: string;
+        };
+        /** DocumentEditCheck */
+        DocumentEditCheck: {
+            /**
+             * Errors
+             * @description Errori che impedirebbero il salvataggio
+             */
+            errors: components["schemas"]["DocumentEditProblem"][];
+            /**
+             * Html
+             * @description HTML sanificato del Markdown in modifica
+             */
+            html: string;
+        };
+        /** DocumentEditIn */
+        DocumentEditIn: {
+            /**
+             * Markdown
+             * @description Markdown dell'anteprima modificato (senza frontmatter)
+             */
+            markdown: string;
+        };
+        /** DocumentEditProblem */
+        DocumentEditProblem: {
+            /**
+             * Line
+             * @description Riga del Markdown (da 1), se l'errore ne ha una
+             */
+            line?: number | null;
+            /** Message */
+            message: string;
+        };
+        /** DocumentEditResult */
+        DocumentEditResult: {
+            /** Build Reason */
+            build_reason: string;
+            /**
+             * Build Status
+             * @description Stato del documento finale dopo il salvataggio (STALE se va ricreato)
+             */
+            build_status: string;
+            /**
+             * Changed
+             * @description False se il Markdown era uguale all'anteprima
+             */
+            changed: boolean;
+            /**
+             * Orphan Issues
+             * @description Issue il cui testo non è più nella bozza
+             */
+            orphan_issues: string[];
+            /**
+             * Units Changed
+             * @description Unità il cui testo è cambiato nella bozza
+             */
+            units_changed: string[];
         };
         /** DocumentSection */
         DocumentSection: {
@@ -2000,6 +2107,27 @@ export interface components {
              */
             status_code?: number | null;
         };
+        /** NoticeIn */
+        NoticeIn: {
+            /**
+             * Dismissed
+             * @default true
+             */
+            dismissed: boolean;
+            /**
+             * Notice
+             * @enum {string}
+             */
+            notice: "preview_edit_beta" | "preview_edit_issues";
+        };
+        /** NoticeSettings */
+        NoticeSettings: {
+            /**
+             * Dismissed
+             * @description Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)
+             */
+            dismissed: string[];
+        };
         /** Notification */
         Notification: {
             /**
@@ -2446,6 +2574,7 @@ export interface components {
             data_dir?: string | null;
             /** Lessons Root */
             lessons_root?: string | null;
+            notices: components["schemas"]["NoticeSettings"];
             /**
              * Phases
              * @description Modello assegnato a ciascuna delle sei fasi LLM
@@ -3948,6 +4077,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LessonDocument"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    check_document_api_v1_lessons__lesson_id__document_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditCheck"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_document_draft_api_v1_lessons__lesson_id__document_draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditResult"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5988,6 +6261,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_notice_api_v1_settings_notices_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

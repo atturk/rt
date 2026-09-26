@@ -90,6 +90,28 @@ class LessonDocument(BaseModel):
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")
 
 
+class DocumentEditIn(BaseModel):
+    markdown: str = Field(description="Markdown dell'anteprima modificato (senza frontmatter)")
+
+
+class DocumentEditProblem(BaseModel):
+    line: Optional[int] = Field(None, description="Riga del Markdown (da 1), se l'errore ne ha una")
+    message: str
+
+
+class DocumentEditCheck(BaseModel):
+    html: str = Field(description="HTML sanificato del Markdown in modifica")
+    errors: List[DocumentEditProblem] = Field(description="Errori che impedirebbero il salvataggio")
+
+
+class DocumentEditResult(BaseModel):
+    changed: bool = Field(description="False se il Markdown era uguale all'anteprima")
+    units_changed: List[str] = Field(description="Unità il cui testo è cambiato nella bozza")
+    build_status: str = Field(description="Stato del documento finale dopo il salvataggio (STALE se va ricreato)")
+    build_reason: str
+    orphan_issues: List[str] = Field(description="Issue il cui testo non è più nella bozza")
+
+
 class Waveform(BaseModel):
     ready: bool = Field(description="False mentre il calcolo è in corso: riprova tra poco")
     peaks: List[int] = Field(description="Livelli 3-72, circa 300 barre; vuoto se ffmpeg manca")

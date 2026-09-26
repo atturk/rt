@@ -372,14 +372,18 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
         segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     except Exception:
         return []
+    from rt.pipeline.document_edits import load_document_edits, unit_start_segment, unit_title
+    edits = load_document_edits(lesson_dir)
     by_id = {s.id: s for s in (segments.segments if segments else [])}
     out = []
     for unit in draft.units:
-        start, end = by_id.get(unit.start_segment_id), by_id.get(unit.end_segment_id)
+        # un timecode spostato nell'anteprima vale anche per il player (RT4-FA3)
+        start_id = unit_start_segment(edits, unit.unit_id, unit.start_segment_id)
+        start, end = by_id.get(start_id), by_id.get(unit.end_segment_id)
         out.append({
             "unit_id": unit.unit_id,
-            "title": unit.title,
-            "start_segment_id": unit.start_segment_id,
+            "title": unit_title(edits, unit.unit_id, unit.title),
+            "start_segment_id": start_id,
             "end_segment_id": unit.end_segment_id,
             "start_seconds": start.start_seconds if start else None,
             "end_seconds": end.end_seconds if end else None,

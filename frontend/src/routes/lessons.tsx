@@ -1,12 +1,16 @@
-import { Brain, Download, Images, LayoutDashboard } from 'lucide-react'
-import { useId, type ReactNode } from 'react'
+import { Brain, Download, Images, LayoutDashboard, Pencil } from 'lucide-react'
+import { lazy, Suspense, useId, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
+import { useDismissNotice, type Notice } from '@/api/documentEdit'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
+import { useSettings } from '@/api/settings'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
 import { CostPanel } from '@/components/lesson/CostPanel'
+import { DocumentEditNotice } from '@/components/lesson/DocumentEditNotice'
+import type { DocumentSaveResult } from '@/components/lesson/DocumentEditor'
 import { DocumentView } from '@/components/lesson/DocumentView'
 import { JobsPanel } from '@/components/lesson/JobsPanel'
 import { PhasePanel } from '@/components/lesson/PhasePanel'
@@ -15,6 +19,7 @@ import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { LessonFilters } from '@/components/LessonFilters'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from '@/lib/format'
 import type { Area } from './types'
@@ -146,20 +151,7 @@ export function LessonPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex min-w-0 flex-col gap-4">
             {l.has_audio && <AudioPlayer lessonId={id} sections={sections} />}
-            <Card className="px-6 py-5">
-              {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
-              {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
-              {document.data && (
-                <>
-                  {!document.data.final && (
-                    <Alert className="mb-4">
-                      Anteprima dalla bozza: è quello che diventerà il documento finale quando esegui la fase Documento.
-                    </Alert>
-                  )}
-                  <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
-                </>
-              )}
-            </Card>
+            <DocumentCard lesson={l} />
           </div>
           <aside className="flex flex-col gap-4">
             <PhasePanel lessonId={id} units={sections} />
@@ -169,6 +161,83 @@ export function LessonPage() {
         </div>
       </section>
     </AudioProvider>
+  )
+}
+
+// L'editor (CodeMirror) si carica solo quando si entra in modifica.
+const DocumentEditor = lazy(() => import('@/components/lesson/DocumentEditor').then((m) => ({ default: m.DocumentEditor })))
+
+/** Riquadro del documento: anteprima o documento finale, con la modifica dell'anteprima (beta). */
+function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
+  const id = l.id
+  const document = useLessonDocument(id)
+  const settings = useSettings()
+  const dismissNotice = useDismissNotice()
+  const [mode, setMode] = useState<'view' | 'notice' | 'edit'>('view')
+  const [saved, setSaved] = useState<DocumentSaveResult | null>(null)
+  const dismissed = settings.data?.notices.dismissed ?? []
+  const notices = ([...(l.pending_issues > 0 ? ['preview_edit_issues'] : []), 'preview_edit_beta'] as Notice[]).filter((n) => !dismissed.includes(n))
+
+  const startEdit = () => {
+    setSaved(null)
+    setMode(notices.length > 0 ? 'notice' : 'edit')
+  }
+  return (
+    <Card className="px-6 py-5">
+      {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
+      {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
+      {document.data && mode === 'edit' && (
+        <Suspense fallback={<p className="text-sm text-muted-foreground">Preparo l'editor…</p>}>
+          <DocumentEditor
+          lessonId={id}
+          markdown={document.data.markdown}
+          onClose={(result) => {
+            setMode('view')
+            if (result?.changed) setSaved(result)
+          }}
+          />
+        </Suspense>
+      )}
+      {document.data && mode !== 'edit' && (
+        <>
+          <div className="sticky top-3 z-10 flex h-0 justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-mr-3 -mt-2 size-8 bg-card p-0 opacity-20 hover:opacity-100 focus-visible:opacity-100"
+              aria-label="Modifica l'anteprima"
+              title="Modifica l'anteprima (beta)"
+              onClick={startEdit}
+            >
+              <Pencil aria-hidden />
+            </Button>
+          </div>
+          {saved && (
+            <Alert tone="warning" className="mb-4" data-testid="document-edit-saved">
+              Modifiche salvate nella bozza. Il documento finale va ricreato con la fase Documento.
+              {saved.orphan_issues.length > 0 &&
+                ` ${saved.orphan_issues.length === 1 ? "Un'issue è" : `${saved.orphan_issues.length} issue sono`} ora orfane: il testo a cui si riferivano non c'è più.`}
+            </Alert>
+          )}
+          {!document.data.final && !saved && (
+            <Alert className="mb-4">
+              Anteprima dalla bozza: è quello che diventerà il documento finale quando esegui la fase Documento.
+            </Alert>
+          )}
+          <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
+        </>
+      )}
+      {mode === 'notice' && (
+        <DocumentEditNotice
+          notices={notices}
+          onCancel={() => setMode('view')}
+          onConfirm={(dismiss) => {
+            for (const n of dismiss) dismissNotice.mutate(n)
+            setMode('edit')
+          }}
+        />
+      )}
+    </Card>
   )
 }
 

@@ -245,17 +245,23 @@ def orphan_issue_ids(lesson_dir: str) -> List[str]:
         return []
     draft = load_draft(lesson_dir)
     unit_by_id = {u.unit_id: u for u in draft.units}
-    decisions = {d.issue_id: d.decision for d in load_ledger(lesson_dir).decisions}
+    ledger = {d.issue_id: d for d in load_ledger(lesson_dir).decisions}
     out = []
     for issue in load_science_issues(lesson_dir):
-        if _is_no_diff_issue_type(issue) or decisions.get(issue.id) == "rejected":
+        decision = ledger.get(issue.id)
+        if _is_no_diff_issue_type(issue) or (decision and decision.decision == "rejected"):
             continue
         unit = unit_by_id.get(issue.unit_id) if issue.unit_id else None
         if unit is None and issue.segment_id:
             unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
         claim = (issue.claim or "").strip()
-        if unit is None or not claim or claim not in unit.content:
-            out.append(issue.id)
+        if unit is not None and claim and claim in unit.content:
+            continue
+        # testo riscritto a mano nell'anteprima con la correzione già dentro (RT4-FA3)
+        fixed = (decision.resolved_text or "").strip() if decision and decision.decision in ("accepted", "edited") else ""
+        if unit is not None and fixed and sanitize_suggested_fix(fixed).strip() in unit.content:
+            continue
+        out.append(issue.id)
     return out
 
 

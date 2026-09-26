@@ -70,6 +70,20 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('slider', { name: 'Velocità di riproduzione' })).toBeVisible()
     await expectNoViolations(page, 'velocità del player')
 
+    // Anteprima in modifica (RT4-FA3) con gli avvisi prima di entrare.
+    await page.goto(`/lezioni/${await lessonId(page, 'CHIRURGIA')}`)
+    await page.getByRole('button', { name: "Modifica l'anteprima" }).click()
+    const notice = page.getByRole('dialog', { name: "Modifica dell'anteprima" })
+    if (await notice.isVisible()) {
+      await expectNoViolations(page, "avvisi della modifica dell'anteprima")
+      await notice.getByRole('button', { name: 'Modifica' }).click()
+    }
+    await expect(page.getByTestId('markdown-editor')).toBeVisible()
+    await expect(page.locator('.rt-document-edit-preview')).toBeVisible()
+    await expectNoViolations(page, "anteprima in modifica")
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('markdown-editor')).toHaveCount(0)
+
     // Barra laterale ridotta con il pannello di una materia aperto e il suggerimento del nome.
     await page.goto('/')
     await page.getByRole('button', { name: 'Riduci la barra laterale' }).click()

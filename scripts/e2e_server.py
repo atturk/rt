@@ -86,7 +86,8 @@ def _lessons(root: str) -> None:
     """BIOCHIMICA completa con audio; FISIOLOGIA solo setup; FARMACOLOGIA e PATOLOGIA con
     l'outline approvata e 10 issue della review da decidere (per la review contestuale);
     ANATOMIA come PATOLOGIA ma con la review non aggiornata e senza documento finale (build
-    con conferma, recall e immagini prima del build)."""
+    con conferma, recall e immagini prima del build); CHIRURGIA completa come BIOCHIMICA, solo
+    per la modifica dell'anteprima (RT4-FA3), che rende il documento da ricreare."""
     from rt.services.outline_service import approve_outline
     from tests.api_support import add_audio, make_lesson, run_mock_pipeline
     done = make_lesson(root)
@@ -105,6 +106,9 @@ def _lessons(root: str) -> None:
     approve_outline(anatomia, channel="api")
     run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
     _stale_review(anatomia)
+    chirurgia = _plain_lesson(root, "2026-09-01", "CHIRURGIA", "Suture")
+    add_audio(chirurgia)
+    run_mock_pipeline(chirurgia, with_review=True, auto_accept=True)
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)

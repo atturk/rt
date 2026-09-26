@@ -511,6 +511,111 @@
         "title": "DeleteFailure",
         "type": "object"
       },
+      "DocumentEditCheck": {
+        "properties": {
+          "errors": {
+            "description": "Errori che impedirebbero il salvataggio",
+            "items": {
+              "$ref": "#/components/schemas/DocumentEditProblem"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "html": {
+            "description": "HTML sanificato del Markdown in modifica",
+            "title": "Html",
+            "type": "string"
+          }
+        },
+        "required": [
+          "html",
+          "errors"
+        ],
+        "title": "DocumentEditCheck",
+        "type": "object"
+      },
+      "DocumentEditIn": {
+        "properties": {
+          "markdown": {
+            "description": "Markdown dell'anteprima modificato (senza frontmatter)",
+            "title": "Markdown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "markdown"
+        ],
+        "title": "DocumentEditIn",
+        "type": "object"
+      },
+      "DocumentEditProblem": {
+        "properties": {
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Riga del Markdown (da 1), se l'errore ne ha una",
+            "title": "Line"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "DocumentEditProblem",
+        "type": "object"
+      },
+      "DocumentEditResult": {
+        "properties": {
+          "build_reason": {
+            "title": "Build Reason",
+            "type": "string"
+          },
+          "build_status": {
+            "description": "Stato del documento finale dopo il salvataggio (STALE se va ricreato)",
+            "title": "Build Status",
+            "type": "string"
+          },
+          "changed": {
+            "description": "False se il Markdown era uguale all'anteprima",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "orphan_issues": {
+            "description": "Issue il cui testo non è più nella bozza",
+            "items": {
+              "type": "string"
+            },
+            "title": "Orphan Issues",
+            "type": "array"
+          },
+          "units_changed": {
+            "description": "Unità il cui testo è cambiato nella bozza",
+            "items": {
+              "type": "string"
+            },
+            "title": "Units Changed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changed",
+          "units_changed",
+          "build_status",
+          "build_reason",
+          "orphan_issues"
+        ],
+        "title": "DocumentEditResult",
+        "type": "object"
+      },
       "DocumentSection": {
         "properties": {
           "end_seconds": {
@@ -1896,6 +2001,45 @@
         "title": "ModelTestOut",
         "type": "object"
       },
+      "NoticeIn": {
+        "properties": {
+          "dismissed": {
+            "default": true,
+            "title": "Dismissed",
+            "type": "boolean"
+          },
+          "notice": {
+            "enum": [
+              "preview_edit_beta",
+              "preview_edit_issues"
+            ],
+            "title": "Notice",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notice"
+        ],
+        "title": "NoticeIn",
+        "type": "object"
+      },
+      "NoticeSettings": {
+        "properties": {
+          "dismissed": {
+            "description": "Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Dismissed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dismissed"
+        ],
+        "title": "NoticeSettings",
+        "type": "object"
+      },
       "Notification": {
         "properties": {
           "kind": {
@@ -2969,6 +3113,9 @@
             ],
             "title": "Lessons Root"
           },
+          "notices": {
+            "$ref": "#/components/schemas/NoticeSettings"
+          },
           "phases": {
             "description": "Modello assegnato a ciascuna delle sei fasi LLM",
             "items": {
@@ -3014,6 +3161,7 @@
         },
         "required": [
           "worker",
+          "notices",
           "transcription",
           "telegram",
           "phases",
@@ -5360,6 +5508,204 @@
           }
         ],
         "summary": "Documento Markdown finale (o anteprima) con HTML sanificato e timecode",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/document/check": {
+      "post": {
+        "operationId": "check_document_api_v1_lessons__lesson_id__document_check_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentEditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentEditCheck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Anteprima e controllo del Markdown modificato, senza salvare (funzione beta)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/document/draft": {
+      "put": {
+        "operationId": "put_document_draft_api_v1_lessons__lesson_id__document_draft_put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentEditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentEditResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Salva l'anteprima modificata nella bozza: testo, titoli, timecode, immagini (funzione beta)",
         "tags": [
           "lezioni"
         ]
@@ -8142,6 +8488,92 @@
           }
         ],
         "summary": "Prova connessione e modello con una chiamata minima (anche prima di salvarli)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/notices": {
+      "put": {
+        "operationId": "put_notice_api_v1_settings_notices_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoticeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Nasconde o rimostra un avviso della web ('Non mostrare più'), per tutti i browser",
         "tags": [
           "impostazioni"
         ]
