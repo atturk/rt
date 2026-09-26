@@ -221,7 +221,9 @@ test('immagini: N immagini per unità dal web sulle unità scelte, riletto dopo 
   // il campo si svuota e non diventa "03"
   const count = page.getByLabel('Immagini per unità')
   await expect(count).toHaveValue('0')
-  await count.press('End')
+  // cursore dopo lo 0 (su macOS il tasto Fine non lo sposta nei campi di testo)
+  await count.focus()
+  await count.evaluate((el: HTMLInputElement) => el.setSelectionRange(el.value.length, el.value.length))
   await count.pressSequentially('3')
   await expect(count).toHaveValue('3')
   await count.fill('')
