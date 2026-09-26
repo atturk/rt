@@ -2,12 +2,16 @@ import type { RouteObject } from 'react-router'
 
 import { Layout } from '@/components/Layout'
 import { LoginPage } from './auth'
+import { imagesArea } from './images'
 import { jobsArea } from './jobs'
 import { lessonsArea } from './lessons'
+import { recallArea } from './recall'
+import { reviewArea } from './review'
+import { telegramArea } from './telegram'
 import type { Area } from './types'
 
 /** Ogni area aggiunge le sue rotte e voci di menu nel proprio file (routes/<area>.tsx). */
-export const areas: Area[] = [lessonsArea, jobsArea]
+export const areas: Area[] = [lessonsArea, jobsArea, reviewArea, recallArea, imagesArea, telegramArea]
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage /> },

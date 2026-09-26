@@ -1075,9 +1075,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     convo.clear_awaiting_feedback(state_dir, chat_id)
 
 
+def _run_fake_daemon() -> None:
+    """RT_TELEGRAM_FAKE=1 (test end-to-end della SPA): il bot prende il PID file come quello
+    vero ma non contatta Telegram; SIGTERM lo ferma e libera il PID file."""
+    import signal
+    import threading
+    from rt.telegram.daemon_status import remove_daemon_pid
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    print("🤖 Bot Telegram finto (RT_TELEGRAM_FAKE=1): nessuna connessione a Telegram.", file=sys.stderr, flush=True)
+    try:
+        while not stop.wait(0.5):
+            pass
+    finally:
+        remove_daemon_pid()
+
+
 def run_daemon(state_dir: str = None) -> None:
     from rt.telegram.daemon_status import write_daemon_pid, remove_daemon_pid
     write_daemon_pid()
+    if os.environ.get("RT_TELEGRAM_FAKE") == "1":
+        _run_fake_daemon()
+        return
     try:
         cfg = load_telegram_config()
         runtime_cfg = load_config().telegram

@@ -1,4 +1,4 @@
-import { Download, LayoutDashboard } from 'lucide-react'
+import { Brain, Download, Images, LayoutDashboard } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
@@ -44,7 +44,9 @@ function LessonCard({ lesson }: { lesson: Lesson }) {
           {formatCost(lesson.cost_usd)}
         </span>
         {lesson.pending_issues > 0 ? (
-          <span className="font-bold text-accent-foreground">{lesson.pending_issues} issue da valutare</span>
+          <Link to={`/lezioni/${lesson.id}/revisione`} className="font-bold text-accent-foreground hover:underline">
+            {lesson.pending_issues} issue da valutare →
+          </Link>
         ) : (
           <span className="text-muted-foreground">Nessuna issue da valutare</span>
         )}
@@ -149,6 +151,18 @@ export function LessonPage() {
                 {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
               </p>
             </div>
+            <div className="flex flex-wrap gap-2" aria-label="Studio">
+              {l.phases.rewrite === 'VALID' && (
+                <Link className={linkButton} to={`/lezioni/${id}/recall`}>
+                  <Brain className="size-4" aria-hidden /> Recall
+                </Link>
+              )}
+              {l.phases.build === 'VALID' && (
+                <Link className={linkButton} to={`/lezioni/${id}/immagini`}>
+                  <Images className="size-4" aria-hidden /> Immagini
+                </Link>
+              )}
+            </div>
             {document.data?.final && (
               <div className="flex flex-wrap gap-2" aria-label="Scarica">
                 <a className={linkButton} href={`/api/v1/lessons/${id}/export?format=markdown`} download>
@@ -174,7 +188,14 @@ export function LessonPage() {
             </div>
             <div className="flex gap-1.5">
               <dt className="text-muted-foreground">Issue da valutare</dt>
-              <dd>{l.pending_issues}</dd>
+              <dd>
+                {l.pending_issues}
+                {l.phases.review && l.phases.review !== 'MISSING' && (
+                  <Link to={`/lezioni/${id}/revisione`} className="ml-2 font-semibold text-accent-foreground hover:underline">
+                    {l.pending_issues > 0 ? 'Rivedi →' : 'Vedi la revisione'}
+                  </Link>
+                )}
+              </dd>
             </div>
             <div className="flex gap-1.5">
               <dt className="text-muted-foreground">Costo</dt>
@@ -196,7 +217,7 @@ export function LessonPage() {
                   {!document.data.final && (
                     <Alert className="mb-4">Anteprima dalla bozza: il documento finale arriva con la fase Documento (build).</Alert>
                   )}
-                  <DocumentView document={document.data} hasAudio={l.has_audio} />
+                  <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
                 </>
               )}
             </Card>

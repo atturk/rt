@@ -92,6 +92,11 @@ def _pending_count(lesson_dir: str) -> int:
 
 def lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     """Stessi dati della dashboard (rt/tui/data.py) in forma JSON."""
+    with fs.read_snapshot():
+        return _lesson_summary(lesson_id, lesson_dir)
+
+
+def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.core.idempotency import check_phase_status
     from rt.core.state import compute_effective_workflow_state, read_info_yaml
     from rt.pipeline.cost import compute_lesson_cost
@@ -120,8 +125,9 @@ def lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
 
 def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
                  text: Optional[str] = None) -> List[Dict[str, Any]]:
-    ids = ensure_indexed(known_lesson_dirs())
-    items = [lesson_summary(lesson_id, path) for path, lesson_id in ids.items()]
+    with fs.read_snapshot():  # centinaia di letture per lezione, una query ciascuna senza
+        ids = ensure_indexed(known_lesson_dirs())
+        items = [lesson_summary(lesson_id, path) for path, lesson_id in ids.items()]
     if materia:
         items = [i for i in items if i["materia"] == materia.strip().upper()]
     if state:
