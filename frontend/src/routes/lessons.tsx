@@ -1,5 +1,5 @@
 import { Brain, Download, Images, LayoutDashboard } from 'lucide-react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
@@ -11,11 +11,10 @@ import { JobsPanel } from '@/components/lesson/JobsPanel'
 import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
+import { LessonFilters } from '@/components/LessonFilters'
+import { useFilteredLessons } from '@/lib/lessonFilters'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from '@/lib/format'
 import type { Area } from './types'
 
@@ -57,20 +56,11 @@ function LessonCard({ lesson }: { lesson: Lesson }) {
 }
 
 export function DashboardPage() {
-  const [params, setParams] = useSearchParams()
-  const filters = { materia: params.get('materia') ?? '', state: params.get('stato') ?? '', q: params.get('q') ?? '' }
+  // Elenco completo una volta sola; testo, materia e stato si filtrano qui, senza una
+  // richiesta per tasto (GET /lessons ricalcola fasi, issue e costi di ogni lezione).
   const all = useLessons()
-  const filtered = useLessons(filters)
-  const subjects = [...new Set((all.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
-
-  function setFilter(key: string, value: string) {
-    const next = new URLSearchParams(params)
-    if (value) next.set(key, value)
-    else next.delete(key)
-    setParams(next, { replace: true })
-  }
-
   const lessons = all.data ?? []
+  const { filters, setFilter, filtered } = useFilteredLessons(all.data)
   return (
     <section className="flex flex-col gap-5">
       <h1 className="sr-only">Dashboard</h1>
@@ -80,50 +70,17 @@ export function DashboardPage() {
         <Stat value={lessons.filter((l) => l.state === 'completato').length} label="Completate" />
       </div>
 
-      <form className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="search" onSubmit={(e) => e.preventDefault()}>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="filter-q">Cerca</Label>
-          <Input
-            id="filter-q"
-            type="search"
-            placeholder="Titolo, argomenti, cartella"
-            value={filters.q}
-            onChange={(e) => setFilter('q', e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="filter-materia">Materia</Label>
-          <Select id="filter-materia" value={filters.materia} onChange={(e) => setFilter('materia', e.target.value)}>
-            <option value="">Tutte</option>
-            {subjects.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="filter-stato">Stato</Label>
-          <Select id="filter-stato" value={filters.state} onChange={(e) => setFilter('stato', e.target.value)}>
-            <option value="">Tutti</option>
-            {Object.entries(STATE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </form>
+      <LessonFilters lessons={lessons} filters={filters} onChange={setFilter} />
 
-      {filtered.isError && <Alert tone="danger">{errorMessage(filtered.error)}</Alert>}
-      {filtered.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
-      {filtered.data?.length === 0 && (
+      {all.isError && <Alert tone="danger">{errorMessage(all.error)}</Alert>}
+      {all.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
+      {all.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
           {lessons.length === 0 ? 'Nessuna lezione nella cartella delle lezioni.' : 'Nessuna lezione corrisponde ai filtri.'}
         </Card>
       )}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {filtered.data?.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} />)}
+        {filtered.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} />)}
       </div>
     </section>
   )
