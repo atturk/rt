@@ -175,6 +175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita */
+        post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons": {
         parameters: {
             query?: never;
@@ -319,7 +336,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scarica il Markdown finale o un archivio con i dati della lezione */
+        /**
+         * Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione
+         * @description Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene "(anteprima)" e lo zip ha un LEGGIMI che lo spiega.
+         */
         get: operations["export_lesson_api_v1_lessons__lesson_id__export_get"];
         put?: never;
         post?: never;
@@ -336,7 +356,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Immagini della lezione con descrizione e presenza nel documento finale */
+        /** Immagini della lezione con descrizione e presenza nel documento */
         get: operations["list_images_api_v1_lessons__lesson_id__images_get"];
         put?: never;
         /** Integra slide/foto caricate e/o immagini dal web (come 'rt add-images') */
@@ -687,6 +707,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/models/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prova connessione e modello con una chiamata minima (anche prima di salvarli) */
+        post: operations["post_model_test_api_v1_settings_models_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/phases/{job}": {
         parameters: {
             query?: never;
@@ -868,6 +905,57 @@ export interface paths {
         get?: never;
         /** Motore di trascrizione */
         put: operations["put_transcription_api_v1_settings_transcription_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/web-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Ricerca web: URL base di SearXNG */
+        put: operations["put_web_search_api_v1_settings_web_search_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/web-search/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ricerca immagini di prova su SearXNG: quanti risultati tornano */
+        post: operations["post_web_search_test_api_v1_settings_web_search_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/worker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Job in parallelo del worker avviato con la web (vale dal prossimo avvio) */
+        put: operations["put_worker_api_v1_settings_worker_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1386,6 +1474,16 @@ export interface components {
             result?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Retried By
+             * @description Job nuovo creato con Riprova da questo job fallito
+             */
+            retried_by?: string | null;
+            /**
+             * Retry Of
+             * @description Job fallito di cui questo è il nuovo tentativo (Riprova)
+             */
+            retry_of?: string | null;
             /** Started At */
             started_at?: string | null;
             /**
@@ -1402,6 +1500,8 @@ export interface components {
             job_id: string;
             /** Lesson Id */
             lesson_id?: number | null;
+            /** Retry Of */
+            retry_of?: string | null;
             /** State */
             state: string;
             /** Type */
@@ -1455,6 +1555,11 @@ export interface components {
              */
             mock: boolean;
             /**
+             * Mock Fail Once
+             * @description Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)
+             */
+            mock_fail_once?: ("rewrite" | "review") | null;
+            /**
              * Phase
              * @description Obbligatoria per run_phase
              */
@@ -1481,6 +1586,29 @@ export interface components {
              */
             with_review: boolean;
         };
+        /** LessonAction */
+        LessonAction: {
+            /** Available */
+            available: boolean;
+            /**
+             * Preview
+             * @description Per i download: l'export è l'anteprima dalla bozza, non il documento finale
+             * @default false
+             */
+            preview: boolean;
+            /**
+             * Reason
+             * @description Cosa manca, se non disponibile
+             */
+            reason?: string | null;
+        };
+        /** LessonActions */
+        LessonActions: {
+            export_markdown: components["schemas"]["LessonAction"];
+            export_zip: components["schemas"]["LessonAction"];
+            images: components["schemas"]["LessonAction"];
+            recall: components["schemas"]["LessonAction"];
+        };
         /** LessonCost */
         LessonCost: {
             /** Calls */
@@ -1499,6 +1627,8 @@ export interface components {
         };
         /** LessonDetail */
         LessonDetail: {
+            /** @description Recall, immagini e download: disponibili dopo il rewrite, senza build */
+            actions?: components["schemas"]["LessonActions"] | null;
             /**
              * Argomenti
              * @default
@@ -1575,7 +1705,7 @@ export interface components {
         LessonDocument: {
             /**
              * Final
-             * @description True se è il documento di 'rt build', False se anteprima dal draft
+             * @description True se è il documento di 'rt build' ed è aggiornato, False se anteprima dal draft (quello che il build produrrebbe ora)
              */
             final: boolean;
             /**
@@ -1600,7 +1730,7 @@ export interface components {
             alt_text: string;
             /**
              * In Document
-             * @description True se il documento finale la richiama
+             * @description True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)
              */
             in_document: boolean;
             /**
@@ -1742,6 +1872,49 @@ export interface components {
             /** Model */
             model: string;
         };
+        /** ModelTestIn */
+        ModelTestIn: {
+            /** Connection */
+            connection: string;
+            /**
+             * Mock
+             * @default false
+             */
+            mock: boolean;
+            /** Model */
+            model: string;
+        };
+        /** ModelTestOut */
+        ModelTestOut: {
+            /** Connection */
+            connection: string;
+            /**
+             * Latency Ms
+             * @description Durata della chiamata in millisecondi
+             */
+            latency_ms?: number | null;
+            /**
+             * Message
+             * @description Esito leggibile, anche l'errore del provider (sanificato)
+             */
+            message: string;
+            /** Model */
+            model: string;
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            /**
+             * Reply
+             * @description Inizio della risposta del modello
+             */
+            reply?: string | null;
+            /**
+             * Status Code
+             * @description Stato HTTP della risposta del provider
+             */
+            status_code?: number | null;
+        };
         /** Notification */
         Notification: {
             /**
@@ -1859,6 +2032,29 @@ export interface components {
             reason: string;
             /** Status */
             status: string;
+            /**
+             * Warnings
+             * @description Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.
+             */
+            warnings?: components["schemas"]["PhaseWarning"][];
+        };
+        /** PhaseWarning */
+        PhaseWarning: {
+            /**
+             * Code
+             * @description review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | check_failed
+             */
+            code: string;
+            /**
+             * Count
+             * @description Numero di issue, se l'avviso le conta
+             */
+            count?: number | null;
+            /**
+             * Message
+             * @description Testo per l'utente (italiano)
+             */
+            message: string;
         };
         /** QuizResult */
         QuizResult: {
@@ -2116,6 +2312,8 @@ export interface components {
             setup_required: boolean;
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
+            web_search: components["schemas"]["WebSearchSettings"];
+            worker: components["schemas"]["WorkerSettings"];
         };
         /** TelegramIn */
         TelegramIn: {
@@ -2265,6 +2463,52 @@ export interface components {
              */
             ready: boolean;
         };
+        /** WebSearchIn */
+        WebSearchIn: {
+            /**
+             * Searxng Base Url
+             * @description Vuoto per rimuoverlo
+             * @default
+             */
+            searxng_base_url: string;
+        };
+        /** WebSearchSettings */
+        WebSearchSettings: {
+            /**
+             * Searxng Base Url
+             * @description URL base di SearXNG per la ricerca immagini web
+             */
+            searxng_base_url?: string | null;
+        };
+        /** WebSearchTestIn */
+        WebSearchTestIn: {
+            /**
+             * Mock
+             * @default false
+             */
+            mock: boolean;
+            /** Searxng Base Url */
+            searxng_base_url: string;
+        };
+        /** WebSearchTestOut */
+        WebSearchTestOut: {
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Results
+             * @description Immagini restituite dalla ricerca di prova
+             */
+            results: number;
+        };
+        /** WorkerIn */
+        WorkerIn: {
+            /** Concurrency */
+            concurrency: number;
+        };
         /** WorkerInfo */
         WorkerInfo: {
             /** Current Job Id */
@@ -2282,6 +2526,20 @@ export interface components {
             pid?: number | null;
             /** Platform */
             platform?: string | null;
+        };
+        /** WorkerSettings */
+        WorkerSettings: {
+            /**
+             * Concurrency
+             * @description Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio
+             */
+            concurrency: number;
+            /**
+             * Running
+             * @description Worker attivi ora (uno per job eseguibile insieme)
+             * @default 0
+             */
+            running: number;
         };
     };
     responses: never;
@@ -2781,6 +3039,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobEvent"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_job_api_v1_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5090,6 +5415,75 @@ export interface operations {
             };
         };
     };
+    post_model_test_api_v1_settings_models_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     put_phase_api_v1_settings_phases__job__put: {
         parameters: {
             query?: never;
@@ -5857,6 +6251,213 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TranscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_web_search_api_v1_settings_web_search_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSearchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_web_search_test_api_v1_settings_web_search_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSearchTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSearchTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_worker_api_v1_settings_worker_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerIn"];
             };
         };
         responses: {

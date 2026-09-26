@@ -279,34 +279,19 @@ def _move_to_lessons_root_if_configured(current_dir: str) -> str:
     return dest_path
 
 
-def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
-    """Finalizzazione deterministica della lezione (eventi su ctx, se dato)."""
-    with phase_scope(ctx, "build") as scope:
-        return scope.complete(_run_build(lesson_dir, force=force, rename_folder=rename_folder))
-
-
-def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False) -> Dict[str, Any]:
-    """
-    Esegue la finalizzazione deterministica della lezione.
-    Assembla tutti i documenti Markdown finali applicando il Decision Ledger.
-    """
-    from rt.core.state import read_info_yaml, update_info_yaml, transition_to, WorkflowState
+def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
+    """Documenti della lezione come li scrive il build, calcolati dai file attuali (bozza,
+    decisioni della revisione, immagini posizionate) senza scrivere nulla. È anche
+    l'anteprima: quello che l'utente vede prima del build è quello che il build produce."""
+    from rt.core.state import read_info_yaml
     from rt.core.segments import load_segments_json
-    from rt.core.manifest import init_or_update_manifest
+    from rt.pipeline.image_placement import images_for_document
     from rt.pipeline.outline import load_outline
     from rt.pipeline.rewrite import load_draft
     from rt.pipeline.review import load_science_issues
     from rt.pipeline.ledger import load_ledger, apply_decisions_to_draft
-    from rt.core.idempotency import (
-        PhaseStatus,
-        check_phase_status,
-        compute_source_fingerprint,
-        compute_file_sha256,
-        record_phase_fingerprint,
-    )
-    
-    yaml_path = lesson_path(lesson_dir, "info.yaml")
-    info = read_info_yaml(yaml_path)
+
+    info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
     raw_topics = info.get("argomenti")
@@ -321,7 +306,60 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
 
     safe_title = re.sub(r'[/\\:*?"<>|]', ' ', outline.lesson_title)
     safe_title = re.sub(r'\s+', ' ', safe_title).strip()
-    named_filename = f"[{date_val}] {subject_val.upper()} - {safe_title}.md"
+
+    draft = load_draft(lesson_dir)
+    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+    ledger = load_ledger(lesson_dir)
+    science_issues = load_science_issues(lesson_dir)
+    # Applicazione deterministica del decision ledger
+    resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
+    images_by_macro, carousel = images_for_document(lesson_dir, outline)
+
+    return {
+        "outline": outline,
+        "date": date_val,
+        "subject": subject_val,
+        "topics": topics_val,
+        "topics_replaced": topics_replaced,
+        "safe_title": safe_title,
+        "named_filename": f"[{date_val}] {subject_val.upper()} - {safe_title}.md",
+        "pre_elaborato": render_pre_elaborato_md(
+            outline=outline, draft=resolved_draft, segments_data=segments_data, date=date_val,
+            subject=subject_val, topics=topics_val, science_issues=science_issues),
+        "rielaborato": render_rielaborato_md(
+            outline=outline, draft=resolved_draft, segments_data=segments_data, date=date_val,
+            subject=subject_val, topics=topics_val, images_by_macro=images_by_macro, carousel=carousel),
+        "errori_concettuali": render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger),
+    }
+
+
+def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+    """Finalizzazione deterministica della lezione (eventi su ctx, se dato)."""
+    with phase_scope(ctx, "build") as scope:
+        return scope.complete(_run_build(lesson_dir, force=force, rename_folder=rename_folder))
+
+
+def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False) -> Dict[str, Any]:
+    """
+    Esegue la finalizzazione deterministica della lezione.
+    Assembla tutti i documenti Markdown finali applicando il Decision Ledger.
+    """
+    from rt.core.state import update_info_yaml, transition_to, WorkflowState
+    from rt.core.manifest import init_or_update_manifest
+    from rt.core.idempotency import (
+        PhaseStatus,
+        check_phase_status,
+        compute_source_fingerprint,
+        compute_file_sha256,
+        record_phase_fingerprint,
+    )
+    
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
+    docs = render_lesson_documents(lesson_dir)
+    outline = docs["outline"]
+    date_val, subject_val, topics_val = docs["date"], docs["subject"], docs["topics"]
+    topics_replaced, safe_title = docs["topics_replaced"], docs["safe_title"]
+    named_filename = docs["named_filename"]
     named_filepath = os.path.join(lesson_dir, named_filename)
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
@@ -343,44 +381,13 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         }
 
     action = "FORCE" if force else "RUN"
-    
-    draft = load_draft(lesson_dir)
-    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    ledger = load_ledger(lesson_dir)
-    science_issues = load_science_issues(lesson_dir)
-    
-    # 1. Applicazione deterministica del decision ledger
-    resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
-    
-    # 2. Generazione pre-elaborato.md (atomica)
-    pre_md = render_pre_elaborato_md(
-        outline=outline,
-        draft=resolved_draft,
-        segments_data=segments_data,
-        date=date_val,
-        subject=subject_val,
-        topics=topics_val,
-        science_issues=science_issues
-    )
-    _atomic_write_text(lesson_path(lesson_dir, "pre-elaborato.md"), pre_md)
-        
-    # 3. Generazione rielaborato.md (atomica)
-    rielab_md = render_rielaborato_md(
-        outline=outline,
-        draft=resolved_draft,
-        segments_data=segments_data,
-        date=date_val,
-        subject=subject_val,
-        topics=topics_val
-    )
-    _atomic_write_text(lesson_path(lesson_dir, "rielaborato.md"), rielab_md)
 
-    # 4. Generazione Errori concettuali.md (atomica)
-    err_md = render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger)
-    _atomic_write_text(lesson_path(lesson_dir, "Errori concettuali.md"), err_md)
-
-    # 5. Copia intitolata di rielaborato.md con nome formale (atomica)
-    _atomic_write_text(named_filepath, rielab_md)
+    # Scrittura atomica di pre-elaborato.md, rielaborato.md (con le immagini posizionate),
+    # Errori concettuali.md e della copia intitolata di rielaborato.md
+    _atomic_write_text(lesson_path(lesson_dir, "pre-elaborato.md"), docs["pre_elaborato"])
+    _atomic_write_text(lesson_path(lesson_dir, "rielaborato.md"), docs["rielaborato"])
+    _atomic_write_text(lesson_path(lesson_dir, "Errori concettuali.md"), docs["errori_concettuali"])
+    _atomic_write_text(named_filepath, docs["rielaborato"])
 
     current_dir = lesson_dir
     if rename_folder:

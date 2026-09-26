@@ -317,8 +317,11 @@ def cmd_add_images(args):
     except Exception as e:
         print(f"❌ {e}", file=sys.stderr)
         sys.exit(1)
-    print(f"✔ {res['images_added']} immagini aggiunte, {len(res['macros_with_images'])} sezioni coinvolte.")
-    print(f"  - {res['deliverable_md']}")
+    print(f"✔ {res['images_added']} immagini posizionate, {len(res['macros_with_images'])} sezioni coinvolte.")
+    if res.get("build_stale"):
+        print("  Il documento finale non è più aggiornato: 'rt build' lo ricrea con le immagini.")
+    else:
+        print("  Le immagini sono nell'anteprima ('rt export'); 'rt build' le include nel documento finale.")
 
 
 def _normalize_with_review(value) -> Tuple[bool, bool]:
@@ -455,6 +458,17 @@ def cmd_status(args):
         }
         print(f"  [{st.value:<7}] {ph:<15} - {reason}")
     print()
+    from rt.services.review_service import build_warnings
+    try:
+        warnings = build_warnings(lesson_dir)
+    except Exception as exc:
+        warnings = [{"message": f"Controlli della revisione non riusciti: {exc}."}]
+    if warnings:
+        # stessa regola della web: la review non blocca il build, i suoi problemi sono avvisi
+        print("Avvisi per il documento finale (non bloccano 'rt build'):")
+        for w in warnings:
+            print(f"  ⚠️  {w['message']}")
+        print()
 
     if getattr(args, "issues", False):
         print("=" * 60)
@@ -487,7 +501,8 @@ def cmd_status(args):
         "science_issues_total": len(sci_issues),
         "decisions_recorded": len(ledger.decisions),
         "pending_issues_total": total_pending,
-        "phase_statuses": phase_statuses
+        "phase_statuses": phase_statuses,
+        "build_warnings": warnings,
     }
     if getattr(args, "issues", False):
         res["issues_breakdown"] = {
@@ -531,7 +546,7 @@ def _resolve_lesson_arg(value: str) -> str:
 
 def cmd_export(args: argparse.Namespace) -> None:
     """Esporta il Markdown finale (con immagini) o tutti i dati della lezione."""
-    from rt.storage.export import ExportError, export_to_dir, export_zip
+    from rt.storage.export import ExportError, export_to_dir, export_zip, is_preview, zip_name
     lesson_dir = _resolve_lesson_arg(args.lesson)
     if not fs.isdir(lesson_dir):
         print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
@@ -541,7 +556,7 @@ def cmd_export(args: argparse.Namespace) -> None:
     try:
         if args.zip:
             os.makedirs(out_dir, exist_ok=True)
-            target = os.path.join(out_dir, f"{os.path.basename(lesson_dir)}.zip")
+            target = os.path.join(out_dir, zip_name(lesson_dir))
             with open(target, "wb") as f:
                 f.write(export_zip(lesson_dir, scope))
             written = [target]
@@ -553,6 +568,8 @@ def cmd_export(args: argparse.Namespace) -> None:
     print(f"✅ Esportati {len(written)} file:")
     for path in written:
         print(f"  - {path}")
+    if is_preview(lesson_dir):
+        print("ℹ️  Anteprima dalla bozza: il documento finale non c'è o non è aggiornato ('rt build' lo crea).")
 
 
 class CliDecisionProvider:
@@ -572,10 +589,11 @@ class CliDecisionProvider:
 class TelegramBuildNotifier:
     """Notifica Telegram di fine build, poi proposta di avviare il demone (solo da TTY)."""
 
-    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
+    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> bool:
         from rt.telegram.notify import notify_build_completed
-        notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title)
+        sent = notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title)
         _prompt_and_launch_daemon_if_needed()
+        return False if sent is None else sent
 
 
 def cmd_run(args):
@@ -1074,7 +1092,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_addimg.add_argument(
         "--web-search", nargs="?", const=5, type=int, default=None,
         help="Cerca e integra N immagini dal web via SearXNG (default 5 se il flag è usato senza valore). "
-             "Combinabile con -i. Richiede 'searxng_base_url' configurato in config/general.yaml."
+             "Combinabile con -i. Richiede l'URL di SearXNG (web: Impostazioni › Ricerca web; oppure searxng_base_url in config/general.yaml)."
     )
     p_addimg.add_argument("--carousel", action="store_true", help="Raggruppa le immagini di ogni sezione in un blocco carosello (plugin Obsidian napkin-notes) invece di righe immagine singole")
     p_addimg.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM/vision reale)")
@@ -1160,6 +1178,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         run_app()
         return
     from rt.llm.errors import LLMFailure
+    from rt.pipeline.unit_failures import PhaseIncomplete
     from pydantic import ValidationError
     try:
         args.func(args)
@@ -1196,6 +1215,9 @@ def main(argv: Optional[List[str]] = None) -> None:
             "cambiare modello, o aggiungere un blocco 'fallback' se disponibile un'alternativa).\n",
             file=sys.stderr
         )
+        sys.exit(1)
+    except PhaseIncomplete as e:
+        print(f"\n⚠️  {e}".replace("Riprova rifà", "rilanciare lo stesso comando rifà"), file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         # Chi solleva volontariamente Ctrl+C (es. l'attesa di conferma outline via

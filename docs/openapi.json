@@ -994,6 +994,30 @@
             ],
             "title": "Result"
           },
+          "retried_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job nuovo creato con Riprova da questo job fallito",
+            "title": "Retried By"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job fallito di cui questo è il nuovo tentativo (Riprova)",
+            "title": "Retry Of"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -1039,6 +1063,17 @@
               }
             ],
             "title": "Lesson Id"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
           },
           "state": {
             "title": "State",
@@ -1138,6 +1173,22 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "mock_fail_once": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rewrite",
+                  "review"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)",
+            "title": "Mock Fail Once"
+          },
           "phase": {
             "anyOf": [
               {
@@ -1192,6 +1243,61 @@
         "title": "JobRequest",
         "type": "object"
       },
+      "LessonAction": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "preview": {
+            "default": false,
+            "description": "Per i download: l'export è l'anteprima dalla bozza, non il documento finale",
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cosa manca, se non disponibile",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "LessonAction",
+        "type": "object"
+      },
+      "LessonActions": {
+        "properties": {
+          "export_markdown": {
+            "$ref": "#/components/schemas/LessonAction"
+          },
+          "export_zip": {
+            "$ref": "#/components/schemas/LessonAction"
+          },
+          "images": {
+            "$ref": "#/components/schemas/LessonAction"
+          },
+          "recall": {
+            "$ref": "#/components/schemas/LessonAction"
+          }
+        },
+        "required": [
+          "recall",
+          "images",
+          "export_markdown",
+          "export_zip"
+        ],
+        "title": "LessonActions",
+        "type": "object"
+      },
       "LessonCost": {
         "properties": {
           "calls": {
@@ -1227,6 +1333,17 @@
       },
       "LessonDetail": {
         "properties": {
+          "actions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LessonActions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recall, immagini e download: disponibili dopo il rewrite, senza build"
+          },
           "argomenti": {
             "default": "",
             "title": "Argomenti",
@@ -1355,7 +1472,7 @@
       "LessonDocument": {
         "properties": {
           "final": {
-            "description": "True se è il documento di 'rt build', False se anteprima dal draft",
+            "description": "True se è il documento di 'rt build' ed è aggiornato, False se anteprima dal draft (quello che il build produrrebbe ora)",
             "title": "Final",
             "type": "boolean"
           },
@@ -1394,7 +1511,7 @@
             "type": "string"
           },
           "in_document": {
-            "description": "True se il documento finale la richiama",
+            "description": "True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)",
             "title": "In Document",
             "type": "boolean"
           },
@@ -1674,6 +1791,99 @@
           "model"
         ],
         "title": "ModelIn",
+        "type": "object"
+      },
+      "ModelTestIn": {
+        "properties": {
+          "connection": {
+            "title": "Connection",
+            "type": "string"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection",
+          "model"
+        ],
+        "title": "ModelTestIn",
+        "type": "object"
+      },
+      "ModelTestOut": {
+        "properties": {
+          "connection": {
+            "title": "Connection",
+            "type": "string"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durata della chiamata in millisecondi",
+            "title": "Latency Ms"
+          },
+          "message": {
+            "description": "Esito leggibile, anche l'errore del provider (sanificato)",
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inizio della risposta del modello",
+            "title": "Reply"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato HTTP della risposta del provider",
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "ok",
+          "connection",
+          "provider",
+          "model",
+          "message"
+        ],
+        "title": "ModelTestOut",
         "type": "object"
       },
       "Notification": {
@@ -1960,6 +2170,14 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "warnings": {
+            "description": "Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.",
+            "items": {
+              "$ref": "#/components/schemas/PhaseWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -1968,6 +2186,38 @@
           "reason"
         ],
         "title": "PhaseState",
+        "type": "object"
+      },
+      "PhaseWarning": {
+        "properties": {
+          "code": {
+            "description": "review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | check_failed",
+            "title": "Code",
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numero di issue, se l'avviso le conta",
+            "title": "Count"
+          },
+          "message": {
+            "description": "Testo per l'utente (italiano)",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "PhaseWarning",
         "type": "object"
       },
       "QuizResult": {
@@ -2558,15 +2808,23 @@
           },
           "transcription": {
             "$ref": "#/components/schemas/Transcription"
+          },
+          "web_search": {
+            "$ref": "#/components/schemas/WebSearchSettings"
+          },
+          "worker": {
+            "$ref": "#/components/schemas/WorkerSettings"
           }
         },
         "required": [
+          "worker",
           "transcription",
           "telegram",
           "phases",
           "connections",
           "credentials",
           "pricing",
+          "web_search",
           "secrets_encrypted"
         ],
         "title": "Settings",
@@ -2907,6 +3165,104 @@
         "title": "Waveform",
         "type": "object"
       },
+      "WebSearchIn": {
+        "properties": {
+          "searxng_base_url": {
+            "default": "",
+            "description": "Vuoto per rimuoverlo",
+            "title": "Searxng Base Url",
+            "type": "string"
+          }
+        },
+        "title": "WebSearchIn",
+        "type": "object"
+      },
+      "WebSearchSettings": {
+        "properties": {
+          "searxng_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL base di SearXNG per la ricerca immagini web",
+            "title": "Searxng Base Url"
+          }
+        },
+        "title": "WebSearchSettings",
+        "type": "object"
+      },
+      "WebSearchTestIn": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "searxng_base_url": {
+            "title": "Searxng Base Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "searxng_base_url"
+        ],
+        "title": "WebSearchTestIn",
+        "type": "object"
+      },
+      "WebSearchTestOut": {
+        "properties": {
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "results": {
+            "description": "Immagini restituite dalla ricerca di prova",
+            "title": "Results",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "results",
+          "message"
+        ],
+        "title": "WebSearchTestOut",
+        "type": "object"
+      },
+      "WorkerIn": {
+        "properties": {
+          "concurrency": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Concurrency",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concurrency"
+        ],
+        "title": "WorkerIn",
+        "type": "object"
+      },
       "WorkerInfo": {
         "properties": {
           "current_job_id": {
@@ -2970,6 +3326,26 @@
           "id"
         ],
         "title": "WorkerInfo",
+        "type": "object"
+      },
+      "WorkerSettings": {
+        "properties": {
+          "concurrency": {
+            "description": "Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio",
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "running": {
+            "default": 0,
+            "description": "Worker attivi ora (uno per job eseguibile insieme)",
+            "title": "Running",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concurrency"
+        ],
+        "title": "WorkerSettings",
         "type": "object"
       }
     },
@@ -3724,6 +4100,93 @@
           }
         ],
         "summary": "Eventi di un job (senza streaming)",
+        "tags": [
+          "job"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita",
         "tags": [
           "job"
         ]
@@ -4592,6 +5055,7 @@
     },
     "/api/v1/lessons/{lesson_id}/export": {
       "get": {
+        "description": "Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene \"(anteprima)\" e lo zip ha un LEGGIMI che lo spiega.",
         "operationId": "export_lesson_api_v1_lessons__lesson_id__export_get",
         "parameters": [
           {
@@ -4702,7 +5166,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Scarica il Markdown finale o un archivio con i dati della lezione",
+        "summary": "Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione",
         "tags": [
           "lezioni"
         ]
@@ -4791,7 +5255,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Immagini della lezione con descrizione e presenza nel documento finale",
+        "summary": "Immagini della lezione con descrizione e presenza nel documento",
         "tags": [
           "immagini"
         ]
@@ -6845,6 +7309,92 @@
         ]
       }
     },
+    "/api/v1/settings/models/test": {
+      "post": {
+        "operationId": "post_model_test_api_v1_settings_models_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Prova connessione e modello con una chiamata minima (anche prima di salvarli)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/phases/{job}": {
       "put": {
         "operationId": "put_phase_api_v1_settings_phases__job__put",
@@ -7891,6 +8441,264 @@
           }
         ],
         "summary": "Motore di trascrizione",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/web-search": {
+      "put": {
+        "operationId": "put_web_search_api_v1_settings_web_search_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSearchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ricerca web: URL base di SearXNG",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/web-search/test": {
+      "post": {
+        "operationId": "post_web_search_test_api_v1_settings_web_search_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSearchTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSearchTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/worker": {
+      "put": {
+        "operationId": "put_worker_api_v1_settings_worker_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Job in parallelo del worker avviato con la web (vale dal prossimo avvio)",
         "tags": [
           "impostazioni"
         ]

@@ -39,6 +39,10 @@ export function useSaveLessonsRoot() {
   )
 }
 
+export function useSaveWorker() {
+  return useSettingsMutation((concurrency: number) => unwrap(api.PUT('/api/v1/settings/worker', { body: { concurrency } })))
+}
+
 export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
 }
@@ -100,6 +104,29 @@ export function useSaveRoute() {
   })
 }
 
+export function useSaveWebSearch() {
+  return useSettingsMutation((searxng_base_url: string) => unwrap(api.PUT('/api/v1/settings/web-search', { body: { searxng_base_url } })))
+}
+
+/** "Prova" di connessione e modello indicati nel form, anche prima di salvarli: chiamata minima
+ * e sincrona. L'esito è solo una prova, non un'impostazione: non invalida nulla. */
+export type ModelTestResult = Schemas['ModelTestOut']
+
+export function useTestModel() {
+  return useMutation({
+    mutationFn: (body: { connection: string; model: string }) =>
+      unwrap(api.POST('/api/v1/settings/models/test', { body: { ...body, mock: false } })),
+  })
+}
+
+/** Ricerca immagini di prova su SearXNG con l'URL scritto nel form. */
+export function useTestWebSearch() {
+  return useMutation({
+    mutationFn: (searxng_base_url: string) =>
+      unwrap(api.POST('/api/v1/settings/web-search/test', { body: { searxng_base_url, mock: false } })),
+  })
+}
+
 /** Prova di una credenziale: accoda il job credential_test; l'esito si legge da useJob. */
 export function useTestCredential() {
   return useMutation({
@@ -126,7 +153,7 @@ export function useListenTopics() {
     onSettled: () => client.invalidateQueries({ queryKey: telegramSettingsKeys.listenMessages }),
     mutationFn: async (): Promise<ListenResult> => {
       const accepted = await unwrap(api.POST('/api/v1/settings/telegram/listen-topics'))
-      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: avvia rt worker e riprova.' }
+      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: riavvia RT con la web e riprova.' }
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
         const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: accepted.job_id } } }))

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence, Union
 
 from rt.services.context import RunCancelled, RunContext, phase_scope
 from rt.pipeline.outline_review import outline_needs_approval
+from rt.pipeline.unit_failures import raise_if_incomplete
 from rt.services.events import DecisionRequired, Notice
 
 
@@ -63,9 +64,28 @@ class DecisionProvider(Protocol):
 
 
 class Notifier(Protocol):
-    """Riceve la notifica di fine build (es. Telegram)."""
+    """Riceve la notifica di fine build (es. Telegram). Restituisce True se ha inviato
+    qualcosa (None/False: non configurato o niente da fare)."""
 
-    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None: ...
+    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> Optional[bool]: ...
+
+
+_BUILD_NOTIFIERS: List[Notifier] = []
+
+
+def register_build_notifier(notifier: Notifier) -> None:
+    """Notifier di fine build usati dai job del worker (run_pipeline, run_phase build). Li
+    registra chi avvia il worker ('rt worker', e quindi 'rt web'): il service layer non
+    conosce Telegram. Un notifier dello stesso tipo già registrato viene sostituito."""
+    _BUILD_NOTIFIERS[:] = [n for n in _BUILD_NOTIFIERS if type(n) is not type(notifier)] + [notifier]
+
+
+def unregister_build_notifiers() -> None:
+    _BUILD_NOTIFIERS.clear()
+
+
+def build_notifiers() -> List[Notifier]:
+    return list(_BUILD_NOTIFIERS)
 
 
 def is_audio_input(inputs: Sequence[str]) -> bool:
@@ -168,10 +188,14 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
 
     ctx.check_cancelled()
     result.phase_results["rewrite"] = run_rewrite(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+    # Unità non riuscite: le fasi successive lavorerebbero su un draft incompleto. La run si
+    # ferma qui (FAILED con il motivo); rilanciarla rifà solo le unità mancanti.
+    raise_if_incomplete("rewrite", result.phase_results["rewrite"])
 
     channel = _resolve_channel(options.channel)
     if options.with_review:
         result.phase_results["review"] = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+        raise_if_incomplete("review", result.phase_results["review"])
         if decisions is not None:
             auto = "all" if options.auto_accept else None
             if not decisions.review_science_issues(lesson_dir, channel, auto):
@@ -194,9 +218,25 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     result.status = PipelineStatus.COMPLETED
 
     if not mock:
-        title = lesson_title(final_dir)
-        for notifier in notifiers:
-            notifier.build_completed(final_dir, bld_res, title)
+        notify_build_completed(final_dir, bld_res, ctx, notifiers)
+
+
+def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], ctx: RunContext,
+                           notifiers: Sequence[Notifier]) -> None:
+    """Avvisa i notifier (es. Telegram) che il documento è pronto. Un errore di invio non fa
+    fallire la run: diventa un avviso negli eventi."""
+    if not notifiers:
+        return
+    title = lesson_title(lesson_dir)
+    for notifier in notifiers:
+        try:
+            sent = notifier.build_completed(lesson_dir, build_result, title)
+        except Exception as exc:  # noqa: BLE001 - la notifica non deve mai far fallire la run
+            from rt.services.context import _sanitize
+            ctx.emit(Notice(level="warning", message=f"Notifica di fine lavorazione non inviata: {_sanitize(str(exc))}"))
+            continue
+        if sent:
+            ctx.emit(Notice(message=f"Notifica di fine lavorazione inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
 def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, decisions) -> Dict[str, Any]:
@@ -283,7 +323,8 @@ def ingest_audio(inputs: Union[str, Sequence[str]], options: PipelineOptions, ct
     return result
 
 
-def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunContext) -> PipelineResult:
+def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunContext,
+              notifiers: Sequence[Notifier] = ()) -> PipelineResult:
     """Esegue una sola fase su una lezione esistente (job run_phase), con la stessa
     idempotenza dei comandi 'rt prepare|outline|rewrite|review|build'."""
     if phase not in RUNNABLE_PHASES:
@@ -310,4 +351,7 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
             res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
             result.lesson_dir = res.get("lesson_dir") or lesson_dir
     result.phase_results[phase] = res
+    raise_if_incomplete(phase, res)
+    if phase == "build" and not mock:
+        notify_build_completed(result.lesson_dir, res, ctx, notifiers)
     return result

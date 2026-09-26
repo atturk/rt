@@ -1,11 +1,12 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
-import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, useTopicTest, type Settings } from '@/api/settings'
+import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, useSaveWorker, useTopicTest, type Settings } from '@/api/settings'
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
 import { matchesPreview, mergeListenedTopics, parseTopicLink, rowsToTopicNames, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
@@ -69,6 +70,53 @@ export function LessonsRootSection({ settings }: { settings: Settings }) {
   )
 }
 
+const WORKER_CONCURRENCY_OPTIONS = [1, 2, 3, 4]
+
+/** "Job in parallelo": quanti job il worker avviato con la web esegue insieme (vale dal prossimo avvio). */
+export function WorkerSection({ settings }: { settings: Settings }) {
+  const save = useSaveWorker()
+  const saved = settings.worker.concurrency
+  const running = settings.worker.running
+  return (
+    <Section id="job-paralleli" title="Job">
+      <WorkerFields key={saved} saved={saved} pending={save.isPending} onSubmit={(n) => save.mutate(n)} />
+      <p className="text-xs text-muted-foreground">
+        Quanti lavori (pipeline, immagini, recall…) RT esegue insieme, sempre su lezioni diverse: due lavori sulla stessa
+        lezione aspettano il proprio turno. La modifica vale dal prossimo avvio di RT.
+        {running > 0 && running !== saved && ` Ora ne esegue fino a ${running} insieme.`}
+      </p>
+      <SaveFeedback mutation={save} success="Salvato: vale dal prossimo avvio di RT." />
+    </Section>
+  )
+}
+
+function WorkerFields({ saved, pending, onSubmit }: { saved: number; pending: boolean; onSubmit: (n: number) => void }) {
+  const [value, setValue] = useState(saved)
+  return (
+    <form
+      className="flex flex-wrap items-center gap-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSubmit(value)
+      }}
+    >
+      <label htmlFor="worker-concurrency" className="text-sm font-medium">
+        Job in parallelo
+      </label>
+      <Select id="worker-concurrency" className="w-20" value={value} onChange={(e) => setValue(Number(e.target.value))}>
+        {WORKER_CONCURRENCY_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </Select>
+      <Button type="submit" variant="outline" size="sm" disabled={pending || value === saved}>
+        Salva
+      </Button>
+    </form>
+  )
+}
+
 export function TranscriptionSection({ settings }: { settings: Settings }) {
   const save = useSaveTranscription()
   const t = settings.transcription
@@ -114,10 +162,8 @@ function TranscriptionFields({
         <Input id="stt-model" value={model} disabled={!custom} onChange={(e) => setModel(e.target.value)} placeholder="whisper-1" />
       </Field>
       <Field label="Chiave API (facoltativa)" htmlFor="stt-key" hint={<>Chiave: <SecretBadge set={t.api_key_set} /></>}>
-        <Input
+        <SecretInput
           id="stt-key"
-          type="password"
-          autoComplete="off"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder={t.api_key_set ? 'Lascia vuoto per mantenere quella salvata' : ''}
@@ -240,10 +286,8 @@ function TelegramFields({
     <form className="flex flex-col gap-3" onSubmit={submit}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Token del bot" htmlFor="tg-token" hint={<>Token salvato: <RevealableValue field="bot_token" preview={tg.bot_token_preview} /></>}>
-          <Input
+          <SecretInput
             id="tg-token"
-            type="password"
-            autoComplete="off"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder={tg.bot_token_set ? 'Lascia vuoto per mantenere quello salvato' : '123456:ABC…'}

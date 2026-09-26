@@ -7,7 +7,7 @@ import { useLesson, useLessons } from '@/api/hooks'
 import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
-import { JobsIndicator } from '@/components/jobs/JobsIndicator'
+import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,7 +38,7 @@ function Checkbox({ id, label, hint, checked, onChange }: { id: string; label: s
 
 // ---------------------------------------------------------------- importazione
 
-/** Come 'rt setup' (solo importazione e trascrizione) o 'rt run audio' (pipeline completa). */
+/** Importazione dell'audio: solo trascrizione (job ingest_audio) o pipeline completa (run_pipeline). */
 export function ImportPage() {
   const navigate = useNavigate()
   const lessons = useLessons()
@@ -68,7 +68,7 @@ export function ImportPage() {
   const progress = create.progress
   const percent = progress?.total ? Math.round((progress.loaded / progress.total) * 100) : null
   const uploadError = create.error instanceof ApiError && create.error.code === 'payload_too_large'
-    ? `${create.error.message} Dividi l'audio o alza RT_API_MAX_UPLOAD_MB.`
+    ? `${create.error.message} Dividi l'audio in più file più piccoli.`
     : create.isError ? errorMessage(create.error) : null
 
   return (
@@ -130,7 +130,7 @@ export function ImportPage() {
           <Checkbox
             id="import-run"
             label="Avvia subito la pipeline"
-            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione, review e documento, come 'rt run'. Senza, solo importazione e trascrizione, come 'rt setup'."
+            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione, review e documento. Senza, solo importazione e trascrizione."
             checked={run}
             onChange={setRun}
           />
@@ -140,14 +140,14 @@ export function ImportPage() {
               <Checkbox
                 id="import-mock"
                 label="Modalità prova (mock)"
-                hint="Nessuna trascrizione reale né chiamata ai modelli, come 'rt run --mock'."
+                hint="Nessuna trascrizione reale né chiamata ai modelli."
                 checked={mock}
                 onChange={setMock}
               />
               <Checkbox
                 id="import-auto-accept"
                 label="Accetta automaticamente le correzioni della review"
-                hint="Come 'rt run --auto-accept'."
+                hint="Le correzioni proposte dalla review vengono applicate senza chiederti conferma."
                 checked={autoAccept}
                 onChange={setAutoAccept}
               />
@@ -422,7 +422,6 @@ export const jobsArea: Area = {
   ],
   nav: [
     { to: '/importa', label: 'Importa', icon: Upload },
-    { to: '/job', label: 'Job', icon: Activity },
+    { to: '/job', label: 'Job', icon: Activity, badge: JobsNavBadge },
   ],
-  header: JobsIndicator,
 }

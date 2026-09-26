@@ -45,6 +45,23 @@ def _queue():
         sys.exit(1)
 
 
+def prepare_worker_process(queue) -> None:
+    """Quello che il service layer non può fare da solo all'avvio di un worker: registra la
+    notifica Telegram di fine lavorazione (rt/services non importa rt.telegram) e pulisce gli
+    upload vecchi dei job falliti mai ripresi."""
+    from rt.services.pipeline_service import register_build_notifier
+    from rt.telegram.notify import TelegramBuildNotifier
+    register_build_notifier(TelegramBuildNotifier())
+    try:
+        from rt.services.api_jobs import sweep_stale_uploads
+        from rt.services.lesson_service import lessons_root
+        root = lessons_root()
+        if root:
+            sweep_stale_uploads(os.path.join(root, ".rt", "uploads"), queue)
+    except Exception as exc:  # la pulizia non deve impedire l'avvio
+        print(f"⚠️  Pulizia degli upload non riuscita: {exc}", file=sys.stderr)
+
+
 def cmd_worker(args: argparse.Namespace) -> None:
     from rt.services.jobs import DEFAULT_LEASE_SECONDS
     from rt.services.worker import Worker, registered_handlers, run_workers
@@ -56,6 +73,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
         print(f"❌ Tipi di job sconosciuti: {', '.join(unknown)} (disponibili: {', '.join(sorted(handlers))})", file=sys.stderr)
         sys.exit(2)
     _queue()  # verifica subito il DB, con messaggio chiaro
+    prepare_worker_process(_queue())
     kwargs: Dict[str, Any] = {
         "job_types": types,
         "lease_seconds": args.lease or DEFAULT_LEASE_SECONDS,
