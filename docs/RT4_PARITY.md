@@ -28,7 +28,9 @@ anche dalla web; ogni azione della web passa dall'API e viene salvata dal backen
 | `rt telegram-daemon` (avvio, stato) | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato del bot nelle impostazioni | ✅ `test_row_telegram_daemon_status` | PID file del demone | — |
 | `rt -u` (aggiornamento) | fuori scope per la web | — | — | — | — |
 
-Sessione del browser (login e logout): `test_browser_session_persists_and_logout_revokes`.
+Sessione del browser (login e logout): `test_browser_session_persists_and_logout_revokes`;
+nella SPA (RT4-F1) accesso con link monouso o token, logout e dashboard con filtri sono in
+`frontend/e2e/foundation.spec.ts`. La colonna "SPA (F7)" si riempie con le schermate F2-F6.
 
 ## Differenze trovate e corrette con i test di parità
 

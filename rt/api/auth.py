@@ -8,6 +8,9 @@ Autenticazione a utente singolo (RT4-E1).
 - SPA: POST /api/v1/auth/session con il token imposta un cookie di sessione HttpOnly,
   SameSite=Strict, e un cookie CSRF leggibile; le richieste che modificano dati con il
   cookie devono ripetere il valore CSRF nell'header X-CSRF-Token (double submit).
+- Link monouso (RT4-F1): 'rt web --spa' (o POST /api/v1/auth/login-link con il token) crea un
+  codice valido pochi minuti; GET /login?code=... lo consuma e apre la sessione, così il
+  browser si apre già autenticato senza incollare il token (come Jupyter).
 """
 import hashlib
 import hmac
@@ -22,6 +25,8 @@ from rt.api.errors import ApiError
 
 AUTH_KEY = "api.auth"
 SESSIONS_KEY = "api.sessions"
+LOGIN_CODES_KEY = "api.login_codes"
+LOGIN_CODE_SECONDS = 300
 SESSION_COOKIE = "rt_session"
 CSRF_COOKIE = "rt_csrf"
 CSRF_HEADER = "X-CSRF-Token"
@@ -116,6 +121,36 @@ def drop_session(session_id: str) -> None:
         sessions = dict(repo.get(SESSIONS_KEY) or {})
         if sessions.pop(_hash(session_id or "", ""), None) is not None:
             repo.set(SESSIONS_KEY, sessions)
+
+
+def create_login_code(db=None, ttl_seconds: int = LOGIN_CODE_SECONDS) -> str:
+    """Codice monouso per aprire una sessione dal browser (GET /login?code=...)."""
+    from rt.db.repositories import SettingRepository
+    from rt.db.session import session_scope
+    code = secrets.token_urlsafe(24)
+    now = _now()
+    with session_scope(db or _db()) as session:
+        repo = SettingRepository(session)
+        codes = {k: v for k, v in (repo.get(LOGIN_CODES_KEY) or {}).items()
+                 if datetime.fromisoformat(v) > now}
+        codes[_hash(code, "")] = (now + timedelta(seconds=ttl_seconds)).isoformat()
+        repo.set(LOGIN_CODES_KEY, codes)
+    return code
+
+
+def consume_login_code(code: str) -> bool:
+    """True se il codice era valido; in ogni caso non è più utilizzabile."""
+    from rt.db.repositories import SettingRepository
+    from rt.db.session import session_scope
+    if not code:
+        return False
+    with session_scope(_db()) as session:
+        repo = SettingRepository(session)
+        codes = dict(repo.get(LOGIN_CODES_KEY) or {})
+        expires = codes.pop(_hash(code, ""), None)
+        if expires is not None:
+            repo.set(LOGIN_CODES_KEY, codes)
+    return bool(expires) and datetime.fromisoformat(expires) > _now()
 
 
 def require_auth(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> str:

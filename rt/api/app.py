@@ -31,7 +31,10 @@ def _cors_origins(explicit: Optional[Iterable[str]]) -> list:
     return [o.strip() for o in os.environ.get(CORS_ENV, "").split(",") if o.strip()]
 
 
-def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]] = None) -> FastAPI:
+def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]] = None,
+               spa_dir: Optional[str] = None, serve_spa: bool = True) -> FastAPI:
+    """spa_dir: build della SPA da servire su / (default: find_spa_dir()). serve_spa=False
+    lascia solo l'API."""
     from rt.core.config import _default_project_root
     from rt.core.version import get_current_version
     from rt.api.routers import system
@@ -59,6 +62,9 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
     app.include_router(system.router, prefix=API_PREFIX)
     for router in _domain_routers():
         app.include_router(router, prefix=API_PREFIX, responses=COMMON_RESPONSES)
+    if serve_spa:
+        from rt.api.spa import find_spa_dir, install_spa
+        install_spa(app, spa_dir or find_spa_dir())
     return app
 
 

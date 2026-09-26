@@ -59,3 +59,6 @@ Thumbs.db
 .codex/
 .ruff_cache/
 .mypy_cache/
+
+# Build della SPA inclusa nelle release (fase F)
+rt/spa/
