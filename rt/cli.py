@@ -311,7 +311,7 @@ def cmd_add_images(args):
             args.lesson_dir,
             input_path=args.input,
             web_search_count=args.web_search,
-            carousel=args.carousel,
+            unit_ids=[u.strip() for u in args.units.split(",") if u.strip()] if args.units else None,
             force_mock=args.mock,
         )
     except Exception as e:
@@ -1072,11 +1072,13 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_addimg.add_argument("lesson_dir", help="Directory della lezione")
     p_addimg.add_argument("-i", "--input", default=None, help="Percorso a un file PDF di slide o una cartella di foto")
     p_addimg.add_argument(
-        "--web-search", nargs="?", const=5, type=int, default=None,
-        help="Cerca e integra N immagini dal web via SearXNG (default 5 se il flag è usato senza valore). "
-             "Combinabile con -i. Richiede 'searxng_base_url' configurato in config/general.yaml."
+        "--web-search", nargs="?", const=3, type=int, default=None,
+        help="Cerca sul web via SearXNG N immagini per ogni unità, con una ricerca per unità "
+             "(default 3 se il flag è usato senza valore). Combinabile con -i. Richiede "
+             "'searxng_base_url' configurato in config/general.yaml."
     )
-    p_addimg.add_argument("--carousel", action="store_true", help="Raggruppa le immagini di ogni sezione in un blocco carosello (plugin Obsidian napkin-notes) invece di righe immagine singole")
+    p_addimg.add_argument("--units", default=None, metavar="ID,ID",
+                          help="Con --web-search: cerca solo per queste unità (id separati da virgola, es. 1.1,2.3); default tutte")
     p_addimg.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM/vision reale)")
     p_addimg.set_defaults(func=cmd_add_images)
 

@@ -361,6 +361,19 @@ def test_row_add_images(api, cli, pair, tmp_path):
     assert_same_lesson(cli_dir, api_dir)
 
 
+def test_row_add_images_web_search_per_unit(api, cli, pair):
+    """rt add-images --web-search N --units ID --mock ⇔ POST /lessons/{id}/images (web_search,
+    units): N immagini per ogni unità scelta, nello stesso documento."""
+    cli_dir, api_dir = pair
+    _built_pair(pair)
+    cli.rt("add-images", cli_dir, "--web-search", "2", "--units", "1.1", "--mock")
+    job = api.run(f"/lessons/{api.lesson_id()}/images", data={"web_search": "2", "units": ["1.1"], "mock": "true"})
+    assert job["state"] == "succeeded", job
+    assert job["result"]["web_images_by_unit"] == {"1.1": 2}
+    assert all_files(cli_dir) == all_files(api_dir)
+    assert_same_lesson(cli_dir, api_dir)
+
+
 def _recall_files(lesson_dir):
     from rt.pipeline.recall import get_recall_bank_path
     with open(get_recall_bank_path(lesson_dir), encoding="utf-8") as f:

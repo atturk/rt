@@ -86,7 +86,7 @@ def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     p = job.payload
     with ctx.activate():
         res = run_add_images(_lesson_dir(job), input_path=p.get("input_path"),
-                             web_search_count=p.get("web_search_count"), carousel=bool(p.get("carousel")),
+                             web_search_count=p.get("web_search_count"), unit_ids=p.get("unit_ids"),
                              force_mock=bool(p.get("mock")))
     return JobOutcome(state=JobState.SUCCEEDED, result=json_safe(res))
 

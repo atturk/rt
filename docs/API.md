@@ -102,7 +102,7 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons` (multipart: `audio`, `date`, `materia`, `argomenti`, `mock`, `run`) | Job `ingest_audio` (solo setup e trascrizione); con `run=true` job `run_pipeline` dall'audio | `rt setup`, `rt run lezione.m4a` |
 | `POST /lessons/{id}/jobs` `{type: run_pipeline}` | Pipeline completa | `rt run <cartella>` |
 | `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
-| `POST /lessons/{id}/images` (multipart `files`, `web_search`) | Job `add_images` | `rt add-images` |
+| `POST /lessons/{id}/images` (multipart `files`, `web_search`, `units`) | Job `add_images`: `web_search` è il numero di immagini da cercare sul web **per ogni unità** (una ricerca per unità, 1-10), `units` limita la ricerca alle unità scelte (vuoto = tutte). Senza SearXNG configurato risponde subito `409 searxng_not_configured`, senza accodare il job | `rt add-images [--web-search N] [--units 1.1,2.3]` |
 | `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento finale) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
 | `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento | `rt jobs` |
 | `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
@@ -114,8 +114,21 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `GET /lessons/{id}/recall`, `GET .../recall/history` | Riserva per tipo e stato; domande (con soluzione se già poste) e risposte con valutazione e voto | `rt recall` |
 | `POST .../recall/generate`, `POST .../recall/next` | Generazione (job `recall_generate`, o `recall_batch` con `qtype`); prossima domanda, che sotto soglia accoda il rifornimento (job `recall_refill`) come il terminale | `rt recall` |
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
+| `GET /lessons/{id}/recall/session` | Sessione in corso qui (`web`) e su Telegram (`telegram`), ultimo riepilogo (`last`), ultima richiesta al bot (`command`) | — |
+| `POST .../recall/session/end` | Termina la sessione della web app e ne salva il riepilogo (domande, risposte date, quiz giusti); 404 se non ce n'è una | uscita da `rt recall` |
+| `GET /recall/telegram` | Bot pronto per il recall (`configured`, `running`) e sessioni in corso su Telegram per tutte le lezioni | — |
+| `POST /lessons/{id}/recall/telegram/start` `{qtype}` | Chiede al bot di avviare il recall nel topic della materia (202; l'esito in `/recall/session`); 409 se il bot non è configurato o è fermo, o se c'è già una sessione | `rt recall --channel telegram`, `/recall` nel bot |
+| `POST /recall/telegram/sessions/{id}/stop` | Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic «Sessione interrotta dall'app» | `/quit` nel bot |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
 | `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti | web Gradio "Ascolta topic" |
+
+**Sessioni di recall (RT4-FA7).** La tabella `recall_sessions` è il registro condiviso delle
+sessioni: la web app apre la sua con la prima domanda (`/recall/next`) e la chiude con
+`/recall/session/end`; il daemon Telegram registra e chiude le sue (da `/recall`, `/quit`, fine
+della riserva o interruzione dall'app). L'API non parla con Telegram: scrive le richieste nella
+tabella `telegram_commands` e il daemon le esegue ogni due secondi, scrivendone l'esito. Mentre
+una sessione è su Telegram la web non pone domande di quella lezione (`409
+telegram_session_active`), e viceversa.
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in
@@ -123,9 +136,11 @@ decisioni rispondono `409 lesson_busy`. I file caricati vanno in
 dimensione è `RT_API_MAX_UPLOAD_MB` (default 2048).
 
 `rt worker --mock` esegue ogni job in mock qualunque cosa chieda il client (LLM finto, risposte
-vocali senza trascrizione, giudice delle immagini che le mette nella prima macro-sezione): lo
-usa il server dei test end-to-end della SPA (`scripts/e2e_server.py`), insieme al bot Telegram
-finto (`RT_TELEGRAM_FAKE=1`: prende il PID file ma non contatta Telegram).
+vocali senza trascrizione, immagini dal web generate senza SearXNG, giudice delle immagini che
+le mette nella prima macro-sezione): lo usa il server dei test end-to-end della SPA
+(`scripts/e2e_server.py`), insieme al bot Telegram finto (`RT_TELEGRAM_FAKE=1`: prende il PID
+file, non riceve aggiornamenti ed esegue le richieste della web app con domande in mock sulla
+Bot API di `RT_TELEGRAM_API_URL`).
 
 ## Parità con la CLI (RT4-E5)
 

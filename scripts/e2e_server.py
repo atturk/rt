@@ -8,7 +8,8 @@ Uso (lo lancia frontend/playwright.config.ts):
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
 Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
---mock (LLM e risposte vocali finti) e il bot Telegram è finto (RT_TELEGRAM_FAKE=1).
+--mock (LLM, risposte vocali e immagini dal web finti) e il bot Telegram è finto
+(RT_TELEGRAM_FAKE=1: esegue le richieste della web app sulla Bot API finta).
 """
 import argparse
 import json
@@ -36,6 +37,8 @@ def _workspace(base: str) -> str:
     with open(general_path, encoding="utf-8") as f:
         general = yaml.safe_load(f) or {}
     general.setdefault("telegram", {})["lessons_root"] = lessons
+    # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
+    general["searxng_base_url"] = "http://127.0.0.1:9"
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
     os.environ["HOME"] = home
@@ -99,7 +102,8 @@ def main() -> int:
 
     ensure_database()
     _lessons(root)
-    # Bot API finta per "Ascolta i topic" (RT4-F5): API e worker la ereditano dall'ambiente.
+    # Bot API finta per "Ascolta i topic" (RT4-F5) e per il recall su Telegram avviato dalla web
+    # (RT4-FA7): API, worker e bot finto la ereditano dall'ambiente.
     from tests.api_support import fake_telegram_server
     _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
     token = auth.reset_token(get_database())

@@ -124,11 +124,19 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
 def add_images(
     lesson_id: int, lesson_dir: LessonDir, actor: Actor,
     files: Optional[List[UploadFile]] = File(None, description="PDF o immagini"),
-    web_search: Optional[int] = Form(None, ge=1, le=20, description="Immagini da cercare sul web"),
-    carousel: bool = Form(False), mock: bool = Form(False),
+    web_search: Optional[int] = Form(None, ge=1, le=10, description="Immagini da cercare sul web per ogni unità"),
+    units: Optional[List[str]] = Form(None, description="Unità per cui cercare sul web (id dell'outline); vuoto = tutte"),
+    mock: bool = Form(False),
 ):
+    from rt.services.images_service import ImagesError, check_web_search
     if not files and not web_search:
         raise ApiError(422, "validation_error", "Carica almeno un file o chiedi una ricerca web.")
+    unit_ids = [u.strip() for u in units or [] if u.strip()] or None
+    if web_search:
+        try:
+            check_web_search(lesson_dir, unit_ids, mock=mock)
+        except ImagesError as exc:
+            raise ApiError(exc.status, exc.code, str(exc))
     target = _upload_dir() if files else None
 
     def _go():
@@ -138,8 +146,8 @@ def add_images(
             # un PDF da solo si passa com'è; le immagini come cartella (come 'rt add-images -i')
             single_pdf = len(saved) == 1 and saved[0].lower().endswith(".pdf")
             input_path = saved[0] if single_pdf else target
-        payload = {"input_path": input_path, "web_search_count": web_search, "carousel": carousel, "mock": mock,
-                   "upload_dir": target}
+        payload = {"input_path": input_path, "web_search_count": web_search, "unit_ids": unit_ids if web_search else None,
+                   "mock": mock, "upload_dir": target}
         return enqueue_job("add_images", lesson_dir, payload, actor)
     return _with_upload_cleanup(target, _go) if target else _go()
 

@@ -9,7 +9,6 @@ import json
 import hashlib
 import base64
 import re
-import math
 from typing import Dict, Any, Optional, List, Tuple
 from rt.core.lesson_paths import lesson_path
 from rt.core.image_extract import ExtractedImage, extract_images
@@ -222,80 +221,112 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
     return results
 
 
-def build_macro_search_queries(outline: Any) -> Dict[str, str]:
-    """Per ogni macro-sezione, unisce (deduplicati, in ordine di comparsa) i key_concepts di
-    tutte le sue unità, prende i primi 3 e li unisce in un'unica stringa di query. Ritorna
-    {macro_id: query_string}. Macro-sezioni senza alcun key_concept ottengono una query di
-    fallback basata sul solo title della macro."""
+def _unit_query(unit: Any) -> str:
+    """Query di ricerca di un'unità: i primi 3 key_concepts (deduplicati, in ordine), oppure il
+    titolo dell'unità se non ne ha."""
+    seen: List[str] = []
+    for kc in getattr(unit, "key_concepts", []) or []:
+        clean = str(kc).strip()
+        if clean and clean not in seen:
+            seen.append(clean)
+    if seen:
+        return " ".join(seen[:3])
+    return re.sub(r'[/\\:*?"<>|]', ' ', str(getattr(unit, "title", "") or getattr(unit, "id", ""))).strip()
+
+
+def outline_unit_ids(outline: Any) -> List[str]:
+    return [str(u.id) for macro in getattr(outline, "macro_sections", []) for u in getattr(macro, "units", [])]
+
+
+def build_unit_search_queries(outline: Any, unit_ids: Optional[List[str]] = None) -> Dict[str, str]:
+    """Una query di ricerca per unità, nell'ordine dell'outline: {unit_id: query}. unit_ids
+    limita la ricerca alle unità scelte (None = tutte); un id che non è nell'outline è un
+    errore (ValueError)."""
+    wanted = None
+    if unit_ids is not None:
+        wanted = [str(u) for u in unit_ids]
+        unknown = sorted(set(wanted) - set(outline_unit_ids(outline)))
+        if unknown:
+            raise ValueError(f"Unità inesistenti nella scaletta: {', '.join(unknown)}.")
     queries: Dict[str, str] = {}
     for macro in getattr(outline, "macro_sections", []):
-        macro_id = str(macro.id)
-        seen_kc: List[str] = []
         for unit in getattr(macro, "units", []):
-            for kc in getattr(unit, "key_concepts", []) or []:
-                clean_kc = str(kc).strip()
-                if clean_kc and clean_kc not in seen_kc:
-                    seen_kc.append(clean_kc)
-        if seen_kc:
-            query = " ".join(seen_kc[:3])
-        else:
-            query = re.sub(r'[/\\:*?"<>|]', ' ', getattr(macro, "title", "Macro")).strip()
-        queries[macro_id] = query
+            unit_id = str(unit.id)
+            if wanted is None or unit_id in wanted:
+                queries[unit_id] = _unit_query(unit)
     return queries
+
+
+def _mock_png(seed: str) -> bytes:
+    """PNG valido 8x8 di un colore ricavato da seed (immagini web finte in mock: diverse per
+    unità, e visualizzabili nell'anteprima)."""
+    import struct
+    import zlib
+    r, g, b = hashlib.sha256(seed.encode("utf-8")).digest()[:3]
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    rows = b"".join(b"\x00" + bytes((r, g, b)) * 8 for _ in range(8))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
 def fetch_web_images(
     lesson_dir: str,
     outline: Any,
-    total_count: int,
+    per_unit: int,
     base_url: Optional[str] = None,
     force_mock: bool = False,
-) -> List[ExtractedImage]:
-    """Cerca ed estrae immagini dal web via SearXNG."""
+    unit_ids: Optional[List[str]] = None,
+) -> Tuple[List[ExtractedImage], Dict[str, int]]:
+    """Cerca immagini dal web via SearXNG: una query per unità e fino a per_unit risultati per
+    ciascuna, sulle unità scelte (unit_ids, None = tutte). Restituisce le immagini scaricate e
+    quante ne sono arrivate per unità."""
     if not base_url and not force_mock:
         raise ValueError(
-            "Impossibile eseguire la ricerca immagini web (--web-search): 'searxng_base_url' "
-            "non è configurato in config/general.yaml."
+            "La ricerca di immagini sul web richiede SearXNG: configuralo in Impostazioni."
         )
 
-    queries = build_macro_search_queries(outline)
-    if not queries or total_count <= 0:
-        return []
+    queries = build_unit_search_queries(outline, unit_ids)
+    if not queries or per_unit <= 0:
+        return [], {}
 
-    count_per_macro = math.ceil(total_count / len(queries))
     extracted: List[ExtractedImage] = []
+    found: Dict[str, int] = {}
 
-    if force_mock:
-        for idx, (macro_id, query) in enumerate(queries.items(), start=1):
-            for i in range(count_per_macro):
-                dummy_bytes = f"mock web image bytes {macro_id}_{i}".encode("utf-8")
-                extracted.append(ExtractedImage(image_bytes=dummy_bytes, source_label=f"websearch:{query}#{i+1}"))
-        return extracted[:total_count]
-
-    for macro_id, query in queries.items():
+    for unit_id, query in queries.items():
+        found[unit_id] = 0
+        if force_mock:
+            for i in range(per_unit):
+                extracted.append(ExtractedImage(image_bytes=_mock_png(f"{unit_id}#{i}"),
+                                                source_label=f"websearch:{query}#{i+1}"))
+                found[unit_id] += 1
+            continue
         try:
-            web_results = search_images(base_url, query, count=count_per_macro)
+            web_results = search_images(base_url, query, count=per_unit)
         except Exception:
             continue
-        for res in web_results:
+        for res in web_results[:per_unit]:
             try:
                 data = download_image(res.image_url)
-                label = f"websearch:{query}"
-                extracted.append(ExtractedImage(image_bytes=data, source_label=label))
             except Exception:
                 continue
+            extracted.append(ExtractedImage(image_bytes=data, source_label=f"websearch:{query}"))
+            found[unit_id] += 1
 
-    return extracted[:total_count]
+    return extracted, found
 
 
 def run_add_images(
     lesson_dir: str,
     input_path: Optional[str] = None,
     web_search_count: Optional[int] = None,
-    carousel: bool = False,
     force_mock: bool = False,
+    unit_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Orchestratore principale di 'rt add-images'."""
+    """Orchestratore principale di 'rt add-images'. web_search_count: immagini da cercare sul
+    web per ogni unità (unit_ids: solo quelle unità, None = tutte)."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     from rt.core.state import read_info_yaml
     from rt.core.segments import load_segments_json
@@ -314,6 +345,7 @@ def run_add_images(
 
     outline = load_outline(lesson_dir)
     extracted: List[ExtractedImage] = []
+    web_found: Dict[str, int] = {}
 
     if input_path:
         extracted.extend(extract_images(input_path))
@@ -322,12 +354,13 @@ def run_add_images(
         from rt.core.config import load_config
         cfg = load_config()
         searxng_url = getattr(cfg, "searxng_base_url", None)
-        web_extracted = fetch_web_images(
+        web_extracted, web_found = fetch_web_images(
             lesson_dir=lesson_dir,
             outline=outline,
-            total_count=web_search_count,
+            per_unit=web_search_count,
             base_url=searxng_url,
             force_mock=force_mock,
+            unit_ids=unit_ids,
         )
         extracted.extend(web_extracted)
 
@@ -373,7 +406,6 @@ def run_add_images(
         subject=subject_val,
         topics=topics_val,
         images_by_macro=images_by_macro,
-        carousel=carousel,
     )
 
     safe_title = re.sub(r'[/\\:*?"<>|]', ' ', outline.lesson_title)
@@ -387,6 +419,7 @@ def run_add_images(
     return {
         "images_added": len(assigned_hashes),
         "macros_with_images": list(images_by_macro.keys()),
+        "web_images_by_unit": web_found,
         "rielaborato_md": lesson_path(lesson_dir, "rielaborato.md"),
         "deliverable_md": named_filepath,
     }
