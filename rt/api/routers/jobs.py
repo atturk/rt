@@ -150,6 +150,16 @@ def test_credential(body: schemas.CredentialTest, actor: Actor):
     return enqueue_job("credential_test", None, body.model_dump(), actor)
 
 
+@router.post("/settings/telegram/listen-topics", response_model=schemas.JobAccepted, status_code=202, tags=["impostazioni"],
+             summary="Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)")
+def telegram_listen_topics(actor: Actor):
+    from rt.telegram.daemon_status import is_daemon_running
+    if is_daemon_running():
+        raise ApiError(409, "telegram_daemon_running",
+                       "Il bot è già in ascolto: fermalo prima di cercare nuovi topic.")
+    return enqueue_job("telegram_listen_topics", None, {"seconds": 20}, actor)
+
+
 # ---------------------------------------------------------------- consultazione
 
 @router.get("/jobs", response_model=List[schemas.Job], summary="Job recenti")

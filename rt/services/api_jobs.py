@@ -23,6 +23,7 @@ RECALL_EVALUATE = "recall_evaluate"
 RECALL_REFILL = "recall_refill"
 OUTLINE_REVISION = "outline_revision"
 CREDENTIAL_TEST = "credential_test"
+TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images")
 
 
@@ -153,10 +154,24 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done({"ok": True, "credential": p["credential"], "message": "Credenziale valida."})
 
 
+def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Ascolta i messaggi al bot per rilevare chat e topic: l'esito (anche un errore) è il risultato."""
+    from rt.services.telegram_topics import TopicListenError, listen_topics
+    try:
+        found = listen_topics(seconds=int(job.payload.get("seconds") or 20))
+    except TopicListenError as exc:
+        return _done({"ok": False, "message": str(exc), "chat_id": None, "topics": []})
+    n = len(found["topics"])
+    message = (f"Rilevati {n} topic. Assegna una materia a ciascuno e salva." if n
+               else "Nessun topic rilevato. Invia un messaggio in un topic e riprova.")
+    return _done({"ok": True, "message": message, **found})
+
+
 for _type, _handler in (
     (REWRITE_UNIT, rewrite_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     (RECALL_REFILL, recall_refill_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
+    (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
 ):
     if _type not in _HANDLERS:
         register_handler(_type, _handler)

@@ -79,6 +79,9 @@ class Settings(BaseModel):
     credentials: List[CredentialState]
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
+    data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
+    setup_required: bool = Field(False, description="True se la cartella delle lezioni non è impostata o non esiste: "
+                                                    "la SPA apre la configurazione guidata")
 
 
 class LessonsRootIn(BaseModel):

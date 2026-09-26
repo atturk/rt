@@ -81,9 +81,12 @@ def model_names(project_root: Path, name: str) -> list[str]:
     return sorted(set(find_connection(project_root, name).get("models", [])), key=str.casefold)
 
 
-def phase_selection(project_root: Path, job: str) -> tuple[str | None, str | None]:
+def phase_selection(project_root: Path, job: str,
+                    connections: list[dict] | None = None) -> tuple[str | None, str | None]:
     _, credential, model, _, _ = route_settings(project_root, job, "primary")
-    connection = next((item for item in list_connections(project_root)
+    if connections is None:
+        connections = list_connections(project_root)
+    connection = next((item for item in connections
                        if credential in item.get("credentials", [])), None)
     return (connection["name"] if connection else None, model or None)
 
