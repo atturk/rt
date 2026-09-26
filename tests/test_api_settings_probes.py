@@ -130,9 +130,10 @@ def test_add_images_web_search_surfaces_json_error(tmp_path):
     from types import SimpleNamespace
     from rt.pipeline.add_images import fetch_web_images
     server, url = fake_searxng_server(json_enabled=False)
-    outline = SimpleNamespace(macro_sections=[SimpleNamespace(id="M1", title="Lipidi", units=[])])
+    unit = SimpleNamespace(id="1.1", title="Lipidi", key_concepts=["Lipidi"])
+    outline = SimpleNamespace(macro_sections=[SimpleNamespace(id="1", title="Lipidi", units=[unit])])
     try:
         with pytest.raises(ValueError, match="search.formats"):
-            fetch_web_images(str(tmp_path), outline, total_count=2, base_url=url)
+            fetch_web_images(str(tmp_path), outline, per_unit=2, base_url=url)
     finally:
         server.shutdown()
