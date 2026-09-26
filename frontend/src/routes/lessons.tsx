@@ -43,7 +43,9 @@ function LessonCard({ lesson }: { lesson: Lesson }) {
           {formatCost(lesson.cost_usd)}
         </span>
         {lesson.pending_issues > 0 ? (
-          <span className="font-bold text-accent-foreground">{lesson.pending_issues} issue da valutare</span>
+          <Link to={`/lezioni/${lesson.id}/revisione`} className="font-bold text-accent-foreground hover:underline">
+            {lesson.pending_issues} issue da valutare →
+          </Link>
         ) : (
           <span className="text-muted-foreground">Nessuna issue da valutare</span>
         )}
@@ -173,7 +175,14 @@ export function LessonPage() {
             </div>
             <div className="flex gap-1.5">
               <dt className="text-muted-foreground">Issue da valutare</dt>
-              <dd>{l.pending_issues}</dd>
+              <dd>
+                {l.pending_issues}
+                {l.phases.review && l.phases.review !== 'MISSING' && (
+                  <Link to={`/lezioni/${id}/revisione`} className="ml-2 font-semibold text-accent-foreground hover:underline">
+                    {l.pending_issues > 0 ? 'Rivedi →' : 'Vedi la revisione'}
+                  </Link>
+                )}
+              </dd>
             </div>
             <div className="flex gap-1.5">
               <dt className="text-muted-foreground">Costo</dt>

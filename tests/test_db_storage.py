@@ -106,6 +106,26 @@ def test_lock_files_live_in_the_data_folder(db_lesson, rt_db):
     assert not os.path.exists(db_lesson)
 
 
+def test_read_snapshot_reads_each_lesson_once_and_sees_its_own_writes(db_lesson, rt_db, monkeypatch):
+    with fs.open(os.path.join(db_lesson, "info.yaml"), "w") as f:
+        f.write("materia: A\n")
+    queries = []
+    real_reader = fs._reader
+    monkeypatch.setattr(fs, "_reader", lambda t: queries.append(t.rel) or real_reader(t))
+    with fs.read_snapshot():
+        for _ in range(3):
+            assert fs.isfile(os.path.join(db_lesson, "info.yaml"))
+            assert not fs.isfile(os.path.join(db_lesson, "manca.md"))
+            assert fs.open(os.path.join(db_lesson, "info.yaml")).read() == "materia: A\n"
+        assert len(queries) == 1
+        with fs.open(os.path.join(db_lesson, "_state", "nuovo.json"), "w") as f:
+            f.write("{}")
+        fs.remove(os.path.join(db_lesson, "info.yaml"))
+        assert fs.isfile(os.path.join(db_lesson, "_state", "nuovo.json"))
+        assert not fs.isfile(os.path.join(db_lesson, "info.yaml"))
+    assert fs.isfile(os.path.join(db_lesson, "nuovo.json"))
+
+
 def test_new_lessons_can_stay_in_folders(rt_db, tmp_path):
     """storage.new_lessons = folder (settings) riporta al layout a cartelle."""
     from rt.db.repositories import SettingRepository

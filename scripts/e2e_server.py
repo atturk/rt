@@ -18,7 +18,6 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = os.path.join(ROOT, "frontend", "e2e", ".state", "server.json")
-SECOND_LESSON = "[2026-09-12] FISIOLOGIA - Il rene"
 
 
 def _workspace(base: str) -> str:
@@ -45,19 +44,39 @@ def _workspace(base: str) -> str:
     return lessons
 
 
-def _lessons(root: str) -> None:
-    from tests.api_support import add_audio, make_lesson, run_mock_pipeline
+def _plain_lesson(root: str, date: str, materia: str, argomenti: str) -> str:
+    """Cartella con info.yaml e trascritto, come dopo 'rt setup'."""
     from tests.golden_support import INFO_YAML, TRANSCRIPT_MD
+    folder = os.path.join(root, f"[{date}] {materia} - {argomenti}")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write(INFO_YAML.replace("2026-09-05", date).replace("BIOCHIMICA", materia).replace("Lipidi", argomenti))
+    with open(os.path.join(folder, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
+        f.write(TRANSCRIPT_MD.replace("2026-09-05", date).replace("BIOCHIMICA", materia))
+    return folder
+
+
+def _lessons(root: str) -> None:
+    """BIOCHIMICA completa con audio; FISIOLOGIA solo setup; FARMACOLOGIA e PATOLOGIA con
+    l'outline approvata e 10 issue della review da decidere (per la review contestuale)."""
+    from rt.services.outline_service import approve_outline
+    from tests.api_support import add_audio, make_lesson, run_mock_pipeline
     done = make_lesson(root)
     add_audio(done)
     run_mock_pipeline(done, with_review=True, auto_accept=True)
-    second = os.path.join(root, SECOND_LESSON)
-    os.makedirs(second)
-    with open(os.path.join(second, "info.yaml"), "w", encoding="utf-8") as f:
-        f.write(INFO_YAML.replace("2026-09-05", "2026-09-12").replace("BIOCHIMICA", "FISIOLOGIA")
-                .replace("Lipidi", "Il rene"))
-    with open(os.path.join(second, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
-        f.write(TRANSCRIPT_MD.replace("BIOCHIMICA", "FISIOLOGIA"))
+    _plain_lesson(root, "2026-09-12", "FISIOLOGIA", "Il rene")
+    for date, materia, argomenti in (("2026-09-19", "FARMACOLOGIA", "Recettori"),
+                                     ("2026-09-20", "PATOLOGIA", "Infiammazione")):
+        lesson = _plain_lesson(root, date, materia, argomenti)
+        add_audio(lesson)
+        run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sull'outline
+        approve_outline(lesson, channel="api")
+        run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sulle issue
+    # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
+    from rt.storage.migrate import migrate_storage
+    report = migrate_storage(root)
+    if report.errors:
+        raise RuntimeError("; ".join(report.errors))
 
 
 def main() -> int:
