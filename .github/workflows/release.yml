@@ -25,6 +25,23 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/check_release.py --tag "$RELEASE_TAG" --output dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build SPA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Package SPA
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          archive="rt-spa-${RELEASE_TAG#v}.tar.gz"
+          tar -C frontend/dist -czf "dist/$archive" .
+          (cd dist && shasum -a 256 "$archive" >> SHA256SUMS)
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

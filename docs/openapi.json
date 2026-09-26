@@ -1367,6 +1367,26 @@
         "title": "LessonsRootIn",
         "type": "object"
       },
+      "LoginLink": {
+        "properties": {
+          "expires_in": {
+            "description": "Secondi di validità",
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Link da aprire nel browser: apre la sessione una sola volta",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_in"
+        ],
+        "title": "LoginLink",
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "actor": {
@@ -2511,6 +2531,42 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth/login-link": {
+      "post": {
+        "operationId": "create_login_link_api_v1_auth_login_link_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Crea un link di accesso monouso per il browser",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
     "/api/v1/auth/me": {
       "get": {
         "operationId": "me_api_v1_auth_me_get",

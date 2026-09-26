@@ -12,3 +12,4 @@ docs/MAINTENANCE.md export-ignore
 docs/INTERFACE_DIRECTION.md export-ignore
 .gitattributes export-ignore
 .gitignore export-ignore
+frontend/ export-ignore

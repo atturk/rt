@@ -729,13 +729,20 @@ def _ensure_database_or_exit(command: Optional[str]) -> None:
 
 def cmd_web(args: argparse.Namespace) -> None:
     """Avvia la web app nell'ambiente RT, mantenendo il terminale come console log."""
+    if args.spa:
+        from rt.api.launcher import run_spa
+        from rt.api.server import DEFAULT_PORT
+        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser)
+        if code:
+            sys.exit(code)
+        return
     try:
         from rt.web.app import main as web_main
     except ModuleNotFoundError as exc:
         if exc.name == "gradio":
             raise SystemExit("Interfaccia web mancante. Esegui 'rt -u' per installare le dipendenze e riprova.") from exc
         raise
-    argv = ["--port", str(args.port)]
+    argv = ["--port", str(args.port or 7860)]
     if args.lessons_root:
         argv += ["--lessons-root", args.lessons_root]
     if args.no_browser:
@@ -793,7 +800,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
 
     p_web = subparsers.add_parser("web", help="Avvia l'interfaccia web locale e mostra i log nel terminale")
     p_web.add_argument("--lessons-root", help="Cartella delle lezioni")
-    p_web.add_argument("--port", type=int, default=7860, help="Porta locale (default: 7860)")
+    p_web.add_argument("--port", type=int, default=None, help="Porta locale (default: 7860, con --spa 8765)")
+    p_web.add_argument("--spa", action="store_true", help="Nuova interfaccia web (API + worker + SPA) al posto di Gradio")
     p_web.add_argument("--no-browser", action="store_true", help="Non aprire automaticamente il browser")
     p_web.add_argument("--log-file", help="Percorso del log diagnostico")
     p_web.set_defaults(func=cmd_web)

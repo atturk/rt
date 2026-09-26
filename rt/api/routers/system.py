@@ -37,6 +37,11 @@ class SessionInfo(BaseModel):
 def create_session(body: SessionRequest, request: Request, response: Response) -> SessionInfo:
     if not request.app.state.auth_disabled and not auth.verify_token(body.token):
         raise ApiError(401, "unauthorized", "Token non valido.")
+    return SessionInfo(csrf_token=open_browser_session(request, response))
+
+
+def open_browser_session(request: Request, response: Response) -> str:
+    """Crea la sessione e imposta i cookie di sessione e CSRF; restituisce il valore CSRF."""
     session_id = auth.create_session()
     csrf = auth.secrets.token_urlsafe(24)
     max_age = auth.SESSION_DAYS * 86400
@@ -45,7 +50,20 @@ def create_session(body: SessionRequest, request: Request, response: Response) -
                         samesite="strict", secure=secure, path="/")
     response.set_cookie(auth.CSRF_COOKIE, csrf, max_age=max_age, httponly=False,
                         samesite="strict", secure=secure, path="/")
-    return SessionInfo(csrf_token=csrf)
+    return csrf
+
+
+class LoginLink(BaseModel):
+    url: str = Field(description="Link da aprire nel browser: apre la sessione una sola volta")
+    expires_in: int = Field(description="Secondi di validità")
+
+
+@router.post("/auth/login-link", response_model=LoginLink, summary="Crea un link di accesso monouso per il browser",
+             responses={401: {"model": ErrorResponse}})
+def create_login_link(request: Request, _actor: Actor) -> LoginLink:
+    code = auth.create_login_code()
+    return LoginLink(url=f"{str(request.base_url).rstrip('/')}/login?code={code}",
+                     expires_in=auth.LOGIN_CODE_SECONDS)
 
 
 @router.delete("/auth/session", status_code=204, summary="Chiude la sessione della SPA")

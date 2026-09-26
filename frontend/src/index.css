@@ -1,0 +1,83 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Palette della web Gradio (rt/web/style.css): nero, grigi, accento verde. */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --muted: #f1f1f1;
+  --muted-foreground: #595959;
+  --border: #d4d4d4;
+  --input: #c9c9c9;
+  --ring: #171717;
+  --card: #ffffff;
+  --sidebar: #f7f7f7;
+  --primary: #171717;
+  --primary-foreground: #ffffff;
+  --accent: #dceee7;
+  --accent-foreground: #155f52;
+  --success: #147464;
+  --success-soft: #e4f3ed;
+  --warning: #98620c;
+  --warning-soft: #fff3df;
+  --danger: #a04232;
+  --danger-soft: #ffe9e3;
+}
+
+.dark {
+  --background: #121212;
+  --foreground: #ececec;
+  --muted: #232323;
+  --muted-foreground: #a8a8a8;
+  --border: #333333;
+  --input: #444444;
+  --ring: #ececec;
+  --card: #1a1a1a;
+  --sidebar: #171717;
+  --primary: #ececec;
+  --primary-foreground: #121212;
+  --accent: #1d3a32;
+  --accent-foreground: #8fdcc4;
+  --success: #6fd3b3;
+  --success-soft: #16312a;
+  --warning: #f1c27a;
+  --warning-soft: #3a2c14;
+  --danger: #ff9f8c;
+  --danger-soft: #3d1d17;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card: var(--card);
+  --color-sidebar: var(--sidebar);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: Seravek, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
