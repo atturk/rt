@@ -5,15 +5,15 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useDecideIssue, useDecisions, useIssues, useLesson, useLessonDocument, useLessonJobs, useUndoDecision } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
-import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
+import { AudioProvider } from '@/components/lesson/audio'
 import { DocumentView } from '@/components/lesson/DocumentView'
-import { JobsPanel } from '@/components/lesson/JobsPanel'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { wordDiff } from '@/lib/diff'
 import { lessonTitle } from '@/lib/format'
+import { ISSUE_ORDERS, parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { cn } from '@/lib/utils'
 import type { Area } from './types'
 
@@ -32,6 +32,9 @@ type Issue = {
 
 const TYPE_LABELS: Record<string, string> = {
   ERR_CONCETTUALE: 'Errore concettuale',
+  ERR_REWRITE_DRIFT: 'Fedeltà al parlato',
+  ERR_ASR_LLM: 'Qualità ASR · modello',
+  ERR_ASR_ST: 'Qualità ASR · statistica',
   IMPRECISIONE: 'Imprecisione',
   OMISSIONE: 'Omissione',
   CHIARIMENTO: 'Chiarimento',
@@ -43,6 +46,10 @@ const SEVERITY: Record<string, [string, 'danger' | 'warning' | 'neutral']> = {
 }
 const issueOf = (item: IssueItem) => item.issue as unknown as Issue
 const idAt = (list: IssueItem[], i: number) => (list[i] ? issueOf(list[i]).id : undefined)
+const sortKey = (item: IssueItem) => {
+  const issue = issueOf(item)
+  return { type: issue.type, severity: issue.severity, startSeconds: item.context?.start_s }
+}
 
 const DECISIONS: Record<string, string> = { accepted: 'accettata', rejected: 'originale mantenuto', edited: 'modificata' }
 
@@ -78,17 +85,14 @@ function IssueDetail({
   busy,
   editing,
   setEditing,
-  hasAudio,
 }: {
   item: IssueItem
   onDecide: (decision: 'accepted' | 'rejected' | 'edited', text?: string) => void
   busy: boolean
   editing: boolean
   setEditing: (v: boolean) => void
-  hasAudio: boolean
 }) {
   const issue = item.issue as unknown as Issue
-  const { seek } = useLessonAudio()
   const [text, setText] = useState(issue.suggested_fix ?? issue.claim)
   const [sevLabel, sevTone] = SEVERITY[issue.severity] ?? [issue.severity, 'neutral']
   const ctx = item.context
@@ -98,11 +102,6 @@ function IssueDetail({
         <h2 className="text-sm font-bold">{TYPE_LABELS[issue.type] ?? issue.type}</h2>
         <Badge tone={sevTone}>gravità {sevLabel}</Badge>
         {item.decision && <Badge tone="success">{DECISIONS[item.decision.decision] ?? item.decision.decision}</Badge>}
-        {ctx?.start_s != null && (
-          <Button variant="outline" size="sm" className="ml-auto h-7" disabled={!hasAudio} onClick={() => seek(ctx.start_s!)}>
-            Ascolta {ctx.timecode}
-          </Button>
-        )}
       </div>
       {ctx?.unit_info && <p className="text-[11px] text-muted-foreground">Unità {ctx.unit_info}</p>}
       {issue.suggested_fix ? <Diff before={issue.claim} after={issue.suggested_fix} /> : <blockquote className="text-xs">{issue.claim}</blockquote>}
@@ -176,8 +175,9 @@ export function ReviewPage() {
   const [notice, setNotice] = useState<string | null>(null)
 
   const items = issues.data?.items ?? []
-  const pending = items.filter((i) => !i.decision)
-  const decided = items.filter((i) => i.decision)
+  const order = parseIssueOrder(params.get('ordine'))
+  const pending = sortIssues(items.filter((i) => !i.decision), order, sortKey)
+  const decided = sortIssues(items.filter((i) => i.decision), order, sortKey)
   const ordered = [...pending, ...decided]
   const selectedId = params.get('issue') ?? (pending[0] ? issueOf(pending[0]).id : undefined) ?? (items[0] ? issueOf(items[0]).id : undefined) ?? null
   const selected = items.find((i) => issueOf(i).id === selectedId) ?? null
@@ -185,12 +185,18 @@ export function ReviewPage() {
   const claim = selectedIssue?.claim
   const unitOfClaim = selectedIssue?.unit_id ?? null
 
-
   const select = (issueId: string | null | undefined) => {
     if (!issueId) return
     setEditing(false)
     const next = new URLSearchParams(params)
     next.set('issue', issueId)
+    setParams(next, { replace: true })
+  }
+
+  const setOrder = (value: string) => {
+    const next = new URLSearchParams(params)
+    if (value === 'cronologico') next.delete('ordine')
+    else next.set('ordine', value)
     setParams(next, { replace: true })
   }
 
@@ -294,13 +300,29 @@ export function ReviewPage() {
                 busy={busy}
                 editing={editing}
                 setEditing={setEditing}
-                hasAudio={l.has_audio}
               />
             ) : (
               <Card className="p-4 text-sm text-muted-foreground">Nessuna issue per questa lezione.</Card>
             )}
-            <JobsPanel lessonId={id} />
-            <Card className="max-h-[45vh] overflow-y-auto p-2">
+            <Card className="max-h-[60vh] overflow-y-auto p-2">
+              <fieldset className="mb-2 flex flex-wrap items-center gap-1 px-2 py-1" data-testid="issue-order">
+                <legend className="sr-only">Ordina le issue</legend>
+                <span className="mr-1 text-[11px] text-muted-foreground" aria-hidden="true">
+                  Ordina:
+                </span>
+                {ISSUE_ORDERS.map((o) => (
+                  <Button
+                    key={o.value}
+                    variant={order === o.value ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7"
+                    aria-pressed={order === o.value}
+                    onClick={() => setOrder(o.value)}
+                  >
+                    {o.label}
+                  </Button>
+                ))}
+              </fieldset>
               {[
                 ['Da decidere', pending],
                 ['Decise', decided],

@@ -52,7 +52,7 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 
 | Metodo e percorso | Cosa restituisce | Equivalente CLI |
 |---|---|---|
-| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo | dashboard `rt` |
+| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo (`q`: testo su cartella, titolo, argomenti, materia; la SPA carica l'elenco completo e filtra nel browser) | dashboard `rt` |
 | `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio | `rt status`, `rt cost` |
 | `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione | `rt validate-outline`, `rt validate-draft` |
 | `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`); nell'HTML l'intestazione di ogni unità ha `data-unit-id` e la riga del suo timecode `data-unit-timecode` | anteprima / file finale |
@@ -63,6 +63,14 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 | `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |
 | `GET /costs` | Costi LLM di tutte le lezioni, per lezione e per job | `rt cost` |
 
+Il riepilogo di ogni lezione in `GET /lessons` (freschezza delle fasi, issue pendenti, costi)
+richiede centinaia di letture; il processo dell'API lo tiene in cache per lezione. La chiave è
+un'impronta degli input calcolata a ogni richiesta con due query (nome, hash, mtime e
+dimensione dei file della lezione nel DB; numero e ultimo id delle chiamate LLM) più uno `stat`
+dei file per le lezioni ancora in cartella: ogni scrittura, anche dal worker, dalla CLI o dal bot,
+cambia l'impronta e la lezione si ricalcola. Con 20 lezioni la prima richiesta costa circa
+0,9 s, le successive circa 40 ms.
+
 ### Impostazioni (RT4-E4)
 
 La logica vive in `rt/services/settings_service.py` e `rt/services/connections_service.py`
@@ -71,7 +79,7 @@ segreto: solo `set: true/false`.
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
-| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing; `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
+| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
 | `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
 | `PUT /settings/worker` | Job in parallelo del worker di `rt web` (1-4, default 2); `GET /settings` riporta anche i worker attivi ora | `rt worker --concurrency` |
 | `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
@@ -81,6 +89,9 @@ segreto: solo `set: true/false`.
 | `PUT /settings/phases/{job}` | Connessione e modello per outline, rewrite, review, recall, image_description, image_unit_judge | `rt config --models` |
 | `GET/PUT /settings/routes/{job}/{role}` | Route primaria, secondaria, fallback | file `config/*.yaml` |
 | `PUT /settings/pricing` | Pricing custom per provider e modello | `rt config` |
+| `POST /settings/models/test` | Prova connessione e modello (anche non salvati): chiamata minima e sincrona (prompt di poche parole, 16 token di uscita, timeout 20 s) con esito, latenza, stato HTTP ed errore del provider sanificato; con `mock` o `RT_API_MOCK=1` risponde subito senza rete | — |
+| `PUT /settings/web-search` | URL base di SearXNG (`searxng_base_url` in `general.yaml`, vuoto lo toglie); letto da `add_images` | `config/general.yaml` |
+| `POST /settings/web-search/test` | Ricerca immagini di prova su SearXNG (timeout 10 s): numero di risultati, o l'errore (anche il formato json non abilitato) | — |
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
 | `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
 

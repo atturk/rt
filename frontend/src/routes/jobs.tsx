@@ -7,7 +7,7 @@ import { useLesson, useLessons } from '@/api/hooks'
 import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
-import { JobsIndicator } from '@/components/jobs/JobsIndicator'
+import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -422,7 +422,6 @@ export const jobsArea: Area = {
   ],
   nav: [
     { to: '/importa', label: 'Importa', icon: Upload },
-    { to: '/job', label: 'Job', icon: Activity },
+    { to: '/job', label: 'Job', icon: Activity, badge: JobsNavBadge },
   ],
-  header: JobsIndicator,
 }

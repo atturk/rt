@@ -12,7 +12,7 @@ import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { Field, SecretBadge } from './common'
 import { LessonsRootForm } from './general'
-import { NewConnectionForm } from './models'
+import { ModelTest, NewConnectionForm, PhaseRows } from './models'
 
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
@@ -137,8 +137,54 @@ export function SetupWizard({ settings }: { settings: Settings }) {
   )
 }
 
-/** Un modello per tutte le sei fasi; per differenziarle c'è la pagina Modelli. */
+/** Modelli: di norma uno solo per tutte le sei fasi; "Scegli per ogni fase" mostra le righe
+ * della pagina Modelli. La scelta sta nell'URL (?modelli=per-fase), così resta dopo la ricarica. */
 function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => void }) {
+  const [params, setParams] = useSearchParams()
+  // Stato locale per il radio controllato, copiato nell'URL (che si aggiorna con una navigazione).
+  const [perPhase, setPerPhase] = useState(params.get('modelli') === 'per-fase')
+  function setMode(next: boolean) {
+    setPerPhase(next)
+    const updated = new URLSearchParams(params)
+    if (next) updated.set('modelli', 'per-fase')
+    else updated.delete('modelli')
+    setParams(updated, { replace: true })
+  }
+
+  if (settings.connections.length === 0) return <Alert tone="warning">Crea prima una connessione nel passo precedente.</Alert>
+  return (
+    <div className="flex flex-col gap-4">
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="sr-only">Come scegliere i modelli</legend>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input type="radio" name="wizard-models-mode" className="size-4 accent-current" checked={!perPhase} onChange={() => setMode(false)} />
+          Usa lo stesso modello per tutte le fasi
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input type="radio" name="wizard-models-mode" className="size-4 accent-current" checked={perPhase} onChange={() => setMode(true)} />
+          Scegli per ogni fase
+        </label>
+      </fieldset>
+      {perPhase ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">Ogni fase si salva con il suo pulsante; Prova fa una chiamata minima prima di salvare.</p>
+          <PhaseRows settings={settings} />
+          {stepDone(settings, 2) ? (
+            <div>
+              <Button onClick={onDone}>Continua</Button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Assegna un modello a tutte le fasi per continuare.</p>
+          )}
+        </div>
+      ) : (
+        <SameModelForm settings={settings} onDone={onDone} />
+      )}
+    </div>
+  )
+}
+
+function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () => void }) {
   const assign = useAssignAllPhases()
   const first = settings.phases.find((p) => p.connection) ?? null
   const [connection, setConnection] = useState(first?.connection ?? settings.connections[0]?.name ?? '')
@@ -152,9 +198,8 @@ function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => vo
     assign.mutate({ jobs: settings.phases.map((p) => p.job), connection, model: model.trim() }, { onSuccess: onDone })
   }
 
-  if (settings.connections.length === 0) return <Alert tone="warning">Crea prima una connessione nel passo precedente.</Alert>
   return (
-    <form className="flex flex-col gap-3" onSubmit={submit}>
+    <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Stesso modello per tutte le fasi">
       <p className="text-sm text-muted-foreground">Il modello scelto viene usato per outline, rewrite, review, recall e immagini.</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Connessione" htmlFor="wizard-connection">
@@ -183,10 +228,11 @@ function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => vo
         ))}
       </ul>
       {error && <Alert tone="danger">{error}</Alert>}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <Button type="submit" disabled={pending || !connection || !model.trim()}>
           Usa per tutte le fasi
         </Button>
+        <ModelTest connection={connection} model={model} className="contents" resultClassName="order-last basis-full" />
         {stepDone(settings, 2) && (
           <Button variant="outline" onClick={onDone}>
             Continua
