@@ -2450,6 +2450,29 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "Waveform": {
+        "properties": {
+          "peaks": {
+            "description": "Livelli 3-72, circa 300 barre; vuoto se ffmpeg manca",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Peaks",
+            "type": "array"
+          },
+          "ready": {
+            "description": "False mentre il calcolo è in corso: riprova tra poco",
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready",
+          "peaks"
+        ],
+        "title": "Waveform",
+        "type": "object"
+      },
       "WorkerInfo": {
         "properties": {
           "current_job_id": {
@@ -3664,6 +3687,95 @@
           }
         ],
         "summary": "Audio della lezione (supporta Range)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/audio/waveform": {
+      "get": {
+        "operationId": "get_waveform_api_v1_lessons__lesson_id__audio_waveform_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Waveform"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Forma d'onda dell'audio per il player (ready=false mentre si calcola)",
         "tags": [
           "lezioni"
         ]

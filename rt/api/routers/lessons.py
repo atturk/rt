@@ -52,10 +52,23 @@ def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 @router.get("/lessons/{lesson_id}/audio", summary="Audio della lezione (supporta Range)",
             response_class=FileResponse, responses={200: {"content": {"audio/*": {}}}, 206: {"description": "Contenuto parziale"}})
 def get_audio(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.audio_service import playable_audio
+    return FileResponse(playable_audio(_audio_path(lesson_dir)))
+
+
+def _audio_path(lesson_dir: str) -> str:
     path = lesson_service.lesson_audio_file(lesson_dir)
     if path is None:
         raise ApiError(404, "audio_not_found", "Nessun audio disponibile per questa lezione.")
-    return FileResponse(path)
+    return path
+
+
+@router.get("/lessons/{lesson_id}/audio/waveform", response_model=schemas.Waveform,
+            summary="Forma d'onda dell'audio per il player (ready=false mentre si calcola)")
+def get_waveform(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.audio_service import waveform
+    peaks = waveform(_audio_path(lesson_dir))
+    return {"ready": peaks is not None, "peaks": peaks or []}
 
 
 @router.get("/lessons/{lesson_id}/export", summary="Scarica il Markdown finale o un archivio con i dati della lezione",

@@ -61,6 +61,11 @@ class LessonDocument(BaseModel):
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")
 
 
+class Waveform(BaseModel):
+    ready: bool = Field(description="False mentre il calcolo è in corso: riprova tra poco")
+    peaks: List[int] = Field(description="Livelli 3-72, circa 300 barre; vuoto se ffmpeg manca")
+
+
 class OutlineUnit(BaseModel):
     id: str
     title: str

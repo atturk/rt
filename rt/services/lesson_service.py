@@ -263,9 +263,34 @@ def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     from markdown_it import MarkdownIt
     markdown = load_markdown_preview(lesson_dir)
     final = fs.isfile(lesson_path(lesson_dir, "rielaborato.md"))
+    sections = document_sections(lesson_dir)
     # html=False: l'HTML grezzo del Markdown viene escapato, quindi l'output è sicuro.
-    html = MarkdownIt("commonmark", {"html": False}).render(markdown)
-    return {"final": final, "markdown": markdown, "html": html, "sections": document_sections(lesson_dir)}
+    md = MarkdownIt("commonmark", {"html": False})
+    tokens = md.parse(markdown)
+    _mark_unit_blocks(tokens, sections)
+    html = md.renderer.render(tokens, md.options, {})
+    return {"final": final, "markdown": markdown, "html": html, "sections": sections}
+
+
+def _mark_unit_blocks(tokens: list, sections: List[Dict[str, Any]]) -> None:
+    """Marca nell'HTML l'intestazione di ogni unità ('### <id> <titolo>', come la scrive
+    build) con data-unit-id, e la riga del timecode che la segue con data-unit-timecode:
+    la SPA ci aggancia i timecode strutturati di 'sections' senza cercarli nel testo."""
+    by_id = {s["unit_id"]: s for s in sections}
+    for i, token in enumerate(tokens):
+        if token.type != "heading_open" or token.tag not in ("h2", "h3") or i + 1 >= len(tokens):
+            continue
+        unit_id = tokens[i + 1].content.split(" ", 1)[0].rstrip(".")
+        section = by_id.get(unit_id)
+        if section is None:
+            continue
+        token.attrSet("data-unit-id", unit_id)
+        token.attrSet("id", f"unit-{unit_id}")
+        nxt = i + 3
+        if (nxt + 1 < len(tokens) and tokens[nxt].type == "paragraph_open"
+                and section.get("start_formatted")
+                and tokens[nxt + 1].content.strip() == section["start_formatted"]):
+            tokens[nxt].attrSet("data-unit-timecode", unit_id)
 
 
 # ---------------------------------------------------------------- audio

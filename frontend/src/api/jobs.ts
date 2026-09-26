@@ -147,16 +147,23 @@ export type StreamStatus = 'connecting' | 'open' | 'reconnecting' | 'ended' | 'e
  * se poi il job riparte (decisione presa) lo stream si riapre dall'ultimo id.
  * Ogni evento fa rileggere il job dall'API, la fine anche lezioni e outline.
  */
-export function useJobEvents(jobId: string, job?: Pick<Schemas['Job'], 'state' | 'lesson_id'>, dataUpdatedAt = 0) {
+export function useJobEvents(
+  jobId: string,
+  job?: Pick<Schemas['Job'], 'state' | 'lesson_id'>,
+  dataUpdatedAt = 0,
+  onEvent?: (event: JobEvent) => void,
+) {
   const client = useQueryClient()
   const [events, setEvents] = useState<JobEvent[]>([])
   const [status, setStatus] = useState<StreamStatus>('connecting')
   const [endedAt, setEndedAt] = useState(0)
   const lastId = useRef(0)
   const lessonId = useRef(job?.lesson_id)
+  const onEventRef = useRef(onEvent)
   useEffect(() => {
     lessonId.current = job?.lesson_id
-  }, [job?.lesson_id])
+    onEventRef.current = onEvent
+  }, [job?.lesson_id, onEvent])
 
   // riaperto solo se, dopo la fine, l'API dice che il job è di nuovo attivo
   const shouldStream = !!jobId && (endedAt === 0 || (dataUpdatedAt > endedAt && isActive(job?.state)))
@@ -182,6 +189,7 @@ export function useJobEvents(jobId: string, job?: Pick<Schemas['Job'], 'state' |
       setEvents((current) => mergeEvents(current, [event]))
       setStatus('open')
       refetchJob()
+      onEventRef.current?.(event)
     }
     const types = [
       'job_queued', 'job_started', 'job_requeued', 'job_resumed', 'job_cancel_requested', 'job_waiting', 'job_finished',

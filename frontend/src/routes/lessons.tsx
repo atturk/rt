@@ -1,8 +1,14 @@
-import { LayoutDashboard } from 'lucide-react'
+import { Download, LayoutDashboard } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
-import { useLesson, useLessons } from '@/api/hooks'
+import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
+import { AudioPlayer } from '@/components/lesson/AudioPlayer'
+import { AudioProvider } from '@/components/lesson/audio'
+import { CostPanel } from '@/components/lesson/CostPanel'
+import { DocumentView } from '@/components/lesson/DocumentView'
+import { JobsPanel } from '@/components/lesson/JobsPanel'
+import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { Alert } from '@/components/ui/alert'
@@ -121,29 +127,93 @@ export function DashboardPage() {
   )
 }
 
-/** Intestazione della lezione; documento, audio e azioni arrivano con RT4-F2. */
 export function LessonPage() {
   const id = Number(useParams().lessonId)
   const lesson = useLesson(id)
+  const document = useLessonDocument(id)
   if (lesson.isPending) return <p className="text-sm text-muted-foreground">Carico la lezione…</p>
   if (lesson.isError) return <Alert tone="danger">{errorMessage(lesson.error)}</Alert>
   const l = lesson.data
+  const sections = document.data?.sections ?? []
   return (
-    <section className="flex flex-col gap-4">
-      <Link to="/" className="text-xs text-muted-foreground hover:underline">
-        ← Tutte le lezioni
-      </Link>
-      <Card className="p-5">
-        <h1 className="text-xl font-bold tracking-tight">{lessonTitle(l)}</h1>
-        <p className="mb-3 mt-1 text-xs text-muted-foreground">
-          {[l.materia, l.data, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
-        </p>
-        <PhaseBadges phases={l.phases} />
-      </Card>
-      <LessonJobBanner lessonId={l.id} />
-    </section>
+    <AudioProvider>
+      <section className="flex flex-col gap-4">
+        <Link to="/" className="text-xs text-muted-foreground hover:underline">
+          ← Tutte le lezioni
+        </Link>
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="mr-auto">
+              <h1 className="text-xl font-bold tracking-tight">{lessonTitle(l)}</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            {document.data?.final && (
+              <div className="flex flex-wrap gap-2" aria-label="Scarica">
+                <a className={linkButton} href={`/api/v1/lessons/${id}/export?format=markdown`} download>
+                  <Download className="size-4" aria-hidden /> Markdown
+                </a>
+                <a className={linkButton} href={`/api/v1/lessons/${id}/export?format=zip&scope=all`} download>
+                  <Download className="size-4" aria-hidden /> Tutti i dati (zip)
+                </a>
+              </div>
+            )}
+          </div>
+          <div className="mt-3">
+            <PhaseBadges phases={l.phases} />
+          </div>
+          <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t pt-3 text-xs">
+            <div className="flex gap-1.5">
+              <dt className="text-muted-foreground">Scaletta approvata</dt>
+              <dd data-testid="outline-approved">{l.outline_approved ? 'sì' : 'no'}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-muted-foreground">Segmenti</dt>
+              <dd>{l.segment_count}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-muted-foreground">Issue da valutare</dt>
+              <dd>{l.pending_issues}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-muted-foreground">Costo</dt>
+              <dd className="tabular-nums">{formatCost(l.cost_usd)}</dd>
+            </div>
+          </dl>
+          {l.error && <p className="mt-2 text-xs text-danger">{l.error}</p>}
+        </Card>
+        <LessonJobBanner lessonId={l.id} />
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="flex min-w-0 flex-col gap-4">
+            {l.has_audio && <AudioPlayer lessonId={id} sections={sections} />}
+            <Card className="px-6 py-5">
+              {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
+              {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
+              {document.data && (
+                <>
+                  {!document.data.final && (
+                    <Alert className="mb-4">Anteprima dalla bozza: il documento finale arriva con la fase Documento (build).</Alert>
+                  )}
+                  <DocumentView document={document.data} hasAudio={l.has_audio} />
+                </>
+              )}
+            </Card>
+          </div>
+          <aside className="flex flex-col gap-4">
+            <PhasePanel lessonId={id} units={sections} />
+            <JobsPanel lessonId={id} />
+            <CostPanel lesson={l} />
+          </aside>
+        </div>
+      </section>
+    </AudioProvider>
   )
 }
+
+const linkButton =
+  'inline-flex h-8 items-center gap-2 rounded-md border border-input bg-card px-3 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring'
 
 export const lessonsArea: Area = {
   routes: [
