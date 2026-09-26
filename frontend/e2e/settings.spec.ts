@@ -20,7 +20,7 @@ type Settings = {
 
 const settings = (page: Page) => apiGet<Settings>(page.request, '/settings')
 
-// Connessione verso una porta chiusa: la prova della chiave fallisce subito e senza rete.
+// Connessione verso una porta chiusa: nessuna chiamata LLM può uscire dai test.
 const CONNECTION = 'Server locale'
 const BASE_URL = 'http://127.0.0.1:9/v1'
 const KEY_1 = 'sk-e2e-prima-chiave-0123456789abcdef'
@@ -240,15 +240,16 @@ test('chiavi: stato impostata/mancante, sostituzione e prova con esito', async (
   await expect(row.locator('input[type=password]')).toHaveValue('')
   await expectNoSecretIn(page)
 
-  // Prova: job credential_test eseguito dal worker, esito sanificato nella pagina.
+  // Prova: job credential_test eseguito dal worker del server e2e (rt worker --mock, nessuna
+  // chiamata di rete), esito sanificato nella pagina.
   await expect(row.getByLabel(`Modello per provare ${cred.name}`)).toHaveValue('modello/outline')
   await row.getByRole('button', { name: 'Prova' }).click()
-  await expect(row.getByTestId('credential-test-result')).toContainText('Non riuscita', { timeout: 45_000 })
+  await expect(row.getByTestId('credential-test-result')).toHaveText('Riuscita: Mock: nessuna chiamata di rete.', { timeout: 30_000 })
   await expectNoSecretIn(page)
   const jobs = await apiGet<{ type: string; state: string; result: { ok: boolean } | null }[]>(page.request, '/jobs?limit=5')
   const tested = jobs.find((j) => j.type === 'credential_test')!
   expect(tested.state).toBe('succeeded')
-  expect(tested.result?.ok).toBe(false)
+  expect(tested.result?.ok).toBe(true)
 
   // Il token del bot salvato prima risulta impostato; la chiave STT anche.
   await expect(page.locator('[data-testid=secret-row][data-name=RT_TELEGRAM_BOT_TOKEN]').getByText('Impostata')).toBeVisible()
