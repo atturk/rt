@@ -7,6 +7,7 @@ import { useSettings, type Settings } from '@/api/settings'
 import { LessonsRootSection, TelegramSection, TranscriptionSection } from '@/components/settings/general'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, NewConnectionSection, PhasesSection, RoutesSection } from '@/components/settings/models'
+import { WebSearchSection } from '@/components/settings/websearch'
 import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { Alert } from '@/components/ui/alert'
@@ -39,6 +40,7 @@ const TABS = [
   { to: '/impostazioni/modelli', label: 'Modelli' },
   { to: '/impostazioni/chiavi', label: 'Chiavi' },
   { to: '/impostazioni/costi', label: 'Costi' },
+  { to: '/impostazioni/ricerca-web', label: 'Ricerca web' },
 ]
 
 function SettingsLayout() {
@@ -47,8 +49,8 @@ function SettingsLayout() {
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight">Impostazioni</h1>
-        <Link to={SETUP_PATH} className="text-xs text-muted-foreground underline-offset-4 hover:underline">
-          Configurazione guidata
+        <Link to={SETUP_PATH} className="text-sm font-bold text-accent-foreground hover:underline">
+          Configurazione guidata <span aria-hidden>→</span>
         </Link>
       </div>
       {settings.data?.setup_required && (
@@ -108,6 +110,7 @@ export const settingsArea: Area = {
         },
         { path: 'chiavi', element: page((s) => <SecretsSection settings={s} />) },
         { path: 'costi', element: page((s) => <PricingSection settings={s} />) },
+        { path: 'ricerca-web', element: page((s) => <WebSearchSection settings={s} />) },
       ],
     },
   ],

@@ -1484,6 +1484,99 @@
         "title": "ModelIn",
         "type": "object"
       },
+      "ModelTestIn": {
+        "properties": {
+          "connection": {
+            "title": "Connection",
+            "type": "string"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection",
+          "model"
+        ],
+        "title": "ModelTestIn",
+        "type": "object"
+      },
+      "ModelTestOut": {
+        "properties": {
+          "connection": {
+            "title": "Connection",
+            "type": "string"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durata della chiamata in millisecondi",
+            "title": "Latency Ms"
+          },
+          "message": {
+            "description": "Esito leggibile, anche l'errore del provider (sanificato)",
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inizio della risposta del modello",
+            "title": "Reply"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato HTTP della risposta del provider",
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "ok",
+          "connection",
+          "provider",
+          "model",
+          "message"
+        ],
+        "title": "ModelTestOut",
+        "type": "object"
+      },
       "Outline": {
         "properties": {
           "approval": {
@@ -2284,6 +2377,9 @@
           },
           "transcription": {
             "$ref": "#/components/schemas/Transcription"
+          },
+          "web_search": {
+            "$ref": "#/components/schemas/WebSearchSettings"
           }
         },
         "required": [
@@ -2293,6 +2389,7 @@
           "connections",
           "credentials",
           "pricing",
+          "web_search",
           "secrets_encrypted"
         ],
         "title": "Settings",
@@ -2547,6 +2644,89 @@
           "peaks"
         ],
         "title": "Waveform",
+        "type": "object"
+      },
+      "WebSearchIn": {
+        "properties": {
+          "searxng_base_url": {
+            "default": "",
+            "description": "Vuoto per rimuoverlo",
+            "title": "Searxng Base Url",
+            "type": "string"
+          }
+        },
+        "title": "WebSearchIn",
+        "type": "object"
+      },
+      "WebSearchSettings": {
+        "properties": {
+          "searxng_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL base di SearXNG per la ricerca immagini web",
+            "title": "Searxng Base Url"
+          }
+        },
+        "title": "WebSearchSettings",
+        "type": "object"
+      },
+      "WebSearchTestIn": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "searxng_base_url": {
+            "title": "Searxng Base Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "searxng_base_url"
+        ],
+        "title": "WebSearchTestIn",
+        "type": "object"
+      },
+      "WebSearchTestOut": {
+        "properties": {
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "results": {
+            "description": "Immagini restituite dalla ricerca di prova",
+            "title": "Results",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "results",
+          "message"
+        ],
+        "title": "WebSearchTestOut",
         "type": "object"
       },
       "WorkerInfo": {
@@ -6487,6 +6667,92 @@
         ]
       }
     },
+    "/api/v1/settings/models/test": {
+      "post": {
+        "operationId": "post_model_test_api_v1_settings_models_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Prova connessione e modello con una chiamata minima (anche prima di salvarli)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/phases/{job}": {
       "put": {
         "operationId": "put_phase_api_v1_settings_phases__job__put",
@@ -7209,6 +7475,178 @@
           }
         ],
         "summary": "Motore di trascrizione",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/web-search": {
+      "put": {
+        "operationId": "put_web_search_api_v1_settings_web_search_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSearchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ricerca web: URL base di SearXNG",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/web-search/test": {
+      "post": {
+        "operationId": "post_web_search_test_api_v1_settings_web_search_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebSearchTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSearchTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
         "tags": [
           "impostazioni"
         ]

@@ -16,6 +16,7 @@ type Settings = {
   connections: { name: string; provider: string; base_url: string; models: string[]; credentials: { name: string; set: boolean }[] }[]
   credentials: { name: string; provider: string; env_var: string; set: boolean }[]
   pricing: Record<string, Record<string, Record<string, number>>>
+  web_search: { searxng_base_url: string | null }
 }
 
 const settings = (page: Page) => apiGet<Settings>(page.request, '/settings')
@@ -232,12 +233,12 @@ test('chiavi: stato impostata/mancante, sostituzione e prova con esito', async (
   await page.goto('/impostazioni/chiavi')
   const row = page.locator(`[data-testid=secret-row][data-name="${cred.env_var}"]`)
   await expect(row.getByText('Impostata')).toBeVisible()
-  await row.locator('input[type=password]').fill(KEY_2)
+  await row.locator('input[data-secret]').fill(KEY_2)
   await row.getByRole('button', { name: 'Salva' }).click()
   await expect(row.getByRole('status').filter({ hasText: 'Chiave salvata.' })).toBeVisible()
   await page.reload()
   await expect(row.getByText('Impostata')).toBeVisible()
-  await expect(row.locator('input[type=password]')).toHaveValue('')
+  await expect(row.locator('input[data-secret]')).toHaveValue('')
   await expectNoSecretIn(page)
 
   // Prova: job credential_test eseguito dal worker del server e2e (rt worker --mock, nessuna
@@ -262,32 +263,32 @@ test('pricing: aggiungi, ricarica, rileggi, togli', async ({ page }) => {
   const card = await section(page, 'Pricing')
   await card.getByLabel('Provider 1', { exact: true }).fill('openai_compatible')
   await card.getByLabel('Modello 1', { exact: true }).fill('modello/outline')
-  await card.getByLabel('Input 1', { exact: true }).fill('0,15')
-  await card.getByLabel('Output 1', { exact: true }).fill('0.6')
+  await card.getByLabel('IN 1', { exact: true }).fill('0,15')
+  await card.getByLabel('OUT 1', { exact: true }).fill('0.6')
   await card.getByRole('button', { name: 'Aggiungi modello' }).click()
   await card.getByLabel('Provider 2', { exact: true }).fill('openrouter')
   await card.getByLabel('Modello 2', { exact: true }).fill('altro/modello')
-  await card.getByLabel('Input 2', { exact: true }).fill('1')
-  await card.getByLabel('Output 2', { exact: true }).fill('2')
-  await card.getByLabel('Reasoning 2', { exact: true }).fill('3')
+  await card.getByLabel('IN 2', { exact: true }).fill('1')
+  await card.getByLabel('OUT 2', { exact: true }).fill('2')
+  await card.getByLabel('R 2', { exact: true }).fill('3')
   await card.getByRole('button', { name: 'Salva pricing' }).click()
   await expect(card.getByRole('status')).toHaveText('Pricing salvato.')
 
   await page.reload()
   await expect(card.getByTestId('pricing-row')).toHaveCount(2)
   await expect(card.getByLabel('Modello 1', { exact: true })).toHaveValue('modello/outline')
-  await expect(card.getByLabel('Input 1', { exact: true })).toHaveValue('0.15')
+  await expect(card.getByLabel('IN 1', { exact: true })).toHaveValue('0.15')
   expect((await settings(page)).pricing).toEqual({
     openai_compatible: { 'modello/outline': { input_per_million: 0.15, output_per_million: 0.6 } },
     openrouter: { 'altro/modello': { input_per_million: 1, output_per_million: 2, reasoning_per_million: 3 } },
   })
 
-  await card.getByLabel('Input 1', { exact: true }).fill('tanto')
+  await card.getByLabel('IN 1', { exact: true }).fill('tanto')
   await card.getByRole('button', { name: 'Salva pricing' }).click()
   await expect(card.getByRole('alert')).toContainText('inserisci un prezzo')
 
   await card.getByRole('button', { name: 'Rimuovi riga 2' }).click()
-  await card.getByLabel('Input 1', { exact: true }).fill('0.2')
+  await card.getByLabel('IN 1', { exact: true }).fill('0.2')
   await card.getByRole('button', { name: 'Salva pricing' }).click()
   await expect(card.getByRole('status')).toHaveText('Pricing salvato.')
   await page.reload()
@@ -315,7 +316,7 @@ test('configurazione guidata: passi salvati sul backend e ripresi dopo la ricari
   await expect(page.getByRole('heading', { name: 'Modelli', level: 2 })).toBeVisible()
 
   await page.getByLabel('Connessione').selectOption(CONNECTION)
-  await page.getByLabel('Modello').fill('modello/unico')
+  await page.getByLabel('Modello', { exact: true }).fill('modello/unico')
   await page.getByRole('button', { name: 'Usa per tutte le fasi' }).click()
   await expect(page).toHaveURL(/passo=4/)
   expect((await settings(page)).phases.every((p) => p.connection === CONNECTION && p.model === 'modello/unico')).toBe(true)
@@ -332,6 +333,141 @@ test('configurazione guidata: passi salvati sul backend e ripresi dopo la ricari
   await page.goto('/impostazioni/modelli')
   for (const job of JOBS) {
     await expect(page.locator(`[data-testid=phase-row][data-job="${job}"]`).getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/unico`)
+  }
+})
+
+test('modelli per fase: Prova prima di salvare (in mock) con esito e latenza', async ({ page }) => {
+  await loginViaLink(page)
+  const before = (await settings(page)).phases
+  await page.goto('/impostazioni/modelli')
+  const row = page.locator('[data-testid=phase-row][data-job="review"]')
+  await row.locator('#fase-review-modello').fill('modello/non-salvato')
+  await row.getByRole('button', { name: 'Prova il modello di Review' }).click()
+  await expect(row.getByTestId('model-test-result')).toHaveText('Raggiungibile · 0 ms · Mock: nessuna chiamata di rete.')
+  // La prova non salva: il backend ha ancora il modello di prima.
+  expect((await settings(page)).phases).toEqual(before)
+  // Cambiando il modello l'esito sparisce (vale per il valore provato).
+  await row.locator('#fase-review-modello').fill('modello/altro')
+  await expect(row.getByTestId('model-test-result')).toHaveCount(0)
+  await page.reload()
+  await expect(row.locator('#fase-review-modello')).toHaveValue(before.find((p) => p.job === 'review')!.model!)
+})
+
+test('configurazione guidata: scelta per ogni fase, con Prova', async ({ page }) => {
+  await loginViaLink(page)
+  await page.goto('/impostazioni/configurazione?passo=3')
+  // Predefinito: lo stesso modello per tutte le fasi, provabile prima di salvare.
+  await expect(page.getByRole('radio', { name: 'Usa lo stesso modello per tutte le fasi' })).toBeChecked()
+  await page.getByRole('button', { name: 'Prova il modello' }).click()
+  await expect(page.getByTestId('model-test-result')).toContainText('Raggiungibile')
+
+  await page.getByRole('radio', { name: 'Scegli per ogni fase' }).check()
+  await expect(page).toHaveURL(/modelli=per-fase/)
+  const rows = page.getByTestId('phase-row')
+  await expect(rows).toHaveCount(6)
+  for (const label of ['Outline', 'Rewrite', 'Review', 'Recall', 'Descrizione immagine', 'Giudice immagini']) {
+    await expect(page.getByRole('form', { name: `Fase ${label}` })).toBeVisible()
+  }
+  const judge = page.locator('[data-testid=phase-row][data-job="image_unit_judge"]')
+  await judge.locator('#fase-image_unit_judge-connessione').selectOption(CONNECTION)
+  await judge.locator('#fase-image_unit_judge-modello').fill('modello/giudice')
+  await judge.getByRole('button', { name: 'Prova il modello di Giudice immagini' }).click()
+  await expect(judge.getByTestId('model-test-result')).toContainText('Raggiungibile')
+  await judge.getByRole('button', { name: 'Salva' }).click()
+  await expect(judge.getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/giudice`)
+
+  await page.reload()
+  await expect(page.getByRole('radio', { name: 'Scegli per ogni fase' })).toBeChecked()
+  await expect(judge.getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/giudice`)
+  const phases = Object.fromEntries((await settings(page)).phases.map((p) => [p.job, p.model]))
+  expect(phases.image_unit_judge).toBe('modello/giudice')
+  expect(phases.outline).toBe('modello/unico')
+  await page.getByRole('button', { name: 'Continua' }).click()
+  await expect(page).toHaveURL(/passo=4/)
+})
+
+test('pricing: suggerimenti e avviso per provider o modello sconosciuti', async ({ page }) => {
+  await loginViaLink(page)
+  await page.goto('/impostazioni/costi')
+  const card = await section(page, 'Pricing')
+  await expect(card).toContainText('non considera il caching dei token')
+  // I suggerimenti vengono dalle connessioni e dai modelli in uso.
+  await expect(card.locator('#pricing-providers option[value="openai_compatible"]')).toHaveCount(1)
+  await expect(card.locator('#pricing-models option[value="modello/giudice"]')).toHaveCount(1)
+  await card.getByRole('button', { name: 'Aggiungi modello' }).click()
+  const provider = card.getByLabel('Provider 2', { exact: true })
+  const model = card.getByLabel('Modello 2', { exact: true })
+  await provider.fill('openai_compatible')
+  await model.fill('modello/giudice')
+  const row = card.getByTestId('pricing-row').nth(1)
+  await expect(row.getByTestId('field-warning')).toHaveCount(0)
+  await provider.fill('fornitore-ignoto')
+  await model.fill('modello/ignoto')
+  await expect(row.getByRole('img', { name: 'Provider non configurato' })).toBeVisible()
+  await expect(row.getByRole('img', { name: 'Modello non in uso' })).toBeVisible()
+  await expect(provider).toHaveAccessibleDescription('Provider non configurato')
+  await row.getByRole('img', { name: 'Modello non in uso' }).hover()
+  await expect(row.getByRole('tooltip', { name: 'Modello non in uso' })).toBeVisible()
+  // Etichette brevi con la spiegazione nel tooltip.
+  await expect(card.getByLabel('R 2', { exact: true })).toHaveAccessibleDescription(
+    'Costo per milione di token di ragionamento (se il provider lo fa pagare a parte)',
+  )
+  // È solo un avviso: si salva lo stesso.
+  await card.getByLabel('IN 2', { exact: true }).fill('1')
+  await card.getByLabel('OUT 2', { exact: true }).fill('2')
+  await card.getByRole('button', { name: 'Salva pricing' }).click()
+  await expect(card.getByRole('status')).toHaveText('Pricing salvato.')
+  await page.reload()
+  await expect(card.getByTestId('pricing-row')).toHaveCount(2)
+  expect((await settings(page)).pricing['fornitore-ignoto']).toEqual({ 'modello/ignoto': { input_per_million: 1, output_per_million: 2 } })
+  await card.getByRole('button', { name: 'Rimuovi riga 2' }).click()
+  await card.getByRole('button', { name: 'Salva pricing' }).click()
+  await expect(card.getByRole('status')).toHaveText('Pricing salvato.')
+})
+
+test('ricerca web: SearXNG provato, salvato e riletto dopo la ricarica', async ({ page }) => {
+  const url = serverState().searxng_url
+  await loginViaLink(page)
+  await page.goto('/impostazioni')
+  await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: 'Ricerca web' }).click()
+  await expect(page).toHaveURL(/\/impostazioni\/ricerca-web$/)
+  const card = await section(page, 'Ricerca web')
+  const field = card.getByLabel('URL base di SearXNG')
+  await expect(field).toHaveAttribute('placeholder', 'http://localhost:8088')
+  await expect(field).toHaveValue('')
+
+  // Prova contro un server chiuso: errore leggibile.
+  await field.fill('http://127.0.0.1:9')
+  await card.getByRole('button', { name: 'Prova' }).click()
+  await expect(card.getByTestId('searxng-test-result')).toContainText('Impossibile raggiungere SearXNG')
+
+  // SearXNG finto del server e2e: tre immagini.
+  await field.fill(url)
+  await card.getByRole('button', { name: 'Prova' }).click()
+  await expect(card.getByTestId('searxng-test-result')).toContainText('3 immagini')
+  await card.getByRole('button', { name: 'Salva' }).click()
+  await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+
+  await page.reload()
+  await expect(field).toHaveValue(url)
+  expect((await settings(page)).web_search.searxng_base_url).toBe(url)
+})
+
+test('campi segreti: niente type="password" (il portachiavi non propone password)', async ({ page }) => {
+  await loginViaLink(page)
+  for (const path of ['/impostazioni', '/impostazioni/modelli', '/impostazioni/chiavi']) {
+    await page.goto(path)
+    await expect(page.locator('input[data-secret]').first()).toBeVisible()
+    await expect(page.locator('input[type=password]')).toHaveCount(0)
+    for (const input of await page.locator('input[data-secret]').all()) {
+      await expect(input).toHaveAttribute('type', 'text')
+      await expect(input).toHaveAttribute('autocomplete', 'off')
+      await expect(input).toHaveAttribute('data-1p-ignore', '')
+      await expect(input).toHaveAttribute('data-lpignore', 'true')
+      expect(`${await input.getAttribute('id')} ${await input.getAttribute('name')}`).not.toMatch(/password/i)
+      // Il valore resta mascherato.
+      expect(await input.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-text-security'))).toBe('disc')
+    }
   }
 })
 

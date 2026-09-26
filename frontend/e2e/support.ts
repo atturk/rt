@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 
-type ServerState = { base_url: string; token: string; lessons_root: string }
+type ServerState = { base_url: string; token: string; lessons_root: string; searxng_url: string }
 
 export function serverState(): ServerState {
   const file = fileURLToPath(new URL('./.state/server.json', import.meta.url))

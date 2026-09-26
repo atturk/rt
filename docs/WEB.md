@@ -41,7 +41,27 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 - **Immagini:** slide, foto o PDF da integrare nel documento finale.
 - **Bot Telegram:** stato, avvio e arresto del bot.
 - **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
-  Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+  ricerca web, Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello
+  che manca; si riapre dal link **Configurazione guidata →** in cima alle impostazioni.
+  - **Modelli:** nel passo Modelli della configurazione guidata si usa di norma lo stesso modello
+    per tutte le fasi; **Scegli per ogni fase** mostra le sei fasi (Outline, Rewrite, Review,
+    Recall, Descrizione immagine, Giudice immagini) con connessione e modello ciascuna, come nella
+    scheda Modelli. Accanto a ogni **Salva** c'è **Prova**: una chiamata minima (prompt di poche
+    parole, pochi token di uscita, costo quasi nullo) alla connessione e al modello scritti nel
+    form, anche prima di salvarli. Mostra se il modello risponde, la latenza e l'eventuale errore
+    del provider.
+  - **Costi:** il provider si sceglie tra quelli delle connessioni e il modello tra quelli in uso
+    nelle fasi. Un valore diverso mostra un'icona di avviso nel campo ("Provider non configurato",
+    "Modello non in uso"), ma si salva lo stesso. IN, OUT e R sono i prezzi per milione di token
+    in input, in output e di ragionamento (se il provider lo fa pagare a parte). La stima non
+    considera il caching dei token: il costo reale può essere più basso.
+  - **Ricerca web:** l'URL base di un'istanza SearXNG (per esempio `http://localhost:8088`) per
+    cercare immagini da aggiungere alle lezioni. **Prova** fa una ricerca immagini di prova e dice
+    quante ne tornano; **Salva** lo registra nelle impostazioni, che l'aggiunta immagini rilegge a
+    ogni job. SearXNG deve avere il formato json abilitato (`search.formats` nel suo
+    `settings.yml`): se manca, la prova e la ricerca lo segnalano.
+  - I campi delle chiavi e del token del bot sono mascherati ma non sono campi password, così
+    Safari e il portachiavi di iCloud non propongono password salvate.
 
 ## Installazione e aggiornamento
 

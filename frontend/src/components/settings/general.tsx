@@ -6,6 +6,7 @@ import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
 import { parseTopicLink, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
@@ -114,10 +115,8 @@ function TranscriptionFields({
         <Input id="stt-model" value={model} disabled={!custom} onChange={(e) => setModel(e.target.value)} placeholder="whisper-1" />
       </Field>
       <Field label="Chiave API (facoltativa)" htmlFor="stt-key" hint={<>Chiave: <SecretBadge set={t.api_key_set} /></>}>
-        <Input
+        <SecretInput
           id="stt-key"
-          type="password"
-          autoComplete="off"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder={t.api_key_set ? 'Lascia vuoto per mantenere quella salvata' : ''}
@@ -232,10 +231,8 @@ function TelegramFields({
     <form className="flex flex-col gap-3" onSubmit={submit}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Token del bot" htmlFor="tg-token" hint={<>Token: <SecretBadge set={tg.bot_token_set} /></>}>
-          <Input
+          <SecretInput
             id="tg-token"
-            type="password"
-            autoComplete="off"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder={tg.bot_token_set ? 'Lascia vuoto per mantenere quello salvato' : '123456:ABC…'}

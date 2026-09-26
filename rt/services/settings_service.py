@@ -357,6 +357,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "connections": connections,
         "credentials": credentials,
         "pricing": general.get("pricing") or {},
+        "web_search": {"searxng_base_url": cfg.searxng_base_url or None},
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
         "setup_required": not (cfg.telegram.lessons_root
@@ -394,6 +395,18 @@ def save_pricing(project_root: Path, pricing: dict[str, dict[str, dict[str, Any]
         data.pop("pricing", None)
     _atomic_yaml(path, data)
     return clean
+
+
+def save_web_search(project_root: Path, searxng_base_url: str) -> str | None:
+    """URL base di SearXNG per la ricerca immagini web (vuoto lo rimuove). add_images lo legge
+    da load_config() a ogni job: nessun file da modificare a mano."""
+    from rt.services.probes import normalize_searxng_url
+    url = normalize_searxng_url(searxng_base_url)
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    data["searxng_base_url"] = url or None
+    _atomic_yaml(path, data)
+    return url or None
 
 
 def save_secret_by_name(project_root: Path, name: str, value: str) -> str:

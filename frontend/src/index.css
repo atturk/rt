@@ -172,3 +172,9 @@
   outline: 2px dashed #e0b84a;
   outline-offset: 3px;
 }
+
+/* Campi segreti (components/ui/secret-input.tsx): testo mascherato senza type="password",
+ * così Safari non propone le password del portachiavi. */
+.secret-mask {
+  -webkit-text-security: disc;
+}
