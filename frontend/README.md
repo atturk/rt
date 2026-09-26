@@ -38,7 +38,7 @@ sostituisci l'host con `localhost:5173`.
 - **Nessuno stato di dominio nel frontend.** I dati arrivano dalle query di TanStack Query
   (`src/api/hooks.ts`); dopo ogni scrittura la mutation invalida le query interessate e la
   pagina rilegge dall'API. Un valore mostrato come salvato deve esserlo sul backend. Nel
-  browser restano solo preferenze dell'interfaccia (tema) e filtri nell'URL.
+  browser restano solo preferenze dell'interfaccia (tema, barra laterale ridotta) e filtri nell'URL.
 - **Solo il client generato.** Niente `fetch` scritti a mano: `api.GET/POST/...` di
   `src/api/client.ts` (openapi-fetch) con i tipi di `schema.d.ts`, e `unwrap()` per avere i
   dati o un `ApiError` con `code` e `message` dell'API. L'header `X-CSRF-Token` si aggiunge da
@@ -53,11 +53,20 @@ sostituisci l'host con `localhost:5173`.
   rileggere il job dall'API, la fine anche lezioni e scaletta. Chi mostra l'avanzamento di un
   job (es. la vista lezione) usa `<JobLive jobId=… />` invece del polling. Gli upload passano da
   `xhrFetch` (`src/api/upload.ts`) per avere la barra di avanzamento, sempre con `api.POST`.
-- **Aree attuali**: `lessons` (dashboard e lezione), `recall` (`/recall`, `/lezioni/:id/recall`),
+- **Aree attuali**: `lessons` (dashboard e lezione), `reviews` (`/review`, elenco delle lezioni
+  con issue da valutare; la revisione è `review`, `/lezioni/:id/revisione`), `recall` (`/recall`, `/lezioni/:id/recall`),
   `images` (`/immagini`, `/lezioni/:id/immagini`), `telegram` (`/bot`; il pannello
   `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni). Gli hook di un'area
   stanno in `src/api/<area>.ts`; `src/api/jobStatus.ts` segue un job (`GET /jobs/{id}`) e
   `components/JobProgress.tsx` ne mostra l'avanzamento.
+- **Elenchi di lezioni.** Un solo `useLessons()` senza filtri; testo, materia e stato si
+  filtrano nel browser (`lib/lessonSearch.ts`, `lib/lessonFilters.ts`) con la barra
+  `components/LessonFilters.tsx`, la stessa in dashboard, Recall, Immagini e Review.
+  `GET /lessons?q=` resta per gli script.
+- **Barra laterale.** `components/Sidebar.tsx` (elenco) e `components/SubjectRail.tsx` (ridotta,
+  icone da `lib/subjectIcon.ts`, modulo puro); lo stato ridotto è una preferenza in
+  `localStorage` (`rt-sidebar-collapsed`). Una voce di menu può avere un `badge` (es. i job su
+  **Job**); `components/ui/tooltip.tsx` è il suggerimento al passaggio e al focus.
 - **Lezioni per id.** Solo gli id numerici e gli endpoint dell'API: mai percorsi di cartelle
   o file su disco.
 - **Testi in italiano**, etichette accessibili (`aria-label`, `<label>`), tema chiaro e scuro.

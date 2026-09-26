@@ -27,9 +27,20 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 
 - **Dashboard:** lezioni raggruppate per materia con filtri, stato delle fasi, issue da
   valutare e costi.
+- **Ricerca:** la dashboard e gli elenchi di Recall, Immagini e Review hanno la stessa barra:
+  testo, materia e stato. Il testo cerca nel titolo, negli argomenti, nella materia e nella data,
+  che si può scrivere come `2026-09-26`, `26/09/2026`, `26-09-2026` o `26 settembre 2026`; con
+  più parole compaiono le lezioni che le contengono tutte. Il punto interrogativo accanto a
+  **Cerca** lo ricorda (al passaggio del mouse e al focus da tastiera). Il filtro lavora
+  nel browser sull'elenco già caricato, quindi risponde subito a ogni tasto; i filtri restano
+  nell'indirizzo (`?q=&materia=&stato=`) e dopo la ricarica.
 - **Importa:** carichi l'audio, scegli data e materia e, se vuoi, avvii subito la pipeline.
 - **Job:** i job in coda e in corso con gli eventi in tempo reale; si possono annullare. Se
-  nessun worker è attivo la pagina lo segnala.
+  nessun worker è attivo la pagina lo segnala. La voce **Job** del menu porta un badge con il
+  numero di job attivi più quelli in attesa di una tua decisione (arancione se c'è una decisione
+  da prendere o nessun worker attivo).
+- **Review:** le lezioni con issue della review scientifica da valutare, con il numero per
+  ciascuna; un clic apre la revisione della lezione.
 - **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda, fasi
   con validazioni, avvio di una singola fase, costi, download del Markdown o dello zip.
 - **Scaletta:** vista ad albero dell'outline, approvazione o richiesta di modifiche.
@@ -42,6 +53,27 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 - **Bot Telegram:** stato, avvio e arresto del bot.
 - **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
   Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+
+## Barra laterale
+
+La barra a sinistra elenca le lezioni per materia. Il pulsante in alto la **riduce** a una
+colonna di icone, una per materia, e la riespande; la scelta resta nel browser anche dopo la
+ricarica. Da ridotta:
+
+- ogni icona mostra il nome completo della materia al passaggio del mouse e al focus;
+- clic o Invio aprono accanto un pannello con le lezioni della materia, senza espandere la
+  barra; un clic su una lezione la apre, Esc o un clic fuori chiudono il pannello;
+- da tastiera: Tab arriva alle icone, frecce su e giù (Home, Fine) passano fra le materie.
+
+Riespandendo la barra, le materie aperte o chiuse e la lezione selezionata restano come prima.
+Su schermi stretti la barra resta il menu a comparsa di sempre.
+
+Le icone sono le iniziali delle prime quattro parole significative del nome della materia,
+senza articoli, preposizioni e congiunzioni (anche elise: *Medicina d'urgenza* → MU); numeri e
+numeri romani in fondo restano (*Patologia generale 1* → PG1). Una iniziale è centrata, due
+affiancate, tre due sopra e una sotto, quattro in griglia 2×2. Il colore pastello viene dal
+nome: è sempre lo stesso per la stessa materia e materie con le stesse iniziali hanno colori
+diversi.
 
 ## Installazione e aggiornamento
 

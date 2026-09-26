@@ -1,11 +1,13 @@
-import { LogOut, Menu, Moon, Sun, X } from 'lucide-react'
+import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { ApiError } from '@/api/client'
 import { useLogout, useMe } from '@/api/hooks'
 import { Sidebar } from '@/components/Sidebar'
+import { SubjectRail } from '@/components/SubjectRail'
 import { Button } from '@/components/ui/button'
+import { useSidebarCollapsed } from '@/lib/sidebar'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import type { Area } from '@/routes/types'
@@ -17,6 +19,8 @@ export function Layout({ areas }: { areas: Area[] }) {
   const logout = useLogout()
   const [theme, toggleTheme] = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
+  // Da tablet in su la barra si può ridurre a una colonna di icone; su mobile resta il menu.
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed()
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -33,12 +37,14 @@ export function Layout({ areas }: { areas: Area[] }) {
   }
 
   const nav = areas.flatMap((a) => a.nav ?? [])
-  const headers = areas.flatMap((a) => (a.header ? [a.header] : []))
   return (
     <div className="flex min-h-dvh">
       <aside
+        id="rt-sidebar"
+        data-collapsed={collapsed}
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-72 shrink-0 overflow-y-auto border-r bg-sidebar p-4 transition-transform md:sticky md:top-0 md:h-dvh md:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 w-72 shrink-0 overflow-y-auto overflow-x-hidden border-r bg-sidebar p-4 transition-[translate,width,padding] duration-200 ease-out motion-reduce:transition-none md:sticky md:top-0 md:h-dvh md:translate-none',
+          collapsed && 'md:w-16 md:px-2',
           menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
         )}
       >
@@ -48,7 +54,29 @@ export function Layout({ areas }: { areas: Area[] }) {
             <X />
           </Button>
         </div>
-        <Sidebar onNavigate={() => setMenuOpen(false)} />
+        <div className={cn('mb-3 hidden md:flex', collapsed ? 'justify-center' : 'justify-end')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={collapsed ? 'Espandi la barra laterale' : 'Riduci la barra laterale'}
+            title={collapsed ? 'Espandi la barra laterale' : 'Riduci la barra laterale'}
+            aria-expanded={!collapsed}
+            aria-controls="rt-sidebar-lessons"
+            onClick={toggleCollapsed}
+          >
+            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </Button>
+        </div>
+        {/* L'elenco completo resta montato (nascosto) anche da ridotta: le materie aperte o chiuse
+            e la selezione restano come erano quando si riespande. */}
+        <div id="rt-sidebar-lessons" className={cn('min-w-64', collapsed && 'md:hidden')}>
+          <Sidebar onNavigate={() => setMenuOpen(false)} />
+        </div>
+        {collapsed && (
+          <div className="hidden md:block">
+            <SubjectRail />
+          </div>
+        )}
       </aside>
       {menuOpen && <div className="fixed inset-0 z-30 bg-black/25 md:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
 
@@ -64,7 +92,7 @@ export function Layout({ areas }: { areas: Area[] }) {
             <span className="ml-3 hidden text-xs text-muted-foreground sm:inline">Rielaborazione trascritti e active recall</span>
           </Link>
           <nav aria-label="Navigazione" className="flex items-center gap-1">
-            {nav.map(({ to, label, icon: Icon, end }) => (
+            {nav.map(({ to, label, icon: Icon, end, badge: Badge }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -75,13 +103,11 @@ export function Layout({ areas }: { areas: Area[] }) {
                 }
               >
                 <Icon className="size-4" aria-hidden />
-                <span className="hidden lg:inline">{label}</span>
+                <span className="sr-only lg:not-sr-only">{label}</span>
+                {Badge && <Badge />}
               </NavLink>
             ))}
           </nav>
-          {headers.map((Header, i) => (
-            <Header key={i} />
-          ))}
           <Button
             variant="outline"
             size="icon"

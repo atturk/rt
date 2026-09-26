@@ -94,7 +94,7 @@ test('importa un audio, segue gli eventi, approva la scaletta e arriva alla revi
   const row = page.locator(`[data-testid=job-row][data-job-id="${jobId}"]`)
   await expect(row).toHaveAttribute('data-state', 'waiting_for_decision')
   await expect(row).toContainText('valutare le issue della review')
-  await expect(page.getByTestId('jobs-indicator')).toHaveAttribute('aria-label', /in attesa di una tua decisione/)
+  await expect(page.getByTestId('jobs-indicator')).toContainText(/in attesa di una tua decisione/)
 })
 
 test('importazione senza pipeline: solo trascrizione, come rt setup', async ({ page }) => {

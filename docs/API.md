@@ -52,7 +52,7 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 
 | Metodo e percorso | Cosa restituisce | Equivalente CLI |
 |---|---|---|
-| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo | dashboard `rt` |
+| `GET /lessons?materia=&state=&q=` | Elenco con stato fasi, issue pendenti, costo (`q`: testo su cartella, titolo, argomenti, materia; la SPA carica l'elenco completo e filtra nel browser) | dashboard `rt` |
 | `GET /lessons/{id}` | Dettaglio: fasi con motivo, costi, outline approvata, audio | `rt status`, `rt cost` |
 | `GET /lessons/{id}/phases` | Freschezza fasi e report di validazione | `rt validate-outline`, `rt validate-draft` |
 | `GET /lessons/{id}/document` | Markdown, HTML sanificato, timecode per unità (da `segments.json`); nell'HTML l'intestazione di ogni unità ha `data-unit-id` e la riga del suo timecode `data-unit-timecode` | anteprima / file finale |
@@ -62,6 +62,14 @@ Le lezioni hanno un id numerico stabile (riga `Lesson` del DB): resta lo stesso 
 | `GET /lessons/{id}/issues?status=pending\|all` | Issue con contesto (unità, timecode, finestra audio) e decisione | `rt review` |
 | `GET /lessons/{id}/decisions` | Ledger (`review_decisions.json`) | `rt status --issues` |
 | `GET /costs` | Costi LLM di tutte le lezioni, per lezione e per job | `rt cost` |
+
+Il riepilogo di ogni lezione in `GET /lessons` (freschezza delle fasi, issue pendenti, costi)
+richiede centinaia di letture; il processo dell'API lo tiene in cache per lezione. La chiave è
+un'impronta degli input calcolata a ogni richiesta con due query (nome, hash, mtime e
+dimensione dei file della lezione nel DB; numero e ultimo id delle chiamate LLM) più uno `stat`
+dei file per le lezioni ancora in cartella: ogni scrittura, anche dal worker, dalla CLI o dal bot,
+cambia l'impronta e la lezione si ricalcola. Con 20 lezioni la prima richiesta costa circa
+0,9 s, le successive circa 40 ms.
 
 ### Impostazioni (RT4-E4)
 
