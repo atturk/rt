@@ -4,7 +4,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useSettings, type Settings } from '@/api/settings'
-import { LessonsRootSection, TelegramSection, TranscriptionSection } from '@/components/settings/general'
+import { LessonsRootSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, NewConnectionSection, PhasesSection, RoutesSection } from '@/components/settings/models'
 import { SetupWizard } from '@/components/settings/wizard'
@@ -89,6 +89,7 @@ export const settingsArea: Area = {
           element: page((s) => (
             <>
               <LessonsRootSection settings={s} />
+              <WorkerSection settings={s} />
               <TranscriptionSection settings={s} />
               <TelegramSection settings={s} />
               <TelegramBotPanel />

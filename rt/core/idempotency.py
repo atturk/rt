@@ -328,7 +328,7 @@ def check_phase_status(
 
         if not is_complete or current_rec.get("status") != PhaseStatus.VALID.value:
             if draft_units_count > 0:
-                return PhaseStatus.PARTIAL, f"draft.json parziale ({draft_units_count}/{all_units_count} unità completate)"
+                return PhaseStatus.PARTIAL, f"draft.json parziale ({draft_units_count}/{all_units_count} unità completate){_failed_units_note(current_rec)}"
             return PhaseStatus.MISSING, "draft.json non contiene unità valide"
 
         return PhaseStatus.VALID, f"draft.json valido ({draft_units_count} unità verificate)"
@@ -367,7 +367,7 @@ def check_phase_status(
 
         reviewed_units = current_rec.get("completed_items", [])
         if current_rec.get("status") == PhaseStatus.PARTIAL.value or len(reviewed_units) < total_draft_units or current_rec.get("status") != PhaseStatus.VALID.value:
-            return PhaseStatus.PARTIAL, f"science_issues.json parziale ({len(reviewed_units)}/{total_draft_units} unità verificate)"
+            return PhaseStatus.PARTIAL, f"science_issues.json parziale ({len(reviewed_units)}/{total_draft_units} unità verificate){_failed_units_note(current_rec)}"
 
         return PhaseStatus.VALID, f"science_issues.json valido ({len(issues)} issue registrate)"
 
@@ -442,11 +442,13 @@ def record_phase_fingerprint(
 
         if is_fully_complete:
             record["status"] = PhaseStatus.VALID.value
+            record.pop("failed_units", None)
         else:
             record["status"] = PhaseStatus.PARTIAL.value
     else:
         record["status"] = PhaseStatus.VALID.value
         record["source_fingerprint"] = source_fingerprint
+        record.pop("failed_units", None)
 
     record["processor_version"] = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
     record["updated_at"] = datetime.now().isoformat()
@@ -462,6 +464,16 @@ def record_phase_fingerprint(
     phase_records[phase_name] = record
     manifest.phase_records = phase_records
     save_manifest(manifest, lesson_dir)
+
+
+def _failed_units_note(record: Dict[str, Any]) -> str:
+    """Coda del motivo PARTIAL: le unità non riuscite nell'ultima esecuzione (vedi
+    rt/pipeline/unit_failures.py), con il primo errore."""
+    failed = record.get("failed_units") or []
+    if not failed:
+        return ""
+    ids = ", ".join(str(f.get("unit_id")) for f in failed[:5]) + ("…" if len(failed) > 5 else "")
+    return f"; non riuscite: {ids} ({failed[0].get('message', '')})"
 
 
 def record_phase_checkpoint(

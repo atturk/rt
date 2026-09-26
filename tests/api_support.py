@@ -74,8 +74,10 @@ FAKE_TELEGRAM_UPDATES = [
 
 
 def fake_telegram_server(updates=None):
-    """Bot API finta per getUpdates (rilevamento topic) su una porta libera di 127.0.0.1.
-    Restituisce (server, base_url): basta RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' -> 401."""
+    """Bot API finta per getUpdates (rilevamento topic) e per i messaggi inviati (POST, es.
+    sendMessage: registrati in server.sent come (metodo, corpo JSON)) su una porta libera di
+    127.0.0.1. Restituisce (server, base_url): basta RT_TELEGRAM_API_URL=base_url. Token
+    'rifiutato' -> 401."""
     import json as _json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -92,9 +94,28 @@ def fake_telegram_server(updates=None):
             self.end_headers()
             self.wfile.write(body)
 
+        def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            try:
+                data = _json.loads(raw or b"{}")
+            except ValueError:
+                data = {}
+            ok = "rifiutato" not in self.path
+            if ok:
+                server.sent.append((self.path.rsplit("/", 1)[-1], data))
+            body = _json.dumps({"ok": True, "result": {"message_id": len(server.sent)}} if ok
+                               else {"ok": False, "error_code": 401, "description": "Unauthorized"}).encode()
+            self.send_response(200 if ok else 401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, *args):
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.sent = []
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"

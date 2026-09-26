@@ -189,6 +189,8 @@ class Job(Base):
     lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Job fallito di cui questo è il nuovo tentativo ('Riprova', RT4-FA1)
+    retry_of: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

@@ -5,6 +5,7 @@ Gestisce: persistenza del bank per lezione, selezione della prossima domanda pen
 registrazione di risposte/voti, pool few-shot globale, generazione batch via LLM.
 """
 
+import logging
 import os
 import json
 import random as _random
@@ -16,7 +17,10 @@ from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.core.config import load_config
 from rt.core.lesson_paths import lesson_path
+from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
+
+_LOG = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------
 # Atomic write helper (same pattern as ledger.py / save_asr_issues)
@@ -399,6 +403,8 @@ def generate_recall_batch(
             return groups_idx
 
     unit_index_groups = _pick_unit_groups(count)
+    failures = UnitFailureTracker()
+    last_error: Optional[BaseException] = None
 
     for group_idxs in unit_index_groups:
         qid = _next_id(bank)
@@ -459,20 +465,38 @@ def generate_recall_batch(
                 few_shot_examples=few_shot_examples or [],
             )
 
-        generated: RecallQuestion = client.call_structured(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_model=RecallQuestion,
-            job_name="recall",
-            unit_id=", ".join(units[i].unit_id for i in group_idxs),
-            lesson_dir=lesson_dir,
-        )
+        try:
+            generated: RecallQuestion = client.call_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_model=RecallQuestion,
+                job_name="recall",
+                unit_id=", ".join(units[i].unit_id for i in group_idxs),
+                lesson_dir=lesson_dir,
+            )
+        except Exception as exc:
+            # Una domanda che il modello non riesce a generare (risposta fuori schema anche dopo
+            # i nuovi tentativi) non ferma il batch: la riserva si ricarica alla prossima
+            # occasione. Senza nessuna domanda generata l'errore sale.
+            if not is_unit_failure(exc):
+                raise
+            failures.failed(", ".join(units[i].unit_id for i in group_idxs), qtype.value, exc)
+            last_error = exc
+            if failures.too_many():
+                break
+            continue
+        failures.succeeded()
         generated.id = qid
         generated.type = qtype
         generated.unit_ids = [units[i].unit_id for i in group_idxs]
         generated.content_fingerprint = _compute_units_fingerprint(lesson_dir, generated.unit_ids)
         new_questions.append(generated)
 
+    if last_error is not None:
+        _LOG.warning("Recall %s: %d domande non generate (%s)", qtype.value, len(failures.failures),
+                     failures.failures[0].message)
+        if not new_questions:
+            raise last_error
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         for gen in new_questions:

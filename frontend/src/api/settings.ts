@@ -39,6 +39,10 @@ export function useSaveLessonsRoot() {
   )
 }
 
+export function useSaveWorker() {
+  return useSettingsMutation((concurrency: number) => unwrap(api.PUT('/api/v1/settings/worker', { body: { concurrency } })))
+}
+
 export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
 }
@@ -114,7 +118,7 @@ export function useListenTopics() {
   return useMutation({
     mutationFn: async (): Promise<ListenResult> => {
       const accepted = await unwrap(api.POST('/api/v1/settings/telegram/listen-topics'))
-      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: avvia rt worker e riprova.' }
+      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: riavvia RT con la web e riprova.' }
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
         const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: accepted.job_id } } }))

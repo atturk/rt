@@ -73,6 +73,7 @@ segreto: solo `set: true/false`.
 |---|---|---|
 | `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing; `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
 | `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
+| `PUT /settings/worker` | Job in parallelo del worker di `rt web` (1-4, default 2); `GET /settings` riporta anche i worker attivi ora | `rt worker --concurrency` |
 | `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
 | `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
 | `POST /settings/connections` | Nuova connessione (provider, base URL, chiavi) | `rt config --models` |
@@ -104,7 +105,8 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons/{id}/jobs` `{type: run_phase, phase, unit?}` | Una fase (`unit` solo per il rewrite: job `rewrite_unit`) | `rt prepare/outline/rewrite/review/build` |
 | `POST /lessons/{id}/images` (multipart `files`, `web_search`) | Job `add_images` | `rt add-images` |
 | `GET /lessons/{id}/images`, `GET /lessons/{id}/assets/images/{nome}` | Immagini integrate (descrizione, origine, presenza nel documento finale) e file per l'anteprima: l'HTML di `/document` le richiama come `assets/images/{nome}` | `rt add-images` |
-| `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento | `rt jobs` |
+| `GET /jobs`, `GET /jobs/{id}`, `POST /jobs/{id}/cancel` | Stato e annullamento; `retry_of` e `retried_by` collegano un job fallito e il suo nuovo tentativo | `rt jobs` |
+| `POST /jobs/{id}/retry` | Riprova un job fallito (RT4-FA1): job nuovo con lo stesso tipo e payload (senza `force` per pipeline e fasi), che riparte dalla fase fallita; `409 lesson_busy` se sulla lezione c'è un altro job attivo, `409 already_retried` (con il job nuovo) se è già stato ripreso, `409 retry_unavailable` se i file caricati non ci sono più | rilanciare lo stesso comando |
 | `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
 | `GET /workers` | Worker attivi | — |
 | `POST /lessons/{id}/outline/approve` | Approva l'outline; il job in attesa riparte da solo | approvazione outline |
@@ -116,6 +118,13 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
 | `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti | web Gradio "Ascolta topic" |
+
+Nelle fasi a unità gli eventi `phase_progress` portano `current`/`total` (posizione dell'unità
+nella lezione), `unit_id`, `unit_title` e `failed` (unità non riuscite finora); `phase_completed`
+ha `partial: true` se alcune unità sono fallite (`result.failed_units` con unità, etichetta e
+messaggio). Una fase parziale ferma la pipeline e il job fallisce con il motivo leggibile.
+`POST /lessons/{id}/jobs` accetta `mock_fail_once` (`rewrite` o `review`, solo con `mock=true`)
+per i test: la prima unità di quella fase fallisce una volta con una risposta fuori schema.
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in

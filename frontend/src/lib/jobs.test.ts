@@ -1,4 +1,4 @@
-import { audioFileProblem, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressPercent, type JobEvent } from './jobs'
+import { audioFileProblem, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
 
 const event = (id: number, type = 'notice', payload: Record<string, unknown> = {}): JobEvent => ({ id, job_id: 'j', type, payload })
 
@@ -61,5 +61,23 @@ describe('etichette dei job', () => {
     expect(decisionLink({ lesson_id: 7, decision: { kind: 'outline_approval' } })).toBe('/lezioni/7/outline')
     expect(decisionLink({ lesson_id: 7, decision: { kind: 'science_issue' } })).toBe('/lezioni/7')
     expect(decisionLink({ lesson_id: null, decision: null })).toBeNull()
+  })
+})
+
+describe('avanzamento delle fasi a unità (RT4-FA1)', () => {
+  it('mostra fase e unità sul totale dai dati strutturati', () => {
+    const progress = { phase: 'review', current: 8, total: 31, message: 'testo libero ignorato', unit_id: '4.1', unit_title: 'Glicolisi', failed: 0 }
+    expect(progressTitle(progress)).toBe('Revisione · 8/31')
+    expect(progressLabel(progress)).toEqual({ phase: 'Revisione', count: '8/31', detail: '4.1 Glicolisi' })
+  })
+  it('segnala le unità non riuscite e ricade sul messaggio senza unità', () => {
+    expect(progressLabel({ phase: 'rewrite', current: 3, total: 9, unit_id: '1.3', failed: 2 }).detail).toBe('1.3 · 2 unità non riuscite')
+    expect(progressLabel({ phase: 'setup', message: 'Trascrizione' })).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione' })
+    expect(progressTitle(null)).toBeNull()
+  })
+  it('una fase finita parziale è un avviso con le unità completate', () => {
+    const e = event(9, 'phase_completed', { phase: 'review', partial: true, result: { completed_units: 30, expected_units: 31 } })
+    expect(describeEvent(e)).toEqual({ text: 'Revisione: parziale (30/31 unità)', tone: 'warning' })
+    expect(describeEvent(event(10, 'job_queued', { retry_of: 'abc' })).text).toBe('In coda (nuovo tentativo di un job fallito)')
   })
 })

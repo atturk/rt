@@ -871,6 +871,30 @@
             ],
             "title": "Result"
           },
+          "retried_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job nuovo creato con Riprova da questo job fallito",
+            "title": "Retried By"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job fallito di cui questo è il nuovo tentativo (Riprova)",
+            "title": "Retry Of"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -916,6 +940,17 @@
               }
             ],
             "title": "Lesson Id"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
           },
           "state": {
             "title": "State",
@@ -1014,6 +1049,22 @@
             "default": false,
             "title": "Mock",
             "type": "boolean"
+          },
+          "mock_fail_once": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rewrite",
+                  "review"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)",
+            "title": "Mock Fail Once"
           },
           "phase": {
             "anyOf": [
@@ -2284,9 +2335,13 @@
           },
           "transcription": {
             "$ref": "#/components/schemas/Transcription"
+          },
+          "worker": {
+            "$ref": "#/components/schemas/WorkerSettings"
           }
         },
         "required": [
+          "worker",
           "transcription",
           "telegram",
           "phases",
@@ -2549,6 +2604,21 @@
         "title": "Waveform",
         "type": "object"
       },
+      "WorkerIn": {
+        "properties": {
+          "concurrency": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Concurrency",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concurrency"
+        ],
+        "title": "WorkerIn",
+        "type": "object"
+      },
       "WorkerInfo": {
         "properties": {
           "current_job_id": {
@@ -2612,6 +2682,26 @@
           "id"
         ],
         "title": "WorkerInfo",
+        "type": "object"
+      },
+      "WorkerSettings": {
+        "properties": {
+          "concurrency": {
+            "description": "Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio",
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "running": {
+            "default": 0,
+            "description": "Worker attivi ora (uno per job eseguibile insieme)",
+            "title": "Running",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concurrency"
+        ],
+        "title": "WorkerSettings",
         "type": "object"
       }
     },
@@ -3366,6 +3456,93 @@
           }
         ],
         "summary": "Eventi di un job (senza streaming)",
+        "tags": [
+          "job"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita",
         "tags": [
           "job"
         ]
@@ -7209,6 +7386,92 @@
           }
         ],
         "summary": "Motore di trascrizione",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/worker": {
+      "put": {
+        "operationId": "put_worker_api_v1_settings_worker_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Job in parallelo del worker avviato con la web (vale dal prossimo avvio)",
         "tags": [
           "impostazioni"
         ]

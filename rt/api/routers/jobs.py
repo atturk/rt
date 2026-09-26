@@ -13,7 +13,8 @@ from fastapi.responses import StreamingResponse
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
-from rt.api.jobs import enqueue_job, job_view, queue
+from rt.api.jobs import enqueue_job, job_accepted, job_view, queue
+from rt.storage import fs
 
 router = APIRouter(tags=["job"])
 
@@ -105,6 +106,9 @@ def create_lesson(
 @router.post("/lessons/{lesson_id}/jobs", response_model=schemas.JobAccepted, status_code=202,
              summary="Avvia la pipeline o una fase sulla lezione (come 'rt run' o 'rt <fase>')")
 def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, actor: Actor):
+    if body.mock_fail_once and not body.mock:
+        raise ApiError(422, "validation_error", "mock_fail_once vale solo in modalità prova (mock).")
+    extra = {"mock_fail_once": body.mock_fail_once} if body.mock_fail_once else {}
     if body.type == "run_phase":
         if not body.phase:
             raise ApiError(422, "validation_error", "Indica la fase da eseguire.")
@@ -113,10 +117,10 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
             if body.phase != "rewrite":
                 raise ApiError(422, "validation_error", "L'unità si indica solo per il rewrite.")
             return enqueue_job("rewrite_unit", lesson_dir, {"unit": body.unit, "options": options}, actor)
-        return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options}, actor)
+        return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}
-    return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options}, actor)
+    return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options, **extra}, actor)
 
 
 @router.post("/lessons/{lesson_id}/images", response_model=schemas.JobAccepted, status_code=202,
@@ -189,6 +193,27 @@ def get_job(job_id: str, _actor: Actor):
 def cancel_job(job_id: str, _actor: Actor):
     _get(job_id)
     return job_view(queue().cancel(job_id))
+
+
+@router.post("/jobs/{job_id}/retry", response_model=schemas.JobAccepted, status_code=202,
+             summary="Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita")
+def retry_job(job_id: str, actor: Actor):
+    from rt.services.jobs import JobAlreadyRetried, JobError, LessonHasActiveJob
+    info = _get(job_id)
+    if info.state == "failed" and not (info.lesson_path and fs.isdir(info.lesson_path)):
+        # Nessuna lezione ancora creata (es. fallito durante l'importazione): servono i file caricati
+        inputs = [p for p in (info.payload.get("inputs") or []) if isinstance(p, str)]
+        if inputs and not all(os.path.exists(p) for p in inputs):
+            raise ApiError(409, "retry_unavailable", "I file caricati non ci sono più: importa di nuovo la lezione.")
+    try:
+        new_id = queue().retry(job_id, created_by=actor)
+    except LessonHasActiveJob as exc:
+        raise ApiError(409, "lesson_busy", str(exc), {"job_id": exc.job_id})
+    except JobAlreadyRetried as exc:
+        raise ApiError(409, "already_retried", str(exc), {"job_id": exc.job_id})
+    except JobError as exc:
+        raise ApiError(409, "job_not_retryable", str(exc))
+    return job_accepted(new_id)
 
 
 @router.get("/jobs/{job_id}/events/list", response_model=List[schemas.JobEvent], summary="Eventi di un job (senza streaming)")

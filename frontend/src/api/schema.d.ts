@@ -175,6 +175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita */
+        post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons": {
         parameters: {
             query?: never;
@@ -807,6 +824,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/worker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Job in parallelo del worker avviato con la web (vale dal prossimo avvio) */
+        put: operations["put_worker_api_v1_settings_worker_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/telegram/daemon": {
         parameters: {
             query?: never;
@@ -1217,6 +1251,16 @@ export interface components {
             result?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Retried By
+             * @description Job nuovo creato con Riprova da questo job fallito
+             */
+            retried_by?: string | null;
+            /**
+             * Retry Of
+             * @description Job fallito di cui questo è il nuovo tentativo (Riprova)
+             */
+            retry_of?: string | null;
             /** Started At */
             started_at?: string | null;
             /**
@@ -1233,6 +1277,8 @@ export interface components {
             job_id: string;
             /** Lesson Id */
             lesson_id?: number | null;
+            /** Retry Of */
+            retry_of?: string | null;
             /** State */
             state: string;
             /** Type */
@@ -1285,6 +1331,11 @@ export interface components {
              * @default false
              */
             mock: boolean;
+            /**
+             * Mock Fail Once
+             * @description Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)
+             */
+            mock_fail_once?: ("rewrite" | "review") | null;
             /**
              * Phase
              * @description Obbligatoria per run_phase
@@ -1881,6 +1932,7 @@ export interface components {
             setup_required: boolean;
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
+            worker: components["schemas"]["WorkerSettings"];
         };
         /** TelegramIn */
         TelegramIn: {
@@ -1981,6 +2033,11 @@ export interface components {
              */
             ready: boolean;
         };
+        /** WorkerIn */
+        WorkerIn: {
+            /** Concurrency */
+            concurrency: number;
+        };
         /** WorkerInfo */
         WorkerInfo: {
             /** Current Job Id */
@@ -1998,6 +2055,20 @@ export interface components {
             pid?: number | null;
             /** Platform */
             platform?: string | null;
+        };
+        /** WorkerSettings */
+        WorkerSettings: {
+            /**
+             * Concurrency
+             * @description Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio
+             */
+            concurrency: number;
+            /**
+             * Running
+             * @description Worker attivi ora (uno per job eseguibile insieme)
+             * @default 0
+             */
+            running: number;
         };
     };
     responses: never;
@@ -2497,6 +2568,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobEvent"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_job_api_v1_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5305,6 +5443,75 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TranscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_worker_api_v1_settings_worker_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerIn"];
             };
         };
         responses: {

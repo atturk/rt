@@ -1,14 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef } from 'react'
+import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { isActiveJob, lessonKeys, useCancelJob, useLessonJobs, useRefreshLesson } from '@/api/hooks'
 import { useJobEvents } from '@/api/jobs'
+import { RetryButton } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { PHASE_LABELS, type Tone } from '@/lib/format'
+import { progressLabel } from '@/lib/jobs'
 
 const JOB_STATES: Record<string, [string, Tone]> = {
   queued: ['in coda', 'neutral'],
@@ -72,12 +75,24 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
       <ul className="flex flex-col gap-2">
         {jobs.data.slice(0, 5).map((job) => {
           const [label, tone] = JOB_STATES[job.state] ?? [job.state, 'neutral']
-          const p = job.progress as { phase?: string; current?: number; total?: number; message?: string } | null
+          const p = job.progress as { current?: number; total?: number } | null
+          const progress = progressLabel(job.progress)
           return (
-            <li key={job.id} className="flex flex-col gap-1 text-xs" data-job-state={job.state}>
-              <div className="flex items-center gap-2">
+            <li key={job.id} className="flex flex-col gap-1 text-xs" data-job-state={job.state} data-job-id={job.id}>
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">{jobLabel(job.type, job.payload)}</span>
                 <Badge tone={tone}>{label}</Badge>
+                {job.retry_of && <span className="text-muted-foreground">nuovo tentativo</span>}
+                {job.state === 'failed' && !job.retried_by && (
+                  <span className="ml-auto flex flex-wrap items-center gap-2">
+                    <RetryButton jobId={job.id} />
+                  </span>
+                )}
+                {job.state === 'failed' && job.retried_by && (
+                  <Link to={`/job/${job.retried_by}`} className="ml-auto underline">
+                    Nuovo tentativo
+                  </Link>
+                )}
                 {isActiveJob(job.state) && (
                   <Button variant="ghost" size="sm" className="ml-auto h-6" disabled={job.cancel_requested} onClick={() => cancel.mutate(job.id)}>
                     {job.cancel_requested ? 'Annullamento…' : 'Annulla'}
@@ -86,10 +101,8 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
               </div>
               {job.state === 'running' && p && (
                 <div>
-                  <span className="text-muted-foreground">
-                    {[p.phase ? PHASE_LABELS[p.phase] ?? p.phase : null, p.total ? `${p.current ?? 0}/${p.total}` : null, p.message]
-                      .filter(Boolean)
-                      .join(' · ')}
+                  <span className="text-muted-foreground" data-testid="job-progress-label">
+                    {[progress.phase, progress.count, progress.detail].filter(Boolean).join(' · ')}
                   </span>
                   {p.total ? (
                     <progress className="mt-1 block h-1.5 w-full" value={p.current ?? 0} max={p.total} aria-label="Avanzamento" />

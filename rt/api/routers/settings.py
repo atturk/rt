@@ -70,8 +70,19 @@ class TelegramSettings(BaseModel):
     default_channel: str
 
 
+class WorkerSettings(BaseModel):
+    concurrency: int = Field(description="Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): "
+                                         "vale dal prossimo avvio")
+    running: int = Field(0, description="Worker attivi ora (uno per job eseguibile insieme)")
+
+
+class WorkerIn(BaseModel):
+    concurrency: int = Field(ge=1, le=4)
+
+
 class Settings(BaseModel):
     lessons_root: Optional[str] = None
+    worker: WorkerSettings
     transcription: Transcription
     telegram: TelegramSettings
     phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna delle sei fasi LLM")
@@ -166,6 +177,14 @@ def get_settings(_actor: Actor):
 def put_lessons_root(body: LessonsRootIn, _actor: Actor):
     from rt.services.settings_service import save_lessons_root, snapshot
     _call(save_lessons_root, body.path, _project_root())
+    return snapshot(_project_root())
+
+
+@router.put("/settings/worker", response_model=Settings,
+            summary="Job in parallelo del worker avviato con la web (vale dal prossimo avvio)")
+def put_worker(body: WorkerIn, _actor: Actor):
+    from rt.services.settings_service import save_worker_concurrency, snapshot
+    _call(save_worker_concurrency, _project_root(), body.concurrency)
     return snapshot(_project_root())
 
 

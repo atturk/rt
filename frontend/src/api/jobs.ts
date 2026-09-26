@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { useEffect, useRef, useState } from 'react'
 
 import { api, unwrap, type Schemas } from './client'
-import { queryKeys } from './hooks'
+import { lessonKeys, queryKeys } from './hooks'
 import type { paths } from './schema'
 import { xhrFetch, type UploadProgress } from './upload'
 import { isActive, mergeEvents, type JobEvent } from '@/lib/jobs'
@@ -61,6 +61,18 @@ export function useCancelJob() {
   return useMutation({
     mutationFn: (id: string) => unwrap(api.POST('/api/v1/jobs/{job_id}/cancel', { params: { path: { job_id: id } } })),
     onSettled: (job) => invalidateAfterJob(client, job?.lesson_id),
+  })
+}
+
+/** POST /jobs/{id}/retry: job nuovo (stesso tipo e payload) collegato a quello fallito. */
+export function useRetryJob() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/jobs/{job_id}/retry', { params: { path: { job_id: id } } })),
+    onSettled: (accepted) => {
+      invalidateAfterJob(client, accepted?.lesson_id)
+      if (accepted?.lesson_id != null) void client.invalidateQueries({ queryKey: lessonKeys.all(accepted.lesson_id) })
+    },
   })
 }
 

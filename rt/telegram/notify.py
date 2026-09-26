@@ -7,7 +7,31 @@ from typing import Dict, Any
 from rt.storage import fs
 
 
-def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
+class TelegramBuildNotifier:
+    """Notifier di fine build per i job del worker (rt.services.pipeline_service): lo registra
+    chi avvia il worker ('rt worker', 'rt web'). Se Telegram non è configurato non fa nulla;
+    un errore di invio sale all'orchestratore, che lo segnala senza far fallire il job."""
+    channel = "Telegram"
+
+    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> bool:
+        # Il worker vive a lungo: token e chat salvati dalla web dopo il suo avvio si leggono qui
+        from rt.core.config import load_env_file
+        load_env_file()
+        try:
+            return notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title, raise_errors=True)
+        except Exception as exc:
+            # Gli errori di rete di requests riportano l'URL, che contiene il token del bot
+            import os
+            message, token = str(exc), (os.environ.get("RT_TELEGRAM_BOT_TOKEN") or "").strip()
+            if token:
+                message = message.replace(token, "[token]")
+            raise RuntimeError(message) from None
+
+
+def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str,
+                           raise_errors: bool = False) -> bool:
+    """True se il messaggio è partito; False se Telegram non è configurato o (senza
+    raise_errors) se l'invio non è riuscito."""
     import os
     from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
     from rt.telegram.client import send_message
@@ -18,7 +42,7 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
     try:
         cfg = load_telegram_config()
     except TelegramConfigError:
-        return
+        return False
 
     try:
         runtime_cfg = load_config().telegram
@@ -55,8 +79,12 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
 
         from rt.telegram.last_lesson import record_last_lesson
         record_last_lesson(runtime_cfg.state_dir, cfg.chat_id, message_thread_id, lesson_dir)
+        return True
     except Exception as e:
+        if raise_errors:
+            raise
         print(f"⚠️  Notifica Telegram di build non inviata: {e}", file=sys.stderr)
+        return False
 
 
 def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:

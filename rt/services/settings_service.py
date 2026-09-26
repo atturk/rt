@@ -232,6 +232,21 @@ def save_transcription(project_root: Path, engine: str, base_url: str,
     return "Motore di trascrizione salvato."
 
 
+WORKER_CONCURRENCY_RANGE = (1, 4)
+
+
+def save_worker_concurrency(project_root: Path, concurrency: int) -> str:
+    """Job in parallelo del worker di 'rt web' (worker.concurrency): vale dal prossimo avvio."""
+    low, high = WORKER_CONCURRENCY_RANGE
+    if not isinstance(concurrency, int) or not low <= concurrency <= high:
+        raise ValueError(f"Scegli un numero di job in parallelo tra {low} e {high}.")
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    data["worker"] = {**(data.get("worker") or {}), "concurrency": concurrency}
+    _atomic_yaml(path, data)
+    return "Job in parallelo salvati."
+
+
 def save_lessons_root(raw_path: str, project_root: Path) -> str:
     """Imposta solo telegram.lessons_root e crea la cartella se necessario."""
     if not raw_path or not raw_path.strip():
@@ -353,6 +368,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "misc_topic_id": cfg.telegram.misc_topic_id,
             "default_channel": cfg.telegram.default_channel,
         },
+        "worker": {"concurrency": cfg.worker.concurrency, "running": _running_workers()},
         "phases": phases,
         "connections": connections,
         "credentials": credentials,
@@ -362,6 +378,16 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "setup_required": not (cfg.telegram.lessons_root
                                and os.path.isdir(os.path.expanduser(cfg.telegram.lessons_root))),
     }
+
+
+def _running_workers() -> int:
+    """Worker (thread) attivi ora: con 'rt web' sono i job che possono girare insieme."""
+    try:
+        from rt.services.jobs import _optional_queue
+        queue = _optional_queue()
+        return len(queue.live_workers()) if queue is not None else 0
+    except Exception:
+        return 0
 
 
 def _data_dir() -> str | None:

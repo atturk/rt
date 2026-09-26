@@ -29,7 +29,26 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   valutare e costi.
 - **Importa:** carichi l'audio, scegli data e materia e, se vuoi, avvii subito la pipeline.
 - **Job:** i job in coda e in corso con gli eventi in tempo reale; si possono annullare. Se
-  nessun worker è attivo la pagina lo segnala.
+  nessun worker è attivo la pagina lo segnala. Nelle fasi a unità (rielaborazione, revisione)
+  il dettaglio mostra l'unità in lavorazione sul totale, per esempio "Revisione · 8/31".
+  L'elenco degli eventi segue gli ultimi finché sei in fondo; se scorri verso l'alto per
+  leggere si ferma e il pulsante **Vai agli ultimi** lo riporta in coda.
+- **Riprova:** un job fallito ha il pulsante **Riprova** accanto allo stato "Fallito", nel
+  dettaglio del job e nel pannello job della lezione. Crea un job nuovo con lo stesso tipo e le
+  stesse opzioni, collegato al vecchio (i due dettagli si linkano a vicenda), che riparte dalla
+  fase fallita: le fasi già valide si saltano e le unità già fatte non si rifanno (una pipeline o
+  una fase forzata non riparte da zero). Se sulla lezione sta già lavorando un altro job, Riprova
+  lo dice e non crea nulla. I file caricati di un job fallito restano per il nuovo tentativo e si
+  cancellano quando questo finisce (quelli mai ripresi dopo 7 giorni).
+- **Risposte fuori schema:** se un modello risponde con testo invece del JSON richiesto (nel
+  primo test reale `openrouter/free` ha risposto "User Safety: safe / Response Safety: safe"), RT
+  ripete la richiesta sulla stessa route ricordando il formato e poi passa alle altre route
+  configurate. Se un'unità non riesce comunque, le altre proseguono: la fase finisce parziale e
+  il job fallisce con un messaggio che dice modello, unità e inizio della risposta. Riprova rifà
+  solo le unità mancanti.
+- **Notifica Telegram:** a fine pipeline, e dopo il solo documento, il worker manda la notifica
+  "Lezione pronta" come da terminale (se Telegram è configurato; in modalità prova no). Se
+  l'invio non riesce il job resta completato e l'errore compare tra gli eventi.
 - **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda, fasi
   con validazioni, avvio di una singola fase, costi, download del Markdown o dello zip.
 - **Scaletta:** vista ad albero dell'outline, approvazione o richiesta di modifiche.
@@ -40,8 +59,19 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
 - **Immagini:** slide, foto o PDF da integrare nel documento finale.
 - **Bot Telegram:** stato, avvio e arresto del bot.
-- **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
-  Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+- **Impostazioni:** cartella lezioni, job in parallelo, provider e chiavi (cifrate), modelli per
+  fase, prezzi, Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello
+  che manca.
+
+## Job in parallelo
+
+Il worker avviato da `rt web` esegue fino a **2** job insieme (Impostazioni > Generali, "Job in
+parallelo", da 1 a 4; si salva in `config/general.yaml`, `worker.concurrency`). Due job sulla
+stessa lezione non girano mai insieme: il secondo aspetta (vincolo `active_lesson` della coda),
+quindi il parallelismo vale tra lezioni diverse, per esempio la trascrizione di una lezione nuova
+mentre un'altra è in revisione. Il valore si applica al riavvio: `rt web` lo legge all'avvio e lo
+passa al worker (`rt worker --concurrency N`). `rt worker` lanciato a mano resta a 1 thread se
+non si indica `--concurrency`.
 
 ## Installazione e aggiornamento
 

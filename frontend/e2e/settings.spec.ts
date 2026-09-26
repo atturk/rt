@@ -347,3 +347,23 @@ test('le scritture non valide mostrano il messaggio dell\'API', async ({ page })
   const res = await page.request.get('/api/v1/settings', { headers: authHeaders() })
   expect(((await res.json()) as Settings).lessons_root).toBe(serverState().lessons_root)
 })
+
+test('job in parallelo: si salva, resta dopo la ricarica e vale dal prossimo avvio', async ({ page }) => {
+  await loginViaLink(page)
+  await page.goto('/impostazioni')
+  const jobs = await section(page, 'Job')
+  const select = jobs.getByLabel('Job in parallelo')
+  const before = await apiGet<{ worker: { concurrency: number; running: number } }>(page.request, '/settings')
+  await expect(select).toHaveValue(String(before.worker.concurrency))
+  await expect(jobs).toContainText('vale dal prossimo avvio di RT')
+  await select.selectOption('3')
+  await jobs.getByRole('button', { name: 'Salva' }).click()
+  await expect(jobs.getByRole('status')).toContainText('prossimo avvio')
+  await page.reload()
+  await expect((await section(page, 'Job')).getByLabel('Job in parallelo')).toHaveValue('3')
+  expect((await apiGet<{ worker: { concurrency: number } }>(page.request, '/settings')).worker.concurrency).toBe(3)
+  // il worker del server di prova è partito con il valore di prima: lo dice la pagina
+  await expect(await section(page, 'Job')).toContainText(`Ora ne esegue fino a ${before.worker.running} insieme.`)
+  // ripristino per gli altri test
+  await page.request.put('/api/v1/settings/worker', { headers: authHeaders(), data: { concurrency: before.worker.concurrency } })
+})
