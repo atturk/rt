@@ -56,7 +56,9 @@ sostituisci l'host con `localhost:5173`.
 - **Aree attuali**: `lessons` (dashboard e lezione), `reviews` (`/review`, elenco delle lezioni
   con issue da valutare; la revisione è `review`, `/lezioni/:id/revisione`), `recall` (`/recall`, `/lezioni/:id/recall`),
   `images` (`/immagini`, `/lezioni/:id/immagini`), `telegram` (`/bot`; il pannello
-  `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni). Gli hook di un'area
+  `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni; anteprima con occhio,
+  "Prova" e pulizia dei messaggi di rilevamento in `components/settings/telegram.tsx`, scelta
+  della cartella in `components/settings/folders.tsx`). Gli hook di un'area
   stanno in `src/api/<area>.ts`; `src/api/jobStatus.ts` segue un job (`GET /jobs/{id}`) e
   `components/JobProgress.tsx` ne mostra l'avanzamento.
 - **Elenchi di lezioni.** Un solo `useLessons()` senza filtri; testo, materia e stato si
@@ -71,7 +73,7 @@ sostituisci l'host con `localhost:5173`.
   o file su disco.
 - **Testi in italiano**, etichette accessibili (`aria-label`, `<label>`), tema chiaro e scuro.
 - **Playwright per ogni schermata** (`e2e/`): contro l'API vera servita da
-  `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, bot Telegram finto, microfono finto di Chromium nei test vocali), con ricarica della pagina
+  `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, bot Telegram e Bot API finti, niente finestra di Finder per la scelta cartella, microfono finto di Chromium nei test vocali), con ricarica della pagina
   dopo ogni modifica e verifica rileggendo dall'API. Aggiorna la colonna "SPA (F7)" di
   `docs/RT4_PARITY.md` per le righe coperte.
 - **Accessibilità controllata con axe** (`e2e/a11y.spec.ts`): ogni pagina nuova va aggiunta

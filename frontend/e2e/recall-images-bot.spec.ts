@@ -213,8 +213,8 @@ test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricaric
   const panel = page.getByTestId('telegram-bot')
   await expect(panel).toHaveAttribute('data-running', 'false')
 
-  const settings = await apiGet<{ telegram: { bot_token_set?: boolean; chat_id?: string } }>(page.request, '/settings')
-  if (!settings.telegram.chat_id) {
+  const settings = await apiGet<{ telegram: { bot_token_set?: boolean; chat_id_set?: boolean } }>(page.request, '/settings')
+  if (!settings.telegram.chat_id_set) {
     // senza token e chat il backend rifiuta l'avvio: la pagina lo spiega
     await page.getByRole('button', { name: 'Avvia il bot' }).click()
     await expect(panel.getByText('Salva prima token e Chat ID del bot')).toBeVisible()

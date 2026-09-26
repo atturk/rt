@@ -84,7 +84,8 @@ def test_dag_definition_and_semantics():
     assert UPSTREAM_DEPENDENCIES["outline"] == ["prepare"]
     assert set(UPSTREAM_DEPENDENCIES["rewrite"]) == {"prepare", "outline"}
     assert set(UPSTREAM_DEPENDENCIES["review"]) == {"prepare", "rewrite"}
-    assert set(UPSTREAM_DEPENDENCIES["build"]) == {"prepare", "outline", "rewrite", "review"}
+    # il build è la conferma dell'utente: la review non lo blocca (i suoi problemi sono avvisi)
+    assert set(UPSTREAM_DEPENDENCIES["build"]) == {"prepare", "outline", "rewrite"}
 
 
 def test_transitive_staleness_on_outline_modification(fully_built_lesson):

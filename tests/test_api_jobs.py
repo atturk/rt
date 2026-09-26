@@ -258,8 +258,10 @@ def test_telegram_listen_topics_job(api_client, ws, worker, monkeypatch):
         res = api_client.post("/api/v1/settings/telegram/listen-topics")
         drain(worker)
         got = job(api_client, res.json()["job_id"])
-        assert got["result"] == {"ok": True, "message": "Rilevati 2 topic. Assegna una materia a ciascuno e salva.",
-                                 "chat_id": "-1001234567890", "chats": 1, "topics": [12, 27]}
+        result = got["result"]
+        assert {k: result[k] for k in ("ok", "message", "chat_id", "chats", "topics")} == {
+            "ok": True, "message": "Rilevati 3 topic. Assegna una materia a ciascuno e salva.",
+            "chat_id": "-1001234567890", "chats": 1, "topics": [12, 27, 33]}
         assert "segreto-bot" not in str(got)
 
         monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "123:rifiutato")

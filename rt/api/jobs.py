@@ -36,12 +36,17 @@ def worker_available(job_type: str) -> bool:
 
 def enqueue_job(job_type: str, lesson_dir: Optional[str], payload: Dict[str, Any],
                 actor: str = "api") -> Dict[str, Any]:
+    return job_accepted(queue().enqueue(job_type, lesson_dir, payload, created_by=actor))
+
+
+def job_accepted(job_id: str) -> Dict[str, Any]:
+    """Risposta 202 per un job appena accodato."""
     from rt.services.lesson_service import lesson_id_for_dir
-    job_id = queue().enqueue(job_type, lesson_dir, payload, created_by=actor)
     info = queue().get(job_id)
-    return {"job_id": job_id, "type": job_type, "state": info.state,
-            "lesson_id": lesson_id_for_dir(lesson_dir) if lesson_dir else None,
-            "worker_available": worker_available(job_type)}
+    lesson_dir = info.lesson_path
+    return {"job_id": job_id, "type": info.type, "state": info.state,
+            "lesson_id": lesson_id_for_dir(lesson_dir) if lesson_dir and fs.isdir(lesson_dir) else None,
+            "worker_available": worker_available(info.type), "retry_of": info.retry_of}
 
 
 def running_jobs(lesson_dir: str):

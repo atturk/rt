@@ -28,6 +28,11 @@ class PhaseProgress(_Event):
     current: Optional[int] = None
     total: Optional[int] = None
     message: str = ""
+    # Fasi a unità: unità in lavorazione e quante sono fallite finora (dati strutturati per
+    # l'interfaccia, es. "Revisione · 8/31", senza leggere il messaggio)
+    unit_id: Optional[str] = None
+    unit_title: Optional[str] = None
+    failed: Optional[int] = None
 
 
 class PhaseCompleted(_Event):
@@ -35,6 +40,7 @@ class PhaseCompleted(_Event):
     phase: str
     result: Dict[str, Any] = Field(default_factory=dict)
     skipped: bool = False
+    partial: bool = Field(False, description="Fase finita PARTIAL: alcune unità non sono riuscite (result.failed_units)")
     step: Optional[int] = None
     total_steps: Optional[int] = None
 

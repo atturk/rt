@@ -9,6 +9,8 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 - Supporto nativo per mock deterministico offline.
 """
 
+import contextlib
+import contextvars
 import json
 import os
 import re
@@ -38,6 +40,7 @@ from rt.llm.errors import (
     ReasoningRequiredFailure,
     SuspiciousFastResponseFailure,
     classify_failure,
+    response_excerpt,
     LLMError,
     LLMTimeoutError,
 )
@@ -60,6 +63,55 @@ def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
         return  # Il log di debug non deve mai far fallire la pipeline
     from rt.db.llm_calls import record_llm_call
     record_llm_call(lesson_dir, entry)
+
+
+_MOCK_FAILURE: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar("rt_mock_failure", default=None)
+MOCK_OFF_SCHEMA_RESPONSE = "User Safety: safe\nResponse Safety: safe"
+
+
+@contextlib.contextmanager
+def mock_failure_once(job_name: str):
+    """Solo mock (test end-to-end): la prima chiamata di job_name su una lezione fallisce come
+    una risposta fuori schema definitiva, una volta sola per lezione (segnaposto in _state/).
+    Una nuova run sulla stessa lezione (Riprova) va a buon fine."""
+    token = _MOCK_FAILURE.set(job_name)
+    try:
+        yield
+    finally:
+        _MOCK_FAILURE.reset(token)
+
+
+def _consume_mock_failure(job_name: str, lesson_dir: Optional[str]) -> bool:
+    if _MOCK_FAILURE.get() != job_name or not lesson_dir:
+        return False
+    marker = lesson_path(lesson_dir, f"mock_failure_{job_name}.done")
+    if fs.isfile(marker):
+        return False
+    with fs.open(marker, "w", encoding="utf-8") as f:
+        f.write("1\n")
+    return True
+
+
+JSON_REMINDER = (
+    "Rispondi SOLO con un oggetto JSON valido conforme allo schema indicato nelle istruzioni di "
+    "sistema: nessun testo, etichetta o commento prima o dopo il JSON."
+)
+
+
+def _with_json_reminder(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Copia dei messaggi con il promemoria del formato JSON in coda all'ultimo messaggio
+    utente (nuovo tentativo dopo una risposta fuori schema)."""
+    out = [dict(m) for m in messages]
+    for msg in reversed(out):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            msg["content"] = f"{content}\n\n{JSON_REMINDER}"
+        elif isinstance(content, list):
+            msg["content"] = list(content) + [{"type": "text", "text": JSON_REMINDER}]
+        break
+    return out
 
 
 def _is_openrouter_free_tier(provider: str, model: str) -> bool:
@@ -183,6 +235,11 @@ class LLMClient:
                 timeout_seconds_configured=primary_cfg.timeout_seconds
             )
             current_telemetry().add(mock_rec)
+            if _consume_mock_failure(job_name, lesson_dir):
+                failure = SchemaFailure("JSON non valido in 'content' (mock)", provider="mock", model="mock-deterministic")
+                failure.response_excerpt = response_excerpt(MOCK_OFF_SCHEMA_RESPONSE)
+                failure.unit_id = unit_id
+                raise failure
             mock_resp = self._generate_mock_response(job_name, prompt, response_model)
             if lesson_dir:
                 _append_debug_log(lesson_dir, {
@@ -374,9 +431,16 @@ class LLMClient:
             MAX_LOW_EFFORT_RETRIES = 2  # 1 retry a config invariata + 1 tentativo di escalation con thinking forzato
             output_limit_retries = 0
             MAX_OUTPUT_LIMIT_RETRIES = 2  # fino a 2 retry aggiuntivi sulla stessa route, nessuna modifica ai parametri della richiesta
+            # Risposta fuori schema (testo libero, JSON non conforme) anche dopo i repair turn:
+            # una richiesta nuova sulla stessa route, senza la conversazione di riparazione e con
+            # il promemoria del formato. I router come 'openrouter/free' possono mandarla a un
+            # altro modello. Poi, se serve, failover sulle altre route.
+            schema_retries = 0
+            MAX_SCHEMA_RETRIES = 1 if max_retries > 0 else 0
+            schema_reminder = False
             force_thinking_override = False
 
-            while route_timeout_attempt < (total_route_timeout_attempts + MAX_LOW_EFFORT_RETRIES + MAX_OUTPUT_LIMIT_RETRIES):
+            while route_timeout_attempt < (total_route_timeout_attempts + MAX_LOW_EFFORT_RETRIES + MAX_OUTPUT_LIMIT_RETRIES + MAX_SCHEMA_RETRIES):
                 route_timeout_attempt += 1
                 resolved_model = None
                 t_attempt_start = time.time()
@@ -388,7 +452,7 @@ class LLMClient:
 
                 payload = provider.build_payload(
                     model=model_name,
-                    messages=list(messages),
+                    messages=_with_json_reminder(messages) if schema_reminder else list(messages),
                     max_tokens=route.max_tokens,
                     thinking=(True if force_thinking_override else route.thinking),
                     reasoning_effort=route.reasoning_effort,
@@ -949,6 +1013,12 @@ class LLMClient:
                     provider=provider_name,
                     model=model_name
                 )
+                if raw_content and not getattr(classified_failure, "response_excerpt", None):
+                    classified_failure.response_excerpt = response_excerpt(raw_content)
+                classified_failure.resolved_model = getattr(classified_failure, "resolved_model", None) or resolved_model
+                classified_failure.unit_id = getattr(classified_failure, "unit_id", None) or unit_id
+                if not classified_failure.model:
+                    classified_failure.model = model_name
                 last_failure = classified_failure
 
                 err_status = "timeout" if isinstance(classified_failure, TimeoutFailure) else "error"
@@ -1039,6 +1109,14 @@ class LLMClient:
                         next_attempt=call_attempt
                     )
                     time.sleep(1.5)
+                    continue
+                elif isinstance(classified_failure, SchemaFailure) and schema_retries < MAX_SCHEMA_RETRIES:
+                    schema_retries += 1
+                    schema_reminder = True
+                    call_attempt += 1
+                    monitor.set_retry_reason("schema_error")
+                    monitor.log_retry(reason="schema_retry", elapsed=elapsed_att, next_attempt=call_attempt)
+                    time.sleep(1.0)
                     continue
                 elif isinstance(classified_failure, OutputLimitFailure) and output_limit_retries < MAX_OUTPUT_LIMIT_RETRIES:
                     output_limit_retries += 1

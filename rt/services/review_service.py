@@ -231,3 +231,71 @@ def auto_accept_pending(
             channel=channel, actor="auto_accept", resolved_by="cli_auto",
         )
     return accepted, remaining
+
+
+# ---------------------------------------------------------------- avvisi per il documento finale
+
+def orphan_issue_ids(lesson_dir: str) -> List[str]:
+    """Issue scientifiche che non trovano più il loro testo (claim) nella bozza: una
+    correzione accettata non verrebbe applicata. Le ASR (senza diff) e quelle rifiutate
+    (il testo resta com'è) non contano."""
+    from rt.pipeline.review import load_science_issues
+    from rt.pipeline.rewrite import get_draft_path, load_draft
+    if not fs.isfile(get_draft_path(lesson_dir)):
+        return []
+    draft = load_draft(lesson_dir)
+    unit_by_id = {u.unit_id: u for u in draft.units}
+    decisions = {d.issue_id: d.decision for d in load_ledger(lesson_dir).decisions}
+    out = []
+    for issue in load_science_issues(lesson_dir):
+        if _is_no_diff_issue_type(issue) or decisions.get(issue.id) == "rejected":
+            continue
+        unit = unit_by_id.get(issue.unit_id) if issue.unit_id else None
+        if unit is None and issue.segment_id:
+            unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
+        claim = (issue.claim or "").strip()
+        if unit is None or not claim or claim not in unit.content:
+            out.append(issue.id)
+    return out
+
+
+def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
+    """Controlli di integrità prima del documento finale. Non bloccano il build (è la
+    conferma dell'utente): l'API li espone e la web li mostra nel dialogo di conferma.
+    Ogni avviso: code, message, count (numero di issue, se ha senso)."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    from rt.pipeline.review import load_science_issues
+    warnings: List[Dict[str, Any]] = []
+    status, reason = check_phase_status(lesson_dir, "review")
+    if status == PhaseStatus.MISSING:
+        warnings.append({"code": "review_missing", "count": None,
+                         "message": "Revisione scientifica non eseguita."})
+        return warnings
+    if status == PhaseStatus.STALE:
+        warnings.append({"code": "review_stale", "count": None,
+                         "message": f"Revisione non aggiornata: {reason}."})
+    elif status == PhaseStatus.PARTIAL:
+        warnings.append({"code": "review_partial", "count": None,
+                         "message": f"Revisione incompleta: {reason}."})
+    elif status == PhaseStatus.INVALID:
+        warnings.append({"code": "review_invalid", "count": None,
+                         "message": f"Revisione non leggibile: {reason}."})
+        return warnings
+    try:
+        orphans = set(orphan_issue_ids(lesson_dir))
+        decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
+        pending = [i for i in load_science_issues(lesson_dir) if i.id not in decided and i.id not in orphans]
+    except Exception as exc:  # file illeggibili: lo dice l'avviso, il build decide
+        warnings.append({"code": "review_invalid", "count": None,
+                         "message": f"Issue della revisione non leggibili: {exc}."})
+        return warnings
+    if pending:
+        n = len(pending)
+        warnings.append({"code": "pending_issues", "count": n,
+                         "message": f"{n} issue ancora da valutare: le correzioni proposte non entrano nel documento."})
+    if orphans:
+        n = len(orphans)
+        text = ("1 issue orfana: il suo testo non è più nella bozza" if n == 1
+                else f"{n} issue orfane: il loro testo non è più nella bozza")
+        warnings.append({"code": "orphan_issues", "count": n, "message": text + "."})
+    return warnings

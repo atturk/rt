@@ -175,6 +175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita */
+        post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons": {
         parameters: {
             query?: never;
@@ -319,7 +336,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scarica il Markdown finale o un archivio con i dati della lezione */
+        /**
+         * Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione
+         * @description Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene "(anteprima)" e lo zip ha un LEGGIMI che lo spiega.
+         */
         get: operations["export_lesson_api_v1_lessons__lesson_id__export_get"];
         put?: never;
         post?: never;
@@ -336,7 +356,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Immagini della lezione con descrizione e presenza nel documento finale */
+        /** Immagini della lezione con descrizione e presenza nel documento */
         get: operations["list_images_api_v1_lessons__lesson_id__images_get"];
         put?: never;
         /** Integra slide/foto caricate e/o immagini dal web (come 'rt add-images') */
@@ -773,6 +793,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/telegram/listen-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Messaggi ricevuti durante l'ultimo ascolto dei topic */
+        get: operations["listen_messages_api_v1_settings_telegram_listen_messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/listen-messages/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancella dal gruppo solo i messaggi ricevuti durante l'ultimo ascolto dei topic */
+        post: operations["delete_listen_messages_api_v1_settings_telegram_listen_messages_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram/listen-topics": {
         parameters: {
             query?: never;
@@ -784,6 +838,40 @@ export interface paths {
         put?: never;
         /** Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job) */
         post: operations["telegram_listen_topics_api_v1_settings_telegram_listen_topics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Valore completo del token del bot o del Chat ID, solo su richiesta esplicita */
+        post: operations["reveal_telegram_api_v1_settings_telegram_reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/test-topic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invia nel topic il messaggio di prova 'Questo è il topic di <materia>' */
+        post: operations["test_topic_api_v1_settings_telegram_test_topic_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -858,6 +946,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/worker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Job in parallelo del worker avviato con la web (vale dal prossimo avvio) */
+        put: operations["put_worker_api_v1_settings_worker_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/choose-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback) */
+        post: operations["choose_folder_api_v1_system_choose_folder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sottocartelle di una cartella della home, per il navigatore della SPA (solo loopback) */
+        get: operations["list_folders_api_v1_system_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/telegram/daemon": {
         parameters: {
             query?: never;
@@ -903,6 +1042,23 @@ export interface paths {
         put?: never;
         /** Ferma il bot Telegram */
         post: operations["daemon_stop_api_v1_telegram_daemon_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/telegram/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic) */
+        get: operations["notifications_api_v1_telegram_notifications_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1005,6 +1161,14 @@ export interface components {
              * @default true
              */
             with_review: boolean;
+        };
+        /** ChooseFolderIn */
+        ChooseFolderIn: {
+            /**
+             * Start
+             * @description Cartella da cui partire (facoltativa)
+             */
+            start?: string | null;
         };
         /** Connection */
         Connection: {
@@ -1133,6 +1297,13 @@ export interface components {
              */
             text?: string | null;
         };
+        /** DeleteFailure */
+        DeleteFailure: {
+            /** Message Id */
+            message_id: number;
+            /** Reason */
+            reason: string;
+        };
         /** DocumentSection */
         DocumentSection: {
             /** End Seconds */
@@ -1162,6 +1333,41 @@ export interface components {
         /** ErrorResponse */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** FolderChoice */
+        FolderChoice: {
+            /**
+             * Path
+             * @description Percorso POSIX assoluto della cartella scelta
+             */
+            path?: string | null;
+            /**
+             * Status
+             * @description unavailable: niente finestra nativa (non macOS), la SPA usa il navigatore
+             * @enum {string}
+             */
+            status: "chosen" | "cancelled" | "unavailable";
+        };
+        /** FolderEntry */
+        FolderEntry: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+        };
+        /** FolderListing */
+        FolderListing: {
+            /** Folders */
+            folders: components["schemas"]["FolderEntry"][];
+            /** Home */
+            home: string;
+            /**
+             * Parent
+             * @description Cartella superiore; null nella home
+             */
+            parent?: string | null;
+            /** Path */
+            path: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1268,6 +1474,16 @@ export interface components {
             result?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Retried By
+             * @description Job nuovo creato con Riprova da questo job fallito
+             */
+            retried_by?: string | null;
+            /**
+             * Retry Of
+             * @description Job fallito di cui questo è il nuovo tentativo (Riprova)
+             */
+            retry_of?: string | null;
             /** Started At */
             started_at?: string | null;
             /**
@@ -1284,6 +1500,8 @@ export interface components {
             job_id: string;
             /** Lesson Id */
             lesson_id?: number | null;
+            /** Retry Of */
+            retry_of?: string | null;
             /** State */
             state: string;
             /** Type */
@@ -1337,6 +1555,11 @@ export interface components {
              */
             mock: boolean;
             /**
+             * Mock Fail Once
+             * @description Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)
+             */
+            mock_fail_once?: ("rewrite" | "review") | null;
+            /**
              * Phase
              * @description Obbligatoria per run_phase
              */
@@ -1363,6 +1586,29 @@ export interface components {
              */
             with_review: boolean;
         };
+        /** LessonAction */
+        LessonAction: {
+            /** Available */
+            available: boolean;
+            /**
+             * Preview
+             * @description Per i download: l'export è l'anteprima dalla bozza, non il documento finale
+             * @default false
+             */
+            preview: boolean;
+            /**
+             * Reason
+             * @description Cosa manca, se non disponibile
+             */
+            reason?: string | null;
+        };
+        /** LessonActions */
+        LessonActions: {
+            export_markdown: components["schemas"]["LessonAction"];
+            export_zip: components["schemas"]["LessonAction"];
+            images: components["schemas"]["LessonAction"];
+            recall: components["schemas"]["LessonAction"];
+        };
         /** LessonCost */
         LessonCost: {
             /** Calls */
@@ -1381,6 +1627,8 @@ export interface components {
         };
         /** LessonDetail */
         LessonDetail: {
+            /** @description Recall, immagini e download: disponibili dopo il rewrite, senza build */
+            actions?: components["schemas"]["LessonActions"] | null;
             /**
              * Argomenti
              * @default
@@ -1457,7 +1705,7 @@ export interface components {
         LessonDocument: {
             /**
              * Final
-             * @description True se è il documento di 'rt build', False se anteprima dal draft
+             * @description True se è il documento di 'rt build' ed è aggiornato, False se anteprima dal draft (quello che il build produrrebbe ora)
              */
             final: boolean;
             /**
@@ -1482,7 +1730,7 @@ export interface components {
             alt_text: string;
             /**
              * In Document
-             * @description True se il documento finale la richiama
+             * @description True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)
              */
             in_document: boolean;
             /**
@@ -1567,6 +1815,35 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** ListenMessages */
+        ListenMessages: {
+            /**
+             * Cleaned
+             * @description True se sono già stati cancellati
+             */
+            cleaned: boolean;
+            /**
+             * Count
+             * @description Messaggi ricevuti durante quell'ascolto (esclusi quelli di servizio)
+             */
+            count: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Job Id
+             * @description Ultimo ascolto dei topic concluso
+             */
+            job_id?: string | null;
+        };
+        /** ListenMessagesDeleted */
+        ListenMessagesDeleted: {
+            /** Deleted */
+            deleted: number;
+            /** Failed */
+            failed: components["schemas"]["DeleteFailure"][];
+            /** Job Id */
+            job_id: string;
+        };
         /** LoginLink */
         LoginLink: {
             /**
@@ -1637,6 +1914,25 @@ export interface components {
              * @description Stato HTTP della risposta del provider
              */
             status_code?: number | null;
+        };
+        /** Notification */
+        Notification: {
+            /**
+             * Kind
+             * @description lezione_pronta, issue o prova
+             */
+            kind: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Sent At */
+            sent_at: string;
+            /** Text */
+            text: string;
+            /** Topic Id */
+            topic_id?: number | null;
         };
         /** Outline */
         Outline: {
@@ -1736,6 +2032,29 @@ export interface components {
             reason: string;
             /** Status */
             status: string;
+            /**
+             * Warnings
+             * @description Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.
+             */
+            warnings?: components["schemas"]["PhaseWarning"][];
+        };
+        /** PhaseWarning */
+        PhaseWarning: {
+            /**
+             * Code
+             * @description review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | check_failed
+             */
+            code: string;
+            /**
+             * Count
+             * @description Numero di issue, se l'avviso le conta
+             */
+            count?: number | null;
+            /**
+             * Message
+             * @description Testo per l'utente (italiano)
+             */
+            message: string;
         };
         /** QuizResult */
         QuizResult: {
@@ -1853,6 +2172,24 @@ export interface components {
              * @enum {string}
              */
             vote: "up" | "down" | "lightning";
+        };
+        /** RevealIn */
+        RevealIn: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "bot_token" | "chat_id";
+        };
+        /** RevealOut */
+        RevealOut: {
+            /** Field */
+            field: string;
+            /**
+             * Value
+             * @description Valore completo, null se non impostato
+             */
+            value?: string | null;
         };
         /** RouteIn */
         RouteIn: {
@@ -1976,6 +2313,7 @@ export interface components {
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
             web_search: components["schemas"]["WebSearchSettings"];
+            worker: components["schemas"]["WorkerSettings"];
         };
         /** TelegramIn */
         TelegramIn: {
@@ -1989,6 +2327,13 @@ export interface components {
             /** Misc Topic Id */
             misc_topic_id?: number | null;
             /**
+             * Topic Names
+             * @description id del topic -> nome rilevato (facoltativo)
+             */
+            topic_names?: {
+                [key: string]: string;
+            } | null;
+            /**
              * Topics
              * @description MATERIA -> id del topic
              */
@@ -1998,18 +2343,60 @@ export interface components {
         };
         /** TelegramSettings */
         TelegramSettings: {
+            /**
+             * Bot Token Preview
+             * @description Primi e ultimi caratteri del token (es. 1234…wXyZ); il valore completo solo con POST /settings/telegram/reveal
+             */
+            bot_token_preview?: string | null;
             /** Bot Token Set */
             bot_token_set: boolean;
-            /** Chat Id */
-            chat_id?: string | null;
+            /**
+             * Chat Id Preview
+             * @description Primi e ultimi caratteri del Chat ID
+             */
+            chat_id_preview?: string | null;
+            /**
+             * Chat Id Set
+             * @default false
+             */
+            chat_id_set: boolean;
             /** Default Channel */
             default_channel: string;
             /** Misc Topic Id */
             misc_topic_id?: number | null;
+            /**
+             * Topic Names
+             * @description id del topic -> nome rilevato da Telegram
+             */
+            topic_names?: {
+                [key: string]: string;
+            };
             /** Topics */
             topics: {
                 [key: string]: number;
             };
+        };
+        /** TopicTestIn */
+        TopicTestIn: {
+            /**
+             * Materia
+             * @default
+             */
+            materia: string;
+            /** Topic Id */
+            topic_id: number;
+        };
+        /** TopicTestOut */
+        TopicTestOut: {
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Text
+             * @description Testo inviato nel topic
+             */
+            text: string;
         };
         /** Transcription */
         Transcription: {
@@ -2117,6 +2504,11 @@ export interface components {
              */
             results: number;
         };
+        /** WorkerIn */
+        WorkerIn: {
+            /** Concurrency */
+            concurrency: number;
+        };
         /** WorkerInfo */
         WorkerInfo: {
             /** Current Job Id */
@@ -2134,6 +2526,20 @@ export interface components {
             pid?: number | null;
             /** Platform */
             platform?: string | null;
+        };
+        /** WorkerSettings */
+        WorkerSettings: {
+            /**
+             * Concurrency
+             * @description Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio
+             */
+            concurrency: number;
+            /**
+             * Running
+             * @description Worker attivi ora (uno per job eseguibile insieme)
+             * @default 0
+             */
+            running: number;
         };
     };
     responses: never;
@@ -2633,6 +3039,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobEvent"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_job_api_v1_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5366,6 +5839,136 @@ export interface operations {
             };
         };
     };
+    listen_messages_api_v1_settings_telegram_listen_messages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListenMessages"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_listen_messages_api_v1_settings_telegram_listen_messages_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListenMessagesDeleted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     telegram_listen_topics_api_v1_settings_telegram_listen_topics_post: {
         parameters: {
             query?: never;
@@ -5382,6 +5985,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reveal_telegram_api_v1_settings_telegram_reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevealIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_topic_api_v1_settings_telegram_test_topic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicTestOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5707,6 +6448,211 @@ export interface operations {
             };
         };
     };
+    put_worker_api_v1_settings_worker_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    choose_folder_api_v1_system_choose_folder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChooseFolderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderChoice"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_folders_api_v1_system_folders_get: {
+        parameters: {
+            query?: {
+                path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderListing"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     daemon_status_api_v1_telegram_daemon_get: {
         parameters: {
             query?: never;
@@ -5853,6 +6799,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DaemonStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    notifications_api_v1_telegram_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notification"][];
                 };
             };
             /** @description Autenticazione mancante o non valida */
