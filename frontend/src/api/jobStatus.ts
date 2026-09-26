@@ -24,15 +24,6 @@ export function useJobStatus(jobId: string | null | undefined) {
   })
 }
 
-/** Worker attivi: senza worker i job restano in coda. */
-export function useWorkers() {
-  return useQuery({
-    queryKey: ['workers'],
-    queryFn: () => unwrap(api.GET('/api/v1/workers')),
-    refetchInterval: 15_000,
-  })
-}
-
 /** Corpo multipart per gli endpoint con upload: openapi-fetch passa il FormData così com'è. */
 export function formData(fields: Record<string, string | number | boolean | Blob | Blob[] | null | undefined>): FormData {
   const form = new FormData()

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 
 import { errorMessage } from '@/api/client'
-import { jobFinished, useJobStatus, useWorkers } from '@/api/jobStatus'
+import { useWorkers } from '@/api/hooks'
+import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { Alert } from '@/components/ui/alert'
 
 const STATE_TEXT: Record<string, string> = {

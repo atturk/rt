@@ -1,14 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap, type Schemas } from './client'
+import { lessonKeys } from './hooks'
 import { formData } from './jobStatus'
 
 export type LessonImage = Schemas['LessonImage']
 
-export const imageKeys = {
-  list: (id: number) => ['images', id] as const,
-  document: (id: number) => ['lesson', id, 'document'] as const,
-}
+export const imageKeys = { list: (id: number) => ['images', id] as const }
 
 const path = (id: number) => ({ path: { lesson_id: id } })
 
@@ -16,13 +14,6 @@ export function useLessonImages(id: number) {
   return useQuery({
     queryKey: imageKeys.list(id),
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/images', { params: path(id) })),
-  })
-}
-
-export function useLessonDocument(id: number) {
-  return useQuery({
-    queryKey: imageKeys.document(id),
-    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/document', { params: path(id) })),
   })
 }
 
@@ -50,17 +41,6 @@ export function useRefreshImages(id: number) {
   return () =>
     Promise.all([
       client.invalidateQueries({ queryKey: imageKeys.list(id) }),
-      client.invalidateQueries({ queryKey: imageKeys.document(id) }),
-      client.invalidateQueries({ queryKey: ['lesson', id] }),
+      client.invalidateQueries({ queryKey: lessonKeys.all(id) }),
     ])
-}
-
-/**
- * L'HTML del documento richiama le immagini con percorsi relativi alla lezione
- * (assets/images/<nome>): li porta all'endpoint dell'API che le serve.
- */
-export function withImageUrls(html: string, id: number): string {
-  return html.replace(/(<img\b[^>]*\bsrc=")(?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)"/g, (_m, head: string, name: string) => {
-    return `${head}/api/v1/lessons/${id}/assets/images/${encodeURIComponent(name)}"`
-  })
 }

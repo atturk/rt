@@ -3,8 +3,8 @@ import { useCallback, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
-import { useLesson } from '@/api/hooks'
-import { useAddImages, useLessonDocument, useLessonImages, useRefreshImages, withImageUrls } from '@/api/images'
+import { useLesson, useLessonDocument } from '@/api/hooks'
+import { useAddImages, useLessonImages, useRefreshImages } from '@/api/images'
 import { JobProgress } from '@/components/JobProgress'
 import { LessonPicker } from '@/components/LessonPicker'
 import { Alert } from '@/components/ui/alert'
@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { lessonTitle } from '@/lib/format'
+import { withImageUrls } from '@/lib/images'
 import type { Area } from './types'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
@@ -130,7 +131,7 @@ function DocumentPreview({ lessonId }: { lessonId: number }) {
   return (
     <div
       data-testid="document-preview"
-      className="prose-rt max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-5 text-sm leading-relaxed [&_h1]:mb-3 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mb-1 [&_h3]:mt-4 [&_h3]:font-semibold [&_img]:my-3 [&_img]:max-h-80 [&_img]:rounded-md [&_img]:border [&_p]:mb-2"
+      className="rt-document max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-5"
       // HTML già sanificato dall'API (markdown-it con html=False)
       dangerouslySetInnerHTML={{ __html: withImageUrls(doc.data.html, lessonId) }}
     />

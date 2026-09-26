@@ -196,6 +196,14 @@ test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel docum
     await expect(img).toBeVisible()
     expect(await img.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth)).toBeGreaterThan(0)
   }
+
+  // Anche la pagina della lezione mostra le immagini nel documento, e porta a recall e immagini
+  await page.goto(`/lezioni/${lesson.id}`)
+  const docImage = page.getByTestId('lesson-document').locator(`img[src="${inDocument[0].url}"]`)
+  await expect(docImage).toBeVisible()
+  expect(await docImage.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth)).toBeGreaterThan(0)
+  await page.getByRole('link', { name: 'Recall' }).last().click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/recall$`))
 })
 
 test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricarica', async ({ page }) => {
