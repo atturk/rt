@@ -215,6 +215,10 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
         )
         results[macro_id] = res.image_hashes
 
+    if client.force_mock and results and not any(results.values()):
+        # in mock il giudice non sceglie nulla: le immagini vanno nella prima macro-sezione,
+        # così il documento di prova le mostra (anteprima della SPA, test end-to-end)
+        results[next(iter(results))] = list(descriptions)
     return results
 
 

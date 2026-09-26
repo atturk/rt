@@ -210,6 +210,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/assets/images/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** File di un'immagine della lezione */
+        get: operations["get_image_api_v1_lessons__lesson_id__assets_images__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/audio": {
         parameters: {
             query?: never;
@@ -319,7 +336,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Immagini della lezione con descrizione e presenza nel documento finale */
+        get: operations["list_images_api_v1_lessons__lesson_id__images_get"];
         put?: never;
         /** Integra slide/foto caricate e/o immagini dal web (come 'rt add-images') */
         post: operations["add_images_api_v1_lessons__lesson_id__images_post"];
@@ -1386,6 +1404,45 @@ export interface components {
              * @description Timecode per unità, da segments.json
              */
             sections: components["schemas"]["DocumentSection"][];
+        };
+        /** LessonImage */
+        LessonImage: {
+            /**
+             * Alt Text
+             * @default
+             */
+            alt_text: string;
+            /**
+             * In Document
+             * @description True se il documento finale la richiama
+             */
+            in_document: boolean;
+            /**
+             * Name
+             * @description Nome del file in assets/images
+             */
+            name: string;
+            /**
+             * Slide Title
+             * @default
+             */
+            slide_title: string;
+            /**
+             * Source
+             * @description Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>
+             * @default
+             */
+            source: string;
+            /**
+             * Url
+             * @description Percorso dell'API che serve il file
+             */
+            url: string;
+        };
+        /** LessonImages */
+        LessonImages: {
+            /** Images */
+            images: components["schemas"]["LessonImage"][];
         };
         /** LessonSummary */
         LessonSummary: {
@@ -2670,6 +2727,75 @@ export interface operations {
             };
         };
     };
+    get_image_api_v1_lessons__lesson_id__assets_images__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_audio_api_v1_lessons__lesson_id__audio_get: {
         parameters: {
             query?: never;
@@ -3046,6 +3172,74 @@ export interface operations {
                 content: {
                     "application/zip": unknown;
                     "text/markdown": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_images_api_v1_lessons__lesson_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonImages"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
