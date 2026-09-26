@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from rt.core.models import Manifest
 from rt.core.lesson_paths import lesson_path
+from rt.storage import fs
 
 
 def get_manifest_path(lesson_dir: str) -> str:
@@ -17,10 +18,10 @@ def get_manifest_path(lesson_dir: str) -> str:
 
 def load_manifest(lesson_dir: str) -> Optional[Manifest]:
     path = get_manifest_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         manifest = Manifest.model_validate(data)
         if "review" not in manifest.phase_records and "review_science" in manifest.phase_records:
@@ -45,9 +46,9 @@ def save_manifest(manifest: Manifest, lesson_dir: Optional[str] = None) -> None:
     data = manifest.model_dump(mode="json")
     # Scrittura atomica
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
     from rt.db.sync import dual_write_lesson
     dual_write_lesson(target_dir)

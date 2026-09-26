@@ -28,6 +28,7 @@ from rt.pipeline.issue_review import (
 from rt.pipeline.ledger import load_ledger, sanitize_suggested_fix
 from rt.services import review_service
 from rt.telegram.review_channel import start_review_via_telegram
+from rt.storage import fs
 
 
 def record_decision(lesson_dir: str, issue_id: str, decision: str, resolved_text: Optional[str] = None, **kwargs):
@@ -213,11 +214,11 @@ class IssueReviewApp(App):
         from rt.pipeline.rewrite import load_draft, get_draft_path
 
         seg_path = lesson_path(lesson_dir, "segments.json")
-        seg_data = load_segments_json(seg_path) if os.path.isfile(seg_path) else None
+        seg_data = load_segments_json(seg_path) if fs.isfile(seg_path) else None
         self.seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
 
         draft_path = get_draft_path(lesson_dir)
-        self.draft = load_draft(lesson_dir) if os.path.isfile(draft_path) else None
+        self.draft = load_draft(lesson_dir) if fs.isfile(draft_path) else None
 
         self.seg_to_unit: Dict[str, Any] = {}
         self.unit_by_id: Dict[str, Any] = {}
@@ -281,9 +282,9 @@ class IssueReviewApp(App):
                 except Exception:
                     pass
             self.mpv_proc = None
-        if self.mpv_socket_path and os.path.exists(self.mpv_socket_path):
+        if self.mpv_socket_path and fs.exists(self.mpv_socket_path):
             try:
-                os.remove(self.mpv_socket_path)
+                fs.remove(self.mpv_socket_path)
             except Exception:
                 pass
             self.mpv_socket_path = None
@@ -502,7 +503,7 @@ class IssueReviewApp(App):
         from rt.core.audio_clip import get_or_create_unit_clip, calculate_mpv_geometry
         from rt.core.segments import load_segments_json
         seg_path = lesson_path(self.lesson_dir, "segments.json")
-        seg_data = load_segments_json(seg_path) if os.path.isfile(seg_path) else None
+        seg_data = load_segments_json(seg_path) if fs.isfile(seg_path) else None
         segments = seg_data.segments if seg_data else []
 
         try:
@@ -612,7 +613,7 @@ def run_interactive_review(
         rem_asr, rem_sci = get_pending_issues(lesson_dir)
         if not rem_asr and not rem_sci:
             yaml_path = lesson_path(lesson_dir, "info.yaml")
-            if os.path.isfile(yaml_path):
+            if fs.isfile(yaml_path):
                 try:
                     transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
                 except Exception:
@@ -646,7 +647,7 @@ def run_interactive_review(
     rem_asr, rem_sci = get_pending_issues(lesson_dir)
     if not rem_asr and not rem_sci:
         yaml_path = lesson_path(lesson_dir, "info.yaml")
-        if os.path.isfile(yaml_path):
+        if fs.isfile(yaml_path):
             try:
                 transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
             except Exception:

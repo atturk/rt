@@ -10,6 +10,7 @@ import tempfile
 import subprocess
 from typing import Optional, List, Tuple
 from rt.core.manifest import load_manifest
+from rt.storage import fs
 
 
 def resolve_audio_path(lesson_dir: str) -> Optional[str]:
@@ -29,8 +30,9 @@ def resolve_audio_path(lesson_dir: str) -> Optional[str]:
     ]
 
     for cand in candidates:
-        if cand and os.path.isfile(cand):
-            return os.path.abspath(cand)
+        if cand and fs.isfile(cand):
+            # percorso reale (per le lezioni nel DB: il file nella cartella media)
+            return fs.real_path(os.path.abspath(cand))
 
     return None
 
@@ -69,9 +71,9 @@ def cut_clip(audio_path: str, start_seconds: float, end_seconds: float) -> str:
     try:
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     except subprocess.CalledProcessError as e:
-        if os.path.exists(tmp_path):
+        if fs.exists(tmp_path):
             try:
-                os.remove(tmp_path)
+                fs.remove(tmp_path)
             except Exception:
                 pass
         raise e
@@ -111,9 +113,9 @@ def get_mpv_last_position_path() -> str:
 
 def load_last_mpv_geometry() -> str:
     path = get_mpv_last_position_path()
-    if os.path.isfile(path):
+    if fs.isfile(path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with fs.open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if "geometry" in data and data["geometry"]:
                 return data["geometry"]
@@ -125,8 +127,8 @@ def load_last_mpv_geometry() -> str:
 def save_last_mpv_geometry(geometry: str) -> None:
     path = get_mpv_last_position_path()
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        fs.makedirs(os.path.dirname(path), exist_ok=True)
+        with fs.open(path, "w", encoding="utf-8") as f:
             json.dump({"geometry": geometry}, f)
     except Exception:
         pass
@@ -149,14 +151,14 @@ def get_or_create_unit_clip(lesson_dir: str, unit, segments: List) -> Optional[s
     if not audio_path:
         return None
     clips_dir = lesson_path(lesson_dir, "recall_audio_clips")
-    os.makedirs(clips_dir, exist_ok=True)
+    fs.makedirs(clips_dir, exist_ok=True)
     ext = os.path.splitext(audio_path)[1] or ".mp3"
     clip_path = os.path.join(clips_dir, f"{unit.unit_id}{ext}")
-    if not os.path.isfile(clip_path):
+    if not fs.isfile(clip_path):
         start_s, end_s = resolve_unit_time_range(unit, segments)
         tmp_clip = cut_clip(audio_path, start_s, end_s)
-        shutil.move(tmp_clip, clip_path)
-    return clip_path
+        fs.move(tmp_clip, clip_path)
+    return fs.real_path(clip_path)
 
 
 def resolve_unit_time_range(unit, segments: List) -> Tuple[float, float]:

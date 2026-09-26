@@ -12,6 +12,7 @@ from rt.core.models import ReviewDecision
 from rt.services.review_service import (
     ReviewDecisionError, record_review_decision, undo_last_decision,
 )
+from rt.storage import fs
 
 _log = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def _audit(lesson_dir: str, issue_id: str, action: str, event: str) -> None:
         "channel": "web",
     }
     path = lesson_path(lesson_dir, "web_review_events.jsonl")
-    with open(path, "a", encoding="utf-8") as handle:
+    with fs.open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 

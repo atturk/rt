@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from rt.db.engine import get_database
 from rt.db.repositories import LessonRepository, LlmCallRepository
 from rt.db.session import session_scope
+from rt.storage import fs
 
 logger = logging.getLogger(__name__)
 _warned = False
@@ -21,11 +22,11 @@ def read_log_entries(lesson_dir: str) -> Optional[List[Dict[str, Any]]]:
     """Righe valide di llm_debug.log (None se il file non esiste o non si legge)."""
     from rt.core.lesson_paths import lesson_path
     path = lesson_path(lesson_dir, "llm_debug.log")
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return None
     entries: List[Dict[str, Any]] = []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

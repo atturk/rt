@@ -16,6 +16,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Union, Callable, Protocol
 from pydantic import BaseModel
 from rich.console import Console
+from rt.storage import fs
 
 # Colori per il terminale
 CYAN = "\033[1;36m"
@@ -74,7 +75,7 @@ def is_audio_file(path: str) -> bool:
     if not path or not isinstance(path, str):
         return False
     clean = clean_input_path(path)
-    if not os.path.isfile(clean):
+    if not fs.isfile(clean):
         return False
     _, ext = os.path.splitext(clean.lower())
     return ext in SUPPORTED_AUDIO_EXTENSIONS
@@ -101,7 +102,7 @@ def find_macparakeet_binary() -> str:
         "/opt/homebrew/bin/macparakeet-cli",
     ]
     for c in candidates:
-        if os.path.exists(c) and os.access(c, os.X_OK):
+        if fs.exists(c) and os.access(c, os.X_OK):
             return c
     return ""
 
@@ -240,7 +241,7 @@ def generate_deterministic_mock_asr(
         "language": "it"
     }
 
-    with open(json_path, "w", encoding="utf-8") as f:
+    with fs.open(json_path, "w", encoding="utf-8") as f:
         json.dump(mock_json_payload, f, ensure_ascii=False, indent=2)
 
     # Trascritto Markdown derivato
@@ -267,7 +268,7 @@ def generate_deterministic_mock_asr(
         tc = f"{start_min:02d}:{start_sec:02d} - {end_min:02d}:{end_sec:02d}"
         md_lines.append(f"**[{tc}]** {s['text']}\n")
 
-    with open(md_path, "w", encoding="utf-8") as f:
+    with fs.open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(md_lines))
 
     return json_path, md_path
@@ -328,7 +329,7 @@ def resolve_setup_request(
         cleaned_audios = [clean_input_path(prompter.ask_audio())]
 
     for a in cleaned_audios:
-        if not os.path.isfile(a):
+        if not fs.isfile(a):
             raise SetupError(f"File audio non trovato: '{a}'")
 
     missing: List[str] = []
@@ -420,34 +421,34 @@ def run_setup(
     if dest_dir:
         clean_dest = clean_input_path(dest_dir)
         if not clean_dest:
-            default_base = audio_dir if (audio_dir and os.path.isdir(audio_dir)) else os.getcwd()
-        elif os.path.isfile(clean_dest):
+            default_base = audio_dir if (audio_dir and fs.isdir(audio_dir)) else os.getcwd()
+        elif fs.isfile(clean_dest):
             raise SetupError(
                 f"La directory di destinazione specificata '{clean_dest}' è un file, non una directory."
             )
         else:
             default_base = clean_dest
             try:
-                os.makedirs(default_base, exist_ok=True)
+                fs.makedirs(default_base, exist_ok=True)
             except OSError as e:
                 raise SetupError(
                     f"Impossibile creare la directory di destinazione '{default_base}': {e}"
                 )
     else:
-        default_base = audio_dir if (audio_dir and os.path.isdir(audio_dir)) else os.getcwd()
+        default_base = audio_dir if (audio_dir and fs.isdir(audio_dir)) else os.getcwd()
 
     folder_name = f"[{date_val}] {materia_val}" + (f" - {argomenti_val}" if argomenti_val else "")
     target_folder_path = os.path.join(default_base, folder_name)
 
     # 4. CONTROLLO DI SICUREZZA CARTELLA ESISTENTE (Parte Q)
-    if os.path.isdir(target_folder_path):
+    if fs.isdir(target_folder_path):
         from rt.core.lesson_paths import lesson_path
         existing_info = lesson_path(target_folder_path, "info.yaml")
         existing_decisions = lesson_path(target_folder_path, "review_decisions.json")
         existing_draft = lesson_path(target_folder_path, "draft.json")
         existing_rielab = lesson_path(target_folder_path, "rielaborato.md")
 
-        has_protected_work = any(os.path.isfile(p) for p in [existing_decisions, existing_draft, existing_rielab])
+        has_protected_work = any(fs.isfile(p) for p in [existing_decisions, existing_draft, existing_rielab])
 
         if has_protected_work and not force:
             raise SetupError(
@@ -455,15 +456,21 @@ def run_setup(
                 f"o decisioni umane protette. Operazione rifiutata per prevenire perdite di dati. "
                 f"Usa il flag --force per confermare la ripreparazione."
             )
-        elif os.path.isfile(existing_info) and not force:
+        elif fs.isfile(existing_info) and not force:
             raise SetupError(
                 f"La cartella '{target_folder_path}' è già inizializzata come lezione RT. "
                 f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'."
             )
 
-    os.makedirs(target_folder_path, exist_ok=True)
-    if on_progress:
-        on_progress(f"✔ Cartella lezione: {target_folder_path}")
+    if fs.is_db_lesson(target_folder_path) or (not os.path.isdir(target_folder_path) and fs.new_lessons_use_db()):
+        # Lezione nel database: nessuna cartella, i media vanno nella cartella media di RT.
+        target_folder_path = fs.create_db_lesson(target_folder_path)
+        if on_progress:
+            on_progress(f"✔ Lezione nel database: {folder_name}")
+    else:
+        fs.makedirs(target_folder_path, exist_ok=True)
+        if on_progress:
+            on_progress(f"✔ Cartella lezione: {target_folder_path}")
     now_iso = datetime.datetime.now().isoformat()
 
     # 5. ESECUZIONE TRASCRIZIONE ASR
@@ -513,7 +520,7 @@ def run_setup(
             for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
                 aud_abs = os.path.abspath(aud_file)
                 temp_audio_dir = os.path.join(temp_dir, f"audio_{audio_idx}")
-                os.makedirs(temp_audio_dir, exist_ok=True)
+                fs.makedirs(temp_audio_dir, exist_ok=True)
 
                 if use_custom_stt:
                     try:
@@ -530,11 +537,11 @@ def run_setup(
                         cmd_json.extend(["--parakeet-model", model_param])
                     cmd_json.append(aud_abs)
                     res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
-                    json_files = [f for f in os.listdir(temp_audio_dir) if f.endswith(".json")]
+                    json_files = [f for f in fs.listdir(temp_audio_dir) if f.endswith(".json")]
                     raw_data = None
                     if json_files:
                         try:
-                            with open(os.path.join(temp_audio_dir, json_files[0]), "r", encoding="utf-8") as f:
+                            with fs.open(os.path.join(temp_audio_dir, json_files[0]), "r", encoding="utf-8") as f:
                                 raw_data = json.load(f)
                         except (OSError, ValueError):
                             raw_data = None
@@ -585,7 +592,7 @@ def run_setup(
 
                 cumulative_offset_ms = max_seg_end
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            fs.rmtree(temp_dir, ignore_errors=True)
 
         # Salvataggio deterministico unificato del JSON primario
         final_mw_payload = {
@@ -597,7 +604,7 @@ def run_setup(
         }
         if all_word_timestamps_combined:
             final_mw_payload["wordTimestamps"] = all_word_timestamps_combined
-        with open(json_path, "w", encoding="utf-8") as f:
+        with fs.open(json_path, "w", encoding="utf-8") as f:
             json.dump(final_mw_payload, f, ensure_ascii=False, indent=2)
 
         # Generazione trascritto grezzo.md con frontmatter
@@ -621,7 +628,7 @@ stato: pronto_per_rielaborazione
             tc = f"{int(st_ms//60000):02d}:{int((st_ms%60000)//1000):02d} - {int(en_ms//60000):02d}:{int((en_ms%60000)//1000):02d}"
             md_body_lines.append(f"**[{tc}]** {s.get('text', '').strip()}\n")
 
-        with open(md_path, "w", encoding="utf-8") as f:
+        with fs.open(md_path, "w", encoding="utf-8") as f:
             f.write(md_frontmatter + "\n".join(md_body_lines))
 
         current_state = "setup_completato"
@@ -639,7 +646,7 @@ stato: in_attesa_di_trascrizione
 ---
 
 """
-        with open(md_path, "w", encoding="utf-8") as f:
+        with fs.open(md_path, "w", encoding="utf-8") as f:
             f.write(yaml_frontmatter)
 
         current_state = "metadata_only"
@@ -649,7 +656,7 @@ stato: in_attesa_di_trascrizione
     for aud_file in cleaned_audios:
         dest_audio = os.path.join(target_folder_path, os.path.basename(aud_file))
         if os.path.abspath(aud_file) != os.path.abspath(dest_audio):
-            shutil.copy2(aud_file, dest_audio)
+            fs.copy2(aud_file, dest_audio)
 
     # 7. Creazione atomica di info.yaml (Parte N)
     info_yaml_path = os.path.join(target_folder_path, "info.yaml")
@@ -663,9 +670,12 @@ fase_corrente: {current_state}
 stato: {current_status}
 """
     tmp_info = info_yaml_path + ".tmp"
-    with open(tmp_info, "w", encoding="utf-8") as f:
+    with fs.open(tmp_info, "w", encoding="utf-8") as f:
         f.write(info_content)
-    os.replace(tmp_info, info_yaml_path)
+    fs.replace(tmp_info, info_yaml_path)
+    if fs.is_db_lesson(target_folder_path):
+        from rt.db.sync import dual_write_lesson
+        dual_write_lesson(target_folder_path)
 
     return {
         "status": current_state,
@@ -676,7 +686,7 @@ stato: {current_status}
         "argomenti": argomenti_val,
         "audio_files": [os.path.join(target_folder_path, os.path.basename(a)) for a in cleaned_audios],
         "info_yaml": info_yaml_path,
-        "trascritto_json": json_path if os.path.isfile(json_path) else None,
+        "trascritto_json": json_path if fs.isfile(json_path) else None,
         "trascritto_md": md_path
     }
 

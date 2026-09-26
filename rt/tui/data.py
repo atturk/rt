@@ -18,6 +18,7 @@ from rt.pipeline.ledger import load_ledger
 from rt.pipeline.review import load_science_issues
 # Spostate nel service layer (RT4-E2): le usano anche web e API.
 from rt.services.lesson_service import load_markdown_preview, strip_yaml_frontmatter  # noqa: F401
+from rt.storage import fs
 
 PHASES = ["prepare", "outline", "rewrite", "review", "build"]
 
@@ -72,12 +73,12 @@ def _relative_time(mtime: float) -> str:
 
 
 def _lesson_dirs(root: str) -> List[str]:
-    if not root or not os.path.isdir(root):
+    if not root or not fs.isdir(root):
         return []
     found = []
-    for name in sorted(os.listdir(root)):
+    for name in sorted(fs.listdir(root)):
         full = os.path.join(root, name)
-        if os.path.isdir(full) and os.path.isfile(lesson_path(full, "info.yaml")):
+        if fs.isdir(full) and fs.isfile(lesson_path(full, "info.yaml")):
             found.append(full)
     return found
 
@@ -85,9 +86,9 @@ def _lesson_dirs(root: str) -> List[str]:
 def _lesson_mtime(lesson_dir: str) -> float:
     info_path = lesson_path(lesson_dir, "info.yaml")
     try:
-        return os.path.getmtime(info_path)
+        return fs.getmtime(info_path)
     except OSError:
-        return os.path.getmtime(lesson_dir)
+        return fs.getmtime(lesson_dir)
 
 
 def load_lesson_summary(lesson_dir: str) -> LessonSummary:

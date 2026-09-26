@@ -25,6 +25,7 @@ from rt.llm.prompts import (
     build_image_descriptions_context_message,
     build_image_unit_judge_user_prompt,
 )
+from rt.storage import fs
 
 
 def get_images_dir(lesson_dir: str) -> str:
@@ -43,21 +44,21 @@ def load_image_descriptions(lesson_dir: str) -> Dict[str, Any]:
     """Ritorna {sha256_hash: {filename, source, slide_title, ocr_text, visual_elements,
     summary_keywords, alt_text}}. Dizionario vuoto se il file non esiste ancora."""
     path = get_descriptions_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return {}
-    with open(path, "r", encoding="utf-8") as f:
+    with fs.open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_image_descriptions(lesson_dir: str, data: Dict[str, Any]) -> None:
     """Scrittura atomica (tmp file + os.replace), stesso pattern già usato in tutto il
     progetto per file di stato/artefatti."""
-    os.makedirs(get_images_dir(lesson_dir), exist_ok=True)
+    fs.makedirs(get_images_dir(lesson_dir), exist_ok=True)
     path = get_descriptions_path(lesson_dir)
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 
 def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: str = ".png") -> str:
@@ -67,13 +68,13 @@ def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: st
     short_hash = image_hash[:16]
     filename = f"{short_hash}{ext}"
     images_dir = get_images_dir(lesson_dir)
-    os.makedirs(images_dir, exist_ok=True)
+    fs.makedirs(images_dir, exist_ok=True)
     full_path = os.path.join(images_dir, filename)
-    if not os.path.isfile(full_path):
+    if not fs.isfile(full_path):
         tmp_path = full_path + ".tmp"
-        with open(tmp_path, "wb") as f:
+        with fs.open(tmp_path, "wb") as f:
             f.write(image_bytes)
-        os.replace(tmp_path, full_path)
+        fs.replace(tmp_path, full_path)
     return f"assets/images/{filename}"
 
 
@@ -99,7 +100,7 @@ def partition_new_vs_cached_images(lesson_dir: str, images: List[ExtractedImage]
 
 def get_lesson_context(lesson_dir: str) -> Optional[str]:
     info_path = os.path.join(lesson_dir, "info.yaml")
-    if not os.path.isfile(info_path):
+    if not fs.isfile(info_path):
         return None
     try:
         from rt.core.state import read_info_yaml

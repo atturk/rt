@@ -3,6 +3,7 @@ rt.cli_reporter
 Traduce gli eventi del service layer (rt.services.events) nelle stesse righe che la CLI
 stampa da sempre. È l'unico punto in cui la presentazione a terminale delle fasi vive.
 """
+import os
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from rt.services.events import DecisionRequired, Event, Notice, PhaseCompleted, PhaseStarted
@@ -41,6 +42,16 @@ def run_phase_details(phase: str, res: Dict[str, Any]) -> Optional[str]:
     if phase == "build":
         if skipped:
             return "Documenti finali già generati e aggiornati."
+        from rt.storage import fs
+        lesson_dir = res.get("lesson_dir")
+        if lesson_dir and fs.is_db_lesson(lesson_dir):
+            name = os.path.basename(lesson_dir)
+            return (
+                "File finali generati con successo (salvati nel database):\n"
+                f"  - Rielaborato: {os.path.basename(res.get('named_file') or res['rielaborato'])}\n"
+                f"  - Errori concettuali: {os.path.basename(res['errori_concettuali'])}\n"
+                f"  Per scaricarli: rt export \"{name}\" -o <cartella>"
+            )
         return (
             "File finali generati con successo:\n"
             f"  - Rielaborato: {res['rielaborato']}\n"

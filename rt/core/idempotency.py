@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from rt.core.manifest import load_manifest, save_manifest
 from rt.core.lesson_paths import lesson_path
+from rt.storage import fs
 
 
 class PhaseStatus(str, Enum):
@@ -51,10 +52,10 @@ UPSTREAM_DEPENDENCIES = {
 
 def compute_file_sha256(path: str) -> str:
     """Calcola l'hash SHA256 di un file su disco in modo efficiente."""
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return ""
     h = hashlib.sha256()
-    with open(path, "rb") as f:
+    with fs.open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
@@ -74,7 +75,7 @@ def find_raw_transcript_source(lesson_dir: str) -> Optional[str]:
         lesson_path(lesson_dir, "trascritto grezzo.md"),
     ]
     for c in candidates:
-        if os.path.isfile(c):
+        if fs.isfile(c):
             return c
     return None
 
@@ -89,7 +90,7 @@ def _info_fingerprint_strs(lesson_dir: str) -> List[str]:
     cui in quel caso si restituiscono entrambe le varianti."""
     from rt.core.state import read_info_yaml
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-    if not os.path.isfile(yaml_path):
+    if not fs.isfile(yaml_path):
         return [""]
     try:
         info = read_info_yaml(yaml_path)
@@ -99,7 +100,7 @@ def _info_fingerprint_strs(lesson_dir: str) -> List[str]:
     topics = info.get("argomenti", "")
     if topics and str(topics).strip():
         try:
-            with open(lesson_path(lesson_dir, "outline.json"), "r", encoding="utf-8") as f:
+            with fs.open(lesson_path(lesson_dir, "outline.json"), "r", encoding="utf-8") as f:
                 generated = json.load(f).get("generated_topics") or []
         except (OSError, ValueError, AttributeError):
             generated = []
@@ -205,7 +206,7 @@ def check_phase_status(
     primary_files = phase_primary_artifacts.get(phase_name, [])
     for pf in primary_files:
         p = lesson_path(lesson_dir, pf)
-        if not os.path.isfile(p):
+        if not fs.isfile(p):
             return PhaseStatus.MISSING, f"{pf} non trovato"
 
     # 2. Se l'artefatto esiste su disco, verifica ricorsivamente la dependency graph a monte:
@@ -233,7 +234,7 @@ def check_phase_status(
     if phase_name == "prepare":
         seg_path = lesson_path(lesson_dir, "segments.json")
         md_norm = lesson_path(lesson_dir, "transcript_normalized.md")
-        if not os.path.isfile(seg_path) or not os.path.isfile(md_norm):
+        if not fs.isfile(seg_path) or not fs.isfile(md_norm):
             return PhaseStatus.MISSING, "File segments.json o transcript_normalized.md mancante"
         try:
             from rt.core.segments import load_segments_json
@@ -250,12 +251,12 @@ def check_phase_status(
 
     elif phase_name == "outline":
         out_path = lesson_path(lesson_dir, "outline.json")
-        if not os.path.isfile(out_path):
+        if not fs.isfile(out_path):
             return PhaseStatus.MISSING, "outline.json non trovato"
 
         # Verifica se i segmenti sono validi
         seg_path = lesson_path(lesson_dir, "segments.json")
-        if not os.path.isfile(seg_path):
+        if not fs.isfile(seg_path):
             return PhaseStatus.STALE, "segments.json mancante"
 
         try:
@@ -275,12 +276,12 @@ def check_phase_status(
 
     elif phase_name == "rewrite":
         draft_path = lesson_path(lesson_dir, "draft.json")
-        if not os.path.isfile(draft_path):
+        if not fs.isfile(draft_path):
             return PhaseStatus.MISSING, "draft.json non trovato"
 
         out_path = lesson_path(lesson_dir, "outline.json")
         seg_path = lesson_path(lesson_dir, "segments.json")
-        if not os.path.isfile(out_path) or not os.path.isfile(seg_path):
+        if not fs.isfile(out_path) or not fs.isfile(seg_path):
             return PhaseStatus.STALE, "outline.json o segments.json mancante"
 
         try:
@@ -334,7 +335,7 @@ def check_phase_status(
 
     elif phase_name == "review":
         sci_path = lesson_path(lesson_dir, "science_issues.json")
-        if not os.path.isfile(sci_path):
+        if not fs.isfile(sci_path):
             return PhaseStatus.MISSING, "science_issues.json non trovato"
 
         try:
@@ -378,7 +379,7 @@ def check_phase_status(
         ]
         for rf in required_files:
             p = lesson_path(lesson_dir, rf)
-            if not os.path.isfile(p) or os.path.getsize(p) == 0:
+            if not fs.isfile(p) or fs.getsize(p) == 0:
                 return PhaseStatus.MISSING, f"Artefatto build mancante o vuoto: {rf}"
 
         current_fp = compute_source_fingerprint(lesson_dir, "build")
@@ -427,7 +428,7 @@ def record_phase_fingerprint(
         if phase_name == "rewrite":
             out_path = lesson_path(lesson_dir, "outline.json")
             draft_path = lesson_path(lesson_dir, "draft.json")
-            if os.path.isfile(out_path) and os.path.isfile(draft_path):
+            if fs.isfile(out_path) and fs.isfile(draft_path):
                 try:
                     from rt.pipeline.outline import load_outline
                     from rt.pipeline.rewrite import load_draft
@@ -532,7 +533,7 @@ def get_phase_checkpoint(
     art_fps = record.get("artifact_fingerprints", {})
     for fname, expected_hash in art_fps.items():
         fpath = lesson_path(lesson_dir, fname)
-        if not os.path.isfile(fpath):
+        if not fs.isfile(fpath):
             return record, PhaseStatus.MISSING, f"Artefatto {fname} del checkpoint non trovato su disco"
         actual_hash = compute_file_sha256(fpath)
         if actual_hash != expected_hash:

@@ -8,6 +8,8 @@ import os
 
 import pytest
 
+from rt.storage import fs
+
 from rt.core.manifest import init_or_update_manifest
 from rt.core.state import WorkflowState, transition_to
 from rt.db.engine import get_database, reset_database_cache
@@ -169,14 +171,32 @@ def test_cli_db_sync_and_check(rt_db, lessons, capsys):
 
 def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     """Run mock completo (sottoprocessi CLI) con il DB attivo: stessi file e output dei golden,
-    e 'rt db check' pulito senza aver mai lanciato 'rt db sync'."""
+    e 'rt db check' pulito senza aver mai lanciato 'rt db sync'.
+
+    Con il DB attivo la lezione nasce nel database (nessuna cartella): i file della lezione,
+    letti da rt.storage.fs, sono identici ai golden; nell'output cambia solo la riga del
+    setup, che nomina la lezione invece della cartella creata, e il riepilogo della build, che
+    indica 'rt export' invece dei percorsi dei file."""
     work = tmp_path / "run"
     work.mkdir()
     actual = scenario_audio_full(str(work))
     expected = load_golden("audio_full")
+    folder = f"<ROOT>/out/{LESSON_NAME}"
+    expected["cli_first_run.txt"] = expected["cli_first_run.txt"].replace(
+        f"✔ Cartella lezione: {folder}", f"✔ Lezione nel database: {LESSON_NAME}").replace(
+        "✔ File finali generati con successo:\n"
+        f"  - Rielaborato: {folder}/_state/rielaborato.md\n"
+        f"  - Pre-elaborato: {folder}/_state/pre-elaborato.md\n"
+        f"  - Errori concettuali: {folder}/Errori concettuali.md\n",
+        "✔ File finali generati con successo (salvati nel database):\n"
+        "  - Rielaborato: [2026-09-05] BIOCHIMICA - Lezione Accademica Rielaborata.md\n"
+        "  - Errori concettuali: Errori concettuali.md\n"
+        f"  Per scaricarli: rt export \"{LESSON_NAME}\" -o <cartella>\n")
     for rel in sorted(expected):
         assert actual[rel] == expected[rel], rel
     out_dir = str(work / "out")
+    assert not os.path.exists(os.path.join(out_dir, LESSON_NAME))  # nessuna cartella di lavoro
+    assert os.listdir(fs.media_dir(rt_db)) == ["L1_demo_lecture.wav"]
     assert check_all(rt_db, out_dir) == []
     with session_scope(rt_db) as s:
         lesson = LessonRepository(s).get_by_path(os.path.join(out_dir, LESSON_NAME))

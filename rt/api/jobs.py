@@ -8,6 +8,7 @@ lezione. La ripresa dei job in attesa dopo una decisione la fanno i servizi
 from typing import Any, Dict, Optional
 
 from rt.api.errors import ApiError
+from rt.storage import fs
 
 
 def queue():
@@ -24,7 +25,7 @@ def job_view(info) -> Dict[str, Any]:
     import os
     data = info.to_dict()
     lesson_path = data.get("lesson_path")
-    data["lesson_id"] = lesson_id_for_dir(lesson_path) if lesson_path and os.path.isdir(lesson_path) else None
+    data["lesson_id"] = lesson_id_for_dir(lesson_path) if lesson_path and fs.isdir(lesson_path) else None
     return data
 
 

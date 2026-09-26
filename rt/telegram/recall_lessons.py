@@ -13,6 +13,7 @@ import os
 from typing import Optional
 
 import yaml
+from rt.storage import fs
 
 
 def _find_recall_lessons_yaml() -> Optional[str]:
@@ -23,7 +24,7 @@ def _find_recall_lessons_yaml() -> Optional[str]:
         os.path.join(_default_project_root(), "config"),
     ):
         candidate = os.path.join(config_dir, "telegram", "recall_lessons.yaml")
-        if os.path.isfile(candidate):
+        if fs.isfile(candidate):
             return candidate
     return None
 
@@ -36,7 +37,7 @@ def get_lesson_override(materia: str) -> Optional[str]:
     if not path:
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f.read())
     except Exception:
         return None

@@ -11,6 +11,7 @@ from typing import Any, List, Optional
 
 from rt.core.lesson_paths import lesson_path
 from rt.core.models import RecallQuestionStatus, RecallQuestionType
+from rt.storage import fs
 
 
 def format_unit_reference(lesson_dir: str, question) -> str:
@@ -39,10 +40,10 @@ def get_recall_session_state_path(lesson_dir: str) -> str:
 
 def load_recall_session_state(lesson_dir: str) -> dict:
     path = get_recall_session_state_path(lesson_dir)
-    if not os.path.isfile(path):
+    if not fs.isfile(path):
         return {"order": "alternato", "unit_cursor": None, "current_question_id": None, "force_mock": False}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         res = {
             "order": data.get("order", "alternato"),
@@ -64,9 +65,9 @@ def load_recall_session_state(lesson_dir: str) -> dict:
 def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     path = get_recall_session_state_path(lesson_dir)
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+    fs.replace(tmp_path, path)
 
 
 def ensure_initial_batch(lesson_dir: str, force_mock: bool = False) -> None:
@@ -257,7 +258,7 @@ def vote_question(lesson_dir: str, question_id: str, vote: str) -> None:
         raise ValueError("Domanda inesistente.")
     record_recall_vote(lesson_dir, question_id, vote)
     state_dir = load_config().telegram.state_dir
-    os.makedirs(state_dir, exist_ok=True)
+    fs.makedirs(state_dir, exist_ok=True)
     record_fewshot_vote(question.type, question.question_text, vote, state_dir=state_dir)
 
 

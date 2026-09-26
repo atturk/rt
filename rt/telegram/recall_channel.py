@@ -12,6 +12,7 @@ from typing import List, Optional
 from rt.core.lesson_paths import lesson_path
 from rt.core.models import RecallQuestionType
 from rt.services import recall_service
+from rt.storage import fs
 
 
 def send_unit_audio(
@@ -48,19 +49,19 @@ def send_unit_audio(
 
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json")).segments
     clips_dir = lesson_path(lesson_dir, "recall_audio_clips")
-    os.makedirs(clips_dir, exist_ok=True)
+    fs.makedirs(clips_dir, exist_ok=True)
     ext = os.path.splitext(audio_path)[1] or ".mp3"
 
     sent_msg_ids: List[int] = []
     for u in units:
         clip_path = os.path.join(clips_dir, f"{u.unit_id}{ext}")
-        if not os.path.isfile(clip_path):
+        if not fs.isfile(clip_path):
             start_s, end_s = resolve_unit_time_range(u, segments)
             tmp_clip = cut_clip(audio_path, start_s, end_s)
-            shutil.move(tmp_clip, clip_path)
+            fs.move(tmp_clip, clip_path)
         res = send_audio(
             tg_cfg,
-            clip_path,
+            fs.real_path(clip_path) or clip_path,
             title=f"{u.unit_id} - {u.title}",
             message_thread_id=message_thread_id,
             reply_to_message_id=reply_to_message_id,

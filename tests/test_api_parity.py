@@ -14,6 +14,8 @@ import shutil
 
 import pytest
 
+from rt.storage import fs
+
 from rt.services.jobs import DbJobQueue
 from rt.services.worker import Worker
 from tests.api_support import isolated_workspace, make_lesson
@@ -112,10 +114,10 @@ def lesson_files(lesson_dir, extra=()):
     out = {}
     for rel in list(COMPARED_FILES) + list(extra):
         path = os.path.join(lesson_dir, rel)
-        if not os.path.isfile(path):
+        if not fs.isfile(path):
             out[rel] = "<MISSING>"
             continue
-        with open(path, encoding="utf-8") as f:
+        with fs.open(path, encoding="utf-8") as f:
             text = normalize_text(f.read(), root)
         if rel.endswith(".json"):
             text = json.dumps(_strip_who(json.loads(text)), ensure_ascii=False, indent=1, sort_keys=True)
@@ -124,9 +126,10 @@ def lesson_files(lesson_dir, extra=()):
 
 
 def all_files(lesson_dir):
-    """Percorsi relativi di tutti i file della lezione (le cartelle vuote non contano)."""
+    """Percorsi relativi di tutti i file della lezione (le cartelle vuote non contano).
+    Passa da rt.storage.fs: CLI e API creano le lezioni nel database (nessuna cartella)."""
     return sorted(os.path.relpath(os.path.join(base, name), lesson_dir)
-                  for base, _, names in os.walk(lesson_dir) for name in names
+                  for base, _, names in fs.walk(lesson_dir) for name in names
                   if not name.startswith(".rt."))  # lock del worker (.rt.job.lock)
 
 
@@ -182,10 +185,36 @@ def test_row_setup_audio(api, cli):
                       data={"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi", "mock": "true"})
     assert job["state"] == "succeeded", job
     cli_dir, api_dir = os.path.join(out_dir, LESSON_NAME), os.path.join(api.root, LESSON_NAME)
-    assert os.path.isdir(cli_dir) and os.path.isdir(api_dir)
+    assert fs.is_db_lesson(cli_dir) and fs.is_db_lesson(api_dir)
+    assert not os.path.exists(cli_dir) and not os.path.exists(api_dir)  # nessuna cartella di lavoro
     assert all_files(cli_dir) == all_files(api_dir)
     assert_same_lesson(cli_dir, api_dir)
     assert lesson_files(api_dir)["trascritto grezzo.md"] != "<MISSING>"
+
+
+def test_row_export(api, cli, pair, tmp_path):
+    """rt export <lezione> ⇔ GET /lessons/{id}/export (Markdown finale e archivio zip)."""
+    import io
+    import zipfile
+    cli_dir, api_dir = pair
+    cli.rt("run", cli_dir, "--mock", "--auto-accept", "--with-review", "--channel", "terminal", "--no-rename",
+           stdin="a\n")
+    lesson_id = api.lesson_id()
+    job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "auto_accept": True,
+                                                       "with_review": True, "rename": False})
+    assert job["state"] == "succeeded", job
+    out = tmp_path / "export"
+    cli.rt("export", cli_dir, "-o", str(out))
+    exported = sorted(os.listdir(out / LESSON_NAME))
+    titled = next(n for n in exported if n.startswith("[2026-09-05]"))
+    res = api.client.get(f"/api/v1/lessons/{lesson_id}/export")
+    assert res.status_code == 200, res.text
+    assert titled in res.headers["content-disposition"].replace("%20", " ").replace("%5B", "[").replace("%5D", "]")
+    with open(out / LESSON_NAME / titled, encoding="utf-8") as f:
+        assert normalize_text(f.read(), cli.root) == normalize_text(res.text, api.root)
+    res = api.client.get(f"/api/v1/lessons/{lesson_id}/export", params={"format": "zip"})
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        assert sorted(n.split("/", 1)[1] for n in zf.namelist()) == exported
 
 
 def test_row_single_phases(api, cli, pair):

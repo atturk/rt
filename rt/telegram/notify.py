@@ -4,6 +4,7 @@ Notifiche one-shot che non devono mai far fallire la pipeline chiamante.
 """
 import sys
 from typing import Dict, Any
+from rt.storage import fs
 
 
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> None:
@@ -25,7 +26,7 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
 
         info_path = os.path.join(lesson_dir, "info.yaml")
         info = {}
-        if os.path.exists(info_path):
+        if fs.exists(info_path):
             try:
                 info = read_info_yaml(info_path)
             except Exception:

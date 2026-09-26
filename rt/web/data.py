@@ -24,6 +24,7 @@ from rt.pipeline.ledger import load_ledger
 from rt.pipeline.review import load_science_issues
 from rt.pipeline.rewrite import load_draft
 from rt.tui.data import LessonSummary, discover_lessons, load_markdown_preview
+from rt.storage import fs
 
 
 PHASE_LABELS = {
@@ -243,8 +244,8 @@ def lesson_audio_path(lesson: Optional[LessonSummary]) -> Optional[str]:
 
     try:
         raw_name = read_info_yaml(lesson_path(lesson.dir_path, "info.yaml")).get("file_audio")
-        candidate = Path(lesson.dir_path) / Path(str(raw_name or "")).name
-        return _web_audio_path(lesson, str(candidate)) if raw_name and candidate.is_file() else None
+        real = fs.real_path(os.path.join(lesson.dir_path, Path(str(raw_name or "")).name)) if raw_name else None
+        return _web_audio_path(lesson, real) if real else None
     except (OSError, ValueError):
         return None
 
@@ -313,7 +314,8 @@ def waveform_result(path: str) -> list[int] | None:
 def _web_audio_path(lesson: LessonSummary, original: str) -> Optional[str]:
     """Espone a Gradio solo l'audio scelto, lasciando bloccata la cartella lezioni."""
     source = Path(original).resolve()
-    if not source.is_file() or not source.is_relative_to(Path(lesson.dir_path).resolve()):
+    allowed = Path(fs.media_dir()).resolve() if fs.is_db_lesson(lesson.dir_path) else Path(lesson.dir_path).resolve()
+    if not source.is_file() or not source.is_relative_to(allowed):
         return None
     stat = source.stat()
     name = sha256(f"{source}:{stat.st_mtime_ns}:{stat.st_size}".encode()).hexdigest()[:20]
@@ -331,14 +333,14 @@ def _web_audio_path(lesson: LessonSummary, original: str) -> Optional[str]:
                      '-c:a', 'copy', '-movflags', '+faststart', str(temporary)],
                     check=True, capture_output=True, timeout=90,
                 )
-                os.replace(temporary, target)
+                fs.replace(temporary, target)
             finally:
                 temporary.unlink(missing_ok=True)
         else:
             try:
                 os.link(source, target)
             except OSError:
-                shutil.copyfile(source, target)
+                fs.copyfile(source, target)
     return str(target)
 
 

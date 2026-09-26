@@ -93,7 +93,10 @@ def _configure_sqlite(engine: Engine) -> None:
 
     @event.listens_for(engine, "begin")
     def _on_begin(conn):
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
+        if conn.get_execution_options().get("rt_read_only"):
+            conn.exec_driver_sql("BEGIN")
+        else:
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def create_db_engine(url: str) -> Engine:
@@ -272,3 +275,5 @@ def reset_database_cache() -> None:
         _cache.clear()
         _url_cache.clear()
         _warned.clear()
+    from rt.storage import fs
+    fs.reset_cache()

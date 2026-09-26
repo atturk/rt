@@ -19,6 +19,7 @@ from rt.core.timestamp import format_timestamp
 from rt.core.encoding import fix_mojibake
 from rt.core.lesson_paths import lesson_path
 from rt.services.context import RunContext, phase_scope
+from rt.storage import fs
 
 
 class BuildError(Exception):
@@ -227,9 +228,9 @@ def render_errori_concettuali_md(
 def _atomic_write_text(filepath: str, content: str) -> None:
     clean_content = fix_mojibake(content)
     tmp_path = filepath + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         f.write(clean_content)
-    os.replace(tmp_path, filepath)
+    fs.replace(tmp_path, filepath)
 
 
 def _move_to_lessons_root_if_configured(current_dir: str) -> str:
@@ -255,7 +256,7 @@ def _move_to_lessons_root_if_configured(current_dir: str) -> str:
     if abs_current == abs_dest or os.path.dirname(abs_current) == lessons_root_path:
         return current_dir
 
-    if os.path.exists(abs_dest):
+    if fs.exists(abs_dest):
         print(
             f"⚠️  Impossibile spostare la cartella in '{dest_path}': "
             f"esiste già un'altra cartella con quel nome in '{lessons_root_path}'. "
@@ -263,8 +264,8 @@ def _move_to_lessons_root_if_configured(current_dir: str) -> str:
         )
         return current_dir
 
-    os.makedirs(lessons_root_path, exist_ok=True)
-    shutil.move(abs_current, dest_path)
+    fs.makedirs(lessons_root_path, exist_ok=True)
+    fs.move(abs_current, dest_path)
     print(f"📦 Cartella spostata in: '{dest_path}'")
 
     try:
@@ -325,7 +326,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "build")
-    if phase_status == PhaseStatus.VALID and not force and os.path.isfile(named_filepath):
+    if phase_status == PhaseStatus.VALID and not force and fs.isfile(named_filepath):
         current_dir = _move_to_lessons_root_if_configured(lesson_dir)
         named_filepath = os.path.join(current_dir, named_filename)
         return {
@@ -389,14 +390,14 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         abs_lesson_dir = os.path.abspath(lesson_dir)
         if abs_lesson_dir == target_dir:
             pass
-        elif os.path.exists(target_dir):
+        elif fs.exists(target_dir):
             print(
                 f"⚠️  Impossibile rinominare la cartella in '{folder_target_name}': "
                 f"esiste già un'altra cartella con quel nome in '{parent}'. "
                 f"La lezione resta in '{os.path.basename(abs_lesson_dir)}'."
             )
         else:
-            os.rename(lesson_dir, target_dir)
+            fs.rename(lesson_dir, target_dir)
             current_dir = target_dir
             print(f"📁 Cartella rinominata: '{os.path.basename(abs_lesson_dir)}' -> '{folder_target_name}'")
             yaml_path = lesson_path(current_dir, "info.yaml")

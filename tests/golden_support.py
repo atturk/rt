@@ -120,13 +120,15 @@ def _run_cli(argv: List[str], cwd: str, stdin: str) -> Tuple[int, str, str]:
 
 
 def _collect_files(lesson_dir: str, root: str) -> Dict[str, str]:
+    # rt.storage.fs: con il database attivo la lezione non ha cartella (test_db_storage.py)
+    from rt.storage import fs
     out: Dict[str, str] = {}
     for rel in COMPARED_FILES:
         path = os.path.join(lesson_dir, rel)
-        if not os.path.isfile(path):
+        if not fs.isfile(path):
             out[rel] = "<MISSING>"
             continue
-        with open(path, "r", encoding="utf-8") as f:
+        with fs.open(path, "r", encoding="utf-8") as f:
             out[rel] = normalize_text(f.read(), root)
     return out
 

@@ -23,7 +23,8 @@ class LessonBusy(RuntimeError):
 
 
 def lesson_lock_path(lesson_dir: str) -> str:
-    return os.path.join(lesson_dir, LOCK_NAME)
+    from rt.storage import fs
+    return fs.lock_path(os.path.join(lesson_dir, LOCK_NAME))
 
 
 @contextmanager

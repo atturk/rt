@@ -14,6 +14,7 @@ from rt.core.lesson_paths import lesson_path
 from rt.core.models import ScienceIssue
 from rt.services.review_service import issue_context
 from rt.telegram import issue_queue as tg_queue
+from rt.storage import fs
 
 
 def start_review_via_telegram(
@@ -91,7 +92,7 @@ def send_current_issue(lesson_dir: str) -> None:
         except Exception:
             pass
         yaml_path = lesson_path(lesson_dir, "info.yaml")
-        if os.path.isfile(yaml_path):
+        if fs.isfile(yaml_path):
             try:
                 transition_to(yaml_path, WorkflowState.READY_TO_BUILD, allow_force=True)
             except Exception:
@@ -168,9 +169,9 @@ def send_current_issue(lesson_dir: str) -> None:
             except Exception as e:
                 print(f"⚠️  Invio clip audio a Telegram fallito: {e}")
             finally:
-                if tmp_clip and os.path.exists(tmp_clip):
+                if tmp_clip and fs.exists(tmp_clip):
                     try:
-                        os.remove(tmp_clip)
+                        fs.remove(tmp_clip)
                     except Exception:
                         pass
 

@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Dict, Any, Optional
 import os
 import re
+from rt.storage import fs
 
 
 class WorkflowState(str, Enum):
@@ -41,11 +42,11 @@ VALID_TRANSITIONS = {
 
 def read_info_yaml(yaml_path: str) -> Dict[str, str]:
     """Legge info.yaml e restituisce un dizionario di stringhe."""
-    if not os.path.exists(yaml_path):
+    if not fs.exists(yaml_path):
         raise FileNotFoundError(f"info.yaml non trovato in '{yaml_path}'")
     
     data: Dict[str, str] = {}
-    with open(yaml_path, "r", encoding="utf-8") as f:
+    with fs.open(yaml_path, "r", encoding="utf-8") as f:
         for line in f:
             stripped = line.strip()
             if not stripped or stripped.startswith("#") or stripped.startswith("-"):
@@ -69,10 +70,10 @@ def format_yaml_value(value: Any) -> str:
 
 def update_info_yaml(yaml_path: str, updates: Dict[str, Any]) -> None:
     """Aggiorna le chiavi specificate in info.yaml in modo atomico preservando commenti e ordine."""
-    if not os.path.exists(yaml_path):
+    if not fs.exists(yaml_path):
         raise FileNotFoundError(f"info.yaml non trovato in '{yaml_path}'")
     
-    with open(yaml_path, "r", encoding="utf-8") as f:
+    with fs.open(yaml_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
     
     updated_keys = set()
@@ -96,9 +97,9 @@ def update_info_yaml(yaml_path: str, updates: Dict[str, Any]) -> None:
     
     # Scrittura atomica
     tmp_path = yaml_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with fs.open(tmp_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
-    os.replace(tmp_path, yaml_path)
+    fs.replace(tmp_path, yaml_path)
 
     from rt.db.sync import dual_write_lesson, lesson_dir_of_state_file
     dual_write_lesson(lesson_dir_of_state_file(yaml_path))
@@ -106,7 +107,7 @@ def update_info_yaml(yaml_path: str, updates: Dict[str, Any]) -> None:
 
 def get_current_state(yaml_path: str) -> Optional[WorkflowState]:
     """Legge lo stato corrente del workflow da info.yaml."""
-    if not os.path.exists(yaml_path):
+    if not fs.exists(yaml_path):
         return None
     info = read_info_yaml(yaml_path)
     current_raw = info.get("fase_corrente", "") or info.get("stato", "")
@@ -177,7 +178,7 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     """
     from rt.core.lesson_paths import lesson_path
     yaml_path = lesson_path(lesson_dir, "info.yaml")
-    if not os.path.isfile(yaml_path):
+    if not fs.isfile(yaml_path):
         return None
 
     info = read_info_yaml(yaml_path)

@@ -7,6 +7,7 @@ from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
 from rt.api.jobs import enqueue_job, ensure_no_running_job
+from rt.storage import fs
 
 router = APIRouter(tags=["decisioni"])
 
@@ -18,7 +19,7 @@ def approve_outline(lesson_id: int, lesson_dir: LessonDir, actor: Actor):
     from rt.pipeline.outline import get_outline_path
     from rt.services import outline_service
     ensure_no_running_job(lesson_dir)
-    if not os.path.isfile(get_outline_path(lesson_dir)):
+    if not fs.isfile(get_outline_path(lesson_dir)):
         raise ApiError(404, "outline_not_found", "Outline non ancora generata.")
     outline_service.approve_outline(lesson_dir, actor=actor, channel="api")
     return outline_service.get_outline_review(lesson_dir)

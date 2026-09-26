@@ -424,3 +424,34 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
   rispondono 409. I tipi di job solo API stanno in `rt/services/api_jobs.py`.
 - **Parità**: `docs/RT4_PARITY.md` e i test `tests/test_api_parity.py` e
   `tests/test_api_persistence.py` (sezione 9-bis del piano).
+
+## 11. Lezioni nel database (RT 4.0, storage)
+
+Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
+
+- **Dove stanno i dati**: testi e metadati (info.yaml, manifest, segmenti, outline, draft,
+  issue, decisioni, recall, log, Markdown finali) sono righe della tabella `lesson_files`
+  (nome relativo alla lezione, senza il prefisso storico `_state/`). Audio, immagini, video e
+  PDF sono file in `<cartella dati>/media` (la cartella di `rt.db`), con nomi piatti
+  `L<id>_<nome>`; il DB ne conserva il percorso, come fa Anki. `Lesson.storage` vale `db` o
+  `folder` (le lezioni ancora in cartella funzionano come prima).
+- **Identità**: `Lesson.path` resta `<lessons_root>/<nome lezione>` anche se la cartella non
+  esiste: job, id dell'API, stato Telegram e `rt run <percorso>` non cambiano. `rt build`
+  che rinomina la lezione aggiorna solo il percorso nel DB.
+- **Accesso**: `rt/storage/fs.py` offre le stesse funzioni di `open`/`os`/`shutil` e sceglie
+  il backend per percorso; tutti i moduli che leggono o scrivono file di lezione passano da
+  lì. I programmi esterni (ffmpeg, player, Telegram) ricevono il file reale in `media/` con
+  `fs.real_path`; i lock stanno in `<cartella dati>/locks`. Le letture usano transazioni di
+  sola lettura, le scritture si uniscono alla transazione già aperta nel thread
+  (`rt/db/session.py`).
+- **Nuove lezioni**: nel DB se il DB è attivo; `storage.new_lessons = "folder"` nella tabella
+  `settings` riporta al layout a cartelle. Con `RT_DATABASE_URL=off` (sviluppo e test) tutto
+  resta in cartella.
+- **Migrazione** (`rt db migrate-storage [--dry-run]`, `rt/storage/migrate.py`): backup del
+  file del DB, copia di ogni lezione in DB e `media/`, verifica file per file (sha256 e
+  dimensione), poi la cartella originale viene spostata (mai cancellata) in
+  `<cartella dati>/backups/migrazione-<data>/lezioni/`. Se la verifica fallisce la lezione
+  resta in cartella.
+- **Export** (`rt/storage/export.py`): `rt export <lezione> [-o cartella] [--all] [--zip]` e
+  `GET /lessons/{id}/export` scaricano il Markdown finale con le immagini che richiama, oppure
+  tutti i file della lezione.
