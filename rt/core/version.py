@@ -14,6 +14,8 @@ import urllib.request
 import urllib.error
 from typing import Optional, Tuple, List
 
+from rt.core.spa_release import update_spa
+
 OFFICIAL_GIT_URL = "https://github.com/atturk/rt.git"
 
 
@@ -134,6 +136,8 @@ def _is_update_excluded(rel_path: str) -> bool:
         return True
     if top == "install.log":
         return True
+    if parts[:2] == ["rt", "spa"]:  # web app compilata: la installa rt.core.spa_release
+        return True
     return False
 
 
@@ -145,10 +149,9 @@ def _is_managed_code(rel_path: str) -> bool:
 
 
 def _install_runtime_requirements(project_root: str) -> bool:
-    """Installa le dipendenze nel venv di RT e rende visibile qualsiasi errore."""
-    req_file = os.path.join(project_root, "requirements-web.txt")
-    if not os.path.isfile(req_file):
-        req_file = os.path.join(project_root, "requirements.txt")
+    """Installa le dipendenze nel venv di RT e rende visibile qualsiasi errore. Gradio
+    (requirements-web.txt) serve solo a 'rt web --legacy' e non viene più installato."""
+    req_file = os.path.join(project_root, "requirements.txt")
     if not os.path.isfile(req_file):
         return True
 
@@ -238,7 +241,7 @@ def run_update(project_root: str) -> int:
     3. Estrae l'archivio nella directory temporanea.
     4. Sincronizza il codice estratto dentro project_root preservando configurazioni utente.
     5. Pulisce la directory temporanea.
-    6. Installa le dipendenze CLI e web nel virtualenv.
+    6. Installa le dipendenze nel virtualenv e la web app compilata della release (rt/spa).
     7. Scrive VERSION solo dopo l'installazione riuscita.
     Restituisce il codice di uscita per la CLI (0 = ok o già aggiornato, 1 = errore).
     """
@@ -259,7 +262,8 @@ def run_update(project_root: str) -> int:
     lat_parsed = parse_semver(latest_ver)
 
     if curr_parsed is not None and lat_parsed is not None and curr_parsed >= lat_parsed:
-        if curr_parsed == lat_parsed and not _install_runtime_requirements(project_root):
+        if curr_parsed == lat_parsed and not (_install_runtime_requirements(project_root)
+                                              and update_spa(project_root, latest_ver)):
             return 1
         print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
         return 0
@@ -267,7 +271,7 @@ def run_update(project_root: str) -> int:
     if git_checkout:
         if not _update_git_checkout(project_root, latest_ver):
             return 1
-        if not _install_runtime_requirements(project_root):
+        if not _install_runtime_requirements(project_root) or not update_spa(project_root, latest_ver):
             return 1
         print(f"✅ RT aggiornato: {curr_ver} → {latest_ver}")
         _print_secrets_migration_hint(project_root)
@@ -350,7 +354,7 @@ def run_update(project_root: str) -> int:
 
         # VERSION per ultimo, dopo la sincronizzazione e le dipendenze. Un errore
         # di pip lascia la vecchia versione per consentire un nuovo tentativo.
-        if not _install_runtime_requirements(project_root):
+        if not _install_runtime_requirements(project_root) or not update_spa(project_root, latest_ver):
             return 1
         new_version_src = os.path.join(extracted_root, "VERSION")
         if os.path.isfile(new_version_src):

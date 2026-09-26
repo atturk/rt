@@ -2,7 +2,7 @@
 rt.api.spa
 La SPA (frontend/, fase F) servita dalla stessa origine dell'API: niente CORS in produzione.
 
-- GET /login?code=... consuma il link monouso creato da 'rt web --spa' o da
+- GET /login?code=... consuma il link monouso creato da 'rt web' o da
   POST /api/v1/auth/login-link, apre la sessione con cookie e reindirizza a /.
 - Ogni altro GET fuori da /api, /docs e /openapi.json restituisce un file della build o, per
   le rotte della SPA, index.html (il router lato client decide cosa mostrare).

@@ -19,7 +19,7 @@ rt api --dev-cors      # consente le richieste della SPA in sviluppo (localhost:
 - Autenticazione: `Authorization: Bearer <token>`; nella pagina `/docs` il pulsante
   **Authorize**. La SPA apre una sessione con `POST /api/v1/auth/session` (cookie HttpOnly,
   SameSite=Strict) e ripete il cookie `rt_csrf` nell'header `X-CSRF-Token` per le scritture.
-- **Link monouso** (fase F): `rt web --spa` apre il browser su `/login?code=...`, che apre la
+- **Link monouso** (fase F): `rt web` apre il browser su `/login?code=...`, che apre la
   sessione senza incollare il token; lo stesso link si crea con `POST /api/v1/auth/login-link`
   (con il token). Il codice vale 5 minuti e una sola volta.
 - `--no-auth` disattiva l'autenticazione, solo su loopback.
@@ -30,7 +30,7 @@ rt api --dev-cors      # consente le richieste della SPA in sviluppo (localhost:
 Se la build della SPA esiste (`RT_SPA_DIR`, `rt/spa` nelle release o `frontend/dist` in
 sviluppo), FastAPI la serve su `/`: i file della build, e `index.html` per ogni altra rotta che
 non sia `/api`, `/docs` o `/openapi.json`. Niente CORS in produzione.
-`rt web --spa` avvia API, SPA e un `rt worker` insieme (Ctrl+C li ferma tutti).
+`rt web` avvia API, SPA e un `rt worker` insieme (Ctrl+C li ferma tutti).
 
 ## Errori
 

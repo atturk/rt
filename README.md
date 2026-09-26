@@ -82,34 +82,20 @@ cp -r config.example config
 
 #### Interfaccia web locale
 
-Per usare la dashboard Gradio con review contestuale, audio, importazione e
-configurazione, installa o aggiorna RT e avvia:
-
 ```bash
 rt web
 ```
 
-`rt -u` installa anche le dipendenze web e può ripararle se mancano già nella
-versione corrente. Da un checkout di sviluppo, usa prima
-`./.venv/bin/python -m pip install -r requirements-web.txt` e poi `./bin/rt web`.
+Avvia l'API, un worker per i job e la web app, e apre il browser già autenticato su
+`http://127.0.0.1:8765`. Dalla web fai tutto quello che fai nel terminale: importi l'audio,
+segui la pipeline in tempo reale, approvi la scaletta, fai la review accanto al testo con
+l'audio, leggi il documento con i timecode, fai il recall anche a voce, aggiungi immagini e
+configuri provider, modelli e Telegram. Al primo avvio una configurazione guidata chiede la
+cartella delle lezioni e il resto. `install.sh` e `rt -u` installano la web app compilata dalla
+release. Dettagli in [Web app di RT](docs/WEB.md).
 
-L'interfaccia si apre solo sul computer locale, all'indirizzo `http://127.0.0.1:7860`.
-Al primo avvio, se non è impostata una cartella lezioni, si apre la schermata
-Configurazione: puoi scegliere una cartella esistente o crearne una, e RT ne salva
-il percorso. Per usare temporaneamente un'altra cartella, passa
-`--lessons-root "/percorso/alle/lezioni"`. La review si apre accanto al testo:
-consente di accettare, mantenere l'originale, modificare e riaprire le decisioni,
-registrandole nel ledger RT. La dashboard mostra gli appunti completi con timecode
-collegati all'audio. La configurazione web salva provider, chiavi, modelli,
-Telegram e motore di trascrizione nei file locali di RT. Per dettagli, vedi
-[Prototipo web](docs/WEB_PROTOTYPE.md).
-
-Nella schermata Configurazione, **Crea connessione** salva il provider, il Base
-URL e le chiavi API (più chiavi vengono alternate). La tabella **Modelli per
-fase** permette poi di scegliere connessione e modello per Outline, Rewrite,
-Review, Recall e le due fasi immagini. Il pulsante **+** accanto a una fase
-aggiunge un modello alla connessione scelta. Le vecchie route Recall vengono
-lette automaticamente finché non salvi la nuova route unica.
+La vecchia interfaccia Gradio resta per questa release con `rt web --legacy` (deprecata; richiede
+`./.venv/bin/python -m pip install -r requirements-web.txt`).
 
 ### 2. Esecuzione End-to-End di una Lezione
 

@@ -1,1 +1,4 @@
+# Solo per l'interfaccia legacy 'rt web --legacy' (Gradio), deprecata: la web di RT è la SPA
+# servita dall'API e non ha bisogno di queste dipendenze.
 -r requirements.txt
+gradio==6.22.0

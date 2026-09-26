@@ -2,6 +2,7 @@
 tests/test_api_spa.py
 RT4-F1: link di accesso monouso e SPA servita dalla stessa origine dell'API.
 """
+import sys
 import pytest
 from fastapi.testclient import TestClient
 
@@ -83,11 +84,29 @@ def test_missing_build_message(rt_db, monkeypatch):
     assert res.status_code == 404 and res.json()["error"]["code"] == "spa_not_built"
 
 
-def test_web_spa_flag_parses():
-    from rt.cli import build_parser
+def test_rt_web_starts_the_spa_by_default(monkeypatch):
+    import rt.api.launcher as launcher
+    from rt.cli import build_parser, cmd_web
+    calls = []
+    monkeypatch.setattr(launcher, "run_spa", lambda port, open_browser: calls.append((port, open_browser)) or 0)
     parser, _ = build_parser()
-    args = parser.parse_args(["web", "--spa", "--no-browser"])
-    assert args.spa and args.no_browser and args.port is None
+    for argv in (["web", "--no-browser"], ["web", "--spa", "--no-browser"]):  # --spa: vecchio alias
+        cmd_web(parser.parse_args(argv))
+    cmd_web(parser.parse_args(["web", "--port", "9000"]))
+    assert calls == [(8765, False), (8765, False), (9000, True)]
+
+
+def test_rt_web_legacy_starts_gradio_with_a_warning(monkeypatch, capsys):
+    import types
+    from rt.cli import build_parser, cmd_web
+    seen = []
+    monkeypatch.setitem(sys.modules, "rt.web.app", types.SimpleNamespace(main=seen.append))
+    parser, _ = build_parser()
+    cmd_web(parser.parse_args(["web", "--legacy", "--no-browser", "--lessons-root", "/x"]))
+    assert seen == [["--port", "7860", "--lessons-root", "/x", "--no-browser"]]
+    assert "deprecata" in capsys.readouterr().err
+    with pytest.raises(SystemExit, match="solo con --legacy"):
+        cmd_web(parser.parse_args(["web", "--lessons-root", "/x"]))
 
 
 def test_worker_command_runs_rt_worker():

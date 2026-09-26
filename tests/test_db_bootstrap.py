@@ -113,3 +113,23 @@ def test_concurrent_first_start_migrates_once(tmp_path):
     for p, (out, err) in zip(procs, outs):
         assert p.returncode == 0, err
         assert out.strip() == head_revision()
+
+
+def test_wal_switch_retries_while_another_process_holds_the_lock():
+    """SQLite può rifiutare journal_mode=WAL con 'database is locked' senza aspettare il
+    busy_timeout (visto in CI con tre processi sullo stesso DB nuovo): si riprova."""
+    import sqlite3
+    from rt.db.engine import _enable_wal
+
+    class Cursor:
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, sql):
+            self.calls += 1
+            if self.calls < 3:
+                raise sqlite3.OperationalError("database is locked")
+
+    cur = Cursor()
+    _enable_wal(cur)
+    assert cur.calls == 3

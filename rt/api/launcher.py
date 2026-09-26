@@ -1,6 +1,6 @@
 """
 rt.api.launcher
-'rt web --spa' (RT4-F1): un solo comando che avvia l'API (con la SPA su /) e un 'rt worker'
+'rt web' (RT4-F1): un solo comando che avvia l'API (con la SPA su /) e un 'rt worker'
 figlio, apre il browser già autenticato con un link monouso e ferma tutto con Ctrl+C.
 Senza worker i job resterebbero in coda, quindi i due processi vivono e muoiono insieme.
 """

@@ -24,6 +24,13 @@ from rt.core.version import (
 from rt.cli import main
 
 
+@pytest.fixture(autouse=True)
+def no_spa_download():
+    """La web app della release ha i suoi test (test_spa_release.py): qui niente rete."""
+    with patch("rt.core.version.update_spa", return_value=True) as update_spa:
+        yield update_spa
+
+
 def test_parse_semver_and_format_version():
     assert parse_semver("v2.4.0") == (2, 4, 0)
     assert parse_semver("2.4.0") == (2, 4, 0)
@@ -165,10 +172,12 @@ def _create_mock_tarball_bytes(version: str, new_file_name: str = "nuovo_modulo.
     return tar_stream.getvalue()
 
 
-def test_run_update_end_to_end_success(tmp_path, capsys):
+def test_run_update_end_to_end_success(tmp_path, capsys, no_spa_download):
     # 1. Existing installation in tmp_path
     (tmp_path / "VERSION").write_text("3.3.7\n", encoding="utf-8")
     (tmp_path / "rt").mkdir()
+    (tmp_path / "rt" / "spa").mkdir()
+    (tmp_path / "rt" / "spa" / "index.html").write_text("web app installata", encoding="utf-8")
     (tmp_path / "rt" / "vecchio_modulo.py").write_text("print('old')", encoding="utf-8")
     private_files = [".agents/notes.md", ".agent/plan.md", ".claude/settings.json",
                      ".rt_telegram/registry.json", "lezioni/audio.wav", "appunti.md"]
@@ -230,6 +239,9 @@ def test_run_update_end_to_end_success(tmp_path, capsys):
     assert (tmp_path / "nuovo_modulo.py").exists()
     assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.8"
     assert mock_subproc.call_args.args[0][-3:] == ["-r", str(tmp_path / "requirements.txt"), "--quiet"]
+    # La web app della release viene installata; quella già presente non è "codice obsoleto".
+    no_spa_download.assert_called_once_with(str(tmp_path), "3.3.8")
+    assert (tmp_path / "rt" / "spa" / "index.html").read_text(encoding="utf-8") == "web app installata"
 
 
 def test_run_update_dependency_failure_keeps_old_version(tmp_path, capsys):
@@ -262,7 +274,7 @@ def test_run_update_dependency_failure_keeps_old_version(tmp_path, capsys):
 
 def test_run_update_repairs_dependencies_when_version_is_current(tmp_path, capsys):
     (tmp_path / "VERSION").write_text("3.3.8\n", encoding="utf-8")
-    (tmp_path / "requirements-web.txt").write_text("gradio==6.22.0\n", encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
     venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
     (venv_bin / "python3").write_text("#!/bin/sh\n", encoding="utf-8")
@@ -275,7 +287,7 @@ def test_run_update_repairs_dependencies_when_version_is_current(tmp_path, capsy
 
     assert exc_info.value.code == 0
     assert pip.call_args.args[0][0] == str(venv_bin / "python3")
-    assert str(tmp_path / "requirements-web.txt") in pip.call_args.args[0]
+    assert str(tmp_path / "requirements.txt") in pip.call_args.args[0]
     assert "Sei già aggiornato" in capsys.readouterr().out
 
 
