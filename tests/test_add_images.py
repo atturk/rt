@@ -219,8 +219,10 @@ def test_judge_images_by_macro_mock(tmp_path):
     assert isinstance(res["1"], list)
 
 
-@pytest.fixture
-def built_synthetic_lesson(tmp_path):
+def _synthetic_lesson(tmp_path, build: bool) -> str:
+    """Lezione sintetica con prepare, outline e rewrite VALID; con build=True anche il
+    documento finale."""
+    from rt.core.manifest import init_or_update_manifest
     lesson_dir = str(tmp_path / "[2026-09-11] BIOCHIMICA - Lezione Test")
     os.makedirs(lesson_dir, exist_ok=True)
     os.makedirs(os.path.join(lesson_dir, "_state"), exist_ok=True)
@@ -257,75 +259,98 @@ def built_synthetic_lesson(tmp_path):
     )
     save_draft(draft, lesson_dir)
 
-    for ph in ["prepare", "outline", "rewrite", "build"]:
+    init_or_update_manifest(lesson_dir, lesson_id="test", date="2026-09-11", subject="BIOCHIMICA",
+                            current_state="draft_validato")
+    for ph in ["prepare", "outline", "rewrite"]:
         record_phase_fingerprint(
             lesson_dir=lesson_dir,
             phase_name=ph,
             source_fingerprint=compute_source_fingerprint(lesson_dir, ph),
             artifact_fingerprints={}
         )
-
-    run_build(lesson_dir, force=True)
-    for ph in ["prepare", "outline", "rewrite", "build"]:
-        record_phase_fingerprint(
-            lesson_dir=lesson_dir,
-            phase_name=ph,
-            source_fingerprint=compute_source_fingerprint(lesson_dir, ph),
-            artifact_fingerprints={}
-        )
+    if build:
+        run_build(lesson_dir, force=True)
     return lesson_dir
 
 
-def test_run_add_images_not_built(tmp_path):
+@pytest.fixture
+def built_synthetic_lesson(tmp_path):
+    return _synthetic_lesson(tmp_path, build=True)
+
+
+@pytest.fixture
+def drafted_synthetic_lesson(tmp_path):
+    return _synthetic_lesson(tmp_path, build=False)
+
+
+def _read(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def test_run_add_images_requires_the_draft(tmp_path):
     unbuilt_dir = str(tmp_path / "unbuilt_lesson")
     os.makedirs(unbuilt_dir, exist_ok=True)
     with pytest.raises(RuntimeError) as exc_info:
         run_add_images(unbuilt_dir)
-    assert "non ha ancora completato la fase di build" in str(exc_info.value)
+    assert "bozza" in str(exc_info.value)
 
 
-def test_run_add_images_end_to_end(built_synthetic_lesson, tmp_path):
-    photos_dir = tmp_path / "photos"
-    photos_dir.mkdir()
-    (photos_dir / "slide1.png").write_bytes(b"png slide bytes")
-
-    # Mock judge to return hash of slide1 for macro "1"
-    h = compute_image_hash(b"png slide bytes")
-
-    def mock_judge(lesson_dir, outline, force_mock=False):
-        return {"1": [h]}
-
+def _add_one_image(lesson_dir, tmp_path, data: bytes, carousel: bool = False):
     from unittest.mock import patch
-    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=mock_judge):
-        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=False, force_mock=True)
+    photos_dir = tmp_path / "photos"
+    photos_dir.mkdir(exist_ok=True)
+    (photos_dir / "slide1.png").write_bytes(data)
+    h = compute_image_hash(data)
+    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=lambda *_a, **_k: {"1": [h]}):
+        res = run_add_images(lesson_dir, input_path=str(photos_dir), carousel=carousel, force_mock=True)
+    return h, res
 
+
+def test_run_add_images_without_build_goes_in_preview_and_next_build(drafted_synthetic_lesson, tmp_path):
+    """Senza build: le immagini finiscono nell'anteprima e il build successivo le include."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    from rt.pipeline.build import render_lesson_documents
+    lesson_dir = drafted_synthetic_lesson
+    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.MISSING
+
+    h, res = _add_one_image(lesson_dir, tmp_path, b"png slide bytes")
     assert res["images_added"] == 1
-    assert "1" in res["macros_with_images"]
+    assert res["macros_with_images"] == ["1"]
+    assert res["build_stale"] is False
+    assert not os.path.exists(lesson_path(lesson_dir, "rielaborato.md"))  # nessun documento finale scritto
+    ref = f"assets/images/{h[:16]}.png"
+    assert ref in render_lesson_documents(lesson_dir)["rielaborato"]
 
-    rielab_content = open(res["rielaborato_md"], "r", encoding="utf-8").read()
-    deliverable_content = open(res["deliverable_md"], "r", encoding="utf-8").read()
-    pre_content = open(lesson_path(built_synthetic_lesson, "pre-elaborato.md"), "r", encoding="utf-8").read()
-
-    assert f"assets/images/{h[:16]}.png" in rielab_content
-    assert f"assets/images/{h[:16]}.png" in deliverable_content
-    assert "assets/images" not in pre_content
+    build = run_build(lesson_dir)
+    assert ref in _read(build["rielaborato"])
+    assert ref in _read(build["named_file"])
+    assert "assets/images" not in _read(build["pre_elaborato"])
+    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
 
 
-def test_run_add_images_carousel(built_synthetic_lesson, tmp_path):
-    photos_dir = tmp_path / "photos"
-    photos_dir.mkdir()
-    (photos_dir / "slide1.png").write_bytes(b"png slide bytes 2")
+def test_run_add_images_after_build_makes_it_stale(built_synthetic_lesson, tmp_path):
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    lesson_dir = built_synthetic_lesson
+    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
+    final_before = _read(lesson_path(lesson_dir, "rielaborato.md"))
 
-    h = compute_image_hash(b"png slide bytes 2")
+    h, res = _add_one_image(lesson_dir, tmp_path, b"png slide bytes")
+    ref = f"assets/images/{h[:16]}.png"
+    assert res["build_stale"] is True
+    status, reason = check_phase_status(lesson_dir, "build")
+    assert status == PhaseStatus.STALE
+    assert "immagini" in reason
+    assert _read(lesson_path(lesson_dir, "rielaborato.md")) == final_before  # finale intatto
 
-    def mock_judge(lesson_dir, outline, force_mock=False):
-        return {"1": [h]}
+    run_build(lesson_dir)
+    assert ref in _read(lesson_path(lesson_dir, "rielaborato.md"))
+    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
 
-    from unittest.mock import patch
-    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=mock_judge):
-        res = run_add_images(built_synthetic_lesson, input_path=str(photos_dir), carousel=True, force_mock=True)
 
-    rielab_content = open(res["rielaborato_md"], "r", encoding="utf-8").read()
+def test_run_add_images_carousel(drafted_synthetic_lesson, tmp_path):
+    h, _res = _add_one_image(drafted_synthetic_lesson, tmp_path, b"png slide bytes 2", carousel=True)
+    rielab_content = _read(run_build(drafted_synthetic_lesson)["rielaborato"])
     assert "```napkin-notes" in rielab_content
     assert f"[[assets/images/{h[:16]}.png]]" in rielab_content
 
@@ -357,8 +382,8 @@ def test_fetch_web_images():
     assert web_imgs[0].source_label.startswith("websearch:")
 
 
-def test_run_add_images_web_search(built_synthetic_lesson):
-    res = run_add_images(built_synthetic_lesson, web_search_count=2, force_mock=True)
-    assert "rielaborato_md" in res
-    assert os.path.isfile(res["rielaborato_md"])
+def test_run_add_images_web_search(drafted_synthetic_lesson):
+    res = run_add_images(drafted_synthetic_lesson, web_search_count=2, force_mock=True)
+    assert os.path.isfile(res["placement"])
+    assert res["images_added"] == 2
 

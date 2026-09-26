@@ -71,7 +71,11 @@ def get_waveform(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return {"ready": peaks is not None, "peaks": peaks or []}
 
 
-@router.get("/lessons/{lesson_id}/export", summary="Scarica il Markdown finale o un archivio con i dati della lezione",
+@router.get("/lessons/{lesson_id}/export",
+            summary="Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione",
+            description="Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, "
+                        "l'anteprima che il build produrrebbe ora: il nome dei file contiene \"(anteprima)\" e "
+                        "lo zip ha un LEGGIMI che lo spiega.",
             response_class=Response,
             responses={200: {"content": {"text/markdown": {}, "application/zip": {}},
                              "description": "File da salvare (Content-Disposition: attachment)"}})
@@ -83,14 +87,14 @@ def export_lesson(
                                            "immagini richiamate; all: tutti i file della lezione, audio compreso"),
 ):
     from urllib.parse import quote
-    from rt.storage.export import ExportError, export_zip, final_markdown
+    from rt.storage.export import ExportError, export_zip, final_markdown, zip_name
     try:
         if format == "markdown":
             filename, content = final_markdown(lesson_dir)
             media_type = "text/markdown; charset=utf-8"
         else:
             content = export_zip(lesson_dir, scope)
-            filename = f"{os.path.basename(lesson_dir)}.zip"
+            filename = zip_name(lesson_dir)
             media_type = "application/zip"
     except ExportError as exc:
         raise ApiError(404, "export_not_available", str(exc))

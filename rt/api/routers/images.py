@@ -24,7 +24,8 @@ class LessonImage(BaseModel):
     source: str = Field("", description="Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>")
     slide_title: str = ""
     alt_text: str = ""
-    in_document: bool = Field(description="True se il documento finale la richiama")
+    in_document: bool = Field(description="True se il documento la richiama (finale se aggiornato, "
+                                          "altrimenti l'anteprima dalla bozza)")
 
 
 class LessonImages(BaseModel):
@@ -36,15 +37,12 @@ def _asset_url(lesson_id: int, name: str) -> str:
 
 
 @router.get("/lessons/{lesson_id}/images", response_model=LessonImages,
-            summary="Immagini della lezione con descrizione e presenza nel documento finale")
+            summary="Immagini della lezione con descrizione e presenza nel documento")
 def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
-    from rt.core.lesson_paths import lesson_path
     from rt.pipeline.add_images import load_image_descriptions
-    final = lesson_path(lesson_dir, "rielaborato.md")
-    document = ""
-    if fs.isfile(final):
-        with fs.open(final, "r", encoding="utf-8") as f:
-            document = f.read()
+    from rt.services.lesson_service import load_markdown_preview
+    # il documento mostrato dalla vista lezione: finale se aggiornato, altrimenti l'anteprima
+    document = load_markdown_preview(lesson_dir)
     images = []
     for desc in load_image_descriptions(lesson_dir).values():
         rel = str(desc.get("filename") or "")

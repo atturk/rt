@@ -1069,6 +1069,61 @@
         "title": "JobRequest",
         "type": "object"
       },
+      "LessonAction": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "preview": {
+            "default": false,
+            "description": "Per i download: l'export è l'anteprima dalla bozza, non il documento finale",
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cosa manca, se non disponibile",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "LessonAction",
+        "type": "object"
+      },
+      "LessonActions": {
+        "properties": {
+          "export_markdown": {
+            "$ref": "#/components/schemas/LessonAction"
+          },
+          "export_zip": {
+            "$ref": "#/components/schemas/LessonAction"
+          },
+          "images": {
+            "$ref": "#/components/schemas/LessonAction"
+          },
+          "recall": {
+            "$ref": "#/components/schemas/LessonAction"
+          }
+        },
+        "required": [
+          "recall",
+          "images",
+          "export_markdown",
+          "export_zip"
+        ],
+        "title": "LessonActions",
+        "type": "object"
+      },
       "LessonCost": {
         "properties": {
           "calls": {
@@ -1104,6 +1159,17 @@
       },
       "LessonDetail": {
         "properties": {
+          "actions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LessonActions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recall, immagini e download: disponibili dopo il rewrite, senza build"
+          },
           "argomenti": {
             "default": "",
             "title": "Argomenti",
@@ -1232,7 +1298,7 @@
       "LessonDocument": {
         "properties": {
           "final": {
-            "description": "True se è il documento di 'rt build', False se anteprima dal draft",
+            "description": "True se è il documento di 'rt build' ed è aggiornato, False se anteprima dal draft (quello che il build produrrebbe ora)",
             "title": "Final",
             "type": "boolean"
           },
@@ -1271,7 +1337,7 @@
             "type": "string"
           },
           "in_document": {
-            "description": "True se il documento finale la richiama",
+            "description": "True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)",
             "title": "In Document",
             "type": "boolean"
           },
@@ -1728,6 +1794,14 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "warnings": {
+            "description": "Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.",
+            "items": {
+              "$ref": "#/components/schemas/PhaseWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -1736,6 +1810,38 @@
           "reason"
         ],
         "title": "PhaseState",
+        "type": "object"
+      },
+      "PhaseWarning": {
+        "properties": {
+          "code": {
+            "description": "review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | check_failed",
+            "title": "Code",
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numero di issue, se l'avviso le conta",
+            "title": "Count"
+          },
+          "message": {
+            "description": "Testo per l'utente (italiano)",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "PhaseWarning",
         "type": "object"
       },
       "QuizResult": {
@@ -4234,6 +4340,7 @@
     },
     "/api/v1/lessons/{lesson_id}/export": {
       "get": {
+        "description": "Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene \"(anteprima)\" e lo zip ha un LEGGIMI che lo spiega.",
         "operationId": "export_lesson_api_v1_lessons__lesson_id__export_get",
         "parameters": [
           {
@@ -4344,7 +4451,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Scarica il Markdown finale o un archivio con i dati della lezione",
+        "summary": "Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione",
         "tags": [
           "lezioni"
         ]
@@ -4433,7 +4540,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Immagini della lezione con descrizione e presenza nel documento finale",
+        "summary": "Immagini della lezione con descrizione e presenza nel documento",
         "tags": [
           "immagini"
         ]

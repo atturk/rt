@@ -1,8 +1,13 @@
 """
 rt.pipeline.add_images
 Comando supplementare (fuori da 'rt run', come review-asr/recall) che integra immagini
-(slide PDF, foto, o risultati di ricerca web) nel documento markdown finale della lezione,
-sotto la macro-sezione a cui appartengono per contenuto.
+(slide PDF, foto, o risultati di ricerca web) nel documento della lezione, sotto la
+macro-sezione a cui appartengono per contenuto.
+
+Lavora sulla bozza: basta il rewrite (prepare, outline e rewrite VALID). Il posizionamento
+scelto finisce in assets/images/placement.json (rt.pipeline.image_placement), che
+l'anteprima mostra subito e il build include nel documento finale; se il documento finale
+c'era già, diventa non aggiornato finché non si rifà il build.
 """
 import os
 import json
@@ -297,20 +302,17 @@ def run_add_images(
 ) -> Dict[str, Any]:
     """Orchestratore principale di 'rt add-images'."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
-    from rt.core.state import read_info_yaml
-    from rt.core.segments import load_segments_json
+    from rt.pipeline.image_placement import get_placement_path, save_image_placement
     from rt.pipeline.outline import load_outline
-    from rt.pipeline.rewrite import load_draft
-    from rt.pipeline.review import load_science_issues
-    from rt.pipeline.ledger import load_ledger, apply_decisions_to_draft
-    from rt.pipeline.build import render_rielaborato_md, _atomic_write_text
 
-    phase_status, reason = check_phase_status(lesson_dir, "build")
+    # check_phase_status di rewrite verifica anche prepare e outline (dipendenze a monte)
+    phase_status, reason = check_phase_status(lesson_dir, "rewrite")
     if phase_status != PhaseStatus.VALID:
         raise RuntimeError(
-            f"La lezione in '{lesson_dir}' non ha ancora completato la fase di build "
-            f"(stato attuale: {phase_status.value}). Esegui prima 'rt build'."
+            f"La bozza della lezione non è ancora pronta (rewrite {phase_status.value}: {reason}): "
+            "le immagini si aggiungono dopo la rielaborazione."
         )
+    build_was_valid = check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
 
     outline = load_outline(lesson_dir)
     extracted: List[ExtractedImage] = []
@@ -340,53 +342,20 @@ def run_add_images(
     assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock)
 
     descriptions = load_image_descriptions(lesson_dir)
-    images_by_macro: Dict[str, List[dict]] = {}
-    assigned_hashes = set()
-
+    placement: Dict[str, List[str]] = {}
     for macro_id, hashes in assignments.items():
-        macro_imgs = []
-        for h in hashes:
-            if h in descriptions:
-                macro_imgs.append(descriptions[h])
-                assigned_hashes.add(h)
-        if macro_imgs:
-            images_by_macro[macro_id] = macro_imgs
+        kept = [h for h in hashes if h in descriptions]
+        if kept:
+            placement[str(macro_id)] = kept
+    assigned_hashes = {h for hashes in placement.values() for h in hashes}
 
-    yaml_path = lesson_path(lesson_dir, "info.yaml")
-    info = read_info_yaml(yaml_path)
-    date_val = info.get("data", "0000-00-00")
-    subject_val = info.get("materia", "MATERIA")
-    topics_val = info.get("argomenti", "Argomenti")
-
-    draft = load_draft(lesson_dir)
-    segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    science_issues = load_science_issues(lesson_dir)
-    ledger = load_ledger(lesson_dir)
-
-    resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues)
-
-    rielab_md = render_rielaborato_md(
-        outline=outline,
-        draft=resolved_draft,
-        segments_data=segments_data,
-        date=date_val,
-        subject=subject_val,
-        topics=topics_val,
-        images_by_macro=images_by_macro,
-        carousel=carousel,
-    )
-
-    safe_title = re.sub(r'[/\\:*?"<>|]', ' ', outline.lesson_title)
-    safe_title = re.sub(r'\s+', ' ', safe_title).strip()
-    named_filename = f"[{date_val}] {subject_val.upper()} - {safe_title}.md"
-    named_filepath = os.path.join(lesson_dir, named_filename)
-
-    _atomic_write_text(lesson_path(lesson_dir, "rielaborato.md"), rielab_md)
-    _atomic_write_text(named_filepath, rielab_md)
+    changed = save_image_placement(lesson_dir, placement, carousel)
+    build_stale = build_was_valid and check_phase_status(lesson_dir, "build")[0] != PhaseStatus.VALID
 
     return {
         "images_added": len(assigned_hashes),
-        "macros_with_images": list(images_by_macro.keys()),
-        "rielaborato_md": lesson_path(lesson_dir, "rielaborato.md"),
-        "deliverable_md": named_filepath,
+        "macros_with_images": list(placement.keys()),
+        "placement": get_placement_path(lesson_dir),
+        "placement_changed": changed,
+        "build_stale": build_stale,
     }

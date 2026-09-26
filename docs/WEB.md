@@ -32,16 +32,46 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   nessun worker è attivo la pagina lo segnala.
 - **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda, fasi
   con validazioni, avvio di una singola fase, costi, download del Markdown o dello zip.
+  Nell'intestazione **Recall**, **Immagini**, **Markdown** e **Tutti i dati (zip)** stanno sempre
+  nello stesso ordine e posto: quando un'azione non è ancora disponibile il pulsante resta
+  visibile, disabilitato, e il suo suggerimento dice cosa manca.
 - **Scaletta:** vista ad albero dell'outline, approvazione o richiesta di modifiche.
 - **Revisione:** le issue della review scientifica accanto al testo, con diff, frase
   evidenziata e audio al punto giusto; accetta, mantieni l'originale, modifica, annulla (anche
   da tastiera: `a`, `r`, `e`, `u`, frecce). Con l'ultima decisione la pipeline in attesa
   riparte da sola.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
-- **Immagini:** slide, foto o PDF da integrare nel documento finale.
+- **Immagini:** slide, foto o PDF da integrare nel documento; si aggiungono alla bozza e
+  compaiono subito nell'anteprima.
 - **Bot Telegram:** stato, avvio e arresto del bot.
 - **Impostazioni:** cartella lezioni, provider e chiavi (cifrate), modelli per fase, prezzi,
   Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello che manca.
+
+## Documento finale: la conferma
+
+Il documento finale (fase **Documento**) è la conferma di quello che vedi: l'anteprima della
+lezione, cioè la bozza con le decisioni della revisione prese finora e le immagini aggiunte,
+diventa l'elaborato finale.
+
+- **Cosa serve:** preparazione, scaletta e rielaborazione aggiornate. La revisione non blocca:
+  se non è aggiornata o è incompleta, o se restano issue da valutare o issue orfane (issue che
+  non trovano più il loro testo nella bozza), il documento si crea lo stesso.
+- **Avvisi prima di confermare:** questi controlli compaiono sotto la fase Documento e, quando
+  premi **Esegui**, in un dialogo che li elenca (per esempio "3 issue ancora da valutare",
+  "2 issue orfane", "Revisione non aggiornata"), con **Crea il documento comunque** e
+  **Annulla**. La pipeline completa si comporta come prima: si ferma sulle issue da decidere e
+  crea il documento dopo l'ultima decisione.
+- **Quando va rifatto:** il documento resta aggiornato finché non cambiano bozza, scaletta,
+  segmenti, decisioni della revisione o immagini; una nuova revisione da sola non lo rende
+  superato (servono le decisioni sulle sue issue).
+- **Prima del documento finale:** recall, immagini e download funzionano già dopo la
+  rielaborazione. Il download usa il documento finale se esiste ed è aggiornato, altrimenti
+  l'anteprima: il file ha "(anteprima)" nel nome e lo zip contiene un file LEGGIMI che lo spiega.
+  Le immagini aggiunte compaiono subito nell'anteprima ed entrano nel documento finale al
+  build successivo; se il documento finale c'era già, diventa da rifare.
+
+`rt status` segue la stessa regola: mostra la fase `build` indipendente dalla review e, sotto
+le fasi, gli stessi avvisi.
 
 ## Installazione e aggiornamento
 

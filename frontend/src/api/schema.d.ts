@@ -319,7 +319,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scarica il Markdown finale o un archivio con i dati della lezione */
+        /**
+         * Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione
+         * @description Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene "(anteprima)" e lo zip ha un LEGGIMI che lo spiega.
+         */
         get: operations["export_lesson_api_v1_lessons__lesson_id__export_get"];
         put?: never;
         post?: never;
@@ -336,7 +339,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Immagini della lezione con descrizione e presenza nel documento finale */
+        /** Immagini della lezione con descrizione e presenza nel documento */
         get: operations["list_images_api_v1_lessons__lesson_id__images_get"];
         put?: never;
         /** Integra slide/foto caricate e/o immagini dal web (come 'rt add-images') */
@@ -1312,6 +1315,29 @@ export interface components {
              */
             with_review: boolean;
         };
+        /** LessonAction */
+        LessonAction: {
+            /** Available */
+            available: boolean;
+            /**
+             * Preview
+             * @description Per i download: l'export è l'anteprima dalla bozza, non il documento finale
+             * @default false
+             */
+            preview: boolean;
+            /**
+             * Reason
+             * @description Cosa manca, se non disponibile
+             */
+            reason?: string | null;
+        };
+        /** LessonActions */
+        LessonActions: {
+            export_markdown: components["schemas"]["LessonAction"];
+            export_zip: components["schemas"]["LessonAction"];
+            images: components["schemas"]["LessonAction"];
+            recall: components["schemas"]["LessonAction"];
+        };
         /** LessonCost */
         LessonCost: {
             /** Calls */
@@ -1330,6 +1356,8 @@ export interface components {
         };
         /** LessonDetail */
         LessonDetail: {
+            /** @description Recall, immagini e download: disponibili dopo il rewrite, senza build */
+            actions?: components["schemas"]["LessonActions"] | null;
             /**
              * Argomenti
              * @default
@@ -1406,7 +1434,7 @@ export interface components {
         LessonDocument: {
             /**
              * Final
-             * @description True se è il documento di 'rt build', False se anteprima dal draft
+             * @description True se è il documento di 'rt build' ed è aggiornato, False se anteprima dal draft (quello che il build produrrebbe ora)
              */
             final: boolean;
             /**
@@ -1431,7 +1459,7 @@ export interface components {
             alt_text: string;
             /**
              * In Document
-             * @description True se il documento finale la richiama
+             * @description True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)
              */
             in_document: boolean;
             /**
@@ -1642,6 +1670,29 @@ export interface components {
             reason: string;
             /** Status */
             status: string;
+            /**
+             * Warnings
+             * @description Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.
+             */
+            warnings?: components["schemas"]["PhaseWarning"][];
+        };
+        /** PhaseWarning */
+        PhaseWarning: {
+            /**
+             * Code
+             * @description review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | check_failed
+             */
+            code: string;
+            /**
+             * Count
+             * @description Numero di issue, se l'avviso le conta
+             */
+            count?: number | null;
+            /**
+             * Message
+             * @description Testo per l'utente (italiano)
+             */
+            message: string;
         };
         /** QuizResult */
         QuizResult: {

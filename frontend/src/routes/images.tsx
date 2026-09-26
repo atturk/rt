@@ -23,10 +23,10 @@ function ImagesIndex() {
   return (
     <LessonPicker
       title="Immagini"
-      intro="Scegli una lezione per aggiungere slide in PDF, foto della lavagna o immagini dal web al documento finale."
+      intro="Scegli una lezione per aggiungere slide in PDF, foto della lavagna o immagini dal web al documento."
       href={(l) => `/lezioni/${l.id}/immagini`}
-      ready={(l) => l.phases.build === 'VALID'}
-      notReady="serve prima il documento finale"
+      ready={(l) => l.phases.rewrite === 'VALID'}
+      notReady="serve prima la rielaborazione"
     />
   )
 }
@@ -123,18 +123,25 @@ function Gallery({ lessonId }: { lessonId: number }) {
   )
 }
 
-/** Anteprima del documento finale con le immagini servite dall'API. */
+/** Documento (finale se aggiornato, altrimenti anteprima dalla bozza) con le immagini servite dall'API. */
 function DocumentPreview({ lessonId }: { lessonId: number }) {
   const doc = useLessonDocument(lessonId)
   if (doc.isPending) return <p className="text-sm text-muted-foreground">Carico il documento…</p>
   if (doc.isError) return <Alert tone="danger">{errorMessage(doc.error)}</Alert>
   return (
-    <div
-      data-testid="document-preview"
-      className="rt-document max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-5"
-      // HTML già sanificato dall'API (markdown-it con html=False)
-      dangerouslySetInnerHTML={{ __html: withImageUrls(doc.data.html, lessonId) }}
-    />
+    <>
+      {!doc.data.final && (
+        <Alert data-testid="images-preview-note">
+          Anteprima dalla bozza: le immagini entrano nel documento finale quando esegui la fase Documento.
+        </Alert>
+      )}
+      <div
+        data-testid="document-preview"
+        className="rt-document max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-5"
+        // HTML già sanificato dall'API (markdown-it con html=False)
+        dangerouslySetInnerHTML={{ __html: withImageUrls(doc.data.html, lessonId) }}
+      />
+    </>
   )
 }
 
@@ -148,14 +155,18 @@ export function ImagesPage() {
 
   if (lesson.isPending) return <p className="text-sm text-muted-foreground">Carico la lezione…</p>
   if (lesson.isError) return <Alert tone="danger">{errorMessage(lesson.error)}</Alert>
-  const ready = lesson.data.phases.build === 'VALID'
+  const ready = lesson.data.actions?.images.available ?? lesson.data.phases.rewrite === 'VALID'
   return (
     <section className="flex flex-col gap-4">
       <Link to="/immagini" className="text-xs text-muted-foreground hover:underline">
         ← Immagini: tutte le lezioni
       </Link>
       <h1 className="text-xl font-bold tracking-tight">Immagini · {lessonTitle(lesson.data)}</h1>
-      {!ready && <Alert tone="warning">Le immagini si aggiungono al documento finale: completa prima la pipeline fino al build.</Alert>}
+      {!ready && (
+        <Alert tone="warning">
+          {lesson.data.actions?.images.reason ?? 'Le immagini si aggiungono alla bozza: completa prima la rielaborazione.'}
+        </Alert>
+      )}
       {ready && (
         <Card className="flex flex-col gap-4 p-5">
           <h2 className="text-base font-bold">Aggiungi immagini</h2>
