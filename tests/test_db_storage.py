@@ -28,7 +28,9 @@ def db_lesson(rt_db, tmp_path):
 
 
 def _tree(path):
-    return sorted(os.path.relpath(os.path.join(b, n), path) for b, _, names in os.walk(path) for n in names)
+    """File della cartella, senza il lock di lavorazione (.rt.job.lock) che la migrazione prende."""
+    return sorted(os.path.relpath(os.path.join(b, n), path) for b, _, names in os.walk(path) for n in names
+                  if n != ".rt.job.lock")
 
 
 # ---------------------------------------------------------------- rt.storage.fs
@@ -253,3 +255,13 @@ def test_api_export_endpoint(folder_lesson, rt_db, api_client):
     assert detail["id"] == lesson_id and detail["has_audio"] is True
     assert api_client.get(f"/api/v1/lessons/{lesson_id}/audio").status_code == 200
     assert api_client.get(f"/api/v1/lessons/{lesson_id}/document").json()["final"] is True
+
+
+def test_migrate_storage_skips_a_lesson_being_worked_on(folder_lesson, rt_db):
+    from rt.core.process_lock import lesson_work_lock
+    from rt.storage.migrate import migrate_storage
+    root, lesson_dir = folder_lesson
+    with lesson_work_lock(lesson_dir):
+        report = migrate_storage(root)
+    assert report.migrated == [] and "in lavorazione" in report.errors[0]
+    assert os.path.isdir(lesson_dir) and not fs.is_db_lesson(lesson_dir)

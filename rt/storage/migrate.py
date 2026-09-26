@@ -236,7 +236,13 @@ def migrate_storage(
     for plan in report.plans:
         name = os.path.basename(plan.lesson_dir)
         say(f"→ {name}: {len(plan.files)} file")
-        errors = migrate_lesson(db, plan.lesson_dir, lessons_backup)
+        from rt.core.process_lock import LessonBusy, lesson_work_lock
+        try:
+            with lesson_work_lock(plan.lesson_dir):  # nessun job o 'rt run' sulla lezione
+                errors = migrate_lesson(db, plan.lesson_dir, lessons_backup)
+        except LessonBusy:
+            report.errors.append(f"{name}: lezione in lavorazione, non migrata (rilancia il comando più tardi)")
+            continue
         if errors and not fs.is_db_lesson(plan.lesson_dir):
             report.errors.extend(f"{name}: {e}" for e in errors)
             continue
