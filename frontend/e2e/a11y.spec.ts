@@ -20,6 +20,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['dashboard', '/'],
     ['lezione', `/lezioni/${done}`],
     ['revisione', `/lezioni/${review}/revisione`],
+    ['revisione per gravità', `/lezioni/${review}/revisione?ordine=gravita`],
     ['outline', `/lezioni/${done}/outline`],
     ['recall', `/lezioni/${done}/recall`],
     ['immagini', `/lezioni/${done}/immagini`],
@@ -59,6 +60,11 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByText(/^Carico/)).toHaveCount(0)
       await expectNoViolations(page, name)
     }
+    // Slider della velocità aperto nel player.
+    await page.goto(`/lezioni/${await lessonId(page, 'BIOCHIMICA')}`)
+    await page.getByRole('button', { name: /^Velocità di riproduzione/ }).click()
+    await expect(page.getByRole('slider', { name: 'Velocità di riproduzione' })).toBeVisible()
+    await expectNoViolations(page, 'velocità del player')
   })
 }
 

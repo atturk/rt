@@ -30,13 +30,16 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 - **Importa:** carichi l'audio, scegli data e materia e, se vuoi, avvii subito la pipeline.
 - **Job:** i job in coda e in corso con gli eventi in tempo reale; si possono annullare. Se
   nessun worker è attivo la pagina lo segnala.
-- **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda, fasi
+- **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda (clic
+  sulla velocità: slider da 0.5× a 3×, anche da tastiera; la scelta resta nel browser), fasi
   con validazioni, avvio di una singola fase, costi, download del Markdown o dello zip.
 - **Scaletta:** vista ad albero dell'outline, approvazione o richiesta di modifiche.
 - **Revisione:** le issue della review scientifica accanto al testo, con diff, frase
-  evidenziata e audio al punto giusto; accetta, mantieni l'originale, modifica, annulla (anche
-  da tastiera: `a`, `r`, `e`, `u`, frecce). Con l'ultima decisione la pipeline in attesa
-  riparte da sola.
+  evidenziata e audio dal timecode dell'unità; accetta, mantieni l'originale, modifica, annulla
+  (anche da tastiera: `a`, `r`, `e`, `u`, frecce). Le issue da decidere si ordinano per
+  timecode o per tipo e gravità (prima gli errori concettuali più gravi; `?ordine=gravita`
+  nell'indirizzo) e dopo ogni decisione si passa alla successiva in quell'ordine. Con l'ultima
+  decisione la pipeline in attesa riparte da sola.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
 - **Immagini:** slide, foto o PDF da integrare nel documento finale.
 - **Bot Telegram:** stato, avvio e arresto del bot.
