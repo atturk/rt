@@ -3,6 +3,8 @@ rt.services.telegram_topics
 Rilevamento dei topic del gruppo Telegram (come "Ascolta topic per 20 secondi" della web
 Gradio): legge i messaggi in arrivo al bot con getUpdates e restituisce chat e topic visti.
 Usato dal job API telegram_listen_topics (RT4-F5). Il token non compare mai nei messaggi.
+Se il demone del bot è attivo l'endpoint risponde 409 prima di accodare (qui niente rt.telegram:
+i servizi restano indipendenti dall'interfaccia, vedi tests/test_layering.py).
 """
 from __future__ import annotations
 
@@ -20,9 +22,6 @@ def listen_topics(token: Optional[str] = None, seconds: int = 20) -> Dict[str, A
     """Ascolta per `seconds` secondi: {"chat_id": str|None, "chats": int, "topics": [int]}."""
     import requests
     from rt.core.config import load_env_file
-    from rt.telegram.daemon_status import is_daemon_running
-    if is_daemon_running():
-        raise TopicListenError("Il bot è già in ascolto. Ferma il demone prima di cercare nuovi topic.")
     load_env_file()
     token = (token or os.environ.get("RT_TELEGRAM_BOT_TOKEN", "")).strip()
     if not token or token == "test-disabled-token":
