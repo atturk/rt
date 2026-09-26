@@ -5,7 +5,7 @@ import { apiGet, loginViaLink } from './support'
 
 // RT4-F7: il percorso completo di una lezione nuova solo dalla SPA, come 'rt run' da terminale:
 // accesso con il link, importazione dell'audio, scaletta, review di tutte le issue, build,
-// lettura del documento con l'audio, recall. Dopo ogni passo la pagina si ricarica e quello che
+// lettura del documento con l'audio, recall, modifica delle impostazioni. Dopo ogni passo la pagina si ricarica e quello che
 // mostra deve venire dal backend.
 
 const AUDIO = fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url))
@@ -16,6 +16,7 @@ type Lesson = { id: number; materia: string; pending_issues: number; phases: Rec
 type Outline = { approved: boolean }
 type IssueList = { total: number }
 type Decision = { issue_id: string; decision: string }
+type Settings = { transcription: { engine: string; base_url: string | null; model: string | null } }
 type History = { questions: { id: string; status: string }[]; answers: { question_id: string }[] }
 
 async function job(page: Page, id: string) {
@@ -105,4 +106,24 @@ test('percorso completo: dall\'audio al recall, con ricarica dopo ogni passo', a
   const history = await apiGet<History>(page.request, `/lessons/${lessonId}/recall/history`)
   expect(history.questions.find((q) => q.id === questionId)?.status).toBe('answered')
   expect(history.answers.some((a) => a.question_id === questionId)).toBe(true)
+
+  // 7. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
+  await page.goto('/impostazioni')
+  const card = page.getByRole('region', { name: 'Trascrizione', exact: true })
+  const before = (await apiGet<Settings>(page.request, '/settings')).transcription
+  await card.getByLabel('Motore').selectOption('custom')
+  await card.getByLabel('Base URL del server').fill('http://127.0.0.1:9100/v1')
+  await card.getByLabel('Modello').fill('whisper-percorso')
+  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
+  await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+  await page.reload()
+  await expect(card.getByLabel('Motore')).toHaveValue('custom')
+  await expect(card.getByLabel('Modello')).toHaveValue('whisper-percorso')
+  expect((await apiGet<Settings>(page.request, '/settings')).transcription).toMatchObject({
+    engine: 'custom', base_url: 'http://127.0.0.1:9100/v1', model: 'whisper-percorso',
+  })
+  await card.getByLabel('Motore').selectOption(before.engine)
+  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
+  await page.reload()
+  await expect(card.getByLabel('Motore')).toHaveValue(before.engine)
 })

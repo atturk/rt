@@ -26,6 +26,11 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['importa', '/importa'],
     ['job', '/job'],
     ['bot', '/bot'],
+    ['impostazioni', '/impostazioni'],
+    ['modelli', '/impostazioni/modelli'],
+    ['chiavi', '/impostazioni/chiavi'],
+    ['costi', '/impostazioni/costi'],
+    ['configurazione guidata', '/impostazioni/configurazione'],
     ['pagina inesistente', '/non-esiste'],
   ]
 }
