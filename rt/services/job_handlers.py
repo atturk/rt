@@ -90,9 +90,22 @@ def ingest_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def run_phase_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.pipeline_service import build_notifiers, run_phase
+    lesson_dir = _lesson_dir(job)
+    if "extra_prompt" in job.payload:
+        from rt.services.prompt_settings import set_extra
+        set_extra(lesson_dir, job.payload["phase"], job.payload["extra_prompt"])
+        if job.payload["phase"] == "outline":
+            from rt.pipeline.outline import get_outline_path
+            from rt.storage import fs
+            if fs.isfile(get_outline_path(lesson_dir)):
+                from rt.services.outline_service import request_outline_revision
+                ctx.force_mock = bool((job.payload.get("options") or {}).get("mock"))
+                return JobOutcome(state=JobState.SUCCEEDED,
+                                  result=json_safe(request_outline_revision(lesson_dir, job.payload["extra_prompt"], ctx=ctx)),
+                                  lesson_path=lesson_dir)
     options = pipeline_options(job.payload.get("options") or {})
     with _mock_failure(job, options):
-        return outcome_from_pipeline(run_phase(_lesson_dir(job), job.payload["phase"], options, ctx,
+        return outcome_from_pipeline(run_phase(lesson_dir, job.payload["phase"], options, ctx,
                                                notifiers=build_notifiers()))
 
 

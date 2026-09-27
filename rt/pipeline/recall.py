@@ -15,6 +15,7 @@ from typing import List, Optional, Dict
 from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer
 from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
+from rt.services.prompt_settings import effective_system
 from rt.core.config import load_config
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
@@ -468,7 +469,7 @@ def generate_recall_batch(
         try:
             generated: RecallQuestion = client.call_structured(
                 prompt=user_prompt,
-                system_prompt=system_prompt,
+                system_prompt=effective_system("recall", system_prompt),
                 response_model=RecallQuestion,
                 job_name="recall",
                 unit_id=", ".join(units[i].unit_id for i in group_idxs),
@@ -558,7 +559,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         )
         result: "RecallEvalMirataResult" = client.call_structured(
             prompt=user_prompt,
-            system_prompt=RECALL_EVAL_MIRATA_SYSTEM_PROMPT,
+            system_prompt=effective_system("recall", RECALL_EVAL_MIRATA_SYSTEM_PROMPT),
             response_model=RecallEvalMirataResult,
             job_name="recall",
             unit_id=question.unit_ids[0],
@@ -578,7 +579,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         )
         result_v: "RecallEvalVastaResult" = client.call_structured(
             prompt=user_prompt,
-            system_prompt=RECALL_EVAL_VASTA_SYSTEM_PROMPT,
+            system_prompt=effective_system("recall", RECALL_EVAL_VASTA_SYSTEM_PROMPT),
             response_model=RecallEvalVastaResult,
             job_name="recall",
             unit_id=", ".join(question.unit_ids),

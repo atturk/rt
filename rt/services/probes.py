@@ -17,6 +17,7 @@ MODEL_TIMEOUT_SECONDS = 20.0
 SEARXNG_TIMEOUT_SECONDS = 10.0
 _PROMPT = "Rispondi solo: ok"
 _MAX_OUTPUT_TOKENS = 16  # alcuni provider rifiutano limiti più bassi
+_RED_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP8z4AdMOEQH6QSAM1BAQ/oQeJvAAAAAElFTkSuQmCC"
 
 
 def probes_mocked() -> bool:
@@ -56,7 +57,7 @@ def _provider_error(resp: requests.Response) -> str:
 
 
 def probe_model(project_root: Path | None, connection: str, model: str, mock: bool = False,
-                timeout: float | None = None) -> dict[str, Any]:
+                timeout: float | None = None, vision: bool = False) -> dict[str, Any]:
     """Chiamata minima (prompt di poche parole, pochi token di uscita) alla connessione e al
     modello indicati. Restituisce ok, latenza in millisecondi, stato HTTP e messaggio."""
     from rt.services.connections_service import find_connection
@@ -69,7 +70,8 @@ def probe_model(project_root: Path | None, connection: str, model: str, mock: bo
     base = {"connection": conn["name"], "provider": provider_name, "model": model,
             "latency_ms": None, "status_code": None, "reply": None}
     if mock or probes_mocked():
-        return {**base, "ok": True, "latency_ms": 0, "message": "Mock: nessuna chiamata di rete."}
+        return {**base, "ok": True, "latency_ms": 0, "vision_verified": False,
+                "message": "Mock: supporto visione non verificato." if vision else "Mock: nessuna chiamata di rete."}
 
     from rt.core.config import load_config
     from rt.llm.credentials import GLOBAL_CREDENTIALS
@@ -79,8 +81,10 @@ def probe_model(project_root: Path | None, connection: str, model: str, mock: bo
     keys = [k for k in (GLOBAL_CREDENTIALS.get_api_key(name) for name in conn.get("credentials") or []) if k]
     if not keys:
         return {**base, "ok": False, "message": "Nessuna chiave impostata per questa connessione."}
+    message = ([{"type": "text", "text": "Di che colore è il quadrato nell'immagine? Rispondi solo con il colore."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_RED_IMAGE}"}}] if vision else _PROMPT)
     payload = provider.build_payload(
-        model=model, messages=[{"role": "user", "content": _PROMPT}], max_tokens=_MAX_OUTPUT_TOKENS,
+        model=model, messages=[{"role": "user", "content": message}], max_tokens=_MAX_OUTPUT_TOKENS,
         stream=False,  # niente thinking né temperatura: alcuni modelli rifiutano valori espliciti
     )
     endpoint = provider.get_endpoint(conn.get("base_url") or None)
@@ -101,7 +105,11 @@ def probe_model(project_root: Path | None, connection: str, model: str, mock: bo
     except Exception as exc:  # noqa: BLE001 - risposta 200 ma non nel formato atteso
         return {**base, "ok": False, "message": _sanitize(f"Risposta non valida dal provider: {exc}")[:500]}
     reply = (normalized.content or "").strip()[:80] or None
-    return {**base, "ok": True, "reply": reply, "message": "Modello raggiungibile."}
+    if vision and not any(color in (reply or "").lower() for color in ("rosso", "red")):
+        return {**base, "ok": False, "reply": reply, "vision_verified": False,
+                "message": "Il modello ha risposto, ma non ha riconosciuto il colore dell'immagine di prova."}
+    return {**base, "ok": True, "reply": reply, "vision_verified": vision,
+            "message": "Visione verificata." if vision else "Modello raggiungibile."}
 
 
 # ---------------------------------------------------------------- SearXNG

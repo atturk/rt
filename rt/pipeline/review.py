@@ -16,6 +16,7 @@ from rt.core.state import transition_to, WorkflowState
 from rt.core.manifest import load_manifest
 from rt.core.config import load_config, JevConfig
 from rt.llm.client import LLMClient
+from rt.services.prompt_settings import append_extra, effective_system
 from rt.llm.prompts import (
     SCIENCE_REVIEW_SYSTEM_PROMPT,
     build_science_review_user_prompt,
@@ -116,7 +117,7 @@ def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
                              max_repair_attempts: int = 2) -> List[ScienceIssue]:
     """Non persiste claim concettuali che non sono nel draft esaminato dal critic."""
     result = client.call_structured(
-        prompt=prompt, system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+        prompt=prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
         response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
         min_elapsed_seconds=5.0, lesson_dir=lesson_dir,
     )
@@ -150,7 +151,7 @@ def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
                 f"ISSUE DA RIPARARE:\n{json.dumps(issue.model_dump(mode='json'), ensure_ascii=False)}"
             )
             repaired = client.call_structured(
-                prompt=repair_prompt, system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+                prompt=repair_prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
                 response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
                 lesson_dir=lesson_dir,
             )
@@ -346,7 +347,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
         verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
         verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
 
-        if not shadow_jev:
+        if not (shadow_jev or _cfg.jev.shadow):
             if verdict_b is not None and verdict_b.is_high_confidence_drift:
                 all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
             if verdict_a is not None and verdict_a.should_skip_expensive_llm:
@@ -379,6 +380,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
             unit_title = unit_title[:25] + "..."
         unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
 
+        prompt = append_extra(lesson_dir, "review", prompt)
         for iss in _validated_review_issues(client, unit, prompt, lesson_dir, unit_label):
             iss.unit_id = unit.unit_id
             if iss.segment_id and iss.segment_id not in unit.source_segment_ids:
@@ -394,6 +396,45 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
     """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx, se dato)."""
     with phase_scope(ctx, "review") as scope:
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
+
+
+def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> Dict[str, Any]:
+    """Refresh just one unit, retaining other issues and their stable IDs/decisions."""
+    draft = load_draft(lesson_dir)
+    unit = next((item for item in draft.units if item.unit_id == unit_id), None)
+    if unit is None:
+        raise ValueError(f"Unità {unit_id} non presente nella bozza.")
+    segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+    seg_by_id = {s.id: s for s in segments.segments}
+    cfg = load_config()
+    stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
+        k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
+    prior = load_science_issues(lesson_dir)
+    kept = [issue for issue in prior if issue.unit_id != unit_id]
+    generated = []
+    _review_unit(LLMClient(force_mock=force_mock), unit, 1, 1, seg_by_id,
+                 {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
+                 generated, cfg, lesson_dir, False, cfg.jev.shadow)
+    generated.extend(issue for issue in stats if issue.unit_id == unit_id)
+    used = {issue.id for issue in kept}
+    sequence = max([int(issue.id.removeprefix("sci_")) for issue in prior
+                    if issue.id.startswith("sci_") and issue.id[4:].isdigit()] or [0])
+    for issue in generated:
+        sequence += 1
+        issue.id = f"sci_{sequence:06d}"
+        while issue.id in used:
+            sequence += 1
+            issue.id = f"sci_{sequence:06d}"
+    save_science_issues(kept + generated, lesson_dir)
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
+    if unit_id not in completed:
+        completed.append(unit_id)
+    record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
+        source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
+        artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+        completed_items=completed)
+    return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(kept)}
 
 
 def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:

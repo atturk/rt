@@ -21,6 +21,7 @@ function problemsOf(error: unknown): Problem[] | null {
 type Props = {
   lessonId: number
   markdown: string
+  leaseToken?: string
   /** Chiamata all'uscita: con il risultato se si è salvato, null se annullato o invariato. */
   onClose: (result: DocumentSaveResult | null) => void
 }
@@ -29,12 +30,12 @@ type Props = {
  * Editor Markdown con gli errori di validazione del server. Solo Fine salva;
  * Esc e Annulla scartano le modifiche.
  */
-export function DocumentEditor({ lessonId, markdown, onClose }: Props) {
+export function DocumentEditor({ lessonId, markdown, leaseToken, onClose }: Props) {
   const [text, setText] = useState(markdown)
   const [focusLine, setFocusLine] = useState<number | null>(null)
   const [preview, setPreview] = useState<{ html: string; errors: Problem[] } | null>(null)
   const check = useCheckDocument(lessonId)
-  const save = useSaveDocument(lessonId)
+  const save = useSaveDocument(lessonId, leaseToken)
 
   const { mutate: runCheck } = check
   useEffect(() => {

@@ -6,7 +6,7 @@ import { errorMessage } from '@/api/client'
 import { useSettings, type Settings } from '@/api/settings'
 import { LessonsRootSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
-import { ConnectionsSection, NewConnectionSection, PhasesSection, RoutesSection } from '@/components/settings/models'
+import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { WebSearchSection } from '@/components/settings/websearch'
 import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
@@ -121,6 +121,8 @@ export const settingsArea: Area = {
           element: page((s) => (
             <>
               <PhasesSection settings={s} />
+              <DecisionModelSection />
+              <PromptEditorSection />
               <ConnectionsSection settings={s} />
               <NewConnectionSection />
               <RoutesSection settings={s} />

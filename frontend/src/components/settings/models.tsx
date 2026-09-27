@@ -1,8 +1,9 @@
 import { Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { api, errorMessage, unwrap } from '@/api/client'
 import {
   isTerminal,
   useAddModel,
@@ -27,6 +28,77 @@ import { Checkbox, Field, SaveFeedback, SecretBadge, Section } from './common'
 
 type Connection = Settings['connections'][number]
 type Phase = Settings['phases'][number]
+
+export function DecisionModelSection() {
+  const client = useQueryClient()
+  const configured = useQuery({ queryKey: ['decision-model'], queryFn: () => unwrap(api.GET('/api/v1/settings/decision-model')) })
+  const [modelDraft, setModel] = useState<string | null>(null)
+  const [credentialDraft, setCredential] = useState<string | null>(null)
+  const [thresholdDraft, setThreshold] = useState<number | null>(null)
+  const [shadowDraft, setShadow] = useState<boolean | null>(null)
+  const [enabledDraft, setEnabled] = useState<boolean | null>(null)
+  const model = modelDraft ?? configured.data?.model ?? ''
+  const credential = credentialDraft ?? configured.data?.credential ?? 'openrouter'
+  const threshold = thresholdDraft ?? configured.data?.threshold ?? 0.85
+  const shadow = shadowDraft ?? configured.data?.shadow ?? true
+  const enabled = enabledDraft ?? configured.data?.enabled ?? false
+  const probe = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/decision-model/probe', {
+    body: { model, credential, threshold, enabled: true, shadow },
+  })) })
+  const save = useMutation({ mutationFn: () => unwrap(api.PUT('/api/v1/settings/decision-model', {
+    body: { model, credential, threshold, enabled, shadow },
+  })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['decision-model'] }) } })
+  return <Section id="classificatore" title="Modello classificatore (facoltativo)"
+    description="Valuta le unità prima della review con un protocollo decisionale strutturato. Senza modello la review procede normalmente.">
+    {configured.data && <p className="text-xs text-muted-foreground">Attuale: {configured.data.enabled ? `${configured.data.model} · ${configured.data.shadow ? 'ombra' : 'gate attivo'}` : 'disattivato'}</p>}
+    <Field label="Modello decisionale" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="ID del modello decisionale" /></Field>
+    <Field label="Credenziale" htmlFor="decision-model-credential"><Input id="decision-model-credential" value={credential} onChange={(e) => setCredential(e.target.value)} /></Field>
+    <Field label="Soglia di confidenza per il gate" htmlFor="decision-model-threshold"><Input id="decision-model-threshold" type="number" min="0" max="1" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} /></Field>
+    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Abilita il modello</label>
+    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={shadow} onChange={(e) => setShadow(e.target.checked)} />Modalità ombra (non salta la review)</label>
+    <p className="text-xs text-muted-foreground">Prova verifica endpoint, risposta a scelta, opzioni e probabilità. Valuta le false omissioni su lezioni già revisionate prima di disattivare la modalità ombra.</p>
+    <div className="flex gap-2"><Button variant="outline" disabled={!model.trim() || probe.isPending} onClick={() => probe.mutate()}>Prova protocollo</Button>
+      <Button disabled={save.isPending || (enabled && !probe.isSuccess)} onClick={() => save.mutate()}>Salva</Button></div>
+    {probe.isSuccess && <p role="status" className="text-xs text-success">Protocollo verificato · confidenza {probe.data.confidence}</p>}
+    {probe.isError && <Alert tone="danger">{errorMessage(probe.error)}</Alert>}
+    {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
+  </Section>
+}
+
+export function PromptEditorSection() {
+  const client = useQueryClient()
+  const prompts = useQuery({ queryKey: ['prompt-overrides'], queryFn: () => unwrap(api.GET('/api/v1/settings/prompts')) })
+  const [phase, setPhase] = useState<'outline' | 'rewrite' | 'review' | 'image_description' | 'recall'>('outline')
+  const [drafts, setDrafts] = useState<Partial<Record<typeof phase, string>>>({})
+  const instruction = drafts[phase] ?? prompts.data?.[phase]?.instruction ?? ''
+  const save = useMutation({ mutationFn: () => unwrap(api.PUT('/api/v1/settings/prompts/{phase}', {
+    params: { path: { phase } }, body: { instruction },
+  })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['prompt-overrides'] }) } })
+  return <Section id="prompt" title="Istruzioni dei prompt"
+    description="Aggiungi istruzioni alle fasi; il contratto strutturato e la validazione di RT restano attivi. Salva un campo vuoto per ripristinare il predefinito.">
+    <Field label="Fase" htmlFor="prompt-phase"><Select id="prompt-phase" value={phase} onChange={(e) => setPhase(e.target.value as typeof phase)}>
+      <option value="outline">Scaletta</option><option value="rewrite">Rielaborazione</option><option value="review">Revisione</option>
+      <option value="image_description">Descrizione immagini</option><option value="recall">Recall</option>
+    </Select></Field>
+    <details className="text-xs"><summary className="cursor-pointer">Mostra istruzione predefinita</summary>
+      <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded border p-2">{prompts.data?.[phase]?.default}</pre></details>
+    <Field label="Istruzioni personalizzate" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
+      className="w-full rounded border bg-background p-2 text-sm" rows={6} maxLength={20000}
+      value={instruction} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))} /></Field>
+    <Button disabled={save.isPending || prompts.isPending} onClick={() => save.mutate()}>Salva istruzioni</Button>
+    {save.isSuccess && <p role="status" className="text-xs text-success">Istruzioni salvate.</p>}
+    {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
+  </Section>
+}
+
+const PHASE_HINTS: Record<string, string> = {
+  outline: 'Organizza i segmenti temporali in una scaletta verificabile.',
+  rewrite: 'Rielabora le unità conservando riferimenti e provenienza.',
+  review: 'Cerca errori scientifici nel testo rielaborato.',
+  recall: 'Genera domande per il ripasso attivo.',
+  image_description: 'Descrive slide e immagini: richiede visione.',
+  image_unit_judge: 'Associa le immagini alle unità della lezione.',
+}
 
 // ------------------------------------------------------------------ modelli per fase
 
@@ -75,7 +147,8 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       aria-label={`Fase ${phase.label}`}
     >
       <div className="flex flex-col gap-1 self-center">
-        <span className="text-sm font-semibold">{phase.label}</span>
+        <span className="text-sm font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
+        {phase.job === 'image_description' && <span className="text-[11px] text-muted-foreground">Richiede visione</span>}
         {phase.model ? (
           <span className="text-[11px] text-muted-foreground" data-testid="phase-saved">
             {phase.connection} · {phase.model}
@@ -121,7 +194,7 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
         Salva
       </Button>
-      <ModelTest connection={connection} model={model} label={phase.label} className="contents" resultClassName="sm:col-span-5" />
+      <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />
       {assign.isError && (
         <Alert tone="danger" className="sm:col-span-5">
           {errorMessage(assign.error)}
@@ -140,18 +213,20 @@ export function ModelTest({
   connection,
   model,
   label,
+  vision = false,
   className,
   resultClassName,
 }: {
   connection: string
   model: string
   label?: string
+  vision?: boolean
   className?: string
   resultClassName?: string
 }) {
   const test = useTestModel()
   const tested = test.variables
-  const current = !!tested && tested.connection === connection && tested.model === model.trim()
+  const current = !!tested && tested.connection === connection && tested.model === model.trim() && !!tested.vision === vision
   let outcome = null
   if (current && test.isPending) {
     outcome = (
@@ -180,7 +255,7 @@ export function ModelTest({
         variant="outline"
         aria-label={label ? `Prova il modello di ${label}` : 'Prova il modello'}
         disabled={!connection || !model.trim() || (current && test.isPending)}
-        onClick={() => test.mutate({ connection, model: model.trim() })}
+        onClick={() => test.mutate({ connection, model: model.trim(), vision })}
       >
         Prova
       </Button>

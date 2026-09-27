@@ -1,8 +1,9 @@
 import { Activity, Upload } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { ApiError, errorMessage } from '@/api/client'
+import { ApiError, api, errorMessage, unwrap } from '@/api/client'
 import { useLesson, useLessons } from '@/api/hooks'
 import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
@@ -41,6 +42,13 @@ function Checkbox({ id, label, hint, checked, onChange }: { id: string; label: s
 /** Importazione dell'audio: solo trascrizione (job ingest_audio) o pipeline completa (run_pipeline). */
 export function ImportPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [archives, setArchives] = useState<File[]>([])
+  const importZips = useMutation({ mutationFn: (files: File[]) => {
+    const form = new FormData()
+    files.forEach((file) => form.append('archives', file))
+    return unwrap(api.POST('/api/v1/lessons/import-zip', { body: { archives: files.map((file) => file.name) }, bodySerializer: () => form }))
+  }, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['lessons'] }) } })
   const lessons = useLessons()
   const create = useCreateLesson()
   const [files, setFiles] = useState<File[]>([])
@@ -75,6 +83,16 @@ export function ImportPage() {
     <section className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
       <WorkerWarning />
+      <Card className="flex flex-col gap-3 p-5">
+        <h2 className="text-sm font-bold">Importa lezioni da ZIP completi</h2>
+        <p className="text-xs text-muted-foreground">Usa archivi esportati con «Tutti i dati». Una lezione già esistente viene rifiutata senza interrompere le altre.</p>
+        <Input type="file" accept=".zip,application/zip" multiple aria-label="Archivi ZIP delle lezioni" onChange={(event) => setArchives(Array.from(event.target.files ?? []))} />
+        <Button type="button" disabled={!archives.length || importZips.isPending} onClick={() => importZips.mutate(archives)}>{importZips.isPending ? 'Importazione…' : 'Importa ZIP'}</Button>
+        {importZips.isError && <Alert tone="danger">{errorMessage(importZips.error)}</Alert>}
+        {importZips.data && <ul className="text-xs" aria-label="Esito importazione ZIP">{importZips.data.results.map((item, index) => <li key={index}>
+          {item.file}: {item.status === 'imported' ? 'importata' : `rifiutata — ${item.reason}`}
+        </li>)}</ul>}
+      </Card>
       <Card className="p-5">
         <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Importa una lezione">
           <div className="flex flex-col gap-1">

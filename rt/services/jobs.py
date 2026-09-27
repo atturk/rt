@@ -190,8 +190,17 @@ class DbJobQueue:
                 retry_of: Optional[str] = None) -> str:
         job_id = uuid.uuid4().hex
         with session_scope(self.db) as s:
+            lesson_path = self._lesson_path(s, lesson_id)
+            if lesson_path:
+                from rt.db.models import Lesson, Setting
+                from rt.services.document_edit_lease import _active, _key
+                lesson = s.scalar(select(Lesson).where(Lesson.path == lesson_path))
+                if lesson:
+                    edit = s.get(Setting, _key(lesson.id))
+                    if edit and _active(edit.value):
+                        raise LessonHasActiveJob("document-editor")
             job = Job(id=job_id, type=job_type, state=JobState.QUEUED.value,
-                      lesson_path=self._lesson_path(s, lesson_id), payload=json_safe(payload or {}),
+                      lesson_path=lesson_path, payload=json_safe(payload or {}),
                       attempts=0, max_attempts=max_attempts, cancel_requested=False, created_by=created_by,
                       retry_of=retry_of)
             s.add(job)

@@ -22,6 +22,7 @@ from rt.llm.prompts import (
 from rt.pipeline.validator import validate_outline, ValidationError
 from rt.core.lesson_paths import lesson_path
 from rt.core.config import load_config
+from rt.services.prompt_settings import append_extra, effective_system
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -141,11 +142,11 @@ def _run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False)
         summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
     segments_summary = "\n".join(summary_lines)
     
-    prompt = build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary)
+    prompt = append_extra(lesson_dir, "outline", build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary))
     client = LLMClient(force_mock=force_mock)
     
     outline, validation_report = _generate_validated_outline(
-        client, OUTLINE_SYSTEM_PROMPT, [], prompt, segments_data, lesson_dir
+        client, effective_system("outline", OUTLINE_SYSTEM_PROMPT), [], prompt, segments_data, lesson_dir
     )
     
     # Generazione automatica argomenti se non specificati dall'utente
@@ -231,7 +232,7 @@ def run_outline_revision(lesson_dir: str, feedback: str, force_mock: bool = Fals
     previous_outline = load_outline(lesson_dir)
     previous_outline_json = json.dumps(previous_outline.model_dump(mode="json"), ensure_ascii=False, indent=2)
 
-    original_user_prompt = build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary)
+    original_user_prompt = append_extra(lesson_dir, "outline", build_outline_user_prompt(date_val, subject_val, topics_val, segments_summary))
     client = LLMClient(force_mock=force_mock)
 
     history = [
@@ -240,7 +241,7 @@ def run_outline_revision(lesson_dir: str, feedback: str, force_mock: bool = Fals
     ]
     followup_prompt = build_outline_revision_followup_prompt(feedback)
     outline, validation_report = _generate_validated_outline(
-        client, OUTLINE_SYSTEM_PROMPT, history, followup_prompt, segments_data, lesson_dir
+        client, effective_system("outline", OUTLINE_SYSTEM_PROMPT), history, followup_prompt, segments_data, lesson_dir
     )
 
     save_outline(outline, lesson_dir)

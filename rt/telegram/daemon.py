@@ -15,7 +15,7 @@ from typing import Optional, List
 
 from telegram import Update
 from telegram.error import RetryAfter
-from telegram.ext import Application, CallbackQueryHandler, MessageHandler, CommandHandler, PollAnswerHandler, MessageReactionHandler, ContextTypes, filters
+from telegram.ext import Application, CallbackQueryHandler, MessageHandler, CommandHandler, PollAnswerHandler, MessageReactionHandler, ContextTypes, TypeHandler, filters
 
 from rt.core.config import load_config
 from rt.telegram.config import load_telegram_config
@@ -1122,6 +1122,13 @@ def run_daemon(state_dir: str = None) -> None:
         application = Application.builder().token(cfg.bot_token).concurrent_updates(True).build()
         application.bot_data["state_dir"] = resolved_state_dir
 
+        async def remember_discovery(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+            message = update.effective_message
+            if message and message.message_thread_id:
+                from rt.services.telegram_topics import remember_topic_message
+                await asyncio.to_thread(remember_topic_message, message.to_dict())
+
+        application.add_handler(TypeHandler(Update, remember_discovery), group=-1)
         application.add_handler(CommandHandler("quit", handle_quit))
         application.add_handler(CommandHandler("status", handle_status))
         application.add_handler(CommandHandler("stile", handle_stile))
@@ -1141,4 +1148,3 @@ def run_daemon(state_dir: str = None) -> None:
         application.run_polling(allowed_updates=Update.ALL_TYPES)
     finally:
         remove_daemon_pid()
-

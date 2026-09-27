@@ -13,6 +13,7 @@ import os
 import json
 import hashlib
 import base64
+from rt.services.prompt_settings import effective_system
 import re
 from typing import Dict, Any, Optional, List, Tuple
 from rt.core.lesson_paths import lesson_path
@@ -164,7 +165,7 @@ def describe_new_images(
         try:
             desc: ImageDescription = client.call_structured(
                 prompt=user_prompt,
-                system_prompt=sys_prompt,
+                system_prompt=effective_system("image_description", sys_prompt),
                 response_model=ImageDescription,
                 job_name="image_description",
                 image_data_url=image_data_url,

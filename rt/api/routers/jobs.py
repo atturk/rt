@@ -80,6 +80,37 @@ def _with_upload_cleanup(target: str, fn):
 
 # ---------------------------------------------------------------- creazione
 
+@router.post("/lessons/import-zip", response_model=schemas.ZipImportResult,
+             summary="Importa più archivi completi come nuove lezioni")
+def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
+    import zipfile
+    from rt.services.lesson_import_service import import_archive
+    if len(archives) > 20:
+        raise ApiError(413, "too_many_archives", "Importa al massimo 20 archivi alla volta.")
+    target = _upload_dir()
+    results = []
+    try:
+        for index, archive in enumerate(archives):
+            filename = os.path.basename((archive.filename or "").replace("\\", "/"))
+            if not filename.lower().endswith(".zip"):
+                results.append({"file": filename, "status": "rejected", "reason": "Serve un archivio ZIP."})
+                continue
+            try:
+                path = _save_uploads([archive], {".zip"}, target)[0]
+                lesson_id = import_archive(path)
+                results.append({"file": filename, "status": "imported", "lesson_id": lesson_id})
+            except (ApiError, zipfile.BadZipFile, ValueError) as exc:
+                results.append({"file": filename, "status": "rejected", "reason":
+                                exc.message if isinstance(exc, ApiError) else "Archivio ZIP non valido."})
+            finally:
+                # Each archive is independent; two archives with the same basename cannot overwrite.
+                path = os.path.join(target, filename)
+                if os.path.isfile(path):
+                    os.unlink(path)
+        return {"results": results}
+    finally:
+        shutil.rmtree(target, ignore_errors=True)
+
 @router.post("/lessons", response_model=schemas.JobAccepted, status_code=202,
              summary="Importa una lezione da audio (upload): job ingest_audio, o run_pipeline con run=true")
 def create_lesson(
@@ -112,16 +143,20 @@ def create_lesson(
 def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, actor: Actor):
     if body.mock_fail_once and not body.mock:
         raise ApiError(422, "validation_error", "mock_fail_once vale solo in modalità prova (mock).")
+    if body.extra_prompt is not None and (body.type != "run_phase" or body.phase not in ("outline", "rewrite", "review")):
+        raise ApiError(422, "validation_error", "Le istruzioni aggiuntive sono disponibili solo per outline, rewrite e review.")
     extra = {"mock_fail_once": body.mock_fail_once} if body.mock_fail_once else {}
     if body.type == "run_phase":
         if not body.phase:
             raise ApiError(422, "validation_error", "Indica la fase da eseguire.")
         options = {"force": body.force, "mock": body.mock, "rename": body.rename}
+        prompt_payload = {"extra_prompt": body.extra_prompt} if body.extra_prompt is not None else {}
         if body.unit:
-            if body.phase != "rewrite":
-                raise ApiError(422, "validation_error", "L'unità si indica solo per il rewrite.")
-            return enqueue_job("rewrite_unit", lesson_dir, {"unit": body.unit, "options": options}, actor)
-        return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra}, actor)
+            if body.phase not in ("rewrite", "review"):
+                raise ApiError(422, "validation_error", "L'unità si indica solo per rewrite o review.")
+            return enqueue_job("rewrite_unit" if body.phase == "rewrite" else "review_unit", lesson_dir,
+                               {"unit": body.unit, "options": options, **prompt_payload}, actor)
+        return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}
     return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options, **extra}, actor)
@@ -170,10 +205,8 @@ def test_credential(body: schemas.CredentialTest, actor: Actor):
              summary="Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)")
 def telegram_listen_topics(actor: Actor):
     from rt.telegram.daemon_status import is_daemon_running
-    if is_daemon_running():
-        raise ApiError(409, "telegram_daemon_running",
-                       "Il bot è già in ascolto: fermalo prima di cercare nuovi topic.")
-    return enqueue_job("telegram_listen_topics", None, {"seconds": 20}, actor)
+    return enqueue_job("telegram_listen_topics", None, {"seconds": 20,
+                         "existing_daemon": is_daemon_running()}, actor)
 
 
 # ---------------------------------------------------------------- consultazione

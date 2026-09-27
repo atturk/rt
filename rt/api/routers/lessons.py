@@ -4,6 +4,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse, Response
+from starlette.background import BackgroundTask
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
@@ -28,7 +29,15 @@ def list_lessons(
     state: Optional[str] = Query(None, description="Filtra per stato del workflow (es. completato)"),
     q: Optional[str] = Query(None, description="Testo libero su cartella, titolo, argomenti"),
 ):
+    from rt.services.lesson_delete_service import recover_pending_deletions
+    recover_pending_deletions()
     return lesson_service.list_lessons(materia=materia, state=state, text=q)
+
+
+@router.delete("/lessons/{lesson_id}", status_code=204, summary="Elimina una lezione e i suoi media")
+def delete_lesson(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.lesson_delete_service import delete_lesson as delete
+    delete(lesson_id, lesson_dir)
 
 
 @router.get("/lessons/{lesson_id}", response_model=schemas.LessonDetail,
@@ -56,12 +65,27 @@ def check_document(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: Les
     return check_document_edit(lesson_dir, body.markdown)
 
 
+@router.post("/lessons/{lesson_id}/document/lease", response_model=schemas.DocumentEditLease)
+def acquire_document_lease(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+                           token: Optional[str] = None):
+    from rt.services.document_edit_lease import acquire
+    return acquire(lesson_id, token)
+
+
+@router.delete("/lessons/{lesson_id}/document/lease", status_code=204)
+def release_document_lease(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, token: str):
+    from rt.services.document_edit_lease import release
+    release(lesson_id, token)
+
+
 @router.put("/lessons/{lesson_id}/document/draft", response_model=schemas.DocumentEditResult,
             summary="Salva l'anteprima modificata nella bozza: testo, titoli, timecode, immagini (funzione beta)")
 def put_document_draft(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: LessonDir, _actor: Actor):
     from rt.api.jobs import ensure_no_running_job
+    from rt.services.document_edit_lease import assert_editable
     from rt.services.document_edit_service import DocumentEditError, save_document_edit
     ensure_no_running_job(lesson_dir)
+    assert_editable(lesson_id, body.lease_token)
     try:
         return save_document_edit(lesson_dir, body.markdown)
     except DocumentEditError as exc:
@@ -107,15 +131,18 @@ def export_lesson(
                                            "immagini richiamate; all: tutti i file della lezione, audio compreso"),
 ):
     from urllib.parse import quote
-    from rt.storage.export import ExportError, export_zip, final_markdown, zip_name
+    from rt.storage.export import ExportError, export_zip_to_tempfile, final_markdown, zip_name
     try:
         if format == "markdown":
             filename, content = final_markdown(lesson_dir)
             media_type = "text/markdown; charset=utf-8"
         else:
-            content = export_zip(lesson_dir, scope)
+            path = export_zip_to_tempfile(lesson_dir, scope)
             filename = zip_name(lesson_dir)
-            media_type = "application/zip"
+            disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
+            return FileResponse(path, media_type="application/zip", filename=filename,
+                                headers={"Content-Disposition": disposition},
+                                background=BackgroundTask(os.unlink, path))
     except ExportError as exc:
         raise ApiError(404, "export_not_available", str(exc))
     disposition = f"attachment; filename*=UTF-8''{quote(filename)}"

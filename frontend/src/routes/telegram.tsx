@@ -1,7 +1,11 @@
 import { Bot } from 'lucide-react'
 import { Link } from 'react-router'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { errorMessage } from '@/api/client'
+import { api, errorMessage, unwrap } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { useSettings, useTopicTest, type Settings } from '@/api/settings'
 import { useTelegramNotifications } from '@/api/telegram'
 import { RevealableValue, TopicTestButton, TopicTestResult } from '@/components/settings/telegram'
@@ -17,7 +21,7 @@ const SETTINGS_LINK = '/impostazioni#telegram'
 function TelegramPage() {
   const settings = useSettings()
   return (
-    <section className="flex max-w-3xl flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold tracking-tight">Bot Telegram</h1>
         <Link to={SETTINGS_LINK} className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
@@ -28,10 +32,58 @@ function TelegramPage() {
       {settings.isPending && <p className="text-sm text-muted-foreground">Carico gruppo e topic…</p>}
       {settings.isError && <Alert tone="danger">{errorMessage(settings.error)}</Alert>}
       {settings.data && <GroupCard settings={settings.data} />}
+      <TelegramUserPanel />
       {settings.data && <TopicsCard settings={settings.data} />}
       <NotificationsCard />
     </section>
   )
+}
+
+function TelegramUserPanel() {
+  const [apiId, setApiId] = useState('')
+  const [apiHash, setApiHash] = useState('')
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
+  const status = useQuery({ queryKey: ['telegram-user-status'], queryFn: () => unwrap(api.GET('/api/v1/settings/telegram/user/status')) })
+  const topics = useQuery({ queryKey: ['telegram-user-topics'], queryFn: () => unwrap(api.GET('/api/v1/settings/telegram/user/topics')),
+    enabled: status.data?.authorized === true, retry: false })
+  const client = useQueryClient()
+  const start = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/telegram/user/start', {
+    body: { api_id: Number(apiId), api_hash: apiHash, phone },
+  })) })
+  const finish = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/telegram/user/complete', {
+    body: { code, password: password || undefined },
+  })), onSuccess: () => { setApiHash(''); setPassword(''); void client.invalidateQueries({ queryKey: ['telegram-user-status'] }) } })
+  const revoke = useMutation({ mutationFn: () => unwrap(api.DELETE('/api/v1/settings/telegram/user/session')),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: ['telegram-user-status'] }) } })
+  return <Card className="flex flex-col gap-3 p-5" role="region" aria-label="Archivio Telegram">
+    <h2 className="text-base font-bold">Archivio dei topic</h2>
+    <p className="text-xs text-muted-foreground">Per leggere la cronologia completa e scaricare i media collega un account Telegram utente autorizzato nel gruppo. Il bot da solo non può recuperare i vecchi messaggi.</p>
+    {status.data?.authorized ? <>
+      <Badge tone="success">Account collegato</Badge>
+      <Button variant="outline" disabled={revoke.isPending} onClick={() => revoke.mutate()}>Scollega account e revoca sessione</Button>
+      {revoke.isError && <Alert tone="danger">{errorMessage(revoke.error)}</Alert>}
+      {topics.isPending && <p className="text-xs">Carico i topic…</p>}
+      {topics.isError && <Alert tone="danger">{errorMessage(topics.error)}</Alert>}
+      {topics.data?.topics.map((topic) => <a key={topic.id} className="text-sm font-semibold text-accent-foreground underline"
+        href={`/api/v1/settings/telegram/user/topics/${topic.id}/archive`} download>
+        Esporta «{topic.name}» con cronologia e media ↧
+      </a>)}
+    </> : <>
+      <label className="text-xs">API ID <input type="number" className="mt-1 block w-full rounded border p-2" value={apiId} onChange={(e) => setApiId(e.target.value)} /></label>
+      <label className="text-xs">API hash <input type="password" className="mt-1 block w-full rounded border p-2" value={apiHash} onChange={(e) => setApiHash(e.target.value)} /></label>
+      <label className="text-xs">Numero Telegram (+ prefisso) <input type="tel" className="mt-1 block w-full rounded border p-2" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+      <Button disabled={!apiId || !apiHash || !phone || start.isPending} onClick={() => start.mutate()}>Invia codice</Button>
+      {start.isSuccess && <>
+        <label className="text-xs">Codice ricevuto <input className="mt-1 block w-full rounded border p-2" value={code} onChange={(e) => setCode(e.target.value)} /></label>
+        <label className="text-xs">Password 2FA (se richiesta) <input type="password" className="mt-1 block w-full rounded border p-2" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        <Button disabled={!code || finish.isPending} onClick={() => finish.mutate()}>Collega account</Button>
+      </>}
+      {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
+      {finish.isError && <Alert tone="danger">{errorMessage(finish.error)}</Alert>}
+    </>}
+  </Card>
 }
 
 function GroupCard({ settings }: { settings: Settings }) {
@@ -91,6 +143,12 @@ function TopicsCard({ settings }: { settings: Settings }) {
 
 function BotTopic({ materia, id, name, ready }: { materia: string; id: number; name?: string; ready: boolean }) {
   const test = useTopicTest(String(id), materia)
+  const [open, setOpen] = useState(false)
+  const [confirmation, setConfirmation] = useState('')
+  const client = useQueryClient()
+  const recreate = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/telegram/recreate-topic', {
+    body: { topic_id: id, name: name ?? '', confirmation },
+  })), onSuccess: () => { setOpen(false); void client.invalidateQueries({ queryKey: ['settings'] }) } })
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 py-2" data-testid="bot-topic">
       <div className="text-sm">
@@ -101,7 +159,16 @@ function BotTopic({ materia, id, name, ready }: { materia: string; id: number; n
         </p>
         <TopicTestResult state={test} />
       </div>
-      {ready && <TopicTestButton state={test} label={materia} />}
+      {ready && <div className="flex gap-2"><TopicTestButton state={test} label={materia} />
+        {id !== 1 && name && <Button variant="outline" size="sm" onClick={() => { setConfirmation(''); setOpen(true) }}>Svuota topic</Button>}
+      </div>}
+      <ConfirmDialog open={open} title={`Svuota «${name}»`} confirmLabel="Elimina e ricrea"
+        confirmDisabled={confirmation !== 'confermo' || recreate.isPending} onCancel={() => setOpen(false)} onConfirm={() => recreate.mutate()}>
+        <p>Telegram eliminerà definitivamente il topic {id} e tutti i messaggi. RT ne creerà uno nuovo con lo stesso nome e aggiornerà l'ID. I vecchi link non funzioneranno più.</p>
+        <label className="mt-3 block" htmlFor={`confirm-topic-${id}`}>Scrivi confermo</label>
+        <input id={`confirm-topic-${id}`} className="mt-1 w-full rounded border p-2" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+        {recreate.isError && <Alert tone="danger">{errorMessage(recreate.error)}</Alert>}
+      </ConfirmDialog>
     </li>
   )
 }

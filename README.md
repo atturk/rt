@@ -49,12 +49,21 @@ Dopo l'installazione:
 rt web          # apre la web app (i servizi sono già attivi)
 rt web --verbose # apre la web e segue i log dei servizi già attivi; Ctrl+C interrompe la lettura
 rt logs --follow # segue i log di API, worker e bot; rt logs bot --lines 100 per un servizio
+
 rt service status # mostra lo stato dei servizi; rt service stop/start/restart li controlla
 rt doctor       # controlla l'installazione e dice cosa sistemare
 rt backup --dest /Volumes/Disco/rt-backup   # backup completo: database, media, configurazione
 rt -u           # aggiorna codice, dipendenze, web app, database e servizi
 rt uninstall    # rimuove servizi e ambiente Python; dati e lezioni restano
 ```
+
+La pagina Importa accetta anche uno o più ZIP completi (`scope=all`). Nella pagina della
+lezione, Option (Mac) o il focus da tastiera mostra il cestino; la cancellazione richiede
+il nome della lezione e la parola «confermo». Il pannello Fasi accetta istruzioni aggiuntive
+per scaletta, riscrittura e revisione, e permette di revisionare una sola unità.
+Impostazioni > Modelli comprende istruzioni globali, prova multimodale per il descrittore
+immagini e un modello decisionale opzionale. Prima di abilitarne il gate, confronta le
+false omissioni con le revisioni di un campione reale in modalità ombra.
 
 Chi arriva dalla 3.x aggiorna con `rt -u` (se serve, due volte: la prima con il codice vecchio):
 configurazione e dati vengono spostati nella cartella dati, le lezioni importate nel database e

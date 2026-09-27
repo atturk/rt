@@ -28,6 +28,45 @@ SERVICE_KEYS = frozenset({
     "video_chat_scheduled", "video_chat_started", "video_chat_ended", "write_access_allowed",
 })
 
+DISCOVERY_KEY = "telegram_recent_topics"
+
+
+def remember_topic_message(message: Dict[str, Any]) -> None:
+    """The existing bot poller writes discovery events; no second getUpdates call."""
+    from rt.db.engine import get_database
+    from rt.db.models import Setting
+    from rt.db.session import session_scope
+    db = get_database()
+    if db is None or not message.get("message_thread_id"):
+        return
+    with session_scope(db) as session:
+        row = session.get(Setting, DISCOVERY_KEY)
+        events = list(row.value or []) if row else []
+        events.append({"at": time.time(), "message": message})
+        events = events[-100:]
+        if row:
+            row.value = events
+        else:
+            session.add(Setting(key=DISCOVERY_KEY, value=events))
+
+
+def listen_existing_daemon(seconds: int = 20) -> Dict[str, Any]:
+    """Read messages gathered by the active daemon during a fixed observation window."""
+    from rt.db.engine import get_database
+    from rt.db.models import Setting
+    from rt.db.session import session_scope
+    started = time.time()
+    time.sleep(seconds)
+    with session_scope(get_database()) as session:
+        row = session.get(Setting, DISCOVERY_KEY)
+        messages = [event["message"] for event in (row.value or []) if event["at"] >= started] if row else []
+    names = topic_names(messages)
+    chats = {m.get("chat", {}).get("id") for m in messages} - {None}
+    topics = sorted({m.get("message_thread_id") for m in messages} - {None})
+    return {"chat_id": str(next(iter(chats))) if len(chats) == 1 else None,
+            "chats": len(chats), "topics": topics,
+            "names": {str(t): names[t] for t in topics if t in names}, "messages": []}
+
 
 class TopicListenError(Exception):
     """Errore leggibile per l'utente (mai il token)."""
@@ -171,6 +210,44 @@ def send_topic_test(topic_id: int, materia: str, token: Optional[str] = None) ->
     if not data.get("ok"):
         return {"ok": False, "text": text, "message": f"Messaggio non inviato: {data['description']}"}
     return {"ok": True, "text": text, "message": f"Messaggio inviato nel topic {topic_id}."}
+
+
+def recreate_topic(topic_id: int, expected_name: str, confirmation: str) -> int:
+    """Delete a complete topic history and create an empty topic with the same name."""
+    from rt.core.config import load_config
+    from pathlib import Path
+    from rt.core.config import _default_project_root
+    from rt.services.settings_service import save_telegram
+    if confirmation != "confermo" or topic_id <= 1:
+        raise TopicListenError("Conferma scrivendo confermo. Il topic Generale non può essere ricreato qui.")
+    cfg = load_config().telegram
+    mapped = cfg.topic_names.get(topic_id)
+    if not mapped or mapped != expected_name or (topic_id not in cfg.topics.values() and topic_id != cfg.misc_topic_id):
+        raise TopicListenError("Il topic e il suo nome devono corrispondere alla configurazione salvata.")
+    token, chat_id = _token(), _chat_id()
+    bot = _post(token, "getMe", {})
+    if not bot.get("ok"):
+        raise TopicListenError(bot["description"])
+    member = _post(token, "getChatMember", {"chat_id": chat_id, "user_id": bot["result"]["id"]})
+    rights = member.get("result") or {}
+    if not member.get("ok") or rights.get("status") not in ("administrator", "creator") or not rights.get("can_manage_topics", False):
+        raise TopicListenError("Il bot deve essere amministratore con il permesso di gestire i topic.")
+    deleted = _post(token, "deleteForumTopic", {"chat_id": chat_id, "message_thread_id": topic_id})
+    if not deleted.get("ok"):
+        raise TopicListenError(f"Topic non eliminato: {deleted['description']}")
+    created = _post(token, "createForumTopic", {"chat_id": chat_id, "name": expected_name})
+    if not created.get("ok"):
+        raise TopicListenError(f"Topic {topic_id} eliminato ma non ricreato. Crea un nuovo topic «{expected_name}» e aggiorna il suo ID nelle impostazioni: {created['description']}")
+    new_id = int(created["result"]["message_thread_id"])
+    topics = [[name, new_id if old == topic_id else old] for name, old in cfg.topics.items()]
+    names = {int(key): name for key, name in cfg.topic_names.items() if key != topic_id}
+    names[new_id] = expected_name
+    try:
+        save_telegram(Path(_default_project_root()), "", "", topics,
+                      str(new_id if cfg.misc_topic_id == topic_id else cfg.misc_topic_id or ""), names)
+    except Exception as exc:
+        raise TopicListenError(f"Topic ricreato con ID {new_id}, ma aggiornamento RT fallito: correggi l'associazione nelle impostazioni.") from exc
+    return new_id
 
 
 def _delete_reason(description: str) -> str:

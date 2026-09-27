@@ -287,12 +287,13 @@ class JevConfig(BaseModel):
     'rt review --shadow-jev' per confrontare i verdetti di Jev con le decisioni reali
     prima di fidartene in produzione."""
     enabled: bool = Field(default=False, description="Abilita il pre-filtro Jev nella fase di review")
+    shadow: bool = Field(default=False, description="Valuta senza saltare la review: confronta i verdetti prima di attivare il gate")
     model: str = Field(default="typesafe/jev-1.13", description="ID modello Jev su OpenRouter")
     credential: str = Field(default="openrouter", description="Nome della credenziale da usare (stessa chiave OpenRouter già configurata)")
     base_url: str = Field(default="https://openrouter.ai/api/alpha/decisions", description="Endpoint 'decisions' di OpenRouter per i modelli System One")
     timeout_seconds: float = Field(default=15.0, description="Timeout per singola chiamata Jev")
-    task_a_skip_confidence_threshold: float = Field(default=0.85, description="Confidenza minima per saltare la review LLM quando Jev classifica l'unità come non-'errore_grave'")
-    task_b_fabrication_threshold: float = Field(default=0.80, description="Probabilità minima (noul) per segnalare una possibile deriva/invenzione rispetto ai segmenti ASR grezzi")
+    task_a_skip_confidence_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per saltare la review LLM quando Jev classifica l'unità come non-'errore_grave'")
+    task_b_fabrication_threshold: float = Field(default=0.80, ge=0, le=1, description="Probabilità minima (noul) per segnalare una possibile deriva/invenzione rispetto ai segmenti ASR grezzi")
 
 
 class RTConfig(BaseModel):

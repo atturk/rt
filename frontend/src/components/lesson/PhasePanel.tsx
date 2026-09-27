@@ -66,13 +66,14 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
   const run = useRunJob(lessonId)
   const [force, setForce] = useState(false)
   const [unit, setUnit] = useState('')
+  const [extraPrompts, setExtraPrompts] = useState<Record<string, string>>({})
   const [confirmBuild, setConfirmBuild] = useState(false)
   const busy = editingDocument || (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending
   // Avvisi di integrità della revisione calcolati dall'API: non bloccano il documento finale,
   // ma l'utente li vede prima di confermarlo.
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
 
-  const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; unit?: string }) =>
+  const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; unit?: string; extra_prompt?: string }) =>
     run.mutate({ ...body, force, mock: false, with_review: true, auto_accept: false, rename: true })
 
   const runPhase = (phase: Phase) => {
@@ -80,7 +81,8 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
       setConfirmBuild(true)
       return
     }
-    start({ type: 'run_phase', phase, unit: phase === 'rewrite' && unit ? unit : undefined })
+    start({ type: 'run_phase', phase, unit: (phase === 'rewrite' || phase === 'review') && unit ? unit : undefined,
+      extra_prompt: phase in extraPrompts ? extraPrompts[phase] : undefined })
   }
 
   return (
@@ -121,12 +123,12 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
                 ))}
               </ul>
             )}
-            {p.phase === 'rewrite' && units.length > 0 && (
+            {(p.phase === 'rewrite' || p.phase === 'review') && units.length > 0 && (
               <div className="flex items-center gap-2">
-                <Label htmlFor="rewrite-unit" className="shrink-0">
+                <Label htmlFor={`${p.phase}-unit`} className="shrink-0">
                   Unità
                 </Label>
-                <Select id="rewrite-unit" value={unit} onChange={(e) => setUnit(e.target.value)} className="h-8 text-xs">
+                <Select id={`${p.phase}-unit`} value={unit} onChange={(e) => setUnit(e.target.value)} className="h-8 text-xs">
                   <option value="">Tutte</option>
                   {units.map((u) => (
                     <option key={u.unit_id} value={u.unit_id}>
@@ -135,6 +137,15 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
                   ))}
                 </Select>
               </div>
+            )}
+            {(['outline', 'rewrite', 'review'] as string[]).includes(p.phase) && (
+              <details className="text-xs" data-testid={`advanced-${p.phase}`}>
+                <summary className="cursor-pointer">Opzioni avanzate</summary>
+                <Label htmlFor={`extra-${p.phase}`}>Istruzioni per {PHASE_LABELS[p.phase] ?? p.phase}</Label>
+                <textarea id={`extra-${p.phase}`} className="mt-1 w-full rounded-md border bg-background p-2 text-sm" rows={3}
+                  maxLength={10000} value={extraPrompts[p.phase] ?? ''} onChange={(e) => setExtraPrompts((old) => ({ ...old, [p.phase]: e.target.value }))}
+                  placeholder="Facoltativo; una scaletta esistente viene revisionata con queste istruzioni." />
+              </details>
             )}
           </li>
         ))}

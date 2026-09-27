@@ -12,6 +12,34 @@ from rt.api.errors import ApiError
 router = APIRouter(tags=["impostazioni"])
 
 
+class PromptOverrideIn(BaseModel):
+    instruction: str = Field(max_length=20000)
+
+
+class PromptOverrideOut(BaseModel):
+    default: str
+    instruction: str
+
+
+@router.get("/settings/prompts", response_model=Dict[str, PromptOverrideOut], summary="Istruzioni personalizzabili e predefinite per fase")
+def list_prompt_overrides(actor: Actor):
+    from rt.llm.prompts import (OUTLINE_SYSTEM_PROMPT, REWRITE_SYSTEM_PROMPT, SCIENCE_REVIEW_SYSTEM_PROMPT,
+                                IMAGE_DESCRIPTION_SYSTEM_PROMPT, RECALL_QUIZ_SYSTEM_PROMPT)
+    from rt.services.prompt_settings import global_instruction
+    defaults = {"outline": OUTLINE_SYSTEM_PROMPT, "rewrite": REWRITE_SYSTEM_PROMPT,
+                "review": SCIENCE_REVIEW_SYSTEM_PROMPT, "image_description": IMAGE_DESCRIPTION_SYSTEM_PROMPT,
+                "recall": RECALL_QUIZ_SYSTEM_PROMPT}
+    return {phase: {"default": default, "instruction": global_instruction(phase)}
+            for phase, default in defaults.items()}
+
+
+@router.put("/settings/prompts/{phase}", summary="Salva istruzioni per una fase; vuoto ripristina il default")
+def save_prompt_override(phase: str, body: PromptOverrideIn, actor: Actor):
+    from rt.services.prompt_settings import set_global_instruction
+    _call(set_global_instruction, phase, body.instruction)
+    return {"phase": phase, "instruction": body.instruction.strip()}
+
+
 def _project_root() -> Path:
     from rt.core.config import _default_project_root
     return Path(_default_project_root())
@@ -228,6 +256,7 @@ class ModelTestIn(BaseModel):
     connection: str
     model: str
     mock: bool = False
+    vision: bool = False
 
 
 class ModelTestOut(BaseModel):
@@ -239,6 +268,7 @@ class ModelTestOut(BaseModel):
     status_code: Optional[int] = Field(None, description="Stato HTTP della risposta del provider")
     reply: Optional[str] = Field(None, description="Inizio della risposta del modello")
     message: str = Field(description="Esito leggibile, anche l'errore del provider (sanificato)")
+    vision_verified: bool = False
 
 
 class WebSearchIn(BaseModel):
@@ -310,6 +340,99 @@ def put_telegram(body: TelegramIn, _actor: Actor):
     names = None if body.topic_names is None else {int(k): v for k, v in body.topic_names.items() if str(k).isdigit()}
     _call(save_telegram, _project_root(), body.bot_token or "", body.chat_id or "", topics, misc, names)
     return snapshot(_project_root())
+
+
+class TopicRecreateIn(BaseModel):
+    topic_id: int
+    name: str
+    confirmation: str
+
+
+class TelegramUserStartIn(BaseModel):
+    api_id: int
+    api_hash: str
+    phone: str
+
+
+class TelegramUserCompleteIn(BaseModel):
+    code: str
+    password: Optional[str] = None
+
+
+class TelegramUserStatusOut(BaseModel):
+    authorized: bool
+
+
+class TelegramTopicOut(BaseModel):
+    id: int
+    name: str
+
+
+class TelegramUserTopicsOut(BaseModel):
+    topics: List[TelegramTopicOut]
+
+
+@router.get("/settings/telegram/user/status", response_model=TelegramUserStatusOut, summary="Stato della sessione Telegram utente")
+async def telegram_user_status(_actor: Actor):
+    from rt.services.telegram_user_archive import _authorized_client
+    try:
+        client = await _authorized_client()
+    except ApiError:
+        return {"authorized": False}
+    await client.disconnect()
+    return {"authorized": True}
+
+
+@router.delete("/settings/telegram/user/session", summary="Revoca la sessione Telegram utente")
+async def revoke_telegram_user(_actor: Actor):
+    from rt.services.telegram_user_archive import revoke_session
+    await revoke_session()
+    return {"authorized": False}
+
+
+@router.post("/settings/telegram/user/start", summary="Invia un codice Telegram all'account utente")
+async def start_telegram_user(body: TelegramUserStartIn, _actor: Actor):
+    from rt.services.telegram_user_archive import request_code
+    await request_code(body.api_id, body.api_hash, body.phone)
+    return {"sent": True}
+
+
+@router.post("/settings/telegram/user/complete", summary="Completa l'accesso utente con codice e 2FA")
+async def complete_telegram_user(body: TelegramUserCompleteIn, _actor: Actor):
+    from rt.services.telegram_user_archive import complete_login
+    await complete_login(body.code, body.password)
+    return {"authorized": True}
+
+
+@router.get("/settings/telegram/user/topics", response_model=TelegramUserTopicsOut, summary="Elenca i topic del gruppo con l'account utente")
+async def get_telegram_user_topics(_actor: Actor):
+    from rt.services.telegram_topics import _chat_id
+    from rt.services.telegram_user_archive import list_topics
+    return {"topics": await list_topics(int(_chat_id()))}
+
+
+@router.get("/settings/telegram/user/topics/{topic_id}/archive", summary="Esporta cronologia e media del topic")
+async def get_telegram_topic_archive(topic_id: int, _actor: Actor):
+    import shutil
+    from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
+    from rt.services.telegram_topics import _chat_id
+    from rt.services.telegram_user_archive import export_topic
+    if topic_id < 1:
+        raise ApiError(422, "invalid_topic", "Topic non valido.")
+    path, folder = await export_topic(int(_chat_id()), topic_id)
+    return FileResponse(path, media_type="application/zip", filename=f"telegram-topic-{topic_id}.zip",
+                        background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
+
+
+@router.post("/settings/telegram/recreate-topic", summary="Elimina tutti i messaggi del topic e lo ricrea vuoto")
+def recreate_telegram_topic(body: TopicRecreateIn, _actor: Actor):
+    from rt.services.telegram_topics import TopicListenError, recreate_topic
+    try:
+        new_id = recreate_topic(body.topic_id, body.name, body.confirmation)
+    except TopicListenError as exc:
+        raise ApiError(409, "topic_recreation_failed", str(exc)) from exc
+    return {"new_topic_id": new_id}
 
 
 @router.post("/settings/telegram/reveal", response_model=RevealOut,
@@ -439,7 +562,75 @@ def put_pricing(body: Dict[str, Dict[str, Dict[str, Any]]], _actor: Actor):
              summary="Prova connessione e modello con una chiamata minima (anche prima di salvarli)")
 def post_model_test(body: ModelTestIn, _actor: Actor):
     from rt.services.probes import probe_model
-    return _call(probe_model, _project_root(), body.connection, body.model, body.mock)
+    return _call(probe_model, _project_root(), body.connection, body.model, body.mock, vision=body.vision)
+
+
+class DecisionModelIn(BaseModel):
+    enabled: bool = False
+    shadow: bool = True
+    model: str = ""
+    credential: str = "openrouter"
+    threshold: float = Field(0.85, ge=0, le=1)
+
+
+class DecisionProbeOut(BaseModel):
+    ok: bool
+    choice: str
+    confidence: float
+
+
+@router.get("/settings/decision-model", response_model=DecisionModelIn)
+def get_decision_model(_actor: Actor):
+    from rt.core.config import load_config
+    cfg = load_config().jev
+    return DecisionModelIn(enabled=cfg.enabled, shadow=cfg.shadow, model=cfg.model if cfg.enabled else "",
+                           credential=cfg.credential, threshold=cfg.task_a_skip_confidence_threshold)
+
+
+@router.post("/settings/decision-model/probe", response_model=DecisionProbeOut)
+def probe_decision_model(body: DecisionModelIn, _actor: Actor):
+    from rt.llm.jev_client import JevChoiceQuestion, JevError, call_jev
+    from rt.db.engine import get_database
+    from rt.db.models import Setting, utcnow
+    from rt.db.session import session_scope
+    if not body.model.strip():
+        raise ApiError(422, "decision_model_required", "Indica un modello decisionale.")
+    try:
+        response = call_jev("Un oggetto è una banana gialla matura.",
+            {"categoria": JevChoiceQuestion(instructions="Classifica il frutto.",
+                criteria={"banana": "È una banana", "altro": "È un altro frutto"})},
+            job_name="decision_model_probe", model=body.model, credential=body.credential)
+    except JevError as exc:
+        raise ApiError(422, "decision_protocol_failed", str(exc)) from exc
+    answer = response.answers["categoria"]
+    if answer.choice != "banana" or set(answer.probabilities) != {"banana", "altro"}:
+        raise ApiError(422, "decision_protocol_failed", "Il modello non ha restituito opzioni e probabilità complete.")
+    with session_scope(get_database()) as session:
+        key = f"decision_probe:{body.credential}:{body.model}"
+        row = session.get(Setting, key)
+        if row: row.value = {"validated": utcnow().isoformat()}
+        else: session.add(Setting(key=key, value={"validated": utcnow().isoformat()}))
+    return {"ok": True, "choice": answer.choice, "confidence": answer.confidence}
+
+
+@router.put("/settings/decision-model", response_model=DecisionModelIn)
+def put_decision_model(body: DecisionModelIn, _actor: Actor):
+    from rt.services import config_service
+    from rt.services.settings_service import general_config_path
+    from rt.db.engine import get_database
+    from rt.db.models import Setting
+    from rt.db.session import session_scope
+    if body.enabled:
+        with session_scope(get_database()) as session:
+            if session.get(Setting, f"decision_probe:{body.credential}:{body.model}") is None:
+                raise ApiError(422, "decision_probe_required", "Prova prima il protocollo del modello decisionale.")
+    path = general_config_path(_project_root())
+    data = config_service.read_yaml(path)
+    data["jev"] = {**data.get("jev", {}), "enabled": body.enabled, "shadow": body.shadow,
+                   "model": body.model or "typesafe/jev-1.13", "credential": body.credential,
+                   "task_a_skip_confidence_threshold": body.threshold}
+    config_service.write_yaml_atomic(path, data)
+    return body
 
 
 @router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG")

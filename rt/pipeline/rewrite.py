@@ -21,6 +21,7 @@ from rt.core.manifest import load_manifest, init_or_update_manifest
 from rt.core.config import load_config
 from rt.llm.client import LLMClient
 from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt
+from rt.services.prompt_settings import append_extra, effective_system
 from rt.pipeline.outline import load_outline
 from rt.pipeline.validator import validate_draft
 from rt.core.lesson_paths import lesson_path
@@ -276,8 +277,8 @@ def _run_rewrite(
 
         try:
             unit_draft = client.call_structured(
-                prompt=prompt,
-                system_prompt=REWRITE_SYSTEM_PROMPT,
+                prompt=append_extra(lesson_dir, "rewrite", prompt),
+                system_prompt=effective_system("rewrite", REWRITE_SYSTEM_PROMPT),
                 response_model=DraftUnit,
                 job_name="rewrite",
                 unit_id=unit_label,
@@ -434,4 +435,3 @@ def _run_rewrite(
         "failed_units": failures.as_dicts(),
         "stopped_early": stopped_early,
     }
-

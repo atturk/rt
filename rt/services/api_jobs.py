@@ -18,6 +18,7 @@ from rt.services.worker import JobOutcome, _HANDLERS, register_handler
 from rt.storage import fs
 
 REWRITE_UNIT = "rewrite_unit"
+REVIEW_UNIT = "review_unit"
 RECALL_BATCH = "recall_batch"
 RECALL_EVALUATE = "recall_evaluate"
 RECALL_REFILL = "recall_refill"
@@ -34,6 +35,9 @@ def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
 def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Come 'rt rewrite <cartella> --unit <id>'."""
     from rt.pipeline.rewrite import run_rewrite
+    if "extra_prompt" in job.payload:
+        from rt.services.prompt_settings import set_extra
+        set_extra(job.lesson_path, "rewrite", job.payload["extra_prompt"])
     opts = job.payload.get("options") or {}
     force, mock = bool(opts.get("force")), bool(opts.get("mock"))
     ctx.lesson_dir, ctx.force, ctx.force_mock = job.lesson_path, force, mock
@@ -42,6 +46,17 @@ def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.unit_failures import raise_if_incomplete
     raise_if_incomplete("rewrite", res)
     return _done({"phase": "rewrite", "unit": job.payload["unit"], "result": res}, lesson_path=job.lesson_path)
+
+
+def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.review import run_review_unit
+    if "extra_prompt" in job.payload:
+        from rt.services.prompt_settings import set_extra
+        set_extra(job.lesson_path, "review", job.payload["extra_prompt"])
+    with ctx.activate():
+        result = run_review_unit(job.lesson_path, job.payload["unit"],
+                                 force_mock=bool((job.payload.get("options") or {}).get("mock")))
+    return _done(result, lesson_path=job.lesson_path)
 
 
 def _cleanup_upload(payload: Dict[str, Any]) -> None:
@@ -183,9 +198,10 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Ascolta i messaggi al bot per rilevare chat e topic: l'esito (anche un errore) è il risultato."""
-    from rt.services.telegram_topics import TopicListenError, known_materie, listen_topics, match_materia
+    from rt.services.telegram_topics import TopicListenError, known_materie, listen_topics, listen_existing_daemon, match_materia
     try:
-        found = listen_topics(seconds=int(job.payload.get("seconds") or 20))
+        found = (listen_existing_daemon if job.payload.get("existing_daemon") else listen_topics)(
+            seconds=int(job.payload.get("seconds") or 20))
     except TopicListenError as exc:
         return _done({"ok": False, "message": str(exc), "chat_id": None, "topics": []})
     n = len(found["topics"])
@@ -199,7 +215,7 @@ def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 for _type, _handler in (
-    (REWRITE_UNIT, rewrite_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
+    (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     (RECALL_REFILL, recall_refill_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),

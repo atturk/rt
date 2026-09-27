@@ -1,8 +1,9 @@
-import { Brain, Download, Images, LayoutDashboard, Pencil } from 'lucide-react'
-import { lazy, Suspense, useId, useState, type ReactNode } from 'react'
+import { Brain, Download, Images, LayoutDashboard, Pencil, Trash2 } from 'lucide-react'
+import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 
-import { errorMessage, type Schemas } from '@/api/client'
+import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
 import { useDismissNotice, type Notice } from '@/api/documentEdit'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { useSettings } from '@/api/settings'
@@ -21,6 +22,7 @@ import { useFilteredLessons } from '@/lib/lessonFilters'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from '@/lib/format'
 import type { Area } from './types'
 
@@ -34,10 +36,36 @@ function Stat({ value, label }: { value: number | string; label: string }) {
 }
 
 function LessonCard({ lesson }: { lesson: Lesson }) {
+  const [optionDown, setOptionDown] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+  const [typed, setTyped] = useState('')
+  const client = useQueryClient()
+  const deletion = useMutation({
+    mutationFn: () => unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: lesson.id } } })),
+    onSuccess: () => { setConfirm(false); client.invalidateQueries({ queryKey: ['lessons'] }) },
+  })
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => { if (event.key === 'Alt') setOptionDown(true) }
+    const up = (event: KeyboardEvent) => { if (event.key === 'Alt') setOptionDown(false) }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
+  }, [])
   const meta = [lesson.materia, lesson.data, lesson.state ? STATE_LABELS[lesson.state] ?? lesson.state : null].filter(Boolean)
   return (
-    <Card className="p-5" data-testid="lesson-card" data-lesson-id={lesson.id}>
-      <h2 className="text-lg font-bold leading-snug tracking-tight">
+    <Card className="group relative p-5" data-testid="lesson-card" data-lesson-id={lesson.id}>
+      <Button type="button" variant="ghost" size="icon" aria-label={`Elimina ${lessonTitle(lesson)}`}
+        className={`${optionDown ? '' : 'md:opacity-0 md:group-focus-within:opacity-100'} absolute right-3 top-3 text-danger`}
+        onClick={() => { setTyped(''); setConfirm(true) }}><Trash2 /></Button>
+      <ConfirmDialog open={confirm} title="Elimina lezione" confirmLabel="Elimina"
+        confirmDisabled={typed !== 'confermo' || deletion.isPending}
+        onCancel={() => setConfirm(false)} onConfirm={() => deletion.mutate()}>
+        <p>Eliminare definitivamente «{lessonTitle(lesson)}» e tutti i suoi file?</p>
+        <label className="mt-3 block text-xs" htmlFor={`confirm-delete-${lesson.id}`}>Scrivi confermo</label>
+        <input id={`confirm-delete-${lesson.id}`} className="mt-1 w-full rounded border p-2" value={typed} onChange={(event) => setTyped(event.target.value)} />
+        {deletion.isError && <Alert tone="danger">{errorMessage(deletion.error)}</Alert>}
+      </ConfirmDialog>
+      <h2 className="pr-10 text-lg font-bold leading-snug tracking-tight">
         <Link to={`/lezioni/${lesson.id}`} className="hover:underline">
           {lessonTitle(lesson)}
         </Link>
@@ -171,27 +199,55 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
   const settings = useSettings()
   const dismissNotice = useDismissNotice()
   const [mode, setMode] = useState<'view' | 'notice' | 'edit'>('view')
+  const [leaseToken, setLeaseToken] = useState<string | null>(null)
+  const [leaseError, setLeaseError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!leaseToken) return
+    const timer = window.setInterval(() => {
+      void api.POST('/api/v1/lessons/{lesson_id}/document/lease', {
+        params: { path: { lesson_id: id }, query: { token: leaseToken } },
+      }).then((result) => { if (!result.response.ok) setLeaseError('La sessione di modifica è scaduta.') })
+    }, 30_000)
+    return () => {
+      window.clearInterval(timer)
+      void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
+        params: { path: { lesson_id: id }, query: { token: leaseToken } },
+      })
+    }
+  }, [leaseToken, id])
   const [saved, setSaved] = useState<DocumentSaveResult | null>(null)
   const dismissed = settings.data?.notices.dismissed ?? []
   const notices = ([...(l.pending_issues > 0 ? ['preview_edit_issues'] : []), 'preview_edit_beta'] as Notice[]).filter((n) => !dismissed.includes(n))
 
   const startEdit = () => {
     setSaved(null)
-    setMode(notices.length > 0 ? 'notice' : 'edit')
-    if (notices.length === 0) onEditingChange(true)
+    if (notices.length > 0) setMode('notice')
+    else void beginEdit()
+  }
+  const beginEdit = async () => {
+    try {
+      const lease = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id } } }))
+      setLeaseToken(lease.token)
+      setLeaseError(null)
+      setMode('edit')
+      onEditingChange(true)
+    } catch (error) { setLeaseError(errorMessage(error)) }
   }
   return (
     <Card className="px-6 py-5">
       {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
       {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
+      {leaseError && <Alert tone="danger">{leaseError}</Alert>}
       {document.data && mode === 'edit' && (
         <Suspense fallback={<p className="text-sm text-muted-foreground">Preparo l'editor…</p>}>
           <DocumentEditor
           lessonId={id}
           markdown={document.data.markdown}
+          leaseToken={leaseToken ?? undefined}
           onClose={(result) => {
             setMode('view')
             onEditingChange(false)
+            setLeaseToken(null)
             if (result?.changed) setSaved(result)
           }}
           />
@@ -232,8 +288,7 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
           onCancel={() => setMode('view')}
           onConfirm={(dismiss) => {
             for (const n of dismiss) dismissNotice.mutate(n)
-            setMode('edit')
-            onEditingChange(true)
+            void beginEdit()
           }}
         />
       )}

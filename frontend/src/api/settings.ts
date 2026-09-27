@@ -114,8 +114,8 @@ export type ModelTestResult = Schemas['ModelTestOut']
 
 export function useTestModel() {
   return useMutation({
-    mutationFn: (body: { connection: string; model: string }) =>
-      unwrap(api.POST('/api/v1/settings/models/test', { body: { ...body, mock: false } })),
+    mutationFn: (body: { connection: string; model: string; vision?: boolean }) =>
+      unwrap(api.POST('/api/v1/settings/models/test', { body: { ...body, vision: body.vision ?? false, mock: false } })),
   })
 }
 

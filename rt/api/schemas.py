@@ -23,6 +23,17 @@ class LessonSummary(BaseModel):
     error: Optional[str] = None
 
 
+class ZipImportItem(BaseModel):
+    file: str
+    status: Literal["imported", "rejected"]
+    lesson_id: Optional[int] = None
+    reason: Optional[str] = None
+
+
+class ZipImportResult(BaseModel):
+    results: List[ZipImportItem]
+
+
 class PhaseWarning(BaseModel):
     code: str = Field(description="review_missing | review_stale | review_partial | review_invalid | "
                                   "pending_issues | orphan_issues | check_failed")
@@ -92,6 +103,12 @@ class LessonDocument(BaseModel):
 
 class DocumentEditIn(BaseModel):
     markdown: str = Field(description="Markdown dell'anteprima modificato (senza frontmatter)")
+    lease_token: Optional[str] = None
+
+
+class DocumentEditLease(BaseModel):
+    token: str
+    expires: str
 
 
 class DocumentEditProblem(BaseModel):
@@ -257,7 +274,8 @@ class JobRequest(BaseModel):
     type: Literal["run_pipeline", "run_phase"] = "run_pipeline"
     phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(
         None, description="Obbligatoria per run_phase")
-    unit: Optional[str] = Field(None, description="Solo rewrite: una sola unità")
+    unit: Optional[str] = Field(None, description="Rewrite o review: una sola unità")
+    extra_prompt: Optional[str] = Field(None, max_length=10000, description="Istruzioni aggiuntive per outline, rewrite o review")
     force: bool = False
     mock: bool = False
     with_review: bool = True
