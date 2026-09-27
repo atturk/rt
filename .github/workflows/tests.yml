@@ -90,10 +90,17 @@ jobs:
       - name: Build SPA
         working-directory: frontend
         run: npm run build
-      - name: Playwright (API vera + worker in mock)
+      - name: Playwright Recall e immagini (API vera + worker in mock)
         working-directory: frontend
         env:
           RT_PYTHON: python
+          RT_E2E_GROUP: recall-images
+        run: npx playwright test
+      - name: Playwright altre funzioni (API vera + worker in mock)
+        working-directory: frontend
+        env:
+          RT_PYTHON: python
+          RT_E2E_GROUP: other
         run: npx playwright test
       - name: Upload Playwright report
         if: failure()

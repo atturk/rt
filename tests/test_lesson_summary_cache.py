@@ -76,3 +76,14 @@ def test_llm_call_invalidates_the_cost(tmp_path, monkeypatch, rt_db, counted):
         LlmCallRepository(session).add(lesson, {"job": "outline", "status": "success", "estimated_cost": 0.5,
                                                 "provider": "mock", "model": "m"})
     assert lesson_service.list_lessons()[0]["cost_usd"] == pytest.approx(0.5)
+
+
+def test_global_prompt_invalidates_cached_phase_status(tmp_path, monkeypatch, rt_db, counted):
+    from rt.services.prompt_settings import set_global_instruction
+    lesson_dir = make_lesson(isolated_workspace(tmp_path, monkeypatch))
+    run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
+    assert lesson_service.list_lessons()[0]["phases"]["rewrite"] == "VALID"
+    assert len(counted) == 1
+    set_global_instruction("rewrite", "Metti in evidenza i collegamenti clinici.")
+    assert lesson_service.list_lessons()[0]["phases"]["rewrite"] == "STALE"
+    assert len(counted) == 2

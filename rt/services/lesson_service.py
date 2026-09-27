@@ -151,11 +151,31 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     """Impronta degli input del riepilogo di ogni lezione (vedi _summary_cache)."""
     import hashlib
     from sqlalchemy import func, select
-    from rt.db.models import Lesson, LessonFile, LlmCall
+    from rt.db.models import Lesson, LessonFile, LlmCall, Setting
     from rt.db.session import read_scope
     lesson_ids = list(ids.values())
     rows: Dict[int, List[str]] = {i: [] for i in lesson_ids}
+    # Un cambio ai modelli o alle istruzioni globali può rendere STALE rewrite/review
+    # senza modificare alcun file della lezione. La cache deve seguirlo.
+    config_parts: List[str] = []
+    config_dir = os.path.join(os.environ.get("HOME", ""), "config")
+    if not os.path.isdir(config_dir):
+        config_dir = os.path.join(os.getcwd(), "config")
+    for top, dirs, files in os.walk(config_dir):
+        dirs.sort()
+        for name in sorted(files):
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            path = os.path.join(top, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            config_parts.append(f"{os.path.relpath(path, config_dir)}|{stat.st_size}|{stat.st_mtime_ns}")
     with read_scope(_require_db()) as s:
+        for key, value in s.execute(select(Setting.key, Setting.value).where(
+                Setting.key.like("prompt_override:%")).order_by(Setting.key)):
+            config_parts.append(f"{key}|{value}")
         storage = dict(s.execute(select(Lesson.id, Lesson.storage).where(Lesson.id.in_(lesson_ids))).all())
         for lesson_id, name, sha, mtime, size in s.execute(
                 select(LessonFile.lesson_id, LessonFile.name, LessonFile.sha256, LessonFile.mtime, LessonFile.size)
@@ -169,7 +189,7 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     for path, lesson_id in ids.items():
         if storage.get(lesson_id) != fs.STORAGE_DB:
             rows[lesson_id].append(_folder_fingerprint(path))
-        body = f"{path}\n{storage.get(lesson_id)}\n" + "\n".join(rows[lesson_id])
+        body = f"{path}\n{storage.get(lesson_id)}\n" + "\n".join(config_parts + rows[lesson_id])
         out[lesson_id] = hashlib.sha256(body.encode("utf-8", "surrogateescape")).hexdigest()
     return out
 
