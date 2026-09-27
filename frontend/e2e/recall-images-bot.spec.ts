@@ -23,7 +23,9 @@ type Image = { name: string; url: string; in_document: boolean }
 async function builtLesson(page: Page): Promise<Lesson> {
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
   // Le immagini aggiunte da un test precedente rendono da rifare il documento (RT4-FA2).
-  const lesson = lessons.find((l) => l.phases.build === 'VALID' || l.phases.build === 'STALE')
+  // Le lezioni create durante gli altri percorsi possono essere in attesa di una decisione;
+  // usa la lezione completa iniziale invece di prendere la prima per data.
+  const lesson = lessons.find((l) => l.materia === 'BIOCHIMICA' && l.phases.rewrite === 'VALID')
   expect(lesson, 'la lezione di prova completata').toBeTruthy()
   return lesson!
 }
