@@ -138,6 +138,21 @@ def _require_supported() -> None:
                            "docker compose (docs/SELF_HOSTING.md) o avvia 'rt api' e 'rt worker' a mano.")
 
 
+# LaunchAgent che il README della 3.x faceva scrivere a mano per il bot: con il servizio 'bot'
+# girerebbero due bot sullo stesso token (Telegram accetta un solo polling alla volta).
+LEGACY_AGENT_LABELS = ("com.rt.telegram-daemon",)
+
+
+def legacy_agents() -> List[str]:
+    """I .plist scritti a mano con la 3.x ancora presenti."""
+    return [p for p in (os.path.join(agents_dir(), f"{name}.plist") for name in LEGACY_AGENT_LABELS)
+            if os.path.isfile(p)]
+
+
+def legacy_agent_hint(path: str) -> str:
+    return f"launchctl bootout gui/{os.getuid()} '{path}'; rm '{path}'"
+
+
 def installed(names: Optional[Sequence[str]] = None) -> List[str]:
     return [n for n in (names or SERVICES) if os.path.isfile(plist_path(n))]
 
@@ -160,6 +175,10 @@ def install(names: Optional[Sequence[str]] = None, start: bool = True, data_dir:
             _launchctl("bootout", _target(name))  # se era già caricato con il plist vecchio
             _bootstrap(path)
         say(f"✅ Servizio {name} ({DESCRIPTIONS[name]}) installato" + (" e avviato." if start else "."))
+    if "bot" in names:
+        for path in legacy_agents():
+            say(f"⚠️  C'è ancora il LaunchAgent della 3.x per il bot ({path}): con il servizio bot "
+                f"girerebbero due bot. Rimuovilo con: {legacy_agent_hint(path)}")
     return names
 
 

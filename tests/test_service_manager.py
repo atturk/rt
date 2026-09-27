@@ -69,6 +69,22 @@ def test_install_status_stop_uninstall(launchd, tmp_path):
     assert sm.installed() == [] and not loaded
 
 
+def test_legacy_bot_agent_is_reported(launchd, tmp_path):
+    """Il LaunchAgent del bot scritto a mano con la 3.x: install e doctor dicono di toglierlo."""
+    from rt.services import doctor_service
+    agents = tmp_path / "LaunchAgents"
+    agents.mkdir()
+    legacy = agents / "com.rt.telegram-daemon.plist"
+    legacy.write_bytes(plistlib.dumps({"Label": "com.rt.telegram-daemon"}))
+    said = []
+    sm.install(["bot"], start=False, say=said.append)
+    assert any(str(legacy) in line and "rm " in line for line in said)
+    checks = [c for c in doctor_service.check_services() if c.name == "Bot della 3.x"]
+    assert checks and checks[0].status == doctor_service.WARN
+    legacy.unlink()
+    assert sm.legacy_agents() == []
+
+
 def test_parse_launchctl_print():
     text = "gui/501/com.atturk.rt.api = {\n\tactive count = 1\n\tstate = running\n\tpid = 12\n\t\tstate = nested\n}"
     info = sm.parse_launchctl_print(text)

@@ -74,25 +74,21 @@ Per lo sviluppo e l'esecuzione dei test:
 pip install -r requirements-dev.txt
 ```
 
-Copia il template per le variabili d'ambiente (opzionale se si usano chiamate LLM reali):
+Configurazione, `.env`, database e media stanno nella cartella dati `~/.rt` (o `RT_DATA_DIR`),
+non nella cartella del codice; `./bin/rt data` mostra i percorsi in uso. La via più semplice
+è la configurazione guidata della web app (`./bin/rt web`); in alternativa:
+
 ```bash
-cp .env.example .env
-# Le chiavi che inserirai qui devono corrispondere ai nomi 'env_var' che dichiari
-# in config/general.yaml sotto 'credentials:' (vedi docs/CONFIGURATION_REFERENCE.md)
+./bin/rt data init      # crea ~/.rt con la configurazione di partenza
+./bin/rt config         # configurazione guidata nel terminale
+./bin/rt secrets init   # archivio cifrato per chiavi API e token
 ```
 
-Configurazione dei job e dei modelli:
-
-Per una configurazione guidata e interattiva:
-```bash
-./bin/rt config
-```
-In alternativa, per configurare manualmente:
-```bash
-cp -r config.example config
-# Modifica config/general.yaml e i singoli file per-job config/<job>.yaml
-```
+Per configurare a mano modifica `~/.rt/config/general.yaml` e i file per-job
+`~/.rt/config/<job>.yaml`.
 > I file YAML in `config.example/` sono volutamente senza commenti: il significato di ogni campo e le funzionalità opzionali (credenziali custom, pricing globale/per-route) sono documentati in [Guida alla Configurazione (CONFIGURATION_REFERENCE.md)](docs/CONFIGURATION_REFERENCE.md).
+
+Su Linux (server) RT gira anche con Docker: vedi [Self-hosting](docs/SELF_HOSTING.md#docker).
 
 
 #### Interfaccia web locale
@@ -173,39 +169,25 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ### 4. Notifiche e Comandi via Telegram (opzionale)
 
 Le funzionalità Telegram (routing per topic in base alla materia, notifica di build completata,
-`/list`, `/recall <query>`, active recall via bot) richiedono un **processo persistente** distinto
-dalla pipeline `rt run`:
+`/list`, `/recall <query>`, active recall via bot) richiedono il bot sempre attivo. Con
+l'installazione in un comando è il servizio in background `bot`: parte da solo appena configuri
+token e chat (web app > Impostazioni > Telegram) e si avvia o ferma anche da lì.
 
 ```bash
-./bin/rt telegram-daemon
+rt service status        # stato di API, worker e bot
+rt service restart bot   # dopo aver cambiato la configurazione a mano
 ```
 
-Senza questo processo in esecuzione continua, nessuna funzionalità Telegram funziona — anche se
-`config/general.yaml`/`.env` sono configurati correttamente (verifica prima con `./bin/rt config`,
-vedi sopra). Va lasciato attivo in un terminale/tab dedicato, con `tmux`/`screen`, oppure fatto
-ripartire automaticamente ad ogni accesso con un LaunchAgent macOS
-(`~/Library/LaunchAgents/com.rt.telegram-daemon.plist`):
+Senza servizi (`RT_NO_SERVICES=1` o installazione manuale) si avvia a mano con
+`./bin/rt telegram-daemon`, da lasciare aperto in un terminale.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>com.rt.telegram-daemon</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/percorso/assoluto/rt/bin/rt</string>
-        <string>telegram-daemon</string>
-    </array>
-    <key>WorkingDirectory</key><string>/percorso/assoluto/rt</string>
-    <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key><true/>
-    <key>StandardOutPath</key><string>/percorso/assoluto/rt/.rt_telegram/daemon.log</string>
-    <key>StandardErrorPath</key><string>/percorso/assoluto/rt/.rt_telegram/daemon.err.log</string>
-</dict>
-</plist>
+**Dalla 3.x:** se avevi creato a mano `~/Library/LaunchAgents/com.rt.telegram-daemon.plist`,
+rimuovilo, altrimenti girano due bot sullo stesso token (`rt doctor` lo segnala):
+
+```bash
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.rt.telegram-daemon.plist
+rm ~/Library/LaunchAgents/com.rt.telegram-daemon.plist
 ```
-poi caricalo con `launchctl load ~/Library/LaunchAgents/com.rt.telegram-daemon.plist`.
 
 ---
 

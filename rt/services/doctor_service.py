@@ -180,6 +180,10 @@ def check_services() -> List[Check]:
             else:
                 out.append(Check(label, FAIL, "installato ma fermo" + (f" (ultima uscita {st.last_exit})" if st.last_exit else ""),
                                  f"Esegui 'rt service start {name}' e guarda {os.path.join(paths.data_dir(), 'logs', name + '.log')}."))
+        for path in sm.legacy_agents():
+            out.append(Check("Bot della 3.x", WARN, f"LaunchAgent scritto a mano ancora presente: {path} "
+                             "(con il servizio bot girerebbero due bot sullo stesso token).",
+                             f"Rimuovilo: {sm.legacy_agent_hint(path)}"))
     if api_up:
         out.append(Check("Porta", OK, f"RT risponde su http://127.0.0.1:{port}"))
     elif _port_busy(port):
