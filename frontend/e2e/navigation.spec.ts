@@ -85,10 +85,10 @@ test('la sezione Review elenca le lezioni con issue da valutare', async ({ page 
   await expect(page).toHaveURL(new RegExp(`/lezioni/${target.id}/revisione$`))
 })
 
-test('la voce Job porta il badge dei job; nessuna icona separata nell’intestazione', async ({ page }) => {
+test('il pulsante Job mostra il badge negli strumenti', async ({ page }) => {
   await loginViaLink(page)
-  const nav = page.getByRole('navigation', { name: 'Navigazione' })
-  const job = nav.getByRole('link', { name: /^Job/ })
+  const nav = page.getByRole('navigation', { name: 'Strumenti' })
+  const job = nav.getByRole('link', { name: 'Job' })
   await expect(job).toHaveCount(1)
   await expect(job.getByTestId('jobs-indicator')).toHaveCount(1)
   await expect(page.getByTestId('jobs-indicator')).toHaveCount(1)

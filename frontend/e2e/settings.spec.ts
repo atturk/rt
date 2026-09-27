@@ -55,7 +55,7 @@ test('cartella dati: scegli dal navigatore, ricarica, rileggi (e ripristina a ma
   // HOME del server e2e: accanto alla cartella delle lezioni (scripts/e2e_server.py).
   const home = original.replace(/\/lessons$/, '/home')
   await loginViaLink(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
+  await page.getByRole('navigation', { name: 'Strumenti' }).getByRole('link', { name: 'Impostazioni' }).click()
   await expect(page).toHaveURL(/\/impostazioni$/)
   const card = await section(page, 'Cartella dati')
   await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(original)
@@ -79,7 +79,6 @@ test('cartella dati: scegli dal navigatore, ricarica, rileggi (e ripristina a ma
   await expect(browser).toBeHidden()
   const chosen = `${home}/Documenti/RT Lezioni e2e`
   await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(chosen)
-  await card.getByRole('button', { name: 'Salva' }).click()
   await expect(card.getByRole('status')).toHaveText('Salvato.')
   await page.reload()
   await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(chosen)
@@ -88,7 +87,7 @@ test('cartella dati: scegli dal navigatore, ricarica, rileggi (e ripristina a ma
   // Il percorso a mano resta l'alternativa.
   await card.getByRole('button', { name: 'Inserisci il percorso a mano' }).click()
   await card.getByLabel('Cartella delle lezioni').fill(original)
-  await card.getByRole('button', { name: 'Salva' }).click()
+  await card.getByLabel('Cartella delle lezioni').press('Enter')
   await expect(card.getByRole('status')).toHaveText('Salvato.')
   await page.reload()
   await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(original)

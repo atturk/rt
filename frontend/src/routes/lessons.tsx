@@ -245,10 +245,17 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
           markdown={document.data.markdown}
           leaseToken={leaseToken ?? undefined}
           onClose={(result) => {
-            setMode('view')
-            onEditingChange(false)
-            setLeaseToken(null)
-            if (result?.changed) setSaved(result)
+            const finishClose = () => {
+              setMode('view')
+              onEditingChange(false)
+              setLeaseToken(null)
+              if (result?.changed) setSaved(result)
+            }
+            if (leaseToken) {
+              void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
+                params: { path: { lesson_id: id }, query: { token: leaseToken } },
+              }).finally(finishClose)
+            } else finishClose()
           }}
           />
         </Suspense>

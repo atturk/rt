@@ -60,7 +60,7 @@ test('la dashboard mostra le lezioni dell\'API, con filtri', async ({ page }) =>
 
   await page.getByLabel('Materia', { exact: true }).selectOption('')
   await page.getByLabel('Stato', { exact: true }).selectOption('completato')
-  await expect(cards).toHaveCount(1)
+  await expect(cards).toHaveCount(lessons.filter((lesson) => lesson.state === 'completato').length)
   await expect(cards.first()).toContainText('BIOCHIMICA')
 
   await page.getByLabel('Stato', { exact: true }).selectOption('')

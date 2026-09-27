@@ -79,8 +79,8 @@ for (const theme of ['light', 'dark'] as const) {
       await notice.getByRole('button', { name: 'Modifica' }).click()
     }
     await expect(page.getByTestId('markdown-editor')).toBeVisible()
-    await expect(page.locator('.rt-document-edit-preview')).toBeVisible()
-    await expectNoViolations(page, "anteprima in modifica")
+    await expect(page.locator('.rt-document-edit-preview')).toHaveCount(0)
+    await expectNoViolations(page, "editor a tutta larghezza")
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('markdown-editor')).toHaveCount(0)
 

@@ -853,8 +853,8 @@ def cmd_web(args: argparse.Namespace) -> None:
                              "si imposta dalla web (Impostazioni) o con 'rt config'.")
         from rt.api.launcher import run_spa
         from rt.api.server import DEFAULT_PORT
-        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser,
-                       verbose=getattr(args, "verbose", False))
+        kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
+        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
         if code:
             sys.exit(code)
         return

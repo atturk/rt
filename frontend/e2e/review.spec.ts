@@ -24,7 +24,7 @@ test('review: accetta, mantieni, modifica, annulla; il ledger resta dopo la rica
   await page.locator(`[data-testid=lesson-card][data-lesson-id="${id}"]`).getByRole('link', { name: /issue da valutare/ }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${id}/revisione`))
   await expect(counter(page)).toHaveText('10 da decidere su 10')
-  await expect(page.getByTestId('issue-diff')).toBeVisible()
+  await expect(page.getByTestId('issue-suggestion')).toBeVisible()
   await expect(page.locator('mark.rt-claim')).toBeVisible()
 
   const first = await page.getByTestId('issue-detail').getAttribute('data-issue-id')

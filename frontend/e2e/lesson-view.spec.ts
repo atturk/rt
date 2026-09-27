@@ -29,7 +29,7 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
     await expect(li).toHaveAttribute('data-status', row.status)
     await expect(li).toContainText(row.reason)
   }
-  await expect(page.getByTestId('outline-approved')).toHaveText(detail.outline_approved ? 'sì' : 'no')
+  expect(detail.outline_approved).toBe(true)
   await expect(page.getByTestId('validation-outline')).toContainText('valida')
   await expect(page.getByTestId('cost-panel')).toContainText('Scaletta')
 

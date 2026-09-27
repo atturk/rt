@@ -115,6 +115,12 @@ def test_cli_backup_and_doctor(data, tmp_path, capsys):
     main(["backup", "--dest", str(tmp_path / "b")])
     assert "Backup completo" in capsys.readouterr().out
     # Doctor exits nonzero only for a FAIL; warnings are actionable but not fatal.
-    main(["doctor", "--json"])
+    exit_code = 0
+    try:
+        main(["doctor", "--json"])
+    except SystemExit as exc:
+        exit_code = exc.code
     out = capsys.readouterr().out
     assert '"Database"' in out and '"Cartella dati"' in out
+    import json
+    assert exit_code == (1 if json.loads(out)["status"] == "fail" else 0)
