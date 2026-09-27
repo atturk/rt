@@ -46,10 +46,14 @@ def _save_uploads(files: List[UploadFile], allowed: set, target: str) -> List[st
     """Salva i file a blocchi con limite di dimensione complessiva; solo estensioni ammesse,
     solo il nome base (nessun percorso dal client)."""
     limit, total, saved = _max_upload_bytes(), 0, []
+    seen = set()
     for upload in files:
         name = os.path.basename((upload.filename or "").replace("\\", "/")).strip()
         if not name or name.startswith(".") or os.path.splitext(name)[1].lower() not in allowed:
             raise ApiError(415, "unsupported_media_type", f"Tipo di file non ammesso: {name or '(senza nome)'}.")
+        if name.casefold() in seen:
+            raise ApiError(422, "duplicate_filename", f"Due file hanno lo stesso nome: {name}. Rinomina uno dei file prima di importare.")
+        seen.add(name.casefold())
         path = os.path.join(target, name)
         with open(path, "wb") as out:
             while True:

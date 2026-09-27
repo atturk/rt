@@ -72,7 +72,7 @@ export function ImportPage() {
     : create.isError ? errorMessage(create.error) : null
 
   return (
-    <section className="flex max-w-2xl flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
       <WorkerWarning />
       <Card className="p-5">
@@ -88,11 +88,28 @@ export function ImportPage() {
               onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               disabled={create.isPending}
             />
+            <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+              event.preventDefault()
+              if (!create.isPending) setFiles((current) => [...current, ...Array.from(event.dataTransfer.files)])
+            }}>
+              Trascina qui i file audio oppure sceglili sopra.
+            </div>
             <span className="text-xs text-muted-foreground">
               {files.length > 0
                 ? `${files.length} file, ${formatBytes(total)}. Più file diventano un'unica lezione, nell'ordine scelto.`
                 : `Formati: ${AUDIO_EXTENSIONS.join(', ')}.`}
             </span>
+            {files.length > 0 && <ol aria-label="Ordine degli audio" className="space-y-1 text-xs">
+              {files.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-2 rounded border px-2 py-1">
+                <span className="min-w-0 flex-1 truncate">{index + 1}. {file.name}</span>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Sposta ${file.name} prima`} disabled={index === 0 || create.isPending} onClick={() => setFiles((current) => {
+                  const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next
+                })}>↑</Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Sposta ${file.name} dopo`} disabled={index === files.length - 1 || create.isPending} onClick={() => setFiles((current) => {
+                  const next = [...current]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next
+                })}>↓</Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Rimuovi ${file.name}`} disabled={create.isPending} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>×</Button>
+              </li>)}</ol>}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">

@@ -853,7 +853,8 @@ def cmd_web(args: argparse.Namespace) -> None:
                              "si imposta dalla web (Impostazioni) o con 'rt config'.")
         from rt.api.launcher import run_spa
         from rt.api.server import DEFAULT_PORT
-        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser)
+        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser,
+                       verbose=getattr(args, "verbose", False))
         if code:
             sys.exit(code)
         return
@@ -873,6 +874,44 @@ def cmd_web(args: argparse.Namespace) -> None:
     if args.log_file:
         argv += ["--log-file", args.log_file]
     web_main(argv)
+
+
+def cmd_logs(args: argparse.Namespace) -> None:
+    """Mostra le ultime righe dei log dei servizi."""
+    from collections import deque
+    from rt.core.paths import data_dir
+    import time
+
+    names = [args.service] if args.service else ["api", "worker", "bot"]
+    positions = {}
+    for name in names:
+        path = os.path.join(data_dir(), "logs", f"{name}.log")
+        if not os.path.isfile(path):
+            print(f"{name}: nessun log in {path}")
+            continue
+        with open(path, "r", encoding="utf-8", errors="replace") as stream:
+            for line in deque(stream, maxlen=args.lines):
+                print(f"[{name}] {line}", end="")
+            positions[name] = (path, stream.tell())
+    if not args.follow:
+        return
+    print("Ctrl+C interrompe la lettura; i servizi continuano a funzionare.")
+    try:
+        while True:
+            for name in names:
+                path, position = positions.get(name, (os.path.join(data_dir(), "logs", f"{name}.log"), 0))
+                if not os.path.isfile(path):
+                    continue
+                with open(path, "r", encoding="utf-8", errors="replace") as stream:
+                    if os.path.getsize(path) < position:
+                        position = 0
+                    stream.seek(position)
+                    for line in stream:
+                        print(f"[{name}] {line}", end="", flush=True)
+                    positions[name] = (path, stream.tell())
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        return
 
 
 def cmd_api(args: argparse.Namespace) -> None:
@@ -906,6 +945,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  doctor              Controlla l'installazione e dice cosa sistemare\n"
         "  backup / restore    Backup completo (database, media, configurazione) e ripristino\n"
         "  service             Servizi in background con launchd: API, worker, bot\n"
+        "  logs                Ultime righe dei log dei servizi (--follow per seguirli)\n"
         "  data                Cartella dati di RT (~/.rt o RT_DATA_DIR)\n"
         "  uninstall           Disinstalla RT lasciando i dati\n\n"
         "Opzioni generali:\n"
@@ -935,9 +975,16 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_web.add_argument("--legacy", action="store_true",
                        help="Vecchia interfaccia Gradio (deprecata, rimossa nella prossima release)")
     p_web.add_argument("--spa", action="store_true", help=argparse.SUPPRESS)  # compatibilità: ora è il default
+    p_web.add_argument("--verbose", action="store_true", help="Segui i log dei servizi già attivi fino a Ctrl+C")
     p_web.add_argument("--lessons-root", help="Cartella delle lezioni (solo con --legacy)")
     p_web.add_argument("--log-file", help="Percorso del log diagnostico (solo con --legacy)")
     p_web.set_defaults(func=cmd_web)
+
+    p_logs = subparsers.add_parser("logs", help="Mostra i log di API, worker e bot")
+    p_logs.add_argument("service", nargs="?", choices=["api", "worker", "bot"], help="Servizio (default: tutti)")
+    p_logs.add_argument("--lines", type=int, default=50, help="Righe recenti per servizio (default: 50)")
+    p_logs.add_argument("--follow", "-f", action="store_true", help="Segui le nuove righe fino a Ctrl+C")
+    p_logs.set_defaults(func=cmd_logs)
 
     p_api = subparsers.add_parser("api", help="Avvia l'API REST locale (FastAPI, documentazione su /docs)")
     p_api.add_argument("--host", default="127.0.0.1", help="Indirizzo di ascolto (default: 127.0.0.1, solo questo Mac)")

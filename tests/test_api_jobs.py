@@ -121,6 +121,16 @@ def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []  # niente file lasciati a metà
 
 
+def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
+    res = api_client.post("/api/v1/lessons", files=[
+        ("audio", ("same.wav", b"first", "audio/wav")),
+        ("audio", ("same.wav", b"second", "audio/wav")),
+    ], data={"date": "2026-09-05", "materia": "X"})
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "duplicate_filename"
+    assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
+
+
 @pytest.fixture
 def lesson(api_client, ws):
     lesson_dir = make_lesson(ws)

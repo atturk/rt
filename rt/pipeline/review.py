@@ -244,7 +244,7 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
         return None
 
     answer = resp.answers.get("correttezza")
-    if answer is None or answer.type != "choice":
+    if answer is None or answer.type != "choice" or answer.choice not in {"corretta", "imprecisione", "errore_grave"} or not 0 <= answer.confidence <= 1:
         return None
 
     should_skip = (answer.choice != "errore_grave") and (answer.confidence >= jev_cfg.task_a_skip_confidence_threshold)

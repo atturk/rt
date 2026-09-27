@@ -59,7 +59,7 @@ function Validation({ title, report }: { title: string; report: Record<string, u
 }
 
 /** Stato delle fasi con motivo e validazioni, e pulsanti per eseguirle come job. */
-export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schemas['DocumentSection'][] }) {
+export function PhasePanel({ lessonId, units, editingDocument = false }: { lessonId: number; units: Schemas['DocumentSection'][]; editingDocument?: boolean }) {
   const phases = usePhases(lessonId)
   const jobs = useLessonJobs(lessonId)
   const workers = useWorkers()
@@ -67,7 +67,7 @@ export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schem
   const [force, setForce] = useState(false)
   const [unit, setUnit] = useState('')
   const [confirmBuild, setConfirmBuild] = useState(false)
-  const busy = (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending
+  const busy = editingDocument || (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending
   // Avvisi di integrità della revisione calcolati dall'API: non bloccano il documento finale,
   // ma l'utente li vede prima di confermarlo.
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
@@ -85,6 +85,7 @@ export function PhasePanel({ lessonId, units }: { lessonId: number; units: Schem
 
   return (
     <Card className="flex flex-col gap-3 p-4" data-testid="phase-panel">
+      {editingDocument && <p className="text-xs text-muted-foreground">Termina la modifica del documento prima di avviare una fase.</p>}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-bold">Fasi</h2>
         <Button size="sm" disabled={busy} onClick={() => start({ type: 'run_pipeline' })}>

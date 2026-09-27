@@ -19,11 +19,12 @@ chat/completions endpoint. Use the /api/alpha/decisions endpoint instead.").
 """
 
 import datetime
+import math
 import time
 from typing import Dict, List, Literal, Optional, Union
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.pricing import calculate_cost
@@ -58,19 +59,26 @@ class JevChoiceAnswer(BaseModel):
     type: Literal["choice"] = "choice"
     choice: str
     probabilities: Dict[str, float] = Field(default_factory=dict)
-    confidence: float = 0.0
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @field_validator("probabilities")
+    @classmethod
+    def validate_probabilities(cls, values: Dict[str, float]) -> Dict[str, float]:
+        if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values.values()):
+            raise ValueError("Probabilità non valida")
+        return values
 
 
 class JevScoreAnswer(BaseModel):
     type: Literal["score"] = "score"
     score: float
     legend: Dict[str, str] = Field(default_factory=dict)
-    confidence: float = 0.0
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
 
 
 class JevNoulAnswer(BaseModel):
     type: Literal["noul"] = "noul"
-    noul: float
+    noul: float = Field(ge=0, le=1, allow_inf_nan=False)
 
 
 JevAnswer = Union[JevChoiceAnswer, JevScoreAnswer, JevNoulAnswer]
@@ -190,5 +198,16 @@ def call_jev(
                 "jev_answers": resp_json.get("answers") if isinstance(resp_json, dict) else None,
             })
 
-    answers = {name: _parse_answer(name, raw) for name, raw in resp_json.get("answers", {}).items()}
+    if not isinstance(resp_json, dict) or not isinstance(resp_json.get("answers"), dict):
+        raise JevError("Risposta del modello decisionale incompleta.")
+    answers = {name: _parse_answer(name, raw) for name, raw in resp_json["answers"].items()}
+    for name, question in questions.items():
+        answer = answers.get(name)
+        if answer is None or answer.type != question.type:
+            raise JevError(f"Risposta mancante o di tipo errato per '{name}'.")
+        if isinstance(question, JevChoiceQuestion) and (
+            answer.choice not in question.criteria or
+            (answer.probabilities and set(answer.probabilities) != set(question.criteria))
+        ):
+            raise JevError(f"Scelta o probabilità non valide per '{name}'.")
     return JevResponse(model=resp_json.get("model", model), answers=answers, usage=resp_json.get("usage", {}))

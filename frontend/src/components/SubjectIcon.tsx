@@ -5,8 +5,8 @@ const LAYOUT_CLASS: Record<SubjectIconSpec['layout'], string> = {
   single: 'flex items-center justify-center text-base',
   row: 'flex items-center justify-center gap-px text-sm',
   // due sopra e una centrata sotto: la terza occupa tutta la seconda riga
-  triangle: 'grid grid-cols-2 place-items-center content-center gap-x-px text-[11px] [&>:nth-child(3)]:col-span-2',
-  grid: 'grid grid-cols-2 place-items-center content-center gap-x-px text-[11px]',
+  triangle: 'grid grid-cols-2 place-items-center content-center gap-x-0 text-[13px] [&>:nth-child(3)]:col-span-2',
+  grid: 'grid grid-cols-2 place-items-center content-center gap-x-0 text-[13px]',
 }
 
 /** Icona quadrata della materia: iniziali su sfondo pastello (vedi lib/subjectIcon.ts). Decorativa:

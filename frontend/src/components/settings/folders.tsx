@@ -10,11 +10,11 @@ import { Label } from '@/components/ui/label'
 
 /**
  * Scelta di una cartella senza digitare il percorso (RT4-FA6). "Scegli cartella…" apre la
- * finestra di Finder tramite l'API; se non è disponibile (o viene annullata) si apre il
+ * finestra di Finder tramite l'API; se non è disponibile si apre il
  * navigatore delle cartelle della home. Il percorso a mano resta l'alternativa.
  * Il valore è quello del form: si salva con il pulsante del form che lo contiene.
  */
-export function FolderField({ id, value, onChange }: { id: string; value: string; onChange: (path: string) => void }) {
+export function FolderField({ id, value, onChange, onCommit }: { id: string; value: string; onChange: (path: string) => void; onCommit?: (path: string) => void }) {
   const choose = useChooseFolder()
   const [manual, setManual] = useState(false)
   const [browsing, setBrowsing] = useState(false)
@@ -26,11 +26,11 @@ export function FolderField({ id, value, onChange }: { id: string; value: string
       onSuccess: (result) => {
         if (result.status === 'chosen' && result.path) {
           onChange(result.path)
+          onCommit?.(result.path)
           setBrowsing(false)
           return
         }
-        setNotice(result.status === 'cancelled' ? 'Nessuna cartella scelta: puoi sceglierla qui sotto.' : null)
-        setBrowsing(true)
+        if (result.status === 'unavailable') setBrowsing(true)
       },
       onError: () => setBrowsing(true),
     })
@@ -45,6 +45,8 @@ export function FolderField({ id, value, onChange }: { id: string; value: string
         value={value}
         readOnly={!manual}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={() => { if (manual) onCommit?.(value.trim()) }}
+        onKeyDown={(e) => { if (manual && e.key === 'Enter') { e.preventDefault(); onCommit?.(value.trim()) } }}
         placeholder={manual ? '~/RT Lezioni' : 'Nessuna cartella scelta'}
         className={manual ? undefined : 'bg-muted/40 font-mono text-xs'}
         required
@@ -77,6 +79,7 @@ export function FolderField({ id, value, onChange }: { id: string; value: string
           start={value}
           onPick={(path) => {
             onChange(path)
+            onCommit?.(path)
             setBrowsing(false)
             setNotice(null)
           }}

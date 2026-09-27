@@ -55,14 +55,14 @@ def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
     """Scrive una riga di telemetria e contesto in formato JSON Lines su llm_debug.log."""
     if not lesson_dir:
         return
+    from rt.db.llm_calls import record_llm_call
+    record_llm_call(lesson_dir, entry)
     log_path = lesson_path(lesson_dir, "llm_debug.log")
     try:
         with fs.open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         return  # Il log di debug non deve mai far fallire la pipeline
-    from rt.db.llm_calls import record_llm_call
-    record_llm_call(lesson_dir, entry)
 
 
 _MOCK_FAILURE: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar("rt_mock_failure", default=None)

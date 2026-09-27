@@ -26,14 +26,18 @@ export function LessonsRootForm({ settings, onSaved, submitLabel = 'Salva' }: { 
         pending={save.isPending}
         submitLabel={submitLabel}
         onSubmit={(path) => save.mutate(path, { onSuccess: onSaved })}
+        autoSave={!onSaved}
       />
       <SaveFeedback mutation={save} />
     </>
   )
 }
 
-function LessonsRootFields({ initial, pending, submitLabel, onSubmit }: { initial: string; pending: boolean; submitLabel: string; onSubmit: (path: string) => void }) {
+function LessonsRootFields({ initial, pending, submitLabel, onSubmit, autoSave }: { initial: string; pending: boolean; submitLabel: string; onSubmit: (path: string) => void; autoSave: boolean }) {
   const [path, setPath] = useState(initial)
+  const commit = (selected: string) => {
+    if (autoSave && !pending && selected && selected !== initial) onSubmit(selected)
+  }
   return (
     <form
       className="flex flex-col gap-3"
@@ -42,12 +46,12 @@ function LessonsRootFields({ initial, pending, submitLabel, onSubmit }: { initia
         onSubmit(path.trim())
       }}
     >
-      <FolderField id="lessons-root" value={path} onChange={setPath} />
-      <div>
+      <FolderField id="lessons-root" value={path} onChange={setPath} onCommit={commit} />
+      {!autoSave && <div>
         <Button type="submit" disabled={pending || !path.trim()}>
           {submitLabel}
         </Button>
-      </div>
+      </div>}
     </form>
   )
 }

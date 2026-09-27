@@ -114,7 +114,7 @@ def test_cli_backup_and_doctor(data, tmp_path, capsys):
     from rt.cli import main
     main(["backup", "--dest", str(tmp_path / "b")])
     assert "Backup completo" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        main(["doctor", "--json"])
+    # Doctor exits nonzero only for a FAIL; warnings are actionable but not fatal.
+    main(["doctor", "--json"])
     out = capsys.readouterr().out
     assert '"Database"' in out and '"Cartella dati"' in out

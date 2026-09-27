@@ -94,6 +94,7 @@ export function DashboardPage() {
 
 export function LessonPage() {
   const id = Number(useParams().lessonId)
+  const [editingDocument, setEditingDocument] = useState(false)
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   if (lesson.isPending) return <p className="text-sm text-muted-foreground">Carico la lezione…</p>
@@ -121,10 +122,6 @@ export function LessonPage() {
           </div>
           <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t pt-3 text-xs">
             <div className="flex gap-1.5">
-              <dt className="text-muted-foreground">Scaletta approvata</dt>
-              <dd data-testid="outline-approved">{l.outline_approved ? 'sì' : 'no'}</dd>
-            </div>
-            <div className="flex gap-1.5">
               <dt className="text-muted-foreground">Segmenti</dt>
               <dd>{l.segment_count}</dd>
             </div>
@@ -151,10 +148,10 @@ export function LessonPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex min-w-0 flex-col gap-4">
             {l.has_audio && <AudioPlayer lessonId={id} sections={sections} />}
-            <DocumentCard lesson={l} />
+            <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
           </div>
           <aside className="flex flex-col gap-4">
-            <PhasePanel lessonId={id} units={sections} />
+            <PhasePanel lessonId={id} units={sections} editingDocument={editingDocument} />
             <JobsPanel lessonId={id} />
             <CostPanel lesson={l} />
           </aside>
@@ -168,7 +165,7 @@ export function LessonPage() {
 const DocumentEditor = lazy(() => import('@/components/lesson/DocumentEditor').then((m) => ({ default: m.DocumentEditor })))
 
 /** Riquadro del documento: anteprima o documento finale, con la modifica dell'anteprima (beta). */
-function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
+function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const settings = useSettings()
@@ -181,6 +178,7 @@ function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
   const startEdit = () => {
     setSaved(null)
     setMode(notices.length > 0 ? 'notice' : 'edit')
+    if (notices.length === 0) onEditingChange(true)
   }
   return (
     <Card className="px-6 py-5">
@@ -193,6 +191,7 @@ function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
           markdown={document.data.markdown}
           onClose={(result) => {
             setMode('view')
+            onEditingChange(false)
             if (result?.changed) setSaved(result)
           }}
           />
@@ -234,6 +233,7 @@ function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
           onConfirm={(dismiss) => {
             for (const n of dismiss) dismissNotice.mutate(n)
             setMode('edit')
+            onEditingChange(true)
           }}
         />
       )}

@@ -1,20 +1,40 @@
 import { ChevronDown } from 'lucide-react'
 import { NavLink } from 'react-router'
+import { useState } from 'react'
 
 import { useLessons } from '@/api/hooks'
 import { errorMessage } from '@/api/client'
 import { groupBySubject, lessonTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+const STORAGE_KEY = 'rt:subjects:collapsed'
+
+function storedSubjects(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')
+    return Array.isArray(value) ? value.filter((subject): subject is string => typeof subject === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const lessons = useLessons()
+  const [collapsed, setCollapsed] = useState(storedSubjects)
+  const toggle = (subject: string, open: boolean) => {
+    const next = open ? collapsed.filter((s) => s !== subject) : [...new Set([...collapsed, subject])]
+    setCollapsed(next)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* storage may be disabled */ }
+  }
   return (
     <nav aria-label="Lezioni per materia" className="flex flex-col gap-4 text-sm">
       {lessons.isPending && <p className="px-2 text-xs text-muted-foreground">Carico le lezioni…</p>}
       {lessons.isError && <p className="px-2 text-xs text-danger">{errorMessage(lessons.error)}</p>}
       {lessons.data?.length === 0 && <p className="px-2 text-xs text-muted-foreground">Nessuna lezione.</p>}
       {groupBySubject(lessons.data ?? []).map(([subject, items]) => (
-        <details key={subject} open className="group">
+        <details key={subject} open={!collapsed.includes(subject)} onToggle={(event) => {
+          if (event.currentTarget.open === collapsed.includes(subject)) toggle(subject, event.currentTarget.open)
+        }} className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between px-1.5 py-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
             {subject}
             <ChevronDown className="size-3.5 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />

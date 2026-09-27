@@ -47,6 +47,9 @@ Dopo l'installazione:
 
 ```bash
 rt web          # apre la web app (i servizi sono già attivi)
+rt web --verbose # apre la web e segue i log dei servizi già attivi; Ctrl+C interrompe la lettura
+rt logs --follow # segue i log di API, worker e bot; rt logs bot --lines 100 per un servizio
+rt service status # mostra lo stato dei servizi; rt service stop/start/restart li controlla
 rt doctor       # controlla l'installazione e dice cosa sistemare
 rt backup --dest /Volumes/Disco/rt-backup   # backup completo: database, media, configurazione
 rt -u           # aggiorna codice, dipendenze, web app, database e servizi

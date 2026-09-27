@@ -11,7 +11,6 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { wordDiff } from '@/lib/diff'
 import { lessonTitle } from '@/lib/format'
 import { ISSUE_ORDERS, parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { cn } from '@/lib/utils'
@@ -59,26 +58,6 @@ function decisionError(error: unknown): string {
   return errorMessage(error)
 }
 
-function Diff({ before, after }: { before: string; after: string }) {
-  return (
-    <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed" data-testid="issue-diff">
-      {wordDiff(before, after).map((part, i) =>
-        part.type === 'same' ? (
-          <span key={i}>{part.text}</span>
-        ) : part.type === 'removed' ? (
-          <del key={i} className="bg-danger-soft text-danger">
-            {part.text}
-          </del>
-        ) : (
-          <ins key={i} className="bg-success-soft text-success no-underline">
-            {part.text}
-          </ins>
-        ),
-      )}
-    </p>
-  )
-}
-
 function IssueDetail({
   item,
   onDecide,
@@ -104,7 +83,10 @@ function IssueDetail({
         {item.decision && <Badge tone="success">{DECISIONS[item.decision.decision] ?? item.decision.decision}</Badge>}
       </div>
       {ctx?.unit_info && <p className="text-[11px] text-muted-foreground">Unità {ctx.unit_info}</p>}
-      {issue.suggested_fix ? <Diff before={issue.claim} after={issue.suggested_fix} /> : <blockquote className="text-xs">{issue.claim}</blockquote>}
+      <div>
+        <h3 className="mb-1 text-xs font-semibold">Correzione proposta</h3>
+        <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed" data-testid="issue-suggestion">{issue.suggested_fix || issue.claim}</p>
+      </div>
       <p className="text-xs">{issue.reason}</p>
       {issue.source_quote && (
         <p className="border-l-2 pl-2 text-xs text-muted-foreground">

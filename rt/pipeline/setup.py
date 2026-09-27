@@ -32,6 +32,24 @@ DEFAULT_MODEL = "parakeet-v3"
 SUPPORTED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4b", ".wma"}
 
 
+def merge_audio_for_transcription(audios: List[str], output: str) -> None:
+    """Normalize and join clips in their supplied order on one playback time line."""
+    if len(audios) < 2:
+        raise ValueError("Servono almeno due file audio")
+    if not shutil.which("ffmpeg"):
+        raise SetupError("Per importare più audio installa ffmpeg e riprova.")
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+    for audio in audios:
+        command.extend(["-i", os.path.abspath(audio)])
+    filters = ";".join(f"[{i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono[a{i}]"
+                       for i in range(len(audios)))
+    filters += ";" + "".join(f"[a{i}]" for i in range(len(audios))) + f"concat=n={len(audios)}:v=0:a=1[out]"
+    command.extend(["-filter_complex", filters, "-map", "[out]", "-c:a", "pcm_s16le", output])
+    result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
+    if result.returncode or not os.path.isfile(output) or os.path.getsize(output) == 0:
+        raise SetupError("Impossibile unire i file audio: controlla che siano leggibili e riprova.")
+
+
 class SetupError(Exception):
     """Eccezione bloccante per errori irreversibili durante la fase di setup.
 
@@ -487,6 +505,7 @@ def run_setup(
     json_path = os.path.join(target_folder_path, "trascritto grezzo.json")
     md_path = os.path.join(target_folder_path, "trascritto grezzo.md")
 
+    merged_audio = None
     if mock_asr:
         # Mock ASR deterministico offline
         json_path, md_path = generate_deterministic_mock_asr(
@@ -527,7 +546,12 @@ def run_setup(
 
         temp_dir = tempfile.mkdtemp(prefix="rt_stt_")
         try:
-            for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
+            if len(cleaned_audios) > 1:
+                # Both STT and playback use the same file; trailing silence stays on the timeline.
+                merged_audio = os.path.join(temp_dir, "audio completo.wav")
+                merge_audio_for_transcription(cleaned_audios, merged_audio)
+                primary_audio_name = "audio completo.wav"
+            for audio_idx, aud_file in enumerate([merged_audio] if merged_audio else cleaned_audios, start=1):
                 aud_abs = os.path.abspath(aud_file)
                 temp_audio_dir = os.path.join(temp_dir, f"audio_{audio_idx}")
                 fs.makedirs(temp_audio_dir, exist_ok=True)
@@ -601,6 +625,8 @@ def run_setup(
                     combined_text_parts.append(raw_txt)
 
                 cumulative_offset_ms = max_seg_end
+            if merged_audio:
+                fs.copy2(merged_audio, os.path.join(target_folder_path, primary_audio_name))
         finally:
             fs.rmtree(temp_dir, ignore_errors=True)
 

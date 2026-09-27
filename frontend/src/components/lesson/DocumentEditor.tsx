@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useCheckDocument, useSaveDocument } from '@/api/documentEdit'
@@ -26,9 +26,8 @@ type Props = {
 }
 
 /**
- * Anteprima in modifica (beta): editor Markdown a sinistra, anteprima renderizzata dal server
- * a destra con gli errori che impedirebbero il salvataggio (riga e motivo). Fine o un clic
- * fuori salvano, Esc annulla. La validazione è tutta del backend.
+ * Editor Markdown con gli errori di validazione del server. Solo Fine salva;
+ * Esc e Annulla scartano le modifiche.
  */
 export function DocumentEditor({ lessonId, markdown, onClose }: Props) {
   const [text, setText] = useState(markdown)
@@ -36,7 +35,6 @@ export function DocumentEditor({ lessonId, markdown, onClose }: Props) {
   const [preview, setPreview] = useState<{ html: string; errors: Problem[] } | null>(null)
   const check = useCheckDocument(lessonId)
   const save = useSaveDocument(lessonId)
-  const container = useRef<HTMLDivElement>(null)
 
   const { mutate: runCheck } = check
   useEffect(() => {
@@ -54,33 +52,16 @@ export function DocumentEditor({ lessonId, markdown, onClose }: Props) {
     }
     save.mutate(text, { onSuccess: (result) => onClose(result) })
   }
-  const finishRef = useRef(finish)
-  useLayoutEffect(() => {
-    finishRef.current = finish
-  })
-
-  // Clic fuori dall'editor = Fine. I dialoghi aperti sopra la pagina non contano.
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null
-      if (!target || !container.current || container.current.contains(target)) return
-      if (target instanceof Element && target.closest('dialog')) return
-      finishRef.current()
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [])
-
   const saveProblems = problemsOf(save.error)
   const problems = saveProblems ?? preview?.errors ?? []
 
   return (
-    <div ref={container} className="flex flex-col gap-3" data-testid="document-editor">
+    <div className="flex flex-col gap-3" data-testid="document-editor">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto text-sm font-bold">
           Modifica dell'anteprima <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium uppercase">beta</span>
         </h2>
-        <span className="text-xs text-muted-foreground">Esc annulla · un clic fuori salva</span>
+        <span className="text-xs text-muted-foreground">Fine salva · Esc annulla</span>
         <Button variant="outline" size="sm" onClick={() => onClose(null)} disabled={save.isPending}>
           Annulla
         </Button>
@@ -112,16 +93,7 @@ export function DocumentEditor({ lessonId, markdown, onClose }: Props) {
           </ul>
         </Alert>
       )}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <MarkdownEditor value={markdown} onChange={setText} onEscape={() => onClose(null)} label="Markdown dell'anteprima" focusLine={focusLine} />
-        <div className="min-w-0 rounded-md border p-4" aria-label="Anteprima della modifica" role="region">
-          {preview ? (
-            <div className="rt-document rt-document-edit-preview" dangerouslySetInnerHTML={{ __html: preview.html }} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Preparo l'anteprima…</p>
-          )}
-        </div>
-      </div>
+      <MarkdownEditor value={markdown} onChange={setText} onEscape={() => onClose(null)} label="Markdown dell'anteprima" focusLine={focusLine} />
     </div>
   )
 }

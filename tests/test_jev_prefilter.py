@@ -22,6 +22,15 @@ from rt.core.models import (
 )
 from rt.core.timestamp import format_timestamp
 from rt.llm.jev_client import JevResponse, JevChoiceAnswer, JevNoulAnswer
+
+
+def test_decision_probabilities_and_confidence_are_bounded():
+    from pydantic import ValidationError
+    for confidence in (float("nan"), float("inf"), -0.01, 1.01):
+        with pytest.raises(ValidationError):
+            JevChoiceAnswer(choice="corretta", confidence=confidence)
+    with pytest.raises(ValidationError):
+        JevChoiceAnswer(choice="corretta", confidence=0.9, probabilities={"corretta": float("nan")})
 from rt.llm.prompts import ScienceIssueList
 from rt.pipeline.review import run_review
 from rt.pipeline.ledger import apply_decisions_to_draft
