@@ -107,13 +107,13 @@ export function LessonPage() {
           ← Tutte le lezioni
         </Link>
         <Card className="p-5">
-          <div className="flex flex-wrap items-start gap-3">
-            <div className="mr-auto">
-              <h1 className="text-xl font-bold tracking-tight">{lessonTitle(l)}</h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
-              </p>
-            </div>
+          {/* Azioni sempre sotto il titolo: accanto finivano a destra o sotto a seconda di
+              quanto era lungo il titolo. */}
+          <h1 className="text-xl font-bold tracking-tight">{lessonTitle(l)}</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
+          </p>
+          <div className="mt-3">
             <LessonActions lessonId={id} actions={l.actions} />
           </div>
           <div className="mt-3">
