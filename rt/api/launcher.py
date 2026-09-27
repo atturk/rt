@@ -45,6 +45,20 @@ def _open_when_ready(base: str, url: str, say: Callable[[str], None], open_brows
         webbrowser.open(url)
 
 
+def _legacy_layout_hint(say: Callable[[str], None]) -> None:
+    """Chi è passato alla 4.0 con il 'rt -u' di una 3.x ha ancora config e dati nei posti
+    vecchi: un secondo 'rt -u' (codice nuovo) sposta tutto nella cartella dati."""
+    from rt.core import paths
+    if paths.active_data_dir() is None and os.path.isdir(os.path.join(_PROJECT_ROOT, "config")):
+        say("ℹ️  Completa l'aggiornamento a RT 4.0 con 'rt -u': sposta configurazione e dati nella "
+            "cartella dati (~/.rt) e installa i servizi in background.")
+
+
+def _already_running(port: int) -> bool:
+    from rt.services.service_manager import api_is_up
+    return api_is_up(port)
+
+
 def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bool = True,
             worker: bool = True, worker_args: Optional[List[str]] = None,
             say: Callable[[str], None] = print) -> int:
@@ -54,6 +68,15 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
     from rt.api.server import prepare
     from rt.api.spa import find_spa_dir
 
+    _legacy_layout_hint(say)
+    if host in LOOPBACK and _already_running(port):
+        # fase G: API e worker girano già come servizi (launchd): basta aprire il browser
+        shown = f"[{host}]" if ":" in host else host
+        base = f"http://{shown}:{port}"
+        prepare(host=host, say=say)
+        say("✅ RT è già in funzione in background (servizi).")
+        _open_when_ready(base, f"{base}/login?code={auth.create_login_code()}", say, open_browser)
+        return 0
     if host not in LOOPBACK:
         say(f"⚠️  RT sarà raggiungibile da altri dispositivi su {host}:{port}. Proteggi il token.")
     if not prepare(host=host, say=say):

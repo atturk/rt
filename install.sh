@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# RT 2.0 — Script di installazione automatizzata per macOS
+# RT — Script di installazione automatizzata per macOS (lo lancia bootstrap.sh).
+# Idempotente: rilanciarlo ripara un'installazione rotta senza toccare dati e configurazione.
+#
+# Variabili (tutte facoltative):
+#   RT_NONINTERACTIVE=1    nessuna domanda (CI, script); non apre il browser né una nuova shell
+#   RT_INSTALL_PARAKEET=0|1  installa o no macparakeet-cli e il modello (default: chiede; senza
+#                          terminale sì su Apple Silicon)
+#   RT_INSTALL_EXTRAS=0    salta gli strumenti facoltativi della CLI (micro, mpv)
+#   RT_NO_SERVICES=1       non installa i servizi in background (launchd)
+#   RT_SPA_TARBALL=<file>  web app già compilata da un file locale invece che dalla release
+#   RT_DATA_DIR=<cartella> cartella dati diversa da ~/.rt
 
 SECONDS=0
+NONINTERACTIVE="${RT_NONINTERACTIVE:-0}"
 
 # Silenzia l'auto-update di Homebrew per la durata di questo script (output più
 # pulito e installazioni più veloci/deterministiche) — non tocca la config globale
@@ -181,7 +192,9 @@ PYEOF
 
 INSTALL_PARAKEET=false
 if [ "$IS_APPLE_SILICON" = true ]; then
-    if [ ! -t 0 ]; then
+    if [ -n "${RT_INSTALL_PARAKEET:-}" ]; then
+        [ "${RT_INSTALL_PARAKEET}" = "1" ] && INSTALL_PARAKEET=true
+    elif [ ! -t 0 ] || [ "$NONINTERACTIVE" = "1" ]; then
         INSTALL_PARAKEET=true
     else
         ASK_STT_RESULT=""
@@ -238,16 +251,20 @@ echo ""
 
 # 3. Ambiente virtuale Python
 echo "${CYAN}${BOLD}[3/5] Ambiente virtuale Python${RESET}"
-if command -v micro &>/dev/null; then
-    echo "ℹ️ Editor 'micro' già installato."
+if [ "${RT_INSTALL_EXTRAS:-1}" = "0" ]; then
+    echo "ℹ️ Strumenti facoltativi (micro, mpv) saltati (RT_INSTALL_EXTRAS=0)."
 else
-    brew_install_quiet micro "micro"
-fi
+    if command -v micro &>/dev/null; then
+        echo "ℹ️ Editor 'micro' già installato."
+    else
+        brew_install_quiet micro "micro"
+    fi
 
-if command -v mpv &>/dev/null; then
-    echo "ℹ️ Media player 'mpv' già installato."
-else
-    brew_install_quiet mpv "mpv"
+    if command -v mpv &>/dev/null; then
+        echo "ℹ️ Media player 'mpv' già installato."
+    else
+        brew_install_quiet mpv "mpv"
+    fi
 fi
 
 if [ -d "$VENV_DIR" ]; then
@@ -268,38 +285,49 @@ else
 fi
 echo ""
 
-# 4. Configurazione
-echo "${CYAN}${BOLD}[4/5] Configurazione${RESET}"
-if [ -d "${REPO_DIR}/config" ]; then
-    echo "ℹ️ config/ già presente, non toccata."
-else
-    echo "⚙️ Copia di config.example/ -> config/..."
-    cp -r "${REPO_DIR}/config.example" "${REPO_DIR}/config"
-    echo "${GREEN}✅ Cartella config/ creata.${RESET}"
-fi
+# 4. Cartella dati, segreti, database e web app
+echo "${CYAN}${BOLD}[4/5] Dati, segreti, database e web app${RESET}"
+chmod +x "${REPO_DIR}/bin/rt"
+RT_BIN=("${VENV_DIR}/bin/python" "${REPO_DIR}/bin/rt")
 
-if [ -f "${REPO_DIR}/.env" ]; then
-    echo "ℹ️ .env già presente, non toccato."
-else
-    echo "⚙️ Copia di .env.example -> .env..."
-    cp "${REPO_DIR}/.env.example" "${REPO_DIR}/.env"
-    echo "${GREEN}✅ File .env creato.${RESET}"
-fi
-
-# RT4-C2: chiavi ancora in chiaro in .env e archivio cifrato assente → solo un suggerimento.
-if "${VENV_DIR}/bin/python" -c "import sys; sys.path.insert(0, sys.argv[1]); from rt.services.secrets_service import env_needs_migration as n; sys.exit(0 if n(sys.argv[1] + '/.env', sys.argv[1] + '/config/general.yaml') else 1)" "$REPO_DIR" >>"$LOG_FILE" 2>&1; then
-    echo "🔐 Le chiavi API sono in chiaro nel file .env: per cifrarle esegui 'rt secrets init' e poi 'rt secrets migrate'."
-fi
-
-# RT4-F8: web app compilata (rt web) dalla release della versione installata.
+# RT4-G2: la web app compilata della release (niente Node), prima di dati e servizi
 echo "🌐 Installazione della web app..."
 if ! "${VENV_DIR}/bin/python" -c "import sys; sys.path.insert(0, sys.argv[1]); from rt.core.spa_release import main; sys.exit(main(sys.argv[1]))" "$REPO_DIR" 2>&1 | tee -a "$LOG_FILE"; then
     echo "${YELLOW}⚠️  Web app non installata: riprova più tardi con 'rt -u'.${RESET}"
 fi
 
-echo "⚙️ Impostazione permessi di esecuzione su bin/rt..."
-chmod +x "${REPO_DIR}/bin/rt"
-echo "${GREEN}✅ Permessi impostati.${RESET}"
+# Cartella dati (~/.rt o RT_DATA_DIR): la crea, o sposta lì i dati di una 3.x; poi crea o
+# migra il database e importa le lezioni esistenti. Idempotente.
+if [ "$NONINTERACTIVE" = "1" ] || [ ! -t 0 ]; then
+    export RT_NONINTERACTIVE=1
+fi
+if ! "${RT_BIN[@]}" data post-update 2>&1 | tee -a "$LOG_FILE"; then
+    echo "${RED}❌ Preparazione di dati e database non riuscita — vedi install.log.${RESET}" >&2
+    exit 1
+fi
+
+# Segreti cifrati: chiave master nel portachiavi di macOS, archivio in <cartella dati>/config
+if "${VENV_DIR}/bin/python" -c "import sys; sys.path.insert(0, sys.argv[1]); from rt.security.secrets import default_store_path; sys.exit(0 if default_store_path().is_file() else 1)" "$REPO_DIR" >>"$LOG_FILE" 2>&1; then
+    echo "ℹ️ Archivio dei segreti cifrati già presente."
+else
+    echo "🔐 Creazione dell'archivio cifrato per chiavi API e token..."
+    # niente tee: se il portachiavi non è disponibile la chiave master viene mostrata una volta
+    # sul terminale e non deve finire in install.log
+    if "${RT_BIN[@]}" secrets init; then
+        echo "${GREEN}✅ Segreti cifrati pronti.${RESET}"
+    else
+        echo "${YELLOW}⚠️  Archivio cifrato non creato: riprova con 'rt secrets init'.${RESET}"
+    fi
+fi
+
+# Servizi in background (launchd): API + web app, worker, bot Telegram
+if [ "${RT_NO_SERVICES:-0}" = "1" ]; then
+    echo "ℹ️ Servizi in background non installati (RT_NO_SERVICES=1): usa 'rt web'."
+elif "${RT_BIN[@]}" service install 2>&1 | tee -a "$LOG_FILE"; then
+    :
+else
+    echo "${YELLOW}⚠️  Servizi non installati: riprova con 'rt service install' (vedi install.log).${RESET}"
+fi
 
 if [ -z "${SHELL_PROFILE:-}" ]; then
     case "${SHELL:-}" in
@@ -349,21 +377,42 @@ else
     echo "${RED}❌ Errore durante la verifica di ./bin/rt -h — vedi install.log per i dettagli.${RESET}" >&2
     exit 1
 fi
+# rt doctor: controlla tutto e dice cosa sistemare (non blocca: gli avvisi sono normali qui)
+"${RT_BIN[@]}" doctor 2>&1 | tee -a "$LOG_FILE" || true
 
 # Riepilogo finale
 echo ""
 echo "${GREEN}${BOLD}✅ Installazione completata in ${SECONDS}s.${RESET}"
 echo ""
+if [ "$NONINTERACTIVE" != "1" ] && [ -t 0 ] && [ -t 1 ]; then
+    echo "🌐 Apro RT nel browser per la configurazione guidata (cartella lezioni, provider e chiavi, Telegram)..."
+    api_up=false
+    if [ "${RT_NO_SERVICES:-0}" != "1" ]; then
+        for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${RT_API_PORT:-8765}/api/v1/health" >/dev/null 2>&1; then
+                api_up=true
+                break
+            fi
+            sleep 1
+        done
+    fi
+    if [ "$api_up" = true ]; then
+        "${RT_BIN[@]}" web || echo "   Aprila con: rt web"
+    else
+        echo "   Avvia la web app con: rt web"
+    fi
+    echo ""
+fi
 echo "Prossimi passi:"
 if [ -t 0 ] && [ -t 1 ]; then
-    echo "1. Verifica l'installazione con: rt -v"
-    echo "2. Scopri i comandi principali con: rt -h"
-    echo "3. Prova una pipeline di test senza costi con: rt run <cartella_lezione> --mock"
+    echo "1. Completa la configurazione guidata nel browser (o riaprila con: rt web)"
+    echo "2. Controlla l'installazione quando vuoi con: rt doctor"
+    echo "3. Backup completo dei dati con: rt backup --dest <disco esterno>"
     echo "4. Documentazione: https://github.com/atturk/rt"
 else
-    echo "1. Verifica l'installazione con: ./bin/rt -v"
-    echo "2. Scopri i comandi principali con: ./bin/rt -h"
-    echo "3. Prova una pipeline di test senza costi con: ./bin/rt run <cartella_lezione> --mock"
+    echo "1. Apri la configurazione guidata con: ./bin/rt web"
+    echo "2. Controlla l'installazione con: ./bin/rt doctor"
+    echo "3. Backup completo dei dati con: ./bin/rt backup --dest <disco esterno>"
     echo "4. Documentazione: https://github.com/atturk/rt"
 fi
 
@@ -372,7 +421,7 @@ if [ "$INSTALL_PARAKEET" = false ]; then
     echo "ℹ️ Motore ASR Parakeet non installato. Per configurare un motore ASR alternativo, vedi docs/ALTERNATIVE_TRANSCRIPTION.md."
 fi
 
-if [ -t 0 ] && [ -t 1 ]; then
+if [ "$NONINTERACTIVE" != "1" ] && [ -t 0 ] && [ -t 1 ]; then
     exec_shell="${SHELL:-/bin/zsh}"
     exec "$exec_shell" -l
 fi

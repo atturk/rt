@@ -34,6 +34,9 @@ def configure_secrets_parser(p: argparse.ArgumentParser) -> None:
     p_unset = sub.add_parser("unset", help="Rimuove un segreto dall'archivio")
     p_unset.add_argument("name")
 
+    p_show = sub.add_parser("show-key", help="Mostra la chiave master, per salvarla a parte (non è nei backup)")
+    p_show.add_argument("--yes", action="store_true", help="Non chiedere conferma")
+
     p_rot = sub.add_parser("rotate", help="Ricifra l'archivio con una chiave master nuova")
     p_rot.add_argument("--no-keyring", action="store_true",
                        help=f"Mostra la chiave nuova invece di salvarla nel portachiavi (per chi usa {MASTER_KEY_ENV})")
@@ -59,6 +62,23 @@ def _cmd_init(args: argparse.Namespace) -> None:
     if res.master_key_to_show:
         _print_key_once(res.master_key_to_show)
     print("Prossimo passo: 'rt secrets migrate' per spostare le chiavi dal file .env.")
+
+
+def _cmd_show_key(args: argparse.Namespace) -> None:
+    """RT4-G1: i backup non contengono la chiave master; questo la mostra per salvarla a parte."""
+    from rt.security.secrets import resolve_master_key
+    key = resolve_master_key()
+    if not key:
+        raise SecretStoreError(f"Nessuna chiave master: né {MASTER_KEY_ENV} né il portachiavi la contengono.")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            raise SecretStoreError("Conferma richiesta: rilancia con --yes.")
+        answer = input("La chiave master decifra tutte le chiavi API. Mostrarla ora? [s/N] ").strip().lower()
+        if answer not in ("s", "si", "sì", "y", "yes"):
+            print("Annullato.")
+            return
+    print("\n🔑 Chiave master (salvala in un password manager, non nello stesso disco del backup):")
+    print(f"   {key}\n")
 
 
 def _cmd_migrate(args: argparse.Namespace) -> None:
@@ -141,6 +161,7 @@ _HANDLERS = {
     "set": _cmd_set,
     "unset": _cmd_unset,
     "rotate": _cmd_rotate,
+    "show-key": _cmd_show_key,
 }
 
 

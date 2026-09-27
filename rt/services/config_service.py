@@ -21,12 +21,10 @@ PathLike = Union[str, Path]
 
 
 def config_dir(project_root: Optional[PathLike] = None) -> Path:
-    """Stessa precedenza di load_config(): config/ nella cwd, poi nel progetto."""
-    from rt.core.config import _default_project_root
-    local = Path.cwd() / "config"
-    if local.is_dir():
-        return local
-    return Path(project_root or _default_project_root()) / "config"
+    """Stessa precedenza di load_config() (rt.core.paths.config_home): RT_DATA_DIR, config/
+    nella cwd, cartella dati attiva, poi project_root (o la cartella del codice)."""
+    from rt.core.paths import config_home
+    return Path(config_home(project_root)) / "config"
 
 
 def general_config_path(project_root: Optional[PathLike] = None) -> Path:

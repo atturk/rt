@@ -357,6 +357,14 @@ def secret_is_set(env_var: str) -> bool:
     return bool(value) and value != "test-disabled-token"
 
 
+def telegram_configured() -> bool:
+    """Token del bot e Chat ID impostati (non i segnaposto di .env.example)."""
+    chat = (os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip()
+    token = (os.environ.get("RT_TELEGRAM_BOT_TOKEN") or "").strip()
+    return (secret_is_set("RT_TELEGRAM_BOT_TOKEN") and "your-bot-token" not in token
+            and bool(chat) and chat != "987654321")
+
+
 def telegram_value(field: str) -> str:
     """Valore completo del token del bot o del Chat ID ("" se non impostato). Solo per
     l'endpoint di rivelazione su richiesta esplicita: snapshot() ne espone solo l'anteprima."""

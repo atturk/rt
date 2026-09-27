@@ -74,6 +74,25 @@ Per eseguire l'intera suite:
 
 ---
 
+### Installazione, aggiornamento e Docker (RT 4.0, fase G)
+
+Oltre alla suite, la CI (`.github/workflows/tests.yml`) ha tre job di sistema:
+
+- `installer` (macOS pulito): `install.sh` non interattivo su una copia del codice come nella
+  release (`git archive`), con la web app da `RT_SPA_TARBALL`; poi `rt doctor`, servizi launchd
+  attivi, apertura della SPA con Playwright (`frontend/playwright.install.config.ts`), run mock
+  via API (`scripts/api_smoke.py`), seconda installazione (idempotenza), backup e disinstallazione.
+- `upgrade` (macOS pulito): una 3.5.0 con una lezione, il suo `rt -u` simulato, poi `rt -u` del
+  codice nuovo con `RT_UPDATE_OFFLINE=1` (niente rete verso GitHub): cartella dati migrata,
+  lezione importata e visibile dall'API, run mock.
+- `docker` (Ubuntu, i runner macOS non hanno Docker): `docker compose build` e
+  `scripts/docker_smoke.py`.
+
+In locale: `python scripts/docker_smoke.py` dopo `docker compose build`. I test della fase G sono
+`tests/test_data_dir.py`, `test_backup.py`, `test_service_manager.py`; `launchctl` è simulato e
+`tests/conftest.py` punta la cartella dati predefinita a un percorso vuoto, così nessun test
+legge `~/.rt`.
+
 ## 3. Configurazione Provider LLM
 
 RT supporta **OpenRouter**, **DeepSeek direct** e **Google Gemini** tramite provider adapter dedicati in `rt/llm/providers/`.

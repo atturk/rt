@@ -455,3 +455,36 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
 - **Export** (`rt/storage/export.py`): `rt export <lezione> [-o cartella] [--all] [--zip]` e
   `GET /lessons/{id}/export` scaricano il Markdown finale con le immagini che richiama, oppure
   tutti i file della lezione.
+
+## 12. Self-hosting (RT 4.0, fase G)
+
+- **Cartella dati** (`rt/core/paths.py`): un solo posto per `config/`, `.env`, `secrets.enc`,
+  `rt.db`, `media/`, stato del bot, PID, log e backup. `RT_DATA_DIR` la sceglie (vince sempre,
+  anche su `config/` nella cwd); altrimenti è `~/.rt` quando contiene `rt-data.json`, che può
+  rimandare altrove (`location`: 3.x migrate con DB e media in `<lezioni>/.rt`). Senza cartella
+  attiva vale la disposizione 3.x. `config_home()` è l'unica precedenza per config e `.env`,
+  usata da `load_config`, `load_env_file`, `config_service`, `secrets.default_store_path`, TUI.
+- **Migrazione e completamento degli aggiornamenti** (`rt/services/data_service.py`):
+  `plan_migration`/`migrate` (copia config, `.env`, stato del bot; DB con l'API di backup di
+  SQLite e `media/` spostata solo verso una `RT_DATA_DIR` scelta; rollback se un passo fallisce;
+  originali rinominati `*.migrato-<data>`). `post_update()` = `rt data post-update`, eseguito
+  da `rt -u` e da `install.sh` con il codice nuovo: migrazione, `ensure_database`, proposta di
+  cifrare le chiavi, servizi aggiornati e riavviati.
+- **Servizi** (`rt/services/service_manager.py`): LaunchAgent `com.atturk.rt.{api,worker,bot}`
+  generati con `plistlib`, gestiti con `launchctl bootstrap/bootout/kickstart`. `rt api
+  --service` non scrive il token nei log; `rt telegram-daemon --service` esce con 0 se il bot
+  non è configurato (KeepAlive solo sulle uscite con errore). Le Impostazioni avviano e fermano
+  il bot tramite launchd quando il servizio è installato; `rt web` con l'API già attiva apre solo
+  il browser.
+- **Capability dei worker**: `workers.capabilities` (Alembic 0007) registra `{"stt": motore}`.
+  `job_needs_stt()` decide se un job deve trascrivere (ingest e pipeline da audio non in mock,
+  vocali del recall); `claim()` salta quei job per un worker senza STT e `live_workers(...,
+  needs_stt=True)` guida `run_job_or_inline` e `worker_available` dell'API.
+- **Backup** (`rt/services/backup_service.py`): snapshot `rt-backup-<data>/` (DB, config,
+  `env`, stato del bot, `manifest.json`) e `media-store/<sha>` condiviso e incrementale;
+  `verify_media` controlla che ogni `lesson_files.media_path` esista. Ripristino con copia di
+  sicurezza di ciò che sostituisce.
+- **Diagnosi** (`rt/services/doctor_service.py`) e `rt uninstall` in `rt/cli_system.py`.
+- **Docker**: `Dockerfile` multi-stage (SPA con Node, runtime Python con `RT_DATA_DIR=/data` e
+  keyring nullo), `docker-compose.yml` con `api`, `worker`, `bot` (profilo `telegram`) e
+  `postgres` (profilo). Dettagli d'uso in [SELF_HOSTING.md](SELF_HOSTING.md).

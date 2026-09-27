@@ -32,12 +32,16 @@ def prepare(reset_token: bool = False, no_auth: bool = False, host: str = DEFAUL
 
 
 def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, reset_token: bool = False,
-        no_auth: bool = False, dev_cors: bool = False, say: Callable[[str], None] = print) -> int:
+        no_auth: bool = False, dev_cors: bool = False, say: Callable[[str], None] = print,
+        service: bool = False) -> int:
     import uvicorn
     from rt.api.app import create_app
     if host not in LOOPBACK:
         say(f"⚠️  L'API sarà raggiungibile da altri dispositivi su {host}:{port}. Proteggi il token.")
-    if not prepare(reset_token=reset_token, no_auth=no_auth, host=host, say=say):
+    # Come servizio (launchd, docker) il token non va nel log: si entra con il link monouso
+    # di 'rt web' oppure si genera un token da mostrare con 'rt api --reset-token'.
+    prepare_say = say if not service else _without_token(say)
+    if not prepare(reset_token=reset_token, no_auth=no_auth, host=host, say=prepare_say):
         return 1
     origins: Optional[List[str]] = DEV_SPA_ORIGINS if dev_cors else None
     app = create_app(auth_disabled=no_auth, cors_origins=origins)
@@ -47,3 +51,18 @@ def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, reset_token: bool = 
         say("⚠️  Autenticazione disattivata (--no-auth).")
     uvicorn.run(app, host=host, port=port, log_level="info")
     return 0
+
+
+def _without_token(say: Callable[[str], None]) -> Callable[[str], None]:
+    """Filtra le righe di prepare() che mostrano il token (servizi: il log non è un segreto)."""
+    hidden = {"shown": False}
+
+    def _say(line: str) -> None:
+        if line.startswith("🔑 Token API"):
+            hidden["shown"] = True
+            say("🔑 Token API creato (non mostrato nel log): entra con 'rt web', oppure 'rt api --reset-token' per vederne uno nuovo.")
+            return
+        if hidden["shown"] and (line.startswith("   ")):
+            return
+        say(line)
+    return _say

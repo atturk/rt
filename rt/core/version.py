@@ -17,6 +17,7 @@ from typing import Optional, Tuple, List
 from rt.core.spa_release import update_spa
 
 OFFICIAL_GIT_URL = "https://github.com/atturk/rt.git"
+OFFLINE_ENV = "RT_UPDATE_OFFLINE"
 
 
 def parse_semver(version_str: str) -> Optional[Tuple[int, int, int]]:
@@ -233,7 +234,46 @@ def _print_secrets_migration_hint(project_root: str) -> None:
         pass
 
 
+def _stop_services(project_root: str) -> List[str]:
+    """Fase G: ferma i servizi launchd prima di sostituire il codice (ripartono dopo)."""
+    try:
+        from rt.services import service_manager as sm
+        if sm.supported() and sm.installed():
+            stopped = sm.stop()
+            if stopped:
+                print(f"⏸  Servizi fermati per l'aggiornamento: {', '.join(stopped)}")
+            return stopped
+    except Exception as exc:
+        print(f"⚠️  Servizi non fermati: {exc}", file=sys.stderr)
+    return []
+
+
+def _post_update(project_root: str) -> bool:
+    """Fase G: con il codice NUOVO (processo separato) completa l'aggiornamento: cartella dati
+    (migrazione dalla 3.x), migrazioni del DB e import delle lezioni, segreti, servizi."""
+    venv_python = os.path.join(project_root, ".venv", "bin", "python3")
+    python = venv_python if os.path.isfile(venv_python) else sys.executable
+    try:
+        result = subprocess.run([python, os.path.join(project_root, "bin", "rt"), "data", "post-update"],
+                                cwd=project_root, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"❌ Completamento dell'aggiornamento non riuscito: {exc}", file=sys.stderr)
+        return False
+    return result.returncode == 0
+
+
 def run_update(project_root: str) -> int:
+    if os.environ.get(OFFLINE_ENV) == "1":
+        # riparazione senza rete (CI dell'installer): dipendenze, web app locale, dati e servizi
+        _stop_services(project_root)
+        ok = (_install_runtime_requirements(project_root)
+              and update_spa(project_root, get_current_version(project_root))
+              and _post_update(project_root))
+        return 0 if ok else 1
+    return _run_update(project_root)
+
+
+def _run_update(project_root: str) -> int:
     """
     Esegue l'aggiornamento automatico sicuro di RT tramite GitHub Releases:
     1. Verifica disponibilità di una versione più recente via API GitHub.
@@ -262,19 +302,24 @@ def run_update(project_root: str) -> int:
     lat_parsed = parse_semver(latest_ver)
 
     if curr_parsed is not None and lat_parsed is not None and curr_parsed >= lat_parsed:
-        if curr_parsed == lat_parsed and not (_install_runtime_requirements(project_root)
-                                              and update_spa(project_root, latest_ver)):
-            return 1
+        # stessa versione: 'rt -u' ripara (dipendenze, web app, dati, servizi)
+        if curr_parsed == lat_parsed:
+            _stop_services(project_root)
+            if not (_install_runtime_requirements(project_root) and update_spa(project_root, latest_ver)
+                    and _post_update(project_root)):
+                return 1
         print(f"Sei già aggiornato all'ultima versione ({curr_ver}).")
         return 0
 
+    _stop_services(project_root)
     if git_checkout:
         if not _update_git_checkout(project_root, latest_ver):
             return 1
         if not _install_runtime_requirements(project_root) or not update_spa(project_root, latest_ver):
             return 1
+        if not _post_update(project_root):
+            return 1
         print(f"✅ RT aggiornato: {curr_ver} → {latest_ver}")
-        _print_secrets_migration_hint(project_root)
         return 0
 
     print(f"Aggiornamento in corso ({curr_ver} → {latest_ver})...")
@@ -362,7 +407,8 @@ def run_update(project_root: str) -> int:
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+    if not _post_update(project_root):
+        return 1
     new_ver = get_current_version(project_root)
     print(f"✅ RT aggiornato: {curr_ver} → {new_ver}")
-    _print_secrets_migration_hint(project_root)
     return 0

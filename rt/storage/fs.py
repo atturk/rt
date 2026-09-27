@@ -148,13 +148,15 @@ def is_media_name(name: str) -> bool:
 # ---------------------------------------------------------------- cartelle dati
 
 def data_dir(db=None) -> str:
-    """Cartella dati di RT: quella del file SQLite, altrimenti ~/.rt."""
+    """Cartella dati delle lezioni "db" (media/, locks/): quella del file SQLite, altrimenti
+    (Postgres) la cartella dati di RT (RT_DATA_DIR o ~/.rt)."""
     from rt.db.engine import sqlite_file
     db = db or _database()
     path = sqlite_file(db.url) if db is not None else None
     if path:
         return os.path.dirname(os.path.abspath(path))
-    return os.path.join(os.path.expanduser("~"), ".rt")
+    from rt.core.paths import data_dir as rt_data_dir
+    return rt_data_dir()
 
 
 def media_dir(db=None) -> str:

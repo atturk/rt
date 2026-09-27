@@ -5,7 +5,9 @@ Risoluzione dell'URL del database, creazione dell'engine e migrazioni Alembic.
 Ordine di risoluzione dell'URL:
 1. variabile d'ambiente RT_DATABASE_URL ("off" disattiva il DB per il processo);
 2. database_url in config/general.yaml;
-3. SQLite in <lessons_root>/.rt/rt.db, oppure ~/.rt/rt.db se lessons_root non è impostato.
+3. SQLite in <cartella dati>/rt.db (RT_DATA_DIR o ~/.rt inizializzata, rt.core.paths);
+4. senza cartella dati (installazioni 3.x non ancora migrate): <lessons_root>/.rt/rt.db,
+   oppure ~/.rt/rt.db se lessons_root non è impostato.
 
 Dalla fase D il DB è sempre attivo: ogni comando rt chiama rt.db.bootstrap.ensure_database(),
 che crea il file se manca e applica le migrazioni pendenti sotto un file lock (e importa le
@@ -60,6 +62,10 @@ def resolve_database_url(config=None) -> Optional[str]:
     url = getattr(config, "database_url", None)
     if url:
         return None if str(url).strip().lower() in DISABLED_VALUES else str(url).strip()
+    from rt.core.paths import active_data_dir
+    data = active_data_dir()
+    if data:  # RT4-G1: con la cartella dati il DB sta lì, accanto a media/
+        return "sqlite:///" + os.path.join(data, "rt.db")
     return "sqlite:///" + default_sqlite_path(config.telegram.lessons_root)
 
 
@@ -237,7 +243,7 @@ def _warn_once(key: str, message: str) -> None:
 def current_database_url() -> Optional[str]:
     """URL del DB per questo processo (in cache per variabile d'ambiente e cwd: load_config
     legge i YAML). None se disattivato."""
-    key = (os.environ.get(ENV_VAR), os.getcwd())
+    key = (os.environ.get(ENV_VAR), os.environ.get("RT_DATA_DIR"), os.getcwd())
     if key not in _url_cache:
         _url_cache[key] = resolve_database_url()
     return _url_cache[key]

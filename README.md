@@ -30,23 +30,38 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 ### 1. Requisiti e Configurazione
 
-#### Installazione Automatica (Consigliata su macOS)
+#### Installazione in un comando (macOS)
 
-Scarica ed installa l'ultima release ufficiale di RT con un solo comando:
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/atturk/rt/main/bootstrap.sh)"
 ```
 
-*(In alternativa, per chi preferisce vedere prima cosa scarica)*:
+Il comando scarica l'ultima release in `./rt` e fa tutto il resto: prerequisiti (Homebrew,
+Python 3.11+, `ffmpeg`, `macparakeet-cli` se lo vuoi), ambiente Python, web app già compilata,
+cartella dati `~/.rt` (configurazione, segreti cifrati, database, audio e immagini), servizi in
+background per API, worker e bot Telegram, e alla fine apre il browser sulla **configurazione
+guidata** (cartella delle lezioni, provider e chiavi, Telegram facoltativo). Non ci sono altri
+passaggi. Rilanciarlo ripara un'installazione rotta senza toccare i dati.
+
+Dopo l'installazione:
+
 ```bash
-mkdir -p rt && curl -sL $(curl -sL https://api.github.com/repos/atturk/rt/releases/latest | grep '"tarball_url":' | cut -d '"' -f 4) | tar -xz -C rt --strip-components=1 && cd rt && ./install.sh
+rt web          # apre la web app (i servizi sono già attivi)
+rt doctor       # controlla l'installazione e dice cosa sistemare
+rt backup --dest /Volumes/Disco/rt-backup   # backup completo: database, media, configurazione
+rt -u           # aggiorna codice, dipendenze, web app, database e servizi
+rt uninstall    # rimuove servizi e ambiente Python; dati e lezioni restano
 ```
 
-*(In alternativa per sviluppatori con git già installato)*:
+Chi arriva dalla 3.x aggiorna con `rt -u` (se serve, due volte: la prima con il codice vecchio):
+configurazione e dati vengono spostati nella cartella dati, le lezioni importate nel database e
+viene proposta la cifratura delle chiavi. Servizi, backup, Docker e percorsi sono descritti in
+[Self-hosting](docs/SELF_HOSTING.md).
+
+*(Per sviluppatori con git)*:
 ```bash
 git clone https://github.com/atturk/rt.git && cd rt && ./install.sh
 ```
-Lo script `install.sh` verifica i prerequisiti di sistema (Homebrew, Python 3.11+, `ffmpeg`), crea l'ambiente virtuale `.venv`, installa le dipendenze e inizializza i file di configurazione (`config/` e `.env`).
 
 #### Installazione Manuale (Alternativa / Non-macOS)
 
@@ -59,25 +74,21 @@ Per lo sviluppo e l'esecuzione dei test:
 pip install -r requirements-dev.txt
 ```
 
-Copia il template per le variabili d'ambiente (opzionale se si usano chiamate LLM reali):
+Configurazione, `.env`, database e media stanno nella cartella dati `~/.rt` (o `RT_DATA_DIR`),
+non nella cartella del codice; `./bin/rt data` mostra i percorsi in uso. La via più semplice
+è la configurazione guidata della web app (`./bin/rt web`); in alternativa:
+
 ```bash
-cp .env.example .env
-# Le chiavi che inserirai qui devono corrispondere ai nomi 'env_var' che dichiari
-# in config/general.yaml sotto 'credentials:' (vedi docs/CONFIGURATION_REFERENCE.md)
+./bin/rt data init      # crea ~/.rt con la configurazione di partenza
+./bin/rt config         # configurazione guidata nel terminale
+./bin/rt secrets init   # archivio cifrato per chiavi API e token
 ```
 
-Configurazione dei job e dei modelli:
-
-Per una configurazione guidata e interattiva:
-```bash
-./bin/rt config
-```
-In alternativa, per configurare manualmente:
-```bash
-cp -r config.example config
-# Modifica config/general.yaml e i singoli file per-job config/<job>.yaml
-```
+Per configurare a mano modifica `~/.rt/config/general.yaml` e i file per-job
+`~/.rt/config/<job>.yaml`.
 > I file YAML in `config.example/` sono volutamente senza commenti: il significato di ogni campo e le funzionalità opzionali (credenziali custom, pricing globale/per-route) sono documentati in [Guida alla Configurazione (CONFIGURATION_REFERENCE.md)](docs/CONFIGURATION_REFERENCE.md).
+
+Su Linux (server) RT gira anche con Docker: vedi [Self-hosting](docs/SELF_HOSTING.md#docker).
 
 
 #### Interfaccia web locale
@@ -158,39 +169,25 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ### 4. Notifiche e Comandi via Telegram (opzionale)
 
 Le funzionalità Telegram (routing per topic in base alla materia, notifica di build completata,
-`/list`, `/recall <query>`, active recall via bot) richiedono un **processo persistente** distinto
-dalla pipeline `rt run`:
+`/list`, `/recall <query>`, active recall via bot) richiedono il bot sempre attivo. Con
+l'installazione in un comando è il servizio in background `bot`: parte da solo appena configuri
+token e chat (web app > Impostazioni > Telegram) e si avvia o ferma anche da lì.
 
 ```bash
-./bin/rt telegram-daemon
+rt service status        # stato di API, worker e bot
+rt service restart bot   # dopo aver cambiato la configurazione a mano
 ```
 
-Senza questo processo in esecuzione continua, nessuna funzionalità Telegram funziona — anche se
-`config/general.yaml`/`.env` sono configurati correttamente (verifica prima con `./bin/rt config`,
-vedi sopra). Va lasciato attivo in un terminale/tab dedicato, con `tmux`/`screen`, oppure fatto
-ripartire automaticamente ad ogni accesso con un LaunchAgent macOS
-(`~/Library/LaunchAgents/com.rt.telegram-daemon.plist`):
+Senza servizi (`RT_NO_SERVICES=1` o installazione manuale) si avvia a mano con
+`./bin/rt telegram-daemon`, da lasciare aperto in un terminale.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>com.rt.telegram-daemon</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/percorso/assoluto/rt/bin/rt</string>
-        <string>telegram-daemon</string>
-    </array>
-    <key>WorkingDirectory</key><string>/percorso/assoluto/rt</string>
-    <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key><true/>
-    <key>StandardOutPath</key><string>/percorso/assoluto/rt/.rt_telegram/daemon.log</string>
-    <key>StandardErrorPath</key><string>/percorso/assoluto/rt/.rt_telegram/daemon.err.log</string>
-</dict>
-</plist>
+**Dalla 3.x:** se avevi creato a mano `~/Library/LaunchAgents/com.rt.telegram-daemon.plist`,
+rimuovilo, altrimenti girano due bot sullo stesso token (`rt doctor` lo segnala):
+
+```bash
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.rt.telegram-daemon.plist
+rm ~/Library/LaunchAgents/com.rt.telegram-daemon.plist
 ```
-poi caricalo con `launchctl load ~/Library/LaunchAgents/com.rt.telegram-daemon.plist`.
 
 ---
 
@@ -202,6 +199,7 @@ poi caricalo con `launchctl load ~/Library/LaunchAgents/com.rt.telegram-daemon.p
 - [Modelli Dati e Contratti JSON (SCHEMAS.md)](docs/SCHEMAS.md)
 - [Guida allo Sviluppo e Test Suite (DEVELOPMENT.md)](https://github.com/atturk/rt/blob/main/docs/DEVELOPMENT.md)
 - [Motori di Trascrizione Alternativi (ALTERNATIVE_TRANSCRIPTION.md)](docs/ALTERNATIVE_TRANSCRIPTION.md)
+- [Self-hosting: servizi, backup, Docker (SELF_HOSTING.md)](docs/SELF_HOSTING.md)
 
 
 ---
@@ -217,7 +215,7 @@ python3 -m pytest tests/
 ## Sviluppo e distribuzione
 
 La radice del repository `rt/` contiene il pacchetto Python omonimo `rt/`: non sono due copie del progetto.
-Configurazione personale, segreti e stato Telegram restano locali; lezioni e backup vanno fuori dal checkout.
+Configurazione personale, segreti, database e stato Telegram stanno nella cartella dati (`~/.rt`), fuori dal checkout.
 Le installazioni da release e i cloni Git puliti sul branch `main` si aggiornano con
 `rt -u`; il comando si ferma senza cambiare i file se rileva modifiche locali o un
 altro branch. Chi usa una versione precedente alla 3.4.2 in un clone Git deve

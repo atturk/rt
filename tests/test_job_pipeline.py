@@ -94,9 +94,35 @@ def test_ingest_audio_needs_macos(queue, tmp_path, monkeypatch):
         (RUN_PIPELINE, pipeline_payload(str(tmp_path / "demo_lecture.wav"), PipelineOptions())),
     ):
         job_id = queue.enqueue(job_type, None, payload)
-        _worker(queue).run_once()
+        # RT4-G1: un worker Linux senza motore STT non prende il job, che aspetta un worker sul Mac
+        assert _worker(queue).run_once() is None
+        assert queue.get(job_id).state == "queued"
+        # un worker che si dichiara capace ma non lo è davvero fallisce con un messaggio chiaro
+        Worker(queue, on_message=lambda m: None, stt="macparakeet").run_once()
         job = queue.get(job_id)
         assert job.state == "failed" and "solo su macOS" in job.error
+
+
+def test_worker_stt_capability(queue, tmp_path, monkeypatch):
+    from rt.services.jobs import detect_stt_capability, job_needs_stt
+    monkeypatch.setattr("sys.platform", "linux")
+    audio = str(tmp_path / "a.wav")
+    shutil.copy(AUDIO_FIXTURE, audio)
+    assert job_needs_stt(INGEST_AUDIO, {"inputs": [audio], "options": {}})
+    assert not job_needs_stt(INGEST_AUDIO, {"inputs": [audio], "options": {"mock": True}})
+    assert not job_needs_stt(RECALL_GENERATE, {})
+    assert job_needs_stt("transcribe_voice", {"path": "x.ogg"})
+    assert detect_stt_capability("auto") is None
+    assert detect_stt_capability("auto", mock=True) == "mock"
+    assert detect_stt_capability("none") is None
+    monkeypatch.setattr("sys.platform", "darwin")
+    assert detect_stt_capability("auto") == "macparakeet"
+    linux = Worker(queue, on_message=lambda m: None, stt="none")
+    linux.register()
+    assert queue.live_workers(INGEST_AUDIO) and not queue.live_workers(INGEST_AUDIO, needs_stt=True)
+    mac = Worker(queue, on_message=lambda m: None, stt="macparakeet")
+    mac.register()
+    assert [w["id"] for w in queue.live_workers(INGEST_AUDIO, needs_stt=True)] == [mac.worker_id]
 
 
 def test_recall_generate_job(queue, tmp_path):
@@ -112,7 +138,8 @@ def test_recall_generate_job(queue, tmp_path):
 @pytest.fixture
 def background_worker(queue):
     stop = threading.Event()
-    worker = Worker(queue, poll_interval=0.05, on_message=lambda m: None)
+    # come il worker sul Mac: sa trascrivere (le capability sono provate a parte)
+    worker = Worker(queue, poll_interval=0.05, on_message=lambda m: None, stt="macparakeet")
     worker.register()
     thread = threading.Thread(target=worker.run, kwargs={"stop_event": stop}, daemon=True)
     thread.start()

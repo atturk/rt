@@ -430,8 +430,8 @@ def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> 
     """
     from dotenv import load_dotenv
     if dotenv_path is None:
-        cwd_path = os.path.join(os.getcwd(), ".env")
-        dotenv_path = cwd_path if os.path.isfile(cwd_path) else os.path.join(_default_project_root(), ".env")
+        from rt.core.paths import env_file
+        dotenv_path = env_file(_default_project_root())
     load_dotenv(dotenv_path=dotenv_path, override=override)
     # RT4-C1: i segreti dell'archivio cifrato (se esiste) vincono su .env ma non sulle
     # variabili esportate a mano. Senza config/secrets.enc non cambia nulla.
@@ -524,7 +524,7 @@ def _load_config_dir(config_dir: str) -> RTConfig:
 
 def load_config(config_path: Optional[str] = None) -> RTConfig:
     """Carica la configurazione. Se config_path è esplicito, comportamento invariato.
-    Altrimenti: usa 'config/' nella cwd se presente (comportamento invariato per chi
+    Altrimenti (RT4-G1: prima di tutto RT_DATA_DIR/config): usa 'config/' nella cwd se presente (comportamento invariato per chi
     lancia 'rt' da dentro la project root); se non c'è, prova 'config/' nella project
     root reale (posizione del pacchetto 'rt'), per funzionare anche lanciando 'rt' da
     qualunque altra cartella; se non trovata in nessuna delle due, restituisce i
@@ -534,13 +534,12 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
         cfg = _load_rtconfig_from_file(config_path)
         return _resolve_telegram_state_dir(cfg, os.path.dirname(os.path.abspath(config_path)))
 
-    cwd_config_dir = os.path.join(os.getcwd(), "config")
-    if os.path.isdir(cwd_config_dir):
-        return _resolve_telegram_state_dir(_load_config_dir(cwd_config_dir), os.getcwd())
+    # RT4-G1: RT_DATA_DIR, poi config/ nella cwd, poi la cartella dati attiva (~/.rt),
+    # poi la cartella del codice (rt.core.paths.config_home)
+    from rt.core.paths import config_home
+    home = config_home(_default_project_root())
+    home_config_dir = os.path.join(home, "config")
+    if os.path.isdir(home_config_dir):
+        return _resolve_telegram_state_dir(_load_config_dir(home_config_dir), home)
 
-    project_root = _default_project_root()
-    root_config_dir = os.path.join(project_root, "config")
-    if os.path.isdir(root_config_dir):
-        return _resolve_telegram_state_dir(_load_config_dir(root_config_dir), project_root)
-
-    return _resolve_telegram_state_dir(RTConfig(), project_root)
+    return _resolve_telegram_state_dir(RTConfig(), home)

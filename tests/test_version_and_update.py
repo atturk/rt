@@ -31,6 +31,15 @@ def no_spa_download():
         yield update_spa
 
 
+@pytest.fixture(autouse=True)
+def no_post_update():
+    """Il completamento con il codice nuovo (fase G: dati, DB, servizi) ha i suoi test
+    (test_data_dir.py): qui si controlla solo che venga chiamato."""
+    with patch("rt.core.version._post_update", return_value=True) as post, \
+         patch("rt.core.version._stop_services", return_value=[]):
+        yield post
+
+
 def test_parse_semver_and_format_version():
     assert parse_semver("v2.4.0") == (2, 4, 0)
     assert parse_semver("2.4.0") == (2, 4, 0)

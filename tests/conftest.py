@@ -50,6 +50,15 @@ def _disable_real_telegram_notifications():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_data_dir(tmp_path_factory, monkeypatch):
+    """RT4-G1: nessun test legge la cartella dati reale (~/.rt con config/, .env e rt.db):
+    RT_DATA_DIR è tolta e la cartella dati predefinita punta a un percorso vuoto. I test della
+    cartella dati impostano RT_DATA_DIR da sé."""
+    monkeypatch.delenv("RT_DATA_DIR", raising=False)
+    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(tmp_path_factory.getbasetemp() / "no-data-dir"))
+
+
+@pytest.fixture(autouse=True)
 def _isolate_database(monkeypatch):
     """Nessun test tocca il database reale dell'utente (quello in <lessons_root>/.rt/rt.db
     della config della macchina): il DB è spento per default e i test del DB lo attivano

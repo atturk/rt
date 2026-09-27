@@ -104,3 +104,138 @@ jobs:
             frontend/playwright-report
             frontend/test-results
           retention-days: 7
+
+  # RT4-G2: il comando di installazione su un Mac pulito, in modalità non interattiva
+  installer:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      RT_NONINTERACTIVE: "1"
+      RT_INSTALL_PARAKEET: "0"
+      RT_INSTALL_EXTRAS: "0"
+      RT_SPA_TARBALL: ${{ github.workspace }}/rt-spa.tar.gz
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Web app compilata (come quella allegata alla release)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          tar -C dist -czf "$RT_SPA_TARBALL" .
+      - name: Installazione (install.sh su una copia del codice come nella release)
+        run: |
+          mkdir -p "$HOME/rt-ci"
+          git archive HEAD | tar -x -C "$HOME/rt-ci"
+          cd "$HOME/rt-ci" && ./install.sh
+      - name: rt doctor
+        run: $HOME/rt-ci/bin/rt doctor
+      - name: Servizi launchd attivi
+        run: |
+          $HOME/rt-ci/bin/rt service status
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/api/v1/health && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8765/api/v1/health
+      - name: La web app si apre (Playwright)
+        working-directory: frontend
+        run: |
+          npx playwright install chromium
+          RT_LOGIN_URL="$($HOME/rt-ci/bin/rt web --no-browser | grep -o 'http://[^ ]*/login?code=[A-Za-z0-9_-]*' | head -1)" \
+            npx playwright test -c playwright.install.config.ts
+      - name: Run mock completo via API
+        run: $HOME/rt-ci/.venv/bin/python scripts/api_smoke.py --login-cmd "$HOME/rt-ci/bin/rt web --no-browser" --lessons-root "$HOME/Lezioni-ci"
+      - name: Rilanciare l'installazione ripara senza perdere dati
+        run: |
+          rm -rf "$HOME/rt-ci/rt/spa"
+          cd "$HOME/rt-ci" && ./install.sh
+          $HOME/rt-ci/bin/rt doctor
+          $HOME/rt-ci/.venv/bin/python "$GITHUB_WORKSPACE/scripts/api_smoke.py" --login-cmd "$HOME/rt-ci/bin/rt web --no-browser" --expect-lessons 1
+      - name: Backup completo
+        run: $HOME/rt-ci/bin/rt backup --dest "$HOME/rt-backup"
+      - name: Disinstallazione (i dati restano)
+        run: |
+          $HOME/rt-ci/bin/rt uninstall --yes
+          test ! -e "$HOME/Library/LaunchAgents/com.atturk.rt.api.plist"
+          test -f "$HOME/.rt/rt.db"
+      - name: Log in caso di errore
+        if: failure()
+        run: |
+          cat "$HOME/rt-ci/install.log" || true
+          tail -n 100 $HOME/.rt/logs/*.log || true
+
+  # RT4-G2: 'rt -u' sopra una 3.5.0 (disposizione 3.x: config nella cartella di RT, niente DB)
+  upgrade:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      RT_NONINTERACTIVE: "1"
+      RT_SPA_TARBALL: ${{ github.workspace }}/rt-spa.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Web app compilata
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          tar -C dist -czf "$RT_SPA_TARBALL" .
+      - name: RT 3.5.0 con una lezione
+        run: |
+          # un'installazione 3.5.0 ha già ffmpeg (lo installava il suo install.sh)
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install ffmpeg
+          OLD="$HOME/rt-old"
+          mkdir -p "$OLD" "$HOME/Lezioni-old"
+          curl -fsSL https://github.com/atturk/rt/archive/refs/tags/v3.5.0.tar.gz | tar -xz -C "$OLD" --strip-components=1
+          python3 -m venv "$OLD/.venv"
+          "$OLD/.venv/bin/pip" install -q -r "$OLD/requirements.txt"
+          cp -r "$OLD/config.example" "$OLD/config"
+          : > "$OLD/.env"
+          printf '\ntelegram:\n  lessons_root: %s\n' "$HOME/Lezioni-old" >> "$OLD/config/general.yaml"
+          # la 3.5.0 chiede di approvare la scaletta anche con --auto-accept: 'a' = approva
+          printf 'a\n' | "$OLD/bin/rt" run "$GITHUB_WORKSPACE/tests/fixtures/demo_lecture.wav" -d 2026-09-20 \
+            -m FISIOLOGIA -a "Il rene" -o "$HOME/Lezioni-old" --mock --auto-accept --channel terminal
+          ls "$HOME/Lezioni-old"
+      - name: Il 'rt -u' della 3.5.0 sincronizza il codice nuovo e le dipendenze
+        run: |
+          git archive HEAD | tar -x -C "$HOME/rt-old"
+          "$HOME/rt-old/.venv/bin/pip" install -q -r "$HOME/rt-old/requirements.txt"
+      - name: rt -u con il codice nuovo (senza rete verso GitHub)
+        env:
+          RT_UPDATE_OFFLINE: "1"
+        run: $HOME/rt-old/bin/rt -u
+      - name: Dati migrati, database e lezioni importate
+        run: |
+          $HOME/rt-old/bin/rt data
+          test -f "$HOME/.rt/rt-data.json"
+          test ! -d "$HOME/rt-old/config"
+          $HOME/rt-old/bin/rt doctor
+      - name: Lezione 3.x visibile e run mock via API
+        run: $HOME/rt-old/.venv/bin/python scripts/api_smoke.py --login-cmd "$HOME/rt-old/bin/rt web --no-browser" --expect-lessons 1
+      - name: Log in caso di errore
+        if: failure()
+        run: tail -n 100 $HOME/Lezioni-old/.rt/logs/*.log $HOME/.rt/logs/*.log || true
+
+  # RT4-G1: 'docker compose up' avvia API e worker e un run mock completo funziona via API.
+  # Su ubuntu perché i runner macOS non hanno Docker; il resto della CI resta su macOS.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build dell'immagine
+        run: docker compose build
+      - name: Run mock via API nello stack
+        run: |
+          python -m pip install -q requests
+          python scripts/docker_smoke.py

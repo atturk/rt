@@ -90,16 +90,14 @@ def _save_secret(env_path: str, key: str, value: str) -> None:
 def _resolve_or_bootstrap_config_paths() -> Tuple[str, str]:
     """
     Risolve i percorsi per la cartella config/ ed il file .env.
-    Se config/ non esiste in cwd né in project root, inizializza config/ copiando da config.example/.
+    Se config/ non esiste (in RT_DATA_DIR, nella cwd, nella cartella dati o nel progetto:
+    rt.core.paths.config_home), la inizializza copiando da config.example/.
     """
-    cwd_config = os.path.join(os.getcwd(), "config")
-    cwd_env = os.path.join(os.getcwd(), ".env")
-    if os.path.isdir(cwd_config):
-        return cwd_config, cwd_env
-
+    from rt.core.paths import config_home
     project_root = _default_project_root()
-    root_config = os.path.join(project_root, "config")
-    root_env = os.path.join(project_root, ".env")
+    home = config_home(project_root)
+    root_config = os.path.join(home, "config")
+    root_env = os.path.join(home, ".env")
     if os.path.isdir(root_config):
         return root_config, root_env
 
