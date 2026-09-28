@@ -115,7 +115,7 @@ def run_rewrite(
         result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx)
         if result.get("status") in ("draft_validated", "unit_regenerated"):
             from rt.services.unit_relevance import refresh
-            refresh(lesson_dir, force_mock=force_mock)
+            refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
         return scope.complete(result)
 
 

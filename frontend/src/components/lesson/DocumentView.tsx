@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import type { Schemas } from '@/api/client'
 import { activeUnit } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
+import { renderDelimitedMath } from '@/lib/math'
 import { useLessonAudio } from './audio'
 
 type Props = {
@@ -65,6 +66,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   useEffect(() => {
     const root = ref.current
     if (!root) return
+    renderDelimitedMath(root)
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
       if (!heading) continue

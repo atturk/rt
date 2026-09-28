@@ -130,8 +130,17 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     cfg = load_config()
     count = int(p.get("count") or cfg.telegram.recall.reserve_targets.get(qtype.value, 5))
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
+    from rt.services.unit_relevance import list_units, mode
+    from rt.services.events import Notice
     with ctx.activate():
-        generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")))
+        generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")))
+        units = list_units(job.lesson_path)["units"] if mode() != "disabled" else []
+        excluded = [u["unit_id"] for u in units if u["effective"] != "didactic"]
+        message = f"Recall {qtype.value}: richieste {count}, generate {len(generated)}."
+        if excluded:
+            label = "escluse" if mode() == "active" else "non didattiche rilevate (gate in ombra)"
+            message += f" Unità {label}: {len(excluded)} ({', '.join(excluded[:12])}{'…' if len(excluded) > 12 else ''})."
+        ctx.emit(Notice(message=message))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
 

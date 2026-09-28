@@ -25,7 +25,7 @@ from rt.llm.prompts import (
 from rt.pipeline.rewrite import load_draft
 from rt.core.lesson_paths import lesson_path
 from rt.core.asr_risk import detect_statistical_asr_risks
-from rt.llm.jev_client import call_jev, JevChoiceQuestion, JevNoulQuestion, JevError
+from rt.llm.jev_client import call_jev, JevChoiceQuestion, JevNoulQuestion, JevScoreQuestion, JevError
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -193,46 +193,50 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
     Ritorna None se la chiamata fallisce: fallback prudente, nessuno skip verrà applicato.
     """
     try:
+        base_instructions = (
+            "Sei un revisore scientifico che classifica un singolo paragrafo di prosa "
+            "accademica (già rielaborato da una trascrizione di lezione universitaria) "
+            "in base alla gravità di eventuali errori scientifici presenti, SENZA accesso "
+            "alla trascrizione originale. Non correggere il testo: classifica solo la "
+            "gravità di ciò che vi leggi. Ignora eventuali refusi isolati o termini "
+            "graficamente sospetti che sembrano artefatti di trascrizione automatica (ASR) "
+            "non ancora corretti: non è compito tuo, e non contano come errore scientifico "
+            "se isolati e privi di altro significato rilevante."
+        )
+        if jev_cfg.prefilter_type == "noul":
+            question = JevNoulQuestion(instructions=base_instructions + " Stima la probabilità che sia presente un errore concettuale grave, da 0 a 1." + ("\n" + jev_cfg.prefilter_prompt if jev_cfg.prefilter_prompt else ""))
+        elif jev_cfg.prefilter_type == "score":
+            question = JevScoreQuestion(instructions=base_instructions + " Assegna un punteggio 0–1 alla probabilità di errore grave.", criteria=["Probabilità di un errore concettuale grave (0 = assente, 1 = certo)." + (" Istruzioni aggiuntive: " + jev_cfg.prefilter_prompt if jev_cfg.prefilter_prompt else "")])
+        else:
+            question = JevChoiceQuestion(
+                instructions=base_instructions + ("\n" + jev_cfg.prefilter_prompt if jev_cfg.prefilter_prompt else ""),
+                criteria={
+                    "corretta": (
+                        "Il testo è scientificamente corretto, oppure contiene al più imprecisioni "
+                        "terminologiche irrilevanti che non cambiano il significato concettuale."
+                    ),
+                    "imprecisione": (
+                        "Il testo contiene una semplificazione o approssimazione minore, di nessuna "
+                        "reale conseguenza per la preparazione dell'esame — ad esempio una "
+                        "generalizzazione innocua o un dettaglio tecnico secondario reso in modo "
+                        "impreciso (es. descrivere come lo stesso enzima due isoforme distinte che "
+                        "catalizzano reazioni analoghe). Non merita una segnalazione: correggerla "
+                        "sarebbe pignoleria controproducente."
+                    ),
+                    "errore_grave": (
+                        "Il testo contiene un errore concettuale che potrebbe genuinamente "
+                        "confondere uno studente durante il ripasso attivo, generare domande di "
+                        "richiamo fuorvianti, o riflette un vero fraintendimento concettuale del "
+                        "docente — ad esempio confondere due strutture anatomicamente distinte in "
+                        "un modo che genera vera confusione (es. dire 'carotide' intendendo "
+                        "'coronaria'), oppure affermare con sicurezza il contrario di un fatto "
+                        "consolidato e ben noto (es. sostenere che i bastoncelli sono meno numerosi "
+                        "dei coni, quando è vero il contrario)."
+                    ),
+                })
         resp = call_jev(
             state=unit.content,
-            questions={
-                "correttezza": JevChoiceQuestion(
-                    instructions=(
-                        "Sei un revisore scientifico che classifica un singolo paragrafo di prosa "
-                        "accademica (già rielaborato da una trascrizione di lezione universitaria) "
-                        "in base alla gravità di eventuali errori scientifici presenti, SENZA accesso "
-                        "alla trascrizione originale. Non correggere il testo: classifica solo la "
-                        "gravità di ciò che vi leggi. Ignora eventuali refusi isolati o termini "
-                        "graficamente sospetti che sembrano artefatti di trascrizione automatica (ASR) "
-                        "non ancora corretti: non è compito tuo, e non contano come errore scientifico "
-                        "se isolati e privi di altro significato rilevante."
-                    ),
-                    criteria={
-                        "corretta": (
-                            "Il testo è scientificamente corretto, oppure contiene al più imprecisioni "
-                            "terminologiche irrilevanti che non cambiano il significato concettuale."
-                        ),
-                        "imprecisione": (
-                            "Il testo contiene una semplificazione o approssimazione minore, di nessuna "
-                            "reale conseguenza per la preparazione dell'esame — ad esempio una "
-                            "generalizzazione innocua o un dettaglio tecnico secondario reso in modo "
-                            "impreciso (es. descrivere come lo stesso enzima due isoforme distinte che "
-                            "catalizzano reazioni analoghe). Non merita una segnalazione: correggerla "
-                            "sarebbe pignoleria controproducente."
-                        ),
-                        "errore_grave": (
-                            "Il testo contiene un errore concettuale che potrebbe genuinamente "
-                            "confondere uno studente durante il ripasso attivo, generare domande di "
-                            "richiamo fuorvianti, o riflette un vero fraintendimento concettuale del "
-                            "docente — ad esempio confondere due strutture anatomicamente distinte in "
-                            "un modo che genera vera confusione (es. dire 'carotide' intendendo "
-                            "'coronaria'), oppure affermare con sicurezza il contrario di un fatto "
-                            "consolidato e ben noto (es. sostenere che i bastoncelli sono meno numerosi "
-                            "dei coni, quando è vero il contrario)."
-                        ),
-                    },
-                )
-            },
+            questions={"correttezza": question},
             job_name="jev_task_a",
             unit_id=unit.unit_id,
             lesson_dir=lesson_dir,
@@ -245,11 +249,24 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
         return None
 
     answer = resp.answers.get("correttezza")
-    if answer is None or answer.type != "choice" or answer.choice not in {"corretta", "imprecisione", "errore_grave"} or not 0 <= answer.confidence <= 1:
+    if answer is None:
         return None
-
-    should_skip = (answer.choice != "errore_grave") and (answer.confidence >= jev_cfg.task_a_skip_confidence_threshold)
-    return JevTaskAVerdict(choice=answer.choice, confidence=answer.confidence, should_skip_expensive_llm=should_skip)
+    if jev_cfg.prefilter_type == "choice":
+        if answer.type != "choice" or answer.choice not in {"corretta", "imprecisione", "errore_grave"} or not 0 <= answer.confidence <= 1:
+            return None
+        choice, confidence = answer.choice, answer.confidence
+        should_skip = choice != "errore_grave" and confidence >= jev_cfg.task_a_skip_confidence_threshold
+    elif jev_cfg.prefilter_type == "noul":
+        if answer.type != "noul": return None
+        confidence = answer.noul
+        choice = "errore_grave" if confidence >= jev_cfg.task_a_skip_confidence_threshold else "corretta"
+        should_skip = confidence < jev_cfg.task_a_skip_confidence_threshold
+    else:
+        if answer.type != "score" or not 0 <= answer.score <= 1: return None
+        confidence = answer.confidence
+        choice = "errore_grave" if answer.score >= jev_cfg.task_a_skip_confidence_threshold else "corretta"
+        should_skip = answer.score < jev_cfg.task_a_skip_confidence_threshold
+    return JevTaskAVerdict(choice=choice, confidence=confidence, should_skip_expensive_llm=should_skip)
 
 
 def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
@@ -281,6 +298,7 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
                         "grezzi. Valuta quanto è vera l'affermazione: 'Il testo rielaborato contiene "
                         "contenuto sostanziale non supportato dai segmenti grezzi, o si discosta "
                         "significativamente dal loro significato.'"
+                        + ("\n" + jev_cfg.prefilter_prompt if jev_cfg.prefilter_prompt else "")
                     ),
                 )
             },
@@ -395,7 +413,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx)."""
     from rt.services.unit_relevance import refresh
-    refresh(lesson_dir, force_mock=force_mock)
+    refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
     with phase_scope(ctx, "review") as scope:
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
 

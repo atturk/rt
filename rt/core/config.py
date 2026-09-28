@@ -298,6 +298,8 @@ class JevConfig(BaseModel):
     relevance_model: str = Field(default="", description="Modello decisionale configurato esplicitamente per la rilevanza")
     relevance_prompt: str = Field(default="", description="Istruzioni aggiuntive per la rilevanza didattica")
     relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per escludere un'unità non didattica")
+    prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta Jev usato dal prefiltro errori (il gate rilevanza resta choice)")
+    prefilter_prompt: str = Field(default="", description="Istruzioni aggiuntive per il prefiltro errori")
 
 
 class RTConfig(BaseModel):

@@ -486,6 +486,22 @@
             "title": "Model",
             "type": "string"
           },
+          "prefilter_prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Prefilter Prompt",
+            "type": "string"
+          },
+          "prefilter_type": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ],
+            "title": "Prefilter Type",
+            "type": "string"
+          },
           "relevance_mode": {
             "default": "shadow",
             "enum": [
@@ -543,6 +559,16 @@
           "ok": {
             "title": "Ok",
             "type": "boolean"
+          },
+          "request_type": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ],
+            "title": "Request Type",
+            "type": "string"
           }
         },
         "required": [

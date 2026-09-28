@@ -40,6 +40,8 @@ export function DecisionModelSection() {
   const [enabledDraft, setEnabled] = useState<boolean | null>(null)
   const [relevanceModeDraft, setRelevanceMode] = useState<'disabled' | 'shadow' | 'active' | null>(null)
   const [relevancePromptDraft, setRelevancePrompt] = useState<string | null>(null)
+  const [prefilterPromptDraft, setPrefilterPrompt] = useState<string | null>(null)
+  const [prefilterTypeDraft, setPrefilterType] = useState<'choice' | 'noul' | 'score' | null>(null)
   const [relevanceThresholdDraft, setRelevanceThreshold] = useState<number | null>(null)
   const model = modelDraft ?? configured.data?.model ?? ''
   const relevanceModel = relevanceModelDraft ?? configured.data?.relevance_model ?? ''
@@ -49,19 +51,21 @@ export function DecisionModelSection() {
   const enabled = enabledDraft ?? configured.data?.enabled ?? false
   const relevanceMode = relevanceModeDraft ?? configured.data?.relevance_mode ?? 'shadow'
   const relevancePrompt = relevancePromptDraft ?? configured.data?.relevance_prompt ?? ''
+  const prefilterPrompt = prefilterPromptDraft ?? configured.data?.prefilter_prompt ?? ''
+  const prefilterType = prefilterTypeDraft ?? configured.data?.prefilter_type ?? 'choice'
   const relevanceThreshold = relevanceThresholdDraft ?? configured.data?.relevance_threshold ?? 0.85
   const probe = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/decision-model/probe', {
-    body: { model: relevanceModel, relevance_model: relevanceModel, credential, threshold, enabled: true, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold },
+    body: { model: relevanceModel, relevance_model: relevanceModel, credential, threshold, enabled: true, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold, prefilter_prompt: prefilterPrompt, prefilter_type: 'choice' },
   })) })
   const probePrefilter = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/decision-model/probe', {
-    body: { model, relevance_model: relevanceModel, credential, threshold, enabled: true, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold },
+    body: { model, relevance_model: relevanceModel, credential, threshold, enabled: true, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold, prefilter_prompt: prefilterPrompt, prefilter_type: prefilterType },
   })) })
   const save = useMutation({ mutationFn: () => unwrap(api.PUT('/api/v1/settings/decision-model', {
-    body: { model, relevance_model: relevanceModel, credential, threshold, enabled, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold },
+    body: { model, relevance_model: relevanceModel, credential, threshold, enabled, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold, prefilter_prompt: prefilterPrompt, prefilter_type: prefilterType },
   })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['decision-model'] }) } })
   return <Section id="classificatore" title="Decisioni JEV"
     description="Il gate di rilevanza decide quali unità inviare a review e Recall. Il prefiltro errori è un controllo separato prima della review canonica.">
-    <Field label="Modello JEV rilevanza" htmlFor="relevance-model-name"><Input id="relevance-model-name" value={relevanceModel} onChange={(e) => setRelevanceModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev choice" /></Field>
+    <Field label="Modello JEV rilevanza" htmlFor="relevance-model-name"><Input id="relevance-model-name" value={relevanceModel} onChange={(e) => setRelevanceModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev choice" title="Il modello decisionale deve supportare Jev choice; il gate usa tre classi nominali." /></Field>
     <Field label="Credenziale" htmlFor="decision-model-credential"><Input id="decision-model-credential" value={credential} onChange={(e) => setCredential(e.target.value)} /></Field>
     <Field label="Comportamento JEV" htmlFor="relevance-mode"><Select id="relevance-mode" value={relevanceMode} onChange={(e) => setRelevanceMode(e.target.value as typeof relevanceMode)}>
       <option value="disabled">Disattivato · tutte le unità passano, nessuna chiamata</option>
@@ -72,15 +76,20 @@ export function DecisionModelSection() {
     <Field label="Istruzioni aggiuntive per la rilevanza" htmlFor="relevance-prompt"><textarea id="relevance-prompt" className="w-full rounded border bg-background p-2 text-sm" rows={4} value={relevancePrompt} onChange={(e) => setRelevancePrompt(e.target.value)} /></Field>
     <p className="text-xs text-muted-foreground">Il gate usa Jev choice con tre classi. Un modello vuoto o un errore lasciano passare tutte le unità. Verifica un campione in Ombra prima di attivare il filtro.</p>
     <div className="border-t pt-3"><h3 className="font-medium">Prefiltro errori (prima della review)</h3>
-      <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev" /></Field>
-      <Field label="Soglia di confidenza del prefiltro" htmlFor="decision-model-threshold"><Input id="decision-model-threshold" type="number" min="0" max="1" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} /></Field>
+      <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev" title={`Il modello decisionale deve supportare Jev ${prefilterType}.`} /></Field>
+      <Field label="Tipo di richiesta Jev del prefiltro" htmlFor="prefilter-type"><Select id="prefilter-type" value={prefilterType} onChange={(e) => setPrefilterType(e.target.value as typeof prefilterType)}>
+        <option value="choice">choice · categorie nominali</option><option value="noul">noul · probabilità di errore</option><option value="score">score · punteggio di errore</option>
+      </Select></Field>
+      <Field label={prefilterType === 'choice' ? 'Confidenza minima per saltare la review' : 'Soglia di errore del prefiltro'} htmlFor="decision-model-threshold"><Input id="decision-model-threshold" type="number" min="0" max="1" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} /></Field>
+      <Field label="Istruzioni aggiuntive per il prefiltro errori" htmlFor="prefilter-prompt"><textarea id="prefilter-prompt" className="w-full rounded border bg-background p-2 text-sm placeholder:text-muted-foreground/50" rows={4} value={prefilterPrompt} onChange={(e) => setPrefilterPrompt(e.target.value)} placeholder="Facoltativo: criteri specifici per individuare errori concettuali." /></Field>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Abilita il prefiltro errori</label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={shadow} onChange={(e) => setShadow(e.target.checked)} />Prefiltro in ombra (non salta la review)</label>
     </div>
     <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={!relevanceModel.trim() || probe.isPending} onClick={() => probe.mutate()}>Prova JEV rilevanza</Button>
       <Button variant="outline" disabled={!model.trim() || probePrefilter.isPending} onClick={() => probePrefilter.mutate()}>Prova prefiltro</Button>
       <Button disabled={save.isPending || (enabled && !model.trim())} onClick={() => save.mutate()}>Salva</Button></div>
-    {probe.isSuccess && <p role="status" className="text-xs text-success">Protocollo verificato · confidenza {probe.data.confidence}</p>}
+    {probe.isSuccess && <p role="status" className="text-xs text-success">Protocollo Jev {probe.data.request_type} verificato · confidenza {probe.data.confidence}</p>}
+    {probePrefilter.isSuccess && <p role="status" className="text-xs text-success">Protocollo Jev {probePrefilter.data.request_type} del prefiltro verificato · confidenza {probePrefilter.data.confidence}</p>}
     {probe.isError && <Alert tone="danger">{errorMessage(probe.error)}</Alert>}
     {probePrefilter.isError && <Alert tone="danger">{errorMessage(probePrefilter.error)}</Alert>}
     {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
@@ -118,7 +127,7 @@ const PHASE_HINTS: Record<string, string> = {
   rewrite: 'Rielabora le unità conservando riferimenti e provenienza.',
   review: 'Cerca errori scientifici nel testo rielaborato.',
   recall: 'Genera domande per il ripasso attivo.',
-  image_description: 'Descrive slide e immagini: richiede visione.',
+  image_description: 'Descrive slide e immagini. Il modello selezionato deve supportare Vision.',
   image_unit_judge: 'Associa le immagini alle unità della lezione.',
 }
 
@@ -170,7 +179,6 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
     >
       <div className="flex flex-col gap-1 self-center">
         <span className="text-sm font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
-        {phase.job === 'image_description' && <span className="text-[11px] text-muted-foreground">Richiede visione</span>}
         {phase.model ? (
           <span className="text-[11px] text-muted-foreground" data-testid="phase-saved">
             {phase.connection} · {phase.model}

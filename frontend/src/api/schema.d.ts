@@ -1733,6 +1733,17 @@ export interface components {
              */
             model: string;
             /**
+             * Prefilter Prompt
+             * @default
+             */
+            prefilter_prompt: string;
+            /**
+             * Prefilter Type
+             * @default choice
+             * @enum {string}
+             */
+            prefilter_type: "choice" | "noul" | "score";
+            /**
              * Relevance Mode
              * @default shadow
              * @enum {string}
@@ -1772,6 +1783,12 @@ export interface components {
             confidence: number;
             /** Ok */
             ok: boolean;
+            /**
+             * Request Type
+             * @default choice
+             * @enum {string}
+             */
+            request_type: "choice" | "noul" | "score";
         };
         /** DecisionRequest */
         DecisionRequest: {

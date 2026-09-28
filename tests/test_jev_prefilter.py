@@ -21,7 +21,7 @@ from rt.core.models import (
     DecisionLedger,
 )
 from rt.core.timestamp import format_timestamp
-from rt.llm.jev_client import JevResponse, JevChoiceAnswer, JevNoulAnswer
+from rt.llm.jev_client import JevResponse, JevChoiceAnswer, JevNoulAnswer, JevScoreAnswer
 
 
 def test_decision_probabilities_and_confidence_are_bounded():
@@ -29,8 +29,27 @@ def test_decision_probabilities_and_confidence_are_bounded():
     for confidence in (float("nan"), float("inf"), -0.01, 1.01):
         with pytest.raises(ValidationError):
             JevChoiceAnswer(choice="corretta", confidence=confidence)
-    with pytest.raises(ValidationError):
-        JevChoiceAnswer(choice="corretta", confidence=0.9, probabilities={"corretta": float("nan")})
+        with pytest.raises(ValidationError):
+            JevChoiceAnswer(choice="corretta", confidence=0.9, probabilities={"corretta": float("nan")})
+
+
+@pytest.mark.parametrize("request_type,answer,should_skip", [
+    ("noul", JevNoulAnswer(noul=0.2), True),
+    ("noul", JevNoulAnswer(noul=0.9), False),
+    ("score", JevScoreAnswer(score=0.2, confidence=0.9), True),
+    ("score", JevScoreAnswer(score=0.9, confidence=0.9), False),
+])
+def test_task_a_supports_selected_noul_and_score_types(request_type, answer, should_skip):
+    from rt.pipeline.review import run_jev_task_a
+
+    unit = DraftUnit(unit_id="1.1", title="Titolo", start_segment_id="seg_1",
+                     end_segment_id="seg_1", source_segment_ids=["seg_1"], content="Testo.")
+    response = JevResponse(model="typesafe/jev-1.13", answers={"correttezza": answer})
+    with patch("rt.pipeline.review.call_jev", return_value=response) as call:
+        verdict = run_jev_task_a(unit, JevConfig(enabled=True, prefilter_type=request_type,
+                                                  task_a_skip_confidence_threshold=0.7), "/lesson")
+    assert verdict is not None and verdict.should_skip_expensive_llm is should_skip
+    assert call.call_args.kwargs["questions"]["correttezza"].type == request_type
 from rt.llm.prompts import ScienceIssueList
 from rt.pipeline.review import run_review
 from rt.pipeline.ledger import apply_decisions_to_draft

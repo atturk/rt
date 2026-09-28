@@ -575,12 +575,15 @@ class DecisionModelIn(BaseModel):
     relevance_mode: Literal["disabled", "shadow", "active"] = "shadow"
     relevance_prompt: str = Field("", max_length=20000)
     relevance_threshold: float = Field(0.85, ge=0, le=1)
+    prefilter_type: Literal["choice", "noul", "score"] = "choice"
+    prefilter_prompt: str = Field("", max_length=20000)
 
 
 class DecisionProbeOut(BaseModel):
     ok: bool
     choice: str
     confidence: float
+    request_type: Literal["choice", "noul", "score"] = "choice"
 
 
 @router.get("/settings/decision-model", response_model=DecisionModelIn)
@@ -591,33 +594,47 @@ def get_decision_model(_actor: Actor):
                            relevance_model=cfg.relevance_model,
                            credential=cfg.credential, threshold=cfg.task_a_skip_confidence_threshold,
                            relevance_mode=cfg.relevance_mode, relevance_prompt=cfg.relevance_prompt,
-                           relevance_threshold=cfg.relevance_threshold)
+                           relevance_threshold=cfg.relevance_threshold, prefilter_type=cfg.prefilter_type,
+                           prefilter_prompt=cfg.prefilter_prompt)
 
 
 @router.post("/settings/decision-model/probe", response_model=DecisionProbeOut)
 def probe_decision_model(body: DecisionModelIn, _actor: Actor):
-    from rt.llm.jev_client import JevChoiceQuestion, JevError, call_jev
+    from rt.llm.jev_client import JevChoiceQuestion, JevNoulQuestion, JevScoreQuestion, JevError, call_jev
     from rt.db.engine import get_database
     from rt.db.models import Setting, utcnow
     from rt.db.session import session_scope
     if not body.model.strip():
         raise ApiError(422, "decision_model_required", "Indica un modello decisionale.")
     try:
-        response = call_jev("Un oggetto è una banana gialla matura.",
-            {"categoria": JevChoiceQuestion(instructions="Classifica il frutto.",
-                criteria={"banana": "È una banana", "altro": "È un altro frutto"})},
+        if body.prefilter_type == "choice":
+            question = JevChoiceQuestion(instructions="Classifica il frutto.", criteria={"banana": "È una banana", "altro": "È un altro frutto"})
+        elif body.prefilter_type == "noul":
+            question = JevNoulQuestion(instructions="È vero che la banana è un frutto? Rispondi con probabilità alta se l'affermazione è errata.")
+        else:
+            question = JevScoreQuestion(instructions="Valuta da 0 a 1 la probabilità che la banana sia un frutto.", criteria=["Probabilità che l'affermazione sia errata, da 0 a 1."])
+        response = call_jev("Un oggetto è una banana gialla matura. La banana è un frutto.",
+            {"categoria": question},
             job_name="decision_model_probe", model=body.model, credential=body.credential)
     except JevError as exc:
         raise ApiError(422, "decision_protocol_failed", str(exc)) from exc
     answer = response.answers["categoria"]
-    if answer.choice != "banana" or set(answer.probabilities) != {"banana", "altro"}:
-        raise ApiError(422, "decision_protocol_failed", "Il modello non ha restituito opzioni e probabilità complete.")
+    if answer.type != body.prefilter_type:
+        raise ApiError(422, "decision_protocol_failed", f"Il modello non ha restituito una risposta Jev {body.prefilter_type}.")
+    if answer.type == "choice":
+        if answer.choice != "banana" or set(answer.probabilities) != {"banana", "altro"}:
+            raise ApiError(422, "decision_protocol_failed", "Il modello non ha restituito opzioni e probabilità complete.")
+        choice, confidence = answer.choice, answer.confidence
+    elif answer.type == "noul":
+        choice, confidence = "noul", answer.noul
+    else:
+        choice, confidence = "score", answer.confidence
     with session_scope(get_database()) as session:
-        key = f"decision_probe:{body.credential}:{body.model}"
+        key = f"decision_probe:{body.credential}:{body.model}:{body.prefilter_type}"
         row = session.get(Setting, key)
         if row: row.value = {"validated": utcnow().isoformat()}
         else: session.add(Setting(key=key, value={"validated": utcnow().isoformat()}))
-    return {"ok": True, "choice": answer.choice, "confidence": answer.confidence}
+    return {"ok": True, "choice": choice, "confidence": confidence, "request_type": body.prefilter_type}
 
 
 @router.put("/settings/decision-model", response_model=DecisionModelIn)
@@ -627,14 +644,14 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
     from rt.db.engine import get_database
     from rt.db.models import Setting
     from rt.db.session import session_scope
-    required_models = ([body.model.strip()] if body.enabled else []) + ([body.relevance_model.strip()] if body.relevance_mode != "disabled" and body.relevance_model.strip() else [])
+    required_models = ([(body.model.strip(), body.prefilter_type)] if body.enabled else []) + ([(body.relevance_model.strip(), "choice")] if body.relevance_mode != "disabled" and body.relevance_model.strip() else [])
     if body.enabled and not body.model.strip():
         raise ApiError(422, "decision_model_required", "Indica il modello del prefiltro errori.")
     if required_models:
         with session_scope(get_database()) as session:
-            for selected in required_models:
-                if session.get(Setting, f"decision_probe:{body.credential}:{selected}") is None:
-                    raise ApiError(422, "decision_probe_required", f"Prova prima il protocollo del modello {selected}.")
+            for selected, request_type in required_models:
+                if session.get(Setting, f"decision_probe:{body.credential}:{selected}:{request_type}") is None:
+                    raise ApiError(422, "decision_probe_required", f"Prova prima il protocollo Jev {request_type} del modello {selected}.")
     path = general_config_path(_project_root())
     data = config_service.read_yaml(path)
     data["jev"] = {**data.get("jev", {}), "enabled": body.enabled, "shadow": body.shadow,
@@ -643,7 +660,9 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
                    "relevance_mode": body.relevance_mode,
                    "relevance_model": body.relevance_model.strip(),
                    "relevance_prompt": body.relevance_prompt,
-                   "relevance_threshold": body.relevance_threshold}
+                   "relevance_threshold": body.relevance_threshold,
+                   "prefilter_type": body.prefilter_type,
+                   "prefilter_prompt": body.prefilter_prompt}
     config_service.write_yaml_atomic(path, data)
     return body
 

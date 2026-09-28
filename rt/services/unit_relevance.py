@@ -76,7 +76,7 @@ def mode() -> str:
     return cfg.relevance_mode if cfg.relevance_model.strip() else "disabled"
 
 
-def refresh(lesson_dir: str, *, force_mock: bool = False) -> dict:
+def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None) -> dict:
     """Classifica le unità cambiate. Un errore lascia passare l'unità e resta visibile."""
     cfg = load_config().jev
     if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
@@ -86,10 +86,13 @@ def refresh(lesson_dir: str, *, force_mock: bool = False) -> dict:
     previous = _load(lesson_dir)
     result = {}
     configuration = _config_hash(cfg)
-    for unit in load_draft(lesson_dir).units:
+    units = load_draft(lesson_dir).units
+    errors = 0
+    for unit in units:
         digest = _unit_hash(unit)
         old = previous.get(unit.unit_id, {})
         if old.get("text_hash") == digest and old.get("config_hash") == configuration and old.get("prediction") in CLASSES:
+            old["last_run_mode"] = cfg.relevance_mode
             result[unit.unit_id] = old
             continue
         override = old.get("override") if old.get("text_hash") == digest else None
@@ -113,11 +116,13 @@ def refresh(lesson_dir: str, *, force_mock: bool = False) -> dict:
                 prediction, confidence = answer.choice, answer.confidence
         except Exception as exc:
             error = str(exc)
+            errors += 1
             LOG.warning("JEV rilevanza %s: %s", unit.unit_id, exc)
         result[unit.unit_id] = {"text_hash": digest, "config_hash": configuration,
                                 "prediction": prediction, "confidence": confidence,
                                 "override": override, "error": error,
                                 "prior_override": prior_override if prior_override in CLASSES else None,
+                                "last_run_mode": cfg.relevance_mode,
                                 "updated_at": datetime.now(timezone.utc).isoformat()}
     try:
         with _lock(lesson_dir):
@@ -132,6 +137,10 @@ def refresh(lesson_dir: str, *, force_mock: bool = False) -> dict:
                 _save(lesson_dir, result)
     except (OSError, TimeoutError):
         LOG.exception("Impossibile salvare le classificazioni JEV; tutte le unità passeranno")
+    if ctx is not None:
+        from rt.services.events import Notice
+        excluded = sum(1 for row in result.values() if _effective(row, cfg) != "didactic")
+        ctx.emit(Notice(message=f"JEV {cfg.relevance_mode}: {len(units)} unità valutate, {excluded} non didattiche, {errors} errori."))
     return result
 
 
