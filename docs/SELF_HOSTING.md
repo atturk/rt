@@ -18,8 +18,8 @@ Il comando scarica l'ultima release in `./rt` ed esegue `install.sh`, che:
 3. installa la web app già compilata della release (niente Node sul tuo Mac);
 4. crea la cartella dati (vedi sotto), oppure ci sposta i dati di un'installazione 3.x;
 5. crea l'archivio cifrato dei segreti (chiave master nel portachiavi di macOS);
-6. crea il database senza scandire le cartelle delle lezioni; converti eventuali dati esistenti
-   esplicitamente con `rt db migrate-storage` dopo aver verificato il backup;
+6. crea o migra il database; se trova lezioni nel vecchio formato a cartelle le converte nel
+   database e in `media/` dopo un backup (lo stesso di `rt db migrate-storage`);
 7. installa i servizi in background (API e web app, worker, bot Telegram);
 8. esegue `rt doctor` e apre il browser sulla configurazione guidata.
 

@@ -129,6 +129,22 @@ def check_media() -> Check:
     return Check("Media", OK, fs.media_dir(db))
 
 
+def check_folder_lessons() -> Check:
+    """Lezioni ancora nel vecchio formato a cartelle: RT non le mostra finché non si convertono."""
+    from rt.core.config import load_config
+    from rt.db.engine import get_database
+    from rt.storage.migrate import folder_lessons
+    db = get_database()
+    if db is None:
+        return Check("Lezioni a cartelle", WARN, "database non disponibile: controllo saltato.")
+    pending = folder_lessons(db, load_config().telegram.lessons_root)
+    if pending:
+        return Check("Lezioni a cartelle", WARN,
+                     f"{len(pending)} lezioni nel vecchio formato a cartelle, non visibili nella web app.",
+                     "Esegui 'rt db migrate-storage' (fa prima un backup).")
+    return Check("Lezioni a cartelle", OK, "nessuna lezione da convertire")
+
+
 def check_secrets() -> Check:
     from rt.security.secrets import EncryptedFileSecretStore, default_store_path, resolve_master_key
     from rt.services.secrets_service import env_needs_migration
@@ -219,6 +235,7 @@ def run_checks() -> List[Check]:
         _safe("Trascrizione", check_transcription),
         _safe("Database", check_database),
         _safe("Media", check_media),
+        _safe("Lezioni a cartelle", check_folder_lessons),
         _safe("Segreti", check_secrets),
         _safe("Web app", check_spa),
     ]

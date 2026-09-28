@@ -10,8 +10,14 @@ from rt.db.session import read_scope
 from rt.storage import fs
 
 
-def check_database(db) -> list[str]:
-    """Restituisce problemi DB/media; non importa né modifica dati."""
+def _ignored_media(name: str) -> bool:
+    """File di sistema o temporanei che non sono media orfani (.DS_Store, scritture a metà)."""
+    return name.startswith(".") or name.endswith((".tmp", ".part"))
+
+
+def check_database(db, quick: bool = False, lessons_root: str | None = None) -> list[str]:
+    """Restituisce problemi DB/media; non importa né modifica dati. quick salta i checksum
+    dei media (li legge tutti: con molte ore di audio sono GB) e controlla solo le dimensioni."""
     issues: list[str] = []
     if db.engine.dialect.name == "sqlite":
         with db.engine.connect() as connection:
@@ -54,6 +60,8 @@ def check_database(db) -> list[str]:
                 if os.path.getsize(target) != row.size:
                     issues.append(f"{label}: dimensione media incoerente.")
                     continue
+                if quick:
+                    continue
                 digest = hashlib.sha256()
                 with open(target, "rb") as source:
                     for chunk in iter(lambda: source.read(1024 * 1024), b""):
@@ -66,7 +74,17 @@ def check_database(db) -> list[str]:
     if os.path.isdir(media_root):
         for current, _, names in os.walk(media_root):
             for name in names:
+                if _ignored_media(name):
+                    continue
                 path = os.path.realpath(os.path.join(current, name))
                 if path not in referenced:
                     issues.append(f"Media orfano non referenziato: {os.path.relpath(path, media_root)}")
+    
+    if lessons_root:
+        from rt.storage.migrate import folder_lessons
+        indexed = {lesson.path for lesson in lessons}
+        pending = [path for path in folder_lessons(db, lessons_root) if path not in indexed]
+        if pending:
+            issues.append(f"{len(pending)} lezioni a cartelle in {lessons_root} non sono nel database: "
+                          "convertile con 'rt db migrate-storage'.")
     return issues

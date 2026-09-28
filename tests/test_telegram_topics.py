@@ -216,7 +216,7 @@ def test_rebuild_sends_new_message_if_saved_message_cannot_be_edited(tmp_path, m
 import asyncio
 
 
-def test_handle_list_command_empty_lessons_root(tmp_path):
+def test_handle_list_command_empty_lessons_root(tmp_path, rt_db):
     from unittest.mock import AsyncMock, MagicMock, patch
     from rt.telegram.daemon import handle_list_command
 
@@ -241,6 +241,21 @@ def test_handle_list_command_empty_lessons_root(tmp_path):
     update.effective_message.reply_text.assert_called_once()
     reply = update.effective_message.reply_text.call_args[0][0]
     assert "Nessuna lezione presente nel database" in reply
+
+
+def test_handle_list_command_says_when_the_database_is_off(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from rt.telegram.daemon import handle_list_command
+
+    update = MagicMock()
+    update.effective_message.message_thread_id = None
+    update.effective_message.reply_text = AsyncMock()
+    context = MagicMock()
+    context.bot_data = {"state_dir": str(tmp_path / "state")}
+    with patch("rt.core.config.load_config") as mock_cfg:
+        mock_cfg.return_value.telegram.topics = {}
+        asyncio.run(handle_list_command(update, context))
+    assert "Database di RT disattivato" in update.effective_message.reply_text.call_args[0][0]
 
 
 def test_handle_list_command_different_topic(tmp_path):

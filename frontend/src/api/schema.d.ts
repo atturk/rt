@@ -1486,7 +1486,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Elimina un upload orfano dopo conferma esplicita */
+        /** Elimina un upload non più in uso dopo conferma esplicita */
         delete: operations["delete_orphan_upload_api_v1_uploads__upload_id__delete"];
         options?: never;
         head?: never;
@@ -9662,7 +9662,9 @@ export interface operations {
     };
     delete_orphan_upload_api_v1_uploads__upload_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                include_referenced?: boolean;
+            };
             header?: never;
             path: {
                 upload_id: string;

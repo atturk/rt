@@ -40,3 +40,34 @@ def test_db_check_reports_folder_storage_for_explicit_conversion(rt_db, tmp_path
     assert check_database(rt_db) == [
         "1 lezioni usano ancora lo storage a cartelle; convertile con 'rt db migrate-storage'."
     ]
+
+
+def test_db_check_ignores_system_files_and_quick_skips_media_checksums(rt_db, tmp_path):
+    import os
+    from rt.storage import fs
+
+    media_dir = fs.media_dir(rt_db)
+    os.makedirs(media_dir, exist_ok=True)
+    for name in (".DS_Store", "upload.tmp"):
+        with open(os.path.join(media_dir, name), "wb") as stream:
+            stream.write(b"x")
+    with open(os.path.join(media_dir, "audio.wav"), "wb") as stream:
+        stream.write(b"0123456789")
+    with session_scope(rt_db) as session:
+        lesson = Lesson(path=str(tmp_path / "lezione"), folder_name="lezione", storage="db")
+        session.add(lesson)
+        session.flush()
+        session.add(LessonFile(lesson_id=lesson.id, name="audio.wav", media_path="audio.wav",
+                               content=None, size=10, sha256="a" * 64, mtime=0))
+    assert check_database(rt_db) == ["lezione/audio.wav: checksum media incoerente."]
+    assert check_database(rt_db, quick=True) == []
+
+
+def test_db_check_reports_folder_lessons_missing_from_the_database(rt_db, tmp_path):
+    import os
+    root = tmp_path / "lezioni"
+    lesson = root / "[2026-09-01] BIOCHIMICA"
+    lesson.mkdir(parents=True)
+    (lesson / "info.yaml").write_text("data: '2026-09-01'\nmateria: BIOCHIMICA\n", encoding="utf-8")
+    problems = check_database(rt_db, lessons_root=str(root))
+    assert len(problems) == 1 and "non sono nel database" in problems[0] and "migrate-storage" in problems[0]

@@ -60,9 +60,12 @@ def database_lessons() -> List[LessonEntry]:
         return []
     with read_scope(db) as session:
         rows = LessonRepository(session).list_all()
+        # Stesso filtro della web app (lesson_service.indexed_lesson_ids): una riga a cartelle
+        # la cui cartella non esiste più non è una lezione da proporre.
         return [LessonEntry(lesson_dir=row.path, folder_name=row.folder_name, data=row.data,
-                            materia=row.materia.strip().upper(), titolo=row.titolo,
-                            argomenti=row.argomenti) for row in rows]
+                            materia=(row.materia or "").strip().upper(), titolo=row.titolo,
+                            argomenti=row.argomenti) for row in rows
+                if row.storage == fs.STORAGE_DB or os.path.isdir(row.path)]
 
 
 def filter_by_materia(entries: List[LessonEntry], materia_upper: str) -> List[LessonEntry]:

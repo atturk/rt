@@ -25,10 +25,10 @@ def get_uploads(_actor: Actor):
     return list_uploads()
 
 
-@router.delete("/uploads/{upload_id}", status_code=204, summary="Elimina un upload orfano dopo conferma esplicita")
-def delete_orphan_upload(upload_id: str, _actor: Actor):
+@router.delete("/uploads/{upload_id}", status_code=204, summary="Elimina un upload non più in uso dopo conferma esplicita")
+def delete_orphan_upload(upload_id: str, _actor: Actor, include_referenced: bool = False):
     from rt.services.upload_cleanup import delete_orphan
-    delete_orphan(upload_id)
+    delete_orphan(upload_id, include_referenced=include_referenced)
 
 MAX_UPLOAD_ENV = "RT_API_MAX_UPLOAD_MB"
 DEFAULT_MAX_UPLOAD_MB = 2048

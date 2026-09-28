@@ -792,8 +792,10 @@ def _cmd_db_check(args: argparse.Namespace, url: str, shown: str) -> None:
     if db is None:
         print(f"❌ Database non disponibile: {shown}\nEsegui 'rt db upgrade' per crearlo.", file=sys.stderr)
         sys.exit(1)
+    from rt.core.config import load_config
     from rt.db.health import check_database
-    issues = check_database(db)
+    issues = check_database(db, quick=getattr(args, "quick", False),
+                            lessons_root=load_config().telegram.lessons_root)
     if not issues:
         print(f"✅ Integrità database e media verificata ({shown}).")
         return
@@ -1173,7 +1175,9 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     db_sub = p_db.add_subparsers(dest="db_command", required=True, title="Comandi database")
     db_sub.add_parser("upgrade", help="Crea il database o applica le migrazioni mancanti")
     db_sub.add_parser("status", help="Mostra percorso e revisione del database")
-    db_sub.add_parser("check", help="Controlla integrità del database e dei media senza modificare dati")
+    p_check = db_sub.add_parser("check", help="Controlla integrità del database e dei media senza modificare dati")
+    p_check.add_argument("--quick", action="store_true",
+                         help="Salta i checksum dei media (controlla solo esistenza e dimensioni)")
     p_mig = db_sub.add_parser("migrate-storage", help="Sposta le lezioni in cartella nel database (testi) e in media/ (audio e immagini), con backup")
     p_mig.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
     p_mig.add_argument("--dry-run", action="store_true", help="Mostra cosa verrebbe migrato senza modificare nulla")

@@ -165,9 +165,9 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if not scoped:
         if not entries:
-            msg = (
-                "Nessuna lezione presente nel database."
-            )
+            from rt.db.engine import get_database
+            msg = ("Nessuna lezione presente nel database." if get_database() is not None else
+                   "⚠️ Database di RT disattivato: le lezioni non sono consultabili dal bot.")
         else:
             msg = (
                 "Nessuna lezione trovata per la materia di questo topic. "

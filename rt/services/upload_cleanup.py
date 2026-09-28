@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from rt.services.jobs import ACTIVE_STATES
 from rt.services.lesson_service import lessons_root
 
 _UPLOAD_ID = re.compile(r"[0-9a-f]{32}\Z")
+RECENT_SECONDS = 3600
 
 
 def _root() -> str:
@@ -39,7 +41,11 @@ def _item(root: str, name: str, refs: dict) -> dict | None:
     if os.path.islink(path) or not os.path.isdir(path):
         return None
     jobs = refs.get(os.path.abspath(path), [])
-    state = "active" if any(j["state"] in ACTIVE_STATES for j in jobs) else "referenced" if jobs else "orphan"
+    # Un upload appena scritto può non avere ancora il suo job (salvataggio in corso): lo si
+    # tratta come attivo per RECENT_SECONDS, così non compare tra quelli eliminabili.
+    recent = time.time() - os.path.getmtime(path) < RECENT_SECONDS
+    state = ("active" if recent or any(j["state"] in ACTIVE_STATES for j in jobs)
+             else "referenced" if jobs else "orphan")
     return {"id": name, "state": state, "job_ids": [j["id"] for j in jobs],
             "files": len([entry for entry in os.scandir(path) if entry.is_file(follow_symlinks=False)]),
             "modified_at": datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).isoformat()}
@@ -53,14 +59,18 @@ def list_uploads() -> list[dict]:
     return [item for name in sorted(os.listdir(root)) if (item := _item(root, name, refs))]
 
 
-def delete_orphan(upload_id: str) -> None:
+def delete_orphan(upload_id: str, include_referenced: bool = False) -> None:
+    """Elimina un upload orfano; con include_referenced anche quello di un job concluso senza
+    successo (fallito o annullato): il job non si potrà più riprovare. Mai quelli attivi."""
     if not _UPLOAD_ID.fullmatch(upload_id):
         raise ApiError(404, "upload_not_found", "Upload non trovato.")
     root = _root()
     item = _item(root, upload_id, _references())
     if item is None:
         raise ApiError(404, "upload_not_found", "Upload non trovato.")
-    if item["state"] != "orphan":
-        raise ApiError(409, "upload_referenced", "L'upload è associato a un job: non può essere eliminato qui.")
+    if item["state"] == "active":
+        raise ApiError(409, "upload_active", "L'upload è in uso da un job in corso o appena caricato.")
+    if item["state"] == "referenced" and not include_referenced:
+        raise ApiError(409, "upload_referenced", "L'upload è associato a un job: conferma che il job non verrà ripreso.")
     # L'ID è un nome UUID generato dal server e la directory non è un symlink.
     shutil.rmtree(os.path.join(root, upload_id))
