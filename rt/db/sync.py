@@ -1,7 +1,7 @@
 """
 rt.db.sync
-Import dei file della lezione nel DB (rt db sync), dual-write dopo ogni scrittura dei file
-di stato e confronto DB/file (rt db check).
+Import iniziale delle lezioni già presenti per preservare l'indice, dual-write per le lezioni
+ancora in storage a cartelle e funzioni di confronto usate dai test di migrazione.
 
 I file restano la fonte di verità per lezione, fasi e issue: questo modulo li legge e non li
 modifica mai. Il ledger delle decisioni si importa solo se review_decisions.json è cambiato
@@ -144,7 +144,7 @@ def lesson_dirs(lessons_root: str) -> List[str]:
 
 
 def sync_all(db: Database, lessons_root: str) -> Dict[str, Any]:
-    """rt db sync: importa tutte le lezioni di lessons_root, una transazione per lezione."""
+    """Import iniziale: indicizza le lezioni correnti già presenti, una transazione per lezione."""
     result = {"synced": 0, "errors": []}
     for lesson_dir in lesson_dirs(lessons_root):
         try:

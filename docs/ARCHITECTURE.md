@@ -303,10 +303,10 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
 - **Creazione automatica** (fase D, `rt/db/bootstrap.py::ensure_database`): ogni comando `rt`
   (tranne `db`, `config` e `secrets`) crea il DB se manca e applica le migrazioni pendenti
   sotto il lock `rt.db.migrate.lock`; se è già aggiornato costa la sola lettura della
-  revisione. Al primo avvio con una `lessons_root` configurata importa da solo le lezioni
-  esistenti (come `rt db sync`, una volta, segnato in `settings` con `db.initial_import_done`).
-  L'utente non lancia mai comandi di database: `rt db upgrade|sync|check|status` restano per
-  la diagnosi. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
+  revisione. Al primo avvio con una `lessons_root` configurata importa nell'indice le lezioni
+  già esistenti (una volta, segnato in `settings` con `db.initial_import_done`); i file restano
+  al loro posto finché l'utente non avvia la migrazione esplicita dello storage. `rt db upgrade`,
+  `rt db check` e `rt db status` restano disponibili. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
   istruzioni per ripristinarlo da un backup o ricrearlo dai file. `RT_DATABASE_URL=off`
   resta solo per sviluppo e test; la coda dei job (sezione 9) richiede il DB.
   Nel codice di libreria `get_database()` resta tollerante (None se il DB manca o è rotto)
@@ -317,8 +317,10 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
 - **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
 - **Indice e controllo**: dashboard, costi e comandi Telegram enumerano le lezioni indicizzate
   nel DB, senza scandire `lessons_root`. `rt db check` controlla integrità SQLite, contenuti,
-  checksum e riferimenti/media orfani o mancanti; non modifica dati. `rt db sync` resta un
-  import esplicito e idempotente per installazioni che hanno ancora lezioni a cartelle.
+  checksum e riferimenti/media orfani o mancanti; segnala anche le lezioni ancora in formato
+  cartella e non modifica dati. La sincronizzazione manuale è stata rimossa; per convertire
+  esplicitamente le lezioni correnti a cartelle si usa `rt db migrate-storage`, che conserva le
+  cartelle di origine nel backup.
 - **Lezioni a cartelle**: il dual-write (`dual_write_lesson`) aggiorna i campi derivati nel DB
   dopo scritture di `info.yaml`, `manifest.json` e ledger. Per le lezioni correnti in DB,
   testi, stato e media sono letti da `rt.storage.fs`; non serve una cartella fisica di lezione.
@@ -330,8 +332,8 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
     `revert_last_decision` e `purge_decisions_by_prefix` scrivono nel DB in una transazione e
     riesportano `review_decisions.json` nello stesso formato (chi legge usa ancora il file).
     Gli annullamenti restano nel DB con `reverted_at`. Se il file cambia fuori da RT (hash
-    diverso da `Lesson.ledger_sha`) viene reimportato prima della modifica successiva, ed è
-    l'unico caso in cui `rt db sync` tocca il ledger. `review_service` tiene la scrittura
+    diverso da `Lesson.ledger_sha`) viene reimportato prima della modifica successiva.
+    `review_service` tiene la scrittura
     sotto il lock `.rt.lock` della lezione.
   - *Chiamate LLM* (`rt/db/llm_calls.py`): ogni riga di `llm_debug.log` diventa un `LlmCall`
     (la prima volta per una lezione si importa l'intero log); `rt cost` legge dal DB con

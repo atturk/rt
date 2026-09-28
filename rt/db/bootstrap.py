@@ -48,7 +48,7 @@ def initial_import(
     lessons_root: Optional[str] = None,
     on_progress: Optional[Callable[[str], None]] = None,
 ) -> Optional[dict]:
-    """Importa una volta sola le lezioni di lessons_root (come 'rt db sync'). Si segna come
+    """Importa una volta sola i metadati delle lezioni già presenti in lessons_root. Si segna come
     fatto in settings solo a scansione conclusa, così un'importazione interrotta riparte al
     comando successivo (le lezioni con errori restano nei log). None se non c'era nulla da fare."""
     from rt.db.repositories import SettingRepository

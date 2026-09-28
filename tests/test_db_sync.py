@@ -1,6 +1,6 @@
 """
 tests/test_db_sync.py
-RT4-B2: import delle lezioni nel DB (rt db sync), dual-write dalle scritture di info.yaml,
+RT4-B2: indicizzazione iniziale delle lezioni, dual-write dalle scritture di info.yaml,
 manifest e ledger, confronto DB/file (rt db check) e funzionamento senza DB o con DB rotto.
 """
 import json
@@ -157,20 +157,23 @@ def test_broken_database_does_not_break_writes(lessons, monkeypatch, tmp_path, c
     assert "Database non disponibile" in caplog.text
 
 
-def test_cli_db_sync_and_check(rt_db, lessons, capsys):
+def test_cli_rejects_manual_db_sync_and_checks_storage_migration(rt_db, lessons, capsys):
     from rt.cli import main
     root, dirs = lessons
     main(["db", "check"])
     assert "Integrità database e media verificata" in capsys.readouterr().out
-    main(["db", "sync", "--lessons-root", root])
-    assert "Lezioni sincronizzate: 3" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        main(["db", "sync", "--lessons-root", root])
+    capsys.readouterr()
+    from rt.storage.migrate import migrate_storage
+    assert not migrate_storage(root).errors
     main(["db", "check"])
     assert "Integrità database e media verificata" in capsys.readouterr().out
 
 
 def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     """Run mock completo (sottoprocessi CLI) con il DB attivo: stessi file e output dei golden,
-    e 'rt db check' pulito senza aver mai lanciato 'rt db sync'.
+    e 'rt db check' pulito senza import manuali.
 
     Con il DB attivo la lezione nasce nel database (nessuna cartella): i file della lezione,
     letti da rt.storage.fs, sono identici ai golden; nell'output cambia solo la riga del

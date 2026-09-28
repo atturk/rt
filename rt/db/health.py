@@ -16,8 +16,11 @@ def check_database(db) -> list[str]:
     if db.engine.dialect.name == "sqlite":
         with db.engine.connect() as connection:
             result = connection.exec_driver_sql("PRAGMA integrity_check").scalar()
+            foreign_keys = connection.exec_driver_sql("PRAGMA foreign_key_check").all()
         if result != "ok":
             issues.append(f"Integrità SQLite: {result}")
+        if foreign_keys:
+            issues.append(f"Integrità relazionale SQLite: {len(foreign_keys)} riferimenti esterni non validi.")
 
     media_root = os.path.realpath(fs.media_dir(db))
     referenced: set[str] = set()
@@ -25,6 +28,9 @@ def check_database(db) -> list[str]:
         lessons = list(session.scalars(select(Lesson).order_by(Lesson.id)))
         files = list(session.scalars(select(LessonFile).order_by(LessonFile.lesson_id, LessonFile.name)))
         lesson_names = {lesson.id: lesson.folder_name for lesson in lessons}
+        folder_count = sum(lesson.storage != fs.STORAGE_DB for lesson in lessons)
+        if folder_count:
+            issues.append(f"{folder_count} lezioni usano ancora lo storage a cartelle; convertile con 'rt db migrate-storage'.")
         for row in files:
             label = f"{lesson_names.get(row.lesson_id, row.lesson_id)}/{row.name}"
             if bool(row.content is not None) == bool(row.media_path):

@@ -32,3 +32,11 @@ def test_db_check_reports_unreferenced_media(rt_db, tmp_path):
     with open(os.path.join(media_dir, "unused.bin"), "wb") as stream:
         stream.write(b"unused")
     assert check_database(rt_db) == ["Media orfano non referenziato: unused.bin"]
+
+
+def test_db_check_reports_folder_storage_for_explicit_conversion(rt_db, tmp_path):
+    with session_scope(rt_db) as session:
+        session.add(Lesson(path=str(tmp_path / "legacy"), folder_name="legacy", storage="folder"))
+    assert check_database(rt_db) == [
+        "1 lezioni usano ancora lo storage a cartelle; convertile con 'rt db migrate-storage'."
+    ]
