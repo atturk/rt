@@ -50,12 +50,21 @@ rt web          # apre la web app (i servizi sono già attivi)
 rt doctor       # controlla l'installazione e dice cosa sistemare
 rt backup --dest /Volumes/Disco/rt-backup   # backup completo: database, media, configurazione
 rt -u           # aggiorna codice, dipendenze, web app, database e servizi
+rt -u --beta    # passa al canale beta: da ora 'rt -u' installa anche le versioni di prova
+rt -u --stable  # torna al canale stabile
 rt uninstall    # rimuove servizi e ambiente Python; dati e lezioni restano
 ```
 
 Chi arriva dalla 3.x aggiorna con `rt -u` (se serve, due volte: la prima con il codice vecchio):
 configurazione e dati vengono spostati nella cartella dati, le lezioni importate nel database e
-viene proposta la cifratura delle chiavi. Servizi, backup, Docker e percorsi sono descritti in
+viene proposta la cifratura delle chiavi.
+
+Le versioni beta (es. `4.1.0b1`) sono per chi vuole provare in anticipo le novità: `rt -u` le
+ignora finché non si sceglie il canale beta con `rt -u --beta` (serve la 4.0.1 o successiva; la
+scelta resta salvata nella cartella dati). `rt -v` segnala quando c'è una beta disponibile.
+`rt -u --stable` torna alle versioni stabili senza tornare indietro: la beta resta installata fino
+alla prossima versione stabile più recente, perché il database potrebbe essere già stato
+aggiornato. Servizi, backup, Docker e percorsi sono descritti in
 [Self-hosting](docs/SELF_HOSTING.md).
 
 *(Per sviluppatori con git)*:
