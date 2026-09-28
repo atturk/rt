@@ -1,8 +1,7 @@
 """
 tests/test_db_bootstrap.py
 Fase D: il database è sempre attivo. Ogni comando rt lo crea e lo migra da solo (sotto lock),
-importa le lezioni esistenti al primo avvio e, se il DB è illeggibile, si ferma con le
-istruzioni per ripristinarlo.
+senza scandire l'archivio a cartelle; la conversione dei dati esistenti è esplicita.
 """
 import os
 import subprocess
@@ -40,10 +39,17 @@ def test_ensure_returns_none_only_when_explicitly_disabled(monkeypatch):
     assert ensure_database() is None
 
 
-def test_first_run_imports_existing_lessons_once(db_url, lessons):
+def test_first_run_does_not_import_folder_lessons_implicitly(db_url, lessons):
     root, dirs = lessons
     messages = []
     db = ensure_database(lessons_root=root, on_progress=messages.append)
+    with session_scope(db) as s:
+        assert len(LessonRepository(s).list_all()) == 0
+        assert SettingRepository(s).get(INITIAL_IMPORT_KEY) is None
+    assert messages == []
+
+    # L'importazione rimane disponibile come azione esplicita.
+    assert initial_import(db, lessons_root=root, on_progress=messages.append)["synced"] == 3
     with session_scope(db) as s:
         assert len(LessonRepository(s).list_all()) == 3
         assert SettingRepository(s).get(INITIAL_IMPORT_KEY)["synced"] == 3
@@ -75,13 +81,13 @@ def test_broken_database_raises_with_restore_instructions(tmp_path, monkeypatch)
     assert str(path) in message and "backup" in message and ".rotto" in message
 
 
-def test_cli_command_creates_database_and_imports(db_url, lessons, tmp_path, capsys, monkeypatch):
+def test_cli_command_creates_database_without_scanning_lessons_root(db_url, lessons, tmp_path, capsys, monkeypatch):
     from rt.cli import main
     root, dirs = lessons
     monkeypatch.setattr("rt.db.bootstrap._configured_lessons_root", lambda: root)
     main(["status", dirs[0]])
     assert os.path.isfile(tmp_path / "home" / ".rt" / "rt.db")
-    assert "importo 3 lezioni" in capsys.readouterr().err
+    assert "importo" not in capsys.readouterr().err
 
 
 def test_cli_stops_on_broken_database(tmp_path, monkeypatch, capsys, lessons):

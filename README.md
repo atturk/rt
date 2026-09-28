@@ -133,9 +133,10 @@ Per testare offline senza consumare crediti API:
 
 ### 2-bis. Coda dei job e worker (opzionale)
 
-Il database di RT si crea e si aggiorna da solo al primo comando (e importa le lezioni già
-presenti): non servono comandi di database. Per far girare le elaborazioni lunghe in un
-processo separato, avvia un worker e accoda la pipeline:
+Il database di RT si crea e si aggiorna da solo al primo comando, senza scandire o importare
+automaticamente le vecchie cartelle delle lezioni. Per convertirle in modo esplicito, usa
+`rt db migrate-storage` dopo aver verificato il backup. Per far girare le elaborazioni lunghe
+in un processo separato, avvia un worker e accoda la pipeline:
 
 ```bash
 ./bin/rt worker                          # esegue i job in coda (Ctrl+C per fermarlo)

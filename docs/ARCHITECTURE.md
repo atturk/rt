@@ -303,9 +303,9 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
 - **Creazione automatica** (fase D, `rt/db/bootstrap.py::ensure_database`): ogni comando `rt`
   (tranne `db`, `config` e `secrets`) crea il DB se manca e applica le migrazioni pendenti
   sotto il lock `rt.db.migrate.lock`; se è già aggiornato costa la sola lettura della
-  revisione. Al primo avvio con una `lessons_root` configurata importa nell'indice le lezioni
-  già esistenti (una volta, segnato in `settings` con `db.initial_import_done`); i file restano
-  al loro posto finché l'utente non avvia la migrazione esplicita dello storage. `rt db upgrade`,
+  revisione. Non scansiona né importa le cartelle delle lezioni all'avvio; la conversione di
+  eventuali dati esistenti deve essere avviata esplicitamente con `rt db migrate-storage`.
+  `rt db upgrade`,
   `rt db check` e `rt db status` restano disponibili. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
   istruzioni per ripristinarlo da un backup o ricrearlo dai file. `RT_DATABASE_URL=off`
   resta solo per sviluppo e test; la coda dei job (sezione 9) richiede il DB.

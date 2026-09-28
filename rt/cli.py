@@ -813,7 +813,7 @@ _COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets",
 
 
 def _ensure_database_or_exit(command: Optional[str]) -> None:
-    """Crea/migra il DB e importa le lezioni al primo avvio; se il DB è illeggibile il
+    """Crea/migra il DB senza scandire le cartelle; se il DB è illeggibile il
     comando si ferma con le istruzioni per ripristinarlo."""
     if command in _COMMANDS_WITHOUT_DATABASE:
         return

@@ -1,11 +1,12 @@
 """
 rt.db.bootstrap
-Avvio del database per ogni comando rt: l'utente non lancia mai comandi di database a mano.
+Avvio del database per ogni comando rt.
 
-ensure_database() crea il DB se manca, applica le migrazioni pendenti (sotto lock) e, la
-prima volta, importa le lezioni già presenti in lessons_root. Se il DB è illeggibile solleva
-DatabaseUnavailable con le istruzioni per ripristinarlo: dalla fase D RT non ha più il
-ripiego "solo file", perché la coda dei job vive nel database.
+ensure_database() crea il DB se manca e applica le migrazioni pendenti (sotto lock), senza
+scansionare o importare implicitamente l'archivio a cartelle. La conversione dei dati esistenti
+resta un'azione esplicita. Se il DB è illeggibile solleva DatabaseUnavailable con le istruzioni
+per ripristinarlo: dalla fase D RT non ha più il ripiego "solo file", perché la coda dei job
+vive nel database.
 """
 import logging
 import os
@@ -19,13 +20,15 @@ INITIAL_IMPORT_KEY = "db.initial_import_done"
 
 
 def ensure_database(
-    auto_import: bool = True,
+    auto_import: bool = False,
     lessons_root: Optional[str] = None,
     on_progress: Optional[Callable[[str], None]] = None,
 ) -> Optional[Database]:
-    """DB pronto e migrato, oppure None se disattivato in modo esplicito (RT_DATABASE_URL=off
-    o database_url: off: solo per sviluppo e test). Solleva DatabaseUnavailable se il DB
-    esiste ma non si apre o non si migra."""
+    """DB pronto e migrato, oppure None se disattivato in modo esplicito.
+
+    Per impostazione predefinita non importa né scandisce le cartelle delle lezioni.
+    Solleva DatabaseUnavailable se il DB esiste ma non si apre o non si migra.
+    """
     if not current_database_url():
         return None
     db = require_database()

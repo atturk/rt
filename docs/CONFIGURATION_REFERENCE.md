@@ -94,7 +94,9 @@ Se assente si usa SQLite in `<cartella dati>/rt.db` (`~/.rt` o `RT_DATA_DIR`, ve
 [Self-hosting](SELF_HOSTING.md)); nelle installazioni 3.x non ancora migrate in
 `<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`).
 La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea e si aggiorna da solo
-al primo comando `rt`, che importa anche le lezioni esistenti: non serve alcun comando manuale.
+al primo comando `rt`, senza scandire o importare automaticamente le cartelle delle lezioni.
+Per convertire lezioni esistenti usa esplicitamente `rt db migrate-storage` dopo aver verificato
+il backup.
 `off` lo disattiva (solo per sviluppo e test: la coda dei job e `rt worker` richiedono il DB).
 ```yaml
 database_url: "sqlite:////Users/io/Lezioni/.rt/rt.db"
