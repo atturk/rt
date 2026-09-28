@@ -133,7 +133,7 @@ class DocumentEditIn(BaseModel):
 
 class DocumentEditLease(BaseModel):
     token: str
-    expires: Optional[str] = None  # Compatibilità con i client già generati.
+    expires: Optional[str] = Field(None, description="Scadenza (ISO, UTC) se l'editor non rinnova la sessione")
     lease_id: Optional[str] = Field(None, description="Identificativo breve della sessione di modifica")
     acquired_at: Optional[str] = Field(None, description="Inizio della sessione di modifica (ISO, UTC)")
     recovered: bool = Field(False, description="True se la richiesta ha sostituito la sessione di un'altra scheda")

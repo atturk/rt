@@ -193,6 +193,8 @@ export function LessonPage() {
 // L'editor (CodeMirror) si carica solo quando si entra in modifica.
 const DocumentEditor = lazy(() => import('@/components/lesson/DocumentEditor').then((m) => ({ default: m.DocumentEditor })))
 
+const LEASE_RENEW_MS = 4 * 60 * 1000
+
 /** Riquadro del documento: anteprima o documento finale, con la modifica dell'anteprima (beta). */
 function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
@@ -204,7 +206,13 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
   const [leaseError, setLeaseError] = useState<string | null>(null)
   useEffect(() => {
     if (!leaseToken) return
+    // Il server fa scadere una sessione non rinnovata (scheda chiusa, crash): qui la teniamo viva.
+    const renew = window.setInterval(() => {
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id }, query: { token: leaseToken } } }))
+        .catch((error: unknown) => setLeaseError(errorMessage(error)))
+    }, LEASE_RENEW_MS)
     return () => {
+      window.clearInterval(renew)
       void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
         params: { path: { lesson_id: id }, query: { token: leaseToken } },
       })

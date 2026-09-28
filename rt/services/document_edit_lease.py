@@ -1,7 +1,7 @@
 """Explicit editing locks shared between browser tabs and API workers."""
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from rt.db.engine import get_database
 from rt.db.models import Job, Lesson, Setting
@@ -12,8 +12,20 @@ def _key(lesson_id: int) -> str:
     return f"lesson_edit_lease:{lesson_id}"
 
 
-def _active(value: dict | None) -> bool:
-    return bool(value and value.get("token"))
+# Una scheda chiusa o un browser andato in crash non devono bloccare per sempre i job della
+# lezione: l'editor rinnova il lease ogni pochi minuti, e senza rinnovo scade da solo.
+LEASE_TTL = timedelta(minutes=15)
+
+
+def _active(value: dict | None, now: datetime | None = None) -> bool:
+    if not (value and value.get("token")):
+        return False
+    stamp = value.get("renewed_at") or value.get("acquired_at")
+    try:
+        renewed = datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return False
+    return (now or datetime.now(timezone.utc)) - renewed < LEASE_TTL
 
 
 def acquire(lesson_id: int, token: str | None = None, recover: bool = False) -> dict:
@@ -31,16 +43,19 @@ def acquire(lesson_id: int, token: str | None = None, recover: bool = False) -> 
                                              Job.state.in_(["queued", "running"])).limit(1)):
             raise ApiError(409, "lesson_busy", "Un job sta già lavorando sulla lezione.")
         same_session = bool(previous and previous.get("token") == token)
+        now = datetime.now(timezone.utc).isoformat()
         value = {
             "token": token if same_session else secrets.token_urlsafe(32),
             "lease_id": previous.get("lease_id") if same_session else secrets.token_urlsafe(8),
-            "acquired_at": previous.get("acquired_at") if same_session else datetime.now(timezone.utc).isoformat(),
+            "acquired_at": previous.get("acquired_at") if same_session else now,
+            "renewed_at": now,
         }
         if row:
             row.value = value
         else:
             session.add(Setting(key=_key(lesson_id), value=value))
         return {**value,
+                "expires": (datetime.fromisoformat(now) + LEASE_TTL).isoformat(),
                 "recovered": bool(previous and not same_session and recover),
                 "previous_lease_id": previous.get("lease_id") if previous and not same_session else None,
                 "previous_acquired_at": previous.get("acquired_at") if previous and not same_session else None}

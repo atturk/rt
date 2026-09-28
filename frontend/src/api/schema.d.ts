@@ -1842,7 +1842,10 @@ export interface components {
              * @description Inizio della sessione di modifica (ISO, UTC)
              */
             acquired_at?: string | null;
-            /** Expires */
+            /**
+             * Expires
+             * @description Scadenza (ISO, UTC) se l'editor non rinnova la sessione
+             */
             expires?: string | null;
             /**
              * Lease Id

@@ -44,3 +44,24 @@ def test_lease_requires_valid_token_to_save(api_client, lesson):
     assert api_client.put(target, json={"markdown": markdown}).status_code == 409
     assert api_client.put(target, json={"markdown": markdown, "lease_token": "wrong"}).status_code == 409
     assert_editable(lesson, token)
+
+
+def test_abandoned_lease_expires_and_stops_blocking_jobs(api_client, lesson, monkeypatch):
+    """Una scheda chiusa senza rilasciare il lease non blocca i job per sempre."""
+    from datetime import datetime, timedelta, timezone
+    from rt.services import document_edit_lease
+    endpoint = f"/api/v1/lessons/{lesson}/document/lease"
+    lease = api_client.post(endpoint).json()
+    assert datetime.fromisoformat(lease["expires"]) > datetime.now(timezone.utc)
+    later = datetime.now(timezone.utc) + document_edit_lease.LEASE_TTL + timedelta(seconds=1)
+    real_active = document_edit_lease._active
+    monkeypatch.setattr(document_edit_lease, "_active", lambda value, now=None: real_active(value, later))
+    assert api_client.post(f"/api/v1/lessons/{lesson}/jobs", json={"type": "run_phase", "phase": "prepare"}).status_code == 202
+
+
+def test_renewal_keeps_the_session_alive(api_client, lesson):
+    endpoint = f"/api/v1/lessons/{lesson}/document/lease"
+    first = api_client.post(endpoint).json()
+    renewed = api_client.post(endpoint, params={"token": first["token"]}).json()
+    assert renewed["lease_id"] == first["lease_id"] and renewed["acquired_at"] == first["acquired_at"]
+    assert renewed["expires"] >= first["expires"] and renewed["recovered"] is False

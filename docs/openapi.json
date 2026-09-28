@@ -709,6 +709,7 @@
                 "type": "null"
               }
             ],
+            "description": "Scadenza (ISO, UTC) se l'editor non rinnova la sessione",
             "title": "Expires"
           },
           "lease_id": {
