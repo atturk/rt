@@ -62,13 +62,17 @@ function Validation({ title, report }: { title: string; report: Record<string, u
 export function PhasePanel({ lessonId, units, editingDocument = false }: { lessonId: number; units: Schemas['DocumentSection'][]; editingDocument?: boolean }) {
   const phases = usePhases(lessonId)
   const outline = useOutline(lessonId)
-  const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? units.map((unit) => ({ id: unit.unit_id, title: unit.title }))
+  const draftUnits = units.map((unit) => ({ id: unit.unit_id, title: unit.title }))
+  const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? draftUnits
+  // Si riscrive ciò che c'è nella scaletta, si rivede solo ciò che è già nella bozza.
+  const unitsFor = (phase: string) => (phase === 'review' ? draftUnits : outlineUnits)
   const jobs = useLessonJobs(lessonId)
   const workers = useWorkers()
   const run = useRunJob(lessonId)
   const [force, setForce] = useState(false)
   const [withReview, setWithReview] = useState(false)
-  const [selectedUnits, setSelectedUnits] = useState<string[]>([])
+  // Selezione separata per fase: le unità scelte per la riscrittura non finiscono nella revisione.
+  const [selectedUnits, setSelectedUnits] = useState<Record<string, string[]>>({})
   const [extraPrompts, setExtraPrompts] = useState<Record<string, string>>({})
   const [confirmBuild, setConfirmBuild] = useState(false)
   const busy = editingDocument || (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending
@@ -76,16 +80,20 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
   // ma l'utente li vede prima di confermarlo.
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
 
-  const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; units?: string[]; extra_prompt?: string }) =>
-    run.mutate({ ...body, force, mock: false, with_review: body.type === 'run_pipeline' && withReview, auto_accept: false, rename: true })
+  const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; units?: string[]; extra_prompt?: string }, onQueued?: () => void) =>
+    run.mutate({ ...body, force, mock: false, with_review: body.type === 'run_pipeline' && withReview, auto_accept: false, rename: true },
+      { onSuccess: onQueued })
 
   const runPhase = (phase: Phase) => {
     if (phase === 'build' && buildWarnings.length > 0) {
       setConfirmBuild(true)
       return
     }
-    start({ type: 'run_phase', phase, units: (phase === 'rewrite' || phase === 'review') && selectedUnits.length ? selectedUnits : undefined,
-      extra_prompt: phase in extraPrompts ? extraPrompts[phase] : undefined })
+    const chosen = selectedUnits[phase] ?? []
+    start({ type: 'run_phase', phase, units: (phase === 'rewrite' || phase === 'review') && chosen.length ? chosen : undefined,
+      extra_prompt: phase in extraPrompts ? extraPrompts[phase] : undefined },
+      // Le istruzioni aggiuntive valgono per un'esecuzione sola: accodato il job, il campo si svuota.
+      () => setExtraPrompts((old) => { const { [phase]: _used, ...rest } = old; return rest }))
   }
 
   return (
@@ -130,10 +138,13 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
             {(['outline', 'rewrite', 'review'] as string[]).includes(p.phase) && (
               <details className="text-xs" data-testid={`advanced-${p.phase}`}>
                 <summary className="cursor-pointer">Opzioni avanzate</summary>
-                {(p.phase === 'rewrite' || p.phase === 'review') && outlineUnits.length > 0 && <fieldset className="mt-2 max-h-48 overflow-auto rounded border p-2">
+                {(p.phase === 'rewrite' || p.phase === 'review') && unitsFor(p.phase).length > 0 && <fieldset className="mt-2 max-h-48 overflow-auto rounded border p-2">
                   <legend className="px-1">Unità (nessuna selezione = tutte)</legend>
-                  {outlineUnits.map((u) => <label key={u.id} className="flex items-center gap-2 py-0.5">
-                    <input type="checkbox" checked={selectedUnits.includes(u.id)} onChange={(e) => setSelectedUnits((old) => e.target.checked ? [...old, u.id] : old.filter((id) => id !== u.id))} />
+                  {unitsFor(p.phase).map((u) => <label key={u.id} className="flex items-center gap-2 py-0.5">
+                    <input type="checkbox" checked={(selectedUnits[p.phase] ?? []).includes(u.id)} onChange={(e) => setSelectedUnits((old) => {
+                      const current = old[p.phase] ?? []
+                      return { ...old, [p.phase]: e.target.checked ? [...current, u.id] : current.filter((id) => id !== u.id) }
+                    })} />
                     {u.id} {u.title}
                   </label>)}
                 </fieldset>}
