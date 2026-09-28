@@ -18,6 +18,18 @@ from rt.storage import fs
 
 router = APIRouter(tags=["job"])
 
+
+@router.get("/uploads", response_model=List[schemas.UploadInventoryItem], summary="Upload temporanei attivi, riferiti e orfani")
+def get_uploads(_actor: Actor):
+    from rt.services.upload_cleanup import list_uploads
+    return list_uploads()
+
+
+@router.delete("/uploads/{upload_id}", status_code=204, summary="Elimina un upload orfano dopo conferma esplicita")
+def delete_orphan_upload(upload_id: str, _actor: Actor):
+    from rt.services.upload_cleanup import delete_orphan
+    delete_orphan(upload_id)
+
 MAX_UPLOAD_ENV = "RT_API_MAX_UPLOAD_MB"
 DEFAULT_MAX_UPLOAD_MB = 2048
 CHUNK = 1024 * 1024

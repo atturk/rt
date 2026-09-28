@@ -1,6 +1,6 @@
 import { Activity, Upload } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, api, errorMessage, unwrap } from '@/api/client'
@@ -14,6 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -39,6 +40,37 @@ function Checkbox({ id, label, hint, checked, onChange }: { id: string; label: s
 }
 
 // ---------------------------------------------------------------- importazione
+
+function OrphanUploads() {
+  const client = useQueryClient()
+  const inventory = useQuery({ queryKey: ['uploads'], queryFn: () => unwrap(api.GET('/api/v1/uploads')) })
+  const [selected, setSelected] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState('')
+  const deletion = useMutation({
+    mutationFn: (id: string) => unwrap(api.DELETE('/api/v1/uploads/{upload_id}', { params: { path: { upload_id: id } } })),
+    onSuccess: () => { setSelected(null); setConfirmation(''); void client.invalidateQueries({ queryKey: ['uploads'] }) },
+  })
+  const orphans = inventory.data?.filter((item) => item.state === 'orphan') ?? []
+  return <Card className="p-5">
+    <h2 className="text-sm font-bold">Audio temporanei non utilizzati</h2>
+    <p className="mt-1 text-xs text-muted-foreground">Gli upload associati a job attivi o recuperabili restano protetti. La rimozione degli orfani richiede conferma.</p>
+    {inventory.isError && <Alert tone="danger">{errorMessage(inventory.error)}</Alert>}
+    {inventory.isPending && <p className="text-xs">Controllo gli upload…</p>}
+    {inventory.data && <p className="mt-2 text-xs">Orfani: {orphans.length} · Associati a job: {inventory.data.length - orphans.length}</p>}
+    <ul className="mt-2 space-y-2">{orphans.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-mono">{item.id.slice(0, 12)}…</span>
+      <span>{item.files} file · {new Date(item.modified_at).toLocaleString('it-IT')}</span>
+      <Button size="sm" variant="outline" onClick={() => { setConfirmation(''); setSelected(item.id) }}>Elimina</Button>
+    </li>)}</ul>
+    <ConfirmDialog open={selected !== null} title="Elimina upload orfano" confirmLabel="Elimina definitivamente"
+      confirmDisabled={confirmation !== 'elimina' || deletion.isPending} onCancel={() => setSelected(null)}
+      onConfirm={() => { if (selected) deletion.mutate(selected) }}>
+      <p>Questo audio temporaneo non è associato a un job. Scrivi <strong>elimina</strong> per cancellarlo definitivamente.</p>
+      <Input aria-label="Conferma eliminazione upload" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-2" />
+      {deletion.isError && <Alert tone="danger">{errorMessage(deletion.error)}</Alert>}
+    </ConfirmDialog>
+  </Card>
+}
 
 /** Importazione dell'audio: solo trascrizione (job ingest_audio) o pipeline completa (run_pipeline). */
 export function ImportPage() {
@@ -86,6 +118,7 @@ export function ImportPage() {
     <section className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
       <WorkerWarning />
+      <OrphanUploads />
       <Card className="flex flex-col gap-3 p-5">
         <h2 className="text-sm font-bold">Importa lezioni da ZIP completi</h2>
         <p className="text-xs text-muted-foreground">Usa archivi esportati con «Tutti i dati». Una lezione già esistente viene rifiutata senza interrompere le altre.</p>

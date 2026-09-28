@@ -295,6 +295,14 @@ class JobEvent(BaseModel):
     created_at: Optional[str] = None
 
 
+class UploadInventoryItem(BaseModel):
+    id: str
+    state: Literal["active", "referenced", "orphan"]
+    job_ids: List[str]
+    files: int
+    modified_at: str
+
+
 class JobRequest(BaseModel):
     type: Literal["run_pipeline", "run_phase"] = "run_pipeline"
     phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(

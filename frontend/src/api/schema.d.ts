@@ -1459,6 +1459,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Upload temporanei attivi, riferiti e orfani */
+        get: operations["get_uploads_api_v1_uploads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Elimina un upload orfano dopo conferma esplicita */
+        delete: operations["delete_orphan_upload_api_v1_uploads__upload_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workers": {
         parameters: {
             query?: never;
@@ -3232,6 +3266,22 @@ export interface components {
             mode: "disabled" | "shadow" | "active";
             /** Units */
             units: components["schemas"]["UnitRelevanceItem"][];
+        };
+        /** UploadInventoryItem */
+        UploadInventoryItem: {
+            /** Files */
+            files: number;
+            /** Id */
+            id: string;
+            /** Job Ids */
+            job_ids: string[];
+            /** Modified At */
+            modified_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "referenced" | "orphan";
         };
         /** ValidationError */
         ValidationError: {
@@ -9460,6 +9510,136 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Notification"][];
                 };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_uploads_api_v1_uploads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadInventoryItem"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_orphan_upload_api_v1_uploads__upload_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Autenticazione mancante o non valida */
             401: {

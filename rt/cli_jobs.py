@@ -50,19 +50,11 @@ def _queue():
 
 def prepare_worker_process(queue) -> None:
     """Quello che il service layer non può fare da solo all'avvio di un worker: registra la
-    notifica Telegram di fine lavorazione (rt/services non importa rt.telegram) e pulisce gli
-    upload vecchi dei job falliti mai ripresi."""
+    notifica Telegram di fine lavorazione (rt/services non importa rt.telegram).
+    Gli upload orfani si eliminano esplicitamente dall'interfaccia, dopo conferma."""
     from rt.services.pipeline_service import register_build_notifier
     from rt.telegram.notify import TelegramBuildNotifier
     register_build_notifier(TelegramBuildNotifier())
-    try:
-        from rt.services.api_jobs import sweep_stale_uploads
-        from rt.services.lesson_service import lessons_root
-        root = lessons_root()
-        if root:
-            sweep_stale_uploads(os.path.join(root, ".rt", "uploads"), queue)
-    except Exception as exc:  # la pulizia non deve impedire l'avvio
-        print(f"⚠️  Pulizia degli upload non riuscita: {exc}", file=sys.stderr)
 
 
 def cmd_worker(args: argparse.Namespace) -> None:

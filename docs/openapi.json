@@ -4078,6 +4078,47 @@
         "title": "UnitRelevanceOverview",
         "type": "object"
       },
+      "UploadInventoryItem": {
+        "properties": {
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          },
+          "modified_at": {
+            "title": "Modified At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "referenced",
+              "orphan"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "job_ids",
+          "files",
+          "modified_at"
+        ],
+        "title": "UploadInventoryItem",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -12514,6 +12555,166 @@
         "summary": "Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic)",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/uploads": {
+      "get": {
+        "operationId": "get_uploads_api_v1_uploads_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UploadInventoryItem"
+                  },
+                  "title": "Response Get Uploads Api V1 Uploads Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload temporanei attivi, riferiti e orfani",
+        "tags": [
+          "job"
+        ]
+      }
+    },
+    "/api/v1/uploads/{upload_id}": {
+      "delete": {
+        "operationId": "delete_orphan_upload_api_v1_uploads__upload_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina un upload orfano dopo conferma esplicita",
+        "tags": [
+          "job"
         ]
       }
     },
