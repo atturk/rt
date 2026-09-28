@@ -126,13 +126,12 @@ def test_read_snapshot_reads_each_lesson_once_and_sees_its_own_writes(db_lesson,
     assert fs.isfile(os.path.join(db_lesson, "nuovo.json"))
 
 
-def test_new_lessons_can_stay_in_folders(rt_db, tmp_path):
-    """storage.new_lessons = folder (settings) riporta al layout a cartelle."""
+def test_new_lessons_always_use_database_when_available(rt_db):
     from rt.db.repositories import SettingRepository
     assert fs.new_lessons_use_db()
     with session_scope(rt_db) as s:
         SettingRepository(s).set("storage.new_lessons", "folder")
-    assert not fs.new_lessons_use_db()
+    assert fs.new_lessons_use_db()
 
 
 # ---------------------------------------------------------------- migrazione ed export

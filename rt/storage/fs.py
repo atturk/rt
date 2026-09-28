@@ -775,13 +775,5 @@ def create_db_lesson(lesson_dir) -> str:
 
 
 def new_lessons_use_db() -> bool:
-    """Le nuove lezioni nascono nel DB quando il DB è attivo, salvo impostazione
-    storage.new_lessons = "folder" (tabella settings)."""
-    db = _database()
-    if db is None:
-        return False
-    from rt.db.repositories import SettingRepository
-    from rt.db.session import session_scope
-    with session_scope(db) as s:
-        value = SettingRepository(s).get("storage.new_lessons")
-    return str(value or STORAGE_DB) != STORAGE_FOLDER
+    """Le nuove lezioni usano sempre il database quando è attivo."""
+    return _database() is not None

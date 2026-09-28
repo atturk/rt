@@ -447,9 +447,8 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
   `fs.real_path`; i lock stanno in `<cartella dati>/locks`. Le letture usano transazioni di
   sola lettura, le scritture si uniscono alla transazione già aperta nel thread
   (`rt/db/session.py`).
-- **Nuove lezioni**: nel DB se il DB è attivo; `storage.new_lessons = "folder"` nella tabella
-  `settings` riporta al layout a cartelle. Con `RT_DATABASE_URL=off` (sviluppo e test) tutto
-  resta in cartella.
+- **Nuove lezioni**: sempre nel DB. Con `RT_DATABASE_URL=off` (sviluppo e test) tutto resta
+  in cartella.
 - **Migrazione** (`rt db migrate-storage [--dry-run]`, `rt/storage/migrate.py`): backup del
   file del DB, copia di ogni lezione in DB e `media/`, verifica file per file (sha256 e
   dimensione), poi la cartella originale viene spostata (mai cancellata) in
