@@ -17,21 +17,61 @@ from rt.db.models import Setting
 from rt.db.session import session_scope
 
 PENDING_KEY = "telegram_user_pending_login"
-_pending_api_hash: dict[str, str] = {}
+SESSION_SECRET = "RT_TELEGRAM_USER_SESSION"
+_SESSION_SUFFIXES = (".session", ".session-journal", ".session-wal", ".session-shm")
+# API hash e chiave di sessione provvisoria restano in memoria solo fino alla conferma del codice:
+# Setting è JSON in chiaro e non deve conservare credenziali Telegram.
+_pending_login: dict[str, dict[str, str]] = {}
 MAX_MESSAGES = 100_000
 MAX_MEDIA_BYTES = 10 * 1024 ** 3
 
 
 def _session_path() -> str:
-    folder = os.path.join(data_dir(), "telegram-user")
-    os.makedirs(folder, mode=0o700, exist_ok=True)
-    os.chmod(folder, 0o700)
-    return os.path.join(folder, "authorized")
+    """Percorso della vecchia sessione SQLite in chiaro (solo per migrarla e cancellarla)."""
+    return os.path.join(data_dir(), "telegram-user", "authorized")
 
 
-def _client(api_id: int, api_hash: str):
+def _env_path() -> Path:
+    from rt.core.paths import config_home
+    return Path(config_home()) / ".env"
+
+
+def _client(api_id: int, api_hash: str, session: str = ""):
+    """Client con sessione in memoria: la chiave di autorizzazione non tocca mai il disco in chiaro."""
     from telethon import TelegramClient
-    return TelegramClient(_session_path(), api_id, api_hash)
+    from telethon.sessions import StringSession
+    return TelegramClient(StringSession(session or None), api_id, api_hash)
+
+
+def _store_session(value: str) -> None:
+    from rt.services import config_service
+    config_service.set_secret(SESSION_SECRET, value, path=_env_path())
+    os.environ[SESSION_SECRET] = value
+
+
+def _remove_legacy_session_files() -> None:
+    for suffix in _SESSION_SUFFIXES:
+        try:
+            os.unlink(_session_path() + suffix)
+        except FileNotFoundError:
+            pass
+
+
+def _saved_session() -> str:
+    """Sessione salvata con gli altri segreti; una vecchia sessione SQLite viene migrata e rimossa."""
+    value = os.environ.get(SESSION_SECRET, "")
+    legacy = _session_path() + ".session"
+    if not value and os.path.isfile(legacy):
+        from telethon.sessions import SQLiteSession, StringSession
+        old = SQLiteSession(_session_path())
+        try:
+            value = StringSession.save(old) if old.auth_key else ""
+        finally:
+            old.close()
+        if value:
+            _store_session(value)
+        _remove_legacy_session_files()
+    return value
 
 
 def _credentials() -> tuple[int, str]:
@@ -49,11 +89,9 @@ async def request_code(api_id: int, api_hash: str, phone: str) -> None:
     client = _client(api_id, api_hash)
     try:
         await client.connect()
-        os.chmod(_session_path() + ".session", 0o600)
         result = await client.send_code_request(phone)
-        # L'API hash rimane in memoria solo per il tempo necessario alla conferma.
-        # Setting è JSON in chiaro e non deve conservare credenziali Telegram.
-        _pending_api_hash[phone] = api_hash
+        # Il codice vale solo per la chiave di autorizzazione appena negoziata: va riusata alla conferma.
+        _pending_login[phone] = {"api_hash": api_hash, "session": client.session.save()}
         with session_scope(get_database()) as session:
             row = session.get(Setting, PENDING_KEY)
             value = {"phone": phone, "api_id": api_id,
@@ -70,10 +108,11 @@ async def complete_login(code: str, password: str | None = None) -> None:
     with session_scope(get_database()) as session:
         row = session.get(Setting, PENDING_KEY)
         value = row.value if row else None
-    if not value or time.time() > value["expires"] or value["phone"] not in _pending_api_hash:
+    if not value or time.time() > value["expires"] or value["phone"] not in _pending_login:
         raise ApiError(409, "telegram_code_expired", "Richiedi un nuovo codice Telegram.")
-    api_hash = _pending_api_hash[value["phone"]]
-    client = _client(value["api_id"], api_hash)
+    pending = _pending_login[value["phone"]]
+    api_hash = pending["api_hash"]
+    client = _client(value["api_id"], api_hash, pending["session"])
     try:
         await client.connect()
         try:
@@ -84,13 +123,14 @@ async def complete_login(code: str, password: str | None = None) -> None:
             await client.sign_in(password=password)
         if not await client.is_user_authorized():
             raise ApiError(409, "telegram_user_unauthorized", "Accesso Telegram non completato.")
-        os.chmod(_session_path() + ".session", 0o600)
-        from rt.core.paths import config_home
-        config_service.set_secret("RT_TELEGRAM_USER_API_ID", str(value["api_id"]), path=Path(config_home()) / ".env")
-        config_service.set_secret("RT_TELEGRAM_USER_API_HASH", api_hash, path=Path(config_home()) / ".env")
+        env_path = _env_path()
+        config_service.set_secret("RT_TELEGRAM_USER_API_ID", str(value["api_id"]), path=env_path)
+        config_service.set_secret("RT_TELEGRAM_USER_API_HASH", api_hash, path=env_path)
+        _store_session(client.session.save())
+        _remove_legacy_session_files()
         os.environ["RT_TELEGRAM_USER_API_ID"] = str(value["api_id"])
         os.environ["RT_TELEGRAM_USER_API_HASH"] = api_hash
-        _pending_api_hash.pop(value["phone"], None)
+        _pending_login.pop(value["phone"], None)
         with session_scope(get_database()) as session:
             row = session.get(Setting, PENDING_KEY)
             if row: session.delete(row)
@@ -99,7 +139,11 @@ async def complete_login(code: str, password: str | None = None) -> None:
 
 
 async def _authorized_client():
-    client = _client(*_credentials())
+    api_id, api_hash = _credentials()
+    session = _saved_session()
+    if not session:
+        raise ApiError(409, "telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")
+    client = _client(api_id, api_hash, session)
     await client.connect()
     if not await client.is_user_authorized():
         await client.disconnect()
@@ -108,11 +152,10 @@ async def _authorized_client():
 
 
 async def revoke_session() -> None:
-    """Revoca la sessione sul server, rimuove il file locale e le credenziali RT."""
-    from rt.core.paths import config_home
+    """Revoca la sessione sul server, rimuove sessione e credenziali RT (anche i vecchi file)."""
     from rt.services import config_service, secrets_service
     from rt.security.secrets import store_path_for_env_file
-    env_path = Path(config_home()) / ".env"
+    env_path = _env_path()
     try:
         client = await _authorized_client()
     except ApiError:
@@ -122,13 +165,9 @@ async def revoke_session() -> None:
             await client.log_out()
         finally:
             await client.disconnect()
-    for suffix in (".session", ".session-journal", ".session-wal", ".session-shm"):
-        try:
-            os.unlink(_session_path() + suffix)
-        except FileNotFoundError:
-            pass
+    _remove_legacy_session_files()
     secret_path = store_path_for_env_file(env_path)
-    for name in ("RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH"):
+    for name in ("RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH", SESSION_SECRET):
         if secret_path.is_file():
             secrets_service.unset_secret(name, path=secret_path)
         if env_path.is_file():
