@@ -48,6 +48,10 @@ def make_lesson(root: str, name: str = LESSON_NAME) -> str:
         f.write(INFO_YAML)
     with open(os.path.join(lesson_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
         f.write(TRANSCRIPT_MD)
+    from rt.db.engine import get_database
+    if get_database() is not None:
+        from rt.services.lesson_service import ensure_indexed
+        ensure_indexed([lesson_dir])
     return lesson_dir
 
 

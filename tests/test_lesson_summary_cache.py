@@ -45,6 +45,13 @@ def test_unchanged_lessons_are_not_recomputed(tmp_path, monkeypatch, rt_db, coun
     assert after[0]["phases"]["outline"] == "VALID" != first[0]["phases"]["outline"]
 
 
+def test_lesson_listing_uses_database_index_without_scanning_root(tmp_path, monkeypatch, rt_db):
+    make_lesson(isolated_workspace(tmp_path, monkeypatch))
+    monkeypatch.setattr("rt.core.lesson_index.scan_lessons", lambda *_: (_ for _ in ()).throw(
+        AssertionError("non deve scandire la cartella delle lezioni")))
+    assert len(lesson_service.list_lessons()) == 1
+
+
 def test_cached_items_are_copies(tmp_path, monkeypatch, rt_db, counted):
     make_lesson(isolated_workspace(tmp_path, monkeypatch))
     lesson_service.list_lessons()[0]["phases"]["prepare"] = "ALTERATO"

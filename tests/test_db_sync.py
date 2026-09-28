@@ -160,13 +160,12 @@ def test_broken_database_does_not_break_writes(lessons, monkeypatch, tmp_path, c
 def test_cli_db_sync_and_check(rt_db, lessons, capsys):
     from rt.cli import main
     root, dirs = lessons
-    with pytest.raises(SystemExit):
-        main(["db", "check", "--lessons-root", root])
-    assert "lezione assente dal database" in capsys.readouterr().out
+    main(["db", "check"])
+    assert "Integrità database e media verificata" in capsys.readouterr().out
     main(["db", "sync", "--lessons-root", root])
     assert "Lezioni sincronizzate: 3" in capsys.readouterr().out
-    main(["db", "check", "--lessons-root", root])
-    assert "allineato" in capsys.readouterr().out
+    main(["db", "check"])
+    assert "Integrità database e media verificata" in capsys.readouterr().out
 
 
 def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):

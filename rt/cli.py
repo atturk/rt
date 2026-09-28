@@ -756,7 +756,7 @@ def _cmd_db_migrate_storage(args: argparse.Namespace) -> None:
     from rt.core.config import load_config
     from rt.storage.migrate import migrate_storage
 
-    root = args.lessons_root or load_config().telegram.lessons_root
+    root = getattr(args, "lessons_root", None) or load_config().telegram.lessons_root
     report = migrate_storage(root, dry_run=args.dry_run, on_progress=print)
     if not report.plans:
         print("✅ Nessuna lezione in cartella da migrare: sono già tutte nel database.")
@@ -791,11 +791,12 @@ def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> Non
     from rt.db.engine import get_database
     from rt.db.sync import check_all, sync_all
 
-    root = args.lessons_root or load_config().telegram.lessons_root
-    if not root or not fs.isdir(os.path.expanduser(root)):
-        print("❌ Cartella delle lezioni non trovata: passa --lessons-root o imposta telegram.lessons_root.", file=sys.stderr)
-        sys.exit(1)
-    root = os.path.abspath(os.path.expanduser(root))
+    root = getattr(args, "lessons_root", None) or load_config().telegram.lessons_root
+    if args.db_command == "sync":
+        if not root or not fs.isdir(os.path.expanduser(root)):
+            print("❌ Cartella delle lezioni non trovata: passa --lessons-root o imposta telegram.lessons_root.", file=sys.stderr)
+            sys.exit(1)
+        root = os.path.abspath(os.path.expanduser(root))
     db = get_database(create=args.db_command == "sync", url=url)
     if db is None:
         print(f"❌ Database non disponibile: {shown}\nEsegui 'rt db upgrade' per crearlo.", file=sys.stderr)
@@ -808,12 +809,13 @@ def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> Non
         if result["errors"]:
             sys.exit(1)
         return
-    diffs = check_all(db, root)
-    if not diffs:
-        print("✅ Database allineato ai file delle lezioni.")
+    from rt.db.health import check_database
+    issues = check_database(db)
+    if not issues:
+        print(f"✅ Integrità database e media verificata ({shown}).")
         return
-    print(f"⚠️  {len(diffs)} differenze tra database e file (esegui 'rt db sync' per riallinearli):")
-    for d in diffs:
+    print(f"⚠️  {len(issues)} problemi nel database o nei media:")
+    for d in issues:
         print(f"  - {d}")
     sys.exit(1)
 
@@ -1188,10 +1190,9 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     db_sub = p_db.add_subparsers(dest="db_command", required=True, title="Comandi database")
     db_sub.add_parser("upgrade", help="Crea il database o applica le migrazioni mancanti")
     db_sub.add_parser("status", help="Mostra percorso e revisione del database")
-    for name, text in (("sync", "Importa nel database le lezioni di lessons_root (non modifica i file)"),
-                       ("check", "Confronta database e file delle lezioni e segnala le differenze")):
-        p_sub = db_sub.add_parser(name, help=text)
-        p_sub.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
+    p_sync = db_sub.add_parser("sync", help="Importa le lezioni esistenti a cartelle nel DB (compatibilità)")
+    p_sync.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
+    db_sub.add_parser("check", help="Controlla integrità del database e dei media senza modificare dati")
     p_mig = db_sub.add_parser("migrate-storage", help="Sposta le lezioni in cartella nel database (testi) e in media/ (audio e immagini), con backup")
     p_mig.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
     p_mig.add_argument("--dry-run", action="store_true", help="Mostra cosa verrebbe migrato senza modificare nulla")

@@ -289,8 +289,10 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
 
 ## 8. Database (RT 4.0, fase B)
 
-Il pacchetto `rt/db` aggiunge un database SQLAlchemy 2.0 con migrazioni Alembic. I file della
-cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice, stato e storico.
+Il pacchetto `rt/db` usa un database SQLAlchemy 2.0 con migrazioni Alembic. Le lezioni
+create/importate dalla versione corrente usano il DB come archivio canonico dei testi e
+`media/` per gli originali binari. Le lezioni archiviate nel vecchio formato a cartelle
+restano leggibili finché non vengono convertite con il comando esplicito di migrazione.
 
 - **Dove vive**: `RT_DATABASE_URL` (variabile d'ambiente, `off` lo disattiva) >
   `database_url` in `config/general.yaml` > SQLite in `<lessons_root>/.rt/rt.db` (oppure
@@ -313,14 +315,13 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   `LlmCall`, `Setting`, `StateDocument`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
 - **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
-- **Sincronizzazione** (`rt/db/sync.py`): `rt db sync` importa le lezioni di `lessons_root`
-  (info.yaml, fasi dal manifest, issue da `science_issues.json`, ledger) senza modificare i
-  file ed è idempotente; `rt db check` elenca le differenze tra DB e file. Il dual-write
-  (`dual_write_lesson`) aggiorna la lezione nel DB dopo ogni scrittura di `info.yaml`
-  (`rt/core/state.py`), `manifest.json` (`rt/core/manifest.py`) e del ledger: per lezione,
-  fasi e issue i file restano la fonte di verità, e un errore del DB diventa solo un avviso.
-  Le dashboard continuano a scansionare le cartelle perché mostrano la freschezza calcolata
-  al momento (`check_phase_status`), che il DB non conserva.
+- **Indice e controllo**: dashboard, costi e comandi Telegram enumerano le lezioni indicizzate
+  nel DB, senza scandire `lessons_root`. `rt db check` controlla integrità SQLite, contenuti,
+  checksum e riferimenti/media orfani o mancanti; non modifica dati. `rt db sync` resta un
+  import esplicito e idempotente per installazioni che hanno ancora lezioni a cartelle.
+- **Lezioni a cartelle**: il dual-write (`dual_write_lesson`) aggiorna i campi derivati nel DB
+  dopo scritture di `info.yaml`, `manifest.json` e ledger. Per le lezioni correnti in DB,
+  testi, stato e media sono letti da `rt.storage.fs`; non serve una cartella fisica di lezione.
 - **Test**: `tests/conftest.py` spegne il DB per ogni test (`RT_DATABASE_URL=off`); la
   fixture `rt_db` ne crea uno temporaneo.
 

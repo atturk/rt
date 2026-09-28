@@ -149,19 +149,11 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     from rt.core.config import load_config
     from rt.telegram.config import reverse_resolve_materia
-    from rt.core.lesson_index import scan_lessons, filter_by_materia, filter_unmapped
+    from rt.core.lesson_index import database_lessons, filter_by_materia, filter_unmapped
     from rt.telegram.formatting import render_lesson_list_text
 
     runtime_cfg = load_config().telegram
-    if not runtime_cfg.lessons_root:
-        await _send_with_retry(lambda: update.effective_message.reply_text(
-            "⚠️ Parameter 'telegram.lessons_root' non configurato in general.yaml.\n"
-            "Per favore configura 'telegram.lessons_root' nei tuoi file di configurazione (vedi docs/CONFIGURATION_REFERENCE.md).",
-            message_thread_id=thread_id,
-        ))
-        return
-
-    entries = scan_lessons(runtime_cfg.lessons_root)
+    entries = database_lessons()
     materia = reverse_resolve_materia(thread_id, runtime_cfg.topics)
 
     if materia:
@@ -174,9 +166,7 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not scoped:
         if not entries:
             msg = (
-                f"Nessuna lezione trovata in '{runtime_cfg.lessons_root}'. "
-                "Se hai appena creato una lezione altrove, verifica che sia dentro questa cartella "
-                "(configurabile con 'rt config' o 'rt config --telegram'), oppure spostala/copiala lì."
+                "Nessuna lezione presente nel database."
             )
         else:
             msg = (
@@ -233,7 +223,7 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     from rt.core.config import load_config
     from rt.telegram.config import reverse_resolve_materia
-    from rt.core.lesson_index import scan_lessons, filter_by_materia, filter_unmapped
+    from rt.core.lesson_index import database_lessons, filter_by_materia, filter_unmapped
     from rt.telegram.lesson_query import resolve_recall_query, MAX_INLINE_DISAMBIGUATION
     from rt.telegram.formatting import render_lesson_list_text
 
@@ -275,15 +265,7 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     raw_query = " ".join(context.args)
 
-    if not runtime_cfg.lessons_root:
-        await _send_with_retry(lambda: update.effective_message.reply_text(
-            "⚠️ Parameter 'telegram.lessons_root' non configurato in general.yaml.\n"
-            "Per favore configura 'telegram.lessons_root' nei tuoi file di configurazione (vedi docs/CONFIGURATION_REFERENCE.md).",
-            message_thread_id=thread_id,
-        ))
-        return
-
-    entries = scan_lessons(runtime_cfg.lessons_root)
+    entries = database_lessons()
     materia = reverse_resolve_materia(thread_id, runtime_cfg.topics)
 
     if materia:

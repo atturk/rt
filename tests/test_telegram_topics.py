@@ -238,8 +238,7 @@ def test_handle_list_command_empty_lessons_root(tmp_path):
 
     update.effective_message.reply_text.assert_called_once()
     reply = update.effective_message.reply_text.call_args[0][0]
-    assert f"Nessuna lezione trovata in '{empty_root}'" in reply
-    assert "rt config" in reply
+    assert "Nessuna lezione presente nel database" in reply
 
 
 def test_handle_list_command_different_topic(tmp_path):
@@ -265,13 +264,16 @@ def test_handle_list_command_different_topic(tmp_path):
         cfg.telegram.topics = {"BIOCHIMICA": 42, "ANATOMIA": 99}
         mock_cfg.return_value = cfg
 
-        asyncio.run(handle_list_command(update, context))
+        with patch("rt.core.lesson_index.database_lessons", return_value=[
+            __import__("rt.core.lesson_index", fromlist=["LessonEntry"]).LessonEntry(
+                lesson_dir=l1, folder_name="lesson_bio", data="2026-09-08", materia="BIOCHIMICA",
+                titolo="", argomenti="")]):
+            asyncio.run(handle_list_command(update, context))
 
     update.effective_message.reply_text.assert_called_once()
     reply = update.effective_message.reply_text.call_args[0][0]
     assert "Nessuna lezione trovata per la materia di questo topic" in reply
     assert "1 lezioni totali in altri topic/materie" in reply
-
 
 
 

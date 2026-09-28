@@ -49,6 +49,22 @@ def scan_lessons(lessons_root: str) -> List[LessonEntry]:
     return entries
 
 
+def database_lessons() -> List[LessonEntry]:
+    """Elenco canonico delle lezioni dal DB, senza scansione della cartella dati."""
+    from rt.db.engine import get_database
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import read_scope
+
+    db = get_database()
+    if db is None:
+        return []
+    with read_scope(db) as session:
+        rows = LessonRepository(session).list_all()
+        return [LessonEntry(lesson_dir=row.path, folder_name=row.folder_name, data=row.data,
+                            materia=row.materia.strip().upper(), titolo=row.titolo,
+                            argomenti=row.argomenti) for row in rows]
+
+
 def filter_by_materia(entries: List[LessonEntry], materia_upper: str) -> List[LessonEntry]:
     return [e for e in entries if e.materia == materia_upper]
 

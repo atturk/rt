@@ -7,6 +7,16 @@ from rt.telegram.daemon import handle_list_command, handle_recall_command
 from rt.telegram import registry
 
 
+def _db_entries(paths):
+    from rt.core.lesson_index import LessonEntry
+    from rt.core.state import read_info_yaml
+    return [LessonEntry(lesson_dir=os.path.abspath(path), folder_name=os.path.basename(path),
+                        data=str((info := read_info_yaml(os.path.join(path, "info.yaml"))).get("data", "")),
+                        materia=str(info.get("materia", "")).strip().upper(),
+                        titolo=str(info.get("titolo", "")), argomenti=str(info.get("argomenti", "")))
+            for path in paths]
+
+
 def _create_fake_lesson(root: str, folder_name: str, materia: str, data: str, argomenti: str) -> str:
     path = os.path.join(root, folder_name)
     os.makedirs(path, exist_ok=True)
@@ -33,7 +43,8 @@ def test_handle_list_registers_message_mapping(tmp_path):
     context = MagicMock()
     context.bot_data = {"state_dir": state_dir}
 
-    with patch("rt.core.config.load_config") as mock_cfg:
+    with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.core.lesson_index.database_lessons", return_value=_db_entries([l1, l2])):
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
         cfg.telegram.topics = {}
@@ -82,6 +93,7 @@ def test_handle_recall_reply_to_list_valid_position(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.core.lesson_index.database_lessons", return_value=_db_entries(dirs)), \
          patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
@@ -112,6 +124,7 @@ def test_handle_recall_without_reply_falls_back_to_text_search(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.core.lesson_index.database_lessons", return_value=_db_entries([l1])), \
          patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
@@ -149,6 +162,7 @@ def test_handle_recall_reply_to_list_out_of_range_error(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.core.lesson_index.database_lessons", return_value=_db_entries([l1, l2])), \
          patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root
@@ -188,6 +202,7 @@ def test_handle_recall_reply_to_list_non_numeric_keeps_text_search(tmp_path):
     context.bot_data = {"state_dir": state_dir}
 
     with patch("rt.core.config.load_config") as mock_cfg, \
+         patch("rt.core.lesson_index.database_lessons", return_value=_db_entries([l1])), \
          patch("rt.telegram.recall_channel.start_recall_via_telegram") as mock_start:
         cfg = MagicMock()
         cfg.telegram.lessons_root = lessons_root

@@ -60,16 +60,17 @@ def lesson_id_for_dir(lesson_dir: str) -> Optional[int]:
 
 
 def known_lesson_dirs() -> List[str]:
-    """Cartelle lezione di lessons_root più quelle già nel DB che esistono ancora."""
-    from rt.core.lesson_index import scan_lessons
-    from rt.db.repositories import LessonRepository, normalize_lesson_path
-    from rt.db.session import session_scope
-    dirs = [normalize_lesson_path(e.lesson_dir) for e in scan_lessons(lessons_root() or "")]
-    with session_scope(_require_db()) as session:
-        for lesson in LessonRepository(session).list_all():
-            if lesson.path not in dirs and fs.isfile(lesson_path(lesson.path, "info.yaml")):
-                dirs.append(lesson.path)
-    return dirs
+    """Percorsi delle lezioni indicizzate dal database, senza scansione della root."""
+    return list(indexed_lesson_ids())
+
+
+def indexed_lesson_ids() -> Dict[str, int]:
+    """Mappa path/ID dal DB. L'esistenza virtuale è verificata dal backend storage."""
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import read_scope
+    with read_scope(_require_db()) as session:
+        return {lesson.path: lesson.id for lesson in LessonRepository(session).list_all()
+                if lesson.storage == fs.STORAGE_DB or fs.isdir(lesson.path)}
 
 
 def resolve_lesson_dir(lesson_id: int) -> str:
@@ -223,7 +224,7 @@ def clear_summary_cache() -> None:
 def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
                  text: Optional[str] = None) -> List[Dict[str, Any]]:
     with fs.read_snapshot():  # centinaia di letture per lezione, una query ciascuna senza
-        ids = ensure_indexed(known_lesson_dirs())
+        ids = indexed_lesson_ids()
         items = _cached_summaries(ids)
     if materia:
         items = [i for i in items if i["materia"] == materia.strip().upper()]
@@ -492,7 +493,7 @@ def lesson_audio_file(lesson_dir: str) -> Optional[str]:
 def costs_summary() -> Dict[str, Any]:
     """Riepilogo dei costi di tutte le lezioni note (stessi numeri di 'rt cost')."""
     from rt.pipeline.cost import compute_lesson_cost
-    ids = ensure_indexed(known_lesson_dirs())
+    ids = indexed_lesson_ids()
     lessons, by_job, total, requests = [], {}, 0.0, 0
     for path, lesson_id in ids.items():
         data = compute_lesson_cost(path)
