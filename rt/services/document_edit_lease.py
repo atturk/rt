@@ -1,6 +1,7 @@
 """Explicit editing locks shared between browser tabs and API workers."""
 
 import secrets
+from datetime import datetime, timezone
 
 from rt.db.engine import get_database
 from rt.db.models import Job, Lesson, Setting
@@ -24,16 +25,25 @@ def acquire(lesson_id: int, token: str | None = None, recover: bool = False) -> 
         row = session.get(Setting, _key(lesson_id))
         if row and _active(row.value) and row.value.get("token") != token and not recover:
             raise ApiError(409, "document_edit_busy", "Il documento è in modifica in un'altra scheda.")
+        previous = dict(row.value or {}) if row and _active(row.value) else {}
         from sqlalchemy import select
         if session.scalar(select(Job.id).where(Job.lesson_path == lesson.path,
                                              Job.state.in_(["queued", "running"])).limit(1)):
             raise ApiError(409, "lesson_busy", "Un job sta già lavorando sulla lezione.")
-        value = {"token": token if row and _active(row.value) and row.value.get("token") == token else secrets.token_urlsafe(32)}
+        same_session = bool(previous and previous.get("token") == token)
+        value = {
+            "token": token if same_session else secrets.token_urlsafe(32),
+            "lease_id": previous.get("lease_id") if same_session else secrets.token_urlsafe(8),
+            "acquired_at": previous.get("acquired_at") if same_session else datetime.now(timezone.utc).isoformat(),
+        }
         if row:
             row.value = value
         else:
             session.add(Setting(key=_key(lesson_id), value=value))
-        return value
+        return {**value,
+                "recovered": bool(previous and not same_session and recover),
+                "previous_lease_id": previous.get("lease_id") if previous and not same_session else None,
+                "previous_acquired_at": previous.get("acquired_at") if previous and not same_session else None}
 
 
 def assert_editable(lesson_id: int, token: str | None = None) -> None:

@@ -15,6 +15,7 @@ def test_lease_blocks_second_editor_and_jobs_until_released(api_client, lesson):
     endpoint = f"/api/v1/lessons/{lesson}/document/lease"
     lease = api_client.post(endpoint).json()
     assert len(lease["token"]) > 20
+    assert lease["lease_id"] and lease["acquired_at"]
     assert api_client.post(endpoint).status_code == 409
     assert api_client.post(endpoint, params={"token": lease["token"]}).status_code == 200
     blocked = api_client.post(f"/api/v1/lessons/{lesson}/jobs", json={"type": "run_phase", "phase": "prepare"})
@@ -22,6 +23,17 @@ def test_lease_blocks_second_editor_and_jobs_until_released(api_client, lesson):
     assert blocked.json()["error"]["code"] == "document_edit_busy"
     assert api_client.delete(endpoint, params={"token": lease["token"]}).status_code == 204
     assert api_client.post(f"/api/v1/lessons/{lesson}/jobs", json={"type": "run_phase", "phase": "prepare"}).status_code == 202
+
+
+def test_explicit_recovery_identifies_the_replaced_edit_session(api_client, lesson):
+    endpoint = f"/api/v1/lessons/{lesson}/document/lease"
+    original = api_client.post(endpoint).json()
+    recovered = api_client.post(endpoint, params={"recover": True}).json()
+    assert recovered["recovered"] is True
+    assert recovered["previous_lease_id"] == original["lease_id"]
+    assert recovered["previous_acquired_at"] == original["acquired_at"]
+    assert recovered["lease_id"] != original["lease_id"]
+    assert api_client.post(endpoint, params={"token": original["token"]}).status_code == 409
 
 
 def test_lease_requires_valid_token_to_save(api_client, lesson):
