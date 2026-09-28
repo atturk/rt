@@ -1,5 +1,7 @@
 """Delete a lesson with a validated path and a durable filesystem quarantine."""
 
+import contextlib
+import fcntl
 import json
 import os
 import shutil
@@ -38,13 +40,37 @@ def purge_lesson_records(session, row: Lesson) -> None:
                                                     StateDocument.key.startswith(path + os.sep))))
 
 
+@contextlib.contextmanager
+def _journal_lock(db, wait: bool = True):
+    """Serializza cancellazione e recupero: senza, un recupero concorrente (GET /lessons)
+    vedeva il journal prima del commit e rimetteva a posto la cartella appena cancellata.
+    Restituisce False se wait=False e una cancellazione è in corso."""
+    folder = os.path.join(fs.data_dir(db), "pending-deletions")
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    with open(os.path.join(folder, ".lock"), "a") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
     """Quarantine a folder before commit; remove its files only after the DB deletion."""
     db = get_database()
     root = lessons_root()
     if db is None:
         raise ApiError(503, "database_unavailable", "Database non disponibile.")
+    with _journal_lock(db):
+        _delete_locked(db, root, lesson_id, lesson_dir)
+        _recover_locked(db)
 
+
+def _delete_locked(db, root, lesson_id: int, lesson_dir: str) -> None:
     with session_scope(db) as session:
         row = session.get(Lesson, lesson_id)
         if row is None or row.path != os.path.realpath(lesson_dir):
@@ -90,14 +116,20 @@ def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
             os.unlink(journal)
             raise
     fs.forget(lesson_dir)
-    recover_pending_deletions(db)
 
 
 def recover_pending_deletions(db=None) -> None:
-    """Finish a committed deletion or restore a folder if its transaction rolled back."""
+    """Finish a committed deletion or restore a folder if its transaction rolled back.
+    If a deletion is running right now it finishes its own journal, so there's nothing to do."""
     db = db or get_database()
-    if db is None:
+    if db is None or not os.path.isdir(os.path.join(fs.data_dir(db), "pending-deletions")):
         return
+    with _journal_lock(db, wait=False) as locked:
+        if locked:
+            _recover_locked(db)
+
+
+def _recover_locked(db) -> None:
     folder = os.path.join(fs.data_dir(db), "pending-deletions")
     if not os.path.isdir(folder):
         return

@@ -70,3 +70,19 @@ def test_recreated_lesson_does_not_inherit_rows_of_the_deleted_one(api_client, w
         for model in (Job, RecallSession, TelegramCommand):
             assert session.scalar(select(func.count()).select_from(model).where(model.lesson_path == real)) == 0
         assert session.get(Setting, f"lesson_edit_lease:{lesson_id}") is None
+
+
+def test_concurrent_lesson_list_does_not_resurrect_a_folder_being_deleted(api_client, workspace, rt_db, monkeypatch):
+    """GET /lessons durante una cancellazione: prima rimetteva a posto la cartella in quarantena."""
+    from rt.services import lesson_delete_service
+    path = make_lesson(workspace)
+    lesson_id = api_client.get("/api/v1/lessons").json()[0]["id"]
+    real_purge = lesson_delete_service.purge_lesson_records
+
+    def purge_while_listing(session, row):
+        lesson_delete_service.recover_pending_deletions(rt_db)  # come una richiesta parallela
+        real_purge(session, row)
+    monkeypatch.setattr(lesson_delete_service, "purge_lesson_records", purge_while_listing)
+    assert api_client.delete(f"/api/v1/lessons/{lesson_id}").status_code == 204
+    assert not os.path.exists(path)
+    assert not any(name.startswith(".rt-deleting-") for name in os.listdir(workspace))

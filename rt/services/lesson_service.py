@@ -159,9 +159,8 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     # Un cambio ai modelli o alle istruzioni globali può rendere STALE rewrite/review
     # senza modificare alcun file della lezione. La cache deve seguirlo.
     config_parts: List[str] = []
-    config_dir = os.path.join(os.environ.get("HOME", ""), "config")
-    if not os.path.isdir(config_dir):
-        config_dir = os.path.join(os.getcwd(), "config")
+    from rt.core.paths import config_dir as active_config_dir
+    config_dir = active_config_dir()
     for top, dirs, files in os.walk(config_dir):
         dirs.sort()
         for name in sorted(files):
