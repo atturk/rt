@@ -79,6 +79,7 @@ def test_broken_database_raises_with_restore_instructions(tmp_path, monkeypatch)
         ensure_database()
     message = str(exc.value)
     assert str(path) in message and "backup" in message and ".rotto" in message
+    assert "rt db migrate-storage" in message
 
 
 def test_cli_command_creates_database_without_scanning_lessons_root(db_url, lessons, tmp_path, capsys, monkeypatch):
@@ -101,7 +102,8 @@ def test_cli_stops_on_broken_database(tmp_path, monkeypatch, capsys, lessons):
         main(["status", dirs[0]])
     assert exc.value.code == 1
     err = capsys.readouterr().err
-    assert "Database di RT illeggibile" in err and "rilancia il comando" in err
+    assert "Database di RT illeggibile" in err and ".rotto" in err
+    assert "rt db migrate-storage" in err
     # la diagnosi del database resta disponibile anche con il DB rotto
     main(["db", "status"])
 
