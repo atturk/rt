@@ -96,7 +96,7 @@ def cli(tmp_path):
 @pytest.fixture
 def pair(api, cli):
     """La stessa lezione (trascritto Markdown) in una copia per parte."""
-    return make_lesson(cli.root), make_lesson(api.root)
+    return make_lesson(cli.root, index=False), make_lesson(api.root)
 
 
 # ---------------------------------------------------------------- confronto

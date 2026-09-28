@@ -85,12 +85,13 @@ def test_llm_call_invalidates_the_cost(tmp_path, monkeypatch, rt_db, counted):
     assert lesson_service.list_lessons()[0]["cost_usd"] == pytest.approx(0.5)
 
 
-def test_global_prompt_invalidates_cached_phase_status(tmp_path, monkeypatch, rt_db, counted):
+def test_global_prompt_does_not_make_done_phases_stale(tmp_path, monkeypatch, rt_db, counted):
+    """Report 2, §5.3: cambiare un prompt vale per le esecuzioni future, non rende STALE le fasi fatte."""
     from rt.services.prompt_settings import set_global_instruction
     lesson_dir = make_lesson(isolated_workspace(tmp_path, monkeypatch))
     run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
     assert lesson_service.list_lessons()[0]["phases"]["rewrite"] == "VALID"
-    assert len(counted) == 1
     set_global_instruction("rewrite", "Metti in evidenza i collegamenti clinici.")
-    assert lesson_service.list_lessons()[0]["phases"]["rewrite"] == "STALE"
-    assert len(counted) == 2
+    lesson_service.clear_summary_cache()
+    phases = lesson_service.list_lessons()[0]["phases"]
+    assert phases["rewrite"] == "VALID" and phases["review"] == "VALID"

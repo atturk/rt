@@ -1,8 +1,8 @@
 """Editable instructions, stored separately from the schema enforced by LLMClient."""
 
 import hashlib
-import json
 import os
+from contextlib import contextmanager, nullcontext
 
 from rt.db.engine import get_database
 from rt.db.models import Setting
@@ -48,10 +48,36 @@ def _extra_key(lesson_dir: str, phase: str) -> str:
     return f"prompt_extra:{phase}:{hashlib.sha256(os.path.realpath(lesson_dir).encode()).hexdigest()}"
 
 
+def extra_keys(lesson_dir: str) -> list:
+    return [_extra_key(lesson_dir, phase) for phase in ("outline", "rewrite", "review")]
+
+
 def set_extra(lesson_dir: str, phase: str, text: str) -> None:
     if phase not in ("outline", "rewrite", "review") or len(text) > 10_000:
         raise ValueError("Istruzione della fase non valida.")
     _write(_extra_key(lesson_dir, phase), text.strip())
+
+
+@contextmanager
+def one_shot_extra(lesson_dir: str, phase: str, text: str):
+    """Istruzione aggiuntiva valida solo per il job in corso: la si cancella comunque alla
+    fine, così non resta applicata (e invisibile) alle esecuzioni successive."""
+    set_extra(lesson_dir, phase, text)
+    try:
+        yield
+    finally:
+        set_extra(lesson_dir, phase, "")
+
+
+def extra_scope(lesson_dir: str, phase: str, payload: dict):
+    """one_shot_extra se il job porta un'istruzione aggiuntiva, altrimenti niente."""
+    text = str(payload.get("extra_prompt") or "").strip()
+    return one_shot_extra(lesson_dir, phase, text) if text else nullcontext()
+
+
+def clear_extras(lesson_dir: str) -> None:
+    for phase in ("outline", "rewrite", "review"):
+        set_extra(lesson_dir, phase, "")
 
 
 def effective_system(phase: str, default: str) -> str:
@@ -62,14 +88,3 @@ def effective_system(phase: str, default: str) -> str:
 def append_extra(lesson_dir: str, phase: str, prompt: str) -> str:
     instruction = extra_for(lesson_dir, phase)
     return prompt + ("\n\nIstruzioni per questa esecuzione:\n" + instruction if instruction else "")
-
-
-def settings_hash(lesson_dir: str, phase: str) -> str:
-    from rt.core.config import load_config
-    cfg = load_config()
-    route = cfg.jobs.get(phase)
-    inputs = {"global": global_instruction(phase), "extra": extra_for(lesson_dir, phase),
-              "route": route.model_dump(mode="json") if route else None}
-    if phase == "review":
-        inputs["decision_model"] = cfg.jev.model_dump(mode="json")
-    return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()

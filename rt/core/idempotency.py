@@ -152,12 +152,8 @@ def _metadata_fingerprints(lesson_dir: str, phase_name: str) -> List[str]:
         source_hash = compute_file_sha256(raw_source) if raw_source else "no_source"
     else:
         source_hash = compute_file_sha256(lesson_path(lesson_dir, "segments.json"))
-    config_hash = ""
-    if phase_name == "outline":
-        from rt.services.prompt_settings import settings_hash
-        config_hash = settings_hash(lesson_dir, phase_name)
     return [
-        compute_string_sha256(f"{source_hash}|{info_str}|{proc_ver}" + (f"|{config_hash}" if config_hash else ""))
+        compute_string_sha256(f"{source_hash}|{info_str}|{proc_ver}")
         for info_str in _info_fingerprint_strs(lesson_dir)
     ]
 
@@ -174,11 +170,10 @@ def compute_source_fingerprint(
     2. Versioning della trasformazione/prompt (PROCESSOR_VERSIONS)
     3. Parametri rilevanti di configurazione
     """
+    # Prompt, modelli e istruzioni aggiuntive non entrano nell'impronta: cambiarli non rende
+    # obsolete le fasi già fatte (e non invalida i checkpoint della 4.0.0). Chi rilancia una
+    # fase con istruzioni nuove la forza esplicitamente (vedi rt/services/api_jobs.py).
     proc_ver = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
-    config_hash = ""
-    if phase_name in ("rewrite", "review"):
-        from rt.services.prompt_settings import settings_hash
-        config_hash = "|" + settings_hash(lesson_dir, phase_name)
 
     if phase_name in ("prepare", "outline"):
         return _metadata_fingerprints(lesson_dir, phase_name)[0]
@@ -191,8 +186,8 @@ def compute_source_fingerprint(
 
         if target_unit_id:
             # Fingerprint mirato per la specifica unità didattica
-            return compute_string_sha256(f"{seg_hash}|{out_hash}|unit:{target_unit_id}|{proc_ver}{config_hash}")
-        return compute_string_sha256(f"{seg_hash}|{out_hash}|{proc_ver}{config_hash}")
+            return compute_string_sha256(f"{seg_hash}|{out_hash}|unit:{target_unit_id}|{proc_ver}")
+        return compute_string_sha256(f"{seg_hash}|{out_hash}|{proc_ver}")
 
     elif phase_name == "review":
         draft_path = lesson_path(lesson_dir, "draft.json")
@@ -204,7 +199,9 @@ def compute_source_fingerprint(
         relevance_path = lesson_path(lesson_dir, "unit_relevance.json")
         relevance_hash = (compute_file_sha256(relevance_path) if cfg.relevance_model and cfg.relevance_mode == "active"
                           and fs.isfile(relevance_path) else "")
-        return compute_string_sha256(f"{draft_hash}|{seg_hash}|{relevance_hash}|{proc_ver}{config_hash}")
+        # Senza filtro di rilevanza attivo l'impronta resta quella della 4.0.0.
+        relevance_part = f"{relevance_hash}|" if relevance_hash else ""
+        return compute_string_sha256(f"{draft_hash}|{seg_hash}|{relevance_part}{proc_ver}")
 
     elif phase_name == "build":
         in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in BUILD_INPUT_FILES]

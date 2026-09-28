@@ -40,8 +40,9 @@ def workspace_with_example_config(tmp_path, monkeypatch):
     return root
 
 
-def make_lesson(root: str, name: str = LESSON_NAME) -> str:
-    """Cartella già inizializzata con trascritto Markdown (come lo scenario golden)."""
+def make_lesson(root: str, name: str = LESSON_NAME, index: bool = True) -> str:
+    """Cartella già inizializzata con trascritto Markdown (come lo scenario golden).
+    index=False per le copie usate dal CLI in sottoprocesso: non vanno nel DB dei test API."""
     lesson_dir = os.path.join(root, name)
     os.makedirs(lesson_dir)
     with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
@@ -49,7 +50,7 @@ def make_lesson(root: str, name: str = LESSON_NAME) -> str:
     with open(os.path.join(lesson_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
         f.write(TRANSCRIPT_MD)
     from rt.db.engine import get_database
-    if get_database() is not None:
+    if index and get_database() is not None:
         from rt.services.lesson_service import ensure_indexed
         ensure_indexed([lesson_dir])
     return lesson_dir

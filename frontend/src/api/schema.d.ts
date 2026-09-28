@@ -1837,8 +1837,28 @@ export interface components {
         };
         /** DocumentEditLease */
         DocumentEditLease: {
+            /**
+             * Acquired At
+             * @description Inizio della sessione di modifica (ISO, UTC)
+             */
+            acquired_at?: string | null;
             /** Expires */
             expires?: string | null;
+            /**
+             * Lease Id
+             * @description Identificativo breve della sessione di modifica
+             */
+            lease_id?: string | null;
+            /** Previous Acquired At */
+            previous_acquired_at?: string | null;
+            /** Previous Lease Id */
+            previous_lease_id?: string | null;
+            /**
+             * Recovered
+             * @description True se la richiesta ha sostituito la sessione di un'altra scheda
+             * @default false
+             */
+            recovered: boolean;
             /** Token */
             token: string;
         };

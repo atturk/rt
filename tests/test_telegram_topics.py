@@ -201,11 +201,13 @@ def test_rebuild_sends_new_message_if_saved_message_cannot_be_edited(tmp_path, m
     runtime.telegram.topics = {"BIOCHIMICA": 42}
     runtime.telegram.misc_topic_id = None
     runtime.telegram.state_dir = str(tmp_path / "state")
+    with open(os.path.join(lesson_dir, "build_telegram_message.json"), "w", encoding="utf-8") as f:
+        json.dump({"message_id": 77, "chat_id": "123456", "thread_id": 42}, f)
     with patch("rt.core.config.load_config", return_value=runtime), \
          patch("rt.telegram.client.send_message", return_value={"message_id": 78}) as send, \
-         patch("rt.telegram.client.edit_message_text", side_effect=RuntimeError("not editable")):
+         patch("rt.telegram.client.edit_message_text", side_effect=RuntimeError("not editable")) as edit:
         notify_build_completed(lesson_dir, {}, "Lezione")
-        assert send.call_count == 2
+        assert edit.call_count == 1 and send.call_count == 1
         assert "Rebuild della lezione" in send.call_args.kwargs["text"]
     with open(os.path.join(lesson_dir, "build_telegram_message.json"), encoding="utf-8") as f:
         assert json.load(f)["message_id"] == 78

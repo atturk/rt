@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from rt.api.errors import ApiError
 from rt.db.engine import get_database
-from rt.db.models import Job, Lesson, LessonFile
+from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, TelegramCommand
 from rt.db.session import session_scope
 from rt.services.lesson_service import lessons_root
 from rt.storage import fs
@@ -18,6 +18,24 @@ from rt.storage import fs
 def _safe_child(path: str, root: str) -> bool:
     return (not os.path.islink(path) and os.path.realpath(os.path.dirname(path)) == root
             and os.path.dirname(os.path.abspath(path)) == root and os.path.basename(path) not in ("", ".", ".."))
+
+
+def purge_lesson_records(session, row: Lesson) -> None:
+    """Toglie le righe legate alla lezione per percorso o per chiave (job conclusi, sessioni
+    di recall, comandi Telegram, istruzioni aggiuntive, lease di modifica, documenti di
+    stato): senza questo una lezione ricreata con lo stesso nome le erediterebbe."""
+    from sqlalchemy import delete, or_
+    from rt.services.document_edit_lease import _key as lease_key
+    from rt.services.prompt_settings import extra_keys
+    path = row.path
+    for model in (RecallSession, TelegramCommand):
+        session.execute(delete(model).where(model.lesson_path == path))
+    for job in session.scalars(select(Job).where(Job.lesson_path == path)):
+        session.delete(job)  # JobEvent in cascata anche senza foreign key attive
+    keys = [lease_key(row.id), *extra_keys(path)]
+    session.execute(delete(Setting).where(Setting.key.in_(keys)))
+    session.execute(delete(StateDocument).where(or_(StateDocument.key == path,
+                                                    StateDocument.key.startswith(path + os.sep))))
 
 
 def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
@@ -64,6 +82,7 @@ def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
             if staged:
                 os.replace(lesson_dir, staged)
             # Explicit deletes also work with older SQLite schemas lacking foreign keys.
+            purge_lesson_records(session, row)
             session.delete(row)
         except BaseException:
             if staged and os.path.isdir(staged):

@@ -191,7 +191,8 @@ def test_outline_and_review_decisions_persist(api_client, api_token, ws, worker)
     c = api_client
     lesson_dir = make_lesson(ws)
     lid = lesson_id(c)
-    run = ok(c.post(f"/api/v1/lessons/{lid}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False}))
+    run = ok(c.post(f"/api/v1/lessons/{lid}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False,
+                                                         "with_review": True}))
     drain(worker)
     revise = ok(c.post(f"/api/v1/lessons/{lid}/outline/revise", json={"feedback": "Dividi in due unità", "mock": True}))
     drain(worker)

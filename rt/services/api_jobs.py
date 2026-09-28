@@ -35,15 +35,15 @@ def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
 def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Come 'rt rewrite <cartella> --unit <id>'."""
     from rt.pipeline.rewrite import run_rewrite
-    if "extra_prompt" in job.payload:
-        from rt.services.prompt_settings import set_extra
-        set_extra(job.lesson_path, "rewrite", job.payload["extra_prompt"])
+    from rt.services.prompt_settings import extra_scope
     opts = job.payload.get("options") or {}
-    force, mock = bool(opts.get("force")), bool(opts.get("mock"))
+    extra = str(job.payload.get("extra_prompt") or "").strip()
+    # Istruzioni nuove: l'unità va riscritta anche se l'impronta dice che è già valida.
+    force, mock = bool(opts.get("force")) or bool(extra), bool(opts.get("mock"))
     ctx.lesson_dir, ctx.force, ctx.force_mock = job.lesson_path, force, mock
     from rt.pipeline.unit_failures import raise_if_incomplete
     results = []
-    with ctx.activate():
+    with extra_scope(job.lesson_path, "rewrite", job.payload), ctx.activate():
         for unit in job.payload.get("units") or [job.payload["unit"]]:
             res = run_rewrite(job.lesson_path, target_unit_id=unit, force=force, force_mock=mock, ctx=ctx)
             raise_if_incomplete("rewrite", res)
@@ -53,13 +53,11 @@ def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.review import run_review_unit
-    if "extra_prompt" in job.payload:
-        from rt.services.prompt_settings import set_extra
-        set_extra(job.lesson_path, "review", job.payload["extra_prompt"])
+    from rt.services.prompt_settings import extra_scope
     from rt.pipeline.rewrite import load_draft
     present = {unit.unit_id for unit in load_draft(job.lesson_path).units}
     results = []
-    with ctx.activate():
+    with extra_scope(job.lesson_path, "review", job.payload), ctx.activate():
         for unit in job.payload.get("units") or [job.payload["unit"]]:
             if unit not in present:
                 results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})

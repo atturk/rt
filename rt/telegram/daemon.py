@@ -1075,9 +1075,11 @@ def _run_fake_daemon() -> None:
     import threading
     from rt.services.recall_sessions import requeue_running_commands
     from rt.telegram.app_commands import process_pending_commands
-    from rt.telegram.daemon_status import remove_daemon_pid
+    from rt.telegram.daemon_status import remove_daemon_pid, write_daemon_pid
     stop = threading.Event()
+    # Prima il gestore, poi il PID file: chi legge il PID può mandare SIGTERM subito.
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    write_daemon_pid()
     print("🤖 Bot Telegram finto (RT_TELEGRAM_FAKE=1): nessuna connessione a Telegram.", file=sys.stderr, flush=True)
     try:
         requeue_running_commands()
@@ -1092,10 +1094,10 @@ def _run_fake_daemon() -> None:
 
 def run_daemon(state_dir: str = None) -> None:
     from rt.telegram.daemon_status import write_daemon_pid, remove_daemon_pid
-    write_daemon_pid()
     if os.environ.get("RT_TELEGRAM_FAKE") == "1":
         _run_fake_daemon()
         return
+    write_daemon_pid()
     try:
         cfg = load_telegram_config()
         runtime_cfg = load_config().telegram

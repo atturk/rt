@@ -688,6 +688,18 @@
       },
       "DocumentEditLease": {
         "properties": {
+          "acquired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inizio della sessione di modifica (ISO, UTC)",
+            "title": "Acquired At"
+          },
           "expires": {
             "anyOf": [
               {
@@ -698,6 +710,46 @@
               }
             ],
             "title": "Expires"
+          },
+          "lease_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identificativo breve della sessione di modifica",
+            "title": "Lease Id"
+          },
+          "previous_acquired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Acquired At"
+          },
+          "previous_lease_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Lease Id"
+          },
+          "recovered": {
+            "default": false,
+            "description": "True se la richiesta ha sostituito la sessione di un'altra scheda",
+            "title": "Recovered",
+            "type": "boolean"
           },
           "token": {
             "title": "Token",

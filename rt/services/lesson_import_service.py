@@ -62,7 +62,14 @@ def import_archive(archive: str) -> int:
 
         target = os.path.join(os.path.realpath(root), folder)
         with session_scope(db) as session:
-            if LessonRepository(session).get_by_path(target) or os.path.lexists(target):
+            existing = LessonRepository(session).get_by_path(target)
+            if existing is not None and existing.storage != fs.STORAGE_DB and not os.path.lexists(target):
+                # Riga orfana: la cartella della lezione non esiste più. Non blocca l'import.
+                from rt.services.lesson_delete_service import purge_lesson_records
+                purge_lesson_records(session, existing)
+                session.delete(existing)
+                existing = None
+            if existing is not None or os.path.lexists(target):
                 raise ApiError(409, "duplicate_lesson", f"La lezione {folder} esiste già.")
         os.makedirs(root, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="rt-import-", dir=root) as staging:
