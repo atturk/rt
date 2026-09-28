@@ -112,7 +112,11 @@ def run_rewrite(
 ) -> Dict[str, Any]:
     """Rielaborazione delle unità (eventi e annullamento tra unità su ctx, se dato)."""
     with phase_scope(ctx, "rewrite") as scope:
-        return scope.complete(_run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx))
+        result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx)
+        if result.get("status") in ("draft_validated", "unit_regenerated"):
+            from rt.services.unit_relevance import refresh
+            refresh(lesson_dir, force_mock=force_mock)
+        return scope.complete(result)
 
 
 def _run_rewrite(

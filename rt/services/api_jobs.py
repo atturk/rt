@@ -41,11 +41,14 @@ def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     opts = job.payload.get("options") or {}
     force, mock = bool(opts.get("force")), bool(opts.get("mock"))
     ctx.lesson_dir, ctx.force, ctx.force_mock = job.lesson_path, force, mock
-    with ctx.activate():
-        res = run_rewrite(job.lesson_path, target_unit_id=job.payload["unit"], force=force, force_mock=mock, ctx=ctx)
     from rt.pipeline.unit_failures import raise_if_incomplete
-    raise_if_incomplete("rewrite", res)
-    return _done({"phase": "rewrite", "unit": job.payload["unit"], "result": res}, lesson_path=job.lesson_path)
+    results = []
+    with ctx.activate():
+        for unit in job.payload.get("units") or [job.payload["unit"]]:
+            res = run_rewrite(job.lesson_path, target_unit_id=unit, force=force, force_mock=mock, ctx=ctx)
+            raise_if_incomplete("rewrite", res)
+            results.append({"unit": unit, "result": res})
+    return _done({"phase": "rewrite", "units": results}, lesson_path=job.lesson_path)
 
 
 def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -53,10 +56,17 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     if "extra_prompt" in job.payload:
         from rt.services.prompt_settings import set_extra
         set_extra(job.lesson_path, "review", job.payload["extra_prompt"])
+    from rt.pipeline.rewrite import load_draft
+    present = {unit.unit_id for unit in load_draft(job.lesson_path).units}
+    results = []
     with ctx.activate():
-        result = run_review_unit(job.lesson_path, job.payload["unit"],
-                                 force_mock=bool((job.payload.get("options") or {}).get("mock")))
-    return _done(result, lesson_path=job.lesson_path)
+        for unit in job.payload.get("units") or [job.payload["unit"]]:
+            if unit not in present:
+                results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
+                continue
+            results.append(run_review_unit(job.lesson_path, unit,
+                                           force_mock=bool((job.payload.get("options") or {}).get("mock"))))
+    return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 
 def _cleanup_upload(payload: Dict[str, Any]) -> None:

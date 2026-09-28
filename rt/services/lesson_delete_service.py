@@ -24,13 +24,15 @@ def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
     """Quarantine a folder before commit; remove its files only after the DB deletion."""
     db = get_database()
     root = lessons_root()
-    if db is None or not root or not _safe_child(lesson_dir, os.path.realpath(root)):
-        raise ApiError(409, "unsafe_lesson_path", "La lezione non è una cartella diretta della radice configurata.")
+    if db is None:
+        raise ApiError(503, "database_unavailable", "Database non disponibile.")
 
     with session_scope(db) as session:
         row = session.get(Lesson, lesson_id)
         if row is None or row.path != os.path.realpath(lesson_dir):
             raise ApiError(404, "lesson_not_found", "Lezione non trovata.")
+        if row.storage == "folder" and (not root or not _safe_child(lesson_dir, os.path.realpath(root))):
+            raise ApiError(409, "unsafe_lesson_path", "La lezione non è una cartella diretta della radice configurata.")
         if session.scalar(select(Job.id).where(Job.lesson_path == row.path, Job.state.in_(
                 ["queued", "running", "waiting_for_decision"])).limit(1)):
             raise ApiError(409, "lesson_busy", "La lezione ha job ancora attivi o in attesa.")

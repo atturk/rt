@@ -84,6 +84,7 @@ export type NewLesson = {
   run: boolean
   mock: boolean
   auto_accept: boolean
+  with_review: boolean
 }
 
 /** POST /lessons multipart con avanzamento dell'upload. */
@@ -100,6 +101,7 @@ export function useCreateLesson() {
       form.append('run', String(input.run))
       form.append('mock', String(input.mock))
       form.append('auto_accept', String(input.auto_accept))
+      form.append('with_review', String(input.with_review))
       setProgress({ loaded: 0, total: input.files.reduce((sum, f) => sum + f.size, 0) })
       const body = {
         audio: input.files.map((f) => f.name),
@@ -109,7 +111,7 @@ export function useCreateLesson() {
         run: input.run,
         mock: input.mock,
         auto_accept: input.auto_accept,
-        with_review: true,
+        with_review: input.with_review,
       } satisfies Schemas['Body_create_lesson_api_v1_lessons_post']
       return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
     },

@@ -39,11 +39,12 @@ def job(client, job_id):
     return client.get(f"/api/v1/jobs/{job_id}").json()
 
 
-def upload(client, run=False, mock=True):
+def upload(client, run=False, mock=True, with_review=True):
     with open(AUDIO_FIXTURE, "rb") as f:
         return client.post("/api/v1/lessons", files={"audio": ("lezione.wav", f, "audio/wav")},
                            data={"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi",
-                                 "mock": str(mock).lower(), "run": str(run).lower()})
+                                 "mock": str(mock).lower(), "run": str(run).lower(),
+                                 "with_review": str(with_review).lower()})
 
 
 def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker):
@@ -58,7 +59,7 @@ def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker
     assert lesson_id is not None
     assert not os.listdir(os.path.join(ws, ".rt", "uploads"))  # upload temporaneo rimosso
 
-    res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False})
+    res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False, "with_review": True})
     assert res.status_code == 202
     run_id = res.json()["job_id"]
     drain(worker)
@@ -104,6 +105,19 @@ def test_upload_with_run_runs_whole_pipeline(api_client, ws, worker):
     assert resumed["state"] == "waiting_for_decision", resumed
     assert resumed["decision"]["kind"] == "science_issue"
     assert resumed["lesson_id"] == waiting["lesson_id"]
+
+
+def test_pipeline_defaults_to_build_without_review(api_client, lesson, worker):
+    lesson_id, _ = lesson
+    accepted = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                               json={"mock": True, "rename": False}).json()
+    drain(worker)
+    assert api_client.post(f"/api/v1/lessons/{lesson_id}/outline/approve").status_code == 200
+    drain(worker)
+    assert job(api_client, accepted["job_id"])["state"] == "succeeded"
+    phases = api_client.get(f"/api/v1/lessons/{lesson_id}").json()["phases"]
+    assert phases["build"] == "VALID"
+    assert phases["review"] != "VALID"
 
 
 def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
@@ -186,7 +200,7 @@ def test_decisions_refused_while_job_runs(api_client, lesson, rt_db):
 
 def test_decision_undo_and_errors(api_client, lesson, worker):
     lesson_id, lesson_dir = lesson
-    api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True, "rename": False})
+    api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True, "rename": False, "with_review": True})
     drain(worker)
     api_client.post(f"/api/v1/lessons/{lesson_id}/outline/approve")
     drain(worker)

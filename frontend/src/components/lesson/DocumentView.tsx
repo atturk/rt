@@ -67,16 +67,27 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     if (!root) return
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
-      if (!heading || section.start_seconds == null || heading.querySelector('.rt-timecode')) continue
-      const button = window.document.createElement('button')
-      button.type = 'button'
-      button.className = 'rt-timecode'
-      button.dataset.seconds = String(section.start_seconds)
-      button.textContent = section.start_formatted ?? ''
-      button.disabled = !hasAudio
-      button.title = hasAudio ? `Ascolta da ${section.start_formatted}` : 'Audio non disponibile'
-      button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
-      heading.append(' ', button)
+      if (!heading) continue
+      const meta = window.document.createElement('span')
+      meta.className = 'rt-unit-meta'
+      if (section.start_seconds != null) {
+        const button = window.document.createElement('button')
+        button.type = 'button'
+        button.className = 'rt-timecode'
+        button.dataset.seconds = String(section.start_seconds)
+        button.textContent = section.start_formatted ?? ''
+        button.disabled = !hasAudio
+        button.title = hasAudio ? `Ascolta da ${section.start_formatted}` : 'Audio non disponibile'
+        button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
+        meta.append(button)
+      }
+      if (section.relevance) {
+        const tag = window.document.createElement('span')
+        tag.className = 'rt-relevance-tag'
+        tag.textContent = section.relevance === 'organizational' ? 'Informazioni organizzative' : 'Assenza di contenuto didattico'
+        meta.append(tag)
+      }
+      if (meta.childNodes.length) heading.append(meta)
     }
   }, [doc, hasAudio])
 

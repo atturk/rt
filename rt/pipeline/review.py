@@ -393,17 +393,23 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
 
 
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
-    """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx, se dato)."""
+    """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx)."""
+    from rt.services.unit_relevance import refresh
+    refresh(lesson_dir, force_mock=force_mock)
     with phase_scope(ctx, "review") as scope:
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
 
 
 def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> Dict[str, Any]:
     """Refresh just one unit, retaining other issues and their stable IDs/decisions."""
+    from rt.services.unit_relevance import refresh, included
+    refresh(lesson_dir, force_mock=force_mock)
     draft = load_draft(lesson_dir)
     unit = next((item for item in draft.units if item.unit_id == unit_id), None)
     if unit is None:
         raise ValueError(f"Unità {unit_id} non presente nella bozza.")
+    if not included(lesson_dir, unit):
+        return {"status": "skipped", "unit": unit_id, "reason": "Unità priva di contenuto didattico"}
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments.segments}
     cfg = load_config()
@@ -477,11 +483,14 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     _cfg = load_config()
+    from rt.services.unit_relevance import included
+    eligible_ids = {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
     st_issues_all = detect_statistical_asr_risks(
         lesson_dir=lesson_dir,
         k=_cfg.review.asr_statistical_k,
         floor=_cfg.review.asr_statistical_floor,
     )
+    st_issues_all = [issue for issue in st_issues_all if not issue.unit_id or issue.unit_id in eligible_ids]
     st_issues_by_unit: Dict[str, List[ScienceIssue]] = {}
     for st_iss in st_issues_all:
         if st_iss.unit_id:
@@ -529,8 +538,11 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
                          unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
         issues_before = len(all_science_issues)
         try:
-            _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, all_science_issues,
-                         _cfg, lesson_dir, asr_llm, shadow_jev)
+            if unit.unit_id in eligible_ids:
+                _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, all_science_issues,
+                             _cfg, lesson_dir, asr_llm, shadow_jev)
+            elif ctx is not None:
+                ctx.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
         except Exception as exc:
             if not is_unit_failure(exc):
                 raise

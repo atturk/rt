@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Brain, Monitor, Send, SkipForward, Square, ThumbsDown, ThumbsUp, Zap } from 'lucide-react'
-import { useCallback, useState, type FormEvent } from 'react'
+import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, errorMessage } from '@/api/client'
@@ -338,6 +338,7 @@ function Session({ lessonId }: { lessonId: number }) {
   const bot = useTelegramRecall()
   const next = useNextQuestion(lessonId)
   const skip = useSkip(lessonId)
+  const transitionLock = useRef(false)
   const answer = useAnswer(lessonId)
   const voice = useAnswerVoice(lessonId)
   const end = useEndSession(lessonId)
@@ -367,13 +368,22 @@ function Session({ lessonId }: { lessonId: number }) {
     setParams(nextParams, { replace: false })
   }
 
-  function askNext(excludeId?: string) {
-    next.mutate({ qtype, excludeId }, { onSuccess: (q) => update({ domanda: q.id, valutazione: null }) })
+  function askNext(excludeId?: string, afterSkip = false) {
+    if ((!afterSkip && transitionLock.current) || next.isPending || (skip.isPending && !afterSkip) || answer.isPending || voice.isPending) return
+    transitionLock.current = true
+    next.mutate({ qtype, excludeId }, {
+      onSuccess: (q) => update({ domanda: q.id, valutazione: null }),
+      onSettled: () => { transitionLock.current = false },
+    })
   }
 
   function doSkip() {
-    if (!questionId) return
-    skip.mutate(questionId, { onSuccess: () => askNext(questionId) })
+    if (!questionId || transitionLock.current || skip.isPending || next.isPending || answer.isPending || voice.isPending) return
+    transitionLock.current = true
+    skip.mutate(questionId, {
+      onSuccess: () => askNext(questionId, true),
+      onError: () => { transitionLock.current = false },
+    })
   }
 
   function endSession() {
@@ -473,7 +483,7 @@ function Session({ lessonId }: { lessonId: number }) {
             </>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => askNext()} disabled={next.isPending || !!telegram}>
+            <Button size="sm" onClick={() => askNext()} disabled={next.isPending || skip.isPending || busy || !!telegram}>
               Prossima domanda
             </Button>
             {web && (
@@ -524,7 +534,7 @@ function Session({ lessonId }: { lessonId: number }) {
 
               {writeError && <Alert tone="danger">{errorMessage(writeError)}</Alert>}
               {!given && !evaluationJob && (
-                <Button variant="ghost" size="sm" className="self-start" onClick={doSkip} disabled={skip.isPending || next.isPending}>
+                <Button variant="ghost" size="sm" className="self-start" onClick={doSkip} disabled={skip.isPending || next.isPending || busy}>
                   <SkipForward /> Salta
                 </Button>
               )}

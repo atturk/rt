@@ -121,7 +121,7 @@ def create_lesson(
     argomenti: str = Form(""),
     run: bool = Form(False, description="True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')"),
     mock: bool = Form(False),
-    with_review: bool = Form(True),
+    with_review: bool = Form(False),
     auto_accept: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
@@ -151,11 +151,14 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
             raise ApiError(422, "validation_error", "Indica la fase da eseguire.")
         options = {"force": body.force, "mock": body.mock, "rename": body.rename}
         prompt_payload = {"extra_prompt": body.extra_prompt} if body.extra_prompt is not None else {}
-        if body.unit:
+        if body.unit or body.units:
             if body.phase not in ("rewrite", "review"):
                 raise ApiError(422, "validation_error", "L'unità si indica solo per rewrite o review.")
+            units = list(dict.fromkeys(body.units or [body.unit]))
+            if not units or any(not unit or not unit.strip() for unit in units):
+                raise ApiError(422, "validation_error", "Seleziona unità valide.")
             return enqueue_job("rewrite_unit" if body.phase == "rewrite" else "review_unit", lesson_dir,
-                               {"unit": body.unit, "options": options, **prompt_payload}, actor)
+                               {"units": units, "options": options, **prompt_payload}, actor)
         return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}

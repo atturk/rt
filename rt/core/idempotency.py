@@ -199,7 +199,12 @@ def compute_source_fingerprint(
         seg_path = lesson_path(lesson_dir, "segments.json")
         draft_hash = compute_file_sha256(draft_path)
         seg_hash = compute_file_sha256(seg_path)
-        return compute_string_sha256(f"{draft_hash}|{seg_hash}|{proc_ver}{config_hash}")
+        from rt.core.config import load_config
+        cfg = load_config().jev
+        relevance_path = lesson_path(lesson_dir, "unit_relevance.json")
+        relevance_hash = (compute_file_sha256(relevance_path) if cfg.relevance_model and cfg.relevance_mode == "active"
+                          and fs.isfile(relevance_path) else "")
+        return compute_string_sha256(f"{draft_hash}|{seg_hash}|{relevance_hash}|{proc_ver}{config_hash}")
 
     elif phase_name == "build":
         in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in BUILD_INPUT_FILES]

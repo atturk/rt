@@ -86,6 +86,25 @@ def _make_question(qid: str, qtype: RecallQuestionType, unit_id: str,
     )
 
 
+def test_real_batch_uses_distinct_ids_and_keeps_answers_with_their_question(lesson_dir):
+    """A real batch used to give every generated question the same provisional ID."""
+    from unittest.mock import patch
+
+    def generated(_client, **kwargs):
+        return RecallQuestion(id="temporary", type=RecallQuestionType.QUIZ,
+                              unit_ids=["1.1"], question_text=kwargs["unit_id"],
+                              options=["A", "B", "C", "D"], correct_index=0)
+
+    with patch("rt.llm.client.LLMClient.call_structured", generated):
+        questions = generate_recall_batch(lesson_dir, RecallQuestionType.QUIZ, 3, [], force_mock=False)
+    assert [q.id for q in questions] == ["recall_000001", "recall_000002", "recall_000003"]
+    assert len({q.id for q in load_recall_bank(lesson_dir).questions}) == 3
+    record_recall_answer(lesson_dir, questions[1].id, "B")
+    bank = load_recall_bank(lesson_dir)
+    assert bank.answers[0].question_id == questions[1].id
+    assert next(q for q in bank.questions if q.id == questions[1].id).question_text == questions[1].question_text
+
+
 # -----------------------------------------------------------------------
 # 1. Validazione Pydantic
 # -----------------------------------------------------------------------
@@ -688,5 +707,4 @@ class TestNonLoSoEvaluation:
         eval_res = evaluate_recall_answer(lesson_dir, "recall_000001", "[Non lo so]", force_mock=True)
         assert "Correttezza: 0%" in eval_res
         assert "Completezza: 0%" in eval_res
-
 

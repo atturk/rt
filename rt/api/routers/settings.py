@@ -569,8 +569,12 @@ class DecisionModelIn(BaseModel):
     enabled: bool = False
     shadow: bool = True
     model: str = ""
+    relevance_model: str = ""
     credential: str = "openrouter"
     threshold: float = Field(0.85, ge=0, le=1)
+    relevance_mode: Literal["disabled", "shadow", "active"] = "shadow"
+    relevance_prompt: str = Field("", max_length=20000)
+    relevance_threshold: float = Field(0.85, ge=0, le=1)
 
 
 class DecisionProbeOut(BaseModel):
@@ -584,7 +588,10 @@ def get_decision_model(_actor: Actor):
     from rt.core.config import load_config
     cfg = load_config().jev
     return DecisionModelIn(enabled=cfg.enabled, shadow=cfg.shadow, model=cfg.model if cfg.enabled else "",
-                           credential=cfg.credential, threshold=cfg.task_a_skip_confidence_threshold)
+                           relevance_model=cfg.relevance_model,
+                           credential=cfg.credential, threshold=cfg.task_a_skip_confidence_threshold,
+                           relevance_mode=cfg.relevance_mode, relevance_prompt=cfg.relevance_prompt,
+                           relevance_threshold=cfg.relevance_threshold)
 
 
 @router.post("/settings/decision-model/probe", response_model=DecisionProbeOut)
@@ -620,15 +627,23 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
     from rt.db.engine import get_database
     from rt.db.models import Setting
     from rt.db.session import session_scope
-    if body.enabled:
+    required_models = ([body.model.strip()] if body.enabled else []) + ([body.relevance_model.strip()] if body.relevance_mode != "disabled" and body.relevance_model.strip() else [])
+    if body.enabled and not body.model.strip():
+        raise ApiError(422, "decision_model_required", "Indica il modello del prefiltro errori.")
+    if required_models:
         with session_scope(get_database()) as session:
-            if session.get(Setting, f"decision_probe:{body.credential}:{body.model}") is None:
-                raise ApiError(422, "decision_probe_required", "Prova prima il protocollo del modello decisionale.")
+            for selected in required_models:
+                if session.get(Setting, f"decision_probe:{body.credential}:{selected}") is None:
+                    raise ApiError(422, "decision_probe_required", f"Prova prima il protocollo del modello {selected}.")
     path = general_config_path(_project_root())
     data = config_service.read_yaml(path)
     data["jev"] = {**data.get("jev", {}), "enabled": body.enabled, "shadow": body.shadow,
                    "model": body.model or "typesafe/jev-1.13", "credential": body.credential,
-                   "task_a_skip_confidence_threshold": body.threshold}
+                   "task_a_skip_confidence_threshold": body.threshold,
+                   "relevance_mode": body.relevance_mode,
+                   "relevance_model": body.relevance_model.strip(),
+                   "relevance_prompt": body.relevance_prompt,
+                   "relevance_threshold": body.relevance_threshold}
     config_service.write_yaml_atomic(path, data)
     return body
 

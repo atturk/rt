@@ -3,8 +3,13 @@ rt.telegram.notify
 Notifiche one-shot che non devono mai far fallire la pipeline chiamante.
 """
 import sys
+import json
+import logging
+from datetime import datetime, timezone
 from typing import Dict, Any
 from rt.storage import fs
+
+LOG = logging.getLogger(__name__)
 
 
 def _record(kind: str, text: str, thread_id, state_dir: str) -> None:
@@ -40,7 +45,8 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
     raise_errors) se l'invio non è riuscito."""
     import os
     from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
-    from rt.telegram.client import send_message
+    from rt.telegram.client import send_message, edit_message_text
+    from rt.core.lesson_paths import lesson_path
     from rt.telegram.formatting import escape_html
     from rt.core.config import load_config
     from rt.core.state import read_info_yaml
@@ -80,8 +86,37 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson
         lines.append("")
         lines.append("Usa /list per vedere tutte le lezioni disponibili.")
 
+        message_path = lesson_path(lesson_dir, "build_telegram_message.json")
+        previous = {}
+        if fs.isfile(message_path):
+            try:
+                with fs.open(message_path, "r", encoding="utf-8") as stream:
+                    previous = json.load(stream)
+            except (ValueError, OSError):
+                LOG.warning("Riferimento al messaggio di build illeggibile: %s", lesson_dir)
+        revision = previous.get("message_id") and str(previous.get("chat_id")) == str(cfg.chat_id) and previous.get("thread_id") == message_thread_id
+        if revision:
+            reason = str(build_result.get("reason") or "").strip()
+            when = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+            lines.insert(1, f"🔄 Aggiornata: {escape_html(reason) if reason else when}")
         text = "\n".join(lines)
-        send_message(cfg, text=text, message_thread_id=message_thread_id)
+        message_id = None
+        if revision:
+            try:
+                edit_message_text(cfg, int(previous["message_id"]), text)
+                message_id = int(previous["message_id"])
+            except Exception as exc:
+                LOG.warning("Impossibile aggiornare il messaggio Telegram della build: %s", exc)
+                text = "🔄 <b>Rebuild della lezione</b>\n" + text
+        if message_id is None:
+            sent = send_message(cfg, text=text, message_thread_id=message_thread_id)
+            if isinstance(sent, dict) and isinstance(sent.get("message_id"), int):
+                message_id = sent["message_id"]
+        if message_id is not None:
+            temp = message_path + ".tmp"
+            with fs.open(temp, "w", encoding="utf-8") as stream:
+                json.dump({"message_id": message_id, "chat_id": cfg.chat_id, "thread_id": message_thread_id}, stream)
+            fs.replace(temp, message_path)
         _record("lezione_pronta", text, message_thread_id, runtime_cfg.state_dir)
 
         from rt.telegram.last_lesson import record_last_lesson
@@ -150,5 +185,4 @@ def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
             tg_session.update_session_message(runtime_cfg.state_dir, cfg.chat_id, thread_id, msg_id)
     except Exception as e:
         print(f"⚠️  Notifica Telegram issue pronte non inviata: {e}", file=sys.stderr)
-
 

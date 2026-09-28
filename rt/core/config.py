@@ -294,6 +294,10 @@ class JevConfig(BaseModel):
     timeout_seconds: float = Field(default=15.0, description="Timeout per singola chiamata Jev")
     task_a_skip_confidence_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per saltare la review LLM quando Jev classifica l'unità come non-'errore_grave'")
     task_b_fabrication_threshold: float = Field(default=0.80, ge=0, le=1, description="Probabilità minima (noul) per segnalare una possibile deriva/invenzione rispetto ai segmenti ASR grezzi")
+    relevance_mode: Literal["disabled", "shadow", "active"] = Field(default="shadow", description="Gate delle unità: disattivato, solo osservazione o filtro attivo")
+    relevance_model: str = Field(default="", description="Modello decisionale configurato esplicitamente per la rilevanza")
+    relevance_prompt: str = Field(default="", description="Istruzioni aggiuntive per la rilevanza didattica")
+    relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per escludere un'unità non didattica")
 
 
 class RTConfig(BaseModel):

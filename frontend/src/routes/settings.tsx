@@ -41,6 +41,7 @@ const TABS = [
   { to: '/impostazioni/chiavi', label: 'Chiavi' },
   { to: '/impostazioni/costi', label: 'Costi' },
   { to: '/impostazioni/ricerca-web', label: 'Ricerca web' },
+  { to: '/impostazioni/decisioni', label: 'Prompt e decisioni' },
 ]
 
 function SettingsLayout() {
@@ -121,8 +122,6 @@ export const settingsArea: Area = {
           element: page((s) => (
             <>
               <PhasesSection settings={s} />
-              <DecisionModelSection />
-              <PromptEditorSection />
               <ConnectionsSection settings={s} />
               <NewConnectionSection />
               <RoutesSection settings={s} />
@@ -132,6 +131,7 @@ export const settingsArea: Area = {
         { path: 'chiavi', element: page((s) => <SecretsSection settings={s} />) },
         { path: 'costi', element: page((s) => <PricingSection settings={s} />) },
         { path: 'ricerca-web', element: page((s) => <WebSearchSection settings={s} />) },
+        { path: 'decisioni', element: page(() => <><DecisionModelSection /><PromptEditorSection /></>) },
       ],
     },
   ],

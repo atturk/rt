@@ -141,10 +141,7 @@
   display: none;
 }
 .rt-document .rt-timecode {
-  /* sotto il titolo dell'unità, allineato a sinistra */
-  display: block;
-  width: fit-content;
-  margin-top: 0.3rem;
+  display: inline-block;
   border-radius: 4px;
   background: var(--accent);
   color: var(--accent-foreground);
@@ -152,6 +149,21 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+}
+.rt-document .rt-unit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+.rt-document .rt-relevance-tag {
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  padding: 1px 5px;
+  font-size: 12px;
+  font-weight: 500;
 }
 .rt-document .rt-timecode:hover:not(:disabled) {
   text-decoration: underline;

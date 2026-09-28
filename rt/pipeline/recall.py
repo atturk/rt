@@ -75,7 +75,20 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
 def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
     """Conta le domande PENDING di un tipo specifico nel bank."""
     bank = load_recall_bank(lesson_dir)
-    return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING)
+    return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
+               and _question_allowed(lesson_dir, q))
+
+
+def _question_allowed(lesson_dir: str, question: RecallQuestion) -> bool:
+    from rt.services.unit_relevance import included, mode
+    if mode() != "active":
+        return True
+    try:
+        draft = load_resolved_draft(lesson_dir)
+    except (FileNotFoundError, ValueError):
+        return True
+    by_id = {unit.unit_id: unit for unit in draft.units}
+    return all(uid in by_id and included(lesson_dir, by_id[uid]) for uid in question.unit_ids)
 
 # -----------------------------------------------------------------------
 # Pending question selection
@@ -119,7 +132,8 @@ def get_next_pending_question(
     """
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
-        pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
+        pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
+                   and _question_allowed(lesson_dir, q)]
         if not pending:
             return None
 
@@ -338,10 +352,15 @@ def generate_recall_batch(
     )
 
     draft = load_resolved_draft(lesson_dir)
+    from rt.services.unit_relevance import refresh, included
+    refresh(lesson_dir, force_mock=force_mock)
     bank = load_recall_bank(lesson_dir)
     new_questions: List[RecallQuestion] = []
     client = LLMClient(force_mock=force_mock)
-    units = draft.units
+    units = [u for u in draft.units if included(lesson_dir, u)]
+    if not units:
+        _LOG.info("Recall: nessuna unità didattica da cui generare domande")
+        return []
 
     # ---- Build list of unit index groups to generate questions for ----
     def _pick_unit_groups(num: int) -> List[List[int]]:
@@ -501,6 +520,10 @@ def generate_recall_batch(
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         for gen in new_questions:
+            # Il batch reale non aggiunge le domande al bank fino a questo punto.
+            # Assegna gli ID sul bank aggiornato, sotto lock: altrimenti tutte le
+            # risposte dello stesso batch (o di due job concorrenti) condividono ID.
+            gen.id = _next_id(bank)
             bank.questions.append(gen)
         save_recall_bank(bank, lesson_dir)
     return new_questions

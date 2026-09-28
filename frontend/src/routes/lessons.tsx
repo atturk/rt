@@ -25,6 +25,7 @@ import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from '@/lib/format'
 import type { Area } from './types'
+import { RelevancePage } from './relevance'
 
 function Stat({ value, label }: { value: number | string; label: string }) {
   return (
@@ -203,13 +204,7 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
   const [leaseError, setLeaseError] = useState<string | null>(null)
   useEffect(() => {
     if (!leaseToken) return
-    const timer = window.setInterval(() => {
-      void api.POST('/api/v1/lessons/{lesson_id}/document/lease', {
-        params: { path: { lesson_id: id }, query: { token: leaseToken } },
-      }).then((result) => { if (!result.response.ok) setLeaseError('La sessione di modifica è scaduta.') })
-    }, 30_000)
     return () => {
-      window.clearInterval(timer)
       void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
         params: { path: { lesson_id: id }, query: { token: leaseToken } },
       })
@@ -224,9 +219,9 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
     if (notices.length > 0) setMode('notice')
     else void beginEdit()
   }
-  const beginEdit = async () => {
+  const beginEdit = async (recover = false) => {
     try {
-      const lease = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id } } }))
+      const lease = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id }, query: { recover } } }))
       setLeaseToken(lease.token)
       setLeaseError(null)
       setMode('edit')
@@ -237,7 +232,7 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
     <Card className="px-6 py-5">
       {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
       {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
-      {leaseError && <Alert tone="danger">{leaseError}</Alert>}
+      {leaseError && <Alert tone="danger">{leaseError}<Button size="sm" variant="outline" className="ml-2" onClick={() => void beginEdit(true)}>Recupera sessione</Button></Alert>}
       {document.data && mode === 'edit' && (
         <Suspense fallback={<p className="text-sm text-muted-foreground">Preparo l'editor…</p>}>
           <DocumentEditor
@@ -376,6 +371,7 @@ export const lessonsArea: Area = {
   routes: [
     { index: true, element: <DashboardPage /> },
     { path: 'lezioni/:lessonId', element: <LessonPage /> },
+    { path: 'lezioni/:lessonId/rilevanza', element: <RelevancePage /> },
   ],
   nav: [{ to: '/', label: 'Lezioni', icon: LayoutDashboard, end: true }],
 }

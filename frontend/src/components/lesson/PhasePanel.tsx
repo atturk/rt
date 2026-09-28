@@ -2,6 +2,7 @@ import { Play } from 'lucide-react'
 import { useState } from 'react'
 
 import { errorMessage, type Schemas } from '@/api/client'
+import { useOutline } from '@/api/jobs'
 import { isActiveJob, useLessonJobs, usePhases, useRunJob, useWorkers } from '@/api/hooks'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -9,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { PHASE_LABELS, phaseTone } from '@/lib/format'
 
 type Phase = 'prepare' | 'outline' | 'rewrite' | 'review' | 'build'
@@ -61,11 +61,14 @@ function Validation({ title, report }: { title: string; report: Record<string, u
 /** Stato delle fasi con motivo e validazioni, e pulsanti per eseguirle come job. */
 export function PhasePanel({ lessonId, units, editingDocument = false }: { lessonId: number; units: Schemas['DocumentSection'][]; editingDocument?: boolean }) {
   const phases = usePhases(lessonId)
+  const outline = useOutline(lessonId)
+  const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? units.map((unit) => ({ id: unit.unit_id, title: unit.title }))
   const jobs = useLessonJobs(lessonId)
   const workers = useWorkers()
   const run = useRunJob(lessonId)
   const [force, setForce] = useState(false)
-  const [unit, setUnit] = useState('')
+  const [withReview, setWithReview] = useState(false)
+  const [selectedUnits, setSelectedUnits] = useState<string[]>([])
   const [extraPrompts, setExtraPrompts] = useState<Record<string, string>>({})
   const [confirmBuild, setConfirmBuild] = useState(false)
   const busy = editingDocument || (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending
@@ -73,15 +76,15 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
   // ma l'utente li vede prima di confermarlo.
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
 
-  const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; unit?: string; extra_prompt?: string }) =>
-    run.mutate({ ...body, force, mock: false, with_review: true, auto_accept: false, rename: true })
+  const start = (body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; units?: string[]; extra_prompt?: string }) =>
+    run.mutate({ ...body, force, mock: false, with_review: body.type === 'run_pipeline' && withReview, auto_accept: false, rename: true })
 
   const runPhase = (phase: Phase) => {
     if (phase === 'build' && buildWarnings.length > 0) {
       setConfirmBuild(true)
       return
     }
-    start({ type: 'run_phase', phase, unit: (phase === 'rewrite' || phase === 'review') && unit ? unit : undefined,
+    start({ type: 'run_phase', phase, units: (phase === 'rewrite' || phase === 'review') && selectedUnits.length ? selectedUnits : undefined,
       extra_prompt: phase in extraPrompts ? extraPrompts[phase] : undefined })
   }
 
@@ -94,6 +97,7 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
           <Play /> Pipeline completa
         </Button>
       </div>
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={withReview} onChange={(e) => setWithReview(e.target.checked)} />Includi la review nella pipeline</label>
       {phases.isError && <Alert tone="danger">{errorMessage(phases.error)}</Alert>}
       <ul className="flex flex-col divide-y">
         {phases.data?.phases.map((p) => (
@@ -123,24 +127,16 @@ export function PhasePanel({ lessonId, units, editingDocument = false }: { lesso
                 ))}
               </ul>
             )}
-            {(p.phase === 'rewrite' || p.phase === 'review') && units.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Label htmlFor={`${p.phase}-unit`} className="shrink-0">
-                  Unità
-                </Label>
-                <Select id={`${p.phase}-unit`} value={unit} onChange={(e) => setUnit(e.target.value)} className="h-8 text-xs">
-                  <option value="">Tutte</option>
-                  {units.map((u) => (
-                    <option key={u.unit_id} value={u.unit_id}>
-                      {u.unit_id} {u.title}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
             {(['outline', 'rewrite', 'review'] as string[]).includes(p.phase) && (
               <details className="text-xs" data-testid={`advanced-${p.phase}`}>
                 <summary className="cursor-pointer">Opzioni avanzate</summary>
+                {(p.phase === 'rewrite' || p.phase === 'review') && outlineUnits.length > 0 && <fieldset className="mt-2 max-h-48 overflow-auto rounded border p-2">
+                  <legend className="px-1">Unità (nessuna selezione = tutte)</legend>
+                  {outlineUnits.map((u) => <label key={u.id} className="flex items-center gap-2 py-0.5">
+                    <input type="checkbox" checked={selectedUnits.includes(u.id)} onChange={(e) => setSelectedUnits((old) => e.target.checked ? [...old, u.id] : old.filter((id) => id !== u.id))} />
+                    {u.id} {u.title}
+                  </label>)}
+                </fieldset>}
                 <Label htmlFor={`extra-${p.phase}`}>Istruzioni per {PHASE_LABELS[p.phase] ?? p.phase}</Label>
                 <textarea id={`extra-${p.phase}`} className="mt-1 w-full rounded-md border bg-background p-2 text-sm" rows={3}
                   maxLength={10000} value={extraPrompts[p.phase] ?? ''} onChange={(e) => setExtraPrompts((old) => ({ ...old, [p.phase]: e.target.value }))}

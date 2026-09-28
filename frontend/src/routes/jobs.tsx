@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, api, errorMessage, unwrap } from '@/api/client'
 import { useLesson, useLessons } from '@/api/hooks'
+import { useSettings } from '@/api/settings'
 import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
@@ -50,16 +51,18 @@ export function ImportPage() {
     return unwrap(api.POST('/api/v1/lessons/import-zip', { body: { archives: files.map((file) => file.name) }, bodySerializer: () => form }))
   }, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['lessons'] }) } })
   const lessons = useLessons()
+  const settings = useSettings()
   const create = useCreateLesson()
   const [files, setFiles] = useState<File[]>([])
   const [date, setDate] = useState(today())
   const [materia, setMateria] = useState('')
   const [argomenti, setArgomenti] = useState('')
   const [run, setRun] = useState(true)
+  const [withReview, setWithReview] = useState(false)
   const [mock, setMock] = useState(false)
   const [autoAccept, setAutoAccept] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  const subjects = [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
+  const subjects = [...new Set([...(lessons.data ?? []).map((l) => l.materia), ...Object.keys(settings.data?.telegram.topics ?? {})].filter(Boolean))].sort()
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -67,7 +70,7 @@ export function ImportPage() {
     setProblem(issue)
     if (issue) return
     create.mutate(
-      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), run, mock, auto_accept: autoAccept },
+      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), run, mock, auto_accept: autoAccept, with_review: withReview },
       { onSuccess: (accepted) => navigate(`/job/${accepted.job_id}`) },
     )
   }
@@ -165,10 +168,11 @@ export function ImportPage() {
           <Checkbox
             id="import-run"
             label="Avvia subito la pipeline"
-            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione, review e documento. Senza, solo importazione e trascrizione."
+            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione e documento. Senza, solo importazione e trascrizione."
             checked={run}
             onChange={setRun}
           />
+          <Checkbox id="import-with-review" label="Includi la review" hint="Esegue la revisione scientifica prima di creare il documento." checked={withReview} onChange={setWithReview} />
           <details className="text-sm">
             <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Opzioni avanzate</summary>
             <div className="mt-3 flex flex-col gap-3">

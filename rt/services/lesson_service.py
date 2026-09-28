@@ -394,6 +394,8 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
         return []
     from rt.pipeline.document_edits import load_document_edits, unit_start_segment, unit_title
     edits = load_document_edits(lesson_dir)
+    from rt.services.unit_relevance import list_units
+    relevance = {row["unit_id"]: row["effective"] for row in list_units(lesson_dir)["units"]}
     by_id = {s.id: s for s in (segments.segments if segments else [])}
     out = []
     for unit in draft.units:
@@ -408,6 +410,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
             "start_seconds": start.start_seconds if start else None,
             "end_seconds": end.end_seconds if end else None,
             "start_formatted": start.start_formatted if start else None,
+            "relevance": relevance.get(unit.unit_id) if relevance.get(unit.unit_id) in ("organizational", "no_content") else None,
         })
     return out
 

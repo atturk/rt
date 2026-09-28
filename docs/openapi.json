@@ -123,7 +123,7 @@
             "type": "boolean"
           },
           "with_review": {
-            "default": true,
+            "default": false,
             "title": "With Review",
             "type": "boolean"
           }
@@ -486,6 +486,34 @@
             "title": "Model",
             "type": "string"
           },
+          "relevance_mode": {
+            "default": "shadow",
+            "enum": [
+              "disabled",
+              "shadow",
+              "active"
+            ],
+            "title": "Relevance Mode",
+            "type": "string"
+          },
+          "relevance_model": {
+            "default": "",
+            "title": "Relevance Model",
+            "type": "string"
+          },
+          "relevance_prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Relevance Prompt",
+            "type": "string"
+          },
+          "relevance_threshold": {
+            "default": 0.85,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Relevance Threshold",
+            "type": "number"
+          },
           "shadow": {
             "default": true,
             "title": "Shadow",
@@ -635,8 +663,15 @@
       "DocumentEditLease": {
         "properties": {
           "expires": {
-            "title": "Expires",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires"
           },
           "token": {
             "title": "Token",
@@ -644,8 +679,7 @@
           }
         },
         "required": [
-          "token",
-          "expires"
+          "token"
         ],
         "title": "DocumentEditLease",
         "type": "object"
@@ -734,6 +768,21 @@
           "end_segment_id": {
             "title": "End Segment Id",
             "type": "string"
+          },
+          "relevance": {
+            "anyOf": [
+              {
+                "enum": [
+                  "organizational",
+                  "no_content"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance"
           },
           "start_formatted": {
             "anyOf": [
@@ -1464,8 +1513,23 @@
             "description": "Rewrite o review: una sola unità",
             "title": "Unit"
           },
+          "units": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rewrite o review: unità selezionate (lista multipla)",
+            "title": "Units"
+          },
           "with_review": {
-            "default": true,
+            "default": false,
             "title": "With Review",
             "type": "boolean"
           }
@@ -3834,6 +3898,184 @@
           "issue_id"
         ],
         "title": "UndoRequest",
+        "type": "object"
+      },
+      "UnitRelevanceItem": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "corrected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected At"
+          },
+          "corrected_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected By"
+          },
+          "effective": {
+            "enum": [
+              "didactic",
+              "organizational",
+              "no_content"
+            ],
+            "title": "Effective",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "enum": [
+                  "didactic",
+                  "organizational",
+                  "no_content"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "didactic",
+                  "organizational",
+                  "no_content"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction"
+          },
+          "prior_override": {
+            "anyOf": [
+              {
+                "enum": [
+                  "didactic",
+                  "organizational",
+                  "no_content"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Override"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "title",
+          "content",
+          "effective"
+        ],
+        "title": "UnitRelevanceItem",
+        "type": "object"
+      },
+      "UnitRelevanceOverride": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "didactic",
+                  "organizational",
+                  "no_content"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          }
+        },
+        "title": "UnitRelevanceOverride",
+        "type": "object"
+      },
+      "UnitRelevanceOverview": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "disabled",
+              "shadow",
+              "active"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitRelevanceItem"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "units"
+        ],
+        "title": "UnitRelevanceOverview",
         "type": "object"
       },
       "ValidationError": {
@@ -6330,6 +6572,16 @@
               ],
               "title": "Token"
             }
+          },
+          {
+            "in": "query",
+            "name": "recover",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Recover",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -8493,6 +8745,203 @@
         "summary": "Voto su una domanda (👍 👎 ⚡)",
         "tags": [
           "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/relevance": {
+      "get": {
+        "operationId": "get_unit_relevance_api_v1_lessons__lesson_id__relevance_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitRelevanceOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Classificazioni JEV e correzioni per ogni unità",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/relevance/{unit_id}": {
+      "put": {
+        "operationId": "put_unit_relevance_api_v1_lessons__lesson_id__relevance__unit_id__put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "title": "Unit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitRelevanceOverride"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitRelevanceOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Corregge o ripristina la classificazione di un'unità",
+        "tags": [
+          "lezioni"
         ]
       }
     },

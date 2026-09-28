@@ -743,6 +743,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/relevance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Classificazioni JEV e correzioni per ogni unità */
+        get: operations["get_unit_relevance_api_v1_lessons__lesson_id__relevance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/relevance/{unit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Corregge o ripristina la classificazione di un'unità */
+        put: operations["put_unit_relevance_api_v1_lessons__lesson_id__relevance__unit_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recall/telegram": {
         parameters: {
             query?: never;
@@ -1518,7 +1552,7 @@ export interface components {
             run: boolean;
             /**
              * With Review
-             * @default true
+             * @default false
              */
             with_review: boolean;
         };
@@ -1665,6 +1699,27 @@ export interface components {
              */
             model: string;
             /**
+             * Relevance Mode
+             * @default shadow
+             * @enum {string}
+             */
+            relevance_mode: "disabled" | "shadow" | "active";
+            /**
+             * Relevance Model
+             * @default
+             */
+            relevance_model: string;
+            /**
+             * Relevance Prompt
+             * @default
+             */
+            relevance_prompt: string;
+            /**
+             * Relevance Threshold
+             * @default 0.85
+             */
+            relevance_threshold: number;
+            /**
              * Shadow
              * @default true
              */
@@ -1732,7 +1787,7 @@ export interface components {
         /** DocumentEditLease */
         DocumentEditLease: {
             /** Expires */
-            expires: string;
+            expires?: string | null;
             /** Token */
             token: string;
         };
@@ -1777,6 +1832,8 @@ export interface components {
             end_seconds?: number | null;
             /** End Segment Id */
             end_segment_id: string;
+            /** Relevance */
+            relevance?: ("organizational" | "no_content") | null;
             /** Start Formatted */
             start_formatted?: string | null;
             /** Start Seconds */
@@ -2053,8 +2110,13 @@ export interface components {
              */
             unit?: string | null;
             /**
+             * Units
+             * @description Rewrite o review: unità selezionate (lista multipla)
+             */
+            units?: string[] | null;
+            /**
              * With Review
-             * @default true
+             * @default false
              */
             with_review: boolean;
         };
@@ -3122,6 +3184,54 @@ export interface components {
         UndoRequest: {
             /** Issue Id */
             issue_id: string;
+        };
+        /** UnitRelevanceItem */
+        UnitRelevanceItem: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Content */
+            content: string;
+            /** Corrected At */
+            corrected_at?: string | null;
+            /** Corrected By */
+            corrected_by?: string | null;
+            /**
+             * Effective
+             * @enum {string}
+             */
+            effective: "didactic" | "organizational" | "no_content";
+            /** Error */
+            error?: string | null;
+            /** Override */
+            override?: ("didactic" | "organizational" | "no_content") | null;
+            /** Prediction */
+            prediction?: ("didactic" | "organizational" | "no_content") | null;
+            /** Prior Override */
+            prior_override?: ("didactic" | "organizational" | "no_content") | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Title */
+            title: string;
+            /** Unit Id */
+            unit_id: string;
+        };
+        /** UnitRelevanceOverride */
+        UnitRelevanceOverride: {
+            /** Category */
+            category?: ("didactic" | "organizational" | "no_content") | null;
+        };
+        /** UnitRelevanceOverview */
+        UnitRelevanceOverview: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "disabled" | "shadow" | "active";
+            /** Units */
+            units: components["schemas"]["UnitRelevanceItem"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -4772,6 +4882,7 @@ export interface operations {
         parameters: {
             query?: {
                 token?: string | null;
+                recover?: boolean;
             };
             header?: never;
             path: {
@@ -6351,6 +6462,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_unit_relevance_api_v1_lessons__lesson_id__relevance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitRelevanceOverview"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_unit_relevance_api_v1_lessons__lesson_id__relevance__unit_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                unit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitRelevanceOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitRelevanceOverview"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

@@ -33,34 +33,56 @@ export function DecisionModelSection() {
   const client = useQueryClient()
   const configured = useQuery({ queryKey: ['decision-model'], queryFn: () => unwrap(api.GET('/api/v1/settings/decision-model')) })
   const [modelDraft, setModel] = useState<string | null>(null)
+  const [relevanceModelDraft, setRelevanceModel] = useState<string | null>(null)
   const [credentialDraft, setCredential] = useState<string | null>(null)
   const [thresholdDraft, setThreshold] = useState<number | null>(null)
   const [shadowDraft, setShadow] = useState<boolean | null>(null)
   const [enabledDraft, setEnabled] = useState<boolean | null>(null)
+  const [relevanceModeDraft, setRelevanceMode] = useState<'disabled' | 'shadow' | 'active' | null>(null)
+  const [relevancePromptDraft, setRelevancePrompt] = useState<string | null>(null)
+  const [relevanceThresholdDraft, setRelevanceThreshold] = useState<number | null>(null)
   const model = modelDraft ?? configured.data?.model ?? ''
+  const relevanceModel = relevanceModelDraft ?? configured.data?.relevance_model ?? ''
   const credential = credentialDraft ?? configured.data?.credential ?? 'openrouter'
   const threshold = thresholdDraft ?? configured.data?.threshold ?? 0.85
   const shadow = shadowDraft ?? configured.data?.shadow ?? true
   const enabled = enabledDraft ?? configured.data?.enabled ?? false
+  const relevanceMode = relevanceModeDraft ?? configured.data?.relevance_mode ?? 'shadow'
+  const relevancePrompt = relevancePromptDraft ?? configured.data?.relevance_prompt ?? ''
+  const relevanceThreshold = relevanceThresholdDraft ?? configured.data?.relevance_threshold ?? 0.85
   const probe = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/decision-model/probe', {
-    body: { model, credential, threshold, enabled: true, shadow },
+    body: { model: relevanceModel, relevance_model: relevanceModel, credential, threshold, enabled: true, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold },
+  })) })
+  const probePrefilter = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/settings/decision-model/probe', {
+    body: { model, relevance_model: relevanceModel, credential, threshold, enabled: true, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold },
   })) })
   const save = useMutation({ mutationFn: () => unwrap(api.PUT('/api/v1/settings/decision-model', {
-    body: { model, credential, threshold, enabled, shadow },
+    body: { model, relevance_model: relevanceModel, credential, threshold, enabled, shadow, relevance_mode: relevanceMode, relevance_prompt: relevancePrompt, relevance_threshold: relevanceThreshold },
   })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['decision-model'] }) } })
-  return <Section id="classificatore" title="Modello classificatore (facoltativo)"
-    description="Valuta le unità prima della review con un protocollo decisionale strutturato. Senza modello la review procede normalmente.">
-    {configured.data && <p className="text-xs text-muted-foreground">Attuale: {configured.data.enabled ? `${configured.data.model} · ${configured.data.shadow ? 'ombra' : 'gate attivo'}` : 'disattivato'}</p>}
-    <Field label="Modello decisionale" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="ID del modello decisionale" /></Field>
+  return <Section id="classificatore" title="Decisioni JEV"
+    description="Il gate di rilevanza decide quali unità inviare a review e Recall. Il prefiltro errori è un controllo separato prima della review canonica.">
+    <Field label="Modello JEV rilevanza" htmlFor="relevance-model-name"><Input id="relevance-model-name" value={relevanceModel} onChange={(e) => setRelevanceModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev choice" /></Field>
     <Field label="Credenziale" htmlFor="decision-model-credential"><Input id="decision-model-credential" value={credential} onChange={(e) => setCredential(e.target.value)} /></Field>
-    <Field label="Soglia di confidenza per il gate" htmlFor="decision-model-threshold"><Input id="decision-model-threshold" type="number" min="0" max="1" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} /></Field>
-    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Abilita il modello</label>
-    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={shadow} onChange={(e) => setShadow(e.target.checked)} />Modalità ombra (non salta la review)</label>
-    <p className="text-xs text-muted-foreground">Prova verifica endpoint, risposta a scelta, opzioni e probabilità. Valuta le false omissioni su lezioni già revisionate prima di disattivare la modalità ombra.</p>
-    <div className="flex gap-2"><Button variant="outline" disabled={!model.trim() || probe.isPending} onClick={() => probe.mutate()}>Prova protocollo</Button>
-      <Button disabled={save.isPending || (enabled && !probe.isSuccess)} onClick={() => save.mutate()}>Salva</Button></div>
+    <Field label="Comportamento JEV" htmlFor="relevance-mode"><Select id="relevance-mode" value={relevanceMode} onChange={(e) => setRelevanceMode(e.target.value as typeof relevanceMode)}>
+      <option value="disabled">Disattivato · tutte le unità passano, nessuna chiamata</option>
+      <option value="shadow">Ombra · classifica, tutte le unità passano</option>
+      <option value="active">Filtro attivo · solo unità didattiche a review e Recall</option>
+    </Select></Field>
+    <Field label="Soglia di confidenza rilevanza" htmlFor="relevance-threshold"><Input id="relevance-threshold" type="number" min="0" max="1" step="0.01" value={relevanceThreshold} onChange={(e) => setRelevanceThreshold(Number(e.target.value))} /></Field>
+    <Field label="Istruzioni aggiuntive per la rilevanza" htmlFor="relevance-prompt"><textarea id="relevance-prompt" className="w-full rounded border bg-background p-2 text-sm" rows={4} value={relevancePrompt} onChange={(e) => setRelevancePrompt(e.target.value)} /></Field>
+    <p className="text-xs text-muted-foreground">Il gate usa Jev choice con tre classi. Un modello vuoto o un errore lasciano passare tutte le unità. Verifica un campione in Ombra prima di attivare il filtro.</p>
+    <div className="border-t pt-3"><h3 className="font-medium">Prefiltro errori (prima della review)</h3>
+      <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev" /></Field>
+      <Field label="Soglia di confidenza del prefiltro" htmlFor="decision-model-threshold"><Input id="decision-model-threshold" type="number" min="0" max="1" step="0.01" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} /></Field>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Abilita il prefiltro errori</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={shadow} onChange={(e) => setShadow(e.target.checked)} />Prefiltro in ombra (non salta la review)</label>
+    </div>
+    <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={!relevanceModel.trim() || probe.isPending} onClick={() => probe.mutate()}>Prova JEV rilevanza</Button>
+      <Button variant="outline" disabled={!model.trim() || probePrefilter.isPending} onClick={() => probePrefilter.mutate()}>Prova prefiltro</Button>
+      <Button disabled={save.isPending || (enabled && !model.trim())} onClick={() => save.mutate()}>Salva</Button></div>
     {probe.isSuccess && <p role="status" className="text-xs text-success">Protocollo verificato · confidenza {probe.data.confidence}</p>}
     {probe.isError && <Alert tone="danger">{errorMessage(probe.error)}</Alert>}
+    {probePrefilter.isError && <Alert tone="danger">{errorMessage(probePrefilter.error)}</Alert>}
     {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
   </Section>
 }

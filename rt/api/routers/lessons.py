@@ -58,6 +58,24 @@ def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return lesson_service.lesson_document(lesson_dir)
 
 
+@router.get("/lessons/{lesson_id}/relevance", response_model=schemas.UnitRelevanceOverview,
+            summary="Classificazioni JEV e correzioni per ogni unità")
+def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.unit_relevance import list_units
+    return list_units(lesson_dir)
+
+
+@router.put("/lessons/{lesson_id}/relevance/{unit_id}", response_model=schemas.UnitRelevanceOverview,
+            summary="Corregge o ripristina la classificazione di un'unità")
+def put_unit_relevance(lesson_id: int, unit_id: str, body: schemas.UnitRelevanceOverride,
+                       lesson_dir: LessonDir, actor: Actor):
+    from rt.services.unit_relevance import set_override
+    try:
+        return set_override(lesson_dir, unit_id, body.category, actor=str(actor))
+    except KeyError:
+        raise ApiError(404, "unit_not_found", "Unità non trovata nella bozza.")
+
+
 @router.post("/lessons/{lesson_id}/document/check", response_model=schemas.DocumentEditCheck,
              summary="Anteprima e controllo del Markdown modificato, senza salvare (funzione beta)")
 def check_document(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: LessonDir, _actor: Actor):
@@ -67,9 +85,9 @@ def check_document(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: Les
 
 @router.post("/lessons/{lesson_id}/document/lease", response_model=schemas.DocumentEditLease)
 def acquire_document_lease(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
-                           token: Optional[str] = None):
+                           token: Optional[str] = None, recover: bool = False):
     from rt.services.document_edit_lease import acquire
-    return acquire(lesson_id, token)
+    return acquire(lesson_id, token, recover=recover)
 
 
 @router.delete("/lessons/{lesson_id}/document/lease", status_code=204)

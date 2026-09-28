@@ -91,6 +91,7 @@ class DocumentSection(BaseModel):
     start_seconds: Optional[float] = None
     end_seconds: Optional[float] = None
     start_formatted: Optional[str] = None
+    relevance: Optional[Literal["organizational", "no_content"]] = None
 
 
 class LessonDocument(BaseModel):
@@ -101,6 +102,30 @@ class LessonDocument(BaseModel):
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")
 
 
+class UnitRelevanceItem(BaseModel):
+    unit_id: str
+    title: str
+    content: str
+    prediction: Optional[Literal["didactic", "organizational", "no_content"]] = None
+    confidence: Optional[float] = None
+    override: Optional[Literal["didactic", "organizational", "no_content"]] = None
+    effective: Literal["didactic", "organizational", "no_content"]
+    error: Optional[str] = None
+    stale: bool = False
+    corrected_at: Optional[str] = None
+    corrected_by: Optional[str] = None
+    prior_override: Optional[Literal["didactic", "organizational", "no_content"]] = None
+
+
+class UnitRelevanceOverview(BaseModel):
+    mode: Literal["disabled", "shadow", "active"]
+    units: List[UnitRelevanceItem]
+
+
+class UnitRelevanceOverride(BaseModel):
+    category: Optional[Literal["didactic", "organizational", "no_content"]] = None
+
+
 class DocumentEditIn(BaseModel):
     markdown: str = Field(description="Markdown dell'anteprima modificato (senza frontmatter)")
     lease_token: Optional[str] = None
@@ -108,7 +133,7 @@ class DocumentEditIn(BaseModel):
 
 class DocumentEditLease(BaseModel):
     token: str
-    expires: str
+    expires: Optional[str] = None  # Compatibilità con i client già generati.
 
 
 class DocumentEditProblem(BaseModel):
@@ -275,10 +300,11 @@ class JobRequest(BaseModel):
     phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(
         None, description="Obbligatoria per run_phase")
     unit: Optional[str] = Field(None, description="Rewrite o review: una sola unità")
+    units: Optional[List[str]] = Field(None, description="Rewrite o review: unità selezionate (lista multipla)")
     extra_prompt: Optional[str] = Field(None, max_length=10000, description="Istruzioni aggiuntive per outline, rewrite o review")
     force: bool = False
     mock: bool = False
-    with_review: bool = True
+    with_review: bool = False
     auto_accept: bool = False
     rename: bool = True
     mock_fail_once: Optional[Literal["rewrite", "review"]] = Field(
