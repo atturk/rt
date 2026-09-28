@@ -9,9 +9,9 @@ import sys
 
 import pytest
 
-from rt.db.bootstrap import INITIAL_IMPORT_KEY, ensure_database, initial_import
+from rt.db.bootstrap import ensure_database
 from rt.db.engine import DatabaseUnavailable, current_revision, head_revision, reset_database_cache
-from rt.db.repositories import LessonRepository, SettingRepository
+from rt.db.repositories import LessonRepository
 from rt.db.session import session_scope
 from tests.test_db_sync import lessons  # noqa: F401 - fixture condivisa
 
@@ -27,10 +27,10 @@ def db_url(tmp_path, monkeypatch):
 
 
 def test_ensure_creates_and_migrates_missing_database(db_url, tmp_path):
-    db = ensure_database(auto_import=False)
+    db = ensure_database()
     assert os.path.isfile(tmp_path / "home" / ".rt" / "rt.db")
     assert current_revision(db.engine) == head_revision()
-    assert ensure_database(auto_import=False) is db  # in cache: nessun lavoro al secondo giro
+    assert ensure_database() is db  # in cache: nessun lavoro al secondo giro
 
 
 def test_ensure_returns_none_only_when_explicitly_disabled(monkeypatch):
@@ -39,35 +39,12 @@ def test_ensure_returns_none_only_when_explicitly_disabled(monkeypatch):
     assert ensure_database() is None
 
 
-def test_first_run_does_not_import_folder_lessons_implicitly(db_url, lessons):
+def test_first_run_does_not_scan_or_import_folder_lessons(db_url, lessons):
     root, dirs = lessons
-    messages = []
-    db = ensure_database(lessons_root=root, on_progress=messages.append)
-    with session_scope(db) as s:
-        assert len(LessonRepository(s).list_all()) == 0
-        assert SettingRepository(s).get(INITIAL_IMPORT_KEY) is None
-    assert messages == []
-
-    # L'importazione rimane disponibile come azione esplicita.
-    assert initial_import(db, lessons_root=root, on_progress=messages.append)["synced"] == 3
-    with session_scope(db) as s:
-        assert len(LessonRepository(s).list_all()) == 3
-        assert SettingRepository(s).get(INITIAL_IMPORT_KEY)["synced"] == 3
-    assert "importo 3 lezioni" in messages[0]
-    # secondo avvio: nessun nuovo import, nessun messaggio
-    messages.clear()
-    assert initial_import(db, lessons_root=root, on_progress=messages.append) is None
-    assert messages == []
-
-
-def test_import_waits_for_a_lessons_root(db_url, lessons, monkeypatch):
-    root, _ = lessons
-    monkeypatch.setattr("rt.db.bootstrap._configured_lessons_root", lambda: None)
     db = ensure_database()
     with session_scope(db) as s:
-        assert SettingRepository(s).get(INITIAL_IMPORT_KEY) is None
-    monkeypatch.setattr("rt.db.bootstrap._configured_lessons_root", lambda: root)
-    assert initial_import(db)["synced"] == 3
+        assert len(LessonRepository(s).list_all()) == 0
+    assert os.path.isdir(root) and os.path.isdir(dirs[0])
 
 
 def test_broken_database_raises_with_restore_instructions(tmp_path, monkeypatch):
@@ -82,10 +59,9 @@ def test_broken_database_raises_with_restore_instructions(tmp_path, monkeypatch)
     assert "rt db migrate-storage" in message
 
 
-def test_cli_command_creates_database_without_scanning_lessons_root(db_url, lessons, tmp_path, capsys, monkeypatch):
+def test_cli_command_creates_database_without_scanning_lessons_root(db_url, lessons, tmp_path, capsys):
     from rt.cli import main
-    root, dirs = lessons
-    monkeypatch.setattr("rt.db.bootstrap._configured_lessons_root", lambda: root)
+    _, dirs = lessons
     main(["status", dirs[0]])
     assert os.path.isfile(tmp_path / "home" / ".rt" / "rt.db")
     assert "importo" not in capsys.readouterr().err
@@ -112,7 +88,7 @@ def test_concurrent_first_start_migrates_once(tmp_path):
     """Due processi rt avviati insieme sullo stesso DB nuovo: il lock evita migrazioni parallele."""
     url = "sqlite:///" + str(tmp_path / "rt.db")
     code = ("from rt.db.bootstrap import ensure_database; "
-            "db = ensure_database(auto_import=False); "
+            "db = ensure_database(); "
             "from rt.db.engine import current_revision; print(current_revision(db.engine))")
     env = dict(os.environ, RT_DATABASE_URL=url)
     procs = [subprocess.Popen([sys.executable, "-c", code], cwd=PROJECT_ROOT, env=env,

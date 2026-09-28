@@ -820,7 +820,7 @@ def _ensure_database_or_exit(command: Optional[str]) -> None:
     from rt.db.bootstrap import ensure_database
     from rt.db.engine import DatabaseUnavailable
     try:
-        ensure_database(on_progress=lambda msg: print(msg, file=sys.stderr))
+        ensure_database()
     except DatabaseUnavailable as exc:
         print(f"❌ {exc}", file=sys.stderr)
         sys.exit(1)

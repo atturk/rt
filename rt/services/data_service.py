@@ -353,7 +353,7 @@ def post_update(say: Callable[[str], None] = print,
     reset_database_cache()
     load_env_file(override=True)
     try:
-        ensure_database(on_progress=say)
+        ensure_database()
         say("🗄  Database aggiornato.")
     except DatabaseUnavailable as exc:
         say(f"❌ {exc}")

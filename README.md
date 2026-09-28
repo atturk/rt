@@ -66,9 +66,10 @@ immagini e un modello decisionale opzionale. Prima di abilitarne il gate, confro
 false omissioni con le revisioni di un campione reale in modalità ombra.
 
 Chi arriva dalla 3.x aggiorna con `rt -u` (se serve, due volte: la prima con il codice vecchio):
-configurazione e dati vengono spostati nella cartella dati, le lezioni importate nel database e
-viene proposta la cifratura delle chiavi. Servizi, backup, Docker e percorsi sono descritti in
-[Self-hosting](docs/SELF_HOSTING.md).
+configurazione e database vengono spostati nella cartella dati e viene proposta la cifratura
+delle chiavi. Le vecchie cartelle delle lezioni si convertono separatamente con `rt db
+migrate-storage`, dopo aver verificato il backup. Servizi, backup, Docker e percorsi sono
+descritti in [Self-hosting](docs/SELF_HOSTING.md).
 
 *(Per sviluppatori con git)*:
 ```bash
