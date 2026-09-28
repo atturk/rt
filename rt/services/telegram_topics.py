@@ -29,20 +29,40 @@ SERVICE_KEYS = frozenset({
 })
 
 DISCOVERY_KEY = "telegram_recent_topics"
+DISCOVERY_WINDOW_KEY = "telegram_topic_discovery_until"
 
 
-def remember_topic_message(message: Dict[str, Any]) -> None:
-    """The existing bot poller writes discovery events; no second getUpdates call."""
+def _topic_fields(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Solo quello che serve a riconoscere chat e topic: niente testo, mittente o allegati."""
+    def names(source: Dict[str, Any]) -> Dict[str, Any]:
+        out = {key: {"name": (source.get(key) or {}).get("name")}
+               for key in ("forum_topic_created", "forum_topic_edited") if isinstance(source.get(key), dict)}
+        if source.get("message_id") is not None:
+            out["message_id"] = source["message_id"]
+        return out
+    reply = message.get("reply_to_message")
+    return {**names(message), "message_thread_id": message.get("message_thread_id"),
+            "chat": {"id": (message.get("chat") or {}).get("id")},
+            **({"reply_to_message": names(reply)} if isinstance(reply, dict) else {})}
+
+
+def remember_topic_message(message: Dict[str, Any], now: Optional[float] = None) -> None:
+    """Il bot già attivo registra i topic visti, ma solo durante un ascolto richiesto dalla web
+    app (listen_existing_daemon) e senza il contenuto dei messaggi."""
     from rt.db.engine import get_database
     from rt.db.models import Setting
     from rt.db.session import session_scope
     db = get_database()
     if db is None or not message.get("message_thread_id"):
         return
+    now = time.time() if now is None else now
     with session_scope(db) as session:
+        window = session.get(Setting, DISCOVERY_WINDOW_KEY)
+        if window is None or not isinstance(window.value, (int, float)) or now > window.value:
+            return
         row = session.get(Setting, DISCOVERY_KEY)
         events = list(row.value or []) if row else []
-        events.append({"at": time.time(), "message": message})
+        events.append({"at": now, "message": _topic_fields(message)})
         events = events[-100:]
         if row:
             row.value = events
@@ -51,15 +71,30 @@ def remember_topic_message(message: Dict[str, Any]) -> None:
 
 
 def listen_existing_daemon(seconds: int = 20) -> Dict[str, Any]:
-    """Read messages gathered by the active daemon during a fixed observation window."""
+    """Apre una finestra di osservazione, la chiude e restituisce i topic visti dal bot attivo."""
     from rt.db.engine import get_database
     from rt.db.models import Setting
     from rt.db.session import session_scope
+    db = get_database()
     started = time.time()
-    time.sleep(seconds)
-    with session_scope(get_database()) as session:
-        row = session.get(Setting, DISCOVERY_KEY)
-        messages = [event["message"] for event in (row.value or []) if event["at"] >= started] if row else []
+    with session_scope(db) as session:
+        for key, value in ((DISCOVERY_WINDOW_KEY, started + seconds), (DISCOVERY_KEY, [])):
+            row = session.get(Setting, key)
+            if row:
+                row.value = value
+            else:
+                session.add(Setting(key=key, value=value))
+    try:
+        time.sleep(seconds)
+        with session_scope(db) as session:
+            row = session.get(Setting, DISCOVERY_KEY)
+            messages = [event["message"] for event in (row.value or []) if event["at"] >= started] if row else []
+    finally:
+        with session_scope(db) as session:
+            for key in (DISCOVERY_WINDOW_KEY, DISCOVERY_KEY):
+                row = session.get(Setting, key)
+                if row:
+                    session.delete(row)
     names = topic_names(messages)
     chats = {m.get("chat", {}).get("id") for m in messages} - {None}
     topics = sorted({m.get("message_thread_id") for m in messages} - {None})
