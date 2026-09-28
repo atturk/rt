@@ -416,12 +416,11 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
 
 
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
-    from markdown_it import MarkdownIt
+    from rt.core.markdown_render import markdown_parser
     markdown = load_markdown_preview(lesson_dir)
     final = _document_is_final(lesson_dir)
     sections = document_sections(lesson_dir)
-    # html=False: l'HTML grezzo del Markdown viene escapato, quindi l'output è sicuro.
-    md = MarkdownIt("commonmark", {"html": False})
+    md = markdown_parser()  # HTML grezzo escapato, formule intatte
     tokens = md.parse(markdown)
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})

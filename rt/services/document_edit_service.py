@@ -335,11 +335,11 @@ def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
 
 def check_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     """Anteprima renderizzata del Markdown in modifica e gli eventuali errori, senza salvare."""
-    from markdown_it import MarkdownIt
+    from rt.core.markdown_render import render_markdown
     try:
         plan_document_edit(lesson_dir, markdown)
         errors: List[Dict[str, Any]] = []
     except DocumentEditError as exc:
         errors = exc.errors
-    html = MarkdownIt("commonmark", {"html": False}).render(markdown)
+    html = render_markdown(markdown)
     return {"html": html, "errors": errors}

@@ -68,7 +68,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    renderDelimitedMath(root)
+    void renderDelimitedMath(root)
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
       if (!heading) continue
