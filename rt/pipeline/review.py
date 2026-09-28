@@ -423,6 +423,12 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
 
 
+def _unit_hashes(units) -> Dict[str, str]:
+    """Impronta del testo di ogni unità revisionata: dice quali unità sono cambiate dopo la revisione."""
+    import hashlib
+    return {unit.unit_id: hashlib.sha256(unit.model_dump_json(exclude={"generated_at"}).encode("utf-8")).hexdigest() for unit in units}
+
+
 def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> Dict[str, Any]:
     """Refresh just one unit, retaining other issues and their stable IDs/decisions."""
     from rt.services.unit_relevance import refresh, included
@@ -455,14 +461,24 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> 
             sequence += 1
             issue.id = f"sci_{sequence:06d}"
     save_science_issues(kept + generated, lesson_dir)
-    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
+    current = _unit_hashes(draft.units)
+    reviewed = (checkpoint or {}).get("unit_hashes")
     completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
+    # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
+    # rivista su questo stesso testo. Le altre unità cambiate (riscritte dopo la revisione)
+    # tornano da rivedere, invece di risultare valide senza che nessuno le abbia guardate.
+    if isinstance(reviewed, dict):
+        completed = [item for item in completed if reviewed.get(item) == current.get(item)]
+    elif status_before not in (PhaseStatus.VALID, PhaseStatus.PARTIAL):
+        completed = []  # checkpoint di una versione precedente e bozza cambiata: nessuna certezza
     if unit_id not in completed:
         completed.append(unit_id)
     record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
         source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
         artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-        completed_items=completed)
+        completed_items=completed,
+        metadata={"unit_hashes": {item: current[item] for item in completed if item in current}})
     return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(kept)}
 
 
@@ -547,6 +563,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
+    unit_hashes = _unit_hashes(draft.units)
     total_units = len(draft.units)
     failures = UnitFailureTracker()
     stopped_early = False
@@ -601,7 +618,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             phase_name="review",
             source_fingerprint=source_fp,
             artifact_fingerprints={"science_issues.json": sci_hash},
-            completed_items=reviewed_unit_ids
+            completed_items=reviewed_unit_ids,
+            metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes}},
         )
 
     # Finalizzazione se tutte le unità del draft sono state esaminate
