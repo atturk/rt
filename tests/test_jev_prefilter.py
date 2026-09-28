@@ -479,3 +479,51 @@ def test_cli_review_without_shadow_jev_defaults_false():
         mock_run_review.assert_called_once()
         _, kwargs = mock_run_review.call_args
         assert kwargs.get("shadow_jev") is False
+
+
+@pytest.mark.parametrize("request_type,probability,should_skip", [
+    ("noul", 0.84, False),   # 84% di probabilità di errore grave: la review si fa
+    ("noul", 0.16, False),   # P(corretto) = 0.84 < 0.85
+    ("noul", 0.10, True),
+    ("score", 0.84, False),
+    ("score", 0.10, True),
+])
+def test_noul_and_score_are_error_probabilities_not_skip_confidence(request_type, probability, should_skip):
+    """Report 2: con la soglia di default 0.85 un'unità all'84% di errore non deve saltare la review."""
+    from rt.pipeline.review import run_jev_task_a
+
+    unit = DraftUnit(unit_id="1.1", title="Titolo", start_segment_id="seg_1",
+                     end_segment_id="seg_1", source_segment_ids=["seg_1"], content="Testo.")
+    answer = (JevNoulAnswer(noul=probability) if request_type == "noul"
+              else JevScoreAnswer(score=probability, confidence=0.9))
+    response = JevResponse(model="typesafe/jev-1.13", answers={"correttezza": answer})
+    with patch("rt.pipeline.review.call_jev", return_value=response):
+        verdict = run_jev_task_a(unit, JevConfig(enabled=True, prefilter_type=request_type), "/lesson")
+    assert verdict.should_skip_expensive_llm is should_skip
+    assert verdict.choice == ("corretta" if should_skip else "errore_grave")
+
+
+def test_malformed_jev_answer_falls_back_to_the_llm_review():
+    """Una risposta che non rispetta lo schema (ValidationError) non fa fallire la review."""
+    from pydantic import ValidationError
+    from rt.pipeline.review import run_jev_task_a, run_jev_task_b
+
+    unit = DraftUnit(unit_id="1.1", title="Titolo", start_segment_id="seg_1",
+                     end_segment_id="seg_1", source_segment_ids=["seg_1"], content="Testo.")
+    try:
+        JevChoiceAnswer(choice="corretta", confidence=2)
+    except ValidationError as exc:
+        malformed = exc
+    with patch("rt.pipeline.review.call_jev", side_effect=malformed):
+        assert run_jev_task_a(unit, JevConfig(enabled=True), "/lesson") is None
+        assert run_jev_task_b(unit, "seg", JevConfig(enabled=True), "/lesson") is None
+
+
+def test_prefilter_prompt_is_only_for_the_error_prefilter():
+    from rt.pipeline.review import run_jev_task_b
+
+    unit = DraftUnit(unit_id="1.1", title="Titolo", start_segment_id="seg_1",
+                     end_segment_id="seg_1", source_segment_ids=["seg_1"], content="Testo.")
+    with patch("rt.pipeline.review.call_jev", return_value=_noul_response(0.1)) as call:
+        run_jev_task_b(unit, "seg", JevConfig(enabled=True, prefilter_prompt="SOLO PER IL PREFILTRO"), "/lesson")
+    assert "SOLO PER IL PREFILTRO" not in call.call_args.kwargs["questions"]["unsupported_content"].instructions

@@ -10,6 +10,8 @@ import os
 import json
 import logging
 from typing import Dict, Any, List, Optional
+
+from pydantic import ValidationError
 from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, DraftUnit
 from rt.core.segments import load_segments_json
 from rt.core.state import transition_to, WorkflowState
@@ -245,7 +247,8 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
             base_url=jev_cfg.base_url,
             timeout_seconds=jev_cfg.timeout_seconds,
         )
-    except JevError:
+    except (JevError, ValidationError, ValueError, TypeError):
+        # Risposta malformata o chiamata fallita: fallback prudente, la review LLM si fa.
         return None
 
     answer = resp.answers.get("correttezza")
@@ -256,16 +259,19 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
             return None
         choice, confidence = answer.choice, answer.confidence
         should_skip = choice != "errore_grave" and confidence >= jev_cfg.task_a_skip_confidence_threshold
-    elif jev_cfg.prefilter_type == "noul":
-        if answer.type != "noul": return None
-        confidence = answer.noul
-        choice = "errore_grave" if confidence >= jev_cfg.task_a_skip_confidence_threshold else "corretta"
-        should_skip = confidence < jev_cfg.task_a_skip_confidence_threshold
     else:
-        if answer.type != "score" or not 0 <= answer.score <= 1: return None
-        confidence = answer.confidence
-        choice = "errore_grave" if answer.score >= jev_cfg.task_a_skip_confidence_threshold else "corretta"
-        should_skip = answer.score < jev_cfg.task_a_skip_confidence_threshold
+        # noul e score stimano la probabilità di un errore grave, non la confidenza che il
+        # testo sia corretto: si salta la review solo se P(nessun errore grave) = 1 - p
+        # raggiunge la stessa soglia di confidenza usata per choice (0.85 → p ≤ 0.15).
+        if jev_cfg.prefilter_type == "noul":
+            if answer.type != "noul" or not 0 <= answer.noul <= 1: return None
+            error_probability = answer.noul
+        else:
+            if answer.type != "score" or not 0 <= answer.score <= 1: return None
+            error_probability = answer.score
+        confidence = 1 - error_probability
+        should_skip = confidence >= jev_cfg.task_a_skip_confidence_threshold
+        choice = "corretta" if should_skip else "errore_grave"
     return JevTaskAVerdict(choice=choice, confidence=confidence, should_skip_expensive_llm=should_skip)
 
 
@@ -298,7 +304,6 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
                         "grezzi. Valuta quanto è vera l'affermazione: 'Il testo rielaborato contiene "
                         "contenuto sostanziale non supportato dai segmenti grezzi, o si discosta "
                         "significativamente dal loro significato.'"
-                        + ("\n" + jev_cfg.prefilter_prompt if jev_cfg.prefilter_prompt else "")
                     ),
                 )
             },
@@ -310,7 +315,7 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
             base_url=jev_cfg.base_url,
             timeout_seconds=jev_cfg.timeout_seconds,
         )
-    except JevError:
+    except (JevError, ValidationError, ValueError, TypeError):
         return None
 
     answer = resp.answers.get("unsupported_content")
