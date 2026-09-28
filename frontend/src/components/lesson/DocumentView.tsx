@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useLocation } from 'react-router'
 
 import type { Schemas } from '@/api/client'
 import { activeUnit } from '@/lib/audio'
@@ -61,6 +62,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   const ref = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
+  const { hash } = useLocation()
 
   // Pulsante timecode dentro ogni intestazione di unità.
   useEffect(() => {
@@ -121,6 +123,17 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     const visible = target ?? block[0]
     visible?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
   }, [highlightText, highlightUnit, doc])
+
+  // Link "Vai all'unità" (#unit-<id>, per esempio dalla pagina Rilevanza): porta l'unità in vista.
+  useEffect(() => {
+    const root = ref.current
+    const unitId = hash.startsWith('#unit-') ? decodeURIComponent(hash.slice('#unit-'.length)) : ''
+    if (!root || !unitId || highlightText) return
+    const block = unitBlock(root, unitId)
+    if (!block.length) return
+    block.forEach((el) => el.classList.add('rt-claim-unit'))
+    block[0].scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }, [hash, doc, highlightText])
 
   return (
     <article
