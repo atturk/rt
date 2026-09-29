@@ -60,14 +60,70 @@ trap cleanup EXIT
 # il download in background e l'installazione proseguirebbe come se nulla fosse.
 trap 'cleanup; echo ""; echo "${YELLOW}⚠️  Installazione interrotta dall'"'"'utente.${RESET}"; exit 130' INT TERM
 
+# Ultime righe di install.log sul terminale: la causa di un errore senza aprire il file.
+show_log_tail() {
+    echo "   Ultime righe di install.log:" >&2
+    tail -n "${1:-15}" "$LOG_FILE" 2>/dev/null | sed 's/^/   │ /' >&2 || true
+}
+
+# Cartelle di Homebrew non scrivibili dall'utente (es. Homebrew installato da un altro
+# account del Mac): ogni 'brew install' fallirebbe. Stampa le cartelle, una per riga; niente
+# se va tutto bene. Il prefisso in sé non si controlla: su Intel /usr/local è di root per
+# costruzione, Homebrew scrive solo nelle sottocartelle.
+brew_unwritable_dirs() {
+    local prefix dir
+    prefix="$(brew --prefix 2>/dev/null)" || return 0
+    for dir in bin Cellar Caskroom etc include lib opt sbin share var var/homebrew; do
+        if [ -e "$prefix/$dir" ] && [ ! -w "$prefix/$dir" ]; then
+            echo "$prefix/$dir"
+        fi
+    done
+}
+
+# Controllo fatto una volta, prima del primo 'brew install': 0 se Homebrew è scrivibile,
+# altrimenti spiega come sistemare (non lancia sudo) e restituisce 1.
+BREW_WRITABLE=""
+check_brew_writable() {
+    if [ -z "$BREW_WRITABLE" ]; then
+        local dirs dir
+        dirs="$(brew_unwritable_dirs)"
+        if [ -z "$dirs" ]; then
+            BREW_WRITABLE=yes
+        else
+            BREW_WRITABLE=no
+            echo "${RED}❌ Homebrew non è scrivibile dal tuo utente ($(whoami)): queste cartelle appartengono a un altro utente:${RESET}" >&2
+            while IFS= read -r dir; do echo "   $dir" >&2; done <<<"$dirs"
+            echo "   Succede quando Homebrew è stato installato da un altro account del Mac. Per sistemare, lancia:" >&2
+            # shellcheck disable=SC2016  # il comando va mostrato così com'è, da copiare
+            echo '   sudo chown -R "$(whoami)" "$(brew --prefix)"' >&2
+            echo "   poi rilancia l'installazione." >&2
+        fi
+    fi
+    [ "$BREW_WRITABLE" = yes ]
+}
+
+# brew install silenzioso. Con "optional" come terzo argomento un errore avvisa soltanto e
+# l'installazione prosegue (strumenti facoltativi: micro, mpv); senza, la ferma.
 brew_install_quiet() {
     local pkg="$1"
     local name="${2:-$pkg}"
+    local optional="${3:-}"
+    if ! check_brew_writable; then
+        if [ "$optional" = optional ]; then
+            echo "${YELLOW}⚠️  ${name} (facoltativo) non installato: Homebrew non è scrivibile, vedi sopra. Proseguo.${RESET}" >&2
+            return 0
+        fi
+        echo "${RED}❌ ${name} è necessario: sistema Homebrew come indicato sopra e rilancia l'installazione.${RESET}" >&2
+        exit 1
+    fi
     echo "🍺 Installazione di ${name} via Homebrew..."
     if brew install "$pkg" >>"$LOG_FILE" 2>&1; then
         echo "${GREEN}✅ ${name} installato.${RESET}"
+    elif [ "$optional" = optional ]; then
+        echo "${YELLOW}⚠️  Installazione di ${name} non riuscita (facoltativo): proseguo senza. Dettagli in install.log.${RESET}" >&2
     else
-        echo "${RED}❌ Installazione di ${name} fallita — vedi install.log per i dettagli.${RESET}" >&2
+        echo "${RED}❌ Installazione di ${name} fallita.${RESET}" >&2
+        show_log_tail
         exit 1
     fi
 }
@@ -257,13 +313,13 @@ else
     if command -v micro &>/dev/null; then
         echo "ℹ️ Editor 'micro' già installato."
     else
-        brew_install_quiet micro "micro"
+        brew_install_quiet micro "micro" optional
     fi
 
     if command -v mpv &>/dev/null; then
         echo "ℹ️ Media player 'mpv' già installato."
     else
-        brew_install_quiet mpv "mpv"
+        brew_install_quiet mpv "mpv" optional
     fi
 fi
 
