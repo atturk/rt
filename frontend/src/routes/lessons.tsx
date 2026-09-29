@@ -1,6 +1,5 @@
-import { Brain, Download, Images, LayoutDashboard, Pencil, Trash2 } from 'lucide-react'
+import { Brain, Download, Images, LayoutDashboard, Pencil } from 'lucide-react'
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
@@ -18,13 +17,13 @@ import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { LessonFilters } from '@/components/LessonFilters'
+import { LessonList, LessonViewControls } from '@/components/LessonList'
 import { useFilteredLessons } from '@/lib/lessonFilters'
-import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
+import { groupLessons, sortLessons, useLessonViewPrefs } from '@/lib/lessonView'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { ConfirmDialog } from '@/components/ui/dialog'
-import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from '@/lib/format'
+import { STATE_LABELS, formatCost, lessonTitle } from '@/lib/format'
 import type { Area } from './types'
 import { RelevancePage } from './relevance'
 
@@ -37,71 +36,16 @@ function Stat({ value, label }: { value: number | string; label: string }) {
   )
 }
 
-/** Link con l'aspetto di un Button ghost/icon. */
-const iconLink =
-  'inline-flex size-9 items-center justify-center rounded-md transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
-
-function LessonCard({ lesson }: { lesson: Lesson }) {
-  const optionDown = useOptionKey()
-  const [confirm, setConfirm] = useState(false)
-  const [typed, setTyped] = useState('')
-  const client = useQueryClient()
-  const deletion = useMutation({
-    mutationFn: () => unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: lesson.id } } })),
-    onSuccess: () => { setConfirm(false); client.invalidateQueries({ queryKey: ['lessons'] }) },
-  })
-  const meta = [lesson.materia, lesson.data, lesson.state ? STATE_LABELS[lesson.state] ?? lesson.state : null].filter(Boolean)
-  return (
-    <Card className="group relative p-5" data-testid="lesson-card" data-lesson-id={lesson.id}>
-      <Button type="button" variant="ghost" size="icon" aria-label={`Elimina ${lessonTitle(lesson)}`}
-        className={`${optionRevealClass(optionDown)} absolute right-3 top-3 text-danger`}
-        onClick={() => { setTyped(''); setConfirm(true) }}><Trash2 /></Button>
-      {/* sotto il cestino, con Option: il Markdown finale (solo a build valido, non l'anteprima) */}
-      {lesson.phases.build === 'VALID' && (
-        <a href={`/api/v1/lessons/${lesson.id}/export?format=markdown`} download
-          aria-label={`Scarica il Markdown di ${lessonTitle(lesson)}`} title="Scarica il Markdown finale"
-          className={`${optionRevealClass(optionDown)} ${iconLink} absolute right-3 top-13`}>
-          <Download className="size-4" aria-hidden />
-        </a>
-      )}
-      <ConfirmDialog open={confirm} title="Elimina lezione" confirmLabel="Elimina"
-        confirmDisabled={typed !== 'confermo' || deletion.isPending}
-        onCancel={() => setConfirm(false)} onConfirm={() => deletion.mutate()}>
-        <p>Eliminare definitivamente «{lessonTitle(lesson)}» e tutti i suoi file?</p>
-        <label className="mt-3 block text-xs" htmlFor={`confirm-delete-${lesson.id}`}>Scrivi confermo</label>
-        <input id={`confirm-delete-${lesson.id}`} className="mt-1 w-full rounded border p-2" value={typed} onChange={(event) => setTyped(event.target.value)} />
-        {deletion.isError && <Alert tone="danger">{errorMessage(deletion.error)}</Alert>}
-      </ConfirmDialog>
-      <h2 className="pr-10 text-lg font-bold leading-snug tracking-tight">
-        <Link to={`/lezioni/${lesson.id}`} className="hover:underline">
-          {lessonTitle(lesson)}
-        </Link>
-      </h2>
-      <p className="mb-3 mt-1 pr-10 text-xs text-muted-foreground">{meta.join(' · ')}</p>
-      <PhaseBadges phases={lesson.phases} />
-      <div className="mt-4 flex flex-wrap items-baseline gap-3 border-t pt-3 text-xs">
-        <span className="tabular-nums text-muted-foreground" title="Costo stimato">
-          {formatCost(lesson.cost_usd)}
-        </span>
-        {lesson.pending_issues > 0 ? (
-          <Link to={`/lezioni/${lesson.id}/revisione`} className="font-bold text-accent-foreground hover:underline">
-            {lesson.pending_issues} issue da valutare →
-          </Link>
-        ) : (
-          <span className="text-muted-foreground">Nessuna issue da valutare</span>
-        )}
-      </div>
-      {lesson.error && <p className="mt-2 text-xs text-danger">{lesson.error}</p>}
-    </Card>
-  )
-}
-
 export function DashboardPage() {
   // Elenco completo una volta sola; testo, materia e stato si filtrano qui, senza una
   // richiesta per tasto (GET /lessons ricalcola fasi, issue e costi di ogni lezione).
   const all = useLessons()
   const lessons = all.data ?? []
-  const { filters, setFilter, filtered } = useFilteredLessons(all.data)
+  const { filters, setFilter, resetFilters, filtered } = useFilteredLessons(all.data)
+  const { prefs, update, sortBy, toggleGroup } = useLessonViewPrefs()
+  const groups = groupLessons(sortLessons(filtered, prefs.sort, prefs.dir), prefs.group, prefs.sort === 'data' ? prefs.dir : 'desc')
+  const hasFilters = Boolean(filters.q || filters.materia || filters.state)
+  useSearchShortcut('filter-q')
   return (
     <section className="flex flex-col gap-5">
       <h1 className="sr-only">Dashboard</h1>
@@ -115,16 +59,37 @@ export function DashboardPage() {
 
       {all.isError && <Alert tone="danger">{errorMessage(all.error)}</Alert>}
       {all.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
+      {all.data && lessons.length > 0 && (
+        <LessonViewControls shown={filtered.length} total={lessons.length} filtered={hasFilters}
+          onReset={resetFilters} prefs={prefs} onChange={update} />
+      )}
       {all.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
           {lessons.length === 0 ? 'Nessuna lezione: importane una da un audio.' : 'Nessuna lezione corrisponde ai filtri.'}
         </Card>
       )}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {filtered.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} />)}
-      </div>
+      {filtered.length > 0 && (
+        <LessonList groups={groups} grouped={prefs.group !== 'nessuno'} prefs={prefs} onSort={sortBy} onToggleGroup={toggleGroup} />
+      )}
     </section>
   )
+}
+
+/** "/" porta nel campo di ricerca (se non si sta già scrivendo altrove). */
+function useSearchShortcut(inputId: string) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      const input = document.getElementById(inputId)
+      if (!input) return
+      event.preventDefault()
+      input.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inputId])
 }
 
 export function LessonPage() {

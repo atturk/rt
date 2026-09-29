@@ -96,6 +96,13 @@ for (const theme of ['light', 'dark'] as const) {
     await expectNoViolations(page, 'pannello della materia')
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Espandi la barra laterale' }).click()
+
+    // Elenco delle lezioni in tabella, raggruppato per materia, con un gruppo chiuso.
+    await page.getByLabel('Raggruppa per').selectOption('materia')
+    await page.getByRole('button', { name: 'Tabella' }).click()
+    await expect(page.getByTestId('lesson-table')).toBeVisible()
+    await page.getByTestId('lesson-group-toggle').first().click()
+    await expectNoViolations(page, 'tabella delle lezioni per materia')
   })
 }
 

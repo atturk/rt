@@ -9,7 +9,7 @@ import { filterLessons, type LessonListFilters } from './lessonSearch'
  * testo vive anche in uno stato locale: l'URL si aggiorna in modo asincrono e un campo legato
  * solo a lui perderebbe i tasti premuti in fretta.
  */
-export function useLessonFilters(): [LessonListFilters, (key: keyof LessonListFilters, value: string) => void] {
+export function useLessonFilters(): [LessonListFilters, (key: keyof LessonListFilters, value: string) => void, () => void] {
   const [params, setParams] = useSearchParams()
   const urlQ = params.get('q') ?? ''
   const [q, setQ] = useState(urlQ)
@@ -41,11 +41,24 @@ export function useLessonFilters(): [LessonListFilters, (key: keyof LessonListFi
       { replace: true },
     )
   }
-  return [{ q, materia: params.get('materia') ?? '', state: params.get('stato') ?? '' }, setFilter]
+  // Un solo aggiornamento dell'URL: più setParams nello stesso istante si sovrascrivono.
+  function resetFilters() {
+    setQ('')
+    pending.current.push('')
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        for (const name of ['q', 'materia', 'stato']) next.delete(name)
+        return next
+      },
+      { replace: true },
+    )
+  }
+  return [{ q, materia: params.get('materia') ?? '', state: params.get('stato') ?? '' }, setFilter, resetFilters]
 }
 
 /** Elenco filtrato lato client: il filtro non chiama l'API a ogni tasto. */
 export function useFilteredLessons(lessons: Lesson[] | undefined) {
-  const [filters, setFilter] = useLessonFilters()
-  return { filters, setFilter, filtered: filterLessons(lessons ?? [], filters) }
+  const [filters, setFilter, resetFilters] = useLessonFilters()
+  return { filters, setFilter, resetFilters, filtered: filterLessons(lessons ?? [], filters) }
 }
