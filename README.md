@@ -202,6 +202,11 @@ Le funzionalità Telegram (routing per topic in base alla materia, notifica di b
 l'installazione in un comando è il servizio in background `bot`: parte da solo appena configuri
 token e chat (web app > Impostazioni > Telegram) e si avvia o ferma anche da lì.
 
+`/list` nel topic Generale elenca tutte le lezioni, raggruppate per materia e numerate di
+seguito; nel topic di una materia (o in "varie") solo le sue. Rispondendo a un elenco con un
+numero (o con `/recall <numero>`) la recall di quella lezione parte nel topic della sua materia,
+o in "varie" se la materia non ha un topic.
+
 ```bash
 rt service status        # stato di API, worker e bot
 rt service restart bot   # dopo aver cambiato la configurazione a mano

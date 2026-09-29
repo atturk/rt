@@ -49,6 +49,46 @@ def render_lesson_list_text(entries, show_materia: bool) -> str:
     return "\n".join(lines)
 
 
+NO_MATERIA_LABEL = "Senza materia"
+LIST_REPLY_HINT = "↩️ Rispondi a questo messaggio con il numero di una lezione per avviarne la recall nel topic della sua materia."
+
+
+def order_lessons_by_materia(entries) -> list:
+    """Lezioni raggruppate per materia (in ordine alfabetico, quelle senza materia in fondo) e,
+    dentro ogni materia, per data: è l'ordine della numerazione progressiva di /list nel Generale."""
+    return sorted(entries, key=lambda e: (not e.materia, e.materia, e.data or "", e.folder_name))
+
+
+def render_grouped_lesson_list(entries, max_chars: int = MAX_MESSAGE_CHARS) -> list:
+    """Elenco completo per il topic Generale: `entries` già ordinate con order_lessons_by_materia,
+    un titolo per materia e numeri progressivi su tutto l'elenco. Restituisce uno o più testi HTML
+    (Telegram accetta al massimo 4096 caratteri per messaggio): i tagli cadono tra una riga e
+    l'altra, la numerazione prosegue da un messaggio al successivo e l'ultimo porta l'istruzione."""
+    lines = [f"📚 <b>Tutte le lezioni ({len(entries)})</b>"]
+    current = None
+    for i, e in enumerate(entries, start=1):
+        materia = e.materia or NO_MATERIA_LABEL
+        if materia != current:
+            count = sum(1 for x in entries if (x.materia or NO_MATERIA_LABEL) == materia)
+            lines += ["", f"<b>{escape_html(materia)}</b> ({count})"]
+            current = materia
+        label = e.titolo or e.argomenti or e.folder_name
+        lines.append(f"{i}. [{e.data}] {escape_html(label)}")
+    lines += ["", LIST_REPLY_HINT]
+
+    chunks, buf = [], ""
+    for line in lines:
+        candidate = f"{buf}\n{line}" if buf else line
+        if buf and len(candidate) > max_chars:
+            chunks.append(buf.rstrip())
+            buf = line
+        else:
+            buf = candidate
+    if buf.strip():
+        chunks.append(buf.rstrip())
+    return chunks
+
+
 def render_asr_issue_text(issue, unit_info: Optional[str], timecode: str, listen_range: str, sentence: str) -> str:
     lines = [f"🎙 <b>Ambiguità ASR ({escape_html(issue.level.value)})</b>"]
     if unit_info:

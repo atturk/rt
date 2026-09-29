@@ -156,6 +156,10 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     entries = database_lessons()
     materia = reverse_resolve_materia(thread_id, runtime_cfg.topics)
 
+    if not materia and _is_general_topic(update.effective_message, runtime_cfg.misc_topic_id) and entries:
+        await _send_full_lesson_list(update, state_dir, entries)
+        return
+
     if materia:
         scoped = filter_by_materia(entries, materia)
         show_materia = False
@@ -194,6 +198,80 @@ async def handle_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
 
+def _is_general_topic(message, misc_topic_id) -> bool:
+    """Il messaggio è nel topic Generale del gruppo (o in una chat senza topic): lì /list mostra
+    tutte le lezioni. Nel Generale Telegram non mette message_thread_id, se non quello della
+    catena di risposte (senza is_topic_message); il topic "varie" resta a sé."""
+    thread_id = getattr(message, "message_thread_id", None)
+    if thread_id is None:
+        return True
+    try:
+        if misc_topic_id is not None and int(thread_id) == int(misc_topic_id):
+            return False
+    except (TypeError, ValueError):
+        pass
+    return getattr(message, "is_topic_message", None) is False
+
+
+async def _send_full_lesson_list(update: Update, state_dir: str, entries) -> None:
+    """/list nel Generale: tutte le lezioni, per materia, con numeri progressivi. Ogni messaggio
+    dell'elenco (se è lungo ne servono più di uno) è registrato con l'elenco intero, così la
+    risposta con un numero funziona su qualunque parte."""
+    from rt.telegram.formatting import order_lessons_by_materia, render_grouped_lesson_list
+    ordered = order_lessons_by_materia(entries)
+    lesson_dirs = [e.lesson_dir for e in ordered]
+    for text in render_grouped_lesson_list(ordered):
+        sent_msg = await _send_with_retry(lambda text=text: update.effective_message.reply_text(text, parse_mode="HTML"))
+        if sent_msg is not None and isinstance(getattr(sent_msg, "message_id", None), int):
+            registry.register_list_message(message_id=sent_msg.message_id, lesson_dirs=lesson_dirs, state_dir=state_dir)
+
+
+def _topic_link(chat_id, thread_id) -> Optional[str]:
+    """Link t.me al topic di un supergruppo (chat_id -100…), None se non ricavabile."""
+    raw = str(chat_id or "")
+    if thread_id is None or not raw.startswith("-100"):
+        return None
+    return f"https://t.me/c/{raw[4:]}/{thread_id}"
+
+
+async def _start_recall_from_list(update: Update, lesson_dir: str) -> None:
+    """Avvia la recall di una lezione scelta da un elenco /list. La sessione parte nel topic della
+    materia (o in "varie"); se è un altro topic rispetto a quello della richiesta, qui si dice
+    dove è partita, o perché non è partita."""
+    from rt.core.config import load_config
+    from rt.telegram.config import resolve_topic_id
+    from rt.telegram.recall_channel import start_recall_via_telegram
+    message = update.effective_message
+    loop = asyncio.get_running_loop()
+    error = await loop.run_in_executor(None, start_recall_via_telegram, lesson_dir, "alternato", None, False)
+    runtime_cfg = load_config().telegram
+    target = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
+    here = message.message_thread_id if getattr(message, "is_topic_message", None) is True else None
+    if error is None and target == here:
+        return  # la sessione è in questo stesso topic: il primo messaggio della recall basta
+    if error is not None:
+        text = f"⚠️ Recall non avviata: {error}"
+    else:
+        where = next((m for m, tid in (runtime_cfg.topics or {}).items() if tid == target), None)
+        where = f"nel topic {where}" if where else ("nel topic varie" if target is not None else "nel Generale")
+        link = _topic_link(update.effective_chat.id if update.effective_chat else None, target)
+        text = f"▶️ Recall avviata {where}." + (f"\n{link}" if link else "")
+    await _send_with_retry(lambda: message.reply_text(text))
+
+
+def _list_position(message, state_dir: str, raw: str):
+    """(lesson_dirs, posizione 1-based) se il messaggio risponde a un elenco /list con un numero."""
+    reply_msg = getattr(message, "reply_to_message", None)
+    if reply_msg is None or not isinstance(getattr(reply_msg, "message_id", None), int):
+        return None
+    if not isinstance(raw, str) or not raw.strip().isdigit():
+        return None
+    list_dirs = registry.resolve_list_message(reply_msg.message_id, state_dir)
+    if list_dirs is None:
+        return None
+    return list_dirs, int(raw.strip())
+
+
 async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/recall lanciato da Telegram: senza argomenti risponde usando l'override statico o l'ultima
     lezione su questo topic; con argomenti risolve per data e/o parola chiave."""
@@ -209,10 +287,7 @@ async def handle_recall_command(update: Update, context: ContextTypes.DEFAULT_TY
             if context.args and len(context.args) == 1 and context.args[0].isdigit():
                 idx_1based = int(context.args[0])
                 if 1 <= idx_1based <= len(list_dirs):
-                    target_lesson_dir = list_dirs[idx_1based - 1]
-                    loop = asyncio.get_running_loop()
-                    from rt.telegram.recall_channel import start_recall_via_telegram
-                    await loop.run_in_executor(None, start_recall_via_telegram, target_lesson_dir, "alternato", None, False)
+                    await _start_recall_from_list(update, list_dirs[idx_1based - 1])
                     return
                 else:
                     await _send_with_retry(lambda: update.effective_message.reply_text(
@@ -1027,6 +1102,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     chat_id = update.effective_chat.id
     thread_id = update.effective_message.message_thread_id if update.effective_message else None
     awaiting = convo.get_awaiting_feedback(state_dir, chat_id)
+
+    picked = _list_position(update.effective_message, state_dir, update.effective_message.text if update.effective_message else "")
+    if picked is not None:
+        list_dirs, position = picked
+        if 1 <= position <= len(list_dirs):
+            await _start_recall_from_list(update, list_dirs[position - 1])
+        else:
+            await _send_with_retry(lambda: update.effective_message.reply_text(
+                f"⚠️ Posizione {position} non valida: la lista contiene {len(list_dirs)} lezioni (valori ammessi: 1-{len(list_dirs)})."))
+        return
 
     if awaiting is None:
         active = tg_session.get_active_session(state_dir, chat_id, thread_id)
