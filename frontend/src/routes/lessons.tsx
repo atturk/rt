@@ -37,6 +37,10 @@ function Stat({ value, label }: { value: number | string; label: string }) {
   )
 }
 
+/** Link con l'aspetto di un Button ghost/icon. */
+const iconLink =
+  'inline-flex size-9 items-center justify-center rounded-md transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+
 function LessonCard({ lesson }: { lesson: Lesson }) {
   const optionDown = useOptionKey()
   const [confirm, setConfirm] = useState(false)
@@ -52,6 +56,14 @@ function LessonCard({ lesson }: { lesson: Lesson }) {
       <Button type="button" variant="ghost" size="icon" aria-label={`Elimina ${lessonTitle(lesson)}`}
         className={`${optionRevealClass(optionDown)} absolute right-3 top-3 text-danger`}
         onClick={() => { setTyped(''); setConfirm(true) }}><Trash2 /></Button>
+      {/* sotto il cestino, con Option: il Markdown finale (solo a build valido, non l'anteprima) */}
+      {lesson.phases.build === 'VALID' && (
+        <a href={`/api/v1/lessons/${lesson.id}/export?format=markdown`} download
+          aria-label={`Scarica il Markdown di ${lessonTitle(lesson)}`} title="Scarica il Markdown finale"
+          className={`${optionRevealClass(optionDown)} ${iconLink} absolute right-3 top-13`}>
+          <Download className="size-4" aria-hidden />
+        </a>
+      )}
       <ConfirmDialog open={confirm} title="Elimina lezione" confirmLabel="Elimina"
         confirmDisabled={typed !== 'confermo' || deletion.isPending}
         onCancel={() => setConfirm(false)} onConfirm={() => deletion.mutate()}>
@@ -65,7 +77,7 @@ function LessonCard({ lesson }: { lesson: Lesson }) {
           {lessonTitle(lesson)}
         </Link>
       </h2>
-      <p className="mb-3 mt-1 text-xs text-muted-foreground">{meta.join(' · ')}</p>
+      <p className="mb-3 mt-1 pr-10 text-xs text-muted-foreground">{meta.join(' · ')}</p>
       <PhaseBadges phases={lesson.phases} />
       <div className="mt-4 flex flex-wrap items-baseline gap-3 border-t pt-3 text-xs">
         <span className="tabular-nums text-muted-foreground" title="Costo stimato">
