@@ -41,7 +41,8 @@ jobs:
       - name: Check dependencies
         run: python -m pip check
       - name: Run test suite
-        run: python -m pytest tests/ -q -n auto
+        # loadfile: i test di un file restano sullo stesso worker e nel loro ordine
+        run: python -m pytest tests/ -q -n auto --dist loadfile
       - name: Verify distribution archive
         run: python scripts/check_release.py
 
