@@ -251,3 +251,118 @@ def test_unreadable_saved_session_asks_to_reconnect(monkeypatch):
     with pytest.raises(Conflict) as error:
         asyncio.run(archive._authorized_client())
     assert error.value.code == "telegram_user_unauthorized"
+
+
+class _LoginClient:
+    """Client finto per il login: sign_in chiede la password se needs_password."""
+    def __init__(self, session, needs_password=False):
+        from telethon.errors import SessionPasswordNeededError
+        self.session = SimpleNamespace(save=lambda: "authorized-session" if session else "temporary-session")
+        self.connect, self.disconnect = AsyncMock(), AsyncMock()
+        self.send_code_request = AsyncMock(return_value=SimpleNamespace(phone_code_hash="code-hash"))
+        self.is_user_authorized = AsyncMock(return_value=True)
+        error = SessionPasswordNeededError(request=None)
+
+        async def sign_in(**kwargs):
+            if needs_password and "code" in kwargs:
+                raise error
+        self.sign_in = AsyncMock(side_effect=sign_in)
+
+
+def _login_env(monkeypatch, tmp_path, needs_password=False):
+    from rt.services import telegram_user_archive as archive
+    clients = []
+
+    def make(_id, _hash, session=""):
+        clients.append(_LoginClient(session, needs_password))
+        return clients[-1]
+    monkeypatch.setattr(archive, "_env_path", lambda: tmp_path / ".env")
+    monkeypatch.setattr(archive, "data_dir", lambda: str(tmp_path / "data"))
+    monkeypatch.setattr(archive, "_client", make)
+    _isolate_env(monkeypatch, "RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH", archive.SESSION_SECRET)
+    return archive, clients
+
+
+def test_two_step_verification_asks_for_the_password(rt_db, monkeypatch, tmp_path):
+    archive, clients = _login_env(monkeypatch, tmp_path, needs_password=True)
+    asyncio.run(request_code(12345, "api-hash", "+391234567890"))
+    with pytest.raises(ServiceError) as error:
+        asyncio.run(archive.complete_login("12345"))
+    assert error.value.code == "telegram_password_required"
+    asyncio.run(archive.complete_login("12345", password="segreta"))
+    assert clients[-1].sign_in.await_args.kwargs == {"password": "segreta"}
+    assert 'RT_TELEGRAM_USER_SESSION="authorized-session"' in (tmp_path / ".env").read_text()
+    assert all(client.disconnect.await_count == 1 for client in clients)
+
+
+def test_expired_or_unknown_code_asks_for_a_new_one(rt_db, monkeypatch, tmp_path):
+    archive, _ = _login_env(monkeypatch, tmp_path)
+    with pytest.raises(ServiceError) as error:
+        asyncio.run(archive.complete_login("12345"))  # nessun codice richiesto
+    assert error.value.code == "telegram_code_expired"
+    asyncio.run(request_code(12345, "api-hash", "+391234567890"))
+    monkeypatch.setattr(archive.time, "time", lambda: 10 ** 12)  # oltre la scadenza di 10 minuti
+    with pytest.raises(ServiceError) as error:
+        asyncio.run(archive.complete_login("12345"))
+    assert error.value.code == "telegram_code_expired"
+
+
+def _saved_login(monkeypatch, tmp_path, authorized=True):
+    from rt.services import telegram_user_archive as archive
+    client = SimpleNamespace(connect=AsyncMock(), disconnect=AsyncMock(), log_out=AsyncMock(),
+                             is_user_authorized=AsyncMock(return_value=authorized))
+    monkeypatch.setattr(archive, "_env_path", lambda: tmp_path / ".env")
+    monkeypatch.setattr(archive, "data_dir", lambda: str(tmp_path / "data"))
+    monkeypatch.setattr(archive, "_client", lambda *_args: client)
+    for name, value in (("RT_TELEGRAM_USER_API_ID", "12345"), ("RT_TELEGRAM_USER_API_HASH", "hash"),
+                        (archive.SESSION_SECRET, "saved-session")):
+        monkeypatch.setenv(name, value)
+    return archive, client
+
+
+def test_expired_saved_session_asks_to_reconnect(monkeypatch, tmp_path):
+    archive, client = _saved_login(monkeypatch, tmp_path, authorized=False)
+    with pytest.raises(ServiceError) as error:
+        asyncio.run(archive._authorized_client())
+    assert error.value.code == "telegram_user_unauthorized"
+    client.disconnect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("authorized", [True, False])
+def test_revoke_logs_out_and_forgets_credentials(monkeypatch, tmp_path, authorized):
+    archive, client = _saved_login(monkeypatch, tmp_path, authorized)
+    from rt.services import config_service
+    for name in ("RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH", archive.SESSION_SECRET):
+        config_service.set_secret(name, os.environ[name], path=tmp_path / ".env")
+    asyncio.run(archive.revoke_session())
+    assert client.log_out.await_count == (1 if authorized else 0)  # sessione scaduta: niente logout remoto
+    text = (tmp_path / ".env").read_text()
+    assert "saved-session" not in text and '"hash"' not in text and '"12345"' not in text
+    for name in ("RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH", archive.SESSION_SECRET):
+        assert name not in os.environ
+
+
+def test_list_topics_follows_pages(monkeypatch, tmp_path):
+    archive, client = _saved_login(monkeypatch, tmp_path)
+    pages = [[SimpleNamespace(id=i, title=f"T{i}", top_message=1000 + i, date=None) for i in range(1, 101)],
+             [SimpleNamespace(id=101, title="Ultimo", top_message=1101, date=None)]]
+    requests = []
+
+    async def call(request):
+        requests.append(request)
+        return SimpleNamespace(topics=pages[len(requests) - 1])
+    client.get_entity = AsyncMock(return_value="forum")
+    monkeypatch.setattr(archive, "_client", lambda *_args: _Callable(client, call))
+    topics = asyncio.run(archive.list_topics(-1001))
+    assert len(topics) == 101 and topics[-1] == {"id": 101, "name": "Ultimo"}
+    assert requests[1].offset_topic == 100 and requests[1].offset_id == 1100
+
+
+class _Callable(SimpleNamespace):
+    """Il client Telethon si invoca come funzione per le richieste raw."""
+    def __init__(self, base, call):
+        super().__init__(**vars(base))
+        self._call = call
+
+    def __call__(self, request):
+        return self._call(request)

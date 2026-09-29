@@ -756,9 +756,9 @@ def test_round_robin_pool_exhaustion_before_dedicated_fallback(monkeypatch):
     Verifica che con un pool di 3 route round-robin, un 429 provi tutte le route del pool
     prima di scalare alla route di fallback dedicata (OpenRouter).
     """
-    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
-    monkeypatch.setenv("GOOGLE_API_KEY_2", "key-g2")
-    monkeypatch.setenv("GOOGLE_API_KEY_3", "key-g3")
+    for i in range(1, 4):  # registrate qui: il test non dipende da quelli che lo precedono
+        monkeypatch.setenv(f"GOOGLE_API_KEY_{i}", f"key-g{i}")
+        GLOBAL_CREDENTIALS.register(CredentialRef(name=f"google_{i}", provider="google", env_var=f"GOOGLE_API_KEY_{i}"))
     monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
     GLOBAL_CREDENTIALS.reload_from_env()
 

@@ -174,7 +174,7 @@ def call_jev(
             latency_ms=round(elapsed * 1000.0, 2),
             input_tokens=in_tok,
             output_tokens=out_tok,
-            status="success" if http_status == 200 else "error",
+            status="success" if http_status == 200 and error_message is None else "error",
             http_status=http_status,
             error_message=error_message,
             estimated_cost=cost_est,
@@ -200,7 +200,10 @@ def call_jev(
 
     if not isinstance(resp_json, dict) or not isinstance(resp_json.get("answers"), dict):
         raise JevError("Risposta del modello decisionale incompleta.")
-    answers = {name: _parse_answer(name, raw) for name, raw in resp_json["answers"].items()}
+    try:
+        answers = {name: _parse_answer(name, raw) for name, raw in resp_json["answers"].items()}
+    except (ValueError, TypeError, AttributeError) as e:  # ValidationError è un ValueError
+        raise JevError(f"Risposta del modello decisionale non valida: {e}") from e
     for name, question in questions.items():
         answer = answers.get(name)
         if answer is None or answer.type != question.type:
