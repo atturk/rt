@@ -17,7 +17,7 @@ def test_merge_preserves_order_and_trailing_silence(tmp_path):
         subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i",
                         f"sine=frequency={frequency}:duration={duration}", "-y", str(path)], check=True)
         sources.append(str(path))
-    output = tmp_path / "combined.wav"
+    output = tmp_path / "combined.m4a"
     merge_audio_for_transcription(sources, str(output))
     result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                              "-of", "json", str(output)], capture_output=True, text=True, check=True)

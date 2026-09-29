@@ -44,7 +44,10 @@ def merge_audio_for_transcription(audios: List[str], output: str) -> None:
     filters = ";".join(f"[{i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono[a{i}]"
                        for i in range(len(audios)))
     filters += ";" + "".join(f"[a{i}]" for i in range(len(audios))) + f"concat=n={len(audios)}:v=0:a=1[out]"
-    command.extend(["-filter_complex", filters, "-map", "[out]", "-c:a", "pcm_s16le", output])
+    # AAC in MP4 (.m4a): ~45 MB per ora invece dei ~345 di un WAV a 48 kHz, riproducibile nei
+    # browser (faststart per lo streaming) e letto da macparakeet come gli .m4a registrati.
+    command.extend(["-filter_complex", filters, "-map", "[out]", "-c:a", "aac", "-b:a", "96k",
+                    "-movflags", "+faststart", output])
     result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
     if result.returncode or not os.path.isfile(output) or os.path.getsize(output) == 0:
         raise SetupError("Impossibile unire i file audio: controlla che siano leggibili e riprova.")
@@ -548,9 +551,9 @@ def run_setup(
         try:
             if len(cleaned_audios) > 1:
                 # Both STT and playback use the same file; trailing silence stays on the timeline.
-                merged_audio = os.path.join(temp_dir, "audio completo.wav")
+                merged_audio = os.path.join(temp_dir, "audio completo.m4a")
                 merge_audio_for_transcription(cleaned_audios, merged_audio)
-                primary_audio_name = "audio completo.wav"
+                primary_audio_name = "audio completo.m4a"
             for audio_idx, aud_file in enumerate([merged_audio] if merged_audio else cleaned_audios, start=1):
                 aud_abs = os.path.abspath(aud_file)
                 temp_audio_dir = os.path.join(temp_dir, f"audio_{audio_idx}")
