@@ -105,3 +105,35 @@ describe('RelevancePage', () => {
     expect(screen.getByText('Nessuna unità in questa vista.')).toBeInTheDocument()
   })
 })
+
+describe('RelevancePage: assegnazione delle etichette', () => {
+  it('accoda il job e a job finito rilegge le classificazioni', async () => {
+    let relevanceReads = 0
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/lessons/{lesson_id}/relevance') {
+        relevanceReads += 1
+        return Promise.resolve(ok({ mode: 'shadow', units: [unit('1.1')] }))
+      }
+      if (path === '/api/v1/jobs/{job_id}') return Promise.resolve(ok({ id: 'rel-1', type: 'unit_relevance', state: 'succeeded', progress: null, error: null, result: {} }))
+      if (path === '/api/v1/workers') return Promise.resolve(ok([{ worker_id: 'w' }]))
+      if (path === '/api/v1/lessons/{lesson_id}/document') return Promise.resolve(ok({ sections: [] }))
+      return Promise.resolve(ok({ id: 5, titolo: 'Il rene' }))
+    }) as never)
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({
+      job_id: 'rel-1', type: 'unit_relevance', state: 'queued', lesson_id: 5, worker_available: true, retry_of: null,
+    }) as never)
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Riclassifica tutte' }))
+    await vi.waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/lessons/{lesson_id}/relevance/run',
+      { params: { path: { lesson_id: 5 } }, body: { force: true, mock: false } }))
+    expect(await screen.findByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded')
+    await vi.waitFor(() => expect(relevanceReads).toBeGreaterThan(1))
+  })
+
+  it('con JEV spento i pulsanti sono disattivati e rimandano alle impostazioni', async () => {
+    mockApi([unit('1.1')], 'disabled')
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Assegna etichette' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: 'Impostazioni' })).toHaveAttribute('href', '/impostazioni/modelli')
+  })
+})

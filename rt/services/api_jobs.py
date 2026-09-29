@@ -28,6 +28,7 @@ CREDENTIAL_TEST = "credential_test"
 TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
 IMPORT_LESSON_ZIPS = "import_lesson_zips"
 TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
+UNIT_RELEVANCE = "unit_relevance"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
 
 
@@ -178,6 +179,19 @@ def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         refill_active_type_if_low(job.lesson_path, RecallQuestionType(job.payload["qtype"]),
                                   force_mock=bool(job.payload.get("mock")))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
+def unit_relevance_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Come 'rt relevance': etichette JEV per le unità nuove o cambiate (force: tutte)."""
+    from rt.services.unit_relevance import list_units, refresh
+    with ctx.activate():
+        refresh(job.lesson_path, force_mock=bool(job.payload.get("mock")), ctx=ctx,
+                force=bool(job.payload.get("force")))
+    overview = list_units(job.lesson_path)
+    return _done({"mode": overview["mode"], "units": len(overview["units"]),
+                  "errors": sum(1 for unit in overview["units"] if unit.get("error")),
+                  "excluded": sum(1 for unit in overview["units"] if unit["effective"] != "didactic")},
+                 lesson_path=job.lesson_path)
 
 
 def outline_revision_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -341,7 +355,7 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 for _type, _handler in (
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
-    (RECALL_REFILL, recall_refill_job),
+    (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),

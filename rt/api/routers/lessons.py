@@ -77,6 +77,15 @@ def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return list_units(lesson_dir)
 
 
+@router.post("/lessons/{lesson_id}/relevance/run", response_model=schemas.JobAccepted, status_code=202,
+             summary="Accoda l'attribuzione delle etichette JEV alle unità (come 'rt relevance'); 409 relevance_disabled se JEV è spento")
+def run_unit_relevance(lesson_id: int, body: schemas.UnitRelevanceRun, lesson_dir: LessonDir, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    from rt.services.unit_relevance import ensure_can_run
+    ensure_can_run()
+    return enqueue_job("unit_relevance", lesson_dir, {"force": body.force, "mock": body.mock}, actor)
+
+
 @router.put("/lessons/{lesson_id}/relevance/{unit_id}", response_model=schemas.UnitRelevanceOverview,
             summary="Corregge o ripristina la classificazione di un'unità")
 def put_unit_relevance(lesson_id: int, unit_id: str, body: schemas.UnitRelevanceOverride,

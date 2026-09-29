@@ -72,8 +72,17 @@ def mode() -> str:
     return cfg.relevance_mode if cfg.relevance_model.strip() else "disabled"
 
 
-def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None) -> dict:
-    """Classifica le unità cambiate. Un errore lascia passare l'unità e resta visibile."""
+def ensure_can_run() -> None:
+    """Conflict se JEV rilevanza è spento: il job non avrebbe niente da fare."""
+    if mode() == "disabled":
+        from rt.services.errors import Conflict
+        raise Conflict("relevance_disabled", "JEV rilevanza è disattivato: scegli modello e comportamento in "
+                       "Impostazioni > Modelli > Decisioni JEV.")
+
+
+def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False) -> dict:
+    """Classifica le unità cambiate (force: tutte). Un errore lascia passare l'unità e resta
+    visibile; le correzioni dell'utente su un testo invariato restano."""
     cfg = load_config().jev
     if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
         return _load(lesson_dir)
@@ -88,7 +97,8 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None) -> dict:
     for unit in units:
         digest = _unit_hash(unit)
         old = previous.get(unit.unit_id, {})
-        if old.get("text_hash") == digest and old.get("config_hash") == configuration and old.get("prediction") in CLASSES:
+        if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration \
+                and old.get("prediction") in CLASSES:
             old["last_run_mode"] = cfg.relevance_mode
             result[unit.unit_id] = old
             continue

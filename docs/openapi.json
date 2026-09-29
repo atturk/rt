@@ -4831,6 +4831,24 @@
         "title": "UnitRelevanceOverview",
         "type": "object"
       },
+      "UnitRelevanceRun": {
+        "properties": {
+          "force": {
+            "default": false,
+            "description": "Riclassifica anche le unità già etichettate con il testo e la configurazione attuali",
+            "title": "Force",
+            "type": "boolean"
+          },
+          "mock": {
+            "default": false,
+            "description": "Modalità prova: nessuna chiamata a JEV",
+            "title": "Mock",
+            "type": "boolean"
+          }
+        },
+        "title": "UnitRelevanceRun",
+        "type": "object"
+      },
       "UploadInventoryItem": {
         "properties": {
           "files": {
@@ -9761,6 +9779,105 @@
           }
         ],
         "summary": "Classificazioni JEV e correzioni per ogni unità",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/relevance/run": {
+      "post": {
+        "operationId": "run_unit_relevance_api_v1_lessons__lesson_id__relevance_run_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitRelevanceRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accoda l'attribuzione delle etichette JEV alle unità (come 'rt relevance'); 409 relevance_disabled se JEV è spento",
         "tags": [
           "lezioni"
         ]

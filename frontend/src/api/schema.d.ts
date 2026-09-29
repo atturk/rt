@@ -805,6 +805,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/relevance/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accoda l'attribuzione delle etichette JEV alle unità (come 'rt relevance'); 409 relevance_disabled se JEV è spento */
+        post: operations["run_unit_relevance_api_v1_lessons__lesson_id__relevance_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/relevance/{unit_id}": {
         parameters: {
             query?: never;
@@ -3793,6 +3810,21 @@ export interface components {
             mode: "disabled" | "shadow" | "active";
             /** Units */
             units: components["schemas"]["UnitRelevanceItem"][];
+        };
+        /** UnitRelevanceRun */
+        UnitRelevanceRun: {
+            /**
+             * Force
+             * @description Riclassifica anche le unità già etichettate con il testo e la configurazione attuali
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Mock
+             * @description Modalità prova: nessuna chiamata a JEV
+             * @default false
+             */
+            mock: boolean;
         };
         /** UploadInventoryItem */
         UploadInventoryItem: {
@@ -7224,6 +7256,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnitRelevanceOverview"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_unit_relevance_api_v1_lessons__lesson_id__relevance_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitRelevanceRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

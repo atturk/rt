@@ -566,3 +566,39 @@ def test_row_telegram_daemon_status(api, monkeypatch, tmp_path):
     assert api.client.get("/api/v1/telegram/daemon").json() == {"running": True, "pid": ds.get_daemon_pid(pid_path)}
     ds.remove_daemon_pid(pid_path)
     assert api.client.get("/api/v1/telegram/daemon").json()["running"] is False
+
+
+def test_row_relevance_run(api, cli, pair):
+    """rt relevance <lezione> [--all] ⇔ POST /lessons/{id}/relevance/run (job unit_relevance)."""
+    import yaml
+    from rt.services import config_service
+    from rt.services.config_service import general_config_path
+    from rt.services.unit_relevance import list_units
+    from tests.api_support import run_mock_pipeline
+    cli_dir, api_dir = pair
+    for lesson_dir in pair:
+        run_mock_pipeline(lesson_dir)
+    lesson_id = api.lesson_id()
+    # JEV spento: stesso rifiuto dai due lati, nessun job accodato
+    code, _, err = _run_cli(["relevance", cli_dir, "--mock"], cwd=cli.root, stdin="")
+    res = api.client.post(f"/api/v1/lessons/{lesson_id}/relevance/run", json={"mock": True})
+    assert code == 1 and res.status_code == 409 and res.json()["error"]["code"] == "relevance_disabled"
+    assert res.json()["error"]["message"] in err
+
+    # la CLI legge config/ nella sua cartella, l'API quella del workspace: la stessa modifica a entrambe
+    for path in (general_config_path(), os.path.join(cli.root, "config", "general.yaml")):
+        data = {}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        data["jev"] = {**data.get("jev", {}), "relevance_model": "typesafe/jev-1.13", "relevance_mode": "shadow"}
+        config_service.write_yaml_atomic(path, data)
+    out = cli.rt("relevance", cli_dir, "--mock", "--all")
+    assert "unità (shadow)" in out
+    job = api.run(f"/lessons/{lesson_id}/relevance/run", json={"mock": True, "force": True})
+    assert job["state"] == "succeeded" and job["type"] == "unit_relevance", job
+    assert job["result"]["mode"] == "shadow" and job["result"]["errors"] == 0
+
+    def rows(lesson_dir):
+        return [{k: v for k, v in unit.items() if k not in ("corrected_at",)} for unit in list_units(lesson_dir)["units"]]
+    assert rows(cli_dir) == rows(api_dir) and rows(api_dir)

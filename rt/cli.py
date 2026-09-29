@@ -15,6 +15,7 @@ Comandi disponibili:
   rt telegram-daemon    [--state-dir <path>]
   rt import             <archivio.zip>... (export completi fatti con 'rt export --all --zip')
   rt delete             <cartella> [--yes]
+  rt relevance          <cartella> [--all] [--mock] (etichette JEV delle unità)
 
 Comandi diagnostici (uso avanzato):
   rt validate-outline   <cartella>
@@ -679,6 +680,30 @@ def cmd_validate_phase(args: argparse.Namespace) -> None:
     print("   Le fasi a valle costruite su input diversi restano da rifare ('rt status' le mostra).")
 
 
+def cmd_relevance(args: argparse.Namespace) -> None:
+    """Etichette JEV per le unità nuove o cambiate, --all per tutte (come POST /lessons/{id}/relevance/run)."""
+    from rt.services.unit_relevance import ensure_can_run, list_units, refresh
+    lesson_dir = _resolve_lesson_arg(args.lesson)
+    if not fs.isdir(lesson_dir):
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        ensure_can_run()
+    except Exception as exc:
+        message = _service_error(exc)
+        if message is None:
+            raise
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+    refresh(lesson_dir, force_mock=args.mock, force=args.all)
+    overview = list_units(lesson_dir)
+    for unit in overview["units"]:
+        label = unit.get("label") or unit.get("prediction") or "nessuna etichetta"
+        print(f"{unit['unit_id']}  {label}  → {unit['effective']}" + (f"  ⚠️ {unit['error']}" if unit.get("error") else ""))
+    excluded = sum(1 for unit in overview["units"] if unit["effective"] != "didactic")
+    print(f"✅ {len(overview['units'])} unità ({overview['mode']}), {excluded} non didattiche.")
+
+
 def cmd_import(args: argparse.Namespace) -> None:
     """Importa archivi .zip completi di RT come nuove lezioni (come POST /lessons/import-zip)."""
     import zipfile
@@ -1031,6 +1056,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  export              Esporta il Markdown finale o tutti i dati di una lezione\n"
         "  import              Importa archivi .zip completi di RT come nuove lezioni\n"
         "  delete              Elimina una lezione (chiede conferma, --yes per saltarla)\n"
+        "  relevance           Assegna le etichette JEV alle unità (--all per rifarle tutte)\n"
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n"
@@ -1329,6 +1355,12 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_del.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
     p_del.add_argument("-y", "--yes", action="store_true", help="Non chiedere conferma")
     p_del.set_defaults(func=cmd_delete)
+
+    p_rel = subparsers.add_parser("relevance", help="Assegna le etichette JEV di rilevanza alle unità nuove o cambiate")
+    p_rel.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_rel.add_argument("--all", action="store_true", help="Riclassifica anche le unità già etichettate")
+    p_rel.add_argument("--mock", action="store_true", help="Modalità prova: nessuna chiamata a JEV")
+    p_rel.set_defaults(func=cmd_relevance)
 
     p_vph = subparsers.add_parser("validate-phase", help="Segna una fase come valida senza rieseguirla (es. dopo una modifica voluta)")
     p_vph.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")

@@ -188,6 +188,7 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ./bin/rt rewrite "cartella_lezione"           # Rielabora a finestre con provenance
 ./bin/rt validate-draft "cartella_lezione"    # Valida il draft prodotto
 ./bin/rt validate-phase "cartella_lezione" outline  # Segna valida una fase STALE senza rieseguirla
+./bin/rt relevance "cartella_lezione" --all         # Riassegna le etichette JEV a tutte le unità
 ./bin/rt review "cartella_lezione"            # Revisione scientifica e delle ambiguità ASR
 ./bin/rt review "cartella_lezione" --unit 1.2 # Rivede solo un'unità (ripetibile)
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi

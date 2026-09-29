@@ -111,3 +111,32 @@ def test_rows_saved_before_the_playground_keep_their_threshold_rule(tmp_path):
         assert gate.included(path, unit)  # 0.6 < 0.85: passa, come prima
         write({**legacy_row, "confidence": 0.9})
         assert not gate.included(path, unit)
+
+
+def test_force_reclassifies_every_unit_and_keeps_corrections(tmp_path):
+    """'Riclassifica tutte' (rt relevance --all): nuove chiamate anche con la cache valida,
+    e le correzioni dell'utente sul testo invariato restano."""
+    path = setup_mock_lesson(tmp_path, num_units=2)
+    answer = JevChoiceAnswer(choice="organizational", confidence=0.99,
+                             probabilities={"didactic": 0.01, "organizational": 0.99, "no_content": 0.0})
+    response = JevResponse(model="typesafe/jev-1.13", answers={"rilevanza": answer}, usage={})
+    with patch.object(gate, "load_config", return_value=_config("active")), \
+            patch("rt.llm.jev_client.call_jev", return_value=response) as called:
+        gate.refresh(path)
+        unit = load_draft(path).units[0]
+        gate.set_override(path, unit.unit_id, "didactic", actor="test")
+        gate.refresh(path)
+        assert called.call_count == 2  # cache valida: nessuna nuova chiamata
+        gate.refresh(path, force=True)
+        assert called.call_count == 4
+        assert gate.list_units(path)["units"][0]["override"] == "didactic"
+        assert gate.included(path, unit)
+
+
+def test_run_is_refused_when_relevance_is_disabled():
+    import pytest
+    from rt.services.errors import Conflict
+    with patch.object(gate, "load_config", return_value=_config("disabled")):
+        with pytest.raises(Conflict) as error:
+            gate.ensure_can_run()
+    assert error.value.code == "relevance_disabled"

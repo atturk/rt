@@ -133,6 +133,11 @@ class UnitRelevanceOverview(BaseModel):
     units: List[UnitRelevanceItem]
 
 
+class UnitRelevanceRun(BaseModel):
+    force: bool = Field(False, description="Riclassifica anche le unità già etichettate con il testo e la configurazione attuali")
+    mock: bool = Field(False, description="Modalità prova: nessuna chiamata a JEV")
+
+
 class UnitRelevanceOverride(BaseModel):
     category: Optional[Literal["didactic", "organizational", "no_content"]] = None
 

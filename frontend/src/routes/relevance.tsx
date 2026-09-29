@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument } from '@/api/hooks'
+import { jobFinished, useJobStatus } from '@/api/jobStatus'
+import { JobProgress } from '@/components/JobProgress'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -61,6 +63,37 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Schema
   </Card>
 }
 
+/** Attribuzione delle etichette come job (unit_relevance, come 'rt relevance'): le unità nuove
+ * o cambiate, oppure tutte. A job finito la pagina rilegge le classificazioni. */
+function RunRelevance({ lessonId, disabled }: { lessonId: number; disabled: boolean }) {
+  const client = useQueryClient()
+  const [jobId, setJobId] = useState<string | null>(null)
+  const start = useMutation({
+    mutationFn: (force: boolean) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/relevance/run', {
+      params: { path: { lesson_id: lessonId } }, body: { force, mock: false },
+    })),
+    onSuccess: (accepted) => setJobId(accepted.job_id),
+  })
+  const finished = useCallback(() => {
+    void client.invalidateQueries({ queryKey: ['relevance', lessonId] })
+    void client.invalidateQueries({ queryKey: ['lesson', lessonId] })
+  }, [client, lessonId])
+  const job = useJobStatus(jobId)
+  const busy = start.isPending || (!!jobId && !job.isError && !jobFinished(job.data))
+  return <Card className="flex flex-col gap-2 p-3" data-testid="relevance-run">
+    <div className="flex flex-wrap items-center gap-2">
+      <Button size="sm" disabled={disabled || busy} onClick={() => { setJobId(null); start.mutate(false) }}>Assegna etichette</Button>
+      <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => { setJobId(null); start.mutate(true) }}>Riclassifica tutte</Button>
+      <span className="text-xs text-muted-foreground">
+        {disabled ? <>JEV rilevanza è disattivato: attivalo in <Link className="underline" to="/impostazioni/modelli">Impostazioni</Link>.</>
+          : 'Assegna etichette classifica solo le unità nuove o cambiate; le tue correzioni restano.'}
+      </span>
+    </div>
+    {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
+    {jobId && <JobProgress jobId={jobId} label="Etichette JEV" onFinished={finished} />}
+  </Card>
+}
+
 export function RelevancePage() {
   const id = Number(useParams().lessonId)
   const lesson = useLesson(id)
@@ -81,6 +114,7 @@ export function RelevancePage() {
           data.data.mode === 'shadow' ? 'Modalità ombra: JEV classifica, ma tutte le unità proseguono verso review e Recall.' :
             'JEV disattivato: tutte le unità proseguono; le classificazioni precedenti restano consultabili.'}
       </Alert>
+      <RunRelevance lessonId={id} disabled={data.data.mode === 'disabled'} />
       <p className="text-sm text-muted-foreground">Controlla un campione, in particolare introduzioni e unità miste. Le correzioni si applicano alle esecuzioni successive; la bozza originale resta visibile.</p>
       <Card className="p-3 text-sm">
         <strong>Campione controllato: {checked.length} / {data.data.units.length}</strong>
