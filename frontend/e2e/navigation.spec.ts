@@ -21,7 +21,7 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   })
 
   const search = page.getByLabel('Cerca')
-  await expect(search).toHaveAttribute('placeholder', 'Titolo, argomenti, materia o data')
+  await expect(search).toHaveAttribute('placeholder', 'Titolo, materia, data…')
   const started = Date.now()
   await search.pressSequentially('farmacologia')
   await expect(cards).toHaveCount(1)
@@ -37,12 +37,11 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   await expect(cards).toHaveCount(lessons.filter((l) => l.data === farm.data).length)
   expect(queries).toEqual([])
 
-  // Il punto interrogativo accanto a "Cerca" spiega cosa si cerca, anche al focus.
-  const help = page.getByRole('button', { name: 'Informazioni sul filtro di testo' })
-  await help.focus()
-  await expect(page.getByRole('tooltip')).toContainText('data')
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('tooltip')).toBeHidden()
+  // "Cerca" e "Materia" allineati: etichette e campi alla stessa altezza.
+  const box = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!
+  const [q, subject] = [await box('Cerca'), await box('Materia')]
+  expect(Math.abs(q.y - subject.y)).toBeLessThan(1)
+  expect(Math.abs(q.height - subject.height)).toBeLessThan(1)
 })
 
 test('Recall e Immagini hanno la stessa barra di ricerca', async ({ page }) => {
