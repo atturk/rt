@@ -275,6 +275,9 @@ def _review_units(args) -> None:
             print(f"⚠️  Unità {unit} saltata: {res.get('reason')}.")
         else:
             print(f"✅ Revisione dell'unità {unit} completata.")
+            if res.get("orphaned_decisions"):
+                print(f"⚠️  {len(res['orphaned_decisions'])} decisioni riguardavano issue che la nuova revisione "
+                      f"non ha ritrovato: {', '.join(res['orphaned_decisions'])}.")
     if getattr(args, "json", False):
         print(json.dumps({"phase": "review", "units": results}, ensure_ascii=False, indent=2))
     channel = getattr(args, "channel", None)

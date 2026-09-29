@@ -444,8 +444,14 @@ def check_phase_status(
         current_fp = compute_source_fingerprint(lesson_dir, "review")
         recorded_fp = current_rec.get("source_fingerprint")
         if recorded_fp and recorded_fp != current_fp:
-            return PhaseStatus.STALE, stale_reason(
-                lesson_dir, "review", current_rec, "draft.json o segments.json modificati dopo la revisione scientifica")
+            # Bozza e segmenti hanno l'impronta registrata e stale_reason li nomina; se non sono
+            # cambiati, con il filtro attivo resta la classificazione di rilevanza delle unità.
+            from rt.core.config import load_config
+            jev = load_config().jev
+            generic = ("Classificazione di rilevanza delle unità modificata dopo la revisione scientifica"
+                       if jev.relevance_model and jev.relevance_mode == "active"
+                       else "draft.json o segments.json modificati dopo la revisione scientifica")
+            return PhaseStatus.STALE, stale_reason(lesson_dir, "review", current_rec, generic)
 
         # Controllo hash artefatto se parziale
         if current_rec.get("status") == PhaseStatus.PARTIAL.value:

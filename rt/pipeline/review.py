@@ -430,6 +430,10 @@ def _unit_hashes(units) -> Dict[str, str]:
     return {unit.unit_id: hashlib.sha256(unit.model_dump_json(exclude={"generated_at"}).encode("utf-8")).hexdigest() for unit in units}
 
 
+def _issue_key(issue) -> tuple:
+    return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
+
+
 def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> Dict[str, Any]:
     """Refresh just one unit, retaining other issues and their stable IDs/decisions."""
     from rt.services.unit_relevance import refresh, included
@@ -453,9 +457,27 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> 
                  generated, cfg, lesson_dir, False, cfg.jev.shadow)
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
     used = {issue.id for issue in kept}
+    # Una issue ritrovata (stesso tipo, segmento e affermazione) riprende il suo id, così la
+    # decisione già presa resta agganciata; le decisioni su issue sparite vengono segnalate.
+    from rt.pipeline.ledger import load_ledger
+    previous: Dict[tuple, List[str]] = {}
+    for issue in prior:
+        if issue.unit_id == unit_id:
+            previous.setdefault(_issue_key(issue), []).append(issue.id)
+    fresh = []
+    for issue in generated:
+        candidates = previous.get(_issue_key(issue)) or []
+        reused = candidates.pop(0) if candidates else None
+        if reused and reused not in used:
+            issue.id = reused
+            used.add(reused)
+        else:
+            fresh.append(issue)
+    decided = {decision.issue_id for decision in load_ledger(lesson_dir).decisions}
+    orphaned = sorted({issue_id for ids in previous.values() for issue_id in ids} & decided)
     sequence = max([int(issue.id.removeprefix("sci_")) for issue in prior
                     if issue.id.startswith("sci_") and issue.id[4:].isdigit()] or [0])
-    for issue in generated:
+    for issue in fresh:
         sequence += 1
         issue.id = f"sci_{sequence:06d}"
         while issue.id in used:
@@ -480,7 +502,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> 
         artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
         completed_items=completed,
         metadata={"unit_hashes": {item: current[item] for item in completed if item in current}})
-    return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(kept)}
+    return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(kept),
+            "orphaned_decisions": orphaned}
 
 
 def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
