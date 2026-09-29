@@ -609,10 +609,10 @@ def cmd_export(args: argparse.Namespace) -> None:
 
 
 def _service_error(exc: Exception) -> Optional[str]:
-    """Messaggio per l'utente di un errore previsto dei servizi (ha code e message);
-    None per un'eccezione inattesa, che va lasciata salire."""
-    message = getattr(exc, "message", None)
-    return message if isinstance(message, str) and getattr(exc, "code", None) else None
+    """Messaggio per l'utente di un errore previsto dei servizi; None per un'eccezione
+    inattesa, che va lasciata salire."""
+    from rt.services.errors import ServiceError
+    return exc.message if isinstance(exc, ServiceError) else None
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
