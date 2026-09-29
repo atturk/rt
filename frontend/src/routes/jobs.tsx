@@ -10,6 +10,7 @@ import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutli
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
+import { ZipImportCard } from '@/components/jobs/ZipImport'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -83,13 +84,6 @@ function OrphanUploads() {
 /** Importazione dell'audio: solo trascrizione (job ingest_audio) o pipeline completa (run_pipeline). */
 export function ImportPage() {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const [archives, setArchives] = useState<File[]>([])
-  const importZips = useMutation({ mutationFn: (files: File[]) => {
-    const form = new FormData()
-    files.forEach((file) => form.append('archives', file))
-    return unwrap(api.POST('/api/v1/lessons/import-zip', { body: { archives: files.map((file) => file.name) }, bodySerializer: () => form }))
-  }, onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['lessons'] }) } })
   const lessons = useLessons()
   const settings = useSettings()
   const create = useCreateLesson()
@@ -127,16 +121,7 @@ export function ImportPage() {
       <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
       <WorkerWarning />
       <OrphanUploads />
-      <Card className="flex flex-col gap-3 p-5">
-        <h2 className="text-sm font-bold">Importa lezioni da ZIP completi</h2>
-        <p className="text-xs text-muted-foreground">Usa archivi esportati con «Tutti i dati». Una lezione già esistente viene rifiutata senza interrompere le altre.</p>
-        <Input type="file" accept=".zip,application/zip" multiple aria-label="Archivi ZIP delle lezioni" onChange={(event) => setArchives(Array.from(event.target.files ?? []))} />
-        <Button type="button" disabled={!archives.length || importZips.isPending} onClick={() => importZips.mutate(archives)}>{importZips.isPending ? 'Importazione…' : 'Importa ZIP'}</Button>
-        {importZips.isError && <Alert tone="danger">{errorMessage(importZips.error)}</Alert>}
-        {importZips.data && <ul className="text-xs" aria-label="Esito importazione ZIP">{importZips.data.results.map((item, index) => <li key={index}>
-          {item.file}: {item.status === 'imported' ? 'importata' : `rifiutata — ${item.reason}`}
-        </li>)}</ul>}
-      </Card>
+      <ZipImportCard />
       <Card className="p-5">
         <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Importa una lezione">
           <div className="flex flex-col gap-1">

@@ -198,7 +198,10 @@ async def list_topics(chat_id: int) -> list[dict]:
         await client.disconnect()
 
 
-async def export_topic(chat_id: int, topic_id: int) -> tuple[str, str]:
+async def export_topic(chat_id: int, topic_id: int, progress=None) -> tuple[str, str]:
+    """Archivio ZIP completo del topic in una cartella temporanea: (percorso dello ZIP, cartella).
+    progress(messaggi, byte_dei_media), se indicato, viene chiamato dopo ogni messaggio: può
+    sollevare un'eccezione (es. annullamento) per interrompere l'esportazione."""
     client = await _authorized_client()
     folder = tempfile.mkdtemp(prefix="rt-topic-")
     os.chmod(folder, 0o700)
@@ -230,6 +233,8 @@ async def export_topic(chat_id: int, topic_id: int) -> tuple[str, str]:
                 record["media"] = {"path": name, "size": size, "sha256": digest}
                 media_files.append((saved, name))
             records.append(record)
+            if progress is not None:
+                progress(len(records), total_size)
 
         if root:
             await append_message(root)
@@ -254,3 +259,11 @@ async def export_topic(chat_id: int, topic_id: int) -> tuple[str, str]:
         raise
     finally:
         await client.disconnect()
+
+
+def check_export_ready() -> None:
+    """Controllo immediato (senza rete) prima di accodare un'esportazione: credenziali e
+    sessione utente salvate. La validità della sessione la verifica il job."""
+    _credentials()
+    if not _saved_session():
+        raise Conflict("telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")

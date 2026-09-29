@@ -23,17 +23,6 @@ class LessonSummary(BaseModel):
     error: Optional[str] = None
 
 
-class ZipImportItem(BaseModel):
-    file: str
-    status: Literal["imported", "rejected"]
-    lesson_id: Optional[int] = None
-    reason: Optional[str] = None
-
-
-class ZipImportResult(BaseModel):
-    results: List[ZipImportItem]
-
-
 class PhaseWarning(BaseModel):
     code: str = Field(description="review_missing | review_stale | review_partial | review_invalid | "
                                   "pending_issues | orphan_issues | check_failed")

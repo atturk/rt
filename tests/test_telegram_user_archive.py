@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 import os
 import zipfile
@@ -126,3 +127,108 @@ def test_legacy_plaintext_session_is_migrated_and_deleted(monkeypatch, tmp_path)
     assert not (folder / "authorized.session").exists()
     assert archive.SESSION_SECRET in env.read_text()
     assert archive._saved_session() == value  # la seconda volta legge il segreto
+
+
+def test_topic_archive_reports_progress_and_can_be_stopped(tmp_path):
+    seen = []
+    with patch("rt.services.telegram_user_archive._authorized_client", new=AsyncMock(return_value=FakeClient())), \
+         patch("rt.services.telegram_user_archive.tempfile.mkdtemp", side_effect=lambda **_: str(tmp_path / "ok")):
+        os.makedirs(tmp_path / "ok")
+        asyncio.run(export_topic(-1001, 42, progress=lambda n, size: seen.append((n, size))))
+    assert seen == [(1, 0), (2, 5)]
+
+    def stop(_n, _size):
+        raise RuntimeError("stop")
+    with patch("rt.services.telegram_user_archive._authorized_client", new=AsyncMock(return_value=FakeClient())), \
+         patch("rt.services.telegram_user_archive.tempfile.mkdtemp", side_effect=lambda **_: str(tmp_path / "stopped")):
+        os.makedirs(tmp_path / "stopped")
+        with pytest.raises(RuntimeError, match="stop"):
+            asyncio.run(export_topic(-1001, 42, progress=stop))
+    assert not (tmp_path / "stopped").exists()  # cartella temporanea rimossa
+
+
+# ---------------------------------------------------------------- export come job (rt worker)
+
+@pytest.fixture
+def export_env(tmp_path, monkeypatch, rt_db):
+    from tests.api_support import isolated_workspace
+    root = isolated_workspace(tmp_path, monkeypatch)
+    for name, value in (("RT_TELEGRAM_CHAT_ID", "-1001"), ("RT_TELEGRAM_USER_API_ID", "12345"),
+                        ("RT_TELEGRAM_USER_API_HASH", "hash"), ("RT_TELEGRAM_USER_SESSION", "session")):
+        monkeypatch.setenv(name, value)
+    return root
+
+
+def _drain(rt_db):
+    from rt.services.jobs import DbJobQueue
+    from rt.services.worker import Worker
+    worker = Worker(DbJobQueue(rt_db), worker_id="export-worker")
+    while worker.run_once() is not None:
+        pass
+
+
+def test_topic_export_runs_as_job_and_serves_the_archive(api_client, export_env, rt_db):
+    with patch("rt.services.telegram_user_archive._authorized_client", new=AsyncMock(return_value=FakeClient())):
+        response = api_client.post("/api/v1/settings/telegram/user/topics/42/archive")
+        assert response.status_code == 202, response.text
+        accepted = response.json()
+        assert accepted["type"] == "telegram_topic_export" and accepted["state"] == "queued"
+        early = api_client.get(f"/api/v1/settings/telegram/user/archives/{accepted['job_id']}")
+        assert early.status_code == 409 and early.json()["error"]["code"] == "archive_not_ready"
+        _drain(rt_db)
+    job = api_client.get(f"/api/v1/jobs/{accepted['job_id']}").json()
+    assert job["state"] == "succeeded", job
+    assert job["result"]["file"] == "telegram-topic-42.zip" and job["result"]["messages"] == 2
+    assert job["progress"]["phase"] == "telegram_topic_export"
+    stored = os.path.join(export_env, ".rt", "exports", accepted["job_id"], "telegram-topic-42.zip")
+    assert os.path.getsize(stored) == job["result"]["size"]
+    download = api_client.get(f"/api/v1/settings/telegram/user/archives/{accepted['job_id']}")
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "application/zip"
+    assert 'filename="telegram-topic-42.zip"' in download.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(download.content)) as zipped:
+        assert sorted(zipped.namelist()) == ["index.html", "index.json", "media/43.ogg"]
+    assert os.path.isfile(stored)  # si può riscaricare finché non scade
+    os.unlink(stored)
+    gone = api_client.get(f"/api/v1/settings/telegram/user/archives/{accepted['job_id']}")
+    assert gone.status_code == 410
+
+
+def test_topic_export_failure_is_readable_and_leaves_no_archive(api_client, export_env, rt_db):
+    with patch("rt.services.telegram_user_archive._authorized_client", new=AsyncMock(return_value=FakeClient(True))):
+        accepted = api_client.post("/api/v1/settings/telegram/user/topics/42/archive").json()
+        _drain(rt_db)
+    job = api_client.get(f"/api/v1/jobs/{accepted['job_id']}").json()
+    assert job["state"] == "failed"
+    assert job["error"] == "Media del messaggio 43 non scaricato."
+    assert not os.path.exists(os.path.join(export_env, ".rt", "exports", accepted["job_id"]))
+
+
+def test_topic_export_checks_setup_before_queueing(api_client, export_env, monkeypatch):
+    assert api_client.post("/api/v1/settings/telegram/user/topics/0/archive").status_code == 422
+    monkeypatch.setenv("RT_TELEGRAM_USER_SESSION", "")
+    response = api_client.post("/api/v1/settings/telegram/user/topics/42/archive")
+    assert response.status_code == 409 and response.json()["error"]["code"] == "telegram_user_unauthorized"
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "")
+    response = api_client.post("/api/v1/settings/telegram/user/topics/42/archive")
+    assert response.status_code == 409 and response.json()["error"]["code"] == "telegram_not_configured"
+    assert api_client.get("/api/v1/jobs").json() == []
+
+
+def test_download_refuses_other_job_types(api_client, export_env):
+    accepted = api_client.post("/api/v1/settings/test-credential",
+                               json={"credential": "x", "model": "m", "mock": True}).json()
+    response = api_client.get(f"/api/v1/settings/telegram/user/archives/{accepted['job_id']}")
+    assert response.status_code == 404
+
+
+def test_stale_exports_are_swept(export_env):
+    import time
+    from rt.services.api_jobs import exports_root, sweep_stale_exports
+    old, fresh = os.path.join(exports_root(), "old"), os.path.join(exports_root(), "fresh")
+    for folder in (old, fresh):
+        os.makedirs(folder)
+    past = time.time() - 2 * 86400
+    os.utime(old, (past, past))
+    assert sweep_stale_exports() == 1
+    assert not os.path.exists(old) and os.path.isdir(fresh)

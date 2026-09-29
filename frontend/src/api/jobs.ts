@@ -120,6 +120,29 @@ export function useCreateLesson() {
   return { ...mutation, progress: mutation.isPending ? progress : null }
 }
 
+/** Esito di un archivio nel risultato del job import_lesson_zips. */
+export type ZipImportItem = { file: string; status: 'imported' | 'rejected'; lesson_id?: number | null; reason?: string | null }
+export type ZipImportResult = { results: ZipImportItem[]; imported: number; rejected: number }
+
+/** POST /lessons/import-zip multipart con avanzamento dell'upload: accoda il job
+ * import_lesson_zips (202). I rifiuti immediati (nome, firma ZIP) tornano nel risultato del job;
+ * se nessun archivio è valido l'API risponde subito 422. */
+export function useImportLessonZips() {
+  const client = useQueryClient()
+  const [progress, setProgress] = useState<UploadProgress | null>(null)
+  const mutation = useMutation({
+    mutationFn: (files: File[]) => {
+      const form = new FormData()
+      for (const file of files) form.append('archives', file, file.name)
+      setProgress({ loaded: 0, total: files.reduce((sum, f) => sum + f.size, 0) })
+      const body = { archives: files.map((f) => f.name) } satisfies Schemas['Body_import_lesson_zips_api_v1_lessons_import_zip_post']
+      return unwrap(api.POST('/api/v1/lessons/import-zip', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
+    },
+    onSettled: () => invalidateAfterJob(client),
+  })
+  return { ...mutation, progress: mutation.isPending ? progress : null }
+}
+
 // ---------------------------------------------------------------- outline
 
 export function useOutline(lessonId: number) {

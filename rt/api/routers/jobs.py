@@ -14,7 +14,6 @@ from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
 from rt.api.jobs import enqueue_job, job_accepted, job_view, queue
-from rt.services.errors import ServiceError
 from rt.storage import fs
 
 router = APIRouter(tags=["job"])
@@ -55,9 +54,10 @@ def _upload_dir() -> str:
     return path
 
 
-def _save_uploads(files: List[UploadFile], allowed: set, target: str) -> List[str]:
+def _save_uploads(files: List[UploadFile], allowed: set, target: str, prefix: str = "") -> List[str]:
     """Salva i file a blocchi con limite di dimensione complessiva; solo estensioni ammesse,
-    solo il nome base (nessun percorso dal client)."""
+    solo il nome base (nessun percorso dal client). prefix distingue file omonimi salvati con
+    chiamate diverse nella stessa cartella."""
     limit, total, saved = _max_upload_bytes(), 0, []
     seen = set()
     for upload in files:
@@ -67,7 +67,7 @@ def _save_uploads(files: List[UploadFile], allowed: set, target: str) -> List[st
         if name.casefold() in seen:
             raise ApiError(422, "duplicate_filename", f"Due file hanno lo stesso nome: {name}. Rinomina uno dei file prima di importare.")
         seen.add(name.casefold())
-        path = os.path.join(target, name)
+        path = os.path.join(target, prefix + name)
         with open(path, "wb") as out:
             while True:
                 chunk = upload.file.read(CHUNK)
@@ -93,36 +93,59 @@ def _with_upload_cleanup(target: str, fn):
 
 # ---------------------------------------------------------------- creazione
 
-@router.post("/lessons/import-zip", response_model=schemas.ZipImportResult,
-             summary="Importa più archivi completi come nuove lezioni")
+MAX_ZIP_ARCHIVES = 20
+ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06")
+
+
+def _zip_signature_ok(path: str) -> bool:
+    with open(path, "rb") as stream:
+        return stream.read(4) in ZIP_SIGNATURES
+
+
+@router.post("/lessons/import-zip", response_model=schemas.JobAccepted, status_code=202,
+             summary="Importa più archivi completi come nuove lezioni (job import_lesson_zips)")
 def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
-    import zipfile
-    from rt.services.lesson_import_service import import_archive
-    if len(archives) > 20:
-        raise ApiError(413, "too_many_archives", "Importa al massimo 20 archivi alla volta.")
+    """Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
+    Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
+    supera finisce tra i rifiutati del risultato senza fermare gli altri."""
+    if len(archives) > MAX_ZIP_ARCHIVES:
+        raise ApiError(413, "too_many_archives", f"Importa al massimo {MAX_ZIP_ARCHIVES} archivi alla volta.")
     target = _upload_dir()
-    results = []
-    try:
+
+    def _go():
+        entries = []
         for index, archive in enumerate(archives):
             filename = os.path.basename((archive.filename or "").replace("\\", "/"))
+            entry = {"file": filename, "path": None, "reason": None}
+            entries.append(entry)
             if not filename.lower().endswith(".zip"):
-                results.append({"file": filename, "status": "rejected", "reason": "Serve un archivio ZIP."})
+                entry["reason"] = "Serve un archivio ZIP."
                 continue
             try:
-                path = _save_uploads([archive], {".zip"}, target)[0]
-                lesson_id = import_archive(path)
-                results.append({"file": filename, "status": "imported", "lesson_id": lesson_id})
-            except (ApiError, ServiceError, zipfile.BadZipFile, ValueError) as exc:
-                results.append({"file": filename, "status": "rejected", "reason":
-                                exc.message if isinstance(exc, (ApiError, ServiceError)) else "Archivio ZIP non valido."})
-            finally:
-                # Each archive is independent; two archives with the same basename cannot overwrite.
-                path = os.path.join(target, filename)
-                if os.path.isfile(path):
-                    os.unlink(path)
-        return {"results": results}
-    finally:
-        shutil.rmtree(target, ignore_errors=True)
+                # Ogni archivio è indipendente (limite di dimensione compreso): il prefisso
+                # evita che due archivi con lo stesso nome si sovrascrivano.
+                path = _save_uploads([archive], {".zip"}, target, prefix=f"{index:02d}-")[0]
+            except ApiError as exc:
+                entry["reason"] = exc.message
+                _remove_partial(os.path.join(target, f"{index:02d}-{filename.strip()}"))
+                continue
+            if not _zip_signature_ok(path):
+                entry["reason"] = "Archivio ZIP non valido."
+                os.unlink(path)
+                continue
+            entry["path"] = path
+        if not any(entry["path"] for entry in entries):
+            reasons = "; ".join(f"{e['file'] or '(senza nome)'}: {e['reason']}" for e in entries)
+            raise ApiError(422, "invalid_archive", f"Nessun archivio valido da importare ({reasons})",
+                           {"results": [{"file": e["file"], "status": "rejected", "reason": e["reason"]} for e in entries]})
+        return enqueue_job("import_lesson_zips", None, {"archives": entries, "upload_dir": target}, actor)
+    return _with_upload_cleanup(target, _go)
+
+
+def _remove_partial(path: str) -> None:
+    if os.path.isfile(path):
+        os.unlink(path)
+
 
 @router.post("/lessons", response_model=schemas.JobAccepted, status_code=202,
              summary="Importa una lezione da audio (upload): job ingest_audio, o run_pipeline con run=true")

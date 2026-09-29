@@ -10,6 +10,7 @@ import { useSettings, useTopicTest, type Settings } from '@/api/settings'
 import { useTelegramNotifications } from '@/api/telegram'
 import { RevealableValue, TopicTestButton, TopicTestResult } from '@/components/settings/telegram'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
+import { TopicArchiveExport } from '@/components/TopicArchiveExport'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -66,10 +67,7 @@ function TelegramUserPanel() {
       {revoke.isError && <Alert tone="danger">{errorMessage(revoke.error)}</Alert>}
       {topics.isPending && <p className="text-xs">Carico i topic…</p>}
       {topics.isError && <Alert tone="danger">{errorMessage(topics.error)}</Alert>}
-      {topics.data?.topics.map((topic) => <a key={topic.id} className="text-sm font-semibold text-accent-foreground underline"
-        href={`/api/v1/settings/telegram/user/topics/${topic.id}/archive`} download>
-        Esporta «{topic.name}» con cronologia e media ↧
-      </a>)}
+      {topics.data?.topics.map((topic) => <TopicArchiveExport key={topic.id} topic={topic} />)}
     </> : <>
       <label className="text-xs">API ID <input type="number" className="mt-1 block w-full rounded border p-2" value={apiId} onChange={(e) => setApiId(e.target.value)} /></label>
       <label className="text-xs">API hash <input type="password" className="mt-1 block w-full rounded border p-2" value={apiHash} onChange={(e) => setApiHash(e.target.value)} /></label>

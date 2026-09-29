@@ -219,7 +219,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Importa più archivi completi come nuove lezioni */
+        /**
+         * Importa più archivi completi come nuove lezioni (job import_lesson_zips)
+         * @description Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
+         *     Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
+         *     supera finisce tra i rifiutati del risultato senza fermare gli altri.
+         */
         post: operations["import_lesson_zips_api_v1_lessons_import_zip_post"];
         delete?: never;
         options?: never;
@@ -1170,6 +1175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/telegram/user/archives/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scarica l'archivio prodotto da un job telegram_topic_export concluso */
+        get: operations["download_telegram_topic_archive_api_v1_settings_telegram_user_archives__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram/user/complete": {
         parameters: {
             query?: never;
@@ -1262,10 +1284,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Esporta cronologia e media del topic */
-        get: operations["get_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Esporta cronologia e media del topic (job telegram_topic_export; si scarica da /settings/telegram/user/archives/{job_id}) */
+        post: operations["start_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3427,25 +3449,6 @@ export interface components {
              */
             running: number;
         };
-        /** ZipImportItem */
-        ZipImportItem: {
-            /** File */
-            file: string;
-            /** Lesson Id */
-            lesson_id?: number | null;
-            /** Reason */
-            reason?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "imported" | "rejected";
-        };
-        /** ZipImportResult */
-        ZipImportResult: {
-            /** Results */
-            results: components["schemas"]["ZipImportItem"][];
-        };
     };
     responses: never;
     parameters: never;
@@ -4215,12 +4218,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ZipImportResult"];
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -8455,6 +8458,73 @@ export interface operations {
             };
         };
     };
+    download_telegram_topic_archive_api_v1_settings_telegram_user_archives__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     complete_telegram_user_api_v1_settings_telegram_user_complete_post: {
         parameters: {
             query?: never;
@@ -8788,7 +8858,7 @@ export interface operations {
             };
         };
     };
-    get_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_get: {
+    start_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -8800,12 +8870,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

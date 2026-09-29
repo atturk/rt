@@ -4443,66 +4443,6 @@
         ],
         "title": "WorkerSettings",
         "type": "object"
-      },
-      "ZipImportItem": {
-        "properties": {
-          "file": {
-            "title": "File",
-            "type": "string"
-          },
-          "lesson_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lesson Id"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "status": {
-            "enum": [
-              "imported",
-              "rejected"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file",
-          "status"
-        ],
-        "title": "ZipImportItem",
-        "type": "object"
-      },
-      "ZipImportResult": {
-        "properties": {
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/ZipImportItem"
-            },
-            "title": "Results",
-            "type": "array"
-          }
-        },
-        "required": [
-          "results"
-        ],
-        "title": "ZipImportResult",
-        "type": "object"
       }
     },
     "securitySchemes": {
@@ -5570,6 +5510,7 @@
     },
     "/api/v1/lessons/import-zip": {
       "post": {
+        "description": "Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.\nQui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li\nsupera finisce tra i rifiutati del risultato senza fermare gli altri.",
         "operationId": "import_lesson_zips_api_v1_lessons_import_zip_post",
         "requestBody": {
           "content": {
@@ -5582,11 +5523,11 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ZipImportResult"
+                  "$ref": "#/components/schemas/JobAccepted"
                 }
               }
             },
@@ -5648,7 +5589,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Importa più archivi completi come nuove lezioni",
+        "summary": "Importa più archivi completi come nuove lezioni (job import_lesson_zips)",
         "tags": [
           "job"
         ]
@@ -11225,6 +11166,89 @@
         ]
       }
     },
+    "/api/v1/settings/telegram/user/archives/{job_id}": {
+      "get": {
+        "operationId": "download_telegram_topic_archive_api_v1_settings_telegram_user_archives__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scarica l'archivio prodotto da un job telegram_topic_export concluso",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/telegram/user/complete": {
       "post": {
         "operationId": "complete_telegram_user_api_v1_settings_telegram_user_complete_post",
@@ -11620,8 +11644,8 @@
       }
     },
     "/api/v1/settings/telegram/user/topics/{topic_id}/archive": {
-      "get": {
-        "operationId": "get_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_get",
+      "post": {
+        "operationId": "start_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_post",
         "parameters": [
           {
             "in": "path",
@@ -11634,10 +11658,12 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
               }
             },
             "description": "Successful Response"
@@ -11698,7 +11724,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Esporta cronologia e media del topic",
+        "summary": "Esporta cronologia e media del topic (job telegram_topic_export; si scarica da /settings/telegram/user/archives/{job_id})",
         "tags": [
           "impostazioni"
         ]

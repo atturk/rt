@@ -1,5 +1,6 @@
 """Impostazioni (come 'rt config' e la pagina Impostazioni), segreti e bot Telegram.
 Nessuna risposta contiene mai il valore di un segreto: solo "impostato sì/no"."""
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from rt.api.deps import Actor
 from rt.api.errors import ApiError
+from rt.api.schemas import JobAccepted
 
 router = APIRouter(tags=["impostazioni"])
 
@@ -412,18 +414,38 @@ async def get_telegram_user_topics(_actor: Actor):
     return {"topics": await list_topics(int(_chat_id()))}
 
 
-@router.get("/settings/telegram/user/topics/{topic_id}/archive", summary="Esporta cronologia e media del topic")
-async def get_telegram_topic_archive(topic_id: int, _actor: Actor):
-    import shutil
-    from fastapi.responses import FileResponse
-    from starlette.background import BackgroundTask
-    from rt.services.telegram_topics import _chat_id
-    from rt.services.telegram_user_archive import export_topic
+@router.post("/settings/telegram/user/topics/{topic_id}/archive", response_model=JobAccepted, status_code=202,
+             summary="Esporta cronologia e media del topic (job telegram_topic_export; si scarica da /settings/telegram/user/archives/{job_id})")
+def start_telegram_topic_archive(topic_id: int, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    from rt.services.telegram_topics import TopicListenError, _chat_id
+    from rt.services.telegram_user_archive import check_export_ready
     if topic_id < 1:
         raise ApiError(422, "invalid_topic", "Topic non valido.")
-    path, folder = await export_topic(int(_chat_id()), topic_id)
-    return FileResponse(path, media_type="application/zip", filename=f"telegram-topic-{topic_id}.zip",
-                        background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
+    try:
+        chat_id = int(_chat_id())
+    except (TopicListenError, ValueError) as exc:
+        raise ApiError(409, "telegram_not_configured", str(exc) or "Chat ID del gruppo non valido.")
+    check_export_ready()
+    return enqueue_job("telegram_topic_export", None, {"chat_id": chat_id, "topic_id": topic_id}, actor)
+
+
+@router.get("/settings/telegram/user/archives/{job_id}", summary="Scarica l'archivio prodotto da un job telegram_topic_export concluso",
+            response_class=Response, responses={200: {"content": {"application/zip": {}}}})
+def download_telegram_topic_archive(job_id: str, _actor: Actor):
+    from fastapi.responses import FileResponse
+    from rt.api.jobs import queue
+    from rt.services.api_jobs import TELEGRAM_TOPIC_EXPORT, job_export_path
+    info = queue().get(job_id)
+    if info is None or info.type != TELEGRAM_TOPIC_EXPORT:
+        raise ApiError(404, "job_not_found", "Esportazione inesistente.")
+    if info.state != "succeeded":
+        raise ApiError(409, "archive_not_ready", "L'esportazione non è ancora conclusa.")
+    filename = str((info.result or {}).get("file") or "")
+    path = job_export_path(info.id, filename) if filename else ""
+    if not path or not os.path.isfile(path):
+        raise ApiError(410, "archive_expired", "L'archivio non è più disponibile: esporta di nuovo il topic.")
+    return FileResponse(path, media_type="application/zip", filename=os.path.basename(path))
 
 
 @router.post("/settings/telegram/recreate-topic", summary="Elimina tutti i messaggi del topic e lo ricrea vuoto")
