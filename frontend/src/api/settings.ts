@@ -86,6 +86,22 @@ export function useSaveSecret() {
   )
 }
 
+/** Elimina una chiave (archivio cifrato, .env e ambiente), come 'rt secrets unset'. */
+export function useDeleteSecret() {
+  return useSettingsMutation((name: string) => unwrap(api.DELETE('/api/v1/secrets/{name}', { params: { path: { name } } })))
+}
+
+/** Elimina una connessione con modelli e chiavi; 409 se una fase, una route o JEV la usa ancora. */
+export function useDeleteConnection() {
+  return useSettingsMutation((name: string) =>
+    unwrap(api.DELETE('/api/v1/settings/connections/{name}', { params: { path: { name } } })),
+  )
+}
+
+export function useSystemInfo() {
+  return useQuery({ queryKey: ['system-info'], queryFn: () => unwrap(api.GET('/api/v1/system/info')) })
+}
+
 export function useRoute(job: string, role: string) {
   return useQuery({
     queryKey: settingsKeys.route(job, role),

@@ -2,12 +2,14 @@ import { Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 
 import { errorMessage } from '@/api/client'
-import { useSavePricing, useSaveSecret, type Settings } from '@/api/settings'
+import { useDeleteSecret, useSavePricing, useSaveSecret, type Settings } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { InlineTooltip } from '@/components/ui/inline-tooltip'
+import { useOptionKey } from '@/lib/optionKey'
 import { EXTRA_SECRETS, pricingToRows, providerLabel, rowsToPricing, type Pricing, type PricingRow } from '@/lib/settings'
 import { SaveFeedback, SecretBadge, Section } from './common'
 import { CredentialTest } from './models'
@@ -50,12 +52,23 @@ export function SecretsSection({ settings }: { settings: Settings }) {
 
 function SecretRow({ entry, settings }: { entry: SecretEntry; settings: Settings }) {
   const save = useSaveSecret()
+  const deletion = useDeleteSecret()
+  const optionDown = useOptionKey()
+  const [confirm, setConfirm] = useState(false)
   const [value, setValue] = useState('')
   const inputId = `segreto-${entry.name}`
   function submit(e: FormEvent) {
     e.preventDefault()
+    deletion.reset()
     save.mutate({ name: entry.name, value: value.trim() }, { onSuccess: () => setValue('') })
   }
+  // Con Option premuto "Prova" diventa "Elimina" (nelle righe senza Prova compare accanto a Salva).
+  const remove = optionDown && entry.set ? (
+    <Button type="button" variant="destructive" aria-label={`Elimina ${entry.label}`}
+      onClick={() => { save.reset(); deletion.reset(); setConfirm(true) }}>
+      Elimina
+    </Button>
+  ) : undefined
   return (
     <div className="flex flex-col gap-2 py-3 first:pt-0" data-testid="secret-row" data-name={entry.name}>
       <div className="flex flex-wrap items-center gap-2">
@@ -75,9 +88,21 @@ function SecretRow({ entry, settings }: { entry: SecretEntry; settings: Settings
         <Button type="submit" disabled={!value.trim() || save.isPending}>
           Salva
         </Button>
+        {!entry.credential && remove}
       </form>
       <SaveFeedback mutation={save} success="Chiave salvata." />
-      {entry.credential && <CredentialTest credential={entry.credential} settings={settings} />}
+      {deletion.isSuccess && <p role="status" className="text-xs text-success">Chiave eliminata.</p>}
+      {entry.credential && <CredentialTest credential={entry.credential} settings={settings} action={remove} />}
+      <ConfirmDialog open={confirm} title="Elimina chiave" confirmLabel="Elimina"
+        confirmDisabled={deletion.isPending}
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => deletion.mutate(entry.name, { onSuccess: () => setConfirm(false) })}>
+        <p>Eliminare la chiave di «{entry.label}» ({entry.name})?</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Viene tolta dall'archivio di RT e da .env. Ciò che la usa smette di funzionare finché non ne salvi una nuova.
+        </p>
+        {deletion.isError && <Alert tone="danger" className="mt-3">{errorMessage(deletion.error)}</Alert>}
+      </ConfirmDialog>
     </div>
   )
 }

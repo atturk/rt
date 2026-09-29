@@ -19,6 +19,7 @@ import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { LessonFilters } from '@/components/LessonFilters'
 import { useFilteredLessons } from '@/lib/lessonFilters'
+import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -37,7 +38,7 @@ function Stat({ value, label }: { value: number | string; label: string }) {
 }
 
 function LessonCard({ lesson }: { lesson: Lesson }) {
-  const [optionDown, setOptionDown] = useState(false)
+  const optionDown = useOptionKey()
   const [confirm, setConfirm] = useState(false)
   const [typed, setTyped] = useState('')
   const client = useQueryClient()
@@ -45,18 +46,11 @@ function LessonCard({ lesson }: { lesson: Lesson }) {
     mutationFn: () => unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: lesson.id } } })),
     onSuccess: () => { setConfirm(false); client.invalidateQueries({ queryKey: ['lessons'] }) },
   })
-  useEffect(() => {
-    const down = (event: KeyboardEvent) => { if (event.key === 'Alt') setOptionDown(true) }
-    const up = (event: KeyboardEvent) => { if (event.key === 'Alt') setOptionDown(false) }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
-  }, [])
   const meta = [lesson.materia, lesson.data, lesson.state ? STATE_LABELS[lesson.state] ?? lesson.state : null].filter(Boolean)
   return (
     <Card className="group relative p-5" data-testid="lesson-card" data-lesson-id={lesson.id}>
       <Button type="button" variant="ghost" size="icon" aria-label={`Elimina ${lessonTitle(lesson)}`}
-        className={`${optionDown ? '' : 'md:opacity-0 md:group-focus-within:opacity-100'} absolute right-3 top-3 text-danger`}
+        className={`${optionRevealClass(optionDown)} absolute right-3 top-3 text-danger`}
         onClick={() => { setTyped(''); setConfirm(true) }}><Trash2 /></Button>
       <ConfirmDialog open={confirm} title="Elimina lezione" confirmLabel="Elimina"
         confirmDisabled={typed !== 'confermo' || deletion.isPending}

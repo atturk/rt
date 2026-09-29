@@ -1,5 +1,5 @@
-import { Plus } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
@@ -9,6 +9,7 @@ import {
   useAddModel,
   useAssignPhase,
   useCreateConnection,
+  useDeleteConnection,
   useJob,
   useRoute,
   useSaveRoute,
@@ -20,9 +21,11 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
+import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
 import { PROVIDERS, ROUTE_ROLES, defaultBaseUrl, providerLabel, type Provider } from '@/lib/settings'
 import { Checkbox, Field, SaveFeedback, SecretBadge, Section } from './common'
 
@@ -312,9 +315,27 @@ export function ConnectionsSection({ settings }: { settings: Settings }) {
 function ConnectionItem({ connection }: { connection: Connection }) {
   const addModel = useAddModel()
   const [model, setModel] = useState('')
+  const optionDown = useOptionKey()
+  const deletion = useDeleteConnection()
+  const [confirm, setConfirm] = useState(false)
+  const keys = connection.credentials.filter((c) => c.set).length
   return (
-    <div className="rounded-lg border p-4" data-testid="connection" data-name={connection.name} aria-label={`Connessione ${connection.name}`} role="group">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <div className="group relative rounded-lg border p-4" data-testid="connection" data-name={connection.name} aria-label={`Connessione ${connection.name}`} role="group">
+      <Button type="button" variant="ghost" size="icon" aria-label={`Elimina la connessione ${connection.name}`}
+        className={`${optionRevealClass(optionDown)} absolute right-2 top-2 text-danger`}
+        onClick={() => { deletion.reset(); setConfirm(true) }}><Trash2 /></Button>
+      <ConfirmDialog open={confirm} title="Elimina connessione" confirmLabel="Elimina"
+        confirmDisabled={deletion.isPending}
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => deletion.mutate(connection.name, { onSuccess: () => setConfirm(false) })}>
+        <p>
+          Eliminare la connessione «{connection.name}» con i suoi modelli
+          {keys > 0 ? ` e ${keys === 1 ? 'la sua chiave' : `le sue ${keys} chiavi`} (dall'archivio di RT e da .env)` : ''}?
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">Le fasi e le route che la usano vanno prima assegnate a un'altra connessione.</p>
+        {deletion.isError && <Alert tone="danger" className="mt-3">{errorMessage(deletion.error)}</Alert>}
+      </ConfirmDialog>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-10">
         <h3 className="text-sm font-bold">{connection.name}</h3>
         <span className="text-xs text-muted-foreground">
           {providerLabel(connection.provider)} · {connection.base_url}
@@ -554,8 +575,9 @@ function RouteForm({ route, settings, save }: { route: RouteOut; settings: Setti
 
 // ------------------------------------------------------------------ prova di una chiave
 
-/** Pulsante "Prova": accoda il job credential_test e ne mostra l'esito (mai la chiave). */
-export function CredentialTest({ credential, settings }: { credential: string; settings: Settings }) {
+/** Pulsante "Prova": accoda il job credential_test e ne mostra l'esito (mai la chiave).
+ * `action` prende il posto di Prova (Chiavi: "Elimina" mentre è premuto Option). */
+export function CredentialTest({ credential, settings, action }: { credential: string; settings: Settings; action?: ReactNode }) {
   const connection = settings.connections.find((c) => c.credentials.some((k) => k.name === credential))
   const provider = settings.credentials.find((c) => c.name === credential)?.provider ?? connection?.provider
   const assigned = settings.phases.find((p) => p.connection === connection?.name)?.model
@@ -605,9 +627,11 @@ export function CredentialTest({ credential, settings }: { credential: string; s
             ))}
           </datalist>
         </div>
-        <Button type="submit" variant="outline" disabled={!model.trim() || test.isPending || (!!test.data && !isTerminal(state))}>
-          Prova
-        </Button>
+        {action ?? (
+          <Button type="submit" variant="outline" disabled={!model.trim() || test.isPending || (!!test.data && !isTerminal(state))}>
+            Prova
+          </Button>
+        )}
       </form>
       {outcome}
     </div>

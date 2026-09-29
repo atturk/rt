@@ -92,3 +92,10 @@ suo equivalente nei tre canali.
   `recall_evaluate` dopo la trascrizione, ed è coperta dal test di persistenza.
 - `rt config` è un wizard interattivo: il test verifica che la configurazione scritta
   dall'API sia quella che legge la CLI (`load_config` in un processo nuovo).
+- (4.1.0b3) Eliminare una chiave: `rt secrets unset NOME` e Impostazioni › Chiavi › Elimina
+  (Option premuto su Prova; `DELETE /secrets/{name}`) la tolgono dall'archivio cifrato, da
+  `.env` e dall'ambiente del processo. Eliminare una connessione (cestino con Option,
+  `DELETE /settings/connections/{name}`) è solo web, come la creazione: toglie modelli,
+  credenziali non condivise e le loro chiavi, e risponde 409 se una fase, una route o JEV la
+  usano ancora (`tests/test_api_settings_delete.py`). La scheda Info (`GET /system/info`)
+  mostra versione e canale come `rt -v`.

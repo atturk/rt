@@ -5,6 +5,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router'
 import { errorMessage } from '@/api/client'
 import { useSettings, type Settings } from '@/api/settings'
 import { LessonsRootSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
+import { InfoSection } from '@/components/settings/info'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { WebSearchSection } from '@/components/settings/websearch'
@@ -42,6 +43,7 @@ const TABS = [
   { to: '/impostazioni/costi', label: 'Costi' },
   { to: '/impostazioni/ricerca-web', label: 'Ricerca web' },
   { to: '/impostazioni/decisioni', label: 'Prompt e decisioni' },
+  { to: '/impostazioni/info', label: 'Info' },
 ]
 
 function SettingsLayout() {
@@ -132,6 +134,7 @@ export const settingsArea: Area = {
         { path: 'costi', element: page((s) => <PricingSection settings={s} />) },
         { path: 'ricerca-web', element: page((s) => <WebSearchSection settings={s} />) },
         { path: 'decisioni', element: page(() => <><DecisionModelSection /><PromptEditorSection /></>) },
+        { path: 'info', element: <InfoSection /> },
       ],
     },
   ],
