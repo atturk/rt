@@ -8,11 +8,13 @@ Comandi disponibili:
   rt prepare            <cartella>
   rt outline            <cartella> [--mock]
   rt rewrite            <cartella> [--unit <id>] [--mock]
-  rt review             <cartella> [--mock]
+  rt review             <cartella> [--unit <id>]... [--mock]
   rt recall             <cartella>
   rt build              <cartella> [--no-rename] (rinomina la cartella col titolo finale, attivo di default)
   rt status             <cartella>
   rt telegram-daemon    [--state-dir <path>]
+  rt import             <archivio.zip>... (export completi fatti con 'rt export --all --zip')
+  rt delete             <cartella> [--yes]
 
 Comandi diagnostici (uso avanzato):
   rt validate-outline   <cartella>
@@ -198,6 +200,10 @@ def cmd_review(args):
         run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
         return
 
+    if isinstance(getattr(args, "unit", None), list) and args.unit:
+        _review_units(args)
+        return
+
     from rt.core.idempotency import check_phase_status, PhaseStatus
     try:
         phase_status, reason = check_phase_status(args.lesson_dir, "review")
@@ -248,6 +254,35 @@ def cmd_review(args):
     history = getattr(args, "history", False)
     run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
 
+
+
+def _review_units(args) -> None:
+    """'rt review --unit': rivede solo le unità indicate (come il job review_unit della web);
+    le issue delle altre unità restano con i loro id e le loro decisioni."""
+    from rt.pipeline.review import run_review_unit
+    if not getattr(args, "mock", False):
+        _ensure_config_ready(["review"])
+    present = {unit.unit_id for unit in load_draft(args.lesson_dir).units}
+    results = []
+    for unit in dict.fromkeys(args.unit):
+        if unit not in present:
+            results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
+            print(f"⚠️  Unità {unit} non presente nella bozza: saltata.")
+            continue
+        res = run_review_unit(args.lesson_dir, unit, force_mock=args.mock)
+        results.append(res)
+        if res.get("status") == "skipped":
+            print(f"⚠️  Unità {unit} saltata: {res.get('reason')}.")
+        else:
+            print(f"✅ Revisione dell'unità {unit} completata.")
+    if getattr(args, "json", False):
+        print(json.dumps({"phase": "review", "units": results}, ensure_ascii=False, indent=2))
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+    run_interactive_review(args.lesson_dir, "science", channel=channel,
+                           auto_accept=getattr(args, "auto_accept", None), history=getattr(args, "history", False))
 
 
 def cmd_recall(args):
@@ -573,6 +608,75 @@ def cmd_export(args: argparse.Namespace) -> None:
         print("ℹ️  Anteprima dalla bozza: il documento finale non c'è o non è aggiornato ('rt build' lo crea).")
 
 
+def _service_error(exc: Exception) -> Optional[str]:
+    """Messaggio per l'utente di un errore previsto dei servizi (ha code e message);
+    None per un'eccezione inattesa, che va lasciata salire."""
+    message = getattr(exc, "message", None)
+    return message if isinstance(message, str) and getattr(exc, "code", None) else None
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    """Elimina una lezione e i suoi media (come DELETE /lessons/{id} della web)."""
+    from rt.services.lesson_delete_service import delete_lesson
+    from rt.services.lesson_service import LessonNotFound, lesson_id_for_dir, resolve_lesson_dir
+    lesson_id = lesson_id_for_dir(_resolve_lesson_arg(args.lesson))
+    try:
+        lesson_dir = resolve_lesson_dir(lesson_id) if lesson_id is not None else None
+    except LessonNotFound:
+        lesson_dir = None
+    if lesson_dir is None:
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    if not args.yes:
+        try:
+            answer = input(f"Eliminare definitivamente la lezione '{os.path.basename(lesson_dir)}' "
+                           "con testi, audio e immagini? [s/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() not in ("s", "si", "sì", "y", "yes"):
+            print("Operazione annullata.")
+            return
+    try:
+        delete_lesson(lesson_id, lesson_dir)
+    except Exception as exc:
+        message = _service_error(exc)
+        if message is None:
+            raise
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+    print(f"✅ Lezione eliminata: {os.path.basename(lesson_dir)}")
+
+
+def cmd_import(args: argparse.Namespace) -> None:
+    """Importa archivi .zip completi di RT come nuove lezioni (come POST /lessons/import-zip)."""
+    import zipfile
+    from rt.services.lesson_import_service import import_archive
+    from rt.services.lesson_service import resolve_lesson_dir
+    rejected = 0
+    for archive in args.archives:
+        name = os.path.basename(archive)
+        path = os.path.abspath(os.path.expanduser(archive))
+        if not name.lower().endswith(".zip"):
+            reason = "Serve un archivio ZIP."
+        elif not os.path.isfile(path):
+            reason = "File non trovato."
+        else:
+            try:
+                lesson_id = import_archive(path)
+                print(f"✅ {name}: importata come {os.path.basename(resolve_lesson_dir(lesson_id))} (id {lesson_id})")
+                continue
+            except (zipfile.BadZipFile, ValueError):
+                reason = "Archivio ZIP non valido."
+            except Exception as exc:
+                reason = _service_error(exc)
+                if reason is None:
+                    raise
+        rejected += 1
+        print(f"❌ {name}: {reason}", file=sys.stderr)
+    if rejected:
+        sys.exit(1)
+
+
 class CliDecisionProvider:
     """Decisioni umane di 'rt run' chieste con le UI da terminale (Textual/input) o Telegram."""
 
@@ -893,6 +997,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "Comandi diagnostici:\n"
         "  cost                Mostra il costo stimato cumulativo di una lezione\n"
         "  export              Esporta il Markdown finale o tutti i dati di una lezione\n"
+        "  import              Importa archivi .zip completi di RT come nuove lezioni\n"
+        "  delete              Elimina una lezione (chiede conferma, --yes per saltarla)\n"
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n\n"
@@ -1020,6 +1126,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
              "ma non salta né genera nulla: ogni unità passa comunque per l'intera critica LLM "
              "come oggi (richiede 'jev: {enabled: true}' in config/general.yaml — no-op altrimenti)"
     )
+    p_rsci.add_argument("--unit", action="append", metavar="ID",
+                        help="Rivede solo questa unità (ripetibile); le issue delle altre unità restano")
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.add_argument(
         "--no-regenerate",
@@ -1177,6 +1285,15 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_exp.add_argument("--all", action="store_true", help="Esporta tutti i file della lezione (testi, stato, audio, immagini)")
     p_exp.add_argument("--zip", action="store_true", help="Crea un archivio .zip invece di una cartella")
     p_exp.set_defaults(func=cmd_export)
+
+    p_imp = subparsers.add_parser("import", help="Importa archivi .zip completi di RT ('rt export --all --zip') come nuove lezioni")
+    p_imp.add_argument("archives", nargs="+", metavar="archivio.zip", help="Uno o più archivi .zip")
+    p_imp.set_defaults(func=cmd_import)
+
+    p_del = subparsers.add_parser("delete", help="Elimina una lezione con testi, audio e immagini (chiede conferma)")
+    p_del.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_del.add_argument("-y", "--yes", action="store_true", help="Non chiedere conferma")
+    p_del.set_defaults(func=cmd_delete)
 
     return parser, {
         "web": p_web,

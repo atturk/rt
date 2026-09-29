@@ -260,6 +260,23 @@ def test_row_rewrite_single_unit(api, cli, pair):
     assert_same_lesson(cli_dir, api_dir)
 
 
+def test_row_review_single_unit(api, cli, pair):
+    """rt review --unit U1 ⇔ run_phase review con unit (job review_unit) + decisioni."""
+    from tests.api_support import run_mock_pipeline
+    cli_dir, api_dir = pair
+    for lesson_dir in pair:
+        run_mock_pipeline(lesson_dir)
+    lesson_id = api.lesson_id()
+    unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
+    out = cli.rt("review", cli_dir, "--mock", "--unit", unit, "--auto-accept", "all", "--channel", "terminal")
+    assert f"Revisione dell'unità {unit} completata" in out
+    job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "review", "unit": unit,
+                                                       "mock": True})
+    assert job["state"] == "succeeded" and job["type"] == "review_unit", job
+    api.decide_pending(lesson_id, lambda issue: "accepted")  # come --auto-accept all
+    assert_same_lesson(cli_dir, api_dir)
+
+
 def test_row_validate_outline_and_draft(api, cli, pair):
     """rt validate-outline / validate-draft ⇔ GET /lessons/{id}/phases."""
     from tests.api_support import run_mock_pipeline

@@ -157,6 +157,8 @@ finale (e, se servono, tutti gli altri dati) si scarica quando serve:
 ```bash
 ./bin/rt export "[2026-09-05] BIOCHIMICA - Lipidi" -o ~/Desktop   # Markdown finale con immagini
 ./bin/rt export "[2026-09-05] BIOCHIMICA - Lipidi" --all --zip    # tutti i dati in uno zip
+./bin/rt import "[2026-09-05] BIOCHIMICA - Lipidi.zip"            # reimporta uno zip completo come nuova lezione
+./bin/rt delete "[2026-09-05] BIOCHIMICA - Lipidi"                # elimina la lezione (chiede conferma, --yes per saltarla)
 ```
 
 Le lezioni create prima restano nelle loro cartelle e funzionano come sempre. Per portarle nel
@@ -176,6 +178,7 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ./bin/rt rewrite "cartella_lezione"           # Rielabora a finestre con provenance
 ./bin/rt validate-draft "cartella_lezione"    # Valida il draft prodotto
 ./bin/rt review "cartella_lezione"            # Revisione scientifica e delle ambiguità ASR
+./bin/rt review "cartella_lezione" --unit 1.2 # Rivede solo un'unità (ripetibile)
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi
 ./bin/rt status "cartella_lezione"            # Mostra lo stato di avanzamento
 ```
