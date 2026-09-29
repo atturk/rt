@@ -519,8 +519,11 @@ def _rename_lesson(ts: DbTarget, dst) -> None:
         raise FileExistsError(17, "File exists", os.fspath(dst))
     with _session(ts) as s:
         lesson = s.get(Lesson, ts.lesson_id)
+        old_path = lesson.path
         lesson.path = new_path
         lesson.folder_name = os.path.basename(new_path)
+        from rt.db.sync import relocate_path_keyed_rows
+        relocate_path_keyed_rows(s, old_path, new_path)
     forget(ts.lesson_path)
     with _lock:
         _known.setdefault(ts.db.url, {})[new_path] = ts.lesson_id

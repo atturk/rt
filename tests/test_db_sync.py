@@ -205,3 +205,31 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
         assert lesson.workflow_state == "pronto_per_build"  # come info.yaml nel golden
         assert PhaseRunRepository(s).for_lesson(lesson)["build"].status == "VALID"
         assert DecisionRepository(s).active(lesson)
+
+
+def test_relocate_moves_jobs_and_path_keyed_rows(rt_db, lessons):
+    """rt build rinomina la cartella: job, istruzioni aggiuntive e documenti di stato seguono
+    la lezione (prima GET /jobs?lesson_id= restituiva [] e il pannello non vedeva la fine)."""
+    from rt.db.models import Job, Setting, StateDocument
+    from rt.db.sync import relocate_lesson
+    from rt.services.jobs import DbJobQueue
+    from rt.services.prompt_settings import extra_keys
+    root, dirs = lessons
+    sync_all(rt_db, root)
+    old = dirs[2]
+    new = os.path.join(root, "[2026-09-03] ANATOMIA - Cuore rielaborato")
+    with session_scope(rt_db) as s:
+        s.add(Job(id="j1", type="build", state="running", lesson_path=old, active_lesson=old))
+        s.add(Job(id="j2", type="build", state="succeeded", lesson_path=dirs[0]))
+        s.add(Setting(key=extra_keys(old)[1], value="usa esempi"))
+        s.add(StateDocument(key=os.path.join(old, "_state", "x.json"), payload={"a": 1}))
+    os.rename(old, new)
+    relocate_lesson(old, new)
+    with session_scope(rt_db) as s:
+        job = s.get(Job, "j1")
+        assert (job.lesson_path, job.active_lesson) == (new, new)
+        assert s.get(Job, "j2").lesson_path == dirs[0]
+        assert s.get(Setting, extra_keys(new)[1]).value == "usa esempi"
+        assert s.get(StateDocument, os.path.join(new, "_state", "x.json")).payload == {"a": 1}
+        assert LessonRepository(s).get_by_path(new) is not None
+    assert [j.id for j in DbJobQueue(rt_db).list(lesson_id=new)] == ["j1"]

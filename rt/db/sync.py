@@ -203,10 +203,32 @@ def relocate_lesson(old_dir: str, new_dir: str) -> None:
             lesson = repo.get_by_path(old_dir)
             if lesson is None or repo.get_by_path(new_dir) is not None:
                 return
+            old_path = lesson.path
             lesson.path = normalize_lesson_path(new_dir)
             lesson.folder_name = os.path.basename(lesson.path)
+            relocate_path_keyed_rows(session, old_path, lesson.path)
     except Exception as exc:
         logger.warning("Aggiornamento del percorso della lezione nel database non riuscito: %s", exc)
+
+
+def relocate_path_keyed_rows(session: Session, old: str, new: str) -> None:
+    """Le righe legate alla lezione per percorso (le stesse che purge_lesson_records toglie)
+    seguono la cartella: senza, i job della lezione rinominata sparivano dal suo elenco.
+    Chiamata nella stessa transazione che cambia Lesson.path (qui e in storage.fs)."""
+    from sqlalchemy import or_, select, update
+    from rt.db.models import Job, RecallSession, Setting, StateDocument, TelegramCommand
+    from rt.services.prompt_settings import extra_keys
+    for model in (Job, RecallSession, TelegramCommand):
+        session.execute(update(model).where(model.lesson_path == old).values(lesson_path=new))
+    session.execute(update(Job).where(Job.active_lesson == old).values(active_lesson=new))
+    for old_key, new_key in zip(extra_keys(old), extra_keys(new)):
+        row = session.get(Setting, old_key)
+        if row is not None and session.get(Setting, new_key) is None:
+            row.key = new_key
+    prefix = old + os.sep
+    for doc in session.scalars(select(StateDocument).where(
+            or_(StateDocument.key == old, StateDocument.key.startswith(prefix)))):
+        doc.key = new + doc.key[len(old):]
 
 
 def lesson_dir_of_state_file(path: str) -> str:

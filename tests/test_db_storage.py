@@ -97,6 +97,21 @@ def test_lessons_root_lists_db_lessons_and_rename_moves_the_id(db_lesson, rt_db)
         assert [l.folder_name for l in s.query(Lesson)] == ["[2026-09-05] BIOCHIMICA - Titolo"]
 
 
+def test_rename_moves_the_lesson_jobs(db_lesson, rt_db):
+    """4.1.0b3: dopo la build che rinomina la lezione GET /jobs?lesson_id= restituiva [] (i job
+    restavano sul vecchio percorso) e il pannello dei job non vedeva mai la fine del job."""
+    from rt.db.models import Job
+    from rt.services.jobs import DbJobQueue
+    with session_scope(rt_db) as s:
+        s.add(Job(id="build", type="run_phase", state="running", lesson_path=db_lesson, active_lesson=db_lesson))
+    renamed = os.path.join(os.path.dirname(db_lesson), "[2026-09-05] BIOCHIMICA - Titolo")
+    fs.rename(db_lesson, renamed)
+    with session_scope(rt_db) as s:
+        job = s.get(Job, "build")
+        assert (job.lesson_path, job.active_lesson) == (renamed, renamed)
+    assert [j.id for j in DbJobQueue(rt_db).list(lesson_id=renamed)] == ["build"]
+
+
 @pytest.mark.parametrize("outside_root", [False, True])
 def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypatch, rt_db, api_client,
                                                               outside_root):
