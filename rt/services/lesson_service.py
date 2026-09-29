@@ -49,7 +49,17 @@ def ensure_indexed(lesson_dirs: List[str]) -> Dict[str, int]:
         repo = LessonRepository(session)
         for lesson_dir in lesson_dirs:
             path = normalize_lesson_path(lesson_dir)
-            lesson = repo.get_by_path(path) or sync_lesson(session, path)
+            lesson = repo.get_by_path(path)
+            if lesson is None:
+                # Solo una cartella reale può mancare dal DB: una lezione "db" ha sempre la sua
+                # riga. Un percorso senza riga che fs vede come lezione "db" è il vecchio nome di
+                # una lezione rinominata o spostata da un altro processo (il worker, a fine build):
+                # la cache di fs di questo processo lo ricorda ancora. Indicizzarlo creerebbe una
+                # seconda riga che legge gli stessi file (lezione doppia nell'elenco, 4.1.0b2).
+                if not os.path.isdir(path):
+                    fs.forget(path)
+                    continue
+                lesson = sync_lesson(session, path)
             if lesson is not None:
                 ids[path] = lesson.id
     return ids
@@ -69,8 +79,10 @@ def indexed_lesson_ids() -> Dict[str, int]:
     from rt.db.repositories import LessonRepository
     from rt.db.session import read_scope
     with read_scope(_require_db()) as session:
+        # Una lezione "folder" esiste solo come cartella reale: os.path, non fs, che potrebbe
+        # vedere nel percorso una lezione "db" dal vecchio nome rimasto nella sua cache.
         return {lesson.path: lesson.id for lesson in LessonRepository(session).list_all()
-                if lesson.storage == fs.STORAGE_DB or fs.isdir(lesson.path)}
+                if lesson.storage == fs.STORAGE_DB or os.path.isdir(lesson.path)}
 
 
 def resolve_lesson_dir(lesson_id: int) -> str:

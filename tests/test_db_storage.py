@@ -97,6 +97,37 @@ def test_lessons_root_lists_db_lessons_and_rename_moves_the_id(db_lesson, rt_db)
         assert [l.folder_name for l in s.query(Lesson)] == ["[2026-09-05] BIOCHIMICA - Titolo"]
 
 
+@pytest.mark.parametrize("outside_root", [False, True])
+def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypatch, rt_db, api_client,
+                                                              outside_root):
+    """4.1.0b2: dopo la build la lezione compariva due volte nell'elenco. Il worker (un altro
+    processo) rinomina/sposta la lezione "db"; la cache di rt.storage.fs del processo API
+    ricorda ancora il vecchio percorso, e la vista del job (lesson_path = vecchio percorso)
+    lo indicizzava come seconda lezione che legge gli stessi file."""
+    from rt.services.context import RunContext
+    from rt.services.lesson_service import lesson_id_for_dir
+    from rt.services.pipeline_service import PipelineOptions, run_pipeline
+    from tests.golden_support import INFO_YAML, TRANSCRIPT_MD
+    root = isolated_workspace(tmp_path, monkeypatch)
+    base = str(tmp_path / "upload") if outside_root else root
+    lesson = fs.create_db_lesson(os.path.join(base, LESSON_NAME))
+    for name, text in (("info.yaml", INFO_YAML), ("trascritto grezzo.md", TRANSCRIPT_MD)):
+        with fs.open(os.path.join(lesson, name), "w", encoding="utf-8") as f:
+            f.write(text)
+    lesson_id = fs.resolve(lesson).lesson_id
+    run_pipeline([lesson], PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=True,
+                                           channel="terminal"), RunContext())
+    # Come nel processo API: la cache di fs ricorda il percorso di prima della build.
+    with fs._lock:
+        fs._known[rt_db.url][lesson] = lesson_id
+    assert lesson_id_for_dir(lesson) is None
+    items = api_client.get("/api/v1/lessons").json()
+    assert [i["id"] for i in items] == [lesson_id]
+    assert os.path.dirname(items[0]["path"]) == root
+    with session_scope(rt_db) as s:
+        assert s.query(Lesson).count() == 1
+
+
 def test_lock_files_live_in_the_data_folder(db_lesson, rt_db):
     from rt.core.process_lock import lesson_lock_path, lesson_work_lock
     lock = lesson_lock_path(db_lesson)

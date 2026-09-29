@@ -375,6 +375,9 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     phase_status, reason = check_phase_status(lesson_dir, "build")
     if phase_status == PhaseStatus.VALID and not force and fs.isfile(named_filepath):
         current_dir = _move_to_lessons_root_if_configured(lesson_dir)
+        if os.path.abspath(current_dir) != os.path.abspath(lesson_dir):
+            from rt.db.sync import relocate_lesson
+            relocate_lesson(lesson_dir, current_dir)
         named_filepath = os.path.join(current_dir, named_filename)
         return {
             "status": "completed",
