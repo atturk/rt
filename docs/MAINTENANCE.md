@@ -60,12 +60,17 @@ Il backup del repository non sostituisce quello dei dati ignorati da Git.
 ## Procedura di release
 
 1. Eseguire `.venv/bin/python -m pytest tests/ -q` e `pip check`.
-2. Aggiornare `VERSION` a `major.minor.patch` nello stesso commit della release.
+2. Aggiornare `VERSION` a `major.minor.patch` nello stesso commit della release; per una
+   beta usare il formato PEP 440 `major.minor.patchbN` (o `aN`, `rcN`), es. `4.1.0b1`.
 3. Committare e verificare `python scripts/check_release.py --tag vX.Y.Z --output dist`.
    Il comando verifica **HEAD**, non modifiche non committate.
 4. Pubblicare commit e un nuovo tag `vX.Y.Z`. Non riscrivere tag già distribuiti.
 5. Il workflow riusa la matrice dei test; solo al successo verifica tag, VERSION,
    contenuti ed eseguibilità dell'archivio e crea la release con tarball e SHA256SUMS.
+   Un tag con suffisso `aN`/`bN`/`rcN` diventa una GitHub **prerelease**, mai "latest":
+   `rt -u`, `install.sh` e `bootstrap.sh` la ignorano, la installa solo chi ha scelto il
+   canale beta (`rt -u --beta`, salvato in `<cartella dati>/update-channel`). Nei checkout
+   Git il tag beta deve discendere da `main`, perché l'updater fa solo fast-forward.
 6. Fare uno smoke test dell'installazione in una cartella separata, senza credenziali
    reali o dati attivi. Gli archivi non includono test, note private e configurazioni utente.
 
