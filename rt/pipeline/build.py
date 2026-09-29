@@ -152,9 +152,9 @@ def render_rielaborato_md(
         "argomenti:",
         yaml_topics,
         "---",
+        # niente titolo H1: data, materia e titolo sono già nel nome del file e nel
+        # frontmatter (Obsidian li mostrerebbe due volte)
         "",
-        f"# [{date}] {subject.upper()} - {outline.lesson_title}",
-        ""
     ]
     
     for macro in outline.macro_sections:

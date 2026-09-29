@@ -154,6 +154,20 @@ def test_text_title_and_timecode_are_saved_and_the_build_goes_stale(root):
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
 
 
+def test_document_has_no_title_heading_and_a_legacy_one_is_tolerated(root):
+    """Il titolo sta nel nome del file e nel frontmatter: niente H1 nel documento (Obsidian
+    lo mostrerebbe due volte). Un H1 in cima, dai documenti delle versioni precedenti, si
+    ignora quando si salva l'anteprima."""
+    lesson_dir = _synthetic_lesson(root)
+    rendered = render_lesson_documents(lesson_dir)["rielaborato"]
+    assert not any(line.startswith("# ") for line in rendered.split("\n"))
+    assert rendered.startswith("---\ntitolo: ")
+    assert strip_yaml_frontmatter(rendered).startswith("## ")
+
+    legacy = "# [2026-09-28] MATERIA - Titolo\n\n" + _preview(lesson_dir)
+    save_document_edit(lesson_dir, legacy)
+
+
 def test_errors_carry_line_and_reason_and_nothing_is_saved(root):
     lesson_dir = _synthetic_lesson(root)
     original = _preview(lesson_dir)
@@ -193,10 +207,10 @@ def test_errors_carry_line_and_reason_and_nothing_is_saved(root):
     assert any("Immagine non trovata" in e["message"] for e in exc.value.errors)
 
     bad = list(lines)
-    bad[0] = "# Un altro titolo"
+    bad.insert(first_i, "# Un titolo in mezzo")
     with pytest.raises(DocumentEditError) as exc:
         save_document_edit(lesson_dir, "\n".join(bad))
-    assert exc.value.errors[0]["line"] == 1
+    assert exc.value.errors[0]["line"] == first_i + 1 and "primo livello" in exc.value.errors[0]["message"]
 
     assert _preview(lesson_dir) == original
     assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
