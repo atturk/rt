@@ -37,7 +37,11 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Schema
     <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{unit.content}</p>
     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
       <Badge tone={unit.prediction && unit.prediction !== 'didactic' ? 'warning' : 'neutral'}>JEV: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</Badge>
-      {unit.confidence != null && <span>Confidenza: {Math.round(unit.confidence * 100)}%</span>}
+      {unit.label && <span>Etichetta: {unit.label}</span>}
+      {unit.confidence != null && <span>{unit.answer?.type === 'noul' ? 'Probabilità' : 'Confidenza'}: {Math.round(unit.confidence * 100)}%</span>}
+      {unit.answer?.probabilities != null && typeof unit.answer.probabilities === 'object' &&
+        <span data-testid="relevance-probabilities">Probabilità: {Object.entries(unit.answer.probabilities as Record<string, number>)
+          .map(([key, value]) => `${key} ${Math.round(value * 100)}%`).join(' · ')}</span>}
       <span>Effettiva: {labels[unit.effective]}</span>
       {unit.override && <Badge tone="success">Corretta dall’utente{unit.corrected_at ? ` · ${new Date(unit.corrected_at).toLocaleString('it-IT')}` : ''}</Badge>}
       {unit.stale && <Badge tone="warning">Da rivalutare: contenuto o modello cambiato</Badge>}

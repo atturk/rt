@@ -49,13 +49,16 @@ describe('RelevancePage', () => {
   it('parte dalle possibili omissioni e passa a tutte le unità', async () => {
     mockApi([
       unit('1.1'),
-      unit('1.2', { prediction: 'organizational', effective: 'organizational', confidence: 0.83 }),
+      unit('1.2', { prediction: 'organizational', effective: 'organizational', confidence: 0.83, label: 'Organizzativa',
+        answer: { type: 'choice', choice: 'organizational', confidence: 0.83, probabilities: { didactic: 0.1, organizational: 0.83, no_content: 0.07 } } }),
       unit('1.3', { prediction: 'no_content', effective: 'didactic', override: 'didactic' }),
     ])
     renderPage()
     expect(await screen.findByText(/Filtro attivo/)).toBeInTheDocument()
     expect(cards().map((c) => c.querySelector('h2')?.textContent)).toEqual(['1.2 · Unità 1.2 12:30', '1.3 · Unità 1.3 '])
     expect(within(cards()[0]).getByText('Confidenza: 83%')).toBeInTheDocument()
+    expect(within(cards()[0]).getByText('Etichetta: Organizzativa')).toBeInTheDocument()
+    expect(within(cards()[0]).getByTestId('relevance-probabilities')).toHaveTextContent('didactic 10% · organizational 83% · no_content 7%')
     fireEvent.click(screen.getByRole('button', { name: 'Tutte le unità (3)' }))
     expect(cards()).toHaveLength(3)
   })

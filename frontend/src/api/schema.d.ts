@@ -937,6 +937,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/decision-model/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prova una configurazione JEV (anche non salvata) su un'unità di lezione */
+        post: operations["test_decision_model_api_v1_settings_decision_model_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/lessons-root": {
         parameters: {
             query?: never;
@@ -1789,6 +1806,8 @@ export interface components {
              * @default
              */
             model: string;
+            /** @description Domanda e mappatura del prefiltro errori (None = invariata/predefinita) */
+            prefilter_decision?: components["schemas"]["JevDecisionConfig"] | null;
             /**
              * Prefilter Prompt
              * @default
@@ -1800,6 +1819,8 @@ export interface components {
              * @enum {string}
              */
             prefilter_type: "choice" | "noul" | "score";
+            /** @description Domanda e mappatura del gate di rilevanza (None = invariata/predefinita) */
+            relevance_decision?: components["schemas"]["JevDecisionConfig"] | null;
             /**
              * Relevance Mode
              * @default shadow
@@ -1826,6 +1847,89 @@ export interface components {
              * @default true
              */
             shadow: boolean;
+            /**
+             * Threshold
+             * @default 0.85
+             */
+            threshold: number;
+        };
+        /** DecisionModelOut */
+        DecisionModelOut: {
+            /**
+             * Credential
+             * @default openrouter
+             */
+            credential: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Prefilter Customized
+             * @description True se il prefiltro non usa la domanda predefinita
+             * @default false
+             */
+            prefilter_customized: boolean;
+            prefilter_decision: components["schemas"]["JevDecisionConfig"];
+            /**
+             * Prefilter Prompt
+             * @default
+             */
+            prefilter_prompt: string;
+            /**
+             * Prefilter Type
+             * @default choice
+             * @enum {string}
+             */
+            prefilter_type: "choice" | "noul" | "score";
+            /**
+             * Relevance Customized
+             * @description True se la rilevanza non usa la domanda predefinita
+             * @default false
+             */
+            relevance_customized: boolean;
+            relevance_decision: components["schemas"]["JevDecisionConfig"];
+            /**
+             * Relevance Mode
+             * @default shadow
+             * @enum {string}
+             */
+            relevance_mode: "disabled" | "shadow" | "active";
+            /**
+             * Relevance Model
+             * @default
+             */
+            relevance_model: string;
+            /**
+             * Relevance Prompt
+             * @default
+             */
+            relevance_prompt: string;
+            /**
+             * Relevance Threshold
+             * @default 0.85
+             */
+            relevance_threshold: number;
+            /**
+             * Shadow
+             * @default true
+             */
+            shadow: boolean;
+            /**
+             * Templates
+             * @description Domanda e mappatura predefinite per fase e tipo di richiesta
+             */
+            templates: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["JevDecisionConfig"];
+                };
+            };
             /**
              * Threshold
              * @default 0.85
@@ -1861,6 +1965,88 @@ export interface components {
              * @description Testo corretto (obbligatorio per 'edited')
              */
             text?: string | null;
+        };
+        /** DecisionTestIn */
+        DecisionTestIn: {
+            /**
+             * Credential
+             * @default openrouter
+             */
+            credential: string;
+            decision: components["schemas"]["JevDecisionConfig"];
+            /**
+             * Lesson Id
+             * @description Lezione su cui provare (assente = unità di esempio)
+             */
+            lesson_id?: number | null;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "relevance" | "prefilter";
+            /**
+             * Unit Id
+             * @description Unità della lezione (assente = la prima)
+             */
+            unit_id?: string | null;
+        };
+        /** DecisionTestOut */
+        DecisionTestOut: {
+            /**
+             * Answer
+             * @description Risposta alla domanda, con tutte le probabilità
+             */
+            answer: {
+                [key: string]: unknown;
+            };
+            /**
+             * Label
+             * @description Etichetta RT assegnata dalla mappatura
+             */
+            label: string;
+            /**
+             * Outcome
+             * @description Esito RT dell'etichetta
+             */
+            outcome: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "relevance" | "prefilter";
+            /**
+             * Request
+             * @description Richiesta inviata all'endpoint decisions
+             */
+            request: {
+                [key: string]: unknown;
+            };
+            /**
+             * Response
+             * @description Risposta JSON di Jev
+             */
+            response: {
+                [key: string]: unknown;
+            };
+            /**
+             * Rule
+             * @description Regola scattata (da 0); null = nessuna, esito fail-open
+             */
+            rule?: number | null;
+            /**
+             * State
+             * @description Stato inviato a Jev (l'unità di lezione)
+             */
+            state: string;
+            /** Unit Id */
+            unit_id?: string | null;
+            /** Unit Title */
+            unit_title: string;
         };
         /** DeleteFailure */
         DeleteFailure: {
@@ -2080,6 +2266,104 @@ export interface components {
             review_complete: boolean;
             /** Total */
             total: number;
+        };
+        /**
+         * JevCondition
+         * @description Una condizione: [campo della risposta] [operatore] [valore].
+         */
+        JevCondition: {
+            /**
+             * Field
+             * @description choice, confidence, noul, score o p:<opzione>
+             */
+            field: string;
+            /**
+             * Op
+             * @default eq
+             * @enum {string}
+             */
+            op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+            /** Value */
+            value: number | string;
+        };
+        /**
+         * JevDecisionConfig
+         * @description Domanda Jev e mappatura verso le etichette RT di una fase.
+         */
+        JevDecisionConfig: {
+            /**
+             * Fallback Label
+             * @description Etichetta quando nessuna regola scatta (esito fail-open)
+             * @default Nessuna regola
+             */
+            fallback_label: string;
+            /**
+             * Levels
+             * @description Livelli ordinati (solo score)
+             */
+            levels?: string[];
+            /**
+             * Options
+             * @description Opzioni (solo choice)
+             */
+            options?: components["schemas"]["JevOption"][];
+            /**
+             * Question
+             * @description Testo della domanda (istruzioni)
+             */
+            question: string;
+            /**
+             * Rules
+             * @description Regole valutate in ordine: vince la prima vera
+             */
+            rules?: components["schemas"]["JevRule"][];
+            /**
+             * Type
+             * @default choice
+             * @enum {string}
+             */
+            type: "choice" | "noul" | "score";
+        };
+        /**
+         * JevOption
+         * @description Un'opzione di una domanda choice: l'etichetta restituita da Jev e quando sceglierla.
+         */
+        JevOption: {
+            /**
+             * Description
+             * @description Quando scegliere questa opzione
+             */
+            description: string;
+            /**
+             * Label
+             * @description Etichetta restituita da Jev (lettere, cifre, _ e -)
+             */
+            label: string;
+        };
+        /**
+         * JevRule
+         * @description Una riga della mappatura: l'etichetta RT assegnata quando le condizioni sono vere.
+         */
+        JevRule: {
+            /** Conditions */
+            conditions: components["schemas"]["JevCondition"][];
+            /**
+             * Label
+             * @description Etichetta mostrata in anteprima
+             */
+            label: string;
+            /**
+             * Match
+             * @description Tutte le condizioni o almeno una
+             * @default all
+             * @enum {string}
+             */
+            match: "all" | "any";
+            /**
+             * Outcome
+             * @description Esito di RT a cui corrisponde l'etichetta
+             */
+            outcome: string;
         };
         /** Job */
         Job: {
@@ -3370,6 +3654,13 @@ export interface components {
         };
         /** UnitRelevanceItem */
         UnitRelevanceItem: {
+            /**
+             * Answer
+             * @description Risposta JEV completa (scelta, confidenza, tutte le probabilità)
+             */
+            answer?: {
+                [key: string]: unknown;
+            } | null;
             /** Confidence */
             confidence?: number | null;
             /** Content */
@@ -3385,6 +3676,11 @@ export interface components {
             effective: "didactic" | "organizational" | "no_content";
             /** Error */
             error?: string | null;
+            /**
+             * Label
+             * @description Etichetta RT assegnata dalla mappatura JEV
+             */
+            label?: string | null;
             /** Override */
             override?: ("didactic" | "organizational" | "no_content") | null;
             /** Prediction */
@@ -7389,7 +7685,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DecisionModelIn"];
+                    "application/json": components["schemas"]["DecisionModelOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -7458,7 +7754,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DecisionModelIn"];
+                    "application/json": components["schemas"]["DecisionModelOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -7528,6 +7824,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DecisionProbeOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_decision_model_api_v1_settings_decision_model_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionTestOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
