@@ -53,7 +53,9 @@ test('Recall e Immagini hanno la stessa barra di ricerca', async ({ page }) => {
     await expect(items).toHaveCount(lessons.length)
     await page.getByLabel('Cerca').fill('rene')
     await expect(items).toHaveCount(1)
-    await expect(items.first()).toContainText('FISIOLOGIA')
+    // In Recall la materia è l'intestazione del gruppo, non la riga della lezione
+    if (url === '/recall') await expect(page.locator('[data-testid=recall-subject][data-subject=FISIOLOGIA]').getByTestId('picker-lesson')).toHaveCount(1)
+    else await expect(items.first()).toContainText('FISIOLOGIA')
     await page.reload()
     await expect(page.getByLabel('Cerca')).toHaveValue('rene')
     await expect(items).toHaveCount(1)

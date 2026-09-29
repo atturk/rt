@@ -221,16 +221,28 @@ def next_question_for(lesson_dir: str, qtype: RecallQuestionType, order: str = "
     riserva è vuota. Il cursore dell'ordine alternato è quello della sessione salvata. La
     domanda entra nella sessione web della lezione (aperta qui se non c'è, vedi
     rt.services.recall_sessions)."""
+    question = pick_pending_question(lesson_dir, qtype, order=order, exclude_id=exclude_id)
+    if question is not None:
+        from rt.services.recall_sessions import record_web_question
+        record_web_question(lesson_dir, question.id, qtype.value)
+    return question
+
+
+def pick_pending_question(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",
+                          exclude_id: Optional[str] = None, current: bool = True):
+    """Prossima domanda pendente della lezione (marcata come posta) con il cursore dell'ordine
+    alternato della sessione salvata, senza registrarla in una sessione. current=False non la
+    segna come domanda corrente della lezione (la sessione per materia non la occupa)."""
     from rt.pipeline.recall import get_next_pending_question
     state = load_recall_session_state(lesson_dir)
     question = get_next_pending_question(lesson_dir, qtype, order=order,
                                          unit_cursor=state.get("unit_cursor"), exclude_id=exclude_id)
     if question is not None:
-        from rt.services.recall_sessions import record_web_question
-        state.update({"order": order, "current_question_id": question.id,
+        state.update({"order": order,
                       "unit_cursor": question.unit_ids[0] if order == "alternato" else state.get("unit_cursor")})
+        if current:
+            state["current_question_id"] = question.id
         save_recall_session_state(lesson_dir, state)
-        record_web_question(lesson_dir, question.id, qtype.value)
     return question
 
 

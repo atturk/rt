@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Brain, Monitor, Send, SkipForward, Square, ThumbsDown, ThumbsUp, Zap } from 'lucide-react'
-import { useCallback, useRef, useState, type FormEvent } from 'react'
+import { Brain, Monitor, Send, SkipForward, Square } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, errorMessage } from '@/api/client'
@@ -19,53 +19,23 @@ import {
   useStartTelegram,
   useStopTelegram,
   useTelegramRecall,
-  useVote,
-  type RecallAnswerRecord,
-  type RecallQuestion,
   type RecallSessionInfo,
   type RecallType,
-  type Vote,
 } from '@/api/recall'
 import { JobProgress } from '@/components/JobProgress'
-import { LessonPicker } from '@/components/LessonPicker'
-import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { AnsweredQuestion, OpenAnswerForm, QuizForm, SessionSummary } from '@/components/recall/parts'
+import { RecallOverviewPage } from '@/components/recall/RecallOverview'
+import { SubjectRecallPage } from '@/components/recall/SubjectRecall'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import { SlideToggle, type SlideOption } from '@/components/ui/slide-toggle'
 import { lessonTitle } from '@/lib/format'
-import { cn } from '@/lib/utils'
+import { RECALL_TYPES, TYPE_OPTIONS, VOTES, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
 import type { Area } from './types'
 
-const RECALL_TYPES: { value: RecallType; label: string; hint: string }[] = [
-  { value: 'quiz', label: 'Quiz', hint: 'Scelta multipla, esito immediato' },
-  { value: 'mirata', label: 'Mirata', hint: 'Domanda aperta su un punto preciso' },
-  { value: 'vasta', label: 'Vasta', hint: 'Domanda aperta di collegamento' },
-]
 const STATUS_LABELS: Record<string, string> = { pending: 'Da porre', asked: 'Poste', answered: 'Risposte' }
-const VOTES: { value: Vote; label: string; icon: typeof ThumbsUp }[] = [
-  { value: 'up', label: 'Domanda utile', icon: ThumbsUp },
-  { value: 'down', label: 'Domanda da scartare', icon: ThumbsDown },
-  { value: 'lightning', label: 'Domanda fulminante', icon: Zap },
-]
-
-function typeLabel(type: string) {
-  return RECALL_TYPES.find((t) => t.value === type)?.label ?? type
-}
-
-function RecallIndex() {
-  return (
-    <LessonPicker
-      title="Active recall"
-      intro="Scegli una lezione per ripassarla con domande a scelta multipla o aperte, anche a voce."
-      href={(l) => `/lezioni/${l.id}/recall`}
-      ready={(l) => l.phases.rewrite === 'VALID'}
-      notReady="serve prima la rielaborazione"
-    />
-  )
-}
 
 /** Riserva di domande per tipo e generazione (job recall_generate o recall_batch). */
 function Reserve({ lessonId }: { lessonId: number }) {
@@ -131,175 +101,12 @@ function Reserve({ lessonId }: { lessonId: number }) {
   )
 }
 
-function VoteButtons({ lessonId, questionId, current }: { lessonId: number; questionId: string; current?: string | null }) {
-  const vote = useVote(lessonId)
-  return (
-    <div className="flex items-center gap-1" role="group" aria-label="Voto sulla domanda">
-      {VOTES.map(({ value, label, icon: Icon }) => (
-        <Button
-          key={value}
-          size="icon"
-          variant={current === value ? 'default' : 'outline'}
-          aria-label={label}
-          title={label}
-          aria-pressed={current === value}
-          disabled={vote.isPending}
-          onClick={() => vote.mutate({ questionId, vote: value })}
-        >
-          <Icon />
-        </Button>
-      ))}
-      {vote.isError && <span className="text-xs text-danger">{errorMessage(vote.error)}</span>}
-    </div>
-  )
-}
-
-/** Esito di una domanda già risposta, tutto riletto dallo storico dell'API. */
-function AnsweredQuestion({ question, answer, lessonId }: { question: RecallQuestion; answer: RecallAnswerRecord; lessonId: number }) {
-  const isQuiz = question.type === 'quiz'
-  const correct = isQuiz && question.options && question.correct_index != null ? question.options[question.correct_index] : null
-  return (
-    <div className="flex flex-col gap-3" data-testid="recall-result">
-      {isQuiz ? (
-        <>
-          <ol className="flex flex-col gap-1.5">
-            {question.options?.map((option, i) => (
-              <li
-                key={i}
-                className={cn(
-                  'rounded-md border px-3 py-2 text-sm',
-                  i === question.correct_index && 'border-success bg-success-soft text-success',
-                  option === answer.answer_text && i !== question.correct_index && 'border-danger bg-danger-soft text-danger',
-                )}
-              >
-                {option}
-              </li>
-            ))}
-          </ol>
-          <Alert tone={answer.answer_text === correct ? 'neutral' : 'warning'}>
-            {answer.answer_text === correct ? 'Risposta corretta.' : `Risposta sbagliata: la corretta è «${correct}».`}
-          </Alert>
-        </>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">
-            La tua risposta{answer.is_voice ? ' (vocale, trascritta)' : ''}
-          </span>
-          <p className="whitespace-pre-wrap rounded-md bg-muted px-3 py-2 text-sm" data-testid="recall-answer">
-            {answer.answer_text}
-          </p>
-        </div>
-      )}
-      {(answer.evaluation || question.explanation) && (
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">{isQuiz ? 'Spiegazione' : 'Valutazione'}</span>
-          <p className="whitespace-pre-wrap text-sm" data-testid="recall-evaluation">
-            {answer.evaluation || question.explanation}
-          </p>
-        </div>
-      )}
-      <VoteButtons lessonId={lessonId} questionId={question.id} current={answer.vote} />
-    </div>
-  )
-}
-
-function QuizForm({ question, onAnswer, pending }: { question: RecallQuestion; onAnswer: (choice: number) => void; pending: boolean }) {
-  const [choice, setChoice] = useState<number | null>(null)
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (choice !== null) onAnswer(choice)
-      }}
-      className="flex flex-col gap-2"
-    >
-      <fieldset className="flex flex-col gap-1.5">
-        <legend className="sr-only">Opzioni</legend>
-        {question.options?.map((option, i) => (
-          <label key={i} className="flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted has-[:checked]:border-foreground">
-            <input type="radio" name="choice" value={i} checked={choice === i} onChange={() => setChoice(i)} className="mt-0.5" />
-            {option}
-          </label>
-        ))}
-      </fieldset>
-      <Button type="submit" className="self-start" disabled={choice === null || pending}>
-        Rispondi
-      </Button>
-    </form>
-  )
-}
-
-function OpenAnswerForm({
-  onWritten,
-  onVoice,
-  pending,
-}: {
-  onWritten: (answer: string) => void
-  onVoice: (audio: File) => void
-  pending: boolean
-}) {
-  const [text, setText] = useState('')
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    if (text.trim()) onWritten(text.trim())
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      <form onSubmit={submit} className="flex flex-col gap-2">
-        <Label htmlFor="recall-answer">Risposta scritta</Label>
-        <textarea
-          id="recall-answer"
-          rows={5}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-        />
-        <Button type="submit" className="self-start" disabled={!text.trim() || pending}>
-          Invia la risposta
-        </Button>
-      </form>
-      <VoiceRecorder onRecorded={onVoice} disabled={pending} />
-    </div>
-  )
-}
-
 type Place = 'telegram' | 'qui'
 
 const PLACES: SlideOption<Place>[] = [
   { value: 'telegram', label: 'Telegram', icon: <Send aria-hidden="true" /> },
   { value: 'qui', label: 'Qui', icon: <Monitor aria-hidden="true" /> },
 ]
-const TYPE_OPTIONS: SlideOption<RecallType>[] = RECALL_TYPES.map((t) => ({ value: t.value, label: t.label }))
-
-function startedAt(iso: string) {
-  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-}
-
-/** Riepilogo salvato dal backend alla chiusura della sessione. */
-function SessionSummary({ session }: { session: RecallSessionInfo }) {
-  const s = session.summary
-  if (!s) return null
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 px-4 py-3" data-testid="session-summary" data-session-id={session.id}>
-      <h3 className="text-sm font-bold">Sessione terminata</h3>
-      <dl className="grid grid-cols-3 gap-2 text-center">
-        {[
-          ['Domande', s.questions, 'questions'],
-          ['Risposte date', s.answered, 'answered'],
-          ['Quiz giusti', `${s.correct} su ${s.quiz_answered}`, 'correct'],
-        ].map(([label, value, key]) => (
-          <div key={key} className="flex flex-col rounded-md bg-card px-2 py-1.5">
-            <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-            <dd className="text-lg font-bold tabular-nums" data-summary={key}>
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
-}
-
 /** Una sessione in corso su Telegram, con "Interrompi". */
 function TelegramSessionRow({ session, current }: { session: RecallSessionInfo; current: boolean }) {
   const stop = useStopTelegram()
@@ -330,7 +137,7 @@ function TelegramSessionRow({ session, current }: { session: RecallSessionInfo; 
 
 function Session({ lessonId }: { lessonId: number }) {
   const [params, setParams] = useSearchParams()
-  const qtype = (RECALL_TYPES.some((t) => t.value === params.get('tipo')) ? params.get('tipo') : 'quiz') as RecallType
+  const qtype = recallTypeParam(params.get('tipo'))
   const questionId = params.get('domanda')
   const evaluationJob = params.get('valutazione')
   const history = useRecallHistory(lessonId)
@@ -610,7 +417,8 @@ export function RecallPage() {
 
 export const recallArea: Area = {
   routes: [
-    { path: 'recall', element: <RecallIndex /> },
+    { path: 'recall', element: <RecallOverviewPage /> },
+    { path: 'recall/materie/:materia', element: <SubjectRecallPage /> },
     { path: 'lezioni/:lessonId/recall', element: <RecallPage /> },
   ],
   nav: [{ to: '/recall', label: 'Recall', icon: Brain }],

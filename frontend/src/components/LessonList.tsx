@@ -136,11 +136,11 @@ function PhaseDots({ phases }: { phases: Record<string, string> }) {
   )
 }
 
-function SortHeader({ label, sortKey, prefs, onSort, className }: {
+export function SortHeader<K extends string>({ label, sortKey, prefs, onSort, className }: {
   label: string
-  sortKey: LessonSortKey
-  prefs: LessonViewPrefs
-  onSort: (key: LessonSortKey) => void
+  sortKey: K
+  prefs: { sort: K; dir: SortDir }
+  onSort: (key: K) => void
   className?: string
 }) {
   const active = prefs.sort === sortKey
@@ -156,7 +156,7 @@ function SortHeader({ label, sortKey, prefs, onSort, className }: {
   )
 }
 
-function GroupToggle({ group, expanded, onToggle, controls }: { group: LessonGroup; expanded: boolean; onToggle: () => void; controls: string }) {
+export function GroupToggle({ group, expanded, onToggle, controls }: { group: LessonGroup; expanded: boolean; onToggle: () => void; controls: string }) {
   return (
     <button type="button" aria-expanded={expanded} aria-controls={controls} onClick={onToggle} data-testid="lesson-group-toggle"
       className="inline-flex items-center gap-2 rounded-md py-1 pr-2 text-sm font-semibold hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring">
@@ -276,7 +276,7 @@ export function LessonList(props: ListProps) {
   return props.prefs.view === 'tabella' ? <TableView {...props} /> : <CardsView {...props} />
 }
 
-function Segmented<T extends string>({ label, value, options, onChange }: {
+export function Segmented<T extends string>({ label, value, options, onChange }: {
   label: string
   value: T
   options: { value: T; label: string; icon: ReactNode }[]

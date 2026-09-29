@@ -444,6 +444,7 @@ class RecallSessionInfo(BaseModel):
     id: int
     lesson_id: Optional[int] = None
     lesson_title: str = ""
+    subject: Optional[str] = Field(None, description="Materia, per una sessione su tutte le sue lezioni")
     channel: Literal["web", "telegram"]
     state: Literal["active", "ended", "interrupted"]
     qtype: Optional[str] = None
@@ -468,6 +469,33 @@ class RecallSessionState(BaseModel):
     last: Optional[RecallSessionInfo] = Field(None, description="Ultima sessione web chiusa, con il riepilogo")
     telegram: Optional[RecallSessionInfo] = Field(None, description="Sessione in corso su Telegram per questa lezione")
     command: Optional[TelegramCommandInfo] = Field(None, description="Ultima richiesta al bot per questa lezione")
+
+
+class LessonRecallStats(BaseModel):
+    lesson_id: int
+    ready: bool = Field(description="Rielaborazione valida: la lezione può fare recall")
+    questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
+    answers: int
+    telegram: bool = Field(False, description="Sessione in corso su Telegram per la lezione")
+
+
+class SubjectRecall(BaseModel):
+    materia: str = Field(description="Vuota per le lezioni senza materia")
+    lessons: List[LessonRecallStats]
+    session: Optional[RecallSessionInfo] = Field(None, description="Sessione per materia in corso nella web app")
+
+
+class SubjectRecallState(SubjectRecall):
+    last: Optional[RecallSessionInfo] = Field(None, description="Ultima sessione per materia chiusa, con il riepilogo")
+
+
+class SubjectQuestion(BaseModel):
+    lesson_id: int
+    question: RecallQuestion
+
+
+class SubjectGenerateAccepted(BaseModel):
+    jobs: List[JobAccepted] = Field(description="Un job recall_generate per ogni lezione pronta senza domande")
 
 
 class TelegramRecallStart(BaseModel):

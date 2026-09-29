@@ -115,6 +115,38 @@ test('recall: risposta aperta scritta valutata dal job', async ({ page }) => {
   await expect(page.getByTestId('recall-evaluation')).toHaveText(answer.evaluation!)
 })
 
+test('recall della materia: domande dalle lezioni della materia, risposta e riepilogo', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await builtLesson(page)
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Recall' }).click()
+  await page.locator('[data-testid=recall-subject][data-subject=BIOCHIMICA]').getByTestId('subject-recall').click()
+  await expect(page).toHaveURL(/\/recall\/materie\/BIOCHIMICA$/)
+  await expect(page.locator(`[data-testid=subject-lesson][data-lesson-id="${lesson.id}"]`)).toBeVisible()
+  const generate = page.getByRole('button', { name: /Genera le domande mancanti/ })
+  if (await generate.isVisible()) {
+    await generate.click()
+    for (const job of await page.getByTestId('job-progress').all()) {
+      await expect(job).toHaveAttribute('data-state', 'succeeded', { timeout: 30_000 })
+    }
+  }
+
+  const id = await ask(page, 'Quiz')
+  const question = page.getByTestId('recall-question')
+  const lessonId = Number(await question.getAttribute('data-lesson-id'))
+  await expect(page.getByTestId('question-lesson')).toHaveAttribute('href', `/lezioni/${lessonId}`)
+  await question.getByRole('radio').nth(1).check()
+  await page.getByRole('button', { name: 'Rispondi' }).click()
+  await expect(page.getByTestId('recall-result')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('recall-result')).toBeVisible()
+  expect((await history(page, lessonId)).answers.some((a) => a.question_id === id)).toBe(true)
+  await expect(page.getByTestId('subject-session')).toContainText('domande poste: 1')
+
+  await page.getByRole('button', { name: 'Termina sessione' }).click()
+  await expect(page.getByTestId('session-summary')).toBeVisible()
+  await expect(page.getByTestId('session-summary').locator('[data-summary=answered]')).toHaveText('1')
+})
+
 test('recall: risposte vocali dal microfono e da un file audio', async ({ page }) => {
   const lesson = await openRecall(page)
   await ensureReserve(page, lesson.id)

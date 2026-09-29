@@ -20,6 +20,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['dashboard', '/'],
     ['review (elenco)', '/review'],
     ['recall (elenco)', '/recall'],
+    ['recall della materia', '/recall/materie/BIOCHIMICA'],
     ['immagini (elenco)', '/immagini'],
     ['lezione', `/lezioni/${done}`],
     ['revisione', `/lezioni/${review}/revisione`],
