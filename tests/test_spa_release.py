@@ -78,7 +78,8 @@ def test_unsafe_or_incomplete_packages_are_rejected(tmp_path):
 
 def test_release_without_spa_is_only_a_warning(tmp_path, capsys):
     assert spa_release.update_spa(str(tmp_path), "3.9.0", FakeRelease("3.9.0", missing=True))
-    assert "non contiene la web app" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "non contiene (ancora) la web app" in err and "di nuovo 'rt -u'" in err
 
 
 def test_update_keeps_rt_spa_out_of_the_code_sync():
