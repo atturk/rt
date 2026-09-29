@@ -2780,7 +2780,8 @@
           "notice": {
             "enum": [
               "preview_edit_beta",
-              "preview_edit_issues"
+              "preview_edit_issues",
+              "setup_wizard"
             ],
             "title": "Notice",
             "type": "string"
@@ -2795,7 +2796,7 @@
       "NoticeSettings": {
         "properties": {
           "dismissed": {
-            "description": "Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)",
+            "description": "Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues, setup_wizard)",
             "items": {
               "type": "string"
             },

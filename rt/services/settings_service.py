@@ -259,7 +259,7 @@ def save_worker_concurrency(project_root: Path, concurrency: int) -> str:
 
 
 # Avvisi della web che si possono nascondere con "Non mostrare più" (salvati in ui.dismissed_notices).
-NOTICES = ("preview_edit_beta", "preview_edit_issues")
+NOTICES = ("preview_edit_beta", "preview_edit_issues", "setup_wizard")
 
 
 def save_notice(project_root: Path, notice: str, dismissed: bool) -> str:
@@ -436,8 +436,9 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "web_search": {"searxng_base_url": cfg.searxng_base_url or None},
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
-        # Le lezioni stanno nel database della cartella dati: nessuna cartella da scegliere.
-        "setup_required": False,
+        # Primo avvio: senza connessioni non gira niente, la SPA porta alla configurazione
+        # guidata finché non se ne crea una o si sceglie "Configura dopo" (avviso setup_wizard).
+        "setup_required": not connections and "setup_wizard" not in cfg.ui.dismissed_notices,
     }
 
 

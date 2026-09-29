@@ -116,11 +116,11 @@ class WorkerIn(BaseModel):
 
 
 class NoticeSettings(BaseModel):
-    dismissed: List[str] = Field(description="Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)")
+    dismissed: List[str] = Field(description="Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues, setup_wizard)")
 
 
 class NoticeIn(BaseModel):
-    notice: Literal["preview_edit_beta", "preview_edit_issues"]
+    notice: Literal["preview_edit_beta", "preview_edit_issues", "setup_wizard"]
     dismissed: bool = True
 
 

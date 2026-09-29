@@ -91,8 +91,8 @@ def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker
 
 
 def test_fresh_config_without_lessons_root_creates_and_lists_lessons(api_client, tmp_path, monkeypatch, rt_db, worker):
-    """Installazione nuova (4.x): nessun telegram.lessons_root. Niente configurazione guidata
-    obbligatoria; la lezione va nel database con prefisso <cartella dati>/lessons, cartella
+    """Installazione nuova (4.x): nessun telegram.lessons_root, che non serve:
+    la lezione va nel database con prefisso <cartella dati>/lessons, cartella
     che non serve su disco."""
     isolated_workspace(tmp_path, monkeypatch, lessons_root=False)
     (tmp_path / "work" / "config" / "general.yaml").write_text(
@@ -102,7 +102,6 @@ def test_fresh_config_without_lessons_root_creates_and_lists_lessons(api_client,
     from rt.core.config import load_config
     assert load_config().telegram.lessons_root is None
 
-    assert api_client.get("/api/v1/settings").json()["setup_required"] is False
     res = upload(api_client)
     assert res.status_code == 202, res.text
     drain(worker)

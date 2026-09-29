@@ -86,14 +86,25 @@ def test_setup_required_and_data_dir(api_client, api_token, ws, tmp_path):
     come dopo un aggiornamento da 3.x) non blocca la SPA nella configurazione guidata."""
     import os
     data = api_client.get("/api/v1/settings").json()
-    assert data["setup_required"] is False
+    # Nuova installazione: nessuna connessione, quindi configurazione guidata.
+    assert data["setup_required"] is True
     from rt.storage import fs
     assert data["data_dir"] == fs.data_dir() and os.path.isabs(data["data_dir"])
+    api_client.post("/api/v1/settings/connections",
+                    json={"name": "Studio", "provider": "openrouter", "api_keys": ["sk-or-v1-chiave-0123456789"]})
     import shutil
     shutil.rmtree(ws)
     assert fresh(api_token).get("/api/v1/settings").json()["setup_required"] is False
     # La cartella delle lezioni non si imposta più dall'API.
     assert api_client.put("/api/v1/settings/lessons-root", json={"path": ws}).status_code in (404, 405)
+
+
+def test_setup_wizard_can_be_postponed(api_client, api_token, ws):
+    """"Configura dopo" nella configurazione guidata: senza connessioni la SPA non ci torna più."""
+    assert api_client.get("/api/v1/settings").json()["setup_required"] is True
+    res = api_client.put("/api/v1/settings/notices", json={"notice": "setup_wizard", "dismissed": True})
+    assert res.status_code == 200 and res.json()["setup_required"] is False
+    assert fresh(api_token).get("/api/v1/settings").json()["setup_required"] is False
 
 
 def test_connection_and_all_six_phases_persist(api_client, api_token, ws):

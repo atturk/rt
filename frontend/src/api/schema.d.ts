@@ -2942,13 +2942,13 @@ export interface components {
              * Notice
              * @enum {string}
              */
-            notice: "preview_edit_beta" | "preview_edit_issues";
+            notice: "preview_edit_beta" | "preview_edit_issues" | "setup_wizard";
         };
         /** NoticeSettings */
         NoticeSettings: {
             /**
              * Dismissed
-             * @description Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)
+             * @description Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues, setup_wizard)
              */
             dismissed: string[];
         };

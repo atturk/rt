@@ -1,8 +1,9 @@
 import { Check } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
+import { useDismissNotice } from '@/api/documentEdit'
 import { useAssignAllPhases, useSaveTelegram, type Settings } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -39,14 +40,25 @@ export function SetupWizard({ settings }: { settings: Settings }) {
   const step = Math.min(Math.max(1, Number.isFinite(requested) ? requested : 1), STEPS.length)
   const go = (n: number) => setParams({ passo: String(n) })
   const next = () => go(step + 1)
+  const navigate = useNavigate()
+  const dismiss = useDismissNotice()
+  // Senza connessioni ogni pagina porta qui (setup_required): "Configura dopo" lo spegne.
+  const later = () => dismiss.mutate('setup_wizard', { onSuccess: () => void navigate('/') })
 
   return (
     <section className="mx-auto flex max-w-2xl flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Configurazione guidata</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pochi passi per iniziare. Puoi cambiare tutto in seguito dalle impostazioni.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Configurazione guidata</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pochi passi per iniziare. Puoi cambiare tutto in seguito dalle impostazioni.
+          </p>
+        </div>
+        {settings.setup_required && (
+          <Button variant="outline" size="sm" onClick={later} disabled={dismiss.isPending}>
+            Configura dopo
+          </Button>
+        )}
       </div>
       <ol className="flex flex-wrap gap-2 text-xs" aria-label="Passi">
         {STEPS.map((label, i) => (

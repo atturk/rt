@@ -43,6 +43,9 @@ def _workspace(base: str) -> str:
     general.setdefault("telegram", {})["lessons_root"] = lessons
     # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
     general["searxng_base_url"] = "http://127.0.0.1:9"
+    # nessuna connessione nel config di esempio: senza questo ogni pagina porterebbe alla
+    # configurazione guidata (la si prova in settings.spec.ts e nel job CI 'installer')
+    general.setdefault("ui", {})["dismissed_notices"] = ["setup_wizard"]
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
     os.environ["HOME"] = home
