@@ -162,6 +162,10 @@ class RoutingEngine:
 
         # 2. Esaurisci prima il pool round-robin / configured effective routes
         configured_candidates = list(job_cfg.effective_routes)
+        # Con la rotazione (primary_routes) la secondaria non fa parte del pool: si prova dopo
+        # aver esaurito le chiavi in rotazione, prima dei ripieghi per tipo di errore.
+        if job_cfg.secondary is not None and all(c.route_id != job_cfg.secondary.route_id for c in configured_candidates):
+            configured_candidates.append(job_cfg.secondary)
         for cand in configured_candidates:
             if cand.route_id in visited_route_ids:
                 continue

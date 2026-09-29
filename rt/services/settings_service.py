@@ -76,7 +76,9 @@ def save_credential(project_root: Path, provider: str, name: str, api_key: str) 
     return name
 
 
-ROUTE_ROLES = ("primary", "secondary", "timeout", "rate_limit", "safety", "auth", "generic")
+# Ruoli modificabili dalla web. I ripieghi per tipo di errore (fallback.timeout, ...) restano
+# supportati dal motore per chi li scrive a mano nei YAML, ma la web non li espone più.
+ROUTE_ROLES = ("primary", "secondary")
 
 
 def _legacy_recall_path(paths: dict[str, str]) -> Path | None:

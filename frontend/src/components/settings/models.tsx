@@ -412,7 +412,7 @@ export function RoutesSection({ settings }: { settings: Settings }) {
     <Section
       id="route"
       title="Route avanzate"
-      description="Modello primario, secondario e di ripiego per ogni errore. Il primario è lo stesso dei modelli per fase."
+      description="Il primario è lo stesso dei modelli per fase. Il secondario si usa quando il primario fallisce (dopo aver provato tutte le chiavi in rotazione)."
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Fase" htmlFor="route-job">
