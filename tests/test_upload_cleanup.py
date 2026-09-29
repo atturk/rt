@@ -15,7 +15,7 @@ def _age(path, seconds=2 * upload_cleanup.RECENT_SECONDS):
 
 
 def test_inventory_and_delete_only_orphan(tmp_path, monkeypatch, rt_db):
-    monkeypatch.setattr(upload_cleanup, "lessons_root", lambda: str(tmp_path))
+    monkeypatch.setattr(upload_cleanup, "work_dir", lambda: str(tmp_path / ".rt"))
     root = tmp_path / ".rt" / "uploads"
     orphan = root / uuid.uuid4().hex
     active = root / uuid.uuid4().hex
@@ -41,7 +41,7 @@ def test_inventory_and_delete_only_orphan(tmp_path, monkeypatch, rt_db):
 
 
 def test_symlink_is_never_listed_or_deleted(tmp_path, monkeypatch, rt_db):
-    monkeypatch.setattr(upload_cleanup, "lessons_root", lambda: str(tmp_path))
+    monkeypatch.setattr(upload_cleanup, "work_dir", lambda: str(tmp_path / ".rt"))
     root = tmp_path / ".rt" / "uploads"
     root.mkdir(parents=True)
     outside = tmp_path / "outside"
@@ -56,7 +56,7 @@ def test_symlink_is_never_listed_or_deleted(tmp_path, monkeypatch, rt_db):
 
 def test_fresh_upload_without_job_is_protected(tmp_path, monkeypatch, rt_db):
     """Salvataggio in corso: la cartella esiste ma il job non ancora. Non è un orfano."""
-    monkeypatch.setattr(upload_cleanup, "lessons_root", lambda: str(tmp_path))
+    monkeypatch.setattr(upload_cleanup, "work_dir", lambda: str(tmp_path / ".rt"))
     fresh = tmp_path / ".rt" / "uploads" / uuid.uuid4().hex
     fresh.mkdir(parents=True)
     assert upload_cleanup.list_uploads()[0]["state"] == "active"
@@ -67,7 +67,7 @@ def test_fresh_upload_without_job_is_protected(tmp_path, monkeypatch, rt_db):
 
 def test_failed_job_upload_needs_explicit_confirmation(tmp_path, monkeypatch, rt_db):
     """L'upload di un job fallito resta per Riprova; si elimina solo confermandolo."""
-    monkeypatch.setattr(upload_cleanup, "lessons_root", lambda: str(tmp_path))
+    monkeypatch.setattr(upload_cleanup, "work_dir", lambda: str(tmp_path / ".rt"))
     kept = tmp_path / ".rt" / "uploads" / uuid.uuid4().hex
     kept.mkdir(parents=True)
     _age(kept)

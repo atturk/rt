@@ -291,9 +291,8 @@ EXPORT_MAX_AGE_HOURS = 24
 def exports_root() -> str:
     """Archivi prodotti dai job (es. export di un topic Telegram), sullo stesso disco delle
     lezioni come gli upload: li serve l'API anche se il worker gira in un altro processo."""
-    from rt.services.lesson_service import lessons_root
-    base = lessons_root() or os.path.expanduser("~")
-    return os.path.join(base, ".rt", "exports")
+    from rt.services.lesson_service import work_dir
+    return os.path.join(work_dir(), "exports")
 
 
 def job_export_path(job_id: str, filename: str) -> str:

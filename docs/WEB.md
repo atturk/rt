@@ -119,8 +119,8 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   l'occhio per vederli per intero); i topic per materia, ciascuno con il pulsante **Prova**; le
   ultime notifiche inviate (lezione pronta, issue da rivedere, prove dei topic); un link alle
   impostazioni di Telegram.
-- **Impostazioni:** cartella lezioni, job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
-  ricerca web, Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello
+- **Impostazioni:** cartella dati (solo lettura), job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
+  ricerca web, Telegram e trascrizione. La configurazione guidata (aperta dall'installer) chiede quello
   che manca; si riapre dal link **Configurazione guidata →** in cima alle impostazioni.
   - **Modelli:** nel passo Modelli della configurazione guidata si usa di norma lo stesso modello
     per tutte le fasi; **Scegli per ogni fase** mostra le sei fasi (Outline, Rewrite, Review,

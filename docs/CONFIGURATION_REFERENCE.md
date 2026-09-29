@@ -27,14 +27,14 @@ cp -r config.example config
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
 | `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`). |
-| `telegram.lessons_root` | Cartella radice assoluta delle lezioni, usata anche dalla web app. |
+| `telegram.lessons_root` | Solo installazioni 3.x: cartella delle lezioni a cartelle da convertire (`rt db migrate-storage`) e prefisso dei loro percorsi nel database. Non si configura più: senza questa chiave il prefisso è `<cartella dati>/lessons`, che non deve esistere su disco. |
 | `telegram.topics` | Mappa da materia in maiuscolo (es. `BIOCHIMICA`) a `message_thread_id` del topic Telegram dedicato nel gruppo. |
 | `telegram.misc_topic_id` | `message_thread_id` del topic "Varie/Generale" per materie non presenti in `topics`. |
 | `transcription.engine` | `macparakeet` oppure `custom` per un server STT OpenAI-compatible. |
 | `transcription.base_url` / `transcription.model` | Indirizzo del server e ID modello quando `engine: custom`. Il server deve fornire `/audio/transcriptions` con risposta `verbose_json` e `segments` temporizzati. |
 | `transcription.timeout_seconds` | Tempo massimo della richiesta STT custom (default 600 s). |
 
-La pagina Impostazioni di `rt web` consente di gestire cartella lezioni,
+La pagina Impostazioni di `rt web` consente di gestire
 credenziali, modelli, prezzi, bot Telegram e motore STT.
 Le chiavi sono salvate nell'archivio cifrato `config/secrets.enc` se è stato creato con
 `rt secrets init`, altrimenti nel `.env` locale (vedi "Segreti cifrati a riposo" qui sotto);

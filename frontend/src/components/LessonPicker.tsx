@@ -34,7 +34,7 @@ export function LessonPicker({
       {lessons.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
       {lessons.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          {lessons.data.length === 0 ? 'Nessuna lezione nella cartella delle lezioni.' : 'Nessuna lezione corrisponde ai filtri.'}
+          {lessons.data.length === 0 ? 'Nessuna lezione: importane una da un audio.' : 'Nessuna lezione corrisponde ai filtri.'}
         </Card>
       )}
       <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">

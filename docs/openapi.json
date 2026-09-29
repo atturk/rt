@@ -2479,19 +2479,6 @@
         "title": "LessonSummary",
         "type": "object"
       },
-      "LessonsRootIn": {
-        "properties": {
-          "path": {
-            "title": "Path",
-            "type": "string"
-          }
-        },
-        "required": [
-          "path"
-        ],
-        "title": "LessonsRootIn",
-        "type": "object"
-      },
       "ListenMessages": {
         "properties": {
           "cleaned": {
@@ -3997,17 +3984,6 @@
             "description": "Cartella dati in uso da questo processo: rt.db e media/",
             "title": "Data Dir"
           },
-          "lessons_root": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lessons Root"
-          },
           "notices": {
             "$ref": "#/components/schemas/NoticeSettings"
           },
@@ -4037,7 +4013,7 @@
           },
           "setup_required": {
             "default": false,
-            "description": "True se la cartella delle lezioni non è impostata o non esiste: la SPA apre la configurazione guidata",
+            "description": "True se manca un passo obbligatorio della configurazione e la SPA apre la configurazione guidata (oggi nessuno: le lezioni stanno nel database della cartella dati)",
             "title": "Setup Required",
             "type": "boolean"
           },
@@ -11009,92 +10985,6 @@
           }
         ],
         "summary": "Prova una configurazione JEV (anche non salvata) su un'unità di lezione",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/lessons-root": {
-      "put": {
-        "operationId": "put_lessons_root_api_v1_settings_lessons_root_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LessonsRootIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Settings"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Cartella delle lezioni",
         "tags": [
           "impostazioni"
         ]

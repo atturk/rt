@@ -24,10 +24,27 @@ class LessonNotFound(LookupError):
 
 # ---------------------------------------------------------------- indice
 
-def lessons_root() -> Optional[str]:
+def configured_lessons_root() -> Optional[str]:
+    """telegram.lessons_root se impostato (installazioni 3.x e 4.0): serve alla conversione
+    delle lezioni a cartelle e a tenere validi i percorsi già nel database."""
     from rt.core.config import load_config
-    root = load_config().telegram.lessons_root
+    root = (load_config().telegram.lessons_root or "").strip()
     return os.path.abspath(os.path.expanduser(root)) if root else None
+
+
+def lessons_root() -> str:
+    """Prefisso dei percorsi (Lesson.path) delle lezioni: quello configurato, altrimenti
+    <cartella dati>/lessons. Le lezioni stanno nel database: la cartella può non esistere."""
+    from rt.core.paths import data_dir
+    return configured_lessons_root() or os.path.join(data_dir(), "lessons")
+
+
+def work_dir() -> str:
+    """Cartella per i file temporanei (upload, export, import): <lessons_root>/.rt come prima
+    se la cartella configurata esiste, altrimenti la cartella dati di RT."""
+    from rt.core.paths import data_dir
+    root = configured_lessons_root()
+    return os.path.join(root, ".rt") if root and os.path.isdir(root) else data_dir()
 
 
 def _require_db():

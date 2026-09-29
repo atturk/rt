@@ -166,7 +166,7 @@ jobs:
           RT_LOGIN_URL="$($HOME/rt-ci/bin/rt web --no-browser | grep -o 'http://[^ ]*/login?code=[A-Za-z0-9_-]*' | head -1)" \
             npx playwright test -c playwright.install.config.ts
       - name: Run mock completo via API
-        run: $HOME/rt-ci/.venv/bin/python scripts/api_smoke.py --login-cmd "$HOME/rt-ci/bin/rt web --no-browser" --lessons-root "$HOME/Lezioni-ci"
+        run: $HOME/rt-ci/.venv/bin/python scripts/api_smoke.py --login-cmd "$HOME/rt-ci/bin/rt web --no-browser"
       - name: Rilanciare l'installazione ripara senza perdere dati
         run: |
           rm -rf "$HOME/rt-ci/rt/spa"

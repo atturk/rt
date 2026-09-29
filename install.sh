@@ -385,7 +385,7 @@ echo ""
 echo "${GREEN}${BOLD}✅ Installazione completata in ${SECONDS}s.${RESET}"
 echo ""
 if [ "$NONINTERACTIVE" != "1" ] && [ -t 0 ] && [ -t 1 ]; then
-    echo "🌐 Apro RT nel browser per la configurazione guidata (cartella lezioni, provider e chiavi, Telegram)..."
+    echo "🌐 Apro RT nel browser per la configurazione guidata (provider e chiavi, modelli, Telegram)..."
     api_up=false
     if [ "${RT_NO_SERVICES:-0}" != "1" ]; then
         for _ in $(seq 1 30); do

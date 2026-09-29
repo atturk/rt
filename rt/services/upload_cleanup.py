@@ -13,15 +13,14 @@ from rt.db.engine import get_database
 from rt.db.models import Job
 from rt.db.session import session_scope
 from rt.services.jobs import ACTIVE_STATES
-from rt.services.lesson_service import lessons_root
+from rt.services.lesson_service import work_dir
 
 _UPLOAD_ID = re.compile(r"[0-9a-f]{32}\Z")
 RECENT_SECONDS = 3600
 
 
 def _root() -> str:
-    base = lessons_root() or os.path.expanduser("~")
-    return os.path.join(base, ".rt", "uploads")
+    return os.path.join(work_dir(), "uploads")
 
 
 def _references() -> dict[str, list[dict]]:

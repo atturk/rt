@@ -3,10 +3,10 @@ Run mock completo via API contro un RT già avviato (fase G): lo usano la prova 
 (scripts/docker_smoke.py) e il job CI dell'installer su macOS pulito.
 
     python scripts/api_smoke.py --base http://127.0.0.1:8765 --login-cmd "rt web --no-browser" \\
-        --lessons-root ~/Lezioni [--expect-lessons 1]
+        [--expect-lessons 1]
 
-Entra con il link monouso stampato da --login-cmd, imposta la cartella lezioni se serve,
-aspetta un worker, carica l'audio di prova con run=true e mock=true e aspetta la fine del job.
+Entra con il link monouso stampato da --login-cmd (nessuna cartella lezioni da impostare: le
+lezioni stanno nel database della cartella dati), aspetta un worker, carica l'audio di prova con run=true e mock=true e aspetta la fine del job.
 --expect-lessons N controlla prima che l'API veda già almeno N lezioni (aggiornamento da 3.x).
 """
 import argparse
@@ -53,8 +53,7 @@ def _lessons(s: requests.Session, base: str) -> list:
     return data.get("items", []) if isinstance(data, dict) else data
 
 
-def run(base: str, login_output: Callable[[], str], lessons_root: Optional[str] = None,
-        expect_lessons: int = 0, on_setup_lessons_root: Optional[Callable[[str], None]] = None) -> int:
+def run(base: str, login_output: Callable[[], str], expect_lessons: int = 0) -> int:
     wait_health(base)
     s = login(base, login_output())
     if expect_lessons:
@@ -63,13 +62,6 @@ def run(base: str, login_output: Callable[[], str], lessons_root: Optional[str] 
             print(f"❌ Lezioni viste dall'API: {len(found)}, attese almeno {expect_lessons}", file=sys.stderr)
             return 1
         print(f"✅ Lezioni già presenti viste dall'API: {len(found)}")
-    if lessons_root:
-        if on_setup_lessons_root:
-            on_setup_lessons_root(lessons_root)
-        r = s.put(f"{base}/api/v1/settings/lessons-root", json={"path": lessons_root}, timeout=30)
-        if not r.ok:
-            print(f"❌ Cartella lezioni non impostata: {r.status_code} {r.text[:300]}", file=sys.stderr)
-            return 1
     deadline = time.monotonic() + 60
     while not s.get(f"{base}/api/v1/workers", timeout=10).json():
         if time.monotonic() > deadline:
@@ -110,16 +102,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--base", default="http://127.0.0.1:8765")
     p.add_argument("--login-cmd", required=True, help="Comando che stampa il link monouso (rt web --no-browser)")
-    p.add_argument("--lessons-root", default=None)
     p.add_argument("--expect-lessons", type=int, default=0)
     args = p.parse_args(argv)
-    root = os.path.expanduser(args.lessons_root) if args.lessons_root else None
 
     def login_output() -> str:
         return subprocess.run(shlex.split(args.login_cmd), capture_output=True, text=True, check=True).stdout
 
-    return run(args.base, login_output, root, args.expect_lessons,
-               on_setup_lessons_root=lambda path: os.makedirs(path, exist_ok=True))
+    return run(args.base, login_output, args.expect_lessons)
 
 
 if __name__ == "__main__":

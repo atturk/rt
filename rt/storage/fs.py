@@ -746,6 +746,14 @@ def db_lessons_under(root) -> List[str]:
     return sorted(p for p in paths if os.path.dirname(p) == r)
 
 
+def root_entries(root) -> List[str]:
+    """Come listdir(root), ma una radice che non esiste su disco (il prefisso delle lezioni
+    nel database, es. <cartella dati>/lessons) elenca solo le sue lezioni "db"."""
+    if isdir(root):
+        return listdir(root)
+    return [os.path.basename(p) for p in db_lessons_under(root)]
+
+
 def lesson_files(lesson_dir) -> List[Dict[str, object]]:
     """Elenco dei file di una lezione "db" (nome, dimensione, sha, media)."""
     t = resolve(lesson_dir)

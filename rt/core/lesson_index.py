@@ -25,9 +25,9 @@ def scan_lessons(lessons_root: str) -> List[LessonEntry]:
     annidamento) con un info.yaml leggibile. Cartelle senza info.yaml valido sono
     ignorate silenziosamente."""
     entries = []
-    if not lessons_root or not fs.isdir(lessons_root):
+    if not lessons_root:
         return entries
-    for name in sorted(fs.listdir(lessons_root)):
+    for name in sorted(fs.root_entries(lessons_root)):
         full = os.path.join(lessons_root, name)
         if not fs.isdir(full):
             continue

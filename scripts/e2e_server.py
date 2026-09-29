@@ -26,7 +26,8 @@ STATE_FILE = os.path.join(ROOT, "frontend", "e2e", ".state", "server.json")
 
 
 def _workspace(base: str) -> str:
-    """cwd con config/ (da config.example) e lessons_root dentro base; HOME isolata."""
+    """cwd con config/ (da config.example) e lessons_root dentro base (chiave 3.x
+    ancora rispettata, non più configurabile dalla SPA); HOME isolata."""
     import yaml
     if os.path.isdir(base):
         shutil.rmtree(base)
@@ -44,10 +45,6 @@ def _workspace(base: str) -> str:
     general["searxng_base_url"] = "http://127.0.0.1:9"
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
-    # Cartelle per il navigatore della scelta cartella (RT4-FA6): la finestra di Finder è
-    # disattivata, come su Linux, così anche su macOS i test usano il ripiego della SPA.
-    for folder in ("Documenti/RT Lezioni e2e", "Documenti/Università", "Scrivania"):
-        os.makedirs(os.path.join(home, folder))
     os.environ["HOME"] = home
     os.environ["RT_NATIVE_FOLDER_PICKER"] = "0"
     os.environ["RT_TELEGRAM_FAKE"] = "1"

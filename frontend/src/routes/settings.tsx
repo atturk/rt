@@ -4,7 +4,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useSettings, type Settings } from '@/api/settings'
-import { LessonsRootSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
+import { DataDirSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
 import { InfoSection } from '@/components/settings/info'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
@@ -17,8 +17,8 @@ import type { Area } from './types'
 
 export const SETUP_PATH = '/impostazioni/configurazione'
 
-/** Primo avvio: finché la cartella dati non è impostata ogni pagina porta alla configurazione
- * guidata (le impostazioni restano raggiungibili). Mentre carica non blocca nulla. */
+/** Se il backend segnala un passo obbligatorio mancante (setup_required) ogni pagina porta alla
+ * configurazione guidata (le impostazioni restano raggiungibili). Mentre carica non blocca nulla. */
 export function SetupGate() {
   const settings = useSettings()
   const location = useLocation()
@@ -47,7 +47,6 @@ const TABS = [
 ]
 
 function SettingsLayout() {
-  const settings = useSettings()
   return (
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -56,11 +55,6 @@ function SettingsLayout() {
           Configurazione guidata <span aria-hidden>→</span>
         </Link>
       </div>
-      {settings.data?.setup_required && (
-        <Alert tone="warning">
-          La cartella dati non è ancora impostata. <Link to={SETUP_PATH} className="underline">Apri la configurazione guidata</Link>.
-        </Alert>
-      )}
       <nav aria-label="Sezioni delle impostazioni" className="flex gap-1 border-b">
         {TABS.map((tab) => (
           <NavLink
@@ -111,7 +105,7 @@ export const settingsArea: Area = {
           index: true,
           element: page((s) => (
             <>
-              <LessonsRootSection settings={s} />
+              <DataDirSection settings={s} />
               <WorkerSection settings={s} />
               <TranscriptionSection settings={s} />
               <TelegramSection settings={s} />

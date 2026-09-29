@@ -124,3 +124,18 @@ def test_cli_backup_and_doctor(data, tmp_path, capsys):
     assert '"Database"' in out and '"Cartella dati"' in out
     import json
     assert exit_code == (1 if json.loads(out)["status"] == "fail" else 0)
+
+
+def test_doctor_ignores_missing_lessons_folder(data, tmp_path):
+    """Le lezioni stanno nel database: né una cartella delle lezioni assente né una configurata
+    e sparita (Mac del beta tester) danno avvisi; le lezioni a cartelle si cercano solo se c'è."""
+    from rt.services import doctor_service
+    data_dir, _db = data
+    general = data_dir / "config" / "general.yaml"
+    assert doctor_service.check_config().status == doctor_service.OK
+    general.write_text(general.read_text(encoding="utf-8")
+                       + f"\ntelegram:\n  lessons_root: {str(tmp_path / 'sparita')!r}\n", encoding="utf-8")
+    from rt.core.config import load_config
+    assert load_config().telegram.lessons_root == str(tmp_path / "sparita")
+    assert doctor_service.check_config().status == doctor_service.OK
+    assert doctor_service.check_folder_lessons().status == doctor_service.OK

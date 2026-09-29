@@ -566,8 +566,7 @@ def cmd_cost(args: argparse.Namespace) -> None:
 
 
 def _resolve_lesson_arg(value: str) -> str:
-    """Lezione indicata come percorso, id del database o nome sotto lessons_root."""
-    from rt.core.config import load_config
+    """Lezione indicata come percorso, id del database o nome della lezione."""
     if value.isdigit() and not fs.exists(value):
         from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
         try:
@@ -577,11 +576,10 @@ def _resolve_lesson_arg(value: str) -> str:
     path = os.path.abspath(os.path.expanduser(value))
     if fs.isdir(path):
         return path
-    root = load_config().telegram.lessons_root
-    if root:
-        candidate = os.path.join(os.path.abspath(os.path.expanduser(root)), value)
-        if fs.isdir(candidate):
-            return candidate
+    from rt.services.lesson_service import lessons_root
+    candidate = os.path.join(lessons_root(), value)
+    if fs.isdir(candidate):
+        return candidate
     return path
 
 
@@ -1341,7 +1339,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_uni.set_defaults(func=cli_system.cmd_uninstall)
 
     p_exp = subparsers.add_parser("export", help="Esporta il Markdown finale (con immagini) o tutti i dati di una lezione")
-    p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_exp.add_argument("-o", "--output", help="Cartella di destinazione (default: cartella corrente)")
     p_exp.add_argument("--all", action="store_true", help="Esporta tutti i file della lezione (testi, stato, audio, immagini)")
     p_exp.add_argument("--zip", action="store_true", help="Crea un archivio .zip invece di una cartella")
@@ -1352,18 +1350,18 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_imp.set_defaults(func=cmd_import)
 
     p_del = subparsers.add_parser("delete", help="Elimina una lezione con testi, audio e immagini (chiede conferma)")
-    p_del.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_del.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_del.add_argument("-y", "--yes", action="store_true", help="Non chiedere conferma")
     p_del.set_defaults(func=cmd_delete)
 
     p_rel = subparsers.add_parser("relevance", help="Assegna le etichette JEV di rilevanza alle unità nuove o cambiate")
-    p_rel.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_rel.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_rel.add_argument("--all", action="store_true", help="Riclassifica anche le unità già etichettate")
     p_rel.add_argument("--mock", action="store_true", help="Modalità prova: nessuna chiamata a JEV")
     p_rel.set_defaults(func=cmd_relevance)
 
     p_vph = subparsers.add_parser("validate-phase", help="Segna una fase come valida senza rieseguirla (es. dopo una modifica voluta)")
-    p_vph.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_vph.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_vph.add_argument("phase", choices=["prepare", "outline", "rewrite", "review", "build"], help="Fase da validare")
     p_vph.set_defaults(func=cmd_validate_phase)
 

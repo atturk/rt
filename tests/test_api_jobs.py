@@ -90,6 +90,36 @@ def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker
     assert api_client.get(f"/api/v1/lessons/{lesson_id}/document").json()["final"] is True
 
 
+def test_fresh_config_without_lessons_root_creates_and_lists_lessons(api_client, tmp_path, monkeypatch, rt_db, worker):
+    """Installazione nuova (4.x): nessun telegram.lessons_root. Niente configurazione guidata
+    obbligatoria; la lezione va nel database con prefisso <cartella dati>/lessons, cartella
+    che non serve su disco."""
+    isolated_workspace(tmp_path, monkeypatch, lessons_root=False)
+    (tmp_path / "work" / "config" / "general.yaml").write_text(
+        "telegram:\n  default_channel: terminal\n", encoding="utf-8")
+    data_dir = tmp_path / "dati"
+    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(data_dir))
+    from rt.core.config import load_config
+    assert load_config().telegram.lessons_root is None
+
+    assert api_client.get("/api/v1/settings").json()["setup_required"] is False
+    res = upload(api_client)
+    assert res.status_code == 202, res.text
+    drain(worker)
+    ingest = job(api_client, res.json()["job_id"])
+    assert ingest["state"] == "succeeded", ingest
+    listed = api_client.get("/api/v1/lessons").json()
+    items = listed["items"] if isinstance(listed, dict) else listed
+    assert [item["id"] for item in items] == [ingest["lesson_id"]]
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    with session_scope(rt_db) as session:
+        path = session.get(Lesson, ingest["lesson_id"]).path
+    assert os.path.dirname(path) == os.path.join(str(data_dir), "lessons")
+    assert not os.path.exists(os.path.join(str(data_dir), "lessons"))
+    assert not os.listdir(os.path.join(str(data_dir), "uploads"))  # upload temporaneo rimosso
+
+
 def test_upload_with_run_runs_whole_pipeline(api_client, ws, worker):
     accepted = upload(api_client, run=True).json()
     assert accepted["type"] == "run_pipeline"

@@ -45,7 +45,7 @@ def _no_secret(res):
 
 def test_settings_snapshot(api_client, ws):
     data = _no_secret(api_client.get("/api/v1/settings")).json()
-    assert data["lessons_root"] == ws
+    assert "lessons_root" not in data
     assert [p["job"] for p in data["phases"]] == list(JOBS)
     assert data["transcription"]["engine"] == "macparakeet"
 
@@ -82,7 +82,8 @@ def test_jev_default_credential_falls_back_to_openrouter_connection(monkeypatch)
 
 
 def test_setup_required_and_data_dir(api_client, api_token, ws, tmp_path):
-    """La SPA apre la configurazione guidata finché la cartella delle lezioni non esiste (RT4-F5)."""
+    """Le lezioni stanno nel database: la cartella delle lezioni (anche configurata e sparita,
+    come dopo un aggiornamento da 3.x) non blocca la SPA nella configurazione guidata."""
     import os
     data = api_client.get("/api/v1/settings").json()
     assert data["setup_required"] is False
@@ -90,9 +91,9 @@ def test_setup_required_and_data_dir(api_client, api_token, ws, tmp_path):
     assert data["data_dir"] == fs.data_dir() and os.path.isabs(data["data_dir"])
     import shutil
     shutil.rmtree(ws)
-    assert fresh(api_token).get("/api/v1/settings").json()["setup_required"] is True
-    assert api_client.put("/api/v1/settings/lessons-root", json={"path": ws}).status_code == 200
     assert fresh(api_token).get("/api/v1/settings").json()["setup_required"] is False
+    # La cartella delle lezioni non si imposta più dall'API.
+    assert api_client.put("/api/v1/settings/lessons-root", json={"path": ws}).status_code in (404, 405)
 
 
 def test_connection_and_all_six_phases_persist(api_client, api_token, ws):
@@ -130,9 +131,7 @@ def test_route_roundtrip(api_client, api_token, ws):
     assert (got["credential"], got["model"]) == (cred, "second/model")
 
 
-def test_lessons_root_transcription_telegram_pricing_persist(api_client, api_token, ws, tmp_path):
-    new_root = tmp_path / "altre lezioni"
-    assert api_client.put("/api/v1/settings/lessons-root", json={"path": str(new_root)}).status_code == 200
+def test_transcription_telegram_pricing_persist(api_client, api_token, ws, tmp_path):
     res = api_client.put("/api/v1/settings/transcription",
                          json={"engine": "custom", "base_url": "http://127.0.0.1:9000/v1", "model": "whisper", "api_key": STT})
     assert res.status_code == 200, res.text
@@ -143,7 +142,6 @@ def test_lessons_root_transcription_telegram_pricing_persist(api_client, api_tok
     assert api_client.put("/api/v1/settings/pricing", json=pricing).status_code == 200
 
     data = _no_secret(fresh(api_token).get("/api/v1/settings")).json()
-    assert data["lessons_root"] == str(new_root.resolve())
     assert data["transcription"] == {"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                      "model": "whisper", "api_key_set": True}
     assert data["telegram"]["bot_token_set"] is True and data["telegram"]["chat_id_preview"] == "-1…77"

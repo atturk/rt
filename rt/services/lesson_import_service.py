@@ -14,7 +14,7 @@ from rt.db.engine import get_database
 from rt.db.models import Lesson
 from rt.db.repositories import LessonRepository
 from rt.db.session import session_scope
-from rt.services.lesson_service import lessons_root
+from rt.services.lesson_service import lessons_root, work_dir
 from rt.storage import fs
 
 MAX_FILES = 1000
@@ -25,8 +25,8 @@ MAX_RATIO = 200
 def import_archive(archive: str) -> int:
     root = lessons_root()
     db = get_database()
-    if not root or db is None:
-        raise Conflict("setup_required", "Configura la cartella dati prima di importare.")
+    if db is None:
+        raise Conflict("setup_required", "Database non disponibile: impossibile importare.")
     with zipfile.ZipFile(archive) as zipped:
         files = [item for item in zipped.infolist() if not item.is_dir()]
         if len(files) > MAX_FILES or sum(item.file_size for item in files) > MAX_BYTES:
@@ -71,8 +71,9 @@ def import_archive(archive: str) -> int:
                 existing = None
             if existing is not None or os.path.lexists(target):
                 raise Conflict("duplicate_lesson", f"La lezione {folder} esiste già.")
-        os.makedirs(root, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="rt-import-", dir=root) as staging:
+        staging_base = work_dir()
+        os.makedirs(staging_base, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="rt-import-", dir=staging_base) as staging:
             for name, row in declared.items():
                 item = zipped.getinfo(name)
                 if item.file_size != row.get("size") or item.file_size > MAX_BYTES:

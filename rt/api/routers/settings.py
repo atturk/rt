@@ -129,7 +129,6 @@ class WebSearchSettings(BaseModel):
 
 
 class Settings(BaseModel):
-    lessons_root: Optional[str] = None
     worker: WorkerSettings
     notices: NoticeSettings
     transcription: Transcription
@@ -141,12 +140,9 @@ class Settings(BaseModel):
     web_search: WebSearchSettings
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
-    setup_required: bool = Field(False, description="True se la cartella delle lezioni non è impostata o non esiste: "
-                                                    "la SPA apre la configurazione guidata")
-
-
-class LessonsRootIn(BaseModel):
-    path: str
+    setup_required: bool = Field(False, description="True se manca un passo obbligatorio della configurazione e la SPA "
+                                                    "apre la configurazione guidata (oggi nessuno: le lezioni stanno "
+                                                    "nel database della cartella dati)")
 
 
 class TranscriptionIn(BaseModel):
@@ -311,13 +307,6 @@ def get_settings(_actor: Actor):
 
 
 # ---------------------------------------------------------------- scrittura
-
-@router.put("/settings/lessons-root", response_model=Settings, summary="Cartella delle lezioni")
-def put_lessons_root(body: LessonsRootIn, _actor: Actor):
-    from rt.services.settings_service import save_lessons_root, snapshot
-    _call(save_lessons_root, body.path, _project_root())
-    return snapshot(_project_root())
-
 
 @router.put("/settings/worker", response_model=Settings,
             summary="Job in parallelo del worker avviato con la web (vale dal prossimo avvio)")

@@ -46,10 +46,9 @@ def _max_upload_bytes() -> int:
 
 
 def _upload_dir() -> str:
-    """Cartella temporanea per i file caricati, sullo stesso disco delle lezioni."""
-    from rt.services.lesson_service import lessons_root
-    base = lessons_root() or os.path.expanduser("~")
-    path = os.path.join(base, ".rt", "uploads", uuid.uuid4().hex)
+    """Cartella temporanea per i file caricati, sullo stesso disco dei media delle lezioni."""
+    from rt.services.lesson_service import work_dir
+    path = os.path.join(work_dir(), "uploads", uuid.uuid4().hex)
     os.makedirs(path, mode=0o700)
     return path
 

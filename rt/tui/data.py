@@ -1,6 +1,6 @@
 """
 rt.tui.data
-Scansione della cartella lezioni (telegram.lessons_root) e calcolo dello stato di
+Scansione delle lezioni (sotto lesson_service.lessons_root()) e calcolo dello stato di
 ciascuna lezione per la dashboard principale. Riusa la stessa logica già impiegata
 da 'rt status'/'rt cost', nessuna duplicazione di regole di stato.
 """
@@ -73,10 +73,10 @@ def _relative_time(mtime: float) -> str:
 
 
 def _lesson_dirs(root: str) -> List[str]:
-    if not root or not fs.isdir(root):
+    if not root:
         return []
     found = []
-    for name in sorted(fs.listdir(root)):
+    for name in sorted(fs.root_entries(root)):
         full = os.path.join(root, name)
         if fs.isdir(full) and fs.isfile(lesson_path(full, "info.yaml")):
             found.append(full)

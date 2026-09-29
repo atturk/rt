@@ -328,8 +328,6 @@ def test_configure_telegram_section_manual_link_flow(tmp_path):
             m.ask.return_value = val
         elif "Materia per Topic ID" in prompt:
             m.ask.return_value = "BIOCHIMICA"
-        elif "Percorso assoluto cartella lezioni" in prompt:
-            m.ask.return_value = str(tmp_path / "lezioni")
         else:
             m.ask.return_value = ""
         return m
@@ -352,7 +350,8 @@ def test_configure_telegram_section_manual_link_flow(tmp_path):
         gen_data = yaml.safe_load(f)
     assert gen_data["telegram"]["topics"]["PATOLOGIA"] == 10
     assert gen_data["telegram"]["topics"]["BIOCHIMICA"] == 541
-    assert gen_data["telegram"]["lessons_root"] == str(tmp_path / "lezioni")
+    # La cartella delle lezioni non si chiede più (4.x: lezioni nel database).
+    assert "lessons_root" not in gen_data["telegram"]
 
 
 def test_configure_stt_section_macparakeet(tmp_path):

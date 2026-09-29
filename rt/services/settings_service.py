@@ -277,7 +277,8 @@ def save_notice(project_root: Path, notice: str, dismissed: bool) -> str:
 
 
 def save_lessons_root(raw_path: str, project_root: Path) -> str:
-    """Imposta solo telegram.lessons_root e crea la cartella se necessario."""
+    """Imposta solo telegram.lessons_root e crea la cartella se necessario (solo web legacy:
+    dalla 4.x le lezioni stanno nel database e la cartella non si configura più)."""
     if not raw_path or not raw_path.strip():
         raise ValueError("Inserisci il percorso della cartella delle lezioni.")
     entered = Path(raw_path.strip()).expanduser()
@@ -411,7 +412,6 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         connection, model = phase_selection(project_root, job, all_connections)
         phases.append({"job": job, "label": label, "connection": connection, "model": model})
     return {
-        "lessons_root": cfg.telegram.lessons_root,
         "transcription": {
             "engine": cfg.transcription.engine, "base_url": cfg.transcription.base_url,
             "model": cfg.transcription.model, "api_key_set": secret_is_set("RT_STT_API_KEY"),
@@ -436,8 +436,8 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "web_search": {"searxng_base_url": cfg.searxng_base_url or None},
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
-        "setup_required": not (cfg.telegram.lessons_root
-                               and os.path.isdir(os.path.expanduser(cfg.telegram.lessons_root))),
+        # Le lezioni stanno nel database della cartella dati: nessuna cartella da scegliere.
+        "setup_required": False,
     }
 
 

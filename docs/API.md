@@ -82,8 +82,7 @@ ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
-| `GET /settings` | Cartella lezioni, trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (cartella lezioni non impostata o inesistente: la SPA apre la configurazione guidata) | `rt config` |
-| `PUT /settings/lessons-root` | Cartella delle lezioni | `rt config` |
+| `GET /settings` | Trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (sempre `false`: le lezioni stanno nel database, nessuna cartella da scegliere) | `rt config` |
 | `PUT /settings/worker` | Job in parallelo del worker di `rt web` (1-4, default 2); `GET /settings` riporta anche i worker attivi ora | `rt worker --concurrency` |
 | `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
 | `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
@@ -172,7 +171,7 @@ telegram_session_active`), e viceversa.
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in
-`<lessons_root>/.rt/uploads/` e si cancellano quando il job finisce (restano se si ferma su una decisione); il limite di
+`<cartella dati>/uploads/` (`<lessons_root>/.rt/uploads/` per un'installazione 3.x con la cartella delle lezioni ancora presente) e si cancellano quando il job finisce (restano se si ferma su una decisione); il limite di
 dimensione è `RT_API_MAX_UPLOAD_MB` (default 2048).
 
 `rt worker --mock` esegue ogni job in mock qualunque cosa chieda il client (LLM finto, risposte

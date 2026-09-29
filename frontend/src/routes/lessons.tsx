@@ -105,7 +105,7 @@ export function DashboardPage() {
       {all.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
       {all.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          {lessons.length === 0 ? 'Nessuna lezione nella cartella delle lezioni.' : 'Nessuna lezione corrisponde ai filtri.'}
+          {lessons.length === 0 ? 'Nessuna lezione: importane una da un audio.' : 'Nessuna lezione corrisponde ai filtri.'}
         </Card>
       )}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

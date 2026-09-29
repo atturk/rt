@@ -40,7 +40,7 @@ Il comando scarica l'ultima release in `./rt` e fa tutto il resto: prerequisiti 
 Python 3.11+, `ffmpeg`, `macparakeet-cli` se lo vuoi), ambiente Python, web app già compilata,
 cartella dati `~/.rt` (configurazione, segreti cifrati, database, audio e immagini), servizi in
 background per API, worker e bot Telegram, e alla fine apre il browser sulla **configurazione
-guidata** (cartella delle lezioni, provider e chiavi, Telegram facoltativo). Non ci sono altri
+guidata** (provider e chiavi, modelli, Telegram facoltativo). Non ci sono altri
 passaggi. Rilanciarlo ripara un'installazione rotta senza toccare i dati.
 
 Dopo l'installazione:
@@ -123,8 +123,8 @@ Avvia l'API, un worker per i job e la web app, e apre il browser già autenticat
 `http://127.0.0.1:8765`. Dalla web fai tutto quello che fai nel terminale: importi l'audio,
 segui la pipeline in tempo reale, approvi la scaletta, fai la review accanto al testo con
 l'audio, leggi il documento con i timecode, fai il recall anche a voce, aggiungi immagini e
-configuri provider, modelli e Telegram. Al primo avvio una configurazione guidata chiede la
-cartella delle lezioni e il resto. `install.sh` e `rt -u` installano la web app compilata dalla
+configuri provider, modelli e Telegram. Al primo avvio una configurazione guidata chiede provider,
+modelli e Telegram. `install.sh` e `rt -u` installano la web app compilata dalla
 release. Dettagli in [Web app di RT](docs/WEB.md).
 
 La vecchia interfaccia Gradio resta per questa release con `rt web --legacy` (deprecata; richiede

@@ -516,8 +516,8 @@ def test_row_status_and_cost(api, cli, pair):
 
 
 def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypatch, rt_db):
-    """rt config (provider, modelli delle sei fasi, pricing, Telegram, trascrizione,
-    lessons_root) ⇔ endpoint di RT4-E4: quello che scrive l'API lo legge la CLI."""
+    """rt config (provider, modelli delle sei fasi, pricing, Telegram, trascrizione)
+    ⇔ endpoint di RT4-E4: quello che scrive l'API lo legge la CLI."""
     import subprocess
     import sys
     from tests.api_support import workspace_with_example_config
@@ -532,9 +532,6 @@ def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypa
     for n, job_name in enumerate(jobs):
         res = client.put(f"/api/v1/settings/phases/{job_name}", json={"connection": "Parita", "model": f"vendor/model-{n}"})
         assert res.status_code == 200, res.text
-    new_root = str(tmp_path / "altra_radice")
-    os.makedirs(new_root)
-    assert client.put("/api/v1/settings/lessons-root", json={"path": new_root}).status_code == 200
     res = client.put("/api/v1/settings/transcription", json={"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                                                "model": "whisper-parita"})
     assert res.status_code == 200, res.text
@@ -543,14 +540,13 @@ def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypa
 
     # la CLI in un processo nuovo, nella stessa cartella di lavoro
     script = ("import json; from rt.core.config import load_config; c = load_config(); "
-              "print(json.dumps({'root': c.telegram.lessons_root, 'engine': c.transcription.engine, "
+              "print(json.dumps({'engine': c.transcription.engine, "
               "'stt_model': c.transcription.model, 'topics': c.telegram.topics, "
               f"'models': {{j: c.jobs[j].primary.model for j in {jobs!r}}}}}))")
     env = dict(os.environ, PYTHONPATH=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     out = subprocess.run([sys.executable, "-c", script], cwd=os.getcwd(), env=env, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     seen = json.loads(out.stdout.strip().splitlines()[-1])
-    assert seen["root"] == new_root
     assert (seen["engine"], seen["stt_model"]) == ("custom", "whisper-parita")
     assert seen["topics"] == {"BIOCHIMICA": 7}
     assert seen["models"] == {j: f"vendor/model-{n}" for n, j in enumerate(jobs)}

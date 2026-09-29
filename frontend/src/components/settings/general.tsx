@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
-import { useListenTopics, useSaveLessonsRoot, useSaveTelegram, useSaveTranscription, useSaveWorker, useTopicTest, type Settings } from '@/api/settings'
+import { useListenTopics, useSaveTelegram, useSaveTranscription, useSaveWorker, useTopicTest, type Settings } from '@/api/settings'
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -10,65 +10,22 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
 import { matchesPreview, mergeListenedTopics, parseTopicLink, rowsToTopicNames, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
-import { FolderField } from './folders'
 import { ListenCleanup, RevealableValue, TopicTestButton, TopicTestResult } from './telegram'
 
 /** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
  * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
 
-export function LessonsRootForm({ settings, onSaved, submitLabel = 'Salva' }: { settings: Settings; onSaved?: () => void; submitLabel?: string }) {
-  const save = useSaveLessonsRoot()
+/** Cartella dati: solo informativa. Le lezioni stanno nel database e i media in media/ della
+ * cartella dati, quindi non c'è una cartella delle lezioni da scegliere. */
+export function DataDirSection({ settings }: { settings: Settings }) {
   return (
-    <>
-      <LessonsRootFields
-        key={settings.lessons_root ?? ''}
-        initial={settings.lessons_root ?? '~/RT Lezioni'}
-        pending={save.isPending}
-        submitLabel={submitLabel}
-        onSubmit={(path) => save.mutate(path, { onSuccess: onSaved })}
-        autoSave={!onSaved}
-      />
-      <SaveFeedback mutation={save} />
-    </>
-  )
-}
-
-function LessonsRootFields({ initial, pending, submitLabel, onSubmit, autoSave }: { initial: string; pending: boolean; submitLabel: string; onSubmit: (path: string) => void; autoSave: boolean }) {
-  const [path, setPath] = useState(initial)
-  const commit = (selected: string) => {
-    if (autoSave && !pending && selected && selected !== initial) onSubmit(selected)
-  }
-  return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSubmit(path.trim())
-      }}
-    >
-      <FolderField id="lessons-root" value={path} onChange={setPath} onCommit={commit} />
-      {!autoSave && <div>
-        <Button type="submit" disabled={pending || !path.trim()}>
-          {submitLabel}
-        </Button>
-      </div>}
-    </form>
-  )
-}
-
-export function LessonsRootSection({ settings }: { settings: Settings }) {
-  return (
-    <Section
-      id="cartella"
-      title="Cartella dati"
-      description="Cartella che RT, il bot Telegram e il database usano per le lezioni."
-    >
-      <LessonsRootForm settings={settings} />
-      {settings.data_dir && (
-        <p className="text-xs text-muted-foreground">
-          Database e media in uso: <code className="rounded bg-muted px-1" data-testid="data-dir">{settings.data_dir}</code>. Se cambi
-          cartella, RT userà il database della nuova cartella dal prossimo avvio.
+    <Section id="cartella" title="Cartella dati" description="Dove RT tiene il database con le lezioni e i file audio e immagini.">
+      {settings.data_dir ? (
+        <p className="text-sm">
+          Database e media in uso: <code className="rounded bg-muted px-1 text-xs" data-testid="data-dir">{settings.data_dir}</code>
         </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">Database non disponibile.</p>
       )}
     </Section>
   )

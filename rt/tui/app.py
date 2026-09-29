@@ -1,6 +1,6 @@
 """
 rt.tui.app
-Schermata principale di RT: dashboard delle lezioni trovate in 'telegram.lessons_root',
+Schermata principale di RT: dashboard delle lezioni (database e cartelle 3.x),
 con azioni rapide sulla lezione selezionata. Le azioni richiamano gli stessi sottocomandi
 CLI già usati da terminale (rt run/review/build/cost/recall/config), sospendendo
 temporaneamente l'interfaccia Textual (App.suspend()) invece di reimplementarli.
@@ -220,12 +220,10 @@ class RTApp(App):
 
     def _lessons_root(self) -> Optional[str]:
         try:
-            from rt.core.config import load_config
-            cfg = load_config()
+            from rt.services.lesson_service import lessons_root
+            return lessons_root()
         except Exception:
             return None
-        root = getattr(getattr(cfg, "telegram", None), "lessons_root", None)
-        return root.strip() if root and str(root).strip() else None
 
     def compose(self) -> ComposeResult:
         from rt.core.config import _default_project_root
@@ -284,7 +282,6 @@ class RTApp(App):
         """Ricostruisce #lesson-list applicando il testo corrente di #search (se presente) a
         titolo/materia. Condivisa da refresh_lessons (dopo una riscansione) e on_input_changed
         (ad ogni carattere digitato) per non duplicare la stessa logica di filtro/selezione."""
-        root = self._lessons_root()
         try:
             query = (self.query_one("#search", Input).value or "").strip().lower()
         except Exception:
@@ -314,10 +311,7 @@ class RTApp(App):
             self.query_one("#detail-header", Static).update(
                 f"Nessuna lezione corrisponde a \"{query}\"."
                 if query else
-                ("Nessuna lezione trovata in questa cartella."
-                if root else
-                "Configura 'telegram.lessons_root' in config/general.yaml (o premi 'g') "
-                "per vedere qui le tue lezioni.")
+                "Nessuna lezione trovata."
             )
             self.query_one("#detail-stats", Static).update("")
             self.query_one("#phase-stepper").display = False

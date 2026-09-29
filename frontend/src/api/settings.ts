@@ -19,24 +19,15 @@ export function useSettings() {
   return useQuery({ queryKey: settingsKeys.all, queryFn: () => unwrap(api.GET('/api/v1/settings')), staleTime: 30_000 })
 }
 
-/** Mutation che dopo il successo rilegge tutte le impostazioni (e le lezioni se serve). */
-function useSettingsMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>, alsoLessons = false) {
+/** Mutation che dopo il successo rilegge tutte le impostazioni. */
+function useSettingsMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: fn,
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: settingsKeys.all })
-      // Le lezioni si rileggono in background: la pagina non aspetta l'elenco per proseguire.
-      if (alsoLessons) void client.invalidateQueries({ queryKey: ['lessons'] })
     },
   })
-}
-
-export function useSaveLessonsRoot() {
-  return useSettingsMutation(
-    (path: string) => unwrap(api.PUT('/api/v1/settings/lessons-root', { body: { path } })),
-    true,
-  )
 }
 
 export function useSaveWorker() {
@@ -237,18 +228,3 @@ export function useTopicTest(topicId: string, materia: string) {
   return { test, valid, run: () => test.mutate({ topic_id: Number(topicId.trim()), materia: materia.trim() }) }
 }
 
-/** Finestra di Finder (macOS) per scegliere una cartella; 'unavailable' altrove. */
-export function useChooseFolder() {
-  return useMutation({
-    mutationFn: (start: string | null) => unwrap(api.POST('/api/v1/system/choose-folder', { body: { start } })),
-  })
-}
-
-/** Sottocartelle di una cartella della home, per il navigatore (ripiego della finestra nativa). */
-export function useFolders(path: string | null, enabled: boolean) {
-  return useQuery({
-    queryKey: ['system', 'folders', path ?? ''],
-    queryFn: () => unwrap(api.GET('/api/v1/system/folders', { params: { query: path ? { path } : {} } })),
-    enabled,
-  })
-}

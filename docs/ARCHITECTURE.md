@@ -439,7 +439,7 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
   `L<id>_<nome>`; il DB ne conserva il percorso, come fa Anki. `Lesson.storage` vale `db` o
   `folder` (le lezioni ancora in cartella funzionano come prima).
 - **Identità**: `Lesson.path` resta `<lessons_root>/<nome lezione>` anche se la cartella non
-  esiste: job, id dell'API, stato Telegram e `rt run <percorso>` non cambiano. `rt build`
+  esiste (senza `telegram.lessons_root` il prefisso è `<cartella dati>/lessons`): job, id dell'API, stato Telegram e `rt run <percorso>` non cambiano. `rt build`
   che rinomina la lezione aggiorna solo il percorso nel DB.
 - **Accesso**: `rt/storage/fs.py` offre le stesse funzioni di `open`/`os`/`shutil` e sceglie
   il backend per percorso; tutti i moduli che leggono o scrivono file di lezione passano da

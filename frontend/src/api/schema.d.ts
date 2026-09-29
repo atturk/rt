@@ -1011,23 +1011,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/settings/lessons-root": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Cartella delle lezioni */
-        put: operations["put_lessons_root_api_v1_settings_lessons_root_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings/models/test": {
         parameters: {
             query?: never;
@@ -2816,11 +2799,6 @@ export interface components {
              */
             titolo: string;
         };
-        /** LessonsRootIn */
-        LessonsRootIn: {
-            /** Path */
-            path: string;
-        };
         /** ListenMessages */
         ListenMessages: {
             /**
@@ -3465,8 +3443,6 @@ export interface components {
              * @description Cartella dati in uso da questo processo: rt.db e media/
              */
             data_dir?: string | null;
-            /** Lessons Root */
-            lessons_root?: string | null;
             notices: components["schemas"]["NoticeSettings"];
             /**
              * Phases
@@ -3488,7 +3464,7 @@ export interface components {
             secrets_encrypted: boolean;
             /**
              * Setup Required
-             * @description True se la cartella delle lezioni non è impostata o non esiste: la SPA apre la configurazione guidata
+             * @description True se manca un passo obbligatorio della configurazione e la SPA apre la configurazione guidata (oggi nessuno: le lezioni stanno nel database della cartella dati)
              * @default false
              */
             setup_required: boolean;
@@ -8215,75 +8191,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DecisionTestOut"];
-                };
-            };
-            /** @description Autenticazione mancante o non valida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description CSRF non valido */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Risorsa non trovata */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflitto (es. job in corso sulla lezione) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Richiesta non valida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    put_lessons_root_api_v1_settings_lessons_root_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LessonsRootIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

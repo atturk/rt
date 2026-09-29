@@ -3,7 +3,7 @@ rt.tui.configure
 Wizard interattivo di configurazione guidata per il progetto RT.
 Gestisce la configurazione di:
 - Provider LLM (DeepSeek, OpenRouter, Google Gemini, OpenAI Compatible) e credenziali.
-- Telegram (bot token, chat ID, discovery live topic, lessons_root).
+- Telegram (bot token, chat ID, discovery live topic).
 - STT (motore trascrizione risposte vocali).
 - Pricing custom opzionale.
 """
@@ -26,7 +26,6 @@ from rich.panel import Panel
 from rich.text import Text
 
 from rt.core.config import KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, _default_project_root
-from rt.pipeline.setup import clean_input_path
 
 
 def _is_placeholder_or_invalid_bot_token(token: str) -> bool:
@@ -1450,7 +1449,7 @@ def _configure_llm_provider_section(config_dir: str, env_path: str) -> Dict[str,
 
 def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any]:
     """
-    Guida l'utente nella configurazione di Telegram (Bot Token, Chat ID, discovery live/link topic, lessons_root).
+    Guida l'utente nella configurazione di Telegram (Bot Token, Chat ID, discovery live/link topic).
     Restituisce un dizionario con l'esito della configurazione.
     """
     print("\n------------------------------------------------------------")
@@ -1648,20 +1647,8 @@ def _configure_telegram_section(config_dir: str, env_path: str) -> Dict[str, Any
     if misc_topic_id is not None:
         general_data["telegram"]["misc_topic_id"] = misc_topic_id
 
-    # lessons_root
-    curr_lessons_root = general_data["telegram"].get("lessons_root") or ""
-    lessons_root_in = questionary.text(
-        "Percorso assoluto cartella lezioni (puoi anche trascinarla qui):",
-        default=curr_lessons_root
-    ).ask()
-
-    if lessons_root_in is not None:
-        clean_root = clean_input_path(lessons_root_in)
-        if clean_root and not os.path.isdir(clean_root):
-            print(f"⚠️  Avviso: la cartella '{clean_root}' non esiste attualmente su questo sistema.")
-        if clean_root:
-            general_data["telegram"]["lessons_root"] = clean_root
-
+    # Nessuna domanda sulla cartella delle lezioni: dalla 4.x stanno nel database della
+    # cartella dati (un lessons_root già presente resta com'è, per le installazioni 3.x).
     _atomic_write_text(general_yaml_path, yaml.safe_dump(general_data, sort_keys=False, allow_unicode=True))
 
     print("\n✅ Configurazione Telegram salvata in config/general.yaml e .env!")

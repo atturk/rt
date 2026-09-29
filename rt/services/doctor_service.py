@@ -81,20 +81,13 @@ def check_data_dir() -> Check:
 
 
 def check_config() -> Check:
-    from rt.core.config import load_config
     config_dir = paths.config_dir()
     if not os.path.isfile(os.path.join(config_dir, "general.yaml")):
         return Check("Configurazione", FAIL, f"{config_dir}/general.yaml mancante.",
                      "Rilancia il comando di installazione (ricrea la configurazione senza toccare i dati).")
-    cfg = load_config()
-    root = cfg.telegram.lessons_root
-    if not root:
-        return Check("Configurazione", WARN, "cartella delle lezioni non ancora scelta.",
-                     "Apri la web app (rt web) e completa la configurazione guidata.")
-    if not os.path.isdir(os.path.expanduser(root)):
-        return Check("Configurazione", WARN, f"la cartella delle lezioni {root} non esiste.",
-                     "Sceglila di nuovo in Impostazioni > Generali.")
-    return Check("Configurazione", OK, f"lezioni in {root}")
+    # Le lezioni stanno nel database: telegram.lessons_root (3.x) non si controlla più qui;
+    # le lezioni a cartelle ancora da convertire le segnala check_folder_lessons.
+    return Check("Configurazione", OK, f"{config_dir}/general.yaml")
 
 
 def check_database() -> Check:

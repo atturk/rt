@@ -457,13 +457,9 @@ def run_setup(
                 f"La directory di destinazione specificata '{clean_dest}' è un file, non una directory."
             )
         else:
+            # La cartella si crea solo per una lezione a cartelle (più sotto): per una lezione
+            # nel database è solo il prefisso del percorso e può non esistere.
             default_base = clean_dest
-            try:
-                fs.makedirs(default_base, exist_ok=True)
-            except OSError as e:
-                raise SetupError(
-                    f"Impossibile creare la directory di destinazione '{default_base}': {e}"
-                )
     else:
         default_base = audio_dir if (audio_dir and fs.isdir(audio_dir)) else os.getcwd()
 
@@ -499,7 +495,10 @@ def run_setup(
         if on_progress:
             on_progress(f"✔ Lezione nel database: {folder_name}")
     else:
-        fs.makedirs(target_folder_path, exist_ok=True)
+        try:
+            fs.makedirs(target_folder_path, exist_ok=True)
+        except OSError as e:
+            raise SetupError(f"Impossibile creare la cartella della lezione '{target_folder_path}': {e}")
         if on_progress:
             on_progress(f"✔ Cartella lezione: {target_folder_path}")
     now_iso = datetime.datetime.now().isoformat()
