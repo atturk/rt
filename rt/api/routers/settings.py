@@ -545,7 +545,7 @@ def post_connection_model(name: str, body: ModelIn, _actor: Actor):
 
 
 @router.delete("/settings/connections/{name}", response_model=Settings,
-               summary="Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o JEV la usa)")
+               summary="Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o il classificatore la usa)")
 def delete_connection(name: str, _actor: Actor):
     from rt.security.secrets import SecretStoreError
     from rt.services.connections_service import ConnectionInUse, connection_names, delete_connection
@@ -649,9 +649,9 @@ class DecisionTestOut(BaseModel):
     phase: Literal["relevance", "prefilter"]
     unit_id: Optional[str] = None
     unit_title: str
-    state: str = Field(description="Stato inviato a Jev (l'unità di lezione)")
+    state: str = Field(description="Stato inviato al classificatore (l'unità di lezione)")
     request: Dict[str, Any] = Field(description="Richiesta inviata all'endpoint decisions")
-    response: Dict[str, Any] = Field(description="Risposta JSON di Jev")
+    response: Dict[str, Any] = Field(description="Risposta JSON del classificatore")
     answer: Dict[str, Any] = Field(description="Risposta alla domanda, con tutte le probabilità")
     label: str = Field(description="Etichetta RT assegnata dalla mappatura")
     outcome: str = Field(description="Esito RT dell'etichetta")
@@ -689,7 +689,7 @@ def get_decision_model(_actor: Actor):
 
 
 @router.post("/settings/decision-model/test", response_model=DecisionTestOut,
-             summary="Prova una configurazione JEV (anche non salvata) su un'unità di lezione")
+             summary="Prova una configurazione del classificatore (anche non salvata) su un'unità di lezione")
 def test_decision_model(body: DecisionTestIn, _actor: Actor):
     from rt.services.jev_playground import run_test
     return _playground_call(run_test, body.phase, body.decision, body.model, body.credential,
@@ -716,7 +716,7 @@ def probe_decision_model(body: DecisionModelIn, _actor: Actor):
         raise ApiError(422, "decision_protocol_failed", str(exc)) from exc
     answer = response.answers["categoria"]
     if answer.type != body.prefilter_type:
-        raise ApiError(422, "decision_protocol_failed", f"Il modello non ha restituito una risposta Jev {body.prefilter_type}.")
+        raise ApiError(422, "decision_protocol_failed", f"Il modello non ha restituito una risposta {body.prefilter_type} valida per il classificatore.")
     if answer.type == "choice":
         if answer.choice != "banana" or set(answer.probabilities) != {"banana", "altro"}:
             raise ApiError(422, "decision_protocol_failed", "Il modello non ha restituito opzioni e probabilità complete.")

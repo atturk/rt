@@ -1,6 +1,6 @@
 import type { Schemas } from '@/api/client'
 
-/** Domande JEV per fase e mappatura verso le etichette RT (vedi rt/core/jev_decision.py). */
+/** Domande del classificatore per fase e mappatura verso le etichette RT (vedi rt/core/jev_decision.py). */
 export type Decision = Schemas['JevDecisionConfig']
 export type Rule = Schemas['JevRule']
 export type Condition = Schemas['JevCondition']

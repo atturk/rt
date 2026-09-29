@@ -70,7 +70,7 @@ describe('DecisionModelSection', () => {
     const user = userEvent.setup()
     expect(await screen.findByLabelText('Domanda')).toHaveValue('Classifica l’unità.')
     expect(screen.getByLabelText('Fase')).toHaveValue('relevance')
-    expect(screen.getByLabelText('Comportamento JEV')).toHaveValue('shadow')
+    expect(screen.getByLabelText('Comportamento del classificatore')).toHaveValue('shadow')
     expect(screen.getAllByTestId('jev-option')).toHaveLength(3)
     expect(screen.getAllByTestId('jev-rule')).toHaveLength(2)
     expect(screen.getByText('Domanda predefinita')).toBeInTheDocument()
@@ -119,7 +119,7 @@ describe('DecisionModelSection', () => {
     expect(within(result).getByText('Organizzativa')).toBeInTheDocument()
     expect(within(result).getAllByText('91%')).toHaveLength(2) // confidenza e probabilità della scelta
     expect(within(result).getByText('5%')).toBeInTheDocument()
-    expect(within(result).getByText('JSON di Jev')).toBeInTheDocument()
+    expect(within(result).getByText('JSON del classificatore')).toBeInTheDocument()
   })
 
   it('salva entrambe le fasi con la bozza modificata', async () => {

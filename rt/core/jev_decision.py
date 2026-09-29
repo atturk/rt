@@ -46,8 +46,8 @@ def answer_fields(question_type: str, options: List[str]) -> Dict[str, str]:
 
 
 class JevOption(BaseModel):
-    """Un'opzione di una domanda choice: l'etichetta restituita da Jev e quando sceglierla."""
-    label: str = Field(description="Etichetta restituita da Jev (lettere, cifre, _ e -)")
+    """Un'opzione di una domanda choice: l'etichetta restituita dal classificatore e quando sceglierla."""
+    label: str = Field(description="Etichetta restituita dal classificatore (lettere, cifre, _ e -)")
     description: str = Field(min_length=1, max_length=4000, description="Quando scegliere questa opzione")
 
     @field_validator("label")
@@ -82,7 +82,7 @@ class JevRule(BaseModel):
 
 
 class JevDecisionConfig(BaseModel):
-    """Domanda Jev e mappatura verso le etichette RT di una fase."""
+    """Domanda del classificatore e mappatura verso le etichette RT di una fase."""
     question: str = Field(min_length=1, max_length=20000, description="Testo della domanda (istruzioni)")
     type: QuestionType = "choice"
     options: List[JevOption] = Field(default_factory=list, max_length=12, description="Opzioni (solo choice)")

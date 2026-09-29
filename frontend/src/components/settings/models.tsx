@@ -32,7 +32,7 @@ import { Checkbox, Field, SaveFeedback, SecretBadge, Section } from './common'
 type Connection = Settings['connections'][number]
 type Phase = Settings['phases'][number]
 
-// La sezione "Decisioni JEV" (playground delle domande e mappatura) vive in jev-playground.tsx.
+// La sezione "Classificatore" (playground delle domande e mappatura) vive in jev-playground.tsx.
 export { DecisionModelSection } from './jev-playground'
 
 export function PromptEditorSection() {

@@ -82,7 +82,7 @@ export function useDeleteSecret() {
   return useSettingsMutation((name: string) => unwrap(api.DELETE('/api/v1/secrets/{name}', { params: { path: { name } } })))
 }
 
-/** Elimina una connessione con modelli e chiavi; 409 se una fase, una route o JEV la usa ancora. */
+/** Elimina una connessione con modelli e chiavi; 409 se una fase, una route o il classificatore la usa ancora. */
 export function useDeleteConnection() {
   return useSettingsMutation((name: string) =>
     unwrap(api.DELETE('/api/v1/settings/connections/{name}', { params: { path: { name } } })),

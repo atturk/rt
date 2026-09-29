@@ -1,4 +1,4 @@
-"""Classificazione JEV post-rewrite, decisioni umane e filtro condiviso da review/Recall."""
+"""Classificazione (classificatore di rilevanza, es. Jev) post-rewrite, decisioni umane e filtro condiviso da review/Recall."""
 
 import hashlib
 import json
@@ -51,7 +51,7 @@ def _load(lesson_dir: str) -> dict:
                 data = json.load(stream)
             return data if isinstance(data, dict) else {}
         except (ValueError, OSError):
-            LOG.warning("Classificazioni JEV illeggibili: %s", lesson_dir, exc_info=True)
+            LOG.warning("Classificazioni del classificatore illeggibili: %s", lesson_dir, exc_info=True)
     return {}
 
 
@@ -73,11 +73,11 @@ def mode() -> str:
 
 
 def ensure_can_run() -> None:
-    """Conflict se JEV rilevanza è spento: il job non avrebbe niente da fare."""
+    """Conflict se il classificatore di rilevanza è spento: il job non avrebbe niente da fare."""
     if mode() == "disabled":
         from rt.services.errors import Conflict
-        raise Conflict("relevance_disabled", "JEV rilevanza è disattivato: scegli modello e comportamento in "
-                       "Impostazioni > Modelli > Decisioni JEV.")
+        raise Conflict("relevance_disabled", "Il classificatore di rilevanza è disattivato: scegli modello e comportamento in "
+                       "Impostazioni > Modelli > Classificatore.")
 
 
 def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False) -> dict:
@@ -105,6 +105,7 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
         override = old.get("override") if old.get("text_hash") == digest else None
         prior_override = old.get("override") if old.get("text_hash") != digest else old.get("prior_override")
         mapped, error = None, None
+        now = datetime.now(timezone.utc).isoformat()
         try:
             if force_mock:
                 mapped = jev_mapping.DecisionResult(label=decision.fallback_label, outcome="didactic", rule=None,
@@ -118,12 +119,12 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
                     timeout_seconds=cfg.timeout_seconds,
                 ).answers[jev_mapping.QUESTION_NAMES["relevance"]]
                 if answer.type != decision.type:
-                    raise ValueError("Risposta JEV di tipo inatteso")
+                    raise ValueError("Risposta del classificatore di tipo inatteso")
                 mapped = jev_mapping.evaluate("relevance", decision, answer)
         except Exception as exc:
             error = str(exc)
             errors += 1
-            LOG.warning("JEV rilevanza %s: %s", unit.unit_id, exc)
+            LOG.warning("Classificatore rilevanza %s: %s", unit.unit_id, exc)
         answer_data = mapped.answer if mapped else None
         result[unit.unit_id] = {"text_hash": digest, "config_hash": configuration,
                                 # prediction è già l'esito della mappatura (soglie comprese).
@@ -134,11 +135,11 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
                                 "answer": answer_data, "mapped": True,
                                 "override": override, "error": error,
                                 "prior_override": prior_override if prior_override in CLASSES else None,
-                                "last_run_mode": cfg.relevance_mode,
-                                "updated_at": datetime.now(timezone.utc).isoformat()}
+                                "last_run_mode": cfg.relevance_mode, "model": cfg.relevance_model,
+                                "classified_at": now, "updated_at": now}
         if ctx is not None and mapped is not None and not force_mock:
             from rt.services.events import Notice
-            ctx.emit(Notice(message=f"JEV rilevanza {unit.unit_id}: {jev_mapping.describe(mapped)}"))
+            ctx.emit(Notice(message=f"Classificatore rilevanza {unit.unit_id}: {jev_mapping.describe(mapped)}"))
     try:
         with _lock(lesson_dir):
             latest = _load(lesson_dir)
@@ -151,16 +152,16 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
             if result != latest:
                 _save(lesson_dir, result)
     except (OSError, TimeoutError):
-        LOG.exception("Impossibile salvare le classificazioni JEV; tutte le unità passeranno")
+        LOG.exception("Impossibile salvare le classificazioni; tutte le unità passeranno")
     if ctx is not None:
         from rt.services.events import Notice
         excluded = sum(1 for row in result.values() if _effective(row, cfg) != "didactic")
-        ctx.emit(Notice(message=f"JEV {cfg.relevance_mode}: {len(units)} unità valutate, {excluded} non didattiche, {errors} errori."))
+        ctx.emit(Notice(message=f"Classificatore ({cfg.relevance_mode}): {len(units)} unità valutate, {excluded} non didattiche, {errors} errori."))
     return result
 
 
 def _confidence(answer: Optional[dict]) -> Optional[float]:
-    """Confidenza mostrata accanto alla classificazione: quella di Jev, o la probabilità noul."""
+    """Confidenza mostrata accanto alla classificazione: quella del classificatore, o la probabilità noul."""
     if not answer:
         return None
     value = answer.get("confidence", answer.get("noul"))
@@ -212,7 +213,33 @@ def list_units(lesson_dir: str) -> dict:
                      "corrected_at": row.get("corrected_at") if fresh else None,
                      "corrected_by": row.get("corrected_by") if fresh else None,
                      "prior_override": row.get("prior_override") if fresh else row.get("override")})
-    return {"mode": mode(), "units": rows}
+    return {"mode": mode(), "units": rows, "summary": _summary(rows, records, units)}
+
+
+def _summary(rows: list, records: dict, units: list) -> dict:
+    """Riepilogo per capire a colpo d'occhio se il classificatore è passato sulla lezione e con che esito."""
+    current = {unit.unit_id for unit in units}
+    classified = [r for r in rows if r["prediction"] in CLASSES]
+    by_outcome = {name: sum(1 for r in classified if r["prediction"] == name) for name in CLASSES}
+    by_label: dict = {}
+    for row in classified:
+        key = row["label"] or row["prediction"]
+        by_label[key] = by_label.get(key, 0) + 1
+    fresh = {r["unit_id"] for r in rows if r["prediction"] in CLASSES or r["error"]}
+    # Righe salvate prima di classified_at: vale l'ultimo aggiornamento della riga.
+    runs = [records[uid] for uid in current & fresh]
+    stamps = [r.get("classified_at") or r.get("updated_at") for r in runs]
+    stamps = [s for s in stamps if s]
+    latest = max(runs, key=lambda r: r.get("classified_at") or r.get("updated_at") or "", default={})
+    return {"total": len(rows), "classified": len(classified),
+            "errors": sum(1 for r in rows if r["error"]),
+            "stale": sum(1 for r in rows if r["stale"]),
+            "missing": sum(1 for r in rows if not r["stale"] and r["prediction"] not in CLASSES and not r["error"]),
+            "corrected": sum(1 for r in rows if r["override"] in CLASSES),
+            "excluded": sum(1 for r in rows if r["effective"] != "didactic"),
+            "by_outcome": by_outcome, "by_label": dict(sorted(by_label.items(), key=lambda kv: (-kv[1], kv[0]))),
+            "last_run_at": max(stamps) if stamps else None,
+            "model": latest.get("model"), "last_run_mode": latest.get("last_run_mode")}
 
 
 def set_override(lesson_dir: str, unit_id: str, category: Optional[str], actor: str = "utente") -> dict:

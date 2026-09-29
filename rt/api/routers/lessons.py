@@ -71,14 +71,14 @@ def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 
 @router.get("/lessons/{lesson_id}/relevance", response_model=schemas.UnitRelevanceOverview,
-            summary="Classificazioni JEV e correzioni per ogni unità")
+            summary="Classificazioni del classificatore, correzioni per ogni unità e riepilogo")
 def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.unit_relevance import list_units
     return list_units(lesson_dir)
 
 
 @router.post("/lessons/{lesson_id}/relevance/run", response_model=schemas.JobAccepted, status_code=202,
-             summary="Accoda l'attribuzione delle etichette JEV alle unità (come 'rt relevance'); 409 relevance_disabled se JEV è spento")
+             summary="Accoda l'attribuzione delle etichette del classificatore alle unità (come 'rt relevance'); 409 relevance_disabled se il classificatore è spento")
 def run_unit_relevance(lesson_id: int, body: schemas.UnitRelevanceRun, lesson_dir: LessonDir, actor: Actor):
     from rt.api.jobs import enqueue_job
     from rt.services.unit_relevance import ensure_can_run

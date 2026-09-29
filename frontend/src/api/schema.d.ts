@@ -795,7 +795,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Classificazioni JEV e correzioni per ogni unità */
+        /** Classificazioni del classificatore, correzioni per ogni unità e riepilogo */
         get: operations["get_unit_relevance_api_v1_lessons__lesson_id__relevance_get"];
         put?: never;
         post?: never;
@@ -814,7 +814,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Accoda l'attribuzione delle etichette JEV alle unità (come 'rt relevance'); 409 relevance_disabled se JEV è spento */
+        /** Accoda l'attribuzione delle etichette del classificatore alle unità (come 'rt relevance'); 409 relevance_disabled se il classificatore è spento */
         post: operations["run_unit_relevance_api_v1_lessons__lesson_id__relevance_run_post"];
         delete?: never;
         options?: never;
@@ -935,7 +935,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o JEV la usa) */
+        /** Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o il classificatore la usa) */
         delete: operations["delete_connection_api_v1_settings_connections__name__delete"];
         options?: never;
         head?: never;
@@ -1003,7 +1003,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Prova una configurazione JEV (anche non salvata) su un'unità di lezione */
+        /** Prova una configurazione del classificatore (anche non salvata) su un'unità di lezione */
         post: operations["test_decision_model_api_v1_settings_decision_model_test_post"];
         delete?: never;
         options?: never;
@@ -2068,7 +2068,7 @@ export interface components {
             };
             /**
              * Response
-             * @description Risposta JSON di Jev
+             * @description Risposta JSON del classificatore
              */
             response: {
                 [key: string]: unknown;
@@ -2080,7 +2080,7 @@ export interface components {
             rule?: number | null;
             /**
              * State
-             * @description Stato inviato a Jev (l'unità di lezione)
+             * @description Stato inviato al classificatore (l'unità di lezione)
              */
             state: string;
             /** Unit Id */
@@ -2328,7 +2328,7 @@ export interface components {
         };
         /**
          * JevDecisionConfig
-         * @description Domanda Jev e mappatura verso le etichette RT di una fase.
+         * @description Domanda del classificatore e mappatura verso le etichette RT di una fase.
          */
         JevDecisionConfig: {
             /**
@@ -2366,7 +2366,7 @@ export interface components {
         };
         /**
          * JevOption
-         * @description Un'opzione di una domanda choice: l'etichetta restituita da Jev e quando sceglierla.
+         * @description Un'opzione di una domanda choice: l'etichetta restituita dal classificatore e quando sceglierla.
          */
         JevOption: {
             /**
@@ -2376,7 +2376,7 @@ export interface components {
             description: string;
             /**
              * Label
-             * @description Etichetta restituita da Jev (lettere, cifre, _ e -)
+             * @description Etichetta restituita dal classificatore (lettere, cifre, _ e -)
              */
             label: string;
         };
@@ -3731,7 +3731,7 @@ export interface components {
         UnitRelevanceItem: {
             /**
              * Answer
-             * @description Risposta JEV completa (scelta, confidenza, tutte le probabilità)
+             * @description Risposta completa del classificatore (scelta, confidenza, tutte le probabilità)
              */
             answer?: {
                 [key: string]: unknown;
@@ -3753,7 +3753,7 @@ export interface components {
             error?: string | null;
             /**
              * Label
-             * @description Etichetta RT assegnata dalla mappatura JEV
+             * @description Etichetta RT assegnata dalla mappatura del classificatore
              */
             label?: string | null;
             /** Override */
@@ -3784,6 +3784,7 @@ export interface components {
              * @enum {string}
              */
             mode: "disabled" | "shadow" | "active";
+            summary?: components["schemas"]["UnitRelevanceSummary"];
             /** Units */
             units: components["schemas"]["UnitRelevanceItem"][];
         };
@@ -3797,10 +3798,81 @@ export interface components {
             force: boolean;
             /**
              * Mock
-             * @description Modalità prova: nessuna chiamata a JEV
+             * @description Modalità prova: nessuna chiamata al classificatore
              * @default false
              */
             mock: boolean;
+        };
+        /** UnitRelevanceSummary */
+        UnitRelevanceSummary: {
+            /**
+             * By Label
+             * @description Unità classificate per etichetta del classificatore
+             */
+            by_label?: {
+                [key: string]: number;
+            };
+            /**
+             * By Outcome
+             * @description Unità classificate per classe RT
+             */
+            by_outcome?: {
+                [key: string]: number;
+            };
+            /**
+             * Classified
+             * @description Unità con una classificazione valida per il testo e la configurazione attuali
+             * @default 0
+             */
+            classified: number;
+            /**
+             * Corrected
+             * @description Unità corrette dall'utente
+             * @default 0
+             */
+            corrected: number;
+            /**
+             * Errors
+             * @description Unità la cui classificazione non è riuscita (passano comunque)
+             * @default 0
+             */
+            errors: number;
+            /**
+             * Excluded
+             * @description Unità la cui classe effettiva non è didattica
+             * @default 0
+             */
+            excluded: number;
+            /**
+             * Last Run At
+             * @description Ultima classificazione valida (ISO, UTC)
+             */
+            last_run_at?: string | null;
+            /** Last Run Mode */
+            last_run_mode?: string | null;
+            /**
+             * Missing
+             * @description Unità mai classificate
+             * @default 0
+             */
+            missing: number;
+            /**
+             * Model
+             * @description Modello dell'ultima classificazione, se registrato
+             */
+            model?: string | null;
+            /**
+             * Stale
+             * @description Unità classificate con un testo o una configurazione diversi
+             * @default 0
+             */
+            stale: number;
+            /**
+             * Total
+             * @description Unità della bozza
+             * @default 0
+             */
+            total: number;
         };
         /** UploadInventoryItem */
         UploadInventoryItem: {

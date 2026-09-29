@@ -14,7 +14,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   recall_generate: 'Domande di recall',
   recall_batch: 'Domande di recall',
   recall_refill: 'Rifornimento domande',
-  unit_relevance: 'Etichette JEV',
+  unit_relevance: 'Etichette del classificatore',
   recall_evaluate: 'Valutazione risposta',
   transcribe_voice: 'Trascrizione vocale',
   credential_test: 'Prova credenziale',

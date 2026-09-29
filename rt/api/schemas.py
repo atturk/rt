@@ -117,8 +117,8 @@ class UnitRelevanceItem(BaseModel):
     content: str
     prediction: Optional[Literal["didactic", "organizational", "no_content"]] = None
     confidence: Optional[float] = None
-    label: Optional[str] = Field(None, description="Etichetta RT assegnata dalla mappatura JEV")
-    answer: Optional[Dict[str, Any]] = Field(None, description="Risposta JEV completa (scelta, confidenza, tutte le probabilità)")
+    label: Optional[str] = Field(None, description="Etichetta RT assegnata dalla mappatura del classificatore")
+    answer: Optional[Dict[str, Any]] = Field(None, description="Risposta completa del classificatore (scelta, confidenza, tutte le probabilità)")
     override: Optional[Literal["didactic", "organizational", "no_content"]] = None
     effective: Literal["didactic", "organizational", "no_content"]
     error: Optional[str] = None
@@ -128,14 +128,30 @@ class UnitRelevanceItem(BaseModel):
     prior_override: Optional[Literal["didactic", "organizational", "no_content"]] = None
 
 
+class UnitRelevanceSummary(BaseModel):
+    total: int = Field(0, description="Unità della bozza")
+    classified: int = Field(0, description="Unità con una classificazione valida per il testo e la configurazione attuali")
+    errors: int = Field(0, description="Unità la cui classificazione non è riuscita (passano comunque)")
+    stale: int = Field(0, description="Unità classificate con un testo o una configurazione diversi")
+    missing: int = Field(0, description="Unità mai classificate")
+    corrected: int = Field(0, description="Unità corrette dall'utente")
+    excluded: int = Field(0, description="Unità la cui classe effettiva non è didattica")
+    by_outcome: Dict[str, int] = Field(default_factory=dict, description="Unità classificate per classe RT")
+    by_label: Dict[str, int] = Field(default_factory=dict, description="Unità classificate per etichetta del classificatore")
+    last_run_at: Optional[str] = Field(None, description="Ultima classificazione valida (ISO, UTC)")
+    model: Optional[str] = Field(None, description="Modello dell'ultima classificazione, se registrato")
+    last_run_mode: Optional[str] = None
+
+
 class UnitRelevanceOverview(BaseModel):
     mode: Literal["disabled", "shadow", "active"]
     units: List[UnitRelevanceItem]
+    summary: UnitRelevanceSummary = Field(default_factory=UnitRelevanceSummary)
 
 
 class UnitRelevanceRun(BaseModel):
     force: bool = Field(False, description="Riclassifica anche le unità già etichettate con il testo e la configurazione attuali")
-    mock: bool = Field(False, description="Modalità prova: nessuna chiamata a JEV")
+    mock: bool = Field(False, description="Modalità prova: nessuna chiamata al classificatore")
 
 
 class UnitRelevanceOverride(BaseModel):

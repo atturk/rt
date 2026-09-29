@@ -72,7 +72,7 @@ export function LessonJobBanner({ lessonId }: { lessonId: number }) {
           Job della lezione
         </Link>
         <Link to={`/lezioni/${lessonId}/rilevanza`} className="underline">
-          Verifica JEV
+          Classificatore
         </Link>
       </p>
     </div>

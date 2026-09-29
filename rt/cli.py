@@ -1054,7 +1054,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  export              Esporta il Markdown finale o tutti i dati di una lezione\n"
         "  import              Importa archivi .zip completi di RT come nuove lezioni\n"
         "  delete              Elimina una lezione (chiede conferma, --yes per saltarla)\n"
-        "  relevance           Assegna le etichette JEV alle unità (--all per rifarle tutte)\n"
+        "  relevance           Assegna le etichette del classificatore alle unità (--all per rifarle tutte)\n"
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
         "  validate-draft      Valida il draft rielaborato\n"
@@ -1181,7 +1181,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "--shadow-jev",
         action="store_true",
         dest="shadow_jev",
-        help="Esegue il pre-filtro Jev e ne registra il verdetto in llm_debug.log per confronto, "
+        help="Esegue il pre-filtro del classificatore e ne registra il verdetto in llm_debug.log per confronto, "
              "ma non salta né genera nulla: ogni unità passa comunque per l'intera critica LLM "
              "come oggi (richiede 'jev: {enabled: true}' in config/general.yaml — no-op altrimenti)"
     )
@@ -1354,10 +1354,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_del.add_argument("-y", "--yes", action="store_true", help="Non chiedere conferma")
     p_del.set_defaults(func=cmd_delete)
 
-    p_rel = subparsers.add_parser("relevance", help="Assegna le etichette JEV di rilevanza alle unità nuove o cambiate")
+    p_rel = subparsers.add_parser("relevance", help="Assegna le etichette di rilevanza del classificatore alle unità nuove o cambiate")
     p_rel.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_rel.add_argument("--all", action="store_true", help="Riclassifica anche le unità già etichettate")
-    p_rel.add_argument("--mock", action="store_true", help="Modalità prova: nessuna chiamata a JEV")
+    p_rel.add_argument("--mock", action="store_true", help="Modalità prova: nessuna chiamata al classificatore")
     p_rel.set_defaults(func=cmd_relevance)
 
     p_vph = subparsers.add_parser("validate-phase", help="Segna una fase come valida senza rieseguirla (es. dopo una modifica voluta)")

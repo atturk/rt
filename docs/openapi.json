@@ -856,7 +856,7 @@
           },
           "response": {
             "additionalProperties": true,
-            "description": "Risposta JSON di Jev",
+            "description": "Risposta JSON del classificatore",
             "title": "Response",
             "type": "object"
           },
@@ -873,7 +873,7 @@
             "title": "Rule"
           },
           "state": {
-            "description": "Stato inviato a Jev (l'unità di lezione)",
+            "description": "Stato inviato al classificatore (l'unità di lezione)",
             "title": "State",
             "type": "string"
           },
@@ -1541,7 +1541,7 @@
         "type": "object"
       },
       "JevDecisionConfig": {
-        "description": "Domanda Jev e mappatura verso le etichette RT di una fase.",
+        "description": "Domanda del classificatore e mappatura verso le etichette RT di una fase.",
         "properties": {
           "fallback_label": {
             "default": "Nessuna regola",
@@ -1603,7 +1603,7 @@
         "type": "object"
       },
       "JevOption": {
-        "description": "Un'opzione di una domanda choice: l'etichetta restituita da Jev e quando sceglierla.",
+        "description": "Un'opzione di una domanda choice: l'etichetta restituita dal classificatore e quando sceglierla.",
         "properties": {
           "description": {
             "description": "Quando scegliere questa opzione",
@@ -1613,7 +1613,7 @@
             "type": "string"
           },
           "label": {
-            "description": "Etichetta restituita da Jev (lettere, cifre, _ e -)",
+            "description": "Etichetta restituita dal classificatore (lettere, cifre, _ e -)",
             "title": "Label",
             "type": "string"
           }
@@ -4617,7 +4617,7 @@
                 "type": "null"
               }
             ],
-            "description": "Risposta JEV completa (scelta, confidenza, tutte le probabilità)",
+            "description": "Risposta completa del classificatore (scelta, confidenza, tutte le probabilità)",
             "title": "Answer"
           },
           "confidence": {
@@ -4686,7 +4686,7 @@
                 "type": "null"
               }
             ],
-            "description": "Etichetta RT assegnata dalla mappatura JEV",
+            "description": "Etichetta RT assegnata dalla mappatura del classificatore",
             "title": "Label"
           },
           "override": {
@@ -4793,6 +4793,9 @@
             "title": "Mode",
             "type": "string"
           },
+          "summary": {
+            "$ref": "#/components/schemas/UnitRelevanceSummary"
+          },
           "units": {
             "items": {
               "$ref": "#/components/schemas/UnitRelevanceItem"
@@ -4818,12 +4821,111 @@
           },
           "mock": {
             "default": false,
-            "description": "Modalità prova: nessuna chiamata a JEV",
+            "description": "Modalità prova: nessuna chiamata al classificatore",
             "title": "Mock",
             "type": "boolean"
           }
         },
         "title": "UnitRelevanceRun",
+        "type": "object"
+      },
+      "UnitRelevanceSummary": {
+        "properties": {
+          "by_label": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Unità classificate per etichetta del classificatore",
+            "title": "By Label",
+            "type": "object"
+          },
+          "by_outcome": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Unità classificate per classe RT",
+            "title": "By Outcome",
+            "type": "object"
+          },
+          "classified": {
+            "default": 0,
+            "description": "Unità con una classificazione valida per il testo e la configurazione attuali",
+            "title": "Classified",
+            "type": "integer"
+          },
+          "corrected": {
+            "default": 0,
+            "description": "Unità corrette dall'utente",
+            "title": "Corrected",
+            "type": "integer"
+          },
+          "errors": {
+            "default": 0,
+            "description": "Unità la cui classificazione non è riuscita (passano comunque)",
+            "title": "Errors",
+            "type": "integer"
+          },
+          "excluded": {
+            "default": 0,
+            "description": "Unità la cui classe effettiva non è didattica",
+            "title": "Excluded",
+            "type": "integer"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima classificazione valida (ISO, UTC)",
+            "title": "Last Run At"
+          },
+          "last_run_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Mode"
+          },
+          "missing": {
+            "default": 0,
+            "description": "Unità mai classificate",
+            "title": "Missing",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Modello dell'ultima classificazione, se registrato",
+            "title": "Model"
+          },
+          "stale": {
+            "default": 0,
+            "description": "Unità classificate con un testo o una configurazione diversi",
+            "title": "Stale",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "description": "Unità della bozza",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "UnitRelevanceSummary",
         "type": "object"
       },
       "UploadInventoryItem": {
@@ -9755,7 +9857,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Classificazioni JEV e correzioni per ogni unità",
+        "summary": "Classificazioni del classificatore, correzioni per ogni unità e riepilogo",
         "tags": [
           "lezioni"
         ]
@@ -9854,7 +9956,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Accoda l'attribuzione delle etichette JEV alle unità (come 'rt relevance'); 409 relevance_disabled se JEV è spento",
+        "summary": "Accoda l'attribuzione delle etichette del classificatore alle unità (come 'rt relevance'); 409 relevance_disabled se il classificatore è spento",
         "tags": [
           "lezioni"
         ]
@@ -10556,7 +10658,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o JEV la usa)",
+        "summary": "Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o il classificatore la usa)",
         "tags": [
           "impostazioni"
         ]
@@ -10985,7 +11087,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Prova una configurazione JEV (anche non salvata) su un'unità di lezione",
+        "summary": "Prova una configurazione del classificatore (anche non salvata) su un'unità di lezione",
         "tags": [
           "impostazioni"
         ]

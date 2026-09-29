@@ -90,7 +90,7 @@ def test_delete_connection_used_by_jev_is_409(api_client, ws):
     config_service.write_yaml_atomic(general_config_path(), data)
     res = api_client.delete("/api/v1/settings/connections/openrouter")
     assert res.status_code == 409
-    assert res.json()["error"]["details"]["usages"] == ["Decisioni JEV"]
+    assert res.json()["error"]["details"]["usages"] == ["Classificatore"]
     data["jev"]["relevance_mode"] = "disabled"
     config_service.write_yaml_atomic(general_config_path(), data)
     assert api_client.delete("/api/v1/settings/connections/openrouter").status_code == 200

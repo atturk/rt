@@ -49,7 +49,7 @@ def probe_missing(checks) -> Optional[str]:
     with session_scope(get_database()) as session:
         for credential, model, request_type in checks:
             if session.get(Setting, probe_key(credential, model, request_type)) is None:
-                return f"Prova prima il protocollo Jev {request_type} del modello {model}."
+                return f"Prova prima il protocollo {request_type} del classificatore sul modello {model}."
     return None
 
 
@@ -104,7 +104,7 @@ def run_test(phase: str, decision: JevDecisionConfig, model: str, credential: st
     answer = response.answers.get(name)
     if answer is None or answer.type != decision.type:
         raise PlaygroundError(422, "decision_protocol_failed",
-                              f"Il modello non ha restituito una risposta Jev {decision.type}.")
+                              f"Il modello non ha restituito una risposta {decision.type} valida per il classificatore.")
     result = jev_mapping.evaluate(phase, decision, answer)
     record_probe(credential, model.strip(), decision.type)
     raw = response.raw if response.raw is not None else response.model_dump()

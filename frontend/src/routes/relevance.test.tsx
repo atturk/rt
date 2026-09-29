@@ -19,9 +19,9 @@ const unit = (unit_id: string, over: Record<string, unknown> = {}) => ({
 
 const ok = (data: unknown) => ({ data, error: undefined, response: new Response('{}', { status: 200 }) })
 
-function mockApi(units: ReturnType<typeof unit>[], mode = 'active') {
+function mockApi(units: ReturnType<typeof unit>[], mode = 'active', summary?: Record<string, unknown>) {
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
-    if (path === '/api/v1/lessons/{lesson_id}/relevance') return Promise.resolve(ok({ mode, units }))
+    if (path === '/api/v1/lessons/{lesson_id}/relevance') return Promise.resolve(ok({ mode, units, summary }))
     if (path === '/api/v1/lessons/{lesson_id}/document') return Promise.resolve(ok({ sections: [{ unit_id: '1.2', start_formatted: '12:30' }] }))
     return Promise.resolve(ok({ id: 5, titolo: 'Il rene' }))
   }) as never)
@@ -73,15 +73,15 @@ describe('RelevancePage', () => {
     renderPage()
     expect(await screen.findByText('Campione controllato: 3 / 4')).toBeInTheDocument()
     expect(screen.getByText('Omissioni didattiche individuate: 1')).toBeInTheDocument()
-    // Riga = classe di JEV, colonne = correzione umana (didattico, organizzativo, nessun contenuto).
-    const rows = within(screen.getByRole('table', { name: 'JEV → correzione umana' })).getAllByRole('row')
+    // Riga = classe del classificatore, colonne = correzione umana (didattico, organizzativo, nessun contenuto).
+    const rows = within(screen.getByRole('table', { name: 'Classificatore → correzione umana' })).getAllByRole('row')
     const counts = (label: string) => Array.from(rows.find((r) => r.firstElementChild?.textContent === label)?.querySelectorAll('td') ?? [], (c) => c.textContent)
     expect(counts('Informazioni organizzative')).toEqual(['1', '0', '0'])
     expect(counts('Assenza di contenuto didattico')).toEqual(['0', '0', '1'])
     expect(counts('Contenuto didattico')).toEqual(['1', '0', '0'])
   })
 
-  it('applica una correzione e ripristina la classificazione di JEV', async () => {
+  it('applica una correzione e ripristina la classificazione del classificatore', async () => {
     const put = mockApi([unit('2.1', { prediction: 'organizational', effective: 'no_content', override: 'no_content' })])
     renderPage()
     const card = (await screen.findAllByTestId('relevance-unit'))[0]
@@ -94,7 +94,7 @@ describe('RelevancePage', () => {
         body: { category: 'didactic' },
       }),
     )
-    fireEvent.click(within(card).getByRole('button', { name: 'Ripristina JEV' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Ripristina classificatore' }))
     await vi.waitFor(() => expect(put).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ body: { category: null } })))
   })
 
@@ -130,10 +130,34 @@ describe('RelevancePage: assegnazione delle etichette', () => {
     await vi.waitFor(() => expect(relevanceReads).toBeGreaterThan(1))
   })
 
-  it('con JEV spento i pulsanti sono disattivati e rimandano alle impostazioni', async () => {
+  it('con il classificatore spento i pulsanti sono disattivati e rimandano alle impostazioni', async () => {
     mockApi([unit('1.1')], 'disabled')
     renderPage()
     expect(await screen.findByRole('button', { name: 'Assegna etichette' })).toBeDisabled()
     expect(screen.getByRole('link', { name: 'Impostazioni' })).toHaveAttribute('href', '/impostazioni/modelli')
+  })
+
+  it('riassume se il classificatore è passato e quante unità ha messo in ogni classe ed etichetta', async () => {
+    mockApi([unit('1.1'), unit('1.2')], 'active', {
+      total: 3, classified: 2, errors: 1, stale: 0, missing: 0, corrected: 0, excluded: 1,
+      by_outcome: { didactic: 1, organizational: 1, no_content: 0 }, by_label: { didactic: 1, logistica: 1 },
+      last_run_at: '2026-09-29T10:00:00+00:00', model: 'typesafe/jev-1.13', last_run_mode: 'active',
+    })
+    renderPage()
+    const summary = await screen.findByTestId('relevance-summary')
+    expect(within(summary).getByText('Eseguito su 2 / 3 unità')).toBeInTheDocument()
+    expect(within(summary).getByText(/typesafe\/jev-1.13/)).toBeInTheDocument()
+    expect(within(within(summary).getByRole('list', { name: 'Unità per classe' })).getAllByRole('listitem').map((li) => li.textContent))
+      .toEqual(['Contenuto didattico: 1', 'Informazioni organizzative: 1'])
+    expect(within(summary).getByRole('list', { name: 'Unità per etichetta' })).toHaveTextContent('logistica: 1')
+    expect(within(summary).getByText(/1 non riuscite/)).toBeInTheDocument()
+  })
+
+  it('dice quando il classificatore non è mai stato eseguito sulla lezione', async () => {
+    mockApi([unit('1.1', { prediction: null })], 'active', {
+      total: 1, classified: 0, errors: 0, stale: 0, missing: 1, corrected: 0, excluded: 0, by_outcome: {}, by_label: {},
+    })
+    renderPage()
+    expect(await screen.findByText('Mai eseguito su questa lezione')).toBeInTheDocument()
   })
 })

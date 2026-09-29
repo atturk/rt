@@ -203,7 +203,7 @@ def connection_usages(project_root: Path, name: str) -> list[str]:
     jev_active = bool(jev.get("enabled")) or (
         jev.get("relevance_mode", "shadow") != "disabled" and bool(str(jev.get("relevance_model") or "").strip()))
     if jev_active and jev.get("credential", "openrouter") in keys:
-        usages.append("Decisioni JEV")
+        usages.append("Classificatore")
     return usages
 
 

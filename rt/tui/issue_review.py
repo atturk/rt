@@ -310,7 +310,7 @@ class IssueReviewApp(App):
             if iss.type == ScienceType.ERR_ASR_ST:
                 header_title = "🎙️ RISCHIO ASR (statistico)"
             elif iss.type == ScienceType.ERR_REWRITE_DRIFT:
-                header_title = "🔀 DERIVA RIELABORAZIONE (Jev)"
+                header_title = "🔀 DERIVA RIELABORAZIONE (classificatore)"
             else:
                 header_title = "🎙️ RISCHIO ASR (validato LLM)"
             return f"{header_title} · ID: {iss.id}"

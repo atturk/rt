@@ -38,7 +38,7 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Schema
     </div>
     <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{unit.content}</p>
     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-      <Badge tone={unit.prediction && unit.prediction !== 'didactic' ? 'warning' : 'neutral'}>JEV: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</Badge>
+      <Badge tone={unit.prediction && unit.prediction !== 'didactic' ? 'warning' : 'neutral'}>Classificatore: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</Badge>
       {unit.label && <span>Etichetta: {unit.label}</span>}
       {unit.confidence != null && <span>{unit.answer?.type === 'noul' ? 'Probabilità' : 'Confidenza'}: {Math.round(unit.confidence * 100)}%</span>}
       {unit.answer?.probabilities != null && typeof unit.answer.probabilities === 'object' &&
@@ -57,9 +57,44 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Schema
         </Select>
       </label>
       <Button size="sm" disabled={update.isPending} onClick={() => update.mutate(choice)}>Applica correzione</Button>
-      {unit.override && <Button size="sm" variant="outline" disabled={update.isPending} onClick={() => update.mutate(null)}>Ripristina JEV</Button>}
+      {unit.override && <Button size="sm" variant="outline" disabled={update.isPending} onClick={() => update.mutate(null)}>Ripristina classificatore</Button>}
     </div>
     {update.isError && <Alert tone="danger">{errorMessage(update.error)}</Alert>}
+  </Card>
+}
+
+/** Riepilogo in cima alla pagina: se il classificatore è passato sulla lezione, quando, con quale
+ * modello e quante unità ha messo in ciascuna classe o etichetta. */
+function RelevanceSummary({ summary }: { summary: Schemas['UnitRelevanceSummary'] | undefined }) {
+  if (!summary || summary.total === 0) return null
+  const s = summary
+  const status = s.classified === 0 && s.errors === 0
+    ? { tone: 'warning' as const, text: s.stale > 0 ? 'Da rieseguire: testo o configurazione cambiati' : 'Mai eseguito su questa lezione' }
+    : s.classified === s.total ? { tone: 'success' as const, text: 'Eseguito su tutte le unità' }
+      : { tone: 'warning' as const, text: `Eseguito su ${s.classified} / ${s.total} unità` }
+  const outcomes = (Object.keys(labels) as Category[]).filter((c) => (s.by_outcome?.[c] ?? 0) > 0)
+  // Etichette come le restituisce il classificatore (mappatura in Impostazioni); le classi RT dicono cosa ne segue.
+  const byLabel = Object.entries(s.by_label ?? {})
+  return <Card className="flex flex-col gap-2 p-3 text-sm" data-testid="relevance-summary">
+    <div className="flex flex-wrap items-center gap-2">
+      <strong>Stato del classificatore</strong>
+      <Badge tone={status.tone}>{status.text}</Badge>
+      {s.last_run_at && <span className="text-xs text-muted-foreground">Ultima esecuzione: {new Date(s.last_run_at).toLocaleString('it-IT')}
+        {s.model ? ` · ${s.model}` : ''}</span>}
+    </div>
+    {byLabel.length > 0 && <div className="flex flex-wrap items-center gap-2 text-xs"><span>Etichette:</span>
+      <ul className="flex flex-wrap gap-2" aria-label="Unità per etichetta">
+        {byLabel.map(([label, count]) => <li key={label}><Badge>{label}: {count}</Badge></li>)}
+      </ul></div>}
+    {s.classified > 0 && <div className="flex flex-wrap items-center gap-2 text-xs"><span>Classi RT:</span>
+      <ul className="flex flex-wrap gap-2" aria-label="Unità per classe">
+        {outcomes.map((c) => <li key={c}><Badge tone={c === 'didactic' ? 'neutral' : 'warning'}>{labels[c]}: {s.by_outcome?.[c]}</Badge></li>)}
+      </ul></div>}
+    {(s.errors > 0 || s.stale > 0 || (s.missing > 0 && s.classified > 0) || s.corrected > 0) && <p className="text-xs text-muted-foreground">
+      {[s.errors > 0 && `${s.errors} non riuscite`, s.stale > 0 && `${s.stale} da rivalutare`,
+        s.missing > 0 && s.classified > 0 && `${s.missing} mai classificate`, s.corrected > 0 && `${s.corrected} corrette da te`,
+        `${s.excluded} escluse come non didattiche`].filter(Boolean).join(' · ')}
+    </p>}
   </Card>
 }
 
@@ -85,12 +120,12 @@ function RunRelevance({ lessonId, disabled }: { lessonId: number; disabled: bool
       <Button size="sm" disabled={disabled || busy} onClick={() => { setJobId(null); start.mutate(false) }}>Assegna etichette</Button>
       <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => { setJobId(null); start.mutate(true) }}>Riclassifica tutte</Button>
       <span className="text-xs text-muted-foreground">
-        {disabled ? <>JEV rilevanza è disattivato: attivalo in <Link className="underline" to="/impostazioni/modelli">Impostazioni</Link>.</>
+        {disabled ? <>Il classificatore di rilevanza è disattivato: attivalo in <Link className="underline" to="/impostazioni/modelli">Impostazioni</Link>.</>
           : 'Assegna etichette classifica solo le unità nuove o cambiate; le tue correzioni restano.'}
       </span>
     </div>
     {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
-    {jobId && <JobProgress jobId={jobId} label="Etichette JEV" onFinished={finished} />}
+    {jobId && <JobProgress jobId={jobId} label="Etichette del classificatore" onFinished={finished} />}
   </Card>
 }
 
@@ -105,22 +140,23 @@ export function RelevancePage() {
   const omissions = checked.filter((u) => u.prediction && u.prediction !== 'didactic' && u.override === 'didactic').length
   return <section className="flex flex-col gap-4">
     <Link to={`/lezioni/${id}`} className="text-xs underline">← Torna alla lezione</Link>
-    <h1 className="text-xl font-bold">Verifica JEV · {lesson.data?.titolo ?? `Lezione ${id}`}</h1>
+    <h1 className="text-xl font-bold">Classificatore · {lesson.data?.titolo ?? `Lezione ${id}`}</h1>
     {data.isError && <Alert tone="danger">{errorMessage(data.error)}</Alert>}
     {data.isPending && <p>Carico le classificazioni…</p>}
     {data.data && <>
       <Alert tone={data.data.mode === 'active' ? 'warning' : 'neutral'}>
         {data.data.mode === 'active' ? 'Filtro attivo: le unità non didattiche vengono escluse dalle nuove review e domande Recall.' :
-          data.data.mode === 'shadow' ? 'Modalità ombra: JEV classifica, ma tutte le unità proseguono verso review e Recall.' :
-            'JEV disattivato: tutte le unità proseguono; le classificazioni precedenti restano consultabili.'}
+          data.data.mode === 'shadow' ? 'Modalità ombra: il classificatore classifica, ma tutte le unità proseguono verso review e Recall.' :
+            'Classificatore disattivato: tutte le unità proseguono; le classificazioni precedenti restano consultabili.'}
       </Alert>
+      <RelevanceSummary summary={data.data.summary} />
       <RunRelevance lessonId={id} disabled={data.data.mode === 'disabled'} />
       <p className="text-sm text-muted-foreground">Controlla un campione, in particolare introduzioni e unità miste. Le correzioni si applicano alle esecuzioni successive; la bozza originale resta visibile.</p>
       <Card className="p-3 text-sm">
         <strong>Campione controllato: {checked.length} / {data.data.units.length}</strong>
         <span className="ml-3">Omissioni didattiche individuate: {omissions}</span>
-        {checked.length > 0 && <table className="mt-2 w-full text-left text-xs"><caption className="text-left font-medium">JEV → correzione umana</caption>
-          <thead><tr><th>Classe JEV</th>{Object.values(labels).map((label) => <th key={label}>{label}</th>)}</tr></thead>
+        {checked.length > 0 && <table className="mt-2 w-full text-left text-xs"><caption className="text-left font-medium">Classificatore → correzione umana</caption>
+          <thead><tr><th>Classe assegnata</th>{Object.values(labels).map((label) => <th key={label}>{label}</th>)}</tr></thead>
           <tbody>{(Object.keys(labels) as Category[]).map((predicted) => <tr key={predicted}><th>{labels[predicted]}</th>
             {(Object.keys(labels) as Category[]).map((corrected) => <td key={corrected}>{checked.filter((u) => u.prediction === predicted && u.override === corrected).length}</td>)}
           </tr>)}</tbody>

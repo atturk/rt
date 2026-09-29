@@ -84,7 +84,7 @@ def test_custom_noul_decision_stores_full_answer_and_label(tmp_path):
         assert (rows[1]["effective"], rows[1]["label"]) == ("didactic", "Didattica")
         units = load_draft(path).units
         assert not gate.included(path, units[0]) and gate.included(path, units[1])
-    assert any(message.startswith("JEV rilevanza 1.1: Vuota") for message in events.messages)
+    assert any(message.startswith("Classificatore rilevanza 1.1: Vuota") for message in events.messages)
     # Una domanda diversa invalida la cache delle classificazioni.
     edited = decision.model_copy(update={"question": "Altro"})
     cfg_edited = RTConfig(jev=cfg.jev.model_copy(update={"relevance_decision": edited}))
@@ -140,3 +140,22 @@ def test_run_is_refused_when_relevance_is_disabled():
         with pytest.raises(Conflict) as error:
             gate.ensure_can_run()
     assert error.value.code == "relevance_disabled"
+
+
+def test_summary_says_whether_and_how_the_classifier_ran(tmp_path):
+    path = setup_mock_lesson(tmp_path, num_units=2)
+    with patch.object(gate, "load_config", return_value=_config("active")):
+        summary = gate.list_units(path)["summary"]
+        assert summary["classified"] == 0 and summary["missing"] == 2 and summary["last_run_at"] is None
+    answer = JevChoiceAnswer(choice="organizational", confidence=0.99,
+                             probabilities={"didactic": 0.01, "organizational": 0.99, "no_content": 0.0})
+    response = JevResponse(model="typesafe/jev-1.13", answers={"rilevanza": answer}, usage={})
+    with patch.object(gate, "load_config", return_value=_config("active")), \
+            patch("rt.llm.jev_client.call_jev", side_effect=[response, RuntimeError("provider offline")]):
+        gate.refresh(path)
+        summary = gate.list_units(path)["summary"]
+    assert summary["total"] == 2 and summary["classified"] == 1 and summary["errors"] == 1 and summary["missing"] == 0
+    assert summary["by_outcome"] == {"didactic": 0, "organizational": 1, "no_content": 0}
+    assert summary["by_label"] == {"Organizzativa": 1}
+    assert summary["excluded"] == 1 and summary["model"] == "typesafe/jev-1.13"
+    assert summary["last_run_at"] and summary["last_run_mode"] == "active"

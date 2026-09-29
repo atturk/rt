@@ -31,7 +31,7 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
     <Field label="Tipo di domanda" htmlFor="jev-type"><Select id="jev-type" value={decision.type} onChange={(e) => onTypeChange(e.target.value as QuestionType)}>
       {Object.entries(TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
     </Select></Field>
-    <Field label="Domanda" htmlFor="jev-question" hint="Lo stato inviato a Jev è l’unità di lezione: il testo qui descrive cosa decidere.">
+    <Field label="Domanda" htmlFor="jev-question" hint="Lo stato inviato al classificatore è l’unità di lezione: il testo qui descrive cosa decidere.">
       <textarea id="jev-question" className="w-full rounded border bg-background p-2 text-sm" rows={5} value={decision.question}
         onChange={(e) => onChange({ ...decision, question: e.target.value })} /></Field>
 
@@ -119,7 +119,7 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
   </div>
 }
 
-/** Esito della prova: etichetta RT, risposta di Jev (tutte le probabilità) e JSON grezzo. */
+/** Esito della prova: etichetta RT, risposta del classificatore (tutte le probabilità) e JSON grezzo. */
 export function DecisionTestResult({ phase, result }: { phase: Phase; result: DecisionTest }) {
   const answer = result.answer as Record<string, unknown>
   const probabilities = (answer.probabilities ?? {}) as Record<string, number>
@@ -146,7 +146,7 @@ export function DecisionTestResult({ phase, result }: { phase: Phase; result: De
       </tr>)}</tbody></table>}
     {Object.keys(legend).length > 0 && Object.keys(probabilities).length === 0 && <ul className="text-xs">
       {Object.entries(legend).map(([key, text]) => <li key={key}><strong>{key}</strong>: {text}</li>)}</ul>}
-    <details><summary className="cursor-pointer text-xs">JSON di Jev</summary>
+    <details><summary className="cursor-pointer text-xs">JSON del classificatore</summary>
       <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-[11px]">{JSON.stringify(result.response, null, 2)}</pre>
     </details>
   </div>
@@ -216,8 +216,8 @@ export function DecisionModelSection() {
   })
   const customized = phase === 'relevance' ? data?.relevance_customized : data?.prefilter_customized
 
-  return <Section id="classificatore" title="Decisioni JEV"
-    description="Configura la domanda inviata a Jev per ogni fase e come la risposta diventa un’etichetta di RT. Un errore o una risposta non valutabile lasciano sempre passare l’unità.">
+  return <Section id="classificatore" title="Classificatore"
+    description="Configura la domanda inviata al classificatore (ad esempio Jev) per ogni fase e come la risposta diventa un’etichetta di RT. Un errore o una risposta non valutabile lasciano sempre passare l’unità.">
     {configured.isError && <Alert tone="danger">{errorMessage(configured.error)}</Alert>}
     <div className="grid gap-2 sm:grid-cols-2">
       <Field label="Fase" htmlFor="jev-phase"><Select id="jev-phase" value={phase} onChange={(e) => { setPhase(e.target.value as Phase); test.reset() }}>
@@ -227,15 +227,15 @@ export function DecisionModelSection() {
     </div>
     {phase === 'relevance'
       ? <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Modello JEV rilevanza" htmlFor="relevance-model-name"><Input id="relevance-model-name" value={relevanceModel} onChange={(e) => setRelevanceModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev" /></Field>
-          <Field label="Comportamento JEV" htmlFor="relevance-mode"><Select id="relevance-mode" value={relevanceMode} onChange={(e) => setRelevanceMode(e.target.value as typeof relevanceMode)}>
+          <Field label="Modello del classificatore di rilevanza" htmlFor="relevance-model-name"><Input id="relevance-model-name" value={relevanceModel} onChange={(e) => setRelevanceModel(e.target.value)} placeholder="Facoltativo: ID del modello classificatore" /></Field>
+          <Field label="Comportamento del classificatore" htmlFor="relevance-mode"><Select id="relevance-mode" value={relevanceMode} onChange={(e) => setRelevanceMode(e.target.value as typeof relevanceMode)}>
             <option value="disabled">Disattivato · tutte le unità passano, nessuna chiamata</option>
             <option value="shadow">Ombra · classifica, tutte le unità passano</option>
             <option value="active">Filtro attivo · solo unità didattiche a review e Recall</option>
           </Select></Field>
         </div>
       : <div className="flex flex-col gap-2">
-          <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello Jev" /></Field>
+          <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello classificatore" /></Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Abilita il prefiltro errori</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={shadow} onChange={(e) => setShadow(e.target.checked)} />Prefiltro in ombra (non salta la review)</label>
         </div>}

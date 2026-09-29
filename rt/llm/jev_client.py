@@ -118,7 +118,7 @@ def _parse_answer(name: str, raw: Dict) -> JevAnswer:
         return JevScoreAnswer.model_validate(raw)
     if a_type == "noul":
         return JevNoulAnswer.model_validate(raw)
-    raise JevError(f"Tipo di risposta Jev sconosciuto per la domanda '{name}': {a_type!r}")
+    raise JevError(f"Tipo di risposta del classificatore sconosciuto per la domanda '{name}': {a_type!r}")
 
 
 def call_jev(
@@ -143,7 +143,7 @@ def call_jev(
 
     api_key = GLOBAL_CREDENTIALS.get_api_key(credential)
     if not api_key:
-        raise JevError(f"Credenziale '{credential}' non configurata o chiave API mancante per Jev.")
+        raise JevError(f"Credenziale '{credential}' non configurata o chiave API mancante per il classificatore.")
 
     payload = {
         "state": state,
@@ -162,10 +162,10 @@ def call_jev(
         resp_json = resp.json()
         if resp.status_code != 200:
             error_message = GLOBAL_CREDENTIALS.sanitize_secrets(str(resp_json))
-            raise JevError(f"Jev ha risposto con status {resp.status_code}: {error_message}", http_status=resp.status_code)
+            raise JevError(f"Il classificatore ha risposto con status {resp.status_code}: {error_message}", http_status=resp.status_code)
     except (requests.RequestException, ValueError) as e:
         error_message = GLOBAL_CREDENTIALS.sanitize_secrets(str(e))
-        raise JevError(f"Errore chiamando Jev: {error_message}") from e
+        raise JevError(f"Errore chiamando il classificatore: {error_message}") from e
     finally:
         elapsed = time.time() - t_start
         usage = resp_json.get("usage", {}) if isinstance(resp_json, dict) else {}

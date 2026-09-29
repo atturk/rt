@@ -294,7 +294,7 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
     sullo stesso modello già usato da detect_statistical_asr_risks per le issue ERR_ASR_ST."""
     severity = ScienceSeverity.HIGH if verdict.noul_probability >= 0.9 else ScienceSeverity.MEDIUM
     reason = (
-        f"Il modello di pre-screening Jev ha rilevato con probabilità {verdict.noul_probability:.2f} "
+        f"Il classificatore di pre-screening ha rilevato con probabilità {verdict.noul_probability:.2f} "
         f"che questa unità rielaborata contiene contenuto non supportato dai segmenti ASR grezzi "
         f"corrispondenti, o si discosta significativamente dal loro significato. Nessuna revisione "
         f"LLM è stata eseguita su questo punto: verifica ascoltando l'audio originale (tasto P)."
@@ -338,7 +338,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
                 jev_log[unit.unit_id] = verdict_a.as_dict()
             if ctx is not None:
                 from rt.services.jev_mapping import DecisionResult, describe
-                ctx.emit(Notice(message=f"JEV prefiltro {unit.unit_id}: " + describe(DecisionResult(
+                ctx.emit(Notice(message=f"Classificatore prefiltro {unit.unit_id}: " + describe(DecisionResult(
                     label=verdict_a.label, outcome=verdict_a.outcome, rule=None, answer=verdict_a.answer))))
 
         if not (shadow_jev or _cfg.jev.shadow):
