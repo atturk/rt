@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 
 /**
  * True mentre è premuto Option (Alt): rivela le azioni nascoste o alternative (elimina lezione,
- * connessione, chiave; "Valida" al posto di "Esegui" nelle fasi) senza tenerle sempre in vista. Torna false quando la finestra perde il
- * focus, altrimenti un Cmd-Tab con Option premuto lascerebbe il pulsante visibile.
+ * connessione, chiave; "Valida" al posto di "Esegui" nelle fasi) senza tenerle sempre in vista.
+ * Torna false quando la finestra perde il focus, altrimenti un Cmd-Tab con Option premuto
+ * lascerebbe il pulsante visibile.
  */
 export function useOptionKey(): boolean {
   const [down, setDown] = useState(false)

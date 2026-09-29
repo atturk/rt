@@ -45,6 +45,7 @@ def _connection(api_client, name="Studio", keys=(KEY_A, KEY_B)):
 
 
 def test_delete_connection_removes_entry_credentials_and_keys(api_client, api_token, ws):
+    other = _connection(api_client, "Altra", ("sk-or-v1-altra-chiave-che-resta-0123456789",))
     env_vars = _connection(api_client)
     api_client.post("/api/v1/settings/connections/Studio/models", json={"model": "openai/gpt-4.1"})
     assert all(os.environ.get(v) for v in env_vars)
@@ -59,7 +60,7 @@ def test_delete_connection_removes_entry_credentials_and_keys(api_client, api_to
     general = _general()
     assert all(c.get("name") != "Studio" for c in general.get("connections") or [])
     assert all(c.get("env_var") not in env_vars for c in general.get("credentials") or [])
-    assert [c["name"] for c in general["credentials"]] == ["openrouter"]  # le altre restano
+    assert [c["env_var"] for c in general["credentials"]] == other  # le altre restano
     assert KEY_A not in _env_text() and KEY_B not in _env_text()
     assert not any(v in os.environ for v in env_vars)
 
@@ -82,6 +83,8 @@ def test_delete_connection_used_by_jev_is_409(api_client, ws):
     from rt.services import config_service
     from rt.services.config_service import general_config_path
     data = _general()
+    # una nuova installazione non ha connessioni: quella usata da JEV la dichiara l'utente
+    data["credentials"] = [{"name": "openrouter", "provider": "openrouter", "env_var": "OPENROUTER_API_KEY"}]
     data["jev"] = {**data.get("jev", {}), "enabled": False, "relevance_mode": "active",
                    "relevance_model": "typesafe/jev-1.13", "credential": "openrouter"}
     config_service.write_yaml_atomic(general_config_path(), data)
