@@ -21,8 +21,9 @@ export function SubjectRail({ onNavigate }: { onNavigate?: () => void }) {
   const lessons = useLessons()
   const groups = useMemo(() => groupBySubject(lessons.data ?? []), [lessons.data])
   const icons = useMemo(() => subjectIcons(groups.map(([subject]) => subject)), [groups])
-  // Materia con il pannello aperto e posizione del suo pulsante (per mettere il pannello accanto).
-  const [open, setOpen] = useState<{ subject: string; top: number; right: number } | null>(null)
+  // Materia con il pannello aperto, posizione del suo pulsante (per mettere il pannello accanto)
+  // e se è stato aperto da tastiera (Invio/Spazio): solo allora il focus va su una lezione.
+  const [open, setOpen] = useState<{ subject: string; top: number; right: number; keyboard: boolean } | null>(null)
   const nav = useRef<HTMLElement>(null)
   const button = (subject: string) =>
     nav.current?.querySelector<HTMLButtonElement>(`button[data-subject="${CSS.escape(subject)}"]`)
@@ -73,15 +74,20 @@ export function SubjectRail({ onNavigate }: { onNavigate?: () => void }) {
                     data-subject={subject}
                     onClick={(e) => {
                       const r = e.currentTarget.getBoundingClientRect()
-                      setOpen(isOpen ? null : { subject, top: r.top, right: r.right })
+                      // detail === 0: clic generato da Invio o Spazio, non dal mouse.
+                      setOpen(isOpen ? null : { subject, top: r.top, right: r.right, keyboard: e.detail === 0 })
                     }}
                     onKeyDown={(e) => {
                       props.onKeyDown(e)
                       onKey(e, index)
                     }}
+                    data-current={current || undefined}
                     className={cn(
-                      'rounded-xl p-0.5 outline-offset-2 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring',
-                      (current || isOpen) && 'bg-muted ring-2 ring-accent-foreground',
+                      'rounded-xl p-0.5 outline-none outline-offset-2 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring',
+                      // L'anello indica solo la materia della lezione aperta; il pannello aperto
+                      // si vede dallo sfondo. Il contorno scuro resta al focus da tastiera.
+                      isOpen && 'bg-muted',
+                      current && 'ring-2 ring-accent-foreground',
                     )}
                   >
                     <SubjectIcon icon={icon} />
@@ -117,7 +123,7 @@ function SubjectPanel({
 }: {
   subject: string
   lessons: Lesson[]
-  anchor: { top: number; right: number }
+  anchor: { top: number; right: number; keyboard: boolean }
   onClose: (refocus: boolean) => void
   onNavigate: () => void
 }) {
@@ -133,8 +139,16 @@ function SubjectPanel({
     // Il pulsante della materia chiude da sé (toggle); ogni altro clic fuori chiude il pannello.
     if (!panel.current?.contains(target) && !isOwnButton(target)) onClose(false)
   })
+  // Da tastiera il focus va sulla lezione aperta (o sulla prima); col mouse sul pannello, senza
+  // contorno: un focus programmatico su un link lo farebbe apparire (Safari) solo su quello.
+  const focusInitial = useEffectEvent(() => {
+    const target = anchor.keyboard
+      ? (panel.current?.querySelector<HTMLElement>('a[aria-current="page"]') ?? panel.current?.querySelector<HTMLElement>('a'))
+      : panel.current
+    target?.focus()
+  })
   useEffect(() => {
-    panel.current?.querySelector<HTMLElement>('a')?.focus()
+    focusInitial()
     document.addEventListener('pointerdown', onOutside)
     return () => document.removeEventListener('pointerdown', onOutside)
   }, [])
@@ -144,8 +158,9 @@ function SubjectPanel({
       ref={panel}
       role="dialog"
       aria-labelledby={titleId}
+      tabIndex={-1}
       data-testid="subject-panel"
-      className="fixed z-50 flex flex-col overflow-hidden rounded-xl border bg-card text-foreground shadow-xl"
+      className="fixed z-50 flex outline-none flex-col overflow-hidden rounded-xl border bg-card text-foreground shadow-xl"
       style={{ top: pos.top, left: pos.left, width: PANEL_WIDTH, maxHeight: `calc(100dvh - ${pos.top + PANEL_MARGIN}px)` }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -169,8 +184,8 @@ function SubjectPanel({
               onClick={onNavigate}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col gap-0.5 rounded-lg px-2.5 py-2 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring',
-                  isActive && 'bg-accent text-accent-foreground',
+                  'flex flex-col gap-0.5 rounded-lg px-2.5 py-2 outline-none hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                  isActive && 'bg-accent text-accent-foreground hover:bg-accent',
                 )
               }
             >

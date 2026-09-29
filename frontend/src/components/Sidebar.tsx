@@ -46,7 +46,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   to={`/lezioni/${lesson.id}`}
                   onClick={onNavigate}
                   className={({ isActive }) =>
-                    cn('flex flex-col gap-0.5 rounded-lg px-2.5 py-2 hover:bg-muted', isActive && 'bg-accent text-accent-foreground')
+                    cn(
+                      'flex flex-col gap-0.5 rounded-lg px-2.5 py-2 outline-none hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                      isActive && 'bg-accent text-accent-foreground hover:bg-accent',
+                    )
                   }
                 >
                   <span className="text-[11px] text-muted-foreground">{lesson.data || 'Senza data'}</span>

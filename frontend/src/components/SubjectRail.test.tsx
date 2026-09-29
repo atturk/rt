@@ -19,12 +19,12 @@ function Where() {
   return <p data-testid="where">{useLocation().pathname}</p>
 }
 
-function renderRail() {
+function renderRail(path = '/') {
   vi.spyOn(api, 'GET').mockResolvedValue({ data: LESSONS, error: undefined, response: new Response('[]') } as never)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[path]}>
         <SubjectRail />
         <button type="button">fuori</button>
         <Routes>
@@ -98,5 +98,34 @@ describe('SubjectRail', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/lezioni/2')
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByRole('button', { name: /ANATOMIA PATOLOGICA: 2 lezioni, lezione aperta/ })).toBeInTheDocument()
+  })
+
+  it('col mouse il pannello non mette il contorno di focus su una lezione; da tastiera va sulla lezione aperta', async () => {
+    renderRail('/lezioni/2')
+    const user = userEvent.setup()
+    const anatomy = await screen.findByRole('button', { name: /ANATOMIA PATOLOGICA: 2 lezioni, lezione aperta/ })
+    await user.click(anatomy)
+    const panel = screen.getByRole('dialog', { name: 'ANATOMIA PATOLOGICA' })
+    expect(panel).toHaveFocus()
+    for (const link of within(panel).getAllByRole('link')) expect(link).not.toHaveFocus()
+    // la lezione aperta si distingue sempre allo stesso modo, non dal focus
+    expect(within(panel).getByRole('link', { name: /Infiammazione/ })).toHaveAttribute('aria-current', 'page')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    anatomy.focus()
+    await user.keyboard('{Enter}')
+    expect(within(screen.getByRole('dialog')).getByRole('link', { name: /Infiammazione/ })).toHaveFocus()
+  })
+
+  it("l'anello resta solo sulla materia della lezione aperta, anche con un altro pannello aperto", async () => {
+    renderRail('/lezioni/2')
+    const user = userEvent.setup()
+    const anatomy = await screen.findByRole('button', { name: /ANATOMIA PATOLOGICA/ })
+    const biochem = screen.getByRole('button', { name: /BIOCHIMICA/ })
+    await user.click(biochem)
+    expect(biochem).toHaveAttribute('aria-expanded', 'true')
+    expect(biochem.className).not.toMatch(/\bring-2\b/)
+    expect(anatomy.className).toMatch(/\bring-2\b/)
   })
 })
