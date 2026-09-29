@@ -45,16 +45,15 @@ export function PromptEditorSection() {
     params: { path: { phase } }, body: { instruction },
   })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['prompt-overrides'] }) } })
   return <Section id="prompt" title="Istruzioni dei prompt"
-    description="Aggiungi istruzioni alle fasi; il contratto strutturato e la validazione di RT restano attivi. Salva un campo vuoto per ripristinare il predefinito.">
+    description="Ciò che scrivi si aggiunge all'istruzione predefinita della fase, non la sostituisce: il predefinito, il contratto strutturato e la validazione di RT restano attivi. Svuota la casella e salva per usare solo il predefinito.">
     <Field label="Fase" htmlFor="prompt-phase"><Select id="prompt-phase" value={phase} onChange={(e) => setPhase(e.target.value as typeof phase)}>
       <option value="outline">Scaletta</option><option value="rewrite">Rielaborazione</option><option value="review">Revisione</option>
       <option value="image_description">Descrizione immagini</option><option value="recall">Recall</option>
     </Select></Field>
-    <details className="text-xs"><summary className="cursor-pointer">Mostra istruzione predefinita</summary>
-      <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded border p-2">{prompts.data?.[phase]?.default}</pre></details>
-    <Field label="Istruzioni personalizzate" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
-      className="w-full rounded border bg-background p-2 text-sm" rows={6} maxLength={20000}
-      value={instruction} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))} /></Field>
+    <Field label="Istruzioni aggiuntive (in grigio il predefinito, sempre applicato)" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
+      className="w-full rounded border bg-background p-2 font-mono text-xs placeholder:text-muted-foreground/70" rows={16} maxLength={20000}
+      placeholder={prompts.data?.[phase]?.default ?? ''}
+      value={instruction} onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))} /></Field>
     <Button disabled={save.isPending || prompts.isPending} onClick={() => save.mutate()}>Salva istruzioni</Button>
     {save.isSuccess && <p role="status" className="text-xs text-success">Istruzioni salvate.</p>}
     {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
