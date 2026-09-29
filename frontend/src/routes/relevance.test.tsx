@@ -72,7 +72,7 @@ describe('RelevancePage', () => {
     expect(screen.getByText('Omissioni didattiche individuate: 1')).toBeInTheDocument()
     // Riga = classe di JEV, colonne = correzione umana (didattico, organizzativo, nessun contenuto).
     const rows = within(screen.getByRole('table', { name: 'JEV → correzione umana' })).getAllByRole('row')
-    const counts = (label: string) => [...(rows.find((r) => r.firstElementChild?.textContent === label)?.querySelectorAll('td') ?? [])].map((c) => c.textContent)
+    const counts = (label: string) => Array.from(rows.find((r) => r.firstElementChild?.textContent === label)?.querySelectorAll('td') ?? [], (c) => c.textContent)
     expect(counts('Informazioni organizzative')).toEqual(['1', '0', '0'])
     expect(counts('Assenza di contenuto didattico')).toEqual(['0', '0', '1'])
     expect(counts('Contenuto didattico')).toEqual(['1', '0', '0'])
