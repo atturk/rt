@@ -1011,7 +1011,9 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  uninstall           Disinstalla RT lasciando i dati\n\n"
         "Opzioni generali:\n"
         "  -v, --version       Mostra la versione corrente e verifica aggiornamenti\n"
-        "  -u, --update        Aggiorna RT all'ultima versione disponibile\n\n"
+        "  -u, --update        Aggiorna RT all'ultima versione disponibile\n"
+        "  -u --beta           Passa al canale beta: aggiorna anche alle versioni di prova\n"
+        "  -u --stable         Torna al canale stabile (solo versioni stabili)\n\n"
         "Esempi:\n"
         "  rt web                          Avvia la web app e apre il browser (API + worker)\n"
         "  rt api                          Avvia l'API REST locale (http://127.0.0.1:8765/docs)\n"
@@ -1322,8 +1324,13 @@ def main(argv: Optional[List[str]] = None) -> None:
         run_version(_default_project_root())
         sys.exit(0)
     elif raw_args and raw_args[0] in ("-u", "--update"):
-        from rt.core.version import run_update
-        code = run_update(_default_project_root())
+        from rt.core.version import run_update, BETA, STABLE
+        options = {"--beta": BETA, "--stable": STABLE}
+        extra = raw_args[1:]
+        if len(extra) > 1 or (extra and extra[0] not in options):
+            print("Uso: rt -u [--beta | --stable]", file=sys.stderr)
+            sys.exit(2)
+        code = run_update(_default_project_root(), options[extra[0]] if extra else None)
         sys.exit(code if isinstance(code, int) else 0)
 
     load_env_file(override=True)

@@ -37,3 +37,15 @@ def test_incomplete_archive_is_rejected():
 def test_version_mismatch_is_rejected():
     with pytest.raises(ValueError):
         check_archive(make_archive(), '3.3.13')
+
+
+def test_prerelease_archive_is_accepted():
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode='w:gz') as tar:
+        for name in sorted(REQUIRED):
+            data = b'4.1.0b1\n' if name == 'VERSION' else b'example\n'
+            info = tarfile.TarInfo('rt-4.1.0b1/' + name)
+            info.size = len(data)
+            info.mode = 0o755
+            tar.addfile(info, io.BytesIO(data))
+    check_archive(buffer.getvalue(), '4.1.0b1')

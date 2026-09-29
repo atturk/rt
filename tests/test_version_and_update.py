@@ -20,6 +20,10 @@ from rt.core.version import (
     get_latest_remote_version,
     run_version,
     run_update,
+    parse_version,
+    is_prerelease,
+    get_update_channel,
+    set_update_channel,
 )
 from rt.cli import main
 
@@ -29,6 +33,14 @@ def no_spa_download():
     """La web app della release ha i suoi test (test_spa_release.py): qui niente rete."""
     with patch("rt.core.version.update_spa", return_value=True) as update_spa:
         yield update_spa
+
+
+@pytest.fixture(autouse=True)
+def channel_file(tmp_path_factory):
+    """Il canale scelto ('rt -u --beta') va nella cartella dati: nei test in una cartella a parte."""
+    path = tmp_path_factory.mktemp("channel") / "update-channel"
+    with patch("rt.core.version.channel_file", return_value=str(path)):
+        yield path
 
 
 @pytest.fixture(autouse=True)
@@ -544,3 +556,193 @@ def test_legacy_upgrade_script_uses_safe_updater_for_archive_install(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert calls.read_text(encoding="utf-8") == str(install)
+
+
+# --- 4.0.1: canale beta ---------------------------------------------------------------------
+
+def _releases_response(payload):
+    resp = MagicMock()
+    resp.status = 200
+    resp.read.return_value = json.dumps(payload).encode("utf-8")
+    resp.__enter__.return_value = resp
+    return resp
+
+
+RELEASES = [
+    {"tag_name": "v4.1.0b1", "prerelease": True, "draft": False},
+    {"tag_name": "v4.2.0b1", "prerelease": True, "draft": True},  # bozza: mai
+    {"tag_name": "v4.0.1", "prerelease": False, "draft": False},
+    {"tag_name": "v4.0.0", "prerelease": False, "draft": False},
+    {"tag_name": "nightly", "prerelease": True, "draft": False},  # non una versione: ignorata
+]
+
+
+def _fake_github(latest="v4.0.1", releases=RELEASES):
+    """urlopen finto: /releases/latest (solo stabili, come GitHub) e /releases (tutte)."""
+    seen = []
+
+    def urlopen(req, timeout=None):
+        url = req.full_url
+        seen.append(url)
+        if url.endswith("/releases/latest"):
+            return _releases_response({"tag_name": latest})
+        if "/releases?" in url:
+            return _releases_response(releases)
+        return _releases_response({})
+    return urlopen, seen
+
+
+def test_parse_version_orders_pep440_prereleases():
+    order = ["4.0.0", "4.0.1", "4.1.0a1", "4.1.0b1", "4.1.0b2", "4.1.0rc1", "4.1.0", "4.10.0"]
+    assert sorted(reversed(order), key=parse_version) == order
+    assert parse_version("v4.1.0b1") == parse_version("4.1.0-beta.1") == parse_version("4.1.0beta1")
+    assert parse_version("4.1.0b") == parse_version("4.1.0b0")
+    assert parse_version("sconosciuta") is None and parse_version("") is None
+    assert is_prerelease("4.1.0b1") and is_prerelease("4.1.0rc2")
+    assert not is_prerelease("4.0.1") and not is_prerelease("boh")
+
+
+def test_stable_channel_uses_latest_endpoint_only():
+    urlopen, seen = _fake_github()
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        assert get_latest_remote_version("/x") == "4.0.1"
+    assert seen == ["https://api.github.com/repos/atturk/rt/releases/latest"]
+
+
+def test_beta_channel_picks_highest_published_release():
+    urlopen, _ = _fake_github()
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        assert get_latest_remote_version("/x", channel="beta") == "4.1.0b1"
+    # una stabile più recente della beta vince anche sul canale beta
+    urlopen, _ = _fake_github(releases=RELEASES + [{"tag_name": "v4.1.0", "draft": False}])
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        assert get_latest_remote_version("/x", channel="beta") == "4.1.0"
+    urlopen, _ = _fake_github(releases=[])
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        assert get_latest_remote_version("/x", channel="beta") == ""
+
+
+def test_channel_defaults_to_stable_and_persists(channel_file):
+    assert get_update_channel() == "stable"
+    set_update_channel("beta")
+    assert get_update_channel() == "beta"
+    channel_file.write_text("qualcosa\n", encoding="utf-8")
+    assert get_update_channel() == "stable"
+    with pytest.raises(ValueError):
+        set_update_channel("nightly")
+
+
+def _updated_to(tmp_path, capsys, channel=None):
+    """'rt -u' su un'installazione da archivio 4.0.1: ritorna la versione installata."""
+    (tmp_path / "VERSION").write_text("4.0.1\n", encoding="utf-8")
+    urlopen, seen = _fake_github()
+
+    def fake_urlopen(req, timeout=None):
+        if "/archive/refs/tags/" in req.full_url:
+            version = req.full_url.rsplit("/v", 1)[1].removesuffix(".tar.gz")
+            resp = MagicMock()
+            resp.read.side_effect = [_create_mock_tarball_bytes(version), b""]
+            resp.__enter__.return_value = resp
+            return resp
+        return urlopen(req, timeout)
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen), \
+         patch("rt.core.version._install_runtime_requirements", return_value=True):
+        code = run_update(str(tmp_path), channel) if channel else run_update(str(tmp_path))
+    assert code == 0
+    return (tmp_path / "VERSION").read_text(encoding="utf-8").strip()
+
+
+def test_plain_update_never_installs_a_beta(tmp_path, capsys):
+    assert _updated_to(tmp_path, capsys) == "4.0.1"
+    assert "Sei già aggiornato" in capsys.readouterr().out
+
+
+def test_update_beta_switches_channel_and_installs_prerelease(tmp_path, capsys, channel_file):
+    assert _updated_to(tmp_path, capsys, "beta") == "4.1.0b1"
+    out = capsys.readouterr().out
+    assert "Canale beta attivo" in out and "rt -u --stable" in out
+    assert "4.0.1 → 4.1.0b1" in out
+    assert channel_file.read_text(encoding="utf-8").strip() == "beta"
+
+
+def test_beta_channel_is_remembered_by_plain_update(tmp_path, capsys):
+    set_update_channel("beta")
+    assert _updated_to(tmp_path, capsys) == "4.1.0b1"
+
+
+def test_back_to_stable_never_downgrades_a_beta(tmp_path, capsys):
+    set_update_channel("beta")
+    (tmp_path / "VERSION").write_text("4.1.0b1\n", encoding="utf-8")
+    urlopen, _ = _fake_github()
+    with patch("urllib.request.urlopen", side_effect=urlopen), \
+         patch("rt.core.version._install_runtime_requirements") as pip:
+        assert run_update(str(tmp_path), "stable") == 0
+    pip.assert_not_called()
+    out = capsys.readouterr().out
+    assert "Canale stabile attivo" in out
+    assert "Hai la beta 4.1.0b1" in out
+    assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "4.1.0b1"
+    assert get_update_channel() == "stable"
+
+
+def test_stable_channel_moves_from_beta_to_the_final_release(tmp_path, capsys):
+    (tmp_path / "VERSION").write_text("4.1.0b1\n", encoding="utf-8")
+    urlopen, _ = _fake_github(latest="v4.1.0")
+
+    def fake_urlopen(req, timeout=None):
+        if "/archive/refs/tags/" in req.full_url:
+            resp = MagicMock()
+            resp.read.side_effect = [_create_mock_tarball_bytes("4.1.0"), b""]
+            resp.__enter__.return_value = resp
+            return resp
+        return urlopen(req, timeout)
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen), \
+         patch("rt.core.version._install_runtime_requirements", return_value=True):
+        assert run_update(str(tmp_path)) == 0
+    assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "4.1.0"
+
+
+def test_run_version_mentions_available_beta_on_stable_channel(tmp_path, capsys):
+    (tmp_path / "VERSION").write_text("4.0.1\n", encoding="utf-8")
+    urlopen, _ = _fake_github()
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        run_version(str(tmp_path))
+    out = capsys.readouterr().out
+    assert "RT versione 4.0.1 — sei aggiornato ✅" in out
+    assert "È disponibile la beta 4.1.0b1" in out and "rt -u --beta" in out
+
+
+def test_run_version_on_beta_channel(tmp_path, capsys):
+    set_update_channel("beta")
+    (tmp_path / "VERSION").write_text("4.0.1\n", encoding="utf-8")
+    urlopen, _ = _fake_github()
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        run_version(str(tmp_path))
+    out = capsys.readouterr().out
+    assert "RT versione 4.0.1 (canale beta) — è disponibile la versione 4.1.0b1" in out
+
+
+def test_cli_update_channel_flags():
+    with patch("rt.core.version.run_update", return_value=0) as mock_update:
+        for flag, channel in (("--beta", "beta"), ("--stable", "stable")):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["-u", flag])
+            assert exc_info.value.code == 0
+            assert mock_update.call_args.args[1] == channel
+        with pytest.raises(SystemExit) as exc_info:
+            main(["-u"])
+        assert mock_update.call_args.args[1] is None
+    with patch("rt.core.version.run_update") as mock_update:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["-u", "--nightly"])
+        assert exc_info.value.code == 2
+        mock_update.assert_not_called()
+
+
+def test_cli_help_mentions_beta_channel(capsys):
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    assert "-u --beta" in out and "-u --stable" in out
