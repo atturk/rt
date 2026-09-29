@@ -264,8 +264,12 @@ def test_row_review_single_unit(api, cli, pair):
     """rt review --unit U1 ⇔ run_phase review con unit (job review_unit) + decisioni."""
     from tests.api_support import run_mock_pipeline
     cli_dir, api_dir = pair
+    from rt.pipeline.ledger import purge_decisions_by_prefix
+    # Issue ancora da decidere: rivedere l'unità le ritrova con gli stessi id e le decisioni
+    # arrivano dopo, da terminale o dalla web.
     for lesson_dir in pair:
         run_mock_pipeline(lesson_dir)
+        purge_decisions_by_prefix(lesson_dir, "sci_")
     lesson_id = api.lesson_id()
     unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
     out = cli.rt("review", cli_dir, "--mock", "--unit", unit, "--auto-accept", "all", "--channel", "terminal")
