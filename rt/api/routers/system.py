@@ -23,6 +23,31 @@ def health() -> Health:
     return Health(version=get_current_version(_default_project_root()), database=get_database() is not None)
 
 
+class SystemInfo(BaseModel):
+    version: str = Field(description="Versione di RT installata (come 'rt -v')")
+    prerelease: bool = Field(description="True per una beta o release candidate (es. 4.1.0b2)")
+    update_channel: str = Field(description="Canale di aggiornamento: stable o beta ('rt -u --beta' / '--stable')")
+    install_dir: str = Field(description="Cartella del codice di RT")
+    data_dir: str = Field(description="Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media")
+    config_dir: str = Field(description="Cartella config/ in uso")
+    python_version: str
+    platform: str
+
+
+@router.get("/system/info", response_model=SystemInfo, summary="Versione, canale di aggiornamento e cartelle di RT")
+def system_info(_actor: Actor) -> SystemInfo:
+    import platform
+    from rt.core import paths
+    from rt.core.config import _default_project_root
+    from rt.core.version import get_current_version, get_update_channel, is_prerelease
+    root = _default_project_root()
+    version = get_current_version(root)
+    return SystemInfo(version=version, prerelease=is_prerelease(version), update_channel=get_update_channel(),
+                      install_dir=str(root), data_dir=str(paths.data_dir()), config_dir=str(paths.config_dir(root)),
+                      python_version=platform.python_version(),
+                      platform=f"{platform.system()} {platform.release()} ({platform.machine()})")
+
+
 class SessionRequest(BaseModel):
     token: str = Field(description="Token API mostrato da 'rt api'")
 

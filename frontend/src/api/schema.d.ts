@@ -827,7 +827,8 @@ export interface paths {
         /** Salva un segreto dichiarato (archivio cifrato se inizializzato); il valore non viene mai restituito */
         put: operations["put_secret_api_v1_secrets__name__put"];
         post?: never;
-        delete?: never;
+        /** Elimina un segreto dichiarato dall'archivio cifrato, da .env e dall'ambiente (come 'rt secrets unset') */
+        delete: operations["delete_secret_api_v1_secrets__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -862,6 +863,23 @@ export interface paths {
         /** Nuova connessione LLM (provider, base URL, una o più chiavi) */
         post: operations["post_connection_api_v1_settings_connections_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/connections/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o JEV la usa) */
+        delete: operations["delete_connection_api_v1_settings_connections__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1405,6 +1423,23 @@ export interface paths {
         };
         /** Sottocartelle di una cartella della home, per il navigatore della SPA (solo loopback) */
         get: operations["list_folders_api_v1_system_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versione, canale di aggiornamento e cartelle di RT */
+        get: operations["system_info_api_v1_system_info_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2980,6 +3015,21 @@ export interface components {
             /** Round Robin */
             round_robin: boolean;
         };
+        /** SecretDeleted */
+        SecretDeleted: {
+            /** Name */
+            name: string;
+            /**
+             * Removed From
+             * @description Dove era salvato; vuoto se non c'era (l'eliminazione è idempotente)
+             */
+            removed_from: ("store" | "env")[];
+            /**
+             * Set
+             * @default false
+             */
+            set: boolean;
+        };
         /** SecretIn */
         SecretIn: {
             /** Value */
@@ -3063,6 +3113,43 @@ export interface components {
             transcription: components["schemas"]["Transcription"];
             web_search: components["schemas"]["WebSearchSettings"];
             worker: components["schemas"]["WorkerSettings"];
+        };
+        /** SystemInfo */
+        SystemInfo: {
+            /**
+             * Config Dir
+             * @description Cartella config/ in uso
+             */
+            config_dir: string;
+            /**
+             * Data Dir
+             * @description Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media
+             */
+            data_dir: string;
+            /**
+             * Install Dir
+             * @description Cartella del codice di RT
+             */
+            install_dir: string;
+            /** Platform */
+            platform: string;
+            /**
+             * Prerelease
+             * @description True per una beta o release candidate (es. 4.1.0b2)
+             */
+            prerelease: boolean;
+            /** Python Version */
+            python_version: string;
+            /**
+             * Update Channel
+             * @description Canale di aggiornamento: stable o beta ('rt -u --beta' / '--stable')
+             */
+            update_channel: string;
+            /**
+             * Version
+             * @description Versione di RT installata (come 'rt -v')
+             */
+            version: string;
         };
         /** TelegramCommandInfo */
         TelegramCommandInfo: {
@@ -6948,6 +7035,73 @@ export interface operations {
             };
         };
     };
+    delete_secret_api_v1_secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretDeleted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_settings_api_v1_settings_get: {
         parameters: {
             query?: never;
@@ -7028,6 +7182,73 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_connection_api_v1_settings_connections__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9402,6 +9623,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    system_info_api_v1_system_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfo"];
                 };
             };
         };

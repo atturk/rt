@@ -254,6 +254,13 @@ class SecretSaved(BaseModel):
     stored_in: Literal["store", "env"]
 
 
+class SecretDeleted(BaseModel):
+    name: str
+    set: bool = False
+    removed_from: List[Literal["store", "env"]] = Field(
+        description="Dove era salvato; vuoto se non c'era (l'eliminazione è idempotente)")
+
+
 class ModelTestIn(BaseModel):
     connection: str
     model: str
@@ -547,6 +554,23 @@ def post_connection_model(name: str, body: ModelIn, _actor: Actor):
     return snapshot(_project_root())
 
 
+@router.delete("/settings/connections/{name}", response_model=Settings,
+               summary="Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o JEV la usa)")
+def delete_connection(name: str, _actor: Actor):
+    from rt.security.secrets import SecretStoreError
+    from rt.services.connections_service import ConnectionInUse, connection_names, delete_connection
+    from rt.services.settings_service import snapshot
+    if name not in connection_names(_project_root()):
+        raise ApiError(404, "connection_not_found", "Connessione inesistente.")
+    try:
+        delete_connection(_project_root(), name)
+    except ConnectionInUse as exc:
+        raise ApiError(409, "connection_in_use", str(exc), details={"usages": exc.usages})
+    except SecretStoreError as exc:
+        raise ApiError(409, "secret_store_unavailable", str(exc))
+    return snapshot(_project_root())
+
+
 @router.put("/settings/phases/{job}", response_model=Settings,
             summary="Assegna connessione e modello a una fase (outline, rewrite, review, recall, immagini)")
 def put_phase(job: str, body: PhaseIn, _actor: Actor):
@@ -713,6 +737,20 @@ def put_secret(name: str, body: SecretIn, _actor: Actor):
     except KeyError:
         raise ApiError(404, "secret_not_declared", "Segreto non dichiarato in configurazione.")
     return SecretSaved(name=name, stored_in=where)
+
+
+@router.delete("/secrets/{name}", response_model=SecretDeleted,
+               summary="Elimina un segreto dichiarato dall'archivio cifrato, da .env e dall'ambiente (come 'rt secrets unset')")
+def delete_secret(name: str, _actor: Actor):
+    from rt.security.secrets import SecretStoreError
+    from rt.services.settings_service import delete_secret_by_name
+    try:
+        removed = delete_secret_by_name(_project_root(), name)
+    except KeyError:
+        raise ApiError(404, "secret_not_declared", "Segreto non dichiarato in configurazione.")
+    except SecretStoreError as exc:
+        raise ApiError(409, "secret_store_unavailable", str(exc))
+    return SecretDeleted(name=name, removed_from=removed)
 
 
 # ---------------------------------------------------------------- bot Telegram

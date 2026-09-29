@@ -3300,6 +3300,37 @@
         "title": "RouteOut",
         "type": "object"
       },
+      "SecretDeleted": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "removed_from": {
+            "description": "Dove era salvato; vuoto se non c'era (l'eliminazione è idempotente)",
+            "items": {
+              "enum": [
+                "store",
+                "env"
+              ],
+              "type": "string"
+            },
+            "title": "Removed From",
+            "type": "array"
+          },
+          "set": {
+            "default": false,
+            "title": "Set",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "removed_from"
+        ],
+        "title": "SecretDeleted",
+        "type": "object"
+      },
       "SecretIn": {
         "properties": {
           "value": {
@@ -3472,6 +3503,60 @@
           "secrets_encrypted"
         ],
         "title": "Settings",
+        "type": "object"
+      },
+      "SystemInfo": {
+        "properties": {
+          "config_dir": {
+            "description": "Cartella config/ in uso",
+            "title": "Config Dir",
+            "type": "string"
+          },
+          "data_dir": {
+            "description": "Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media",
+            "title": "Data Dir",
+            "type": "string"
+          },
+          "install_dir": {
+            "description": "Cartella del codice di RT",
+            "title": "Install Dir",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "prerelease": {
+            "description": "True per una beta o release candidate (es. 4.1.0b2)",
+            "title": "Prerelease",
+            "type": "boolean"
+          },
+          "python_version": {
+            "title": "Python Version",
+            "type": "string"
+          },
+          "update_channel": {
+            "description": "Canale di aggiornamento: stable o beta ('rt -u --beta' / '--stable')",
+            "title": "Update Channel",
+            "type": "string"
+          },
+          "version": {
+            "description": "Versione di RT installata (come 'rt -v')",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "prerelease",
+          "update_channel",
+          "install_dir",
+          "data_dir",
+          "config_dir",
+          "python_version",
+          "platform"
+        ],
+        "title": "SystemInfo",
         "type": "object"
       },
       "TelegramCommandInfo": {
@@ -9170,6 +9255,91 @@
       }
     },
     "/api/v1/secrets/{name}": {
+      "delete": {
+        "operationId": "delete_secret_api_v1_secrets__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina un segreto dichiarato dall'archivio cifrato, da .env e dall'ambiente (come 'rt secrets unset')",
+        "tags": [
+          "impostazioni"
+        ]
+      },
       "put": {
         "operationId": "put_secret_api_v1_secrets__name__put",
         "parameters": [
@@ -9423,6 +9593,93 @@
           }
         ],
         "summary": "Nuova connessione LLM (provider, base URL, una o più chiavi)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/connections/{name}": {
+      "delete": {
+        "operationId": "delete_connection_api_v1_settings_connections__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o JEV la usa)",
         "tags": [
           "impostazioni"
         ]
@@ -12336,6 +12593,32 @@
           }
         ],
         "summary": "Sottocartelle di una cartella della home, per il navigatore della SPA (solo loopback)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/info": {
+      "get": {
+        "operationId": "system_info_api_v1_system_info_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Versione, canale di aggiornamento e cartelle di RT",
         "tags": [
           "sistema"
         ]

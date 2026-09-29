@@ -131,3 +131,36 @@ def set_secret(name: str, value: str, project_root: Optional[PathLike] = None, p
         return "store"
     set_env_var(target_env, name, value, quote=quote)
     return "env"
+
+
+def remove_env_var(path: PathLike, key: str) -> bool:
+    """Toglie KEY=... (anche con 'export') da un file .env, preservando le altre righe.
+    Restituisce False (senza riscrivere il file) se la variabile non c'era."""
+    path = Path(path)
+    if not path.is_file():
+        return False
+    pattern = re.compile(rf"^\s*(export\s+)?{re.escape(key)}\s*=")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kept = [line for line in lines if not pattern.match(line)]
+    if len(kept) == len(lines):
+        return False
+    write_text_atomic(path, "\n".join(kept) + ("\n" if kept else ""), mode=0o600)
+    return True
+
+
+def unset_secret(name: str, project_root: Optional[PathLike] = None, path: Optional[PathLike] = None) -> List[str]:
+    """Elimina un segreto ovunque RT lo tenga: archivio cifrato (se inizializzato), file .env e
+    ambiente del processo, così non torna al prossimo load_env_file(). Restituisce dove c'era
+    ("store", "env"); una lista vuota se non era salvato da nessuna parte."""
+    from rt.security.secrets import forget_injected, store_path_for_env_file
+    from rt.services import secrets_service
+    target_env = Path(path) if path else env_path(project_root)
+    store_path = store_path_for_env_file(target_env)
+    removed: List[str] = []
+    if store_path.is_file() and secrets_service.store(store_path).delete(name):
+        removed.append("store")
+    if remove_env_var(target_env, name):
+        removed.append("env")
+    os.environ.pop(name, None)
+    forget_injected(name)
+    return removed

@@ -418,6 +418,13 @@ def source_of(name: str) -> str:
     return "env" if name in os.environ else "missing"
 
 
+def forget_injected(name: str) -> None:
+    """Dopo l'eliminazione di un segreto: il valore non va più redatto né riapplicato."""
+    with _lock:
+        _injected.pop(name, None)
+        _cache.clear()
+
+
 def _reset_for_tests() -> None:
     with _lock:
         _cache.clear()

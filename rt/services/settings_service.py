@@ -503,3 +503,12 @@ def save_secret_by_name(project_root: Path, name: str, value: str) -> str:
         raise KeyError(name)
     _validate_secret(value.strip())
     return config_service.set_secret(name, value.strip(), path=_env_path(project_root))
+
+
+def delete_secret_by_name(project_root: Path, name: str) -> list[str]:
+    """Elimina un segreto dichiarato (archivio cifrato, .env, ambiente del processo), come
+    'rt secrets unset'. La credenziale resta dichiarata: la chiave risulta "Mancante"."""
+    from rt.services.secrets_service import secret_names_from_config
+    if name not in secret_names_from_config(general_config_path(project_root)):
+        raise KeyError(name)
+    return config_service.unset_secret(name, path=_env_path(project_root))

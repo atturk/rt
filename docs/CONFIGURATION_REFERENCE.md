@@ -122,7 +122,7 @@ invece che in chiaro nel `.env`. Senza archivio tutto funziona come prima.
 | `rt secrets init` | Genera la chiave master, la salva nel portachiavi di sistema (servizio `rt`, voce `master_key`) e crea `config/secrets.enc`. Con `--no-keyring`, o se il portachiavi non è disponibile, la chiave viene mostrata **una sola volta** e va messa in `RT_MASTER_KEY`. `--print-key` la mostra anche quando è nel portachiavi. |
 | `rt secrets migrate` | Copia nell'archivio le variabili dichiarate in `credentials:`, `RT_TELEGRAM_BOT_TOKEN` e `RT_STT_API_KEY` presenti nel `.env`, rilegge l'archivio per verificarle e solo dopo, se confermi (o con `--yes`), crea il backup `.env.bak-<data>` (permessi 600) e toglie quei valori dal `.env`. `--keep-env` copia senza toccare il `.env`. È idempotente: rieseguito non trova nulla da fare. Se l'archivio ha già un valore diverso per una chiave, resta quello dell'archivio. |
 | `rt secrets list` | Nomi e data di modifica, mai i valori. |
-| `rt secrets set NOME` / `unset NOME` | Salva (valore chiesto senza eco, o da stdin con `--stdin`) o rimuove un segreto. |
+| `rt secrets set NOME` / `unset NOME` | Salva (valore chiesto senza eco, o da stdin con `--stdin`) o rimuove un segreto (`unset` lo toglie dall'archivio cifrato e dal file `.env`, come Impostazioni › Chiavi › Elimina). |
 | `rt secrets show-key` | Mostra la chiave master (con conferma, o `--yes`) per salvarla a parte: i backup di `rt backup` non la contengono. |
 | `rt secrets rotate` | Ricifra l'archivio con una chiave master nuova. Con il portachiavi lo aggiorna da solo; con `RT_MASTER_KEY` mostra la chiave nuova da sostituire. |
 

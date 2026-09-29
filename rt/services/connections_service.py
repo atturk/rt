@@ -159,3 +159,84 @@ def assign_phase(project_root: Path, job: str, connection_name: str, model: str)
     return save_route(project_root, job, "primary", connection["provider"],
                       credentials[0], model, connection["base_url"],
                       len(credentials) > 1, credentials)
+
+
+_ROLE_LABELS = {"primary": "primaria", "secondary": "secondaria", "timeout": "ripiego timeout",
+                "rate_limit": "ripiego rate limit", "safety": "ripiego safety",
+                "auth": "ripiego autenticazione", "generic": "ripiego generico"}
+
+
+class ConnectionInUse(Exception):
+    """La connessione ha ancora chiavi usate da route o da JEV: non si elimina."""
+
+    def __init__(self, name: str, usages: list[str]):
+        self.name = name
+        self.usages = usages
+        super().__init__(f"La connessione «{name}» è ancora usata da: {'; '.join(usages)}. "
+                         "Assegna un'altra connessione a queste impostazioni prima di eliminarla.")
+
+
+def connection_usages(project_root: Path, name: str) -> list[str]:
+    """Impostazioni che usano una chiave della connessione: route dei job LLM (primaria,
+    secondaria, rotazione, ripieghi) e decisioni JEV, se attive. Solo i riferimenti espliciti
+    nei YAML: una route senza credenziale usa quella predefinita del provider."""
+    connection = find_connection(project_root, name)
+    keys = set(connection.get("credentials") or [])
+    labels = dict(PHASES)
+    usages: list[str] = []
+    config_dir = general_config_path(project_root).parent
+    for job, path in sorted(find_job_yaml_paths(str(config_dir)).items()):
+        data = _read_yaml(Path(path))
+        roles: list[tuple[str, object]] = [("primary", data.get("primary")),
+                                            ("secondary", data.get("secondary"))]
+        roles += [("primary", route) for route in data.get("primary_routes") or []]
+        roles += list((data.get("fallback") or {}).items())
+        used: list[str] = []
+        for role, route in roles:
+            if isinstance(route, dict) and route.get("credential") in keys:
+                label = _ROLE_LABELS.get(role, role)
+                if label not in used:
+                    used.append(label)
+        if used:
+            usages.append(f"{labels.get(job, job)} ({', '.join(used)})")
+    jev = _read_yaml(general_config_path(project_root)).get("jev") or {}
+    jev_active = bool(jev.get("enabled")) or (
+        jev.get("relevance_mode", "shadow") != "disabled" and bool(str(jev.get("relevance_model") or "").strip()))
+    if jev_active and jev.get("credential", "openrouter") in keys:
+        usages.append("Decisioni JEV")
+    return usages
+
+
+def delete_connection(project_root: Path, name: str) -> list[str]:
+    """Elimina una connessione: la voce in general.yaml con i suoi modelli, le credenziali che
+    nessun'altra connessione usa e le loro chiavi (archivio cifrato, .env e ambiente del
+    processo). Rifiuta con ConnectionInUse se una route o JEV usa ancora una sua chiave.
+    Restituisce le variabili delle chiavi rimosse (mai i valori)."""
+    from rt.services import config_service
+    connection = find_connection(project_root, name)
+    usages = connection_usages(project_root, name)
+    if usages:
+        raise ConnectionInUse(name, usages)
+    others = {key for item in list_connections(project_root) if item["name"] != name
+              for key in item.get("credentials") or []}
+    removable = {key for key in connection.get("credentials") or [] if key not in others}
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    connections = [item for item in data.get("connections") or []
+                   if not (isinstance(item, dict) and item.get("name") == name)]
+    if connections:
+        data["connections"] = connections
+    else:
+        data.pop("connections", None)
+    entries = [item for item in data.get("credentials") or [] if isinstance(item, dict)]
+    removed = [item for item in entries if item.get("name") in removable]
+    kept = [item for item in entries if item.get("name") not in removable]
+    if removed:
+        data["credentials"] = [item for item in data.get("credentials") or []
+                               if not (isinstance(item, dict) and item.get("name") in removable)]
+    _atomic_yaml(path, data)
+    kept_vars = {item.get("env_var") for item in kept}
+    env_vars = [item["env_var"] for item in removed if item.get("env_var") and item["env_var"] not in kept_vars]
+    for env_var in env_vars:
+        config_service.unset_secret(env_var, project_root=project_root)
+    return env_vars
