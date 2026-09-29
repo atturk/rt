@@ -1,6 +1,8 @@
 """
 rt.api.errors
 Formato uniforme degli errori: {"error": {"code": "...", "message": "...", "details": ...}}.
+Gli errori di dominio dei servizi (rt.services.errors.ServiceError) diventano risposte con un
+solo handler: lo stato HTTP viene dal loro kind, codice e messaggio restano quelli del servizio.
 I messaggi passano dal sanificatore delle credenziali; le eccezioni inattese diventano un
 500 generico (il dettaglio resta nel log del server, mai nella risposta).
 """
@@ -13,12 +15,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from rt.services.errors import ServiceError
+
 logger = logging.getLogger("rt.api")
 
 HTTP_CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
               405: "method_not_allowed", 409: "conflict", 413: "payload_too_large",
               415: "unsupported_media_type", 416: "range_not_satisfiable", 422: "validation_error",
               503: "unavailable"}
+
+
+# kind di ServiceError -> stato HTTP.
+SERVICE_ERROR_STATUS = {"not_found": 404, "conflict": 409, "invalid": 422, "too_large": 413,
+                        "unavailable": 503, "upstream": 502}
 
 
 class ErrorBody(BaseModel):
@@ -67,6 +76,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_request: Request, exc: ApiError):
         return error_response(exc.status_code, exc.code, exc.message, exc.details)
+
+    @app.exception_handler(ServiceError)
+    async def _service_error(_request: Request, exc: ServiceError):
+        return error_response(SERVICE_ERROR_STATUS.get(exc.kind, 400), exc.code, exc.message, exc.details)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_request: Request, exc: StarletteHTTPException):

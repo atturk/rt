@@ -8,7 +8,7 @@ import stat
 import tempfile
 import zipfile
 
-from rt.api.errors import ApiError
+from rt.services.errors import Conflict, Invalid, TooLarge
 from rt.core.lesson_paths import lesson_path
 from rt.db.engine import get_database
 from rt.db.models import Lesson
@@ -26,39 +26,39 @@ def import_archive(archive: str) -> int:
     root = lessons_root()
     db = get_database()
     if not root or db is None:
-        raise ApiError(409, "setup_required", "Configura la cartella dati prima di importare.")
+        raise Conflict("setup_required", "Configura la cartella dati prima di importare.")
     with zipfile.ZipFile(archive) as zipped:
         files = [item for item in zipped.infolist() if not item.is_dir()]
         if len(files) > MAX_FILES or sum(item.file_size for item in files) > MAX_BYTES:
-            raise ApiError(413, "archive_too_large", "Archivio troppo grande.")
+            raise TooLarge("archive_too_large", "Archivio troppo grande.")
         names = [item.filename for item in files]
         if len(names) != len({n.casefold() for n in names}):
-            raise ApiError(422, "invalid_archive", "L'archivio contiene nomi duplicati.")
+            raise Invalid("invalid_archive", "L'archivio contiene nomi duplicati.")
         parts = [name.split("/") for name in names]
         if not parts or any(len(p) < 2 or any(s in ("", ".", "..") for s in p) or "\\" in name
                             or name.startswith("/") for name, p in zip(names, parts)):
-            raise ApiError(422, "invalid_archive", "Percorsi non validi nell'archivio.")
+            raise Invalid("invalid_archive", "Percorsi non validi nell'archivio.")
         folder = parts[0][0]
         if any(p[0] != folder for p in parts) or folder.startswith(".") or folder.endswith(" "):
-            raise ApiError(422, "invalid_archive", "L'archivio deve contenere una sola lezione.")
+            raise Invalid("invalid_archive", "L'archivio deve contenere una sola lezione.")
         if any(stat.S_ISLNK(item.external_attr >> 16) or item.flag_bits & 1 or
                (item.file_size and item.file_size > MAX_RATIO * max(1, item.compress_size)) for item in files):
-            raise ApiError(422, "invalid_archive", "L'archivio contiene link, file cifrati o compressione sospetta.")
+            raise Invalid("invalid_archive", "L'archivio contiene link, file cifrati o compressione sospetta.")
         manifest_name = f"{folder}/rt-export.json"
         if manifest_name not in names:
-            raise ApiError(422, "invalid_archive", "Manca il manifesto di un export completo di RT.")
+            raise Invalid("invalid_archive", "Manca il manifesto di un export completo di RT.")
         manifest = json.loads(zipped.read(manifest_name))
         if manifest.get("format") != "rt-lesson" or manifest.get("version") != 1 or manifest.get("scope") != "all":
-            raise ApiError(422, "invalid_archive", "Formato o versione dell'archivio non supportati.")
+            raise Invalid("invalid_archive", "Formato o versione dell'archivio non supportati.")
         rows = manifest.get("files")
         if not isinstance(rows, list) or len(rows) != len({row.get("path") for row in rows if isinstance(row, dict)}):
-            raise ApiError(422, "invalid_archive", "Manifesto non valido.")
+            raise Invalid("invalid_archive", "Manifesto non valido.")
         declared = {f"{folder}/{row['path']}": row for row in rows if isinstance(row, dict) and isinstance(row.get("path"), str)}
         extras = set(names) - set(declared) - {manifest_name}
         if extras - {f"{folder}/LEGGIMI - anteprima.txt"} and not all("(anteprima)" in n for n in extras):
-            raise ApiError(422, "invalid_archive", "File non dichiarati nel manifesto.")
+            raise Invalid("invalid_archive", "File non dichiarati nel manifesto.")
         if not declared or not f"{folder}/info.yaml" in declared or set(declared) - set(names):
-            raise ApiError(422, "invalid_archive", "Archivio incompleto: manca info.yaml o un file dichiarato.")
+            raise Invalid("invalid_archive", "Archivio incompleto: manca info.yaml o un file dichiarato.")
 
         target = os.path.join(os.path.realpath(root), folder)
         with session_scope(db) as session:
@@ -70,13 +70,13 @@ def import_archive(archive: str) -> int:
                 session.delete(existing)
                 existing = None
             if existing is not None or os.path.lexists(target):
-                raise ApiError(409, "duplicate_lesson", f"La lezione {folder} esiste già.")
+                raise Conflict("duplicate_lesson", f"La lezione {folder} esiste già.")
         os.makedirs(root, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="rt-import-", dir=root) as staging:
             for name, row in declared.items():
                 item = zipped.getinfo(name)
                 if item.file_size != row.get("size") or item.file_size > MAX_BYTES:
-                    raise ApiError(422, "invalid_archive", "Dimensione del file incoerente.")
+                    raise Invalid("invalid_archive", "Dimensione del file incoerente.")
                 rel = name[len(folder) + 1:]
                 destination = os.path.join(staging, *rel.split("/"))
                 os.makedirs(os.path.dirname(destination), exist_ok=True)
@@ -86,7 +86,7 @@ def import_archive(archive: str) -> int:
                         digest.update(chunk)
                         output.write(chunk)
                 if digest.hexdigest() != row.get("sha256"):
-                    raise ApiError(422, "invalid_archive", "Checksum dei file non corrispondente.")
+                    raise Invalid("invalid_archive", "Checksum dei file non corrispondente.")
             # Copy into DB storage only after every entry has passed validation.
             target = fs.create_db_lesson(target)
             try:

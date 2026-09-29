@@ -374,10 +374,11 @@ class TelegramUserTopicsOut(BaseModel):
 
 @router.get("/settings/telegram/user/status", response_model=TelegramUserStatusOut, summary="Stato della sessione Telegram utente")
 async def telegram_user_status(_actor: Actor):
+    from rt.services.errors import ServiceError
     from rt.services.telegram_user_archive import _authorized_client
     try:
         client = await _authorized_client()
-    except ApiError:
+    except ServiceError:
         return {"authorized": False}
     await client.disconnect()
     return {"authorized": True}

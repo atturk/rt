@@ -163,7 +163,7 @@ def check_secrets() -> Check:
 
 
 def check_spa() -> Check:
-    from rt.api.spa import find_spa_dir
+    from rt.core.paths import find_spa_dir
     found = find_spa_dir()
     if found:
         return Check("Web app", OK, found)

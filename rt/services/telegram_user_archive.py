@@ -10,7 +10,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from rt.api.errors import ApiError
+from rt.services.errors import Conflict, Invalid, ServiceError, TooLarge, UpstreamFailed
 from rt.core.paths import data_dir
 from rt.db.engine import get_database
 from rt.db.models import Setting
@@ -80,12 +80,12 @@ def _credentials() -> tuple[int, str]:
     try:
         return int(os.environ["RT_TELEGRAM_USER_API_ID"]), os.environ["RT_TELEGRAM_USER_API_HASH"]
     except (KeyError, ValueError):
-        raise ApiError(409, "telegram_user_setup", "Collega prima un account Telegram utente.") from None
+        raise Conflict("telegram_user_setup", "Collega prima un account Telegram utente.") from None
 
 
 async def request_code(api_id: int, api_hash: str, phone: str) -> None:
     if api_id <= 0 or not api_hash.strip() or not phone.strip().startswith("+"):
-        raise ApiError(422, "invalid_telegram_login", "Indica API ID, API hash e numero internazionale (+...).")
+        raise Invalid("invalid_telegram_login", "Indica API ID, API hash e numero internazionale (+...).")
     client = _client(api_id, api_hash)
     try:
         await client.connect()
@@ -109,7 +109,7 @@ async def complete_login(code: str, password: str | None = None) -> None:
         row = session.get(Setting, PENDING_KEY)
         value = row.value if row else None
     if not value or time.time() > value["expires"] or value["phone"] not in _pending_login:
-        raise ApiError(409, "telegram_code_expired", "Richiedi un nuovo codice Telegram.")
+        raise Conflict("telegram_code_expired", "Richiedi un nuovo codice Telegram.")
     pending = _pending_login[value["phone"]]
     api_hash = pending["api_hash"]
     client = _client(value["api_id"], api_hash, pending["session"])
@@ -119,10 +119,10 @@ async def complete_login(code: str, password: str | None = None) -> None:
             await client.sign_in(phone=value["phone"], code=code, phone_code_hash=value["phone_code_hash"])
         except SessionPasswordNeededError:
             if not password:
-                raise ApiError(409, "telegram_password_required", "Serve la password di verifica in due passaggi.") from None
+                raise Conflict("telegram_password_required", "Serve la password di verifica in due passaggi.") from None
             await client.sign_in(password=password)
         if not await client.is_user_authorized():
-            raise ApiError(409, "telegram_user_unauthorized", "Accesso Telegram non completato.")
+            raise Conflict("telegram_user_unauthorized", "Accesso Telegram non completato.")
         env_path = _env_path()
         config_service.set_secret("RT_TELEGRAM_USER_API_ID", str(value["api_id"]), path=env_path)
         config_service.set_secret("RT_TELEGRAM_USER_API_HASH", api_hash, path=env_path)
@@ -142,12 +142,12 @@ async def _authorized_client():
     api_id, api_hash = _credentials()
     session = _saved_session()
     if not session:
-        raise ApiError(409, "telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")
+        raise Conflict("telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")
     client = _client(api_id, api_hash, session)
     await client.connect()
     if not await client.is_user_authorized():
         await client.disconnect()
-        raise ApiError(409, "telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")
+        raise Conflict("telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")
     return client
 
 
@@ -158,7 +158,7 @@ async def revoke_session() -> None:
     env_path = _env_path()
     try:
         client = await _authorized_client()
-    except ApiError:
+    except ServiceError:
         client = None
     if client:
         try:
@@ -212,18 +212,18 @@ async def export_topic(chat_id: int, topic_id: int) -> tuple[str, str]:
         async def append_message(message):
             nonlocal total_size
             if len(records) >= MAX_MESSAGES:
-                raise ApiError(413, "topic_limit", "Topic troppo grande: archivio non creato.")
+                raise TooLarge("topic_limit", "Topic troppo grande: archivio non creato.")
             record = {"id": message.id, "date": message.date.isoformat() if message.date else None,
                       "sender_id": message.sender_id, "text": message.raw_text or "", "media": None}
             if message.media:
                 target = os.path.join(folder, f"media-{message.id}")
                 saved = await client.download_media(message, file=target)
                 if not saved or not os.path.isfile(saved):
-                    raise ApiError(502, "media_download_failed", f"Media del messaggio {message.id} non scaricato.")
+                    raise UpstreamFailed("media_download_failed", f"Media del messaggio {message.id} non scaricato.")
                 size = os.path.getsize(saved)
                 total_size += size
                 if total_size > MAX_MEDIA_BYTES:
-                    raise ApiError(413, "topic_limit", "Media troppo grandi: archivio non creato.")
+                    raise TooLarge("topic_limit", "Media troppo grandi: archivio non creato.")
                 name = f"media/{message.id}{os.path.splitext(saved)[1]}"
                 with open(saved, "rb") as stream:
                     digest = hashlib.file_digest(stream, "sha256").hexdigest()

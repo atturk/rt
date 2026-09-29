@@ -9,7 +9,7 @@ import uuid
 
 from sqlalchemy import select
 
-from rt.api.errors import ApiError
+from rt.services.errors import Conflict, NotFound, Unavailable
 from rt.db.engine import get_database
 from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, TelegramCommand
 from rt.db.session import session_scope
@@ -64,7 +64,7 @@ def delete_lesson(lesson_id: int, lesson_dir: str) -> None:
     db = get_database()
     root = lessons_root()
     if db is None:
-        raise ApiError(503, "database_unavailable", "Database non disponibile.")
+        raise Unavailable("database_unavailable", "Database non disponibile.")
     with _journal_lock(db):
         _delete_locked(db, root, lesson_id, lesson_dir)
         _recover_locked(db)
@@ -74,21 +74,21 @@ def _delete_locked(db, root, lesson_id: int, lesson_dir: str) -> None:
     with session_scope(db) as session:
         row = session.get(Lesson, lesson_id)
         if row is None or row.path != os.path.realpath(lesson_dir):
-            raise ApiError(404, "lesson_not_found", "Lezione non trovata.")
+            raise NotFound("lesson_not_found", "Lezione non trovata.")
         if row.storage == "folder" and (not root or not _safe_child(lesson_dir, os.path.realpath(root))):
-            raise ApiError(409, "unsafe_lesson_path", "La lezione non è una cartella diretta della radice configurata.")
+            raise Conflict("unsafe_lesson_path", "La lezione non è una cartella diretta della radice configurata.")
         if session.scalar(select(Job.id).where(Job.lesson_path == row.path, Job.state.in_(
                 ["queued", "running", "waiting_for_decision"])).limit(1)):
-            raise ApiError(409, "lesson_busy", "La lezione ha job ancora attivi o in attesa.")
+            raise Conflict("lesson_busy", "La lezione ha job ancora attivi o in attesa.")
         media = [item for item in session.scalars(select(LessonFile.media_path).where(
             LessonFile.lesson_id == lesson_id, LessonFile.media_path.is_not(None)))]
         media_root = os.path.realpath(fs.media_dir(db))
         for rel in media:
             if os.path.isabs(rel) or not os.path.realpath(os.path.join(media_root, rel)).startswith(media_root + os.sep):
-                raise ApiError(409, "unsafe_media_path", "Il percorso di un file media non è valido.")
+                raise Conflict("unsafe_media_path", "Il percorso di un file media non è valido.")
             if session.scalar(select(LessonFile.id).where(LessonFile.media_path == rel,
                     LessonFile.lesson_id != lesson_id).limit(1)):
-                raise ApiError(409, "shared_media", "Un file media è condiviso con un'altra lezione.")
+                raise Conflict("shared_media", "Un file media è condiviso con un'altra lezione.")
 
         # A local journal survives a crash between the SQLite commit and physical cleanup.
         journal_dir = os.path.join(fs.data_dir(db), "pending-deletions")
@@ -97,7 +97,7 @@ def _delete_locked(db, root, lesson_id: int, lesson_dir: str) -> None:
         staged = None
         if row.storage == "folder":
             if not os.path.isdir(lesson_dir):
-                raise ApiError(404, "lesson_not_found", "Cartella della lezione non trovata.")
+                raise NotFound("lesson_not_found", "Cartella della lezione non trovata.")
             staged = os.path.join(os.path.dirname(lesson_dir), f".rt-deleting-{lesson_id}-{uuid.uuid4().hex}")
         with open(journal, "x", encoding="utf-8") as stream:
             json.dump({"lesson_id": lesson_id, "original": lesson_dir, "staged": staged,

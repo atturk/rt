@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from rt.api.errors import ApiError
+from rt.services.errors import Conflict, NotFound
 from rt.db.engine import get_database
 from rt.db.models import Job
 from rt.db.session import session_scope
@@ -63,14 +63,14 @@ def delete_orphan(upload_id: str, include_referenced: bool = False) -> None:
     """Elimina un upload orfano; con include_referenced anche quello di un job concluso senza
     successo (fallito o annullato): il job non si potrà più riprovare. Mai quelli attivi."""
     if not _UPLOAD_ID.fullmatch(upload_id):
-        raise ApiError(404, "upload_not_found", "Upload non trovato.")
+        raise NotFound("upload_not_found", "Upload non trovato.")
     root = _root()
     item = _item(root, upload_id, _references())
     if item is None:
-        raise ApiError(404, "upload_not_found", "Upload non trovato.")
+        raise NotFound("upload_not_found", "Upload non trovato.")
     if item["state"] == "active":
-        raise ApiError(409, "upload_active", "L'upload è in uso da un job in corso o appena caricato.")
+        raise Conflict("upload_active", "L'upload è in uso da un job in corso o appena caricato.")
     if item["state"] == "referenced" and not include_referenced:
-        raise ApiError(409, "upload_referenced", "L'upload è associato a un job: conferma che il job non verrà ripreso.")
+        raise Conflict("upload_referenced", "L'upload è associato a un job: conferma che il job non verrà ripreso.")
     # L'ID è un nome UUID generato dal server e la directory non è un symlink.
     shutil.rmtree(os.path.join(root, upload_id))

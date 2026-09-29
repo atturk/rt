@@ -14,6 +14,7 @@ from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
 from rt.api.jobs import enqueue_job, job_accepted, job_view, queue
+from rt.services.errors import ServiceError
 from rt.storage import fs
 
 router = APIRouter(tags=["job"])
@@ -111,9 +112,9 @@ def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
                 path = _save_uploads([archive], {".zip"}, target)[0]
                 lesson_id = import_archive(path)
                 results.append({"file": filename, "status": "imported", "lesson_id": lesson_id})
-            except (ApiError, zipfile.BadZipFile, ValueError) as exc:
+            except (ApiError, ServiceError, zipfile.BadZipFile, ValueError) as exc:
                 results.append({"file": filename, "status": "rejected", "reason":
-                                exc.message if isinstance(exc, ApiError) else "Archivio ZIP non valido."})
+                                exc.message if isinstance(exc, (ApiError, ServiceError)) else "Archivio ZIP non valido."})
             finally:
                 # Each archive is independent; two archives with the same basename cannot overwrite.
                 path = os.path.join(target, filename)

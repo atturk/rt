@@ -192,13 +192,13 @@ class DbJobQueue:
         with session_scope(self.db) as s:
             lesson_path = self._lesson_path(s, lesson_id)
             if lesson_path:
-                from rt.db.models import Lesson, Setting
-                from rt.services.document_edit_lease import _active, _key
+                # Un job non deve scrivere sotto un editor aperto: DocumentBeingEdited (409
+                # document_edit_busy nell'API) finché il lease non è rilasciato o scaduto.
+                from rt.db.models import Lesson
+                from rt.services.document_edit_lease import DocumentBeingEdited, is_being_edited
                 lesson = s.scalar(select(Lesson).where(Lesson.path == lesson_path))
-                if lesson:
-                    edit = s.get(Setting, _key(lesson.id))
-                    if edit and _active(edit.value):
-                        raise LessonHasActiveJob("document-editor")
+                if lesson and is_being_edited(s, lesson.id):
+                    raise DocumentBeingEdited()
             job = Job(id=job_id, type=job_type, state=JobState.QUEUED.value,
                       lesson_path=lesson_path, payload=json_safe(payload or {}),
                       attempts=0, max_attempts=max_attempts, cancel_requested=False, created_by=created_by,

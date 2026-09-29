@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from rt.api.errors import ApiError
+from rt.services.errors import ServiceError
 from rt.services.jobs import DbJobQueue
 from rt.services import upload_cleanup
 
@@ -30,10 +30,10 @@ def test_inventory_and_delete_only_orphan(tmp_path, monkeypatch, rt_db):
     assert rows[orphan.name]["state"] == "orphan"
     assert rows[orphan.name]["files"] == 1
     assert rows[active.name]["state"] == "active"
-    with pytest.raises(ApiError) as busy:
+    with pytest.raises(ServiceError) as busy:
         upload_cleanup.delete_orphan(active.name)
-    assert busy.value.status_code == 409
-    with pytest.raises(ApiError):
+    assert busy.value.kind == "conflict"
+    with pytest.raises(ServiceError):
         upload_cleanup.delete_orphan("../outside")
     upload_cleanup.delete_orphan(orphan.name)
     assert not os.path.exists(orphan)
@@ -49,7 +49,7 @@ def test_symlink_is_never_listed_or_deleted(tmp_path, monkeypatch, rt_db):
     link = root / uuid.uuid4().hex
     link.symlink_to(outside, target_is_directory=True)
     assert upload_cleanup.list_uploads() == []
-    with pytest.raises(ApiError):
+    with pytest.raises(ServiceError):
         upload_cleanup.delete_orphan(link.name)
     assert outside.is_dir()
 
@@ -60,9 +60,9 @@ def test_fresh_upload_without_job_is_protected(tmp_path, monkeypatch, rt_db):
     fresh = tmp_path / ".rt" / "uploads" / uuid.uuid4().hex
     fresh.mkdir(parents=True)
     assert upload_cleanup.list_uploads()[0]["state"] == "active"
-    with pytest.raises(ApiError) as busy:
+    with pytest.raises(ServiceError) as busy:
         upload_cleanup.delete_orphan(fresh.name, include_referenced=True)
-    assert busy.value.status_code == 409 and fresh.is_dir()
+    assert busy.value.kind == "conflict" and fresh.is_dir()
 
 
 def test_failed_job_upload_needs_explicit_confirmation(tmp_path, monkeypatch, rt_db):
@@ -78,8 +78,8 @@ def test_failed_job_upload_needs_explicit_confirmation(tmp_path, monkeypatch, rt
     with session_scope(rt_db) as session:
         session.get(Job, job_id).state = "failed"
     assert upload_cleanup.list_uploads()[0]["state"] == "referenced"
-    with pytest.raises(ApiError) as referenced:
+    with pytest.raises(ServiceError) as referenced:
         upload_cleanup.delete_orphan(kept.name)
-    assert referenced.value.status_code == 409 and kept.is_dir()
+    assert referenced.value.kind == "conflict" and kept.is_dir()
     upload_cleanup.delete_orphan(kept.name, include_referenced=True)
     assert not kept.exists()

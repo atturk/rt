@@ -16,21 +16,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from rt.api.errors import error_response
+from rt.core.paths import SPA_DIR_ENV, find_spa_dir  # noqa: F401  (riesportati)
 
-SPA_DIR_ENV = "RT_SPA_DIR"
-_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_PROJECT_ROOT = os.path.dirname(_PACKAGE_DIR)
 RESERVED_PREFIXES = ("api/", "docs", "openapi.json")
-
-
-def find_spa_dir() -> Optional[str]:
-    candidates = [os.environ.get(SPA_DIR_ENV, "").strip(),
-                  os.path.join(_PACKAGE_DIR, "spa"),
-                  os.path.join(_PROJECT_ROOT, "frontend", "dist")]
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "index.html")):
-            return os.path.abspath(candidate)
-    return None
 
 
 def install_spa(app: FastAPI, spa_dir: Optional[str]) -> None:

@@ -117,3 +117,19 @@ def write_marker(path: str, **info) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp, os.path.join(path, DATA_MARKER))
+
+
+SPA_DIR_ENV = "RT_SPA_DIR"
+
+
+def find_spa_dir() -> Optional[str]:
+    """Build della web app: RT_SPA_DIR, poi rt/spa (release), poi frontend/dist (sviluppo).
+    Qui e non in rt.api.spa perché serve anche alla diagnostica (rt doctor)."""
+    root = project_root()
+    candidates = [os.environ.get(SPA_DIR_ENV, "").strip(),
+                  os.path.join(root, "rt", "spa"),
+                  os.path.join(root, "frontend", "dist")]
+    for candidate in candidates:
+        if candidate and os.path.isfile(os.path.join(candidate, "index.html")):
+            return os.path.abspath(candidate)
+    return None

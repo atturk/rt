@@ -865,40 +865,8 @@ def cmd_web(args: argparse.Namespace) -> None:
 
 def cmd_logs(args: argparse.Namespace) -> None:
     """Mostra le ultime righe dei log dei servizi."""
-    from collections import deque
-    from rt.core.paths import data_dir
-    import time
-
-    names = [args.service] if args.service else ["api", "worker", "bot"]
-    positions = {}
-    for name in names:
-        path = os.path.join(data_dir(), "logs", f"{name}.log")
-        if not os.path.isfile(path):
-            print(f"{name}: nessun log in {path}")
-            continue
-        with open(path, "r", encoding="utf-8", errors="replace") as stream:
-            for line in deque(stream, maxlen=args.lines):
-                print(f"[{name}] {line}", end="")
-            positions[name] = (path, stream.tell())
-    if not args.follow:
-        return
-    print("Ctrl+C interrompe la lettura; i servizi continuano a funzionare.")
-    try:
-        while True:
-            for name in names:
-                path, position = positions.get(name, (os.path.join(data_dir(), "logs", f"{name}.log"), 0))
-                if not os.path.isfile(path):
-                    continue
-                with open(path, "r", encoding="utf-8", errors="replace") as stream:
-                    if os.path.getsize(path) < position:
-                        position = 0
-                    stream.seek(position)
-                    for line in stream:
-                        print(f"[{name}] {line}", end="", flush=True)
-                    positions[name] = (path, stream.tell())
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        return
+    from rt.services.logs_service import show_logs
+    show_logs(args.service, lines=args.lines, follow=args.follow)
 
 
 def cmd_api(args: argparse.Namespace) -> None:

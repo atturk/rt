@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from rt.api.errors import ApiError
+from rt.services.errors import ServiceError
 from rt.services.telegram_user_archive import export_topic
 from rt.services.telegram_user_archive import request_code
 from rt.db.models import Setting
@@ -53,7 +53,7 @@ def test_topic_archive_contains_users_bot_and_media(tmp_path):
 def test_topic_archive_fails_if_media_missing(tmp_path):
     with patch("rt.services.telegram_user_archive._authorized_client", new=AsyncMock(return_value=FakeClient(True))), \
          patch("rt.services.telegram_user_archive.tempfile.mkdtemp", side_effect=lambda **_: str(tmp_path)):
-        with pytest.raises(ApiError, match="Media"):
+        with pytest.raises(ServiceError, match="Media"):
             asyncio.run(export_topic(-1001, 42))
 
 

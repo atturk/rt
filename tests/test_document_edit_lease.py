@@ -65,3 +65,13 @@ def test_renewal_keeps_the_session_alive(api_client, lesson):
     renewed = api_client.post(endpoint, params={"token": first["token"]}).json()
     assert renewed["lease_id"] == first["lease_id"] and renewed["acquired_at"] == first["acquired_at"]
     assert renewed["expires"] >= first["expires"] and renewed["recovered"] is False
+
+
+def test_queue_refuses_jobs_while_document_is_edited(api_client, lesson, rt_db):
+    """Anche chi accoda senza passare dall'API (CLI, bot) trova l'errore di dominio del lease."""
+    from rt.services.document_edit_lease import DocumentBeingEdited
+    from rt.services.jobs import DbJobQueue
+    api_client.post(f"/api/v1/lessons/{lesson}/document/lease")
+    with pytest.raises(DocumentBeingEdited) as busy:
+        DbJobQueue(rt_db).enqueue("run_phase", lesson, {"phase": "prepare"})
+    assert busy.value.code == "document_edit_busy" and busy.value.kind == "conflict"

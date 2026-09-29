@@ -77,9 +77,8 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
         say("✅ RT è già in funzione in background (servizi).")
         _open_when_ready(base, f"{base}/login?code={auth.create_login_code()}", say, open_browser)
         if verbose:
-            from argparse import Namespace
-            from rt.cli import cmd_logs
-            cmd_logs(Namespace(service=None, lines=50, follow=True))
+            from rt.services.logs_service import show_logs
+            show_logs(lines=50, follow=True)
         return 0
     if host not in LOOPBACK:
         say(f"⚠️  RT sarà raggiungibile da altri dispositivi su {host}:{port}. Proteggi il token.")
