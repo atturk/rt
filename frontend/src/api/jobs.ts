@@ -64,6 +64,18 @@ export function useCancelJob() {
   })
 }
 
+/**
+ * POST /jobs/{id}/close: chiude un job fermo su una decisione senza annullarlo (la decisione si
+ * prende poi dalla sua schermata, e non fa ripartire il job).
+ */
+export function useCloseJob() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/jobs/{job_id}/close', { params: { path: { job_id: id } } })),
+    onSettled: (job) => invalidateAfterJob(client, job?.lesson_id),
+  })
+}
+
 /** POST /jobs/{id}/retry: job nuovo (stesso tipo e payload) collegato a quello fallito. */
 export function useRetryJob() {
   const client = useQueryClient()

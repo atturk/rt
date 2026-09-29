@@ -30,6 +30,14 @@ class PhaseWarning(BaseModel):
     count: Optional[int] = Field(None, description="Numero di issue, se l'avviso le conta")
 
 
+class ManualValidation(BaseModel):
+    at: str = Field(description="Quando è stata validata (ISO 8601, ora locale)")
+    actor: Optional[str] = None
+    channel: Optional[str] = Field(None, description="cli | api")
+    previous_status: Optional[str] = Field(None, description="Stato della fase prima della validazione")
+    previous_reason: Optional[str] = None
+
+
 class PhaseState(BaseModel):
     phase: str
     status: str
@@ -39,6 +47,18 @@ class PhaseState(BaseModel):
         description="Solo per build: avvisi di integrità della revisione (review non aggiornata o "
                     "incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li "
                     "mostra nel dialogo di conferma.")
+    manual_validation: Optional[ManualValidation] = Field(
+        None, description="Presente se la fase è stata validata a mano (senza rieseguirla) e non "
+                          "è stata più eseguita da allora")
+
+
+class PhaseValidationResult(BaseModel):
+    phase: str
+    previous_status: str
+    previous_reason: str
+    status: str
+    reason: str
+    changed: bool = Field(description="False se la fase era già valida (nessuna modifica)")
 
 
 class LessonAction(BaseModel):

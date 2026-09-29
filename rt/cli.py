@@ -19,6 +19,7 @@ Comandi disponibili:
 Comandi diagnostici (uso avanzato):
   rt validate-outline   <cartella>
   rt validate-draft     <cartella>
+  rt validate-phase     <cartella> <fase> (segna la fase valida senza rieseguirla)
 """
 
 import sys
@@ -650,6 +651,34 @@ def cmd_delete(args: argparse.Namespace) -> None:
     print(f"✅ Lezione eliminata: {os.path.basename(lesson_dir)}")
 
 
+def cmd_validate_phase(args: argparse.Namespace) -> None:
+    """Valida a mano una fase senza rieseguirla (come POST /lessons/{id}/phases/{fase}/validate)."""
+    from rt.services.phase_validation_service import validate_phase
+    lesson_dir = _resolve_lesson_arg(args.lesson)
+    if not fs.isdir(lesson_dir):
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    lesson_id = None
+    try:
+        from rt.services.lesson_service import lesson_id_for_dir
+        lesson_id = lesson_id_for_dir(lesson_dir)
+    except RuntimeError:
+        pass  # senza database: nessun lease da controllare
+    try:
+        result = validate_phase(lesson_dir, args.phase, lesson_id=lesson_id, actor="cli", channel="cli")
+    except Exception as exc:
+        message = _service_error(exc)
+        if message is None:
+            raise
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+    if not result["changed"]:
+        print(f"ℹ️  La fase {args.phase} è già valida: {result['reason']}")
+        return
+    print(f"✅ Fase {args.phase} validata manualmente (era {result['previous_status']}: {result['previous_reason']}).")
+    print("   Le fasi a valle costruite su input diversi restano da rifare ('rt status' le mostra).")
+
+
 def cmd_import(args: argparse.Namespace) -> None:
     """Importa archivi .zip completi di RT come nuove lezioni (come POST /lessons/import-zip)."""
     import zipfile
@@ -1004,7 +1033,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  delete              Elimina una lezione (chiede conferma, --yes per saltarla)\n"
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
-        "  validate-draft      Valida il draft rielaborato\n\n"
+        "  validate-draft      Valida il draft rielaborato\n"
+        "  validate-phase      Segna una fase come valida senza rieseguirla\n\n"
         "Installazione e manutenzione:\n"
         "  doctor              Controlla l'installazione e dice cosa sistemare\n"
         "  backup / restore    Backup completo (database, media, configurazione) e ripristino\n"
@@ -1299,6 +1329,11 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_del.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
     p_del.add_argument("-y", "--yes", action="store_true", help="Non chiedere conferma")
     p_del.set_defaults(func=cmd_delete)
+
+    p_vph = subparsers.add_parser("validate-phase", help="Segna una fase come valida senza rieseguirla (es. dopo una modifica voluta)")
+    p_vph.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_vph.add_argument("phase", choices=["prepare", "outline", "rewrite", "review", "build"], help="Fase da validare")
+    p_vph.set_defaults(func=cmd_validate_phase)
 
     return parser, {
         "web": p_web,

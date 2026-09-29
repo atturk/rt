@@ -152,6 +152,7 @@ in un processo separato, avvia un worker e accoda la pipeline:
 ./bin/rt worker                          # esegue i job in coda (Ctrl+C per fermarlo)
 ./bin/rt run "cartella_lezione" --queue  # accoda e segue il progresso
 ./bin/rt jobs                            # elenca i job; 'rt jobs cancel ID' ne annulla uno
+./bin/rt jobs close ID                   # chiude un job in attesa delle issue: le valuti dopo in Revisione
 ```
 
 Senza `--queue`, `rt run` lavora in processo come sempre. Con un worker attivo anche il daemon
@@ -186,6 +187,7 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ./bin/rt validate-outline "cartella_lezione"  # Valida monotonicità e copertura
 ./bin/rt rewrite "cartella_lezione"           # Rielabora a finestre con provenance
 ./bin/rt validate-draft "cartella_lezione"    # Valida il draft prodotto
+./bin/rt validate-phase "cartella_lezione" outline  # Segna valida una fase STALE senza rieseguirla
 ./bin/rt review "cartella_lezione"            # Revisione scientifica e delle ambiguità ASR
 ./bin/rt review "cartella_lezione" --unit 1.2 # Rivede solo un'unità (ripetibile)
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi

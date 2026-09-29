@@ -87,6 +87,19 @@ INPUT_LABELS = {
 }
 
 
+# Artefatti primari di ogni fase: se ne manca uno la fase è MISSING.
+PHASE_PRIMARY_ARTIFACTS = {
+    "prepare": ["segments.json", "transcript_normalized.md"],
+    "outline": ["outline.json"],
+    "rewrite": ["draft.json"],
+    "review": ["science_issues.json"],
+    "build": ["pre-elaborato.md", "rielaborato.md", "Errori concettuali.md"],
+}
+
+# review è una fase opzionale: se non è mai stata eseguita (MISSING) non invalida i discendenti.
+OPTIONAL_UPSTREAM_DEPS = {"review"}
+
+
 def compute_file_sha256(path: str) -> str:
     """Calcola l'hash SHA256 di un file su disco in modo efficiente."""
     if not fs.isfile(path):
@@ -317,19 +330,7 @@ def check_phase_status(
 
     # 1. Controllo preliminare di esistenza artefatto primario:
     # Se il file della fase non esiste affatto su disco, lo stato è tassativamente MISSING (non ancora generato).
-    phase_primary_artifacts = {
-        "prepare": ["segments.json", "transcript_normalized.md"],
-        "outline": ["outline.json"],
-        "rewrite": ["draft.json"],
-        "review": ["science_issues.json"],
-        "build": [
-            "pre-elaborato.md",
-            "rielaborato.md",
-            "Errori concettuali.md"
-        ]
-    }
-
-    primary_files = phase_primary_artifacts.get(phase_name, [])
+    primary_files = PHASE_PRIMARY_ARTIFACTS.get(phase_name, [])
     for pf in primary_files:
         p = lesson_path(lesson_dir, pf)
         if not fs.isfile(p):
@@ -611,6 +612,8 @@ def record_phase_fingerprint(
         rec_art.update(artifact_fingerprints)
         record["artifact_fingerprints"] = rec_art
 
+    # Un'esecuzione vera sostituisce una validazione manuale precedente.
+    record.pop("manual_validation", None)
     if metadata:
         record.update(metadata)
 
@@ -664,6 +667,8 @@ def record_phase_checkpoint(
     if completed_items is not None:
         record["completed_items"] = completed_items
 
+    # Un'esecuzione vera sostituisce una validazione manuale precedente.
+    record.pop("manual_validation", None)
     if metadata:
         record.update(metadata)
 
@@ -763,3 +768,87 @@ def mark_downstream_stale(
     manifest.phase_records = phase_records
     save_manifest(manifest, lesson_dir)
     return invalidated
+
+
+class ManualValidationRefused(Exception):
+    """La fase non si può validare a mano: status e reason dicono in che stato è."""
+
+    def __init__(self, message: str, status: Optional[PhaseStatus] = None, reason: str = ""):
+        super().__init__(message)
+        self.status = status
+        self.reason = reason
+
+
+def _manual_validation_extra(lesson_dir: str, phase_name: str) -> Dict[str, Any]:
+    """Campi del checkpoint che un'esecuzione vera scriverebbe oltre all'impronta: per il
+    rewrite le impronte delle unità (così un rewrite successivo non le rifà) e le unità fatte."""
+    if phase_name != "rewrite":
+        return {}
+    from rt.pipeline.rewrite import load_draft
+    unit_ids = [u.unit_id for u in load_draft(lesson_dir).units]
+    return {
+        "unit_fingerprints": {uid: compute_source_fingerprint(lesson_dir, "rewrite", target_unit_id=uid)
+                              for uid in unit_ids},
+        "completed_items": unit_ids,
+    }
+
+
+def record_manual_validation(lesson_dir: str, phase_name: str, actor: str = "user",
+                             channel: str = "cli") -> Dict[str, Any]:
+    """Validazione manuale di una fase (per esempio STALE dopo una modifica voluta a un file):
+    registra il checkpoint VALID con gli input attuali (impronta, hash degli artefatti e degli
+    input) senza rieseguirla, e annota nel manifest chi l'ha fatto e quando (manual_validation).
+
+    Si rifiuta (ManualValidationRefused) se l'artefatto manca o non è leggibile, se una fase a
+    monte non è valida (va validata o eseguita prima) o se, anche con gli input attuali, la fase
+    non risulterebbe VALID (per esempio un draft con unità mancanti): in quel caso il checkpoint
+    torna com'era. Le fasi a valle non si toccano: il loro stato si ricalcola dalle loro
+    impronte, quindi quelle costruite su input diversi restano (o diventano) STALE.
+    Restituisce {"phase", "previous_status", "previous_reason", "status", "reason", "changed"}."""
+    import copy
+    if phase_name not in PROCESSOR_VERSIONS:
+        raise ManualValidationRefused(f"Fase sconosciuta: {phase_name}")
+    before, before_reason = check_phase_status(lesson_dir, phase_name)
+    out = {"phase": phase_name, "previous_status": before.value, "previous_reason": before_reason}
+    if before == PhaseStatus.VALID:
+        return {**out, "status": before.value, "reason": before_reason, "changed": False}
+    if before in (PhaseStatus.MISSING, PhaseStatus.INVALID):
+        raise ManualValidationRefused(
+            f"La fase non si può validare ({before.value}: {before_reason}): eseguila di nuovo.", before, before_reason)
+    for dep in UPSTREAM_DEPENDENCIES.get(phase_name, []):
+        dep_status, dep_reason = check_phase_status(lesson_dir, dep)
+        if dep_status == PhaseStatus.MISSING and dep in OPTIONAL_UPSTREAM_DEPS:
+            continue
+        if dep_status != PhaseStatus.VALID:
+            raise ManualValidationRefused(
+                f"Prima valida o esegui la fase a monte '{dep}' ({dep_status.value}: {dep_reason}).",
+                before, before_reason)
+
+    manifest = load_manifest(lesson_dir)
+    if not manifest:
+        raise ManualValidationRefused("manifest.json non trovato: esegui la fase.", before, before_reason)
+    previous_record = copy.deepcopy((getattr(manifest, "phase_records", {}) or {}).get(phase_name))
+    try:
+        extra = _manual_validation_extra(lesson_dir, phase_name)
+    except Exception as exc:
+        raise ManualValidationRefused(f"La fase non si può validare: {exc}", PhaseStatus.INVALID, str(exc))
+    artifacts = {fn: compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in PHASE_PRIMARY_ARTIFACTS[phase_name]}
+    manual = {"at": datetime.now().isoformat(), "actor": actor, "channel": channel,
+              "previous_status": before.value, "previous_reason": before_reason}
+    record_phase_fingerprint(lesson_dir, phase_name, compute_source_fingerprint(lesson_dir, phase_name),
+                             artifact_fingerprints=artifacts, metadata={**extra, "manual_validation": manual})
+
+    after, after_reason = check_phase_status(lesson_dir, phase_name)
+    if after != PhaseStatus.VALID:
+        manifest = load_manifest(lesson_dir)
+        records = getattr(manifest, "phase_records", {}) or {}
+        if previous_record is None:
+            records.pop(phase_name, None)
+        else:
+            records[phase_name] = previous_record
+        manifest.phase_records = records
+        save_manifest(manifest, lesson_dir)
+        raise ManualValidationRefused(
+            f"La fase non risulta valida nemmeno con gli input attuali ({after.value}: {after_reason}): "
+            "eseguila per completarla.", after, after_reason)
+    return {**out, "status": after.value, "reason": after_reason, "changed": True}

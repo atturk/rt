@@ -52,6 +52,18 @@ def get_phases(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return lesson_service.phase_report(lesson_dir)
 
 
+@router.post("/lessons/{lesson_id}/phases/{phase}/validate", response_model=schemas.PhaseValidationResult,
+             summary="Valida a mano una fase senza rieseguirla (come 'rt validate-phase')",
+             description="Registra la fase come VALID per gli input attuali (per esempio dopo una modifica "
+                         "voluta ai suoi file). 409 phase_not_validatable se l'artefatto manca o non è "
+                         "valido, se una fase a monte non è valida o se la fase è incompleta; 409 "
+                         "lesson_busy con un job in coda o in esecuzione sulla lezione.")
+def validate_phase(lesson_id: int, phase: Literal["prepare", "outline", "rewrite", "review", "build"],
+                   lesson_dir: LessonDir, actor: Actor):
+    from rt.services.phase_validation_service import validate_phase as validate
+    return validate(lesson_dir, phase, lesson_id=lesson_id, actor=str(actor), channel="api")
+
+
 @router.get("/lessons/{lesson_id}/document", response_model=schemas.LessonDocument,
             summary="Documento Markdown finale (o anteprima) con HTML sanificato e timecode")
 def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):

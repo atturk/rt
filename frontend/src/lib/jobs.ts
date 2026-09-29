@@ -81,6 +81,24 @@ export function decisionLink(job: Pick<Job, 'decision' | 'lesson_id'>): string |
   return job.decision?.kind === 'outline_approval' ? `/lezioni/${job.lesson_id}/outline` : `/lezioni/${job.lesson_id}`
 }
 
+// Decisioni che hanno una loro schermata: il job che le aspetta si può chiudere e decidere dopo.
+const CLOSABLE_DECISIONS = new Set(['outline_approval', 'science_issue'])
+
+/** Il job è fermo su una decisione che si può prendere più tardi dalla sua schermata. */
+export function canCloseJob(job: Pick<Job, 'state' | 'decision' | 'lesson_id'>): boolean {
+  return job.state === 'waiting_for_decision' && job.lesson_id != null && CLOSABLE_DECISIONS.has(String(job.decision?.kind ?? ''))
+}
+
+/** Job chiuso con la decisione rimandata (POST /jobs/{id}/close): messaggio e pagina dove decidere. */
+export function closedJob(job: Pick<Job, 'state' | 'result' | 'lesson_id'>): { message: string; link: string | null; kind: string } | null {
+  const closed = (job.result as Record<string, unknown> | null | undefined)?.closed as Record<string, unknown> | undefined
+  if (job.state !== 'succeeded' || !closed) return null
+  const kind = String(closed.kind ?? '')
+  const page = kind === 'outline_approval' ? 'outline' : kind === 'science_issue' ? 'revisione' : ''
+  const link = job.lesson_id == null ? null : `/lezioni/${job.lesson_id}${page ? `/${page}` : ''}`
+  return { message: String(closed.message ?? 'Chiuso'), link, kind }
+}
+
 function phaseName(payload: Record<string, unknown>): string {
   const phase = String(payload.phase ?? '')
   return PHASE_LABELS[phase] ?? (phase === 'setup' ? 'Trascrizione e setup' : phase)
@@ -103,6 +121,7 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
     case 'job_waiting':
       return { text: 'In attesa di una tua decisione', tone: 'warning' }
     case 'job_finished': {
+      if (p.closed) return { text: String(p.message ?? 'Chiuso'), tone: 'success' }
       const state = String(p.state ?? '')
       const text = JOB_STATE_LABELS[state] ?? state
       return { text: p.error ? `${text}: ${p.error}` : text, tone: jobStateTone(state) }

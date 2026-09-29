@@ -279,6 +279,21 @@ def cancel_job(job_id: str, _actor: Actor):
     return job_view(queue().cancel(job_id))
 
 
+@router.post("/jobs/{job_id}/close", response_model=schemas.Job,
+             summary="Chiude un job in attesa di una decisione senza annullarlo (come 'rt jobs close')",
+             description="Il job finisce (succeeded, result.closed con il messaggio); le issue restano da "
+                         "valutare in Revisione o la scaletta da approvare, e decidere dopo non fa ripartire "
+                         "la pipeline. 409 job_not_closable se il job non è in attesa di una decisione "
+                         "che abbia una sua schermata.")
+def close_job(job_id: str, _actor: Actor):
+    from rt.services.jobs import JobError
+    _get(job_id)
+    try:
+        return job_view(queue().close_waiting(job_id))
+    except JobError as exc:
+        raise ApiError(409, "job_not_closable", str(exc))
+
+
 @router.post("/jobs/{job_id}/retry", response_model=schemas.JobAccepted, status_code=202,
              summary="Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita")
 def retry_job(job_id: str, actor: Actor):

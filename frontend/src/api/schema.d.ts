@@ -141,6 +141,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chiude un job in attesa di una decisione senza annullarlo (come 'rt jobs close')
+         * @description Il job finisce (succeeded, result.closed con il messaggio); le issue restano da valutare in Revisione o la scaletta da approvare, e decidere dopo non fa ripartire la pipeline. 409 job_not_closable se il job non è in attesa di una decisione che abbia una sua schermata.
+         */
+        post: operations["close_job_api_v1_jobs__job_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{job_id}/events": {
         parameters: {
             query?: never;
@@ -555,6 +575,26 @@ export interface paths {
         get: operations["get_phases_api_v1_lessons__lesson_id__phases_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/phases/{phase}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Valida a mano una fase senza rieseguirla (come 'rt validate-phase')
+         * @description Registra la fase come VALID per gli input attuali (per esempio dopo una modifica voluta ai suoi file). 409 phase_not_validatable se l'artefatto manca o non è valido, se una fase a monte non è valida o se la fase è incompleta; 409 lesson_busy con un job in coda o in esecuzione sulla lezione.
+         */
+        post: operations["validate_phase_api_v1_lessons__lesson_id__phases__phase__validate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2806,6 +2846,28 @@ export interface components {
              */
             url: string;
         };
+        /** ManualValidation */
+        ManualValidation: {
+            /** Actor */
+            actor?: string | null;
+            /**
+             * At
+             * @description Quando è stata validata (ISO 8601, ora locale)
+             */
+            at: string;
+            /**
+             * Channel
+             * @description cli | api
+             */
+            channel?: string | null;
+            /** Previous Reason */
+            previous_reason?: string | null;
+            /**
+             * Previous Status
+             * @description Stato della fase prima della validazione
+             */
+            previous_status?: string | null;
+        };
         /** Me */
         Me: {
             /** Actor */
@@ -3006,6 +3068,8 @@ export interface components {
         };
         /** PhaseState */
         PhaseState: {
+            /** @description Presente se la fase è stata validata a mano (senza rieseguirla) e non è stata più eseguita da allora */
+            manual_validation?: components["schemas"]["ManualValidation"] | null;
             /** Phase */
             phase: string;
             /** Reason */
@@ -3017,6 +3081,24 @@ export interface components {
              * @description Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.
              */
             warnings?: components["schemas"]["PhaseWarning"][];
+        };
+        /** PhaseValidationResult */
+        PhaseValidationResult: {
+            /**
+             * Changed
+             * @description False se la fase era già valida (nessuna modifica)
+             */
+            changed: boolean;
+            /** Phase */
+            phase: string;
+            /** Previous Reason */
+            previous_reason: string;
+            /** Previous Status */
+            previous_status: string;
+            /** Reason */
+            reason: string;
+            /** Status */
+            status: string;
         };
         /** PhaseWarning */
         PhaseWarning: {
@@ -4172,6 +4254,73 @@ export interface operations {
         };
     };
     cancel_job_api_v1_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    close_job_api_v1_jobs__job_id__close_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -6150,6 +6299,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhaseReport"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    validate_phase_api_v1_lessons__lesson_id__phases__phase__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                phase: "prepare" | "outline" | "rewrite" | "review" | "build";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhaseValidationResult"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

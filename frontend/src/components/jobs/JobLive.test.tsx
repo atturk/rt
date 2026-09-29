@@ -9,12 +9,14 @@ const state = vi.hoisted(() => ({
   events: [] as unknown[],
   status: 'open',
   cancel: vi.fn(),
+  close: vi.fn(),
 }))
 
 vi.mock('@/api/jobs', () => ({
   useJob: () => state.job,
   useJobEvents: () => ({ events: state.events, status: state.status }),
   useCancelJob: () => ({ mutate: state.cancel, isPending: false, isError: false }),
+  useCloseJob: () => ({ mutate: state.close, reset: vi.fn(), isPending: false, isError: false }),
   useRetryJob: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }))
 vi.mock('@/api/hooks', () => ({
@@ -34,6 +36,7 @@ beforeEach(() => {
   state.events = []
   state.status = 'open'
   state.cancel.mockReset()
+  state.close.mockReset()
 })
 
 describe('JobLive', () => {
@@ -93,5 +96,28 @@ describe('JobLive', () => {
     cleanup()
     renderJob({ state: 'succeeded' }, true)
     expect(screen.queryByRole('link', { name: 'Apri la lezione' })).toBeNull()
+  })
+
+  it('un job fermo sulle issue si chiude (con conferma) senza annullarlo', () => {
+    renderJob({ state: 'waiting_for_decision', decision: { kind: 'science_issue' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi e decidi dopo' }))
+    expect(screen.getByText(/Le issue restano da valutare nella schermata Revisione/)).toBeInTheDocument()
+    expect(state.close).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi il job' }))
+    expect(state.close.mock.calls[0][0]).toBe('j1')
+    expect(state.cancel).not.toHaveBeenCalled()
+  })
+
+  it('senza una lezione (dati mancanti) il job in attesa si può solo annullare', () => {
+    renderJob({ state: 'waiting_for_decision', decision: { kind: 'setup_metadata' }, lesson_id: null })
+    expect(screen.queryByRole('button', { name: 'Chiudi e decidi dopo' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Annulla job' })).toBeInTheDocument()
+  })
+
+  it('un job chiuso dice dove decidere invece di "Job completato"', () => {
+    renderJob({ state: 'succeeded', result: { closed: { kind: 'science_issue', message: 'Chiuso: le issue restano da valutare nella schermata Revisione' } } })
+    expect(screen.getByTestId('job-closed')).toHaveTextContent('Chiuso: le issue restano da valutare nella schermata Revisione')
+    expect(screen.getByRole('link', { name: 'Apri la revisione' })).toHaveAttribute('href', '/lezioni/3/revisione')
+    expect(screen.queryByText(/Job completato/)).toBeNull()
   })
 })

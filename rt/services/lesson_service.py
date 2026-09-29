@@ -260,10 +260,14 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
 
     from rt.services.review_service import build_warnings
 
+    from rt.core.manifest import load_manifest
+    manifest = load_manifest(lesson_dir)
+    records = (getattr(manifest, "phase_records", None) or {}) if manifest else {}
     phases = []
     for ph in PHASES:
         status, reason = check_phase_status(lesson_dir, ph)
-        item = {"phase": ph, "status": status.value, "reason": reason, "warnings": []}
+        item = {"phase": ph, "status": status.value, "reason": reason, "warnings": [],
+                "manual_validation": (records.get(ph) or {}).get("manual_validation")}
         if ph == "build":
             try:
                 item["warnings"] = build_warnings(lesson_dir)

@@ -292,6 +292,36 @@ def test_row_validate_outline_and_draft(api, cli, pair):
     assert report["draft_validation"] == cli.json_out("validate-draft", cli_dir)
 
 
+def test_row_validate_phase(api, cli, pair):
+    """rt validate-phase <lezione> <fase> ⇔ POST /lessons/{id}/phases/{fase}/validate."""
+    from rt.core.lesson_paths import lesson_path
+    from tests.api_support import run_mock_pipeline
+    cli_dir, api_dir = pair
+    for lesson_dir in pair:
+        run_mock_pipeline(lesson_dir)
+    lesson_id = api.lesson_id()
+    for lesson_dir in pair:  # la stessa modifica voluta alla scaletta: rewrite e build STALE
+        path = lesson_path(lesson_dir, "outline.json")
+        with fs.open(path, encoding="utf-8") as f:
+            outline = json.load(f)
+        outline["macro_sections"][0]["units"][0]["title"] += " (rivisto)"
+        with fs.open(path, "w", encoding="utf-8") as f:
+            json.dump(outline, f, ensure_ascii=False, indent=2)
+    out = cli.rt("validate-phase", cli_dir, "rewrite")
+    assert "validata manualmente" in out
+    assert api.post(f"/lessons/{lesson_id}/phases/rewrite/validate")["status"] == "VALID"
+    assert_same_lesson(cli_dir, api_dir)
+    phases = dict(lesson_state(api_dir)["phases"])
+    assert phases["rewrite"] == "VALID" and phases["build"] == "STALE"
+    # Stesso rifiuto con lo stesso messaggio: una fase MISSING non si forza.
+    for lesson_dir in pair:
+        fs.remove(lesson_path(lesson_dir, "science_issues.json"))
+    code, _, err = _run_cli(["validate-phase", cli_dir, "review"], cwd=cli.root, stdin="")
+    res = api.client.post(f"/api/v1/lessons/{lesson_id}/phases/review/validate")
+    assert code == 1 and res.status_code == 409
+    assert res.json()["error"]["message"].replace(api_dir, cli_dir) in err
+
+
 def test_row_outline_revise_and_approve(api, cli, pair):
     """Revisione e approvazione dell'outline in 'rt run' ⇔ /outline/revise + /outline/approve."""
     cli_dir, api_dir = pair

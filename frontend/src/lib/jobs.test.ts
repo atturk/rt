@@ -1,4 +1,4 @@
-import { audioFileProblem, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
+import { audioFileProblem, canCloseJob, closedJob, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
 
 const event = (id: number, type = 'notice', payload: Record<string, unknown> = {}): JobEvent => ({ id, job_id: 'j', type, payload })
 
@@ -61,6 +61,18 @@ describe('etichette dei job', () => {
     expect(decisionLink({ lesson_id: 7, decision: { kind: 'outline_approval' } })).toBe('/lezioni/7/outline')
     expect(decisionLink({ lesson_id: 7, decision: { kind: 'science_issue' } })).toBe('/lezioni/7')
     expect(decisionLink({ lesson_id: null, decision: null })).toBeNull()
+  })
+
+  it('un job in attesa si chiude solo se la decisione ha una sua schermata', () => {
+    expect(canCloseJob({ state: 'waiting_for_decision', lesson_id: 7, decision: { kind: 'science_issue' } })).toBe(true)
+    expect(canCloseJob({ state: 'waiting_for_decision', lesson_id: 7, decision: { kind: 'outline_approval' } })).toBe(true)
+    expect(canCloseJob({ state: 'waiting_for_decision', lesson_id: null, decision: { kind: 'setup_metadata' } })).toBe(false)
+    expect(canCloseJob({ state: 'running', lesson_id: 7, decision: null })).toBe(false)
+    const closed = { kind: 'outline_approval', message: 'Chiuso: la scaletta resta da approvare nella schermata Scaletta' }
+    expect(closedJob({ state: 'succeeded', lesson_id: 7, result: { closed } })).toEqual({ ...closed, link: '/lezioni/7/outline' })
+    expect(closedJob({ state: 'succeeded', lesson_id: 7, result: {} })).toBeNull()
+    expect(describeEvent({ type: 'job_finished', payload: { state: 'succeeded', closed: true, message: closed.message } }))
+      .toEqual({ text: closed.message, tone: 'success' })
   })
 })
 

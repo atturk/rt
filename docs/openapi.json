@@ -2581,6 +2581,66 @@
         "title": "LoginLink",
         "type": "object"
       },
+      "ManualValidation": {
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "at": {
+            "description": "Quando è stata validata (ISO 8601, ora locale)",
+            "title": "At",
+            "type": "string"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "cli | api",
+            "title": "Channel"
+          },
+          "previous_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Reason"
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato della fase prima della validazione",
+            "title": "Previous Status"
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "title": "ManualValidation",
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "actor": {
@@ -3035,6 +3095,17 @@
       },
       "PhaseState": {
         "properties": {
+          "manual_validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualValidation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Presente se la fase è stata validata a mano (senza rieseguirla) e non è stata più eseguita da allora"
+          },
           "phase": {
             "title": "Phase",
             "type": "string"
@@ -3062,6 +3133,45 @@
           "reason"
         ],
         "title": "PhaseState",
+        "type": "object"
+      },
+      "PhaseValidationResult": {
+        "properties": {
+          "changed": {
+            "description": "False se la fase era già valida (nessuna modifica)",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "previous_reason": {
+            "title": "Previous Reason",
+            "type": "string"
+          },
+          "previous_status": {
+            "title": "Previous Status",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "previous_status",
+          "previous_reason",
+          "status",
+          "reason",
+          "changed"
+        ],
+        "title": "PhaseValidationResult",
         "type": "object"
       },
       "PhaseWarning": {
@@ -5546,6 +5656,94 @@
           }
         ],
         "summary": "Annulla un job (quello in esecuzione si ferma al prossimo punto sicuro)",
+        "tags": [
+          "job"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/close": {
+      "post": {
+        "description": "Il job finisce (succeeded, result.closed con il messaggio); le issue restano da valutare in Revisione o la scaletta da approvare, e decidere dopo non fa ripartire la pipeline. 409 job_not_closable se il job non è in attesa di una decisione che abbia una sua schermata.",
+        "operationId": "close_job_api_v1_jobs__job_id__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chiude un job in attesa di una decisione senza annullarlo (come 'rt jobs close')",
         "tags": [
           "job"
         ]
@@ -8259,6 +8457,112 @@
           }
         ],
         "summary": "Freschezza delle fasi e report di validazione di outline e draft",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/phases/{phase}/validate": {
+      "post": {
+        "description": "Registra la fase come VALID per gli input attuali (per esempio dopo una modifica voluta ai suoi file). 409 phase_not_validatable se l'artefatto manca o non è valido, se una fase a monte non è valida o se la fase è incompleta; 409 lesson_busy con un job in coda o in esecuzione sulla lezione.",
+        "operationId": "validate_phase_api_v1_lessons__lesson_id__phases__phase__validate_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "phase",
+            "required": true,
+            "schema": {
+              "enum": [
+                "prepare",
+                "outline",
+                "rewrite",
+                "review",
+                "build"
+              ],
+              "title": "Phase",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhaseValidationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Valida a mano una fase senza rieseguirla (come 'rt validate-phase')",
         "tags": [
           "lezioni"
         ]

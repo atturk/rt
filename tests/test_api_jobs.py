@@ -186,6 +186,63 @@ def test_cancel_queued_job(api_client, lesson):
     assert api_client.get("/api/v1/jobs/nope").status_code == 404
 
 
+def test_close_job_waiting_for_review_keeps_issues_for_later(api_client, lesson, worker):
+    """Una pipeline ferma sulle issue della review si chiude senza perdere nulla: il job finisce
+    con il messaggio, le issue restano da valutare in Revisione e deciderle non la fa ripartire."""
+    lesson_id, _ = lesson
+    run_id = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                             json={"mock": True, "rename": False, "with_review": True}).json()["job_id"]
+    drain(worker)
+    assert api_client.post(f"/api/v1/lessons/{lesson_id}/outline/approve").status_code == 200
+    drain(worker)
+    assert job(api_client, run_id)["decision"]["kind"] == "science_issue"
+    pending_before = api_client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["pending"]
+    assert pending_before > 0
+
+    res = api_client.post(f"/api/v1/jobs/{run_id}/close")
+    assert res.status_code == 200, res.text
+    closed = res.json()
+    assert closed["state"] == "succeeded" and closed["decision"] is None
+    assert closed["result"]["closed"] == {
+        "kind": "science_issue", "message": "Chiuso: le issue restano da valutare nella schermata Revisione"}
+    assert closed["result"]["phase_results"]  # il risultato delle fasi fatte resta
+    events = api_client.get(f"/api/v1/jobs/{run_id}/events/list").json()
+    assert events[-1]["type"] == "job_finished" and events[-1]["payload"]["closed"] is True
+
+    detail = api_client.get(f"/api/v1/lessons/{lesson_id}").json()
+    assert detail["pending_issues"] == pending_before
+    assert detail["state"] == "in_attesa_revisione_umana"
+    assert detail["phases"]["review"] == "VALID" and detail["phases"]["build"] == "MISSING"
+
+    # Decidere dopo dalla Revisione non riprende il job chiuso: il build si avvia a mano.
+    for item in api_client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["items"]:
+        api_client.post(f"/api/v1/lessons/{lesson_id}/issues/{item['issue']['id']}/decision",
+                        json={"decision": "rejected" if not item["issue"]["type"].startswith("ERR_ASR") else "accepted"})
+    assert job(api_client, run_id)["state"] == "succeeded"
+    assert drain(worker) == 0
+    assert api_client.get(f"/api/v1/lessons/{lesson_id}").json()["state"] == "pronto_per_build"
+
+    # Chiuso una volta, non si chiude di nuovo.
+    res = api_client.post(f"/api/v1/jobs/{run_id}/close")
+    assert res.status_code == 409 and res.json()["error"]["code"] == "job_not_closable"
+
+
+def test_close_refuses_jobs_not_waiting(api_client, lesson, rt_db):
+    lesson_id, _ = lesson
+    job_id = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True}).json()["job_id"]
+    res = api_client.post(f"/api/v1/jobs/{job_id}/close")
+    assert res.status_code == 409 and res.json()["error"]["code"] == "job_not_closable"
+    assert job(api_client, job_id)["state"] == "queued"
+    assert api_client.post("/api/v1/jobs/nope/close").status_code == 404
+    # Dati della lezione mancanti (import senza metadati): si decide solo lì, si può solo annullare.
+    q = DbJobQueue(rt_db)
+    api_client.post(f"/api/v1/jobs/{job_id}/cancel")
+    setup = q.enqueue("ingest_audio", None, {})
+    q.claim("w")
+    q.finish(setup, "w", "waiting_for_decision", decision={"kind": "setup_metadata"})
+    assert api_client.post(f"/api/v1/jobs/{setup}/close").status_code == 409
+
+
 def test_decisions_refused_while_job_runs(api_client, lesson, rt_db):
     lesson_id, lesson_dir = lesson
     q = DbJobQueue(rt_db)

@@ -303,6 +303,28 @@ def test_cli_worker_once_and_jobs(queue, tmp_path, capsys):
     assert queue.get(other).state == "cancelled"
 
 
+def test_cli_jobs_close_like_the_api(queue, tmp_path, capsys):
+    """'rt jobs close' ⇔ POST /jobs/{id}/close: il job in attesa delle issue finisce, quello
+    in coda no (stesso messaggio di rifiuto)."""
+    from rt.cli import main
+    lesson_dir = make_lesson(tmp_path / "lezioni")
+    waiting = queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir))
+    queue.claim("w")
+    queue.finish(waiting, "w", JobState.WAITING_FOR_DECISION, result={"status": "waiting_for_decision"},
+                 decision={"kind": "science_issue", "payload": {}})
+    main(["jobs", "close", waiting[:10]])
+    assert "le issue restano da valutare nella schermata Revisione" in capsys.readouterr().out
+    job = queue.get(waiting)
+    assert job.state == "succeeded" and job.result["closed"]["kind"] == "science_issue"
+    assert job.result["status"] == "waiting_for_decision"
+
+    queued = queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir))
+    with pytest.raises(SystemExit):
+        main(["jobs", "close", queued])
+    assert "Si può chiudere solo un job in attesa" in capsys.readouterr().err
+    assert queue.get(queued).state == "queued"
+
+
 def test_stopped_worker_puts_job_back_in_queue(queue):
     def interrupted(job, ctx):
         raise KeyboardInterrupt  # Ctrl+C o SIGTERM su 'rt worker'

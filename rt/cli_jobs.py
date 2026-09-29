@@ -1,7 +1,7 @@
 """
 rt.cli_jobs
 Adattatore CLI della coda dei job (fase D): 'rt worker' esegue i job, 'rt jobs' li elenca,
-mostra e annulla. La logica sta in rt.services.jobs e rt.services.worker.
+mostra, annulla e chiude (quelli in attesa di una decisione da prendere più tardi). La logica sta in rt.services.jobs e rt.services.worker.
 """
 import argparse
 import json
@@ -34,6 +34,9 @@ def configure_jobs_parser(p: argparse.ArgumentParser) -> None:
     p_show.add_argument("--json", action="store_true", help="Output JSON")
     p_cancel = sub.add_parser("cancel", help="Annulla un job (quello in esecuzione si ferma al prossimo punto sicuro)")
     p_cancel.add_argument("job_id")
+    p_close = sub.add_parser("close", help="Chiude un job in attesa di una decisione senza annullarlo "
+                                           "(le issue restano da valutare, la scaletta da approvare)")
+    p_close.add_argument("job_id")
 
 
 def _queue():
@@ -135,6 +138,15 @@ def cmd_jobs(args: argparse.Namespace) -> None:
     if command == "cancel":
         job = queue.cancel(job.id)
         print(f"Job {job.id[:12]}: {job.state}" + (" (annullamento richiesto)" if job.state == "running" else ""))
+        return
+    if command == "close":
+        from rt.services.jobs import JobError
+        try:
+            job = queue.close_waiting(job.id)
+        except JobError as exc:
+            print(f"❌ {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Job {job.id[:12]}: {job.result['closed']['message']}")
         return
     events = queue.events(job.id)
     if args.json:

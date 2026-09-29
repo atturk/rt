@@ -9,6 +9,7 @@ Ciclo di vita di un job:
        ▲                 │
        │                 ├──▶ waiting_for_decision ──resume──▶ queued
        └─lease scaduto───┘      (la decisione arriva da outline_service / review_service)
+                                 └──close──▶ succeeded (decisione rimandata alla sua schermata)
 
 Il worker prende un job con un lease (lease_until) e lo rinnova finché lavora; se muore, il
 lease scade e il job torna in coda (fino a max_attempts prese). Mentre un job è 'running'
@@ -43,6 +44,12 @@ class JobState(str, Enum):
 
 ACTIVE_STATES = frozenset({JobState.QUEUED.value, JobState.RUNNING.value, JobState.WAITING_FOR_DECISION.value})
 TERMINAL_STATES = frozenset({JobState.SUCCEEDED.value, JobState.FAILED.value, JobState.CANCELLED.value})
+
+# Job in attesa che si possono chiudere (close_waiting): la decisione ha una sua schermata.
+CLOSE_MESSAGES = {
+    "science_issue": "Chiuso: le issue restano da valutare nella schermata Revisione",
+    "outline_approval": "Chiuso: la scaletta resta da approvare nella schermata Scaletta",
+}
 
 DEFAULT_LEASE_SECONDS = 60
 DEFAULT_MAX_ATTEMPTS = 3
@@ -282,6 +289,31 @@ class DbJobQueue:
                 row.finished_at = utcnow()
                 row.active_lesson = None
                 s.add(JobEvent(job_id=job_id, type="job_finished", payload={"state": row.state}))
+            return JobInfo.from_row(row)
+
+    def close_waiting(self, job_id: str) -> JobInfo:
+        """Chiude un job fermo su una decisione senza annullarlo: il lavoro fatto resta, il job
+        finisce (succeeded, result.closed con il messaggio) e la decisione si prende dopo dalla
+        sua schermata (issue in Revisione, scaletta in Scaletta). Prendere la decisione allora non
+        fa ripartire nulla: le fasi successive si avviano a mano. JobError se il job non è in
+        attesa o se la decisione non ha una schermata dove riprenderla (dati della lezione)."""
+        with session_scope(self.db) as s:
+            row = s.get(Job, job_id)
+            if row is None:
+                raise JobError(f"Job {job_id} inesistente")
+            if row.state != JobState.WAITING_FOR_DECISION.value:
+                raise JobError("Si può chiudere solo un job in attesa di una decisione.")
+            kind = (row.decision or {}).get("kind")
+            message = CLOSE_MESSAGES.get(kind)
+            if message is None or not row.lesson_path:
+                raise JobError("Questo job non si può chiudere: la decisione si prende solo qui. Annullalo se non ti serve più.")
+            row.state = JobState.SUCCEEDED.value
+            row.finished_at = utcnow()
+            row.active_lesson = None
+            row.result = json_safe({**(row.result or {}), "closed": {"kind": kind, "message": message}})
+            row.decision = None
+            s.add(JobEvent(job_id=job_id, type="job_finished",
+                           payload={"state": row.state, "closed": True, "kind": kind, "message": message}))
             return JobInfo.from_row(row)
 
     def events(self, job_id: str, after_id: int = 0) -> List[JobEventInfo]:
