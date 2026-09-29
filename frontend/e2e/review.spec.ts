@@ -65,7 +65,7 @@ test('review: con l\'ultima decisione la pipeline in attesa riparte', async ({ p
   // Pipeline in mock che si ferma sulle issue da decidere (come 'rt run' senza --auto-accept).
   const res = await page.request.post(`/api/v1/lessons/${id}/jobs`, {
     headers: authHeaders(),
-    data: { type: 'run_pipeline', mock: true, auto_accept: false, rename: false },
+    data: { type: 'run_pipeline', with_review: true, mock: true, auto_accept: false, rename: false },
   })
   expect(res.status()).toBe(202)
   const { job_id } = (await res.json()) as { job_id: string }

@@ -22,6 +22,8 @@ async function importAudio(page: Page, fields: { materia: string; argomenti: str
   await page.getByLabel('Materia', { exact: true }).fill(fields.materia)
   await page.getByLabel('Argomenti', { exact: true }).fill(fields.argomenti)
   await page.getByLabel('Avvia subito la pipeline').setChecked(fields.run)
+  // La review nella pipeline è facoltativa (4.1): questi test arrivano fino alle sue issue.
+  if (fields.run) await page.getByLabel('Includi la review').check()
   await page.getByText('Opzioni avanzate').click()
   await page.getByLabel('Modalità prova (mock)').check()
   await page.getByRole('button', { name: 'Importa', exact: true }).click()

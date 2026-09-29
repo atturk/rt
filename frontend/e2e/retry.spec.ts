@@ -48,7 +48,7 @@ test('un job fallito si riprova: il nuovo job riparte dalla fase fallita e compl
   const lessonId = await newLesson(page)
   const res = await page.request.post(`/api/v1/lessons/${lessonId}/jobs`, {
     headers: authHeaders(),
-    data: { type: 'run_pipeline', mock: true, auto_accept: true, rename: false, mock_fail_once: 'review' },
+    data: { type: 'run_pipeline', with_review: true, mock: true, auto_accept: true, rename: false, mock_fail_once: 'review' },
   })
   expect(res.status()).toBe(202)
   const failedId = ((await res.json()) as { job_id: string }).job_id

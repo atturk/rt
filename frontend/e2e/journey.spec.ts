@@ -43,6 +43,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.getByLabel('Materia', { exact: true }).fill('EMBRIOLOGIA')
   await page.getByLabel('Argomenti', { exact: true }).fill('Gastrulazione')
   await page.getByLabel('Avvia subito la pipeline').setChecked(true)
+  await page.getByLabel('Includi la review').check()
   await page.getByText('Opzioni avanzate').click()
   await page.getByLabel('Modalità prova (mock)').check()
   await page.getByRole('button', { name: 'Importa', exact: true }).click()
