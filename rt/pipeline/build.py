@@ -361,6 +361,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         compute_source_fingerprint,
         compute_file_sha256,
         record_phase_fingerprint,
+        upstream_acknowledgement,
     )
     
     yaml_path = lesson_path(lesson_dir, "info.yaml")
@@ -433,15 +434,19 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         from rt.db.sync import relocate_lesson
         relocate_lesson(lesson_dir, current_dir)
 
-    # 7. Registrazione fingerprint build
+    # 7. Registrazione fingerprint build. Le fasi a monte non aggiornate in questo momento
+    # (es. scaletta STALE dopo un cambio di materia) sono "confermate": il documento appena
+    # scritto riflette i file attuali e resta valido finché quelle fasi non cambiano ancora.
     source_fp = compute_source_fingerprint(current_dir, "build")
+    acknowledged = upstream_acknowledgement(current_dir, "build")
     record_phase_fingerprint(
         lesson_dir=current_dir,
         phase_name="build",
         source_fingerprint=source_fp,
         artifact_fingerprints={
             "rielaborato.md": compute_file_sha256(lesson_path(current_dir, "rielaborato.md"))
-        }
+        },
+        metadata={"upstream_acknowledged": acknowledged} if acknowledged else None,
     )
 
     # 8. Aggiornamento stato e manifest

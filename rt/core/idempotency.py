@@ -45,6 +45,8 @@ PROCESSOR_VERSIONS = {
 #   blocca: se è STALE, PARTIAL o ha issue pendenti o orfane il build si fa lo stesso e questi
 #   problemi diventano avvisi (build_warnings). Il documento resta aggiornato finché non
 #   cambiano bozza, scaletta, segmenti, decisioni prese o immagini (vedi BUILD_INPUT_FILES).
+#   Se una fase a monte è non valida, ricostruire il documento la "conferma" (vedi
+#   ACKNOWLEDGEABLE_UPSTREAM): il documento torna VALID finché quella fase non cambia ancora.
 UPSTREAM_DEPENDENCIES = {
     "prepare": [],
     "outline": ["prepare"],
@@ -264,6 +266,34 @@ def stale_reason(lesson_dir: str, phase_name: str, record: Dict[str, Any], gener
     return generic
 
 
+# Fasi che l'utente può ricostruire anche con una fase a monte non aggiornata: il build è un
+# rendering deterministico dei file attuali (bozza, scaletta, decisioni, immagini, metadati),
+# quindi dopo una ricostruzione il documento è aggiornato rispetto a ciò che legge. Senza
+# questo, una scaletta STALE (es. materia cambiata in info.yaml) lasciava il documento STALE
+# per sempre, anche dopo averlo ricostruito (4.1.0b2).
+ACKNOWLEDGEABLE_UPSTREAM = {"build"}
+
+
+def _upstream_state_key(lesson_dir: str, dep: str, dep_status: "PhaseStatus") -> str:
+    """Stato di una fase a monte non valida: il suo stato e l'impronta attuale dei suoi input.
+    Se la fase cambia ancora (metadati, segmenti, scaletta...) la chiave cambia."""
+    return f"{dep_status.value}|{accepted_fingerprints(lesson_dir, dep)[0]}"
+
+
+def upstream_acknowledgement(lesson_dir: str, phase_name: str) -> Dict[str, str]:
+    """Fasi a monte non valide nel momento in cui phase_name viene (ri)eseguita, da registrare
+    nel suo record come 'upstream_acknowledged' (vedi record_phase_fingerprint, metadata).
+    check_phase_status non propaga più quelle fasi finché restano esattamente in questo stato."""
+    ack: Dict[str, str] = {}
+    if phase_name not in ACKNOWLEDGEABLE_UPSTREAM:
+        return ack
+    for dep in UPSTREAM_DEPENDENCIES.get(phase_name, []):
+        dep_status, _reason = check_phase_status(lesson_dir, dep, _visited={phase_name})
+        if dep_status not in (PhaseStatus.VALID, PhaseStatus.MISSING):
+            ack[dep] = _upstream_state_key(lesson_dir, dep, dep_status)
+    return ack
+
+
 def check_phase_status(
     lesson_dir: str,
     phase_name: str,
@@ -318,6 +348,8 @@ def check_phase_status(
     OPTIONAL_UPSTREAM_DEPS = {"review"}
 
     upstream_deps = UPSTREAM_DEPENDENCIES.get(phase_name, [])
+    acknowledged = current_rec.get("upstream_acknowledged") or {}
+    acknowledged_notes: List[str] = []
     for dep in upstream_deps:
         if dep in _visited:
             continue
@@ -325,7 +357,15 @@ def check_phase_status(
         if dep_status == PhaseStatus.MISSING and dep in OPTIONAL_UPSTREAM_DEPS:
             continue
         if dep_status != PhaseStatus.VALID:
-            return PhaseStatus.STALE, f"Dipendenza a monte '{dep}' non valida ({dep_status.value}: {dep_reason})"
+            # Documento ricostruito dall'utente con questa fase a monte già non aggiornata:
+            # resta valido finché quella fase non cambia ancora (vedi upstream_acknowledgement).
+            if phase_name in ACKNOWLEDGEABLE_UPSTREAM and \
+                    acknowledged.get(dep) == _upstream_state_key(lesson_dir, dep, dep_status):
+                acknowledged_notes.append(f"'{dep}' {dep_status.value}")
+                continue
+            hint = (". Rifai quella fase, oppure ricostruisci il documento per confermarlo con i file attuali"
+                    if phase_name in ACKNOWLEDGEABLE_UPSTREAM else "")
+            return PhaseStatus.STALE, f"Dipendenza a monte '{dep}' non valida ({dep_status.value}: {dep_reason}){hint}"
 
     if phase_name == "prepare":
         seg_path = lesson_path(lesson_dir, "segments.json")
@@ -491,6 +531,9 @@ def check_phase_status(
             return PhaseStatus.STALE, stale_reason(
                 lesson_dir, "build", current_rec,
                 "Uno o più input del documento (bozza, scaletta, decisioni, immagini) sono stati modificati")
+        if acknowledged_notes:
+            return PhaseStatus.VALID, ("Documenti Markdown finali aggiornati ai file attuali (ricostruiti con "
+                                       + ", ".join(acknowledged_notes) + " a monte)")
         return PhaseStatus.VALID, "Documenti Markdown finali completi e aggiornati"
 
     return PhaseStatus.MISSING, f"Fase sconosciuta: {phase_name}"
@@ -554,6 +597,9 @@ def record_phase_fingerprint(
         record["status"] = PhaseStatus.VALID.value
         record["source_fingerprint"] = source_fingerprint
         record.pop("failed_units", None)
+        # Una nuova esecuzione completa riparte da zero: le conferme valgono solo se ripassate
+        # in metadata (vedi upstream_acknowledgement).
+        record.pop("upstream_acknowledged", None)
 
     record["processor_version"] = PROCESSOR_VERSIONS.get(phase_name, "v1.0")
     record["updated_at"] = datetime.now().isoformat()
