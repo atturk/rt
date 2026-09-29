@@ -97,3 +97,28 @@ def test_concurrent_recall_bank_updates_no_lost_updates(tmp_path):
     assert answered_qids == {"q1", "q2"}
     for q in final_bank.questions:
         assert q.status == RecallQuestionStatus.ANSWERED
+
+
+def test_banks_with_duplicate_ids_are_repaired_when_a_question_is_asked(tmp_path):
+    """Bank scritti prima della correzione: tre domande con lo stesso ID. Chiedere la seconda
+    segnava la prima; ora le copie vengono rinumerate e le risposte restano alla loro domanda."""
+    from rt.pipeline.recall import get_next_pending_question, load_recall_bank, save_recall_bank
+    lesson = str(tmp_path)
+
+    def question(text, status, unit="1.1"):
+        return RecallQuestion(id="recall_000001", type=RecallQuestionType.QUIZ, unit_ids=[unit],
+                              question_text=text, options=["a", "b", "c", "d"], correct_index=0, status=status)
+    bank = RecallBank(questions=[question("prima", RecallQuestionStatus.PENDING),
+                                 question("risposta", RecallQuestionStatus.ANSWERED),
+                                 question("terza", RecallQuestionStatus.PENDING, "1.2")],
+                      answers=[RecallAnswer(question_id="recall_000001", answer_text="a")])
+    save_recall_bank(bank, lesson)
+
+    asked = get_next_pending_question(lesson, RecallQuestionType.QUIZ, order="sequenziale", exclude_id=None)
+    repaired = load_recall_bank(lesson)
+    ids = [q.id for q in repaired.questions]
+    assert len(set(ids)) == 3
+    answered = next(q for q in repaired.questions if q.question_text == "risposta")
+    assert answered.id == "recall_000001" and repaired.answers[0].question_id == answered.id
+    assert next(q for q in repaired.questions if q.id == asked.id).status == RecallQuestionStatus.ASKED
+    assert sum(q.status == RecallQuestionStatus.ASKED for q in repaired.questions) == 1

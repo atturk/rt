@@ -75,20 +75,46 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
 def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
     """Conta le domande PENDING di un tipo specifico nel bank."""
     bank = load_recall_bank(lesson_dir)
+    allowed = _allowed_units(lesson_dir)
     return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
-               and _question_allowed(lesson_dir, q))
+               and _question_allowed(q, allowed))
 
 
-def _question_allowed(lesson_dir: str, question: RecallQuestion) -> bool:
+def _allowed_units(lesson_dir: str) -> Optional[set]:
+    """Unità da cui si possono fare domande (None = tutte), calcolate una volta per chiamata:
+    prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
     from rt.services.unit_relevance import included, mode
     if mode() != "active":
-        return True
+        return None
     try:
         draft = load_resolved_draft(lesson_dir)
     except (FileNotFoundError, ValueError):
-        return True
-    by_id = {unit.unit_id: unit for unit in draft.units}
-    return all(uid in by_id and included(lesson_dir, by_id[uid]) for uid in question.unit_ids)
+        return None
+    return {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
+
+
+def _question_allowed(question: RecallQuestion, allowed: Optional[set]) -> bool:
+    return allowed is None or all(uid in allowed for uid in question.unit_ids)
+
+
+def repair_duplicate_ids(bank: RecallBank) -> int:
+    """Rinumera le domande con ID già usato (bank scritti prima della correzione degli ID).
+    La prima occorrenza tiene l'ID e le risposte; se però una sola delle copie è stata
+    risposta, le risposte sono sue. Restituisce quante domande ha rinumerato."""
+    groups: Dict[str, List[RecallQuestion]] = {}
+    for question in bank.questions:
+        groups.setdefault(question.id, []).append(question)
+    renamed = 0
+    for qid, copies in groups.items():
+        if len(copies) < 2:
+            continue
+        answered = [q for q in copies if q.status == RecallQuestionStatus.ANSWERED]
+        keeper = answered[0] if len(answered) == 1 else copies[0]
+        for question in copies:
+            if question is not keeper:
+                question.id = _next_id(bank)
+                renamed += 1
+    return renamed
 
 # -----------------------------------------------------------------------
 # Pending question selection
@@ -130,10 +156,13 @@ def get_next_pending_question(
 
     Marca la domanda restituita come ASKED e salva il bank.
     """
+    allowed = _allowed_units(lesson_dir)
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
+        if repair_duplicate_ids(bank):
+            save_recall_bank(bank, lesson_dir)
         pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
-                   and _question_allowed(lesson_dir, q)]
+                   and _question_allowed(q, allowed)]
         if not pending:
             return None
 
@@ -171,10 +200,7 @@ def get_next_pending_question(
             selected = pending[0]
 
         if selected:
-            for q in bank.questions:
-                if q.id == selected.id:
-                    q.status = RecallQuestionStatus.ASKED
-                    break
+            selected.status = RecallQuestionStatus.ASKED  # è l'oggetto del bank, non una copia
             save_recall_bank(bank, lesson_dir)
 
         return selected
@@ -519,6 +545,7 @@ def generate_recall_batch(
             raise last_error
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
+        repair_duplicate_ids(bank)
         for gen in new_questions:
             # Il batch reale non aggiunge le domande al bank fino a questo punto.
             # Assegna gli ID sul bank aggiornato, sotto lock: altrimenti tutte le

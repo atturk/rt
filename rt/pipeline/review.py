@@ -418,8 +418,9 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx)."""
     from rt.services.unit_relevance import refresh
-    refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
     with phase_scope(ctx, "review") as scope:
+        # Dentro lo scope: le chiamate JEV della rilevanza sono parte della fase (lock, errori, annullamento).
+        refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
 
 
