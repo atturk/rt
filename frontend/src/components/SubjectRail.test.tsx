@@ -40,9 +40,21 @@ describe('SubjectIcon', () => {
     const icon = subjectIcons(['Patologia generale 1']).get('PATOLOGIA GENERALE 1')!
     render(<SubjectIcon icon={icon} />)
     const el = screen.getByTestId('subject-icon')
-    expect(el).toHaveAttribute('data-layout', 'triangle')
+    expect(el).toHaveAttribute('data-layout', 'row')
     expect(el).toHaveAttribute('aria-hidden')
     expect(el.textContent).toBe('PG1')
+    // tre caratteri su una riga: il carattere resta grande e la riga si stringe
+    const text = el.querySelector('text')!
+    expect(Number(text.getAttribute('font-size'))).toBeGreaterThanOrEqual(16)
+    expect(text).toHaveAttribute('textLength')
+  })
+
+  it('quattro iniziali su due righe', () => {
+    const icon = subjectIcons(['Anatomia e Fisiologia del Sistema Linfatico']).get('ANATOMIA E FISIOLOGIA DEL SISTEMA LINFATICO')!
+    render(<SubjectIcon icon={icon} />)
+    const el = screen.getByTestId('subject-icon')
+    expect(el).toHaveAttribute('data-layout', 'stack')
+    expect(Array.from(el.querySelectorAll('text'), (t) => t.textContent)).toEqual(['AF', 'SL'])
     expect(el.style.backgroundColor).not.toBe('')
   })
 })

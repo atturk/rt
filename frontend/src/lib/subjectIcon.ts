@@ -53,14 +53,26 @@ export function subjectInitials(name: string, extraStopwords: Iterable<string> =
   return [first ? first[0].toLocaleUpperCase('it') : '?']
 }
 
-export type IconLayout = 'single' | 'row' | 'triangle' | 'grid'
+export type IconLayout = 'single' | 'row' | 'stack'
 
-/** 1 iniziale centrata; 2 affiancate; 3 = due sopra e una centrata sotto; 4 = griglia 2×2. */
-export function iconLayout(count: number): IconLayout {
-  if (count <= 1) return 'single'
-  if (count === 2) return 'row'
-  if (count === 3) return 'triangle'
-  return 'grid'
+/** Caratteri che stanno bene su una riga sola dell'icona (poi si va su due righe). */
+const ROW_MAX_CHARS = 3
+
+/**
+ * 1 iniziale centrata; fino a tre caratteri su una riga (P G 1 → PG1); oltre, due righe con la
+ * prima metà delle iniziali sopra (A F S L → AF / SL, P G 12 → PG / 12).
+ */
+export function iconLayout(initials: readonly string[]): IconLayout {
+  if (initials.length <= 1) return 'single'
+  if (initials.join('').length <= ROW_MAX_CHARS) return 'row'
+  return 'stack'
+}
+
+/** Le righe di testo dell'icona, secondo la disposizione. */
+export function iconLines(icon: { initials: readonly string[]; layout: IconLayout }): string[] {
+  if (icon.layout !== 'stack') return [icon.initials.join('')]
+  const half = Math.ceil(icon.initials.length / 2)
+  return [icon.initials.slice(0, half).join(''), icon.initials.slice(half).join('')]
 }
 
 /** Palette pastello (sfondo) con testo scuro: ogni coppia supera il contrasto AA (4,5:1). */
@@ -133,7 +145,7 @@ export function subjectIcons(names: Iterable<string>, extraStopwords: Iterable<s
       }
       taken.add(index)
       if (taken.size === SUBJECT_PALETTE.length) taken.clear() // più materie che colori: si ricomincia
-      out.set(m.name, { name: m.name, initials: m.initials, layout: iconLayout(m.initials.length), color: SUBJECT_PALETTE[index] })
+      out.set(m.name, { name: m.name, initials: m.initials, layout: iconLayout(m.initials), color: SUBJECT_PALETTE[index] })
     }
   }
   return out
