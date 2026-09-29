@@ -50,6 +50,37 @@ def test_settings_snapshot(api_client, ws):
     assert data["transcription"]["engine"] == "macparakeet"
 
 
+def test_fresh_install_has_no_connections(api_client, ws, monkeypatch):
+    """4.1.0b2: il general.yaml di esempio dichiarava una credenziale 'openrouter' senza chiave,
+    e la configurazione guidata mostrava "Connessioni già configurate: openrouter" a ogni nuova
+    installazione. Una nuova installazione deve partire senza connessioni né credenziali."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    data = api_client.get("/api/v1/settings").json()
+    assert data["connections"] == []
+    assert data["credentials"] == []
+    assert all(p["connection"] is None for p in data["phases"])
+    # Jev (credenziale di default "openrouter") resta inattivo senza rompere nulla:
+    # registry pulito come in un processo appena avviato su questa configurazione.
+    from rt.core.config import load_config
+    from rt.llm.credentials import CredentialRegistry
+    from rt.llm.jev_client import JevError, JevNoulQuestion, call_jev
+    monkeypatch.setattr("rt.llm.jev_client.GLOBAL_CREDENTIALS", CredentialRegistry())
+    with pytest.raises(JevError, match="non configurata"):
+        call_jev("stato", {"q": JevNoulQuestion(instructions="?")}, job_name="test",
+                 credential=load_config().jev.credential)
+
+
+def test_jev_default_credential_falls_back_to_openrouter_connection(monkeypatch):
+    """La credenziale Jev di default "openrouter" usa la prima connessione OpenRouter configurata."""
+    from rt.core.config import JevConfig
+    from rt.llm.credentials import CredentialRef, CredentialRegistry
+    registry = CredentialRegistry()
+    registry.register(CredentialRef(name="web_mia_1", provider="openrouter", env_var="RT_TEST_JEV_KEY"))
+    monkeypatch.setenv("RT_TEST_JEV_KEY", KEY_A)
+    monkeypatch.setattr("rt.core.config.load_env_file", lambda *a, **k: None)
+    assert registry.get_api_key(JevConfig().credential) == KEY_A
+
+
 def test_setup_required_and_data_dir(api_client, api_token, ws, tmp_path):
     """La SPA apre la configurazione guidata finché la cartella delle lezioni non esiste (RT4-F5)."""
     import os

@@ -50,7 +50,7 @@ per il server STT custom la variabile facoltativa è `RT_STT_API_KEY`.
 2. Salva le chiavi con `rt secrets set <ENV_VAR>` (archivio cifrato), oppure nel `.env`, oppure esportale nell'ambiente shell.
 3. Nei singoli file `config/<job>.yaml`, imposta `provider` e `model` sotto `primary:`.
 
-#### Esempio base con OpenRouter (già presente come template in `config.example/general.yaml`):
+#### Esempio base con OpenRouter (`config.example/general.yaml` parte senza credenziali: una nuova installazione non ha connessioni finché non ne aggiungi una):
 ```yaml
 credentials:
   - name: "openrouter"
