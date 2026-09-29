@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from rt.api.deps import Actor
 from rt.api.errors import ApiError
 from rt.api.schemas import JobAccepted
+from rt.core.jev_decision import JevDecisionConfig
 
 router = APIRouter(tags=["impostazioni"])
 
@@ -624,6 +625,19 @@ class DecisionModelIn(BaseModel):
     relevance_threshold: float = Field(0.85, ge=0, le=1)
     prefilter_type: Literal["choice", "noul", "score"] = "choice"
     prefilter_prompt: str = Field("", max_length=20000)
+    relevance_decision: Optional[JevDecisionConfig] = Field(
+        None, description="Domanda e mappatura del gate di rilevanza (None = invariata/predefinita)")
+    prefilter_decision: Optional[JevDecisionConfig] = Field(
+        None, description="Domanda e mappatura del prefiltro errori (None = invariata/predefinita)")
+
+
+class DecisionModelOut(DecisionModelIn):
+    relevance_decision: JevDecisionConfig
+    prefilter_decision: JevDecisionConfig
+    relevance_customized: bool = Field(False, description="True se la rilevanza non usa la domanda predefinita")
+    prefilter_customized: bool = Field(False, description="True se il prefiltro non usa la domanda predefinita")
+    templates: Dict[Literal["relevance", "prefilter"], Dict[Literal["choice", "noul", "score"], JevDecisionConfig]] = Field(
+        description="Domanda e mappatura predefinite per fase e tipo di richiesta")
 
 
 class DecisionProbeOut(BaseModel):
@@ -633,24 +647,70 @@ class DecisionProbeOut(BaseModel):
     request_type: Literal["choice", "noul", "score"] = "choice"
 
 
-@router.get("/settings/decision-model", response_model=DecisionModelIn)
+class DecisionTestIn(BaseModel):
+    phase: Literal["relevance", "prefilter"]
+    decision: JevDecisionConfig
+    model: str = Field("", max_length=200)
+    credential: str = "openrouter"
+    lesson_id: Optional[int] = Field(None, description="Lezione su cui provare (assente = unità di esempio)")
+    unit_id: Optional[str] = Field(None, description="Unità della lezione (assente = la prima)")
+
+
+class DecisionTestOut(BaseModel):
+    phase: Literal["relevance", "prefilter"]
+    unit_id: Optional[str] = None
+    unit_title: str
+    state: str = Field(description="Stato inviato a Jev (l'unità di lezione)")
+    request: Dict[str, Any] = Field(description="Richiesta inviata all'endpoint decisions")
+    response: Dict[str, Any] = Field(description="Risposta JSON di Jev")
+    answer: Dict[str, Any] = Field(description="Risposta alla domanda, con tutte le probabilità")
+    label: str = Field(description="Etichetta RT assegnata dalla mappatura")
+    outcome: str = Field(description="Esito RT dell'etichetta")
+    rule: Optional[int] = Field(None, description="Regola scattata (da 0); null = nessuna, esito fail-open")
+
+
+def _decision_out(cfg) -> DecisionModelOut:
+    from rt.services import jev_mapping
+    from rt.services.jev_playground import templates
+    return DecisionModelOut(enabled=cfg.enabled, shadow=cfg.shadow, model=cfg.model if cfg.enabled else "",
+                            relevance_model=cfg.relevance_model,
+                            credential=cfg.credential, threshold=cfg.task_a_skip_confidence_threshold,
+                            relevance_mode=cfg.relevance_mode, relevance_prompt=cfg.relevance_prompt,
+                            relevance_threshold=cfg.relevance_threshold, prefilter_type=cfg.prefilter_type,
+                            prefilter_prompt=cfg.prefilter_prompt,
+                            relevance_decision=jev_mapping.effective_decision("relevance", cfg),
+                            prefilter_decision=jev_mapping.effective_decision("prefilter", cfg),
+                            relevance_customized=cfg.relevance_decision is not None,
+                            prefilter_customized=cfg.prefilter_decision is not None,
+                            templates=templates(cfg))
+
+
+def _playground_call(fn, *args, **kwargs):
+    from rt.services.jev_playground import PlaygroundError
+    try:
+        return fn(*args, **kwargs)
+    except PlaygroundError as exc:
+        raise ApiError(exc.status, exc.code, exc.message) from exc
+
+
+@router.get("/settings/decision-model", response_model=DecisionModelOut)
 def get_decision_model(_actor: Actor):
     from rt.core.config import load_config
-    cfg = load_config().jev
-    return DecisionModelIn(enabled=cfg.enabled, shadow=cfg.shadow, model=cfg.model if cfg.enabled else "",
-                           relevance_model=cfg.relevance_model,
-                           credential=cfg.credential, threshold=cfg.task_a_skip_confidence_threshold,
-                           relevance_mode=cfg.relevance_mode, relevance_prompt=cfg.relevance_prompt,
-                           relevance_threshold=cfg.relevance_threshold, prefilter_type=cfg.prefilter_type,
-                           prefilter_prompt=cfg.prefilter_prompt)
+    return _decision_out(load_config().jev)
+
+
+@router.post("/settings/decision-model/test", response_model=DecisionTestOut,
+             summary="Prova una configurazione JEV (anche non salvata) su un'unità di lezione")
+def test_decision_model(body: DecisionTestIn, _actor: Actor):
+    from rt.services.jev_playground import run_test
+    return _playground_call(run_test, body.phase, body.decision, body.model, body.credential,
+                            lesson_id=body.lesson_id, unit_id=body.unit_id)
 
 
 @router.post("/settings/decision-model/probe", response_model=DecisionProbeOut)
 def probe_decision_model(body: DecisionModelIn, _actor: Actor):
     from rt.llm.jev_client import JevChoiceQuestion, JevNoulQuestion, JevScoreQuestion, JevError, call_jev
-    from rt.db.engine import get_database
-    from rt.db.models import Setting, utcnow
-    from rt.db.session import session_scope
+    from rt.services.jev_playground import record_probe
     if not body.model.strip():
         raise ApiError(422, "decision_model_required", "Indica un modello decisionale.")
     try:
@@ -676,42 +736,59 @@ def probe_decision_model(body: DecisionModelIn, _actor: Actor):
         choice, confidence = "noul", answer.noul
     else:
         choice, confidence = "score", answer.confidence
-    with session_scope(get_database()) as session:
-        key = f"decision_probe:{body.credential}:{body.model}:{body.prefilter_type}"
-        row = session.get(Setting, key)
-        if row: row.value = {"validated": utcnow().isoformat()}
-        else: session.add(Setting(key=key, value={"validated": utcnow().isoformat()}))
+    record_probe(body.credential, body.model, body.prefilter_type)
     return {"ok": True, "choice": choice, "confidence": confidence, "request_type": body.prefilter_type}
 
 
-@router.put("/settings/decision-model", response_model=DecisionModelIn)
+@router.put("/settings/decision-model", response_model=DecisionModelOut)
 def put_decision_model(body: DecisionModelIn, _actor: Actor):
-    from rt.services import config_service
+    from rt.core.config import JevConfig, load_config
+    from rt.services import config_service, jev_mapping
+    from rt.services.jev_playground import check_phase, probe_missing
     from rt.services.settings_service import general_config_path
-    from rt.db.engine import get_database
-    from rt.db.models import Setting
-    from rt.db.session import session_scope
-    required_models = ([(body.model.strip(), body.prefilter_type)] if body.enabled else []) + ([(body.relevance_model.strip(), "choice")] if body.relevance_mode != "disabled" and body.relevance_model.strip() else [])
+    current = load_config().jev
+    relevance = body.relevance_decision or current.relevance_decision
+    prefilter = body.prefilter_decision or current.prefilter_decision
+    relevance = _playground_call(check_phase, "relevance", relevance) if relevance else None
+    prefilter = _playground_call(check_phase, "prefilter", prefilter) if prefilter else None
+    # Il tipo storico segue la domanda del prefiltro: la predefinita di quel tipo resta "predefinita".
+    prefilter_type = prefilter.type if prefilter else body.prefilter_type
+    legacy = JevConfig(task_a_skip_confidence_threshold=body.threshold, relevance_prompt=body.relevance_prompt,
+                       relevance_threshold=body.relevance_threshold, prefilter_type=prefilter_type,
+                       prefilter_prompt=body.prefilter_prompt)
+    # Una decisione identica alla predefinita non si salva: impronta e cache restano quelle di prima.
+    if relevance and jev_mapping.is_default("relevance", relevance, legacy):
+        relevance = None
+    if prefilter and jev_mapping.is_default("prefilter", prefilter, legacy):
+        prefilter = None
+    relevance_type = relevance.type if relevance else "choice"
     if body.enabled and not body.model.strip():
         raise ApiError(422, "decision_model_required", "Indica il modello del prefiltro errori.")
-    if required_models:
-        with session_scope(get_database()) as session:
-            for selected, request_type in required_models:
-                if session.get(Setting, f"decision_probe:{body.credential}:{selected}:{request_type}") is None:
-                    raise ApiError(422, "decision_probe_required", f"Prova prima il protocollo Jev {request_type} del modello {selected}.")
+    checks = ([(body.credential, body.model.strip(), prefilter_type)] if body.enabled else []) + (
+        [(body.credential, body.relevance_model.strip(), relevance_type)]
+        if body.relevance_mode != "disabled" and body.relevance_model.strip() else [])
+    missing = probe_missing(checks) if checks else None
+    if missing:
+        raise ApiError(422, "decision_probe_required", missing)
     path = general_config_path(_project_root())
     data = config_service.read_yaml(path)
-    data["jev"] = {**data.get("jev", {}), "enabled": body.enabled, "shadow": body.shadow,
-                   "model": body.model or "typesafe/jev-1.13", "credential": body.credential,
-                   "task_a_skip_confidence_threshold": body.threshold,
-                   "relevance_mode": body.relevance_mode,
-                   "relevance_model": body.relevance_model.strip(),
-                   "relevance_prompt": body.relevance_prompt,
-                   "relevance_threshold": body.relevance_threshold,
-                   "prefilter_type": body.prefilter_type,
-                   "prefilter_prompt": body.prefilter_prompt}
+    jev = {**data.get("jev", {}), "enabled": body.enabled, "shadow": body.shadow,
+           "model": body.model or "typesafe/jev-1.13", "credential": body.credential,
+           "task_a_skip_confidence_threshold": body.threshold,
+           "relevance_mode": body.relevance_mode,
+           "relevance_model": body.relevance_model.strip(),
+           "relevance_prompt": body.relevance_prompt,
+           "relevance_threshold": body.relevance_threshold,
+           "prefilter_type": prefilter_type,
+           "prefilter_prompt": body.prefilter_prompt}
+    for key, decision in (("relevance_decision", relevance), ("prefilter_decision", prefilter)):
+        if decision is None:
+            jev.pop(key, None)
+        else:
+            jev[key] = decision.model_dump()
+    data["jev"] = jev
     config_service.write_yaml_atomic(path, data)
-    return body
+    return _decision_out(JevConfig.model_validate(jev))
 
 
 @router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG")

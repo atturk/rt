@@ -10,7 +10,9 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 import os
 from typing import Dict, Any, Optional, List, Literal
 import yaml
-from pydantic import BaseModel, Field, AliasChoices, model_validator
+from pydantic import BaseModel, Field, AliasChoices, field_validator, model_validator
+
+from rt.core.jev_decision import JevDecisionConfig, validate_for_phase
 
 from rt.llm.pricing import ModelPricing
 
@@ -300,6 +302,23 @@ class JevConfig(BaseModel):
     relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per escludere un'unità non didattica")
     prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta Jev usato dal prefiltro errori (il gate rilevanza resta choice)")
     prefilter_prompt: str = Field(default="", description="Istruzioni aggiuntive per il prefiltro errori")
+    # Domanda e mappatura configurate nel playground. None = comportamento predefinito,
+    # derivato dai campi qui sopra (rt.services.jev_mapping.effective_decision).
+    relevance_decision: Optional[JevDecisionConfig] = Field(default=None, description="Domanda Jev e mappatura del gate di rilevanza (None = predefinita)")
+    prefilter_decision: Optional[JevDecisionConfig] = Field(default=None, description="Domanda Jev e mappatura del prefiltro errori (None = predefinita)")
+
+    @field_validator("relevance_decision", "prefilter_decision", mode="wrap")
+    @classmethod
+    def _decision_fail_open(cls, value, handler, info):
+        """Una decisione non valida nello YAML non blocca RT: si torna alla predefinita."""
+        try:
+            phase = "relevance" if info.field_name == "relevance_decision" else "prefilter"
+            return validate_for_phase(phase, handler(value))
+        except ValueError:
+            import logging
+            logging.getLogger(__name__).warning("Configurazione Jev '%s' non valida: uso la predefinita", info.field_name,
+                                                exc_info=True)
+            return None
 
 
 class RTConfig(BaseModel):

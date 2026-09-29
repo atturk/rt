@@ -97,6 +97,8 @@ class UnitRelevanceItem(BaseModel):
     content: str
     prediction: Optional[Literal["didactic", "organizational", "no_content"]] = None
     confidence: Optional[float] = None
+    label: Optional[str] = Field(None, description="Etichetta RT assegnata dalla mappatura JEV")
+    answer: Optional[Dict[str, Any]] = Field(None, description="Risposta JEV completa (scelta, confidenza, tutte le probabilità)")
     override: Optional[Literal["didactic", "organizational", "no_content"]] = None
     effective: Literal["didactic", "organizational", "no_content"]
     error: Optional[str] = None

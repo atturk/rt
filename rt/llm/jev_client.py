@@ -21,7 +21,7 @@ chat/completions endpoint. Use the /api/alpha/decisions endpoint instead.").
 import datetime
 import math
 import time
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import requests
 from pydantic import BaseModel, Field, field_validator
@@ -55,6 +55,12 @@ class JevNoulQuestion(BaseModel):
 JevQuestion = Union[JevChoiceQuestion, JevScoreQuestion, JevNoulQuestion]
 
 
+def _check_probabilities(values: Dict[str, float]) -> Dict[str, float]:
+    if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values.values()):
+        raise ValueError("Probabilità non valida")
+    return values
+
+
 class JevChoiceAnswer(BaseModel):
     type: Literal["choice"] = "choice"
     choice: str
@@ -64,16 +70,20 @@ class JevChoiceAnswer(BaseModel):
     @field_validator("probabilities")
     @classmethod
     def validate_probabilities(cls, values: Dict[str, float]) -> Dict[str, float]:
-        if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values.values()):
-            raise ValueError("Probabilità non valida")
-        return values
+        return _check_probabilities(values)
 
 
 class JevScoreAnswer(BaseModel):
     type: Literal["score"] = "score"
-    score: float
+    score: float = Field(allow_inf_nan=False)
+    probabilities: Dict[str, float] = Field(default_factory=dict)
     legend: Dict[str, str] = Field(default_factory=dict)
     confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @field_validator("probabilities")
+    @classmethod
+    def validate_probabilities(cls, values: Dict[str, float]) -> Dict[str, float]:
+        return _check_probabilities(values)
 
 
 class JevNoulAnswer(BaseModel):
@@ -88,6 +98,8 @@ class JevResponse(BaseModel):
     model: str
     answers: Dict[str, JevAnswer]
     usage: Dict[str, float] = Field(default_factory=dict)
+    # Risposta JSON così come restituita dall'endpoint (mostrata nel playground).
+    raw: Optional[Dict[str, Any]] = Field(default=None, exclude=True)
 
 
 class JevError(Exception):
@@ -213,4 +225,5 @@ def call_jev(
             (answer.probabilities and set(answer.probabilities) != set(question.criteria))
         ):
             raise JevError(f"Scelta o probabilità non valide per '{name}'.")
-    return JevResponse(model=resp_json.get("model", model), answers=answers, usage=resp_json.get("usage", {}))
+    return JevResponse(model=resp_json.get("model", model), answers=answers, usage=resp_json.get("usage", {}),
+                       raw=resp_json)

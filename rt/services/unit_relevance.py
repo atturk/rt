@@ -10,24 +10,15 @@ from rt.core.config import load_config
 from rt.core.filelock import file_lock
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.rewrite import load_draft
+from rt.services import jev_mapping
+from rt.services.jev_mapping import RELEVANCE_CRITERIA, RELEVANCE_INSTRUCTIONS
 from rt.storage import fs
 
 LOG = logging.getLogger(__name__)
 CLASSES = ("didactic", "organizational", "no_content")
-CRITERIA = {
-    "didactic": "Contiene anche una sola nozione, definizione, relazione, spiegazione o esempio disciplinare utile allo studio; include introduzioni con contenuto e unità miste o dubbie.",
-    "organizational": "Contiene solo calendario, modalità d'esame, materiali, ricevimento, contatti, presentazione del corso o altre comunicazioni organizzative, senza nozioni disciplinari.",
-    "no_content": "Contiene solo saluti, convenevoli, prove audio, pause, interruzioni o conversazione senza nozioni né informazioni organizzative utili.",
-}
-INSTRUCTIONS = (
-    "Classifica una singola unità riscritta di una lezione universitaria per review e domande di ripasso. "
-    "Valuta il contenuto effettivo, non il titolo o la posizione: un'introduzione può insegnare nozioni. "
-    "Se è presente anche un contenuto didattico sostanziale, scegli didactic. In caso di dubbio "
-    "scegli didactic per evitare omissioni. Restituisci solo la scelta tra i criteri."
-    " Esempi: presentazione personale o composizione della classe senza nozioni → no_content; "
-    "verifica audio e saluti → no_content; rose, date di esame, sede, indirizzo e ricevimento → organizational; "
-    "una spiegazione dei principi di diritto o dell'articolo 32, anche dopo l'introduzione logistica → didactic."
-)
+# Testi predefiniti della domanda: ora in jev_mapping (qui per compatibilità e per l'impronta).
+CRITERIA = RELEVANCE_CRITERIA
+INSTRUCTIONS = RELEVANCE_INSTRUCTIONS
 
 
 def _hash(value: str) -> str:
@@ -39,8 +30,13 @@ def _unit_hash(unit) -> str:
 
 
 def _config_hash(cfg) -> str:
-    return _hash(json.dumps([cfg.relevance_model, cfg.credential, cfg.base_url, cfg.relevance_prompt,
-                             cfg.relevance_threshold, INSTRUCTIONS, CRITERIA], sort_keys=True, ensure_ascii=False))
+    if cfg.relevance_decision is None:
+        # Decisione predefinita: stessa impronta di prima del playground, così le
+        # classificazioni già salvate restano valide dopo l'aggiornamento.
+        return _hash(json.dumps([cfg.relevance_model, cfg.credential, cfg.base_url, cfg.relevance_prompt,
+                                 cfg.relevance_threshold, INSTRUCTIONS, CRITERIA], sort_keys=True, ensure_ascii=False))
+    return _hash(json.dumps([cfg.relevance_model, cfg.credential, cfg.base_url,
+                             cfg.relevance_decision.model_dump()], sort_keys=True, ensure_ascii=False))
 
 
 def _path(lesson_dir: str) -> str:
@@ -81,8 +77,9 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None) -> dict:
     cfg = load_config().jev
     if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
         return _load(lesson_dir)
-    from rt.llm.jev_client import JevChoiceQuestion, call_jev
+    from rt.llm import jev_client
 
+    decision = jev_mapping.effective_decision("relevance", cfg)
     previous = _load(lesson_dir)
     result = {}
     configuration = _config_hash(cfg)
@@ -97,33 +94,41 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None) -> dict:
             continue
         override = old.get("override") if old.get("text_hash") == digest else None
         prior_override = old.get("override") if old.get("text_hash") != digest else old.get("prior_override")
-        prediction, confidence, error = None, None, None
+        mapped, error = None, None
         try:
             if force_mock:
-                prediction, confidence = "didactic", 1.0
+                mapped = jev_mapping.DecisionResult(label=decision.fallback_label, outcome="didactic", rule=None,
+                                                    answer={"type": "mock"})
             else:
-                answer = call_jev(
-                    state=f"Titolo: {unit.title}\nTesto: {unit.content}",
-                    questions={"rilevanza": JevChoiceQuestion(
-                        instructions=INSTRUCTIONS + ("\n" + cfg.relevance_prompt if cfg.relevance_prompt else ""),
-                        criteria=CRITERIA)},
+                answer = jev_client.call_jev(
+                    state=jev_mapping.state_for("relevance", unit.title, unit.content),
+                    questions={jev_mapping.QUESTION_NAMES["relevance"]: jev_mapping.build_question(decision)},
                     job_name="relevance", unit_id=unit.unit_id, lesson_dir=lesson_dir,
                     model=cfg.relevance_model, credential=cfg.credential, base_url=cfg.base_url,
                     timeout_seconds=cfg.timeout_seconds,
-                ).answers["rilevanza"]
-                if answer.type != "choice" or answer.choice not in CLASSES:
-                    raise ValueError("Categoria JEV non riconosciuta")
-                prediction, confidence = answer.choice, answer.confidence
+                ).answers[jev_mapping.QUESTION_NAMES["relevance"]]
+                if answer.type != decision.type:
+                    raise ValueError("Risposta JEV di tipo inatteso")
+                mapped = jev_mapping.evaluate("relevance", decision, answer)
         except Exception as exc:
             error = str(exc)
             errors += 1
             LOG.warning("JEV rilevanza %s: %s", unit.unit_id, exc)
+        answer_data = mapped.answer if mapped else None
         result[unit.unit_id] = {"text_hash": digest, "config_hash": configuration,
-                                "prediction": prediction, "confidence": confidence,
+                                # prediction è già l'esito della mappatura (soglie comprese).
+                                "prediction": mapped.outcome if mapped else None,
+                                "confidence": _confidence(answer_data),
+                                "label": mapped.label if mapped else None,
+                                "rule": mapped.rule if mapped else None,
+                                "answer": answer_data, "mapped": True,
                                 "override": override, "error": error,
                                 "prior_override": prior_override if prior_override in CLASSES else None,
                                 "last_run_mode": cfg.relevance_mode,
                                 "updated_at": datetime.now(timezone.utc).isoformat()}
+        if ctx is not None and mapped is not None and not force_mock:
+            from rt.services.events import Notice
+            ctx.emit(Notice(message=f"JEV rilevanza {unit.unit_id}: {jev_mapping.describe(mapped)}"))
     try:
         with _lock(lesson_dir):
             latest = _load(lesson_dir)
@@ -144,9 +149,21 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None) -> dict:
     return result
 
 
+def _confidence(answer: Optional[dict]) -> Optional[float]:
+    """Confidenza mostrata accanto alla classificazione: quella di Jev, o la probabilità noul."""
+    if not answer:
+        return None
+    value = answer.get("confidence", answer.get("noul"))
+    return value if isinstance(value, (int, float)) else None
+
+
 def _effective(row: dict, cfg) -> str:
     if row.get("override") in CLASSES:
         return row["override"]
+    if row.get("mapped"):
+        return row["prediction"] if row.get("prediction") in CLASSES else "didactic"
+    # Righe salvate prima del playground: la scelta grezza di Jev con la soglia di allora
+    # (sono fresche solo con la decisione predefinita, che applica la stessa regola).
     if row.get("prediction") in CLASSES and (row.get("confidence") or 0) >= cfg.relevance_threshold:
         return row["prediction"]
     return "didactic"
@@ -177,6 +194,8 @@ def list_units(lesson_dir: str) -> dict:
         rows.append({"unit_id": unit.unit_id, "title": unit.title, "content": unit.content,
                      "prediction": row.get("prediction") if fresh else None,
                      "confidence": row.get("confidence") if fresh else None,
+                     "label": row.get("label") if fresh else None,
+                     "answer": row.get("answer") if fresh else None,
                      "override": row.get("override") if fresh else None,
                      "effective": effective, "error": row.get("error") if fresh else None,
                      "stale": bool(row) and not fresh,

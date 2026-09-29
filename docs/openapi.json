@@ -486,6 +486,17 @@
             "title": "Model",
             "type": "string"
           },
+          "prefilter_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JevDecisionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Domanda e mappatura del prefiltro errori (None = invariata/predefinita)"
+          },
           "prefilter_prompt": {
             "default": "",
             "maxLength": 20000,
@@ -501,6 +512,17 @@
             ],
             "title": "Prefilter Type",
             "type": "string"
+          },
+          "relevance_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JevDecisionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Domanda e mappatura del gate di rilevanza (None = invariata/predefinita)"
           },
           "relevance_mode": {
             "default": "shadow",
@@ -544,6 +566,130 @@
           }
         },
         "title": "DecisionModelIn",
+        "type": "object"
+      },
+      "DecisionModelOut": {
+        "properties": {
+          "credential": {
+            "default": "openrouter",
+            "title": "Credential",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "prefilter_customized": {
+            "default": false,
+            "description": "True se il prefiltro non usa la domanda predefinita",
+            "title": "Prefilter Customized",
+            "type": "boolean"
+          },
+          "prefilter_decision": {
+            "$ref": "#/components/schemas/JevDecisionConfig"
+          },
+          "prefilter_prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Prefilter Prompt",
+            "type": "string"
+          },
+          "prefilter_type": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ],
+            "title": "Prefilter Type",
+            "type": "string"
+          },
+          "relevance_customized": {
+            "default": false,
+            "description": "True se la rilevanza non usa la domanda predefinita",
+            "title": "Relevance Customized",
+            "type": "boolean"
+          },
+          "relevance_decision": {
+            "$ref": "#/components/schemas/JevDecisionConfig"
+          },
+          "relevance_mode": {
+            "default": "shadow",
+            "enum": [
+              "disabled",
+              "shadow",
+              "active"
+            ],
+            "title": "Relevance Mode",
+            "type": "string"
+          },
+          "relevance_model": {
+            "default": "",
+            "title": "Relevance Model",
+            "type": "string"
+          },
+          "relevance_prompt": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Relevance Prompt",
+            "type": "string"
+          },
+          "relevance_threshold": {
+            "default": 0.85,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Relevance Threshold",
+            "type": "number"
+          },
+          "shadow": {
+            "default": true,
+            "title": "Shadow",
+            "type": "boolean"
+          },
+          "templates": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JevDecisionConfig"
+              },
+              "propertyNames": {
+                "enum": [
+                  "choice",
+                  "noul",
+                  "score"
+                ]
+              },
+              "type": "object"
+            },
+            "description": "Domanda e mappatura predefinite per fase e tipo di richiesta",
+            "propertyNames": {
+              "enum": [
+                "relevance",
+                "prefilter"
+              ]
+            },
+            "title": "Templates",
+            "type": "object"
+          },
+          "threshold": {
+            "default": 0.85,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "relevance_decision",
+          "prefilter_decision",
+          "templates"
+        ],
+        "title": "DecisionModelOut",
         "type": "object"
       },
       "DecisionProbeOut": {
@@ -618,6 +764,146 @@
           "decision"
         ],
         "title": "DecisionRequest",
+        "type": "object"
+      },
+      "DecisionTestIn": {
+        "properties": {
+          "credential": {
+            "default": "openrouter",
+            "title": "Credential",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/JevDecisionConfig"
+          },
+          "lesson_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lezione su cui provare (assente = unità di esempio)",
+            "title": "Lesson Id"
+          },
+          "model": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Model",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "relevance",
+              "prefilter"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità della lezione (assente = la prima)",
+            "title": "Unit Id"
+          }
+        },
+        "required": [
+          "phase",
+          "decision"
+        ],
+        "title": "DecisionTestIn",
+        "type": "object"
+      },
+      "DecisionTestOut": {
+        "properties": {
+          "answer": {
+            "additionalProperties": true,
+            "description": "Risposta alla domanda, con tutte le probabilità",
+            "title": "Answer",
+            "type": "object"
+          },
+          "label": {
+            "description": "Etichetta RT assegnata dalla mappatura",
+            "title": "Label",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Esito RT dell'etichetta",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "relevance",
+              "prefilter"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "description": "Richiesta inviata all'endpoint decisions",
+            "title": "Request",
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": true,
+            "description": "Risposta JSON di Jev",
+            "title": "Response",
+            "type": "object"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Regola scattata (da 0); null = nessuna, esito fail-open",
+            "title": "Rule"
+          },
+          "state": {
+            "description": "Stato inviato a Jev (l'unità di lezione)",
+            "title": "State",
+            "type": "string"
+          },
+          "unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Id"
+          },
+          "unit_title": {
+            "title": "Unit Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "unit_title",
+          "state",
+          "request",
+          "response",
+          "answer",
+          "label",
+          "outcome"
+        ],
+        "title": "DecisionTestOut",
         "type": "object"
       },
       "DeleteFailure": {
@@ -1212,6 +1498,174 @@
           "items"
         ],
         "title": "IssueList",
+        "type": "object"
+      },
+      "JevCondition": {
+        "description": "Una condizione: [campo della risposta] [operatore] [valore].",
+        "properties": {
+          "field": {
+            "description": "choice, confidence, noul, score o p:<opzione>",
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "default": "eq",
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ],
+        "title": "JevCondition",
+        "type": "object"
+      },
+      "JevDecisionConfig": {
+        "description": "Domanda Jev e mappatura verso le etichette RT di una fase.",
+        "properties": {
+          "fallback_label": {
+            "default": "Nessuna regola",
+            "description": "Etichetta quando nessuna regola scatta (esito fail-open)",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Fallback Label",
+            "type": "string"
+          },
+          "levels": {
+            "description": "Livelli ordinati (solo score)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Levels",
+            "type": "array"
+          },
+          "options": {
+            "description": "Opzioni (solo choice)",
+            "items": {
+              "$ref": "#/components/schemas/JevOption"
+            },
+            "maxItems": 12,
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "description": "Testo della domanda (istruzioni)",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "rules": {
+            "description": "Regole valutate in ordine: vince la prima vera",
+            "items": {
+              "$ref": "#/components/schemas/JevRule"
+            },
+            "maxItems": 20,
+            "title": "Rules",
+            "type": "array"
+          },
+          "type": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "JevDecisionConfig",
+        "type": "object"
+      },
+      "JevOption": {
+        "description": "Un'opzione di una domanda choice: l'etichetta restituita da Jev e quando sceglierla.",
+        "properties": {
+          "description": {
+            "description": "Quando scegliere questa opzione",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "label": {
+            "description": "Etichetta restituita da Jev (lettere, cifre, _ e -)",
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "description"
+        ],
+        "title": "JevOption",
+        "type": "object"
+      },
+      "JevRule": {
+        "description": "Una riga della mappatura: l'etichetta RT assegnata quando le condizioni sono vere.",
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/JevCondition"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Conditions",
+            "type": "array"
+          },
+          "label": {
+            "description": "Etichetta mostrata in anteprima",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "match": {
+            "default": "all",
+            "description": "Tutte le condizioni o almeno una",
+            "enum": [
+              "all",
+              "any"
+            ],
+            "title": "Match",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Esito di RT a cui corrisponde l'etichetta",
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "outcome",
+          "conditions"
+        ],
+        "title": "JevRule",
         "type": "object"
       },
       "Job": {
@@ -4066,6 +4520,19 @@
       },
       "UnitRelevanceItem": {
         "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Risposta JEV completa (scelta, confidenza, tutte le probabilità)",
+            "title": "Answer"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -4122,6 +4589,18 @@
               }
             ],
             "title": "Error"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Etichetta RT assegnata dalla mappatura JEV",
+            "title": "Label"
           },
           "override": {
             "anyOf": [
@@ -9790,7 +10269,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DecisionModelIn"
+                  "$ref": "#/components/schemas/DecisionModelOut"
                 }
               }
             },
@@ -9874,7 +10353,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DecisionModelIn"
+                  "$ref": "#/components/schemas/DecisionModelOut"
                 }
               }
             },
@@ -10023,6 +10502,92 @@
           }
         ],
         "summary": "Probe Decision Model",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/decision-model/test": {
+      "post": {
+        "operationId": "test_decision_model_api_v1_settings_decision_model_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Prova una configurazione JEV (anche non salvata) su un'unità di lezione",
         "tags": [
           "impostazioni"
         ]

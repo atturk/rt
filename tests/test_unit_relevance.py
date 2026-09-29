@@ -53,3 +53,61 @@ def test_disabled_does_not_call_model(tmp_path):
         gate.refresh(path)
         called.assert_not_called()
         assert gate.included(path, load_draft(path).units[0])
+
+
+class _Events:
+    def __init__(self):
+        self.messages = []
+
+    def emit(self, event):
+        self.messages.append(getattr(event, "message", ""))
+
+
+def test_custom_noul_decision_stores_full_answer_and_label(tmp_path):
+    from rt.core.jev_decision import JevDecisionConfig
+    from rt.llm.jev_client import JevNoulAnswer
+    path = setup_mock_lesson(tmp_path, num_units=2)
+    decision = JevDecisionConfig(question="Priva di nozioni?", type="noul", fallback_label="Didattica", rules=[
+        {"label": "Vuota", "outcome": "no_content", "conditions": [{"field": "noul", "op": "gte", "value": 0.7}]}])
+    cfg = RTConfig(jev=JevConfig(relevance_model="typesafe/jev-1.13", relevance_mode="active",
+                                 relevance_decision=decision))
+    answers = iter([JevNoulAnswer(noul=0.9), JevNoulAnswer(noul=0.2)])
+    events = _Events()
+    with patch.object(gate, "load_config", return_value=cfg), \
+            patch("rt.llm.jev_client.call_jev", side_effect=lambda **kw: JevResponse(
+                model="m", answers={"rilevanza": next(answers)})) as called:
+        gate.refresh(path, ctx=events)
+        question = called.call_args.kwargs["questions"]["rilevanza"]
+        assert question.type == "noul" and question.instructions == "Priva di nozioni?"
+        rows = gate.list_units(path)["units"]
+        assert (rows[0]["effective"], rows[0]["label"], rows[0]["answer"]["noul"]) == ("no_content", "Vuota", 0.9)
+        assert (rows[1]["effective"], rows[1]["label"]) == ("didactic", "Didattica")
+        units = load_draft(path).units
+        assert not gate.included(path, units[0]) and gate.included(path, units[1])
+    assert any(message.startswith("JEV rilevanza 1.1: Vuota") for message in events.messages)
+    # Una domanda diversa invalida la cache delle classificazioni.
+    edited = decision.model_copy(update={"question": "Altro"})
+    cfg_edited = RTConfig(jev=cfg.jev.model_copy(update={"relevance_decision": edited}))
+    with patch.object(gate, "load_config", return_value=cfg_edited):
+        assert all(row["stale"] for row in gate.list_units(path)["units"])
+
+
+def test_rows_saved_before_the_playground_keep_their_threshold_rule(tmp_path):
+    import json
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    cfg = _config("active")
+    unit = load_draft(path).units[0]
+    legacy_row = {"text_hash": gate._unit_hash(unit), "config_hash": gate._config_hash(cfg.jev),
+                  "prediction": "organizational", "confidence": 0.6, "override": None, "error": None}
+
+    def write(row):
+        with open(gate._path(path), "w", encoding="utf-8") as stream:
+            json.dump({unit.unit_id: row}, stream)
+
+    write(legacy_row)
+    with patch.object(gate, "load_config", return_value=cfg), patch("rt.llm.jev_client.call_jev") as called:
+        gate.refresh(path)
+        called.assert_not_called()  # impronta invariata: nessuna nuova chiamata dopo l'aggiornamento
+        assert gate.included(path, unit)  # 0.6 < 0.85: passa, come prima
+        write({**legacy_row, "confidence": 0.9})
+        assert not gate.included(path, unit)

@@ -527,3 +527,32 @@ def test_prefilter_prompt_is_only_for_the_error_prefilter():
     with patch("rt.pipeline.review.call_jev", return_value=_noul_response(0.1)) as call:
         run_jev_task_b(unit, "seg", JevConfig(enabled=True, prefilter_prompt="SOLO PER IL PREFILTRO"), "/lesson")
     assert "SOLO PER IL PREFILTRO" not in call.call_args.kwargs["questions"]["unsupported_content"].instructions
+
+
+def test_custom_prefilter_decision_drives_the_skip_and_is_reported(tmp_path):
+    """La domanda configurata nel playground sostituisce quella predefinita; il risultato del
+    job riporta etichetta e risposta completa di ogni unità."""
+    from rt.core.jev_decision import JevDecisionConfig
+    lesson_dir = setup_mock_lesson(tmp_path, num_units=1)
+    decision = JevDecisionConfig(
+        question="Il testo è banale?", type="choice", fallback_label="Da rivedere",
+        options=[{"label": "banale", "description": "Nulla da rivedere"}, {"label": "denso", "description": "Da rivedere"}],
+        rules=[{"label": "Banale", "outcome": "skip_review", "match": "any",
+                "conditions": [{"field": "choice", "op": "eq", "value": "banale"},
+                               {"field": "p:denso", "op": "lt", "value": 0.1}]}])
+    cfg = _jev_cfg(prefilter_decision=decision)
+
+    def fake_call_jev(state, questions, *, job_name, **kwargs):
+        if job_name == "jev_task_a":
+            assert questions["correttezza"].instructions == "Il testo è banale?"
+            return JevResponse(model="m", answers={"correttezza": JevChoiceAnswer(
+                choice="denso", confidence=0.6, probabilities={"banale": 0.95, "denso": 0.05})})
+        return _noul_response(0.1)
+
+    with patch("rt.pipeline.review.load_config", return_value=cfg), \
+         patch("rt.pipeline.review.call_jev", side_effect=fake_call_jev), \
+         patch("rt.llm.client.LLMClient.call_structured", side_effect=_never_called_expensive_llm):
+        res = run_review(lesson_dir, force=True, force_mock=True)
+    report = res["jev_prefilter"]["1.1"]
+    assert report["label"] == "Banale" and report["outcome"] == "skip_review"
+    assert report["answer"]["probabilities"] == {"banale": 0.95, "denso": 0.05}
