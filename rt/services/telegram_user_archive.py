@@ -143,7 +143,10 @@ async def _authorized_client():
     session = _saved_session()
     if not session:
         raise Conflict("telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.")
-    client = _client(api_id, api_hash, session)
+    try:
+        client = _client(api_id, api_hash, session)
+    except ValueError:  # sessione salvata illeggibile: va ricollegata, non è un errore interno
+        raise Conflict("telegram_user_unauthorized", "La sessione utente è scaduta: collegala di nuovo.") from None
     await client.connect()
     if not await client.is_user_authorized():
         await client.disconnect()

@@ -58,6 +58,14 @@ def test_topic_archive_fails_if_media_missing(tmp_path):
             asyncio.run(export_topic(-1001, 42))
 
 
+def _isolate_env(monkeypatch, *names):
+    """Il login scrive in os.environ: setenv prima di delenv fa sì che monkeypatch ripristini
+    l'assenza a fine test, altrimenti la sessione finta resta per i test successivi."""
+    for name in names:
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
+
+
 def test_pending_telegram_login_does_not_store_api_hash(rt_db, monkeypatch):
     class LoginClient:
         connect = AsyncMock()
@@ -93,8 +101,7 @@ def test_login_saves_session_as_a_secret_not_as_a_file(rt_db, monkeypatch, tmp_p
     monkeypatch.setattr(archive, "_env_path", lambda: env)
     monkeypatch.setattr(archive, "data_dir", lambda: str(tmp_path / "data"))
     monkeypatch.setattr(archive, "_client", lambda _id, _hash, session="": LoginClient(session))
-    for name in ("RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH", archive.SESSION_SECRET):
-        monkeypatch.delenv(name, raising=False)
+    _isolate_env(monkeypatch, "RT_TELEGRAM_USER_API_ID", "RT_TELEGRAM_USER_API_HASH", archive.SESSION_SECRET)
     asyncio.run(request_code(12345, "private-api-hash", "+391234567890"))
     asyncio.run(archive.complete_login("12345"))
     assert used_sessions == ["", "temporary-session"]  # la conferma riusa la chiave del codice
@@ -120,7 +127,7 @@ def test_legacy_plaintext_session_is_migrated_and_deleted(monkeypatch, tmp_path)
     env = tmp_path / ".env"
     monkeypatch.setattr(archive, "data_dir", lambda: str(tmp_path))
     monkeypatch.setattr(archive, "_env_path", lambda: env)
-    monkeypatch.delenv(archive.SESSION_SECRET, raising=False)
+    _isolate_env(monkeypatch, archive.SESSION_SECRET)
 
     value = archive._saved_session()
     assert StringSession(value).auth_key.key == old.auth_key.key
@@ -232,3 +239,15 @@ def test_stale_exports_are_swept(export_env):
     os.utime(old, (past, past))
     assert sweep_stale_exports() == 1
     assert not os.path.exists(old) and os.path.isdir(fresh)
+
+
+def test_unreadable_saved_session_asks_to_reconnect(monkeypatch):
+    import pytest
+    from rt.services import telegram_user_archive as archive
+    from rt.services.errors import Conflict
+    monkeypatch.setenv("RT_TELEGRAM_USER_API_ID", "12345")
+    monkeypatch.setenv("RT_TELEGRAM_USER_API_HASH", "hash")
+    monkeypatch.setenv(archive.SESSION_SECRET, "not-a-telethon-session")
+    with pytest.raises(Conflict) as error:
+        asyncio.run(archive._authorized_client())
+    assert error.value.code == "telegram_user_unauthorized"
