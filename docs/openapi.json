@@ -2388,6 +2388,48 @@
         "title": "LessonImages",
         "type": "object"
       },
+      "LessonRecallStats": {
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "questions": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "description": "tipo -> stato -> numero",
+            "title": "Questions",
+            "type": "object"
+          },
+          "ready": {
+            "description": "Rielaborazione valida: la lezione può fare recall",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "telegram": {
+            "default": false,
+            "description": "Sessione in corso su Telegram per la lezione",
+            "title": "Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "ready",
+          "questions",
+          "answers"
+        ],
+        "title": "LessonRecallStats",
+        "type": "object"
+      },
       "LessonSummary": {
         "properties": {
           "argomenti": {
@@ -3581,6 +3623,18 @@
             "title": "State",
             "type": "string"
           },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Materia, per una sessione su tutte le sue lezioni",
+            "title": "Subject"
+          },
           "summary": {
             "anyOf": [
               {
@@ -4044,6 +4098,117 @@
           "secrets_encrypted"
         ],
         "title": "Settings",
+        "type": "object"
+      },
+      "SubjectGenerateAccepted": {
+        "properties": {
+          "jobs": {
+            "description": "Un job recall_generate per ogni lezione pronta senza domande",
+            "items": {
+              "$ref": "#/components/schemas/JobAccepted"
+            },
+            "title": "Jobs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobs"
+        ],
+        "title": "SubjectGenerateAccepted",
+        "type": "object"
+      },
+      "SubjectQuestion": {
+        "properties": {
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "question": {
+            "$ref": "#/components/schemas/RecallQuestion"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "question"
+        ],
+        "title": "SubjectQuestion",
+        "type": "object"
+      },
+      "SubjectRecall": {
+        "properties": {
+          "lessons": {
+            "items": {
+              "$ref": "#/components/schemas/LessonRecallStats"
+            },
+            "title": "Lessons",
+            "type": "array"
+          },
+          "materia": {
+            "description": "Vuota per le lezioni senza materia",
+            "title": "Materia",
+            "type": "string"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sessione per materia in corso nella web app"
+          }
+        },
+        "required": [
+          "materia",
+          "lessons"
+        ],
+        "title": "SubjectRecall",
+        "type": "object"
+      },
+      "SubjectRecallState": {
+        "properties": {
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima sessione per materia chiusa, con il riepilogo"
+          },
+          "lessons": {
+            "items": {
+              "$ref": "#/components/schemas/LessonRecallStats"
+            },
+            "title": "Lessons",
+            "type": "array"
+          },
+          "materia": {
+            "description": "Vuota per le lezioni senza materia",
+            "title": "Materia",
+            "type": "string"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSessionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sessione per materia in corso nella web app"
+          }
+        },
+        "required": [
+          "materia",
+          "lessons"
+        ],
+        "title": "SubjectRecallState",
         "type": "object"
       },
       "SystemInfo": {
@@ -10067,6 +10232,506 @@
         "summary": "Corregge o ripristina la classificazione di un'unità",
         "tags": [
           "lezioni"
+        ]
+      }
+    },
+    "/api/v1/recall/subject": {
+      "get": {
+        "operationId": "subject_state_api_v1_recall_subject_get",
+        "parameters": [
+          {
+            "description": "Materia, come nelle lezioni",
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "description": "Materia, come nelle lezioni",
+              "title": "Materia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectRecallState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lezioni di una materia con la loro riserva, sessione per materia in corso e ultimo riepilogo",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/recall/subject/end": {
+      "post": {
+        "operationId": "subject_end_api_v1_recall_subject_end_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "title": "Materia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallSessionInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Termina la sessione per materia e ne salva il riepilogo (404 se non ce n'è una)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/recall/subject/generate": {
+      "post": {
+        "operationId": "subject_generate_api_v1_recall_subject_generate_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "title": "Materia",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mock",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Mock",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectGenerateAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Riserva iniziale per le lezioni pronte della materia che non hanno ancora domande (un job per lezione)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/recall/subject/next": {
+      "post": {
+        "operationId": "subject_next_api_v1_recall_subject_next_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "title": "Materia",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qtype",
+            "required": false,
+            "schema": {
+              "default": "quiz",
+              "enum": [
+                "quiz",
+                "mirata",
+                "vasta"
+              ],
+              "title": "Qtype",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "alternato",
+              "enum": [
+                "alternato",
+                "sequenziale",
+                "casuale"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Domanda appena saltata, come <id lezione>:<id domanda>",
+            "in": "query",
+            "name": "exclude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Domanda appena saltata, come <id lezione>:<id domanda>",
+              "title": "Exclude"
+            }
+          },
+          {
+            "description": "Rifornimento della riserva in mock",
+            "in": "query",
+            "name": "mock",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Rifornimento della riserva in mock",
+              "title": "Mock",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectQuestion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; sotto soglia accoda un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/recall/subjects": {
+      "get": {
+        "operationId": "subjects_api_v1_recall_subjects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SubjectRecall"
+                  },
+                  "title": "Response Subjects Api V1 Recall Subjects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Riserva di domande di ogni lezione, per materia, e sessioni per materia in corso",
+        "tags": [
+          "recall"
         ]
       }
     },

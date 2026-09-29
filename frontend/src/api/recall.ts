@@ -23,9 +23,10 @@ export function useRecallOverview(id: number) {
   })
 }
 
-export function useRecallHistory(id: number) {
+export function useRecallHistory(id: number, enabled = true) {
   return useQuery({
     queryKey: recallKeys.history(id),
+    enabled,
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/history', { params: path(id) })),
   })
 }
@@ -144,4 +145,51 @@ export function useStopTelegram() {
   return useSessionMutation((sessionId: number) =>
     unwrap(api.POST('/api/v1/recall/telegram/sessions/{session_id}/stop', { params: { path: { session_id: sessionId } } })),
   )
+}
+
+// ---------------------------------------------------------------- recall per materia
+
+export type SubjectRecall = Schemas['SubjectRecall']
+export type LessonRecallStats = Schemas['LessonRecallStats']
+export type SubjectQuestion = Schemas['SubjectQuestion']
+
+export const subjectKeys = {
+  all: ['recall-subject'] as const,
+  list: ['recall-subject', 'list'] as const,
+  one: (materia: string) => ['recall-subject', 'one', materia] as const,
+}
+
+/** Riserva di ogni lezione, per materia, e sessioni per materia in corso. */
+export function useSubjectsRecall() {
+  return useQuery({ queryKey: subjectKeys.list, queryFn: () => unwrap(api.GET('/api/v1/recall/subjects')) })
+}
+
+export function useSubjectRecall(materia: string) {
+  return useQuery({
+    queryKey: subjectKeys.one(materia),
+    queryFn: () => unwrap(api.GET('/api/v1/recall/subject', { params: { query: { materia } } })),
+  })
+}
+
+/** Dopo ogni scrittura si rileggono riserve e sessioni della materia (e quelle delle lezioni). */
+function useSubjectMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => Promise.all([client.invalidateQueries({ queryKey: subjectKeys.all }), client.invalidateQueries({ queryKey: ['recall'] })]),
+  })
+}
+
+export function useSubjectNext(materia: string) {
+  return useSubjectMutation((vars: { qtype: RecallType; exclude?: string }) =>
+    unwrap(api.POST('/api/v1/recall/subject/next', { params: { query: { materia, qtype: vars.qtype, exclude: vars.exclude } } })),
+  )
+}
+
+export function useSubjectEnd(materia: string) {
+  return useSubjectMutation(() => unwrap(api.POST('/api/v1/recall/subject/end', { params: { query: { materia } } })))
+}
+
+export function useSubjectGenerate(materia: string) {
+  return useSubjectMutation(() => unwrap(api.POST('/api/v1/recall/subject/generate', { params: { query: { materia } } })))
 }

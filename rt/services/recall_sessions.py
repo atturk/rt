@@ -105,6 +105,7 @@ def _view(row: RecallSession, lesson: Optional[Lesson]) -> Dict[str, Any]:
         title = " · ".join(p for p in (lesson.materia, lesson.titolo or lesson.argomenti, lesson.data) if p)
     return {
         "id": row.id, "lesson_id": lesson.id if lesson is not None else None, "lesson_title": title,
+        "subject": row.subject,
         "channel": row.channel, "state": row.state, "qtype": row.qtype,
         "started_at": row.started_at, "ended_at": row.ended_at, "ended_by": row.ended_by,
         "questions": len(row.question_ids or []), "summary": row.summary,
