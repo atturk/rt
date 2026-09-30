@@ -239,11 +239,16 @@ def test_empty_checkpoint_and_resolved_cache_survive_database_export(tmp_path, r
 def test_mock_refill_uses_same_checkpoint_policy(tmp_path):
     from rt.services.recall_service import needs_refill
     path = setup_mock_lesson(tmp_path, num_units=1)
-    recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], force_mock=True)
-    # Una risposta duplicata esaurisce il gruppo anche nel percorso mock delle API.
-    assert recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], force_mock=True) == []
-    assert not needs_refill(path, RecallQuestionType.MIRATA, force_mock=True)
-    assert needs_refill(path, RecallQuestionType.MIRATA, force_mock=False)
+    first = recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], force_mock=True)
+    # Il mock numera le domande: un refill successivo aggiunge domande nuove, non duplicati,
+    # così le API in mock non restano senza riserva dopo la prima domanda.
+    second = recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], force_mock=True)
+    assert len(first) == len(second) == 1 and first[0].question_text != second[0].question_text
+    assert needs_refill(path, RecallQuestionType.MIRATA, force_mock=True)
+    # Un'astensione reale esaurisce il gruppo e ferma i refill invariati.
+    with patch('rt.llm.client.LLMClient.call_structured', side_effect=lambda **kw: kw['response_model'](questions=[])):
+        assert recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, []) == []
+    assert not needs_refill(path, RecallQuestionType.MIRATA, force_mock=False)
 
 
 def test_vasta_receives_each_unit_assessment_without_inventing_group_score(tmp_path):

@@ -467,7 +467,8 @@ def generate_recall_batch(
     response_model = {RecallQuestionType.QUIZ: RecallQuizGenerationResult,
                       RecallQuestionType.MIRATA: RecallMirataGenerationResult,
                       RecallQuestionType.VASTA: RecallVastaGenerationResult}[qtype]
-    for group in _generation_groups(units, bank, qtype):
+    groups = _generation_groups(units, bank, qtype)
+    for position, group in enumerate(groups):
         key = _generation_key(qtype, group)
         fingerprint = _generation_digest(lesson_dir, group, policy)
         old = bank.generation_attempts.get(key, {})
@@ -478,13 +479,21 @@ def generate_recall_batch(
             "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in group]}
         previous = [q.question_text for q in bank.questions if q.type == qtype and set(q.unit_ids) & set(ids)]
         if mock:
-            data = {"type": qtype, "question_text": f"Domanda mock {qtype.value} per unita' {', '.join(ids)}"}
-            if qtype == RecallQuestionType.QUIZ:
-                data.update(options=["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"],
-                            correct_index=0, pregenerated_material="La A è corretta; B, C e D sono errate.")
-            elif qtype == RecallQuestionType.VASTA:
-                data["pregenerated_material"] = "Scaletta ideale: 1) Punto essenziale; 2) Collegamento."
-            generated = response_model.model_validate({"questions": [data]}).questions
+            # Come un modello reale, il mock può restituire più domande per gruppo: numerate,
+            # così i refill successivi non sono duplicati e anche le lezioni corte
+            # raggiungono l'obiettivo del batch.
+            wanted = max(1, -(-(count - len(results)) // (len(groups) - position)))
+            start = sum(1 for q in bank.questions if q.type == qtype and q.unit_ids == ids)
+            batch = []
+            for n in range(start + 1, start + 1 + min(wanted, 12)):
+                data = {"type": qtype, "question_text": f"Domanda mock {qtype.value} n. {n} per unita' {', '.join(ids)}"}
+                if qtype == RecallQuestionType.QUIZ:
+                    data.update(options=["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"],
+                                correct_index=0, pregenerated_material="La A è corretta; B, C e D sono errate.")
+                elif qtype == RecallQuestionType.VASTA:
+                    data["pregenerated_material"] = "Scaletta ideale: 1) Punto essenziale; 2) Collegamento."
+                batch.append(data)
+            generated = response_model.model_validate({"questions": batch}).questions
         else:
             if qtype == RecallQuestionType.VASTA:
                 prompt = prompts.build_recall_vasta_user_prompt(ids, [u.title for u in group],

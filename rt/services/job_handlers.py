@@ -131,7 +131,8 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.recall_service import ensure_initial_batch
     lesson_dir = _lesson_dir(job)
     with ctx.activate():
-        ensure_initial_batch(lesson_dir, force_mock=bool(job.payload.get("force_mock")), regenerate=True)
+        ensure_initial_batch(lesson_dir, force_mock=bool(job.payload.get("force_mock")),
+                             regenerate=bool(job.payload.get("regenerate")))
     return JobOutcome(state=JobState.SUCCEEDED, result={"questions": len(load_recall_bank(lesson_dir).questions)})
 
 

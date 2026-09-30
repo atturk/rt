@@ -500,7 +500,10 @@ class TestGenerateBatch:
         qs = generate_recall_batch(
             lesson_dir, RecallQuestionType.QUIZ, count=20, few_shot_examples=[], force_mock=True
         )
-        assert len(qs) == 6  # ogni unità viene valutata una volta nel batch
+        # Ogni gruppo è visitato una volta; il mock, come un modello reale, può restituire
+        # più domande per gruppo, quindi l'obiettivo viene raggiunto anche con poche unità.
+        assert len(qs) == 20
+        assert len({q.question_text for q in qs}) == 20
 
     def test_all_questions_pending_after_generation(self, lesson_dir):
         qs = generate_recall_batch(lesson_dir, RecallQuestionType.QUIZ, count=3, few_shot_examples=[], force_mock=True)
