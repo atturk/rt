@@ -2,7 +2,7 @@
 
 Il classificatore di rilevanza usa per default tre livelli score: 0 (nessun contenuto disciplinare pertinente), 1 (uno o due nuclei informativi), 2 (tre o più). Questa valutazione orienta il recaller: **non è una quota di domande e non esclude automaticamente le unità**. Un contenuto breve resta valido se contiene una conoscenza pertinente. Logistica, interruzioni, obiettivi e annunci dell'insegnamento non sono conoscenze da interrogare; un metodo disciplinare realmente descritto può esserlo.
 
-Classificatore e recaller condividono definizione e contesto: materia, titolo della lezione e argomenti (prima quelli espliciti in info.yaml, altrimenti quelli generati nell'outline). Quiz, mirata e vasta mantengono regole di stile, few-shot e override del prompt di sistema. Il suffisso variabile con la valutazione arriva per ultimo nel prompt utente. Il recaller decide autonomamente di produrre zero, una o più domande, entro il limite tecnico di dodici per risposta; count è soltanto l'obiettivo del batch.
+Classificatore e recaller condividono definizione e contesto: materia, titolo della lezione e argomenti (prima quelli espliciti in info.yaml, altrimenti quelli generati nell'outline). Quiz, mirata e vasta mantengono regole di stile, few-shot e override del prompt di sistema. Il suffisso variabile con la valutazione arriva per ultimo nel prompt utente. Per vasta riporta separatamente le valutazioni delle singole unità: non calcola un punteggio aggregato o una quota. Il recaller decide autonomamente di produrre zero, una o più domande, entro il limite tecnico di dodici per risposta; count è soltanto l'obiettivo del batch.
 
 ## Protocollo e compatibilità
 
@@ -27,4 +27,4 @@ RT_DATA_DIR=/path/private RT_DATABASE_URL=off python scripts/qc_recall.py \
   --inputs /path/lessons --work-dir /path/qc --sample-plan /path/sample.json --workers 4
 ```
 
-Il controllo strutturale verifica il protocollo, non la correttezza scientifica: le domande e le spiegazioni richiedono anche un giudizio di pertinenza, chiarezza, aderenza al testo e ridondanza. Il modello concreto scelto dal router free va riportato quando il provider lo rende disponibile.
+Il rapporto di questa esecuzione è in [QC_RECALL_4.1.1b1.md](QC_RECALL_4.1.1b1.md). Il controllo strutturale verifica il protocollo, non la correttezza scientifica: le domande e le spiegazioni richiedono anche un giudizio di pertinenza, chiarezza, aderenza al testo e ridondanza. Il modello concreto scelto dal router free va riportato quando il provider lo rende disponibile.

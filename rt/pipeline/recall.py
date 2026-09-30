@@ -363,7 +363,7 @@ def _generation_policy(qtype, few_shot_examples, force_mock=False):
     return {"version": POLICY_VERSION, "style": qtype.value, "fewshot": few_shot_examples,
             "system": effective_system("recall", getattr(prompts, "RECALL_" + qtype.value.upper() + "_SYSTEM_PROMPT")),
             "routing": routing.model_dump(mode="json") if routing else None,
-            "guidance": prompts.RICHNESS_GUIDANCE, "neutral": prompts.NEUTRAL_GUIDANCE,
+            "guidance": prompts.RICHNESS_GUIDANCE, "neutral": prompts.NEUTRAL_GUIDANCE, "group": prompts.GROUP_GUIDANCE,
             "decision": effective_decision("relevance", cfg.jev).model_dump(mode="json"),
             "mode": cfg.jev.relevance_mode, "classifier": cfg.jev.relevance_model,
             "confidence_threshold": cfg.jev.relevance_threshold, "mock": force_mock or cfg.mock_llm}
@@ -474,7 +474,8 @@ def generate_recall_batch(
         if not regenerate and old.get("exhausted") and old.get("fingerprint") == fingerprint:
             continue
         ids = [u.unit_id for u in group]
-        assessment = recall_assessment(lesson_dir, group[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None}
+        assessment = recall_assessment(lesson_dir, group[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None,
+            "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in group]}
         previous = [q.question_text for q in bank.questions if q.type == qtype and set(q.unit_ids) & set(ids)]
         if mock:
             data = {"type": qtype, "question_text": f"Domanda mock {qtype.value} per unita' {', '.join(ids)}"}

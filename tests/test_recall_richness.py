@@ -176,3 +176,85 @@ def test_concurrent_generations_deduplicate_and_remember_exhaustion(tmp_path):
     assert len(bank.questions) == 1 and bank.questions[0].id == 'recall_000001'
     assert bank.generation_attempts['mirata:1.1']['exhausted']
     assert not recall.generation_available(path, RecallQuestionType.MIRATA)
+
+
+def test_resolved_changed_text_has_own_classification_and_overrides(tmp_path):
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    draft = load_draft(path)
+    corrected = draft.model_copy(update={'units': [draft.units[0].model_copy(update={'content': 'Testo corretto con nozioni diverse.'})]})
+    cfg = RTConfig(jev=JevConfig(relevance_mode='active', relevance_model='typesafe/jev-1.13'))
+    with patch.object(gate, 'load_config', return_value=cfg), patch('rt.llm.jev_client.call_jev', side_effect=[score_response(0), score_response(2)]) as called:
+        gate.refresh(path)
+        with patch('rt.pipeline.ledger.load_resolved_draft', return_value=corrected):
+            gate.refresh(path, view='resolved')
+            assert called.call_count == 2
+            assert 'Testo corretto' in called.call_args.kwargs['state']
+            gate.set_override(path, draft.units[0].unit_id, 'no_content')
+            assert not gate.included(path, draft.units[0])
+            assert gate.included(path, corrected.units[0], view='resolved')
+            assert gate.recall_assessment(path, corrected.units[0])['level'] == 2
+            assert gate._load(path)[draft.units[0].unit_id]['answer']['score'] == 0
+
+
+def test_custom_scale_requires_explicit_richness_mapping(tmp_path):
+    from rt.core.jev_decision import JevDecisionConfig, validate_for_phase
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    custom = JevDecisionConfig(question='Tre livelli diversi', type='score', levels=['A', 'B', 'C'])
+    cfg = RTConfig(jev=JevConfig(relevance_mode='active', relevance_model='typesafe/jev-1.13', relevance_decision=custom))
+    with patch.object(gate, 'load_config', return_value=cfg), patch('rt.llm.jev_client.call_jev', return_value=score_response(2)):
+        gate.refresh(path, view='resolved')
+        assert gate.recall_assessment(path, load_draft(path).units[0])['level'] is None
+    with pytest.raises(ValidationError, match='tre livelli'):
+        JevDecisionConfig(question='Non valido', type='score', levels=['A'], recall_richness=True)
+    with pytest.raises(ValueError, match='soltanto'):
+        validate_for_phase('prefilter', custom.model_copy(update={'recall_richness': True}))
+
+
+def test_empty_checkpoint_and_resolved_cache_survive_database_export(tmp_path, rt_db):
+    import io
+    import zipfile
+    from pathlib import Path
+    from rt.storage.migrate import migrate_lesson
+    from rt.storage.export import export_zip
+    from rt.storage import fs
+    lesson_folder = tmp_path / 'lesson'
+    lesson_folder.mkdir()
+    path = setup_mock_lesson(lesson_folder, num_units=1)
+    cfg = RTConfig(jev=JevConfig(relevance_mode='active', relevance_model='typesafe/jev-1.13'))
+    with patch.object(gate, 'load_config', return_value=cfg), patch('rt.llm.jev_client.call_jev', return_value=score_response(0)):
+        gate.refresh(path, view='resolved')
+    with patch('rt.llm.client.LLMClient.call_structured', side_effect=lambda **kw: kw['response_model'](questions=[])):
+        recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 5, [])
+    before = recall.load_recall_bank(path).model_dump(mode='json')
+    assert migrate_lesson(rt_db, path, str(tmp_path / 'backup')) == []
+    assert fs.is_db_lesson(path)
+    assert recall.load_recall_bank(path).model_dump(mode='json') == before
+    with zipfile.ZipFile(io.BytesIO(export_zip(path, 'all'))) as archive:
+        names = {Path(n).name: n for n in archive.namelist()}
+        exported = json.loads(archive.read(names['recall_questions.json']))
+        assert exported['generation_attempts']['mirata:1.1']['exhausted']
+        assert json.loads(archive.read(names['unit_relevance_resolved.json']))['1.1']['answer']['score'] == 0
+
+
+def test_mock_refill_uses_same_checkpoint_policy(tmp_path):
+    from rt.services.recall_service import needs_refill
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], force_mock=True)
+    # Una risposta duplicata esaurisce il gruppo anche nel percorso mock delle API.
+    assert recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], force_mock=True) == []
+    assert not needs_refill(path, RecallQuestionType.MIRATA, force_mock=True)
+    assert needs_refill(path, RecallQuestionType.MIRATA, force_mock=False)
+
+
+def test_vasta_receives_each_unit_assessment_without_inventing_group_score(tmp_path):
+    from rt.llm.prompts import GROUP_GUIDANCE
+    path = setup_mock_lesson(tmp_path, num_units=2)
+    cfg = RTConfig(jev=JevConfig(relevance_mode='active', relevance_model='typesafe/jev-1.13'))
+    with patch.object(gate, 'load_config', return_value=cfg), patch('rt.llm.jev_client.call_jev', side_effect=[score_response(0), score_response(2)]):
+        gate.refresh(path, view='resolved')
+        with patch('rt.llm.client.LLMClient.call_structured', side_effect=lambda **kw: kw['response_model'](questions=[])) as called:
+            recall.generate_recall_batch(path, RecallQuestionType.VASTA, 1, [])
+        prompt = called.call_args.kwargs['prompt']
+        data = json.loads(prompt.split('VALUTAZIONE CLASSIFICATORE:\n')[1].split('\n')[0])
+        assert data['level'] is None and [(u['unit_id'], u['level']) for u in data['units']] == [('1.1', 0), ('1.2', 2)]
+        assert prompt.endswith(GROUP_GUIDANCE)

@@ -143,3 +143,16 @@ def test_playground_reports_jev_errors_and_invalid_mappings(api_client, rt_db, t
     bad_field["rules"][0]["conditions"][0]["field"] = "choice"
     assert api_client.post(PATH + "/test", json={"phase": "relevance", "decision": bad_field, "model": "m"}).status_code == 422
     assert api_client.post(PATH + "/test", json={"phase": "relevance", "decision": _noul_decision(), "model": " "}).status_code == 422
+
+
+def test_active_default_relevance_requires_score_probe(api_client, rt_db, tmp_path, monkeypatch):
+    from rt.llm.jev_client import JevScoreAnswer
+    isolated_workspace(tmp_path, monkeypatch)
+    body = {'relevance_model': 'decision/richness-score', 'relevance_mode': 'active'}
+    refused = api_client.put(PATH, json=body)
+    assert refused.status_code == 422 and 'score' in refused.json()['error']['message']
+    answer = JevResponse(model=body['relevance_model'], answers={'rilevanza': JevScoreAnswer(score=0, confidence=.99)})
+    decision = api_client.get(PATH).json()['relevance_decision']
+    with patch('rt.llm.jev_client.call_jev', return_value=answer):
+        assert api_client.post(PATH + '/test', json={'phase': 'relevance', 'decision': decision, 'model': body['relevance_model']}).status_code == 200
+    assert api_client.put(PATH, json=body).status_code == 200

@@ -206,6 +206,7 @@ REGOLE CATEGORICHE:
 6. La domanda deve essere precisa, non ambigua, e formulata in italiano accademico.
 7. Non inserire numeri progressivi nelle opzioni (es. "A)", "1.") — solo testo.
 8. Ogni opzione deve essere breve e concisa: massimo 100 caratteri (limite tecnico dell'API di Telegram per i quiz nativi). La domanda stessa deve restare sotto i 290 caratteri.
+9. Varia la posizione dell'opzione corretta fra le domande: l'indice 0 nell'esempio JSON è solo illustrativo, non un valore da ripetere.
 
 OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
 {"questions": [{"type": "quiz", "question_text": "domanda", "options": ["opzione 0", "opzione 1", "opzione 2", "opzione 3"], "correct_index": 0, "pregenerated_material": "spiegazione"}]}
@@ -362,7 +363,20 @@ RECALL_RELEVANCE_RULES = ("\n\nRILEVANZA:\n" + RELEVANCE_DEFINITION +
     " Formula domande sulle informazioni effettivamente affermate, senza richiedere dettagli "
     "sviluppati altrove e non forniti. Una nozione breve resta valida: restringi la domanda a "
     "quella nozione. Evita particolari arbitrari di esempi narrativi e nuove versioni di "
-    "domande già presenti. Zero domande è sempre un esito valido.")
+    "domande già presenti. Zero domande è sempre un esito valido. Prima di emettere ciascuna "
+    "domanda verifica che la risposta insegni una conoscenza della materia: nome o appartenenza "
+    "dell'insegnamento, architettura del corso, piattaforme, contatti, ricevimento e competenze "
+    "promesse sono organizzazione didattica, anche se contengono termini disciplinari. "
+    "Non renderli interrogabili chiamandoli inquadramento o finalità. Domande che chiedono la "
+    "stessa conoscenza con parole diverse, o nei due versi della medesima relazione, sono "
+    "ridondanti: conserva soltanto la formulazione più utile. Rileggi infine l'italiano per "
+    "correggere refusi e parole accidentalmente in altre lingue. "
+    "Esempi di distinzione: 'Il corso svilupperà la capacità di formulare problemi decisionali' "
+    "è un obiettivo didattico: nessuna domanda. 'Il sistema sanitario persegue tutela e promozione "
+    "della salute' descrive la funzione del sistema sanitario: è interrogabile. 'Il corso appartiene "
+    "all'insegnamento integrato di management sanitario' è organizzazione: nessuna domanda. "
+    "Non basta che un obiettivo prometta problem solving o approcci sistemici: deve essere "
+    "spiegato un concetto, una relazione o un procedimento concreto della disciplina.")
 RECALL_QUIZ_SYSTEM_PROMPT += RECALL_RELEVANCE_RULES
 RECALL_MIRATA_SYSTEM_PROMPT += RECALL_RELEVANCE_RULES
 RECALL_VASTA_SYSTEM_PROMPT += RECALL_RELEVANCE_RULES
@@ -372,6 +386,7 @@ RICHNESS_GUIDANCE = {
     1: "Il classificatore ha individuato alcuni concetti interrogabili. Individua i concetti rilevanti e genera una o più domande. Se non trovi informazioni rilevanti puoi anche restituire una lista vuota.",
     2: "Il classificatore ha individuato diversi concetti interrogabili. Genera più domande quando verificano conoscenze distinte; evita domande ripetitive e non raggiungere una quota obbligatoria.",
 }
+GROUP_GUIDANCE = "Usa le valutazioni delle singole unità come orientamento per scegliere conoscenze pertinenti e collegamenti. Non sommare i livelli per ricavare una quota di domande. Le unità prive di contenuti pertinenti non devono diventare domande di contorno: puoi restituire una lista vuota anche per il gruppo."
 NEUTRAL_GUIDANCE = "Valutazione del classificatore assente o non utilizzabile. Decidi dal contenuto e dal contesto, restituendo zero o più domande pertinenti e distinte, senza quota obbligatoria."
 
 
@@ -388,7 +403,7 @@ def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, pr
                 break
             previous = candidate
         prompt += "\n\nDOMANDE GIÀ PRESENTI (cerca altri concetti, non parafrasi):\n" + json.dumps(previous, ensure_ascii=False)
-    return prompt + "\n\nVALUTAZIONE CLASSIFICATORE:\n" + json.dumps(assessment, ensure_ascii=False, sort_keys=True) + "\n" + RICHNESS_GUIDANCE.get(assessment.get("level"), NEUTRAL_GUIDANCE)
+    return prompt + "\n\nVALUTAZIONE CLASSIFICATORE:\n" + json.dumps(assessment, ensure_ascii=False, sort_keys=True) + "\n" + (GROUP_GUIDANCE if assessment.get("state") == "group" else RICHNESS_GUIDANCE.get(assessment.get("level"), NEUTRAL_GUIDANCE))
 
 
 # 8. RECALL EVAL MIRATA JOB (Fase D3)

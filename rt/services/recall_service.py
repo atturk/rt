@@ -157,10 +157,10 @@ def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_
                   cfg.telegram.recall.refill_batch_size, cfg.telegram.state_dir, force_mock=force_mock)
 
 
-def needs_refill(lesson_dir: str, qtype: RecallQuestionType) -> bool:
+def needs_refill(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = False) -> bool:
     from rt.core.config import load_config
     from rt.pipeline.recall import get_reserve_count, generation_available
-    return generation_available(lesson_dir, qtype) and get_reserve_count(lesson_dir, qtype) < load_config().telegram.recall.refill_threshold
+    return generation_available(lesson_dir, qtype, force_mock=force_mock) and get_reserve_count(lesson_dir, qtype) < load_config().telegram.recall.refill_threshold
 
 
 def is_question_stale(lesson_dir: str, question) -> bool:

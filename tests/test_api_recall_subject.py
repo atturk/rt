@@ -49,6 +49,18 @@ def test_subject_session_rotates_lessons_and_saves_summary(api_client, lessons, 
     assert state["materia"] == "BIOCHIMICA" and state["session"] is None and state["last"] is None
     assert all(l["questions"]["quiz"]["pending"] > 0 for l in state["lessons"])
 
+    # Il test della rotazione richiede almeno due domande per lezione, a prescindere
+    # da quante ne genera una singola unità nel protocollo a cardinalità variabile.
+    from rt.pipeline.recall import load_recall_bank, save_recall_bank
+    from rt.services.lesson_service import resolve_lesson_dir
+    for lesson_id in lessons:
+        directory = resolve_lesson_dir(lesson_id)
+        bank = load_recall_bank(directory)
+        quiz = next(q for q in bank.questions if q.type.value == "quiz")
+        bank.questions.append(quiz.model_copy(update={
+            "id": f"rotation_extra_{lesson_id}", "question_text": f"Seconda domanda di rotazione {lesson_id}?"}))
+        save_recall_bank(bank, directory)
+
     first = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
     second = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
     assert {first["lesson_id"], second["lesson_id"]} == set(lessons)  # le lezioni si danno il turno

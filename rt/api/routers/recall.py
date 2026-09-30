@@ -17,7 +17,7 @@ def _refill_later(lesson_dir: str, question, mock: bool, actor: str) -> None:
     """Come il recall da terminale dopo ogni domanda mostrata: se la riserva del tipo è sotto
     soglia, un job ne genera altre (la risposta non aspetta l'LLM)."""
     from rt.services.recall_service import needs_refill
-    if question is not None and needs_refill(lesson_dir, question.type):
+    if question is not None and needs_refill(lesson_dir, question.type, force_mock=mock):
         enqueue_job("recall_refill", lesson_dir, {"qtype": question.type.value, "mock": mock}, actor)
 
 
