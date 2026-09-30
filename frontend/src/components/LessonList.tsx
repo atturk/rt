@@ -353,7 +353,7 @@ export function LessonViewControls({ shown, total, filtered, onReset, prefs, onC
       {search && (
         <form className="flex flex-col gap-1" role="search" aria-label="Filtra le lezioni" onSubmit={(e) => e.preventDefault()}>
           <Label htmlFor={search.id} className="text-xs">Cerca</Label>
-          <Input id={search.id} type="search" className="w-64" placeholder="Titolo, materia, docente, data…"
+          <Input id={search.id} type="search" className="w-52" placeholder="Titolo, materia, docente, data…"
             value={search.value} onChange={(e) => search.onChange(e.target.value)} />
         </form>
       )}
