@@ -281,8 +281,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
         except tg_client.TelegramAPIError as e:
             print(f"⚠️  Invio domanda a Telegram fallito: {e}")
 
-    # Rifornimento se la riserva del tipo attivo è sotto soglia (non blocca l'invio già avvenuto sopra)
+    # Rifornimento se il pool del tipo attivo è alla soglia (non blocca l'invio già avvenuto sopra)
     recall_service.refill_if_low(
-        lesson_dir, qtype, runtime_cfg.recall.refill_threshold,
-        runtime_cfg.recall.refill_batch_size, state_dir, force_mock=force_mock,
+        lesson_dir, qtype, runtime_cfg.recall.refill_batch_size, state_dir, force_mock=force_mock,
     )

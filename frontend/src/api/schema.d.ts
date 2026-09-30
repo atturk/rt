@@ -678,7 +678,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Genera domande: riserva iniziale (job recall_generate) o un tipo (job recall_batch) */
+        /** Genera domande: rigenera il pool della lezione (job recall_generate) o un tipo (job recall_batch) */
         post: operations["generate_api_v1_lessons__lesson_id__recall_generate_post"];
         delete?: never;
         options?: never;
@@ -712,7 +712,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Prossima domanda del tipo scelto; sotto soglia accoda un job recall_refill (404 se la riserva è vuota: usa /recall/generate) */
+        /** Prossima domanda del tipo scelto; alla soglia accoda un job recall_refill (404 se il pool è vuoto: usa /recall/generate) */
         post: operations["next_question_api_v1_lessons__lesson_id__recall_next_post"];
         delete?: never;
         options?: never;
@@ -782,6 +782,24 @@ export interface paths {
         put?: never;
         /** Chiede al bot di avviare il recall nel topic della materia (l'esito arriva in /recall/session) */
         post: operations["telegram_start_api_v1_lessons__lesson_id__recall_telegram_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/recall/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unità della lezione per il recaller: giudizio del classificatore e selezione */
+        get: operations["recall_units_api_v1_lessons__lesson_id__recall_units_get"];
+        /** Sceglie le unità da cui generare le domande (unit_ids null: solo le rilevanti, la scelta predefinita) */
+        put: operations["select_recall_units_api_v1_lessons__lesson_id__recall_units_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -863,7 +881,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lezioni di una materia con la loro riserva, sessione per materia in corso e ultimo riepilogo */
+        /** Lezioni di una materia con il loro pool, sessione per materia in corso e ultimo riepilogo */
         get: operations["subject_state_api_v1_recall_subject_get"];
         put?: never;
         post?: never;
@@ -899,7 +917,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Riserva iniziale per le lezioni pronte della materia che non hanno ancora domande (un job per lezione) */
+        /** Pool per le lezioni pronte della materia che non hanno ancora domande (un job per lezione) */
         post: operations["subject_generate_api_v1_recall_subject_generate_post"];
         delete?: never;
         options?: never;
@@ -916,7 +934,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; sotto soglia accoda un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate) */
+        /** Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; alla soglia accoda un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate) */
         post: operations["subject_next_api_v1_recall_subject_next_post"];
         delete?: never;
         options?: never;
@@ -931,7 +949,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Riserva di domande di ogni lezione, per materia, e sessioni per materia in corso */
+        /** Pool di domande di ogni lezione, per materia, e sessioni per materia in corso */
         get: operations["subjects_api_v1_recall_subjects_get"];
         put?: never;
         post?: never;
@@ -3334,7 +3352,7 @@ export interface components {
             mock: boolean;
             /**
              * Qtype
-             * @description Vuoto: riserva iniziale di tutti i tipi
+             * @description Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate
              */
             qtype?: ("quiz" | "mirata" | "vasta") | null;
         };
@@ -3367,6 +3385,13 @@ export interface components {
                 [key: string]: {
                     [key: string]: number;
                 };
+            };
+            /**
+             * Refill Thresholds
+             * @description tipo -> domande da porre a cui il pool si rifornisce
+             */
+            refill_thresholds?: {
+                [key: string]: number;
             };
         };
         /** RecallQuestion */
@@ -3472,6 +3497,64 @@ export interface components {
              * @description Quiz a cui si è risposto
              */
             quiz_answered: number;
+        };
+        /** RecallUnit */
+        RecallUnit: {
+            /**
+             * Category
+             * @description didactic | organizational | no_content; null se non classificata
+             */
+            category?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Level
+             * @description Livello: 0 nessuna domanda, 1 una, 2 più domande
+             */
+            level?: number | null;
+            /**
+             * Score
+             * @description Score del classificatore (0-2)
+             */
+            score?: number | null;
+            /** Selected */
+            selected: boolean;
+            /**
+             * Suggested
+             * @description Rilevante secondo il classificatore: selezionata di predefinito
+             */
+            suggested: boolean;
+            /** Title */
+            title: string;
+            /** Unit Id */
+            unit_id: string;
+        };
+        /** RecallUnitSelection */
+        RecallUnitSelection: {
+            /**
+             * Unit Ids
+             * @description Unità selezionate; null torna alla selezione predefinita
+             */
+            unit_ids?: string[] | null;
+        };
+        /** RecallUnits */
+        RecallUnits: {
+            /**
+             * Classifier
+             * @description Modo del classificatore: disabled | shadow | active
+             */
+            classifier: string;
+            /**
+             * Custom
+             * @description La selezione è stata cambiata dall'utente
+             */
+            custom: boolean;
+            /** Selected */
+            selected: number;
+            /** Units */
+            units: components["schemas"]["RecallUnit"][];
         };
         /** RecallVote */
         RecallVote: {
@@ -7154,7 +7237,7 @@ export interface operations {
                 order?: "alternato" | "sequenziale" | "casuale";
                 /** @description Domanda appena saltata */
                 exclude_id?: string | null;
-                /** @description Rifornimento della riserva in mock */
+                /** @description Rifornimento del pool in mock */
                 mock?: boolean;
             };
             header?: never;
@@ -7453,6 +7536,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TelegramCommandInfo"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    recall_units_api_v1_lessons__lesson_id__recall_units_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallUnits"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    select_recall_units_api_v1_lessons__lesson_id__recall_units_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecallUnitSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallUnits"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -8000,7 +8223,7 @@ export interface operations {
                 order?: "alternato" | "sequenziale" | "casuale";
                 /** @description Domanda appena saltata, come <id lezione>:<id domanda> */
                 exclude?: string | null;
-                /** @description Rifornimento della riserva in mock */
+                /** @description Rifornimento del pool in mock */
                 mock?: boolean;
             };
             header?: never;

@@ -107,7 +107,10 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   Telegram sono escluse), con risposta, voto, salto, **Termina sessione** e riepilogo. La pagina
   genera anche le domande delle lezioni che non ne hanno ancora. La scelta della domanda è in
   `rt/services/recall_subject.py`, riusabile dal bot.
-- **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
+- **Recall:** pool di domande dell'intera lezione dalle unità scelte (di predefinito le
+  rilevanti, con score e livello del classificatore), quiz, domande mirate e vaste, risposte
+  scritte o a voce. **Rigenera pool** passa al recaller tutte le unità selezionate; quando
+  restano 5 quiz, 3 mirate o 2 vaste da porre ne arrivano altre da unità scelte a caso.
   Due selettori a slitta scelgono dove fare il recall (**Telegram** o **Qui**) e il tipo di
   domanda (Quiz, Mirata, Vasta, anche con le frecce della tastiera); sotto ciascuno c'è la
   scelta attiva. **Qui:** la sessione parte con la prima domanda e **Termina sessione** la

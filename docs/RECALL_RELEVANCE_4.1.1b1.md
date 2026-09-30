@@ -4,6 +4,14 @@ Il classificatore di rilevanza usa per default tre livelli score: 0 (nessun cont
 
 Classificatore e recaller condividono definizione e contesto: materia, titolo della lezione e argomenti (prima quelli espliciti in info.yaml, altrimenti quelli generati nell'outline). Quiz, mirata e vasta mantengono regole di stile, few-shot e override del prompt di sistema. Il suffisso variabile con la valutazione arriva per ultimo nel prompt utente. Per vasta riporta separatamente le valutazioni delle singole unità: non calcola un punteggio aggregato o una quota. Il recaller decide autonomamente di produrre zero, una o più domande, entro il limite tecnico di dodici per risposta; count è soltanto l'obiettivo del batch.
 
+## Pool e unità selezionate
+
+Non c'è più una riserva di poche domande sulle prime unità: la lezione ha un **pool**. **Rigenera pool** (web, `POST /lessons/{id}/recall/generate` senza `qtype`, `rt recall --pool`) passa al recaller tutte le unità selezionate, una chiamata per unità per quiz e mirate e una per gruppo di quattro unità consecutive per le vaste; le domande ancora da porre vengono sostituite, quelle già poste restano con risposte e voti. Se nessuna unità di un tipo si genera (provider giù), il pool di prima torna com'era.
+
+Di predefinito sono selezionate le unità rilevanti: quelle che il classificatore non giudica organizzative o senza contenuto e a cui non dà livello 0, anche con il gate in ombra. Senza classificazione valgono tutte. Il selettore compatto nella pagina del recall mostra per ogni unità score e livello e permette di cambiare la scelta (`GET`/`PUT /lessons/{id}/recall/units`, `rt recall --units 1.1,2.3`; `rilevanti` torna alla predefinita). La scelta sta nel bank; le unità nuove dopo una rielaborazione partono dalla selezione predefinita. Le domande delle unità tolte non vengono proposte.
+
+Quando le domande da porre di un tipo scendono a 5 quiz, 3 mirate o 2 vaste (`telegram.recall.refill_thresholds`), il recaller ne genera altre da unità selezionate scelte a caso (`refill_batch_size` come obiettivo). La vecchia `reserve_targets` non si usa più.
+
 ## Protocollo e compatibilità
 
 Le nuove risposte richiedono `{"questions": [...]}`. Una lista vuota è un'astensione valida; un oggetto senza questions o una risposta `safe` sono errori di protocollo. RT assegna ID, unità e metadati, valida separatamente ciascuno stile e conserva spiegazioni quiz e scalette vaste. I quiz richiedono quattro opzioni distinte, indice valido e spiegazione. I bank storici e le risposte già registrate restano leggibili; l'interfaccia segnala le pending precedenti alla nuova policy, senza rivalutare retroattivamente l'intero bank.

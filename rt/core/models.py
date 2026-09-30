@@ -297,3 +297,7 @@ class RecallBank(BaseModel):
     questions: List[RecallQuestion] = Field(default_factory=list)
     answers: List[RecallAnswer] = Field(default_factory=list)
     generation_attempts: Dict[str, Any] = Field(default_factory=dict)
+    # Unità scelte per il recaller: {"selected": [...], "known": [...]}; None = predefinite.
+    unit_selection: Optional[Dict[str, List[str]]] = None
+    # Numero dell'ultimo ID assegnato: le domande tolte dal pool non lasciano ID riusabili.
+    last_question_number: int = 0

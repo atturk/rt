@@ -257,6 +257,9 @@ def test_vasta_receives_each_unit_assessment_without_inventing_group_score(tmp_p
     cfg = RTConfig(jev=JevConfig(relevance_mode='active', relevance_model='typesafe/jev-1.13'))
     with patch.object(gate, 'load_config', return_value=cfg), patch('rt.llm.jev_client.call_jev', side_effect=[score_response(0), score_response(2)]):
         gate.refresh(path, view='resolved')
+        # L'unità di livello 0 non è selezionata di predefinito: l'utente la aggiunge.
+        from rt.services.recall_units import set_selection
+        set_selection(path, ['1.1', '1.2'])
         with patch('rt.llm.client.LLMClient.call_structured', side_effect=lambda **kw: kw['response_model'](questions=[])) as called:
             recall.generate_recall_batch(path, RecallQuestionType.VASTA, 1, [])
         prompt = called.call_args.kwargs['prompt']

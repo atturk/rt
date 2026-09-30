@@ -11,6 +11,7 @@ export type Vote = 'up' | 'down' | 'lightning'
 export const recallKeys = {
   overview: (id: number) => ['recall', id, 'overview'] as const,
   history: (id: number) => ['recall', id, 'history'] as const,
+  units: (id: number) => ['recall', id, 'units'] as const,
   all: (id: number) => ['recall', id] as const,
 }
 
@@ -31,7 +32,7 @@ export function useRecallHistory(id: number, enabled = true) {
   })
 }
 
-/** Dopo ogni scrittura si rilegge riserva e storico dall'API. */
+/** Dopo ogni scrittura si rilegge pool e storico dall'API. */
 function useRecallMutation<TVars, TData>(id: number, fn: (vars: TVars) => Promise<TData>) {
   const client = useQueryClient()
   return useMutation({
@@ -44,6 +45,42 @@ export function useGenerateRecall(id: number) {
   return useRecallMutation(id, (qtype: RecallType | null) =>
     unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { qtype, mock: false } })),
   )
+}
+
+export type RecallUnits = Schemas['RecallUnits']
+export type RecallUnit = Schemas['RecallUnit']
+
+/** Unità da cui il recaller genera le domande, con il giudizio del classificatore. */
+export function useRecallUnits(id: number) {
+  return useQuery({
+    queryKey: recallKeys.units(id),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/units', { params: path(id) })),
+  })
+}
+
+/** Salva la selezione (null: solo le rilevanti). La lista si aggiorna subito, senza aspettare l'API. */
+export function useSelectRecallUnits(id: number) {
+  const client = useQueryClient()
+  const key = recallKeys.units(id)
+  return useMutation({
+    mutationFn: (unitIds: string[] | null) =>
+      unwrap(api.PUT('/api/v1/lessons/{lesson_id}/recall/units', { params: path(id), body: { unit_ids: unitIds } })),
+    onMutate: async (unitIds) => {
+      await client.cancelQueries({ queryKey: key })
+      const previous = client.getQueryData<RecallUnits>(key)
+      if (previous && unitIds) {
+        const picked = new Set(unitIds)
+        const units = previous.units.map((u) => ({ ...u, selected: picked.has(u.unit_id) }))
+        client.setQueryData<RecallUnits>(key, { ...previous, units, custom: true, selected: units.filter((u) => u.selected).length })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) client.setQueryData(key, context.previous)
+    },
+    onSuccess: (data) => client.setQueryData(key, data),
+    onSettled: () => client.invalidateQueries({ queryKey: recallKeys.overview(id) }),
+  })
 }
 
 export function useNextQuestion(id: number) {
@@ -159,7 +196,7 @@ export const subjectKeys = {
   one: (materia: string) => ['recall-subject', 'one', materia] as const,
 }
 
-/** Riserva di ogni lezione, per materia, e sessioni per materia in corso. */
+/** Pool di ogni lezione, per materia, e sessioni per materia in corso. */
 export function useSubjectsRecall() {
   return useQuery({ queryKey: subjectKeys.list, queryFn: () => unwrap(api.GET('/api/v1/recall/subjects')) })
 }
@@ -171,7 +208,7 @@ export function useSubjectRecall(materia: string) {
   })
 }
 
-/** Dopo ogni scrittura si rileggono riserve e sessioni della materia (e quelle delle lezioni). */
+/** Dopo ogni scrittura si rileggono pool e sessioni della materia (e quelle delle lezioni). */
 function useSubjectMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const client = useQueryClient()
   return useMutation({

@@ -3434,7 +3434,7 @@
                 "type": "null"
               }
             ],
-            "description": "Vuoto: riserva iniziale di tutti i tipi",
+            "description": "Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate",
             "title": "Qtype"
           }
         },
@@ -3490,6 +3490,14 @@
             },
             "description": "tipo -> stato -> numero",
             "title": "Questions",
+            "type": "object"
+          },
+          "refill_thresholds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "tipo -> domande da porre a cui il pool si rifornisce",
+            "title": "Refill Thresholds",
             "type": "object"
           }
         },
@@ -3781,6 +3789,147 @@
           "correct"
         ],
         "title": "RecallSummary",
+        "type": "object"
+      },
+      "RecallUnit": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "didactic | organizational | no_content; null se non classificata",
+            "title": "Category"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Livello: 0 nessuna domanda, 1 una, 2 più domande",
+            "title": "Level"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Score del classificatore (0-2)",
+            "title": "Score"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          },
+          "suggested": {
+            "description": "Rilevante secondo il classificatore: selezionata di predefinito",
+            "title": "Suggested",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "title",
+          "suggested",
+          "selected"
+        ],
+        "title": "RecallUnit",
+        "type": "object"
+      },
+      "RecallUnitSelection": {
+        "properties": {
+          "unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità selezionate; null torna alla selezione predefinita",
+            "title": "Unit Ids"
+          }
+        },
+        "title": "RecallUnitSelection",
+        "type": "object"
+      },
+      "RecallUnits": {
+        "properties": {
+          "classifier": {
+            "description": "Modo del classificatore: disabled | shadow | active",
+            "title": "Classifier",
+            "type": "string"
+          },
+          "custom": {
+            "description": "La selezione è stata cambiata dall'utente",
+            "title": "Custom",
+            "type": "boolean"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/RecallUnit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "units",
+          "custom",
+          "classifier",
+          "selected"
+        ],
+        "title": "RecallUnits",
         "type": "object"
       },
       "RecallVote": {
@@ -9393,7 +9542,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Genera domande: riserva iniziale (job recall_generate) o un tipo (job recall_batch)",
+        "summary": "Genera domande: rigenera il pool della lezione (job recall_generate) o un tipo (job recall_batch)",
         "tags": [
           "recall"
         ]
@@ -9552,13 +9701,13 @@
             }
           },
           {
-            "description": "Rifornimento della riserva in mock",
+            "description": "Rifornimento del pool in mock",
             "in": "query",
             "name": "mock",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Rifornimento della riserva in mock",
+              "description": "Rifornimento del pool in mock",
               "title": "Mock",
               "type": "boolean"
             }
@@ -9631,7 +9780,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Prossima domanda del tipo scelto; sotto soglia accoda un job recall_refill (404 se la riserva è vuota: usa /recall/generate)",
+        "summary": "Prossima domanda del tipo scelto; alla soglia accoda un job recall_refill (404 se il pool è vuoto: usa /recall/generate)",
         "tags": [
           "recall"
         ]
@@ -10008,6 +10157,192 @@
           }
         ],
         "summary": "Chiede al bot di avviare il recall nel topic della materia (l'esito arriva in /recall/session)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/units": {
+      "get": {
+        "operationId": "recall_units_api_v1_lessons__lesson_id__recall_units_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallUnits"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unità della lezione per il recaller: giudizio del classificatore e selezione",
+        "tags": [
+          "recall"
+        ]
+      },
+      "put": {
+        "operationId": "select_recall_units_api_v1_lessons__lesson_id__recall_units_put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallUnitSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallUnits"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sceglie le unità da cui generare le domande (unit_ids null: solo le rilevanti, la scelta predefinita)",
         "tags": [
           "recall"
         ]
@@ -10505,7 +10840,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Lezioni di una materia con la loro riserva, sessione per materia in corso e ultimo riepilogo",
+        "summary": "Lezioni di una materia con il loro pool, sessione per materia in corso e ultimo riepilogo",
         "tags": [
           "recall"
         ]
@@ -10689,7 +11024,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Riserva iniziale per le lezioni pronte della materia che non hanno ancora domande (un job per lezione)",
+        "summary": "Pool per le lezioni pronte della materia che non hanno ancora domande (un job per lezione)",
         "tags": [
           "recall"
         ]
@@ -10757,13 +11092,13 @@
             }
           },
           {
-            "description": "Rifornimento della riserva in mock",
+            "description": "Rifornimento del pool in mock",
             "in": "query",
             "name": "mock",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Rifornimento della riserva in mock",
+              "description": "Rifornimento del pool in mock",
               "title": "Mock",
               "type": "boolean"
             }
@@ -10836,7 +11171,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; sotto soglia accoda un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate)",
+        "summary": "Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; alla soglia accoda un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate)",
         "tags": [
           "recall"
         ]
@@ -10916,7 +11251,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Riserva di domande di ogni lezione, per materia, e sessioni per materia in corso",
+        "summary": "Pool di domande di ogni lezione, per materia, e sessioni per materia in corso",
         "tags": [
           "recall"
         ]

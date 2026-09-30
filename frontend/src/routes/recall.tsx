@@ -26,6 +26,7 @@ import { JobProgress } from '@/components/JobProgress'
 import { AnsweredQuestion, OpenAnswerForm, QuizForm, SessionSummary } from '@/components/recall/parts'
 import { RecallOverviewPage } from '@/components/recall/RecallOverview'
 import { SubjectRecallPage } from '@/components/recall/SubjectRecall'
+import { UnitSelector } from '@/components/recall/UnitSelector'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,10 +36,11 @@ import { lessonTitle } from '@/lib/format'
 import { RECALL_TYPES, TYPE_OPTIONS, VOTES, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
 import type { Area } from './types'
 
+const PLURAL: Record<RecallType, string> = { quiz: 'quiz', mirata: 'mirate', vasta: 'vaste' }
 const STATUS_LABELS: Record<string, string> = { pending: 'Da porre', asked: 'Poste', answered: 'Risposte' }
 
-/** Riserva di domande per tipo e generazione (job recall_generate o recall_batch). */
-function Reserve({ lessonId }: { lessonId: number }) {
+/** Pool di domande per tipo, unità del recaller e generazione (job recall_generate o recall_batch). */
+function Pool({ lessonId }: { lessonId: number }) {
   const overview = useRecallOverview(lessonId)
   const generate = useGenerateRecall(lessonId)
   const client = useQueryClient()
@@ -46,23 +48,31 @@ function Reserve({ lessonId }: { lessonId: number }) {
   const refresh = useCallback(() => client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }), [client, lessonId])
   const counts = overview.data?.questions ?? {}
   const empty = Object.keys(counts).length === 0
+  const thresholds = overview.data?.refill_thresholds ?? {}
 
   function start(qtype: RecallType | null) {
     generate.mutate(qtype, {
-      onSuccess: (accepted) => setJob({ id: accepted.job_id, label: qtype ? `Nuove domande ${typeLabel(qtype).toLowerCase()}` : 'Riserva iniziale' }),
+      onSuccess: (accepted) => setJob({ id: accepted.job_id, label: qtype ? `Nuove domande ${typeLabel(qtype).toLowerCase()}` : 'Pool di domande' }),
     })
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-5" aria-labelledby="reserve-title">
+    <Card className="flex flex-col gap-3 p-5" aria-labelledby="pool-title">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id="reserve-title" className="mr-auto text-base font-bold">
-          Riserva di domande
+        <h2 id="pool-title" className="mr-auto text-base font-bold">
+          Pool di domande
         </h2>
         <Button size="sm" onClick={() => start(null)} disabled={generate.isPending}>
-          {empty ? 'Genera la riserva iniziale' : 'Completa la riserva'}
+          {empty ? 'Genera il pool' : 'Rigenera pool'}
         </Button>
       </div>
+      <p className="text-xs text-muted-foreground">
+        {empty ? 'Genera il pool' : 'Rigenera pool'} passa al recaller tutte le unità selezionate
+        {empty ? '.' : ' e sostituisce le domande ancora da porre; quelle già poste restano con risposte e voti.'}
+        {Object.keys(thresholds).length > 0 &&
+          ` Quando restano ${RECALL_TYPES.map((t) => `${thresholds[t.value]} ${PLURAL[t.value]}`).join(', ')} da porre, il recaller ne genera altre da unità selezionate a caso.`}
+      </p>
+      <UnitSelector lessonId={lessonId} />
       {overview.isError && <Alert tone="danger">{errorMessage(overview.error)}</Alert>}
       {!!overview.data?.legacy_pending && <Alert>Ci sono domande generate prima della nuova politica di pertinenza. Generare altre domande conserva risposte e voti precedenti.</Alert>}
       {!!overview.data?.evaluated_empty && <Alert>Alcune unità sono state valutate senza trovare altre domande pertinenti. Puoi rivalutarle con Genera altre.</Alert>}
@@ -80,7 +90,7 @@ function Reserve({ lessonId }: { lessonId: number }) {
         </thead>
         <tbody>
           {RECALL_TYPES.map((t) => (
-            <tr key={t.value} className="border-t" data-testid="reserve-row" data-type={t.value}>
+            <tr key={t.value} className="border-t" data-testid="pool-row" data-type={t.value}>
               <td className="py-2 font-medium">{t.label}</td>
               {Object.keys(STATUS_LABELS).map((status) => (
                 <td key={status} className="py-2 text-right tabular-nums" data-status={status}>
@@ -309,7 +319,7 @@ function Session({ lessonId }: { lessonId: number }) {
           {end.isError && <Alert tone="danger">{errorMessage(end.error)}</Alert>}
           {!web && session.data?.last && <SessionSummary session={session.data.last} />}
 
-          {noQuestions && <Alert tone="warning">Nessuna domanda di questo tipo da porre: generane altre dalla riserva.</Alert>}
+          {noQuestions && <Alert tone="warning">Nessuna domanda di questo tipo da porre: rigenera il pool o generane altre.</Alert>}
           {next.isError && !noQuestions && <Alert tone="danger">{errorMessage(next.error)}</Alert>}
           {history.isError && <Alert tone="danger">{errorMessage(history.error)}</Alert>}
           {!questionId && !noQuestions && !session.data?.last && (
@@ -406,7 +416,7 @@ export function RecallPage() {
       </h1>
       {ready ? (
         <>
-          <Reserve lessonId={id} />
+          <Pool lessonId={id} />
           <Session lessonId={id} />
           <History lessonId={id} />
         </>

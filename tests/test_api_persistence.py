@@ -215,6 +215,27 @@ def test_outline_and_review_decisions_persist(api_client, api_token, ws, worker)
 
 # ---------------------------------------------------------------- recall
 
+def test_recall_unit_selection_and_pool(api_client, api_token, ws, worker):
+    c = api_client
+    run_mock_pipeline(make_lesson(ws))
+    lid = lesson_id(c)
+    units = ok(c.get(f"/api/v1/lessons/{lid}/recall/units"))
+    assert not units["custom"] and units["selected"] == len(units["units"]) >= 1
+    first = units["units"][0]["unit_id"]
+    chosen = ok(c.put(f"/api/v1/lessons/{lid}/recall/units", json={"unit_ids": [first]}))
+    assert chosen["custom"] and [u["unit_id"] for u in chosen["units"] if u["selected"]] == [first]
+    accepted = ok(c.post(f"/api/v1/lessons/{lid}/recall/generate", json={"mock": True}))
+    drain(worker)
+    job = ok(c.get(f"/api/v1/jobs/{accepted['job_id']}"))
+    assert job["type"] == "recall_generate" and job["payload"]["regenerate"] is True
+    data = reread(api_token, f"/lessons/{lid}/recall/units", f"/lessons/{lid}/recall/history", f"/lessons/{lid}/recall")
+    assert data[f"/lessons/{lid}/recall/units"]["custom"]
+    assert {q["unit_ids"][0] for q in data[f"/lessons/{lid}/recall/history"]["questions"]} == {first}
+    assert data[f"/lessons/{lid}/recall"]["refill_thresholds"] == {"quiz": 5, "mirata": 3, "vasta": 2}
+    reset = ok(c.put(f"/api/v1/lessons/{lid}/recall/units", json={"unit_ids": None}))
+    assert not reset["custom"]
+
+
 def test_recall_writes_persist(api_client, api_token, ws, worker):
     c = api_client
     run_mock_pipeline(make_lesson(ws))

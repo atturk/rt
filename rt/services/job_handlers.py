@@ -127,12 +127,20 @@ def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Pool di domande della lezione: se non ne ha ancora, o sempre con regenerate ("Rigenera pool")."""
     from rt.pipeline.recall import load_recall_bank
-    from rt.services.recall_service import ensure_initial_batch
+    from rt.services.api_jobs import _recall_message
+    from rt.services.events import Notice
+    from rt.services.recall_service import generate_pool
+    from rt.services.recall_units import unit_rows
     lesson_dir = _lesson_dir(job)
     with ctx.activate():
-        ensure_initial_batch(lesson_dir, force_mock=bool(job.payload.get("force_mock")),
-                             regenerate=bool(job.payload.get("regenerate")))
+        if job.payload.get("regenerate") or not load_recall_bank(lesson_dir).questions:
+            generated = generate_pool(lesson_dir, force_mock=bool(job.payload.get("force_mock")))
+            total = sum(generated.values())
+            detail = ", ".join(f"{n} {t}" for t, n in generated.items())
+            ctx.emit(Notice(message=_recall_message(f"Pool di domande: {total} nuove ({detail}).", total,
+                                                    unit_rows(lesson_dir))))
     return JobOutcome(state=JobState.SUCCEEDED, result={"questions": len(load_recall_bank(lesson_dir).questions)})
 
 

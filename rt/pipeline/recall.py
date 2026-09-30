@@ -69,28 +69,25 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
 
 
 # -----------------------------------------------------------------------
-# Reserve count utilities
+# Pool: domande da porre delle unità selezionate
 # -----------------------------------------------------------------------
 
-def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
-    """Conta le domande PENDING di un tipo specifico nel bank."""
+def get_pool_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
+    """Domande PENDING di un tipo nel pool (solo delle unità selezionate)."""
     bank = load_recall_bank(lesson_dir)
     allowed = _allowed_units(lesson_dir)
     return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
                and _question_allowed(q, allowed))
 
 
+get_reserve_count = get_pool_count  # nome storico
+
+
 def _allowed_units(lesson_dir: str) -> Optional[set]:
-    """Unità da cui si possono fare domande (None = tutte), calcolate una volta per chiamata:
-    prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
-    from rt.services.unit_relevance import included, mode
-    if mode() != "active":
-        return None
-    try:
-        draft = load_resolved_draft(lesson_dir)
-    except (FileNotFoundError, ValueError):
-        return None
-    return {unit.unit_id for unit in draft.units if included(lesson_dir, unit, view="resolved")}
+    """Unità selezionate per il recall (None = tutte, bozza illeggibile), calcolate una volta
+    per chiamata: prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
+    from rt.services.recall_units import selected_unit_ids
+    return selected_unit_ids(lesson_dir)
 
 
 def _question_allowed(question: RecallQuestion, allowed: Optional[set]) -> bool:
@@ -347,7 +344,7 @@ def load_fewshot_examples(
 
 def _next_id(bank: RecallBank) -> str:
     existing = [int(q.id.split("_")[1]) for q in bank.questions if q.id.startswith("recall_")]
-    nxt = max(existing, default=0) + 1
+    nxt = max(existing + [bank.last_question_number], default=0) + 1
     return f"recall_{nxt:06d}"
 
 # -----------------------------------------------------------------------
@@ -369,7 +366,9 @@ def _generation_policy(qtype, few_shot_examples, force_mock=False):
             "confidence_threshold": cfg.jev.relevance_threshold, "mock": force_mock or cfg.mock_llm}
 
 
-def _generation_groups(units, bank, qtype):
+def _generation_groups(units, bank, qtype, shuffle=False):
+    """Una chiamata per unità (quiz, mirate) o per gruppi di 4 unità consecutive (vaste).
+    Di norma prima le meno coperte; shuffle (rifornimento) in ordine casuale."""
     covered = {u.unit_id: 0 for u in units}
     for question in bank.questions:
         if question.type == qtype:
@@ -377,11 +376,15 @@ def _generation_groups(units, bank, qtype):
                 if uid in covered:
                     covered[uid] += 1
     if qtype != RecallQuestionType.VASTA:
-        return [[u] for u in sorted(units, key=lambda u: covered[u.unit_id])]
-    groups = [units[i:i + 4] for i in range(0, len(units), 4)]
-    if len(groups) > 1 and len(groups[-1]) == 1:
-        groups[-1].insert(0, groups[-2].pop())
-    return sorted(groups, key=lambda group: sum(covered[u.unit_id] for u in group))
+        groups = [[u] for u in sorted(units, key=lambda u: covered[u.unit_id])]
+    else:
+        groups = [units[i:i + 4] for i in range(0, len(units), 4)]
+        if len(groups) > 1 and len(groups[-1]) == 1:
+            groups[-1].insert(0, groups[-2].pop())
+        groups.sort(key=lambda group: sum(covered[u.unit_id] for u in group))
+    if shuffle:
+        _random.shuffle(groups)
+    return groups
 
 
 def _generation_key(qtype, group):
@@ -398,9 +401,8 @@ def _generation_digest(lesson_dir, group, policy):
 
 def generation_available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock=False) -> bool:
     """Consulta checkpoint senza LLM: un'astensione invariata non avvia altri refill."""
-    from rt.services.unit_relevance import included
-    draft = load_resolved_draft(lesson_dir)
-    units = [u for u in draft.units if included(lesson_dir, u, view="resolved")]
+    from rt.services.recall_units import selected_units
+    units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
     examples = load_fewshot_examples(qtype, load_config().telegram.state_dir)
     policy = _generation_policy(qtype, examples, force_mock)
@@ -436,26 +438,28 @@ def _persist_generation(lesson_dir, questions, key, attempt):
 
 
 def generate_recall_batch(
-    lesson_dir: str, qtype: RecallQuestionType, count: int, few_shot_examples: List[dict],
-    force_mock: bool = False, *, regenerate: bool = False,
+    lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
+    force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
 ) -> List[RecallQuestion]:
-    """Zero o più domande per chiamata; count è un obiettivo, mai una quota del modello.
+    """Zero o più domande per chiamata dalle unità selezionate; count è un obiettivo, mai una
+    quota del modello, e None vuol dire tutte le unità (il pool dell'intera lezione).
 
     Ogni gruppo viene visitato al massimo una volta nel job. Un esito vuoto è valido e
-    viene ricordato nello storage del bank; regenerate è una richiesta esplicita.
+    viene ricordato nello storage del bank; regenerate è una richiesta esplicita. shuffle
+    visita le unità in ordine casuale (rifornimento) invece che dalle meno coperte.
     """
     from rt.llm import prompts
     from rt.core.models import (RecallQuizGenerationResult, RecallMirataGenerationResult,
                                 RecallVastaGenerationResult)
     from rt.services.recall_context import lesson_context, POLICY_VERSION
-    from rt.services.unit_relevance import refresh, included, recall_assessment
-    if count <= 0:
+    from rt.services.unit_relevance import refresh, recall_assessment
+    from rt.services.recall_units import selected_units
+    if count is not None and count <= 0:
         return []
     client = LLMClient(force_mock=force_mock)
     mock = client.force_mock
     refresh(lesson_dir, force_mock=mock, view="resolved")
-    draft = load_resolved_draft(lesson_dir)
-    units = [u for u in draft.units if included(lesson_dir, u, view="resolved")]
+    units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
     context = lesson_context(lesson_dir)
     policy = _generation_policy(qtype, few_shot_examples or [], mock)
@@ -467,7 +471,7 @@ def generate_recall_batch(
     response_model = {RecallQuestionType.QUIZ: RecallQuizGenerationResult,
                       RecallQuestionType.MIRATA: RecallMirataGenerationResult,
                       RecallQuestionType.VASTA: RecallVastaGenerationResult}[qtype]
-    groups = _generation_groups(units, bank, qtype)
+    groups = _generation_groups(units, bank, qtype, shuffle=shuffle)
     for position, group in enumerate(groups):
         key = _generation_key(qtype, group)
         fingerprint = _generation_digest(lesson_dir, group, policy)
@@ -482,7 +486,7 @@ def generate_recall_batch(
             # Come un modello reale, il mock può restituire più domande per gruppo: numerate,
             # così i refill successivi non sono duplicati e anche le lezioni corte
             # raggiungono l'obiettivo del batch.
-            wanted = max(1, -(-(count - len(results)) // (len(groups) - position)))
+            wanted = 2 if count is None else max(1, -(-(count - len(results)) // (len(groups) - position)))
             start = sum(1 for q in bank.questions if q.type == qtype and q.unit_ids == ids)
             batch = []
             for n in range(start + 1, start + 1 + min(wanted, 12)):
@@ -533,7 +537,7 @@ def generate_recall_batch(
                    "generated_at": datetime.now().isoformat(), "question_ids": []}
         results.extend(_persist_generation(lesson_dir, group_results, key, attempt))
         bank = load_recall_bank(lesson_dir)
-        if len(results) >= count:
+        if count is not None and len(results) >= count:
             break
     if last_error is not None:
         _LOG.warning("Recall %s: %d gruppi non generati; restano riprovabili", qtype.value, len(failures.failures))

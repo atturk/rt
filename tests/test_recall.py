@@ -519,7 +519,7 @@ class TestGenerateBatchDistribution:
     nel bank esistente per quel tipo."""
 
     def test_repeated_calls_spread_across_units_instead_of_restarting(self, lesson_dir):
-        """Con reserve_targets piccoli rispetto alle 6 unità della fixture, due chiamate
+        """Con obiettivi piccoli rispetto alle 6 unità della fixture, due chiamate
         consecutive senza risposte nel mezzo devono coprire unità diverse tra loro."""
         first = generate_recall_batch(lesson_dir, RecallQuestionType.MIRATA, count=2, few_shot_examples=[], force_mock=True)
         second = generate_recall_batch(lesson_dir, RecallQuestionType.MIRATA, count=2, few_shot_examples=[], force_mock=True)

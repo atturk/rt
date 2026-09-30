@@ -305,6 +305,27 @@ def recall_assessment(lesson_dir: str, unit) -> dict:
         return neutral
     if row.get("text_hash") != _unit_hash(unit, lesson_dir) or row.get("config_hash") != _config_hash(cfg) or row.get("error"):
         return neutral
+    return _score_level(row, cfg)
+
+
+def recall_signal(lesson_dir: str, unit, records: Optional[dict] = None) -> dict:
+    """Quello che il classificatore dice di un'unità della bozza risolta, anche col gate in
+    ombra: categoria, score e livello (0/1/2) per il selettore delle unità del recall."""
+    cfg = load_config().jev
+    empty = {"category": None, "score": None, "level": None, "confidence": None, "error": None}
+    if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
+        return empty
+    row = (records if records is not None else _load(lesson_dir, "resolved")).get(unit.unit_id, {})
+    if not row or row.get("text_hash") != _unit_hash(unit, lesson_dir) or row.get("config_hash") != _config_hash(cfg):
+        return empty
+    if row.get("error"):
+        return {**empty, "error": row["error"]}
+    assessed = _score_level(row, cfg)
+    return {"category": _effective(row, cfg), "score": assessed.get("score"), "level": assessed.get("level"),
+            "confidence": _confidence(row.get("answer")) if row.get("answer") else row.get("confidence"), "error": None}
+
+
+def _score_level(row: dict, cfg) -> dict:
     answer = row.get("answer") or {}
     score, confidence = answer.get("score"), answer.get("confidence")
 

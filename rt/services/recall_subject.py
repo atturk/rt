@@ -2,7 +2,7 @@
 rt.services.recall_subject
 Recall per materia: una sessione che pesca le domande da tutte le lezioni di una materia, con la
 stessa logica della sessione di una lezione (tipo scelto, ordine fra le unità, salto, rifornimento
-della riserva). Le lezioni si danno il turno: dopo una domanda di una lezione tocca alla
+del pool). Le lezioni si danno il turno: dopo una domanda di una lezione tocca alla
 successiva (per data) che ha ancora domande di quel tipo da porre; con l'ordine casuale la
 lezione si sceglie a caso.
 
@@ -48,7 +48,7 @@ def split_question_key(key: str) -> Tuple[Optional[int], str]:
         return None, key
 
 
-# ---------------------------------------------------------------- lezioni e riserva
+# ---------------------------------------------------------------- lezioni e pool
 
 def _ready(summary: Dict[str, Any]) -> bool:
     return summary.get("phases", {}).get("rewrite") == "VALID"
@@ -76,7 +76,7 @@ def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None) -
 
 
 def recall_by_subject() -> List[Dict[str, Any]]:
-    """Per la pagina del recall: ogni materia con la riserva delle sue lezioni e la sessione per
+    """Per la pagina del recall: ogni materia con il pool delle sue lezioni e la sessione per
     materia in corso. Le lezioni senza materia stanno sotto materia vuota."""
     from rt.services.lesson_service import list_lessons
     busy = _telegram_busy()

@@ -122,30 +122,34 @@ def sweep_stale_uploads(uploads_root: str, queue, max_age_days: float = UPLOAD_M
 
 
 def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Genera un batch di domande di un tipo (come la ricarica della riserva nel recall)."""
+    """Altre domande di un tipo da unità selezionate scelte a caso (come il rifornimento del pool)."""
     from rt.core.config import load_config
     from rt.core.models import RecallQuestionType
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
     from rt.services.recall_service import recall_overview
+    from rt.services.recall_units import unit_rows
+    from rt.services.events import Notice
     p = job.payload
     qtype = RecallQuestionType(p["qtype"])
     cfg = load_config()
-    count = int(p.get("count") or cfg.telegram.recall.reserve_targets.get(qtype.value, 5))
+    count = int(p.get("count") or cfg.telegram.recall.refill_batch_size)
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
-    from rt.services.unit_relevance import list_units, mode
-    from rt.services.events import Notice
     with ctx.activate():
-        generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")), regenerate=True)
-        units = list_units(job.lesson_path, view="resolved")["units"] if mode() != "disabled" else []
-        excluded = [u["unit_id"] for u in units if u["effective"] != "didactic"]
-        message = f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}."
-        if not generated:
-            message += " Non sono state trovate altre domande pertinenti."
-        if excluded:
-            label = "escluse" if mode() == "active" else "non didattiche rilevate (gate in ombra)"
-            message += f" Unità {label}: {len(excluded)} ({', '.join(excluded[:12])}{'…' if len(excluded) > 12 else ''})."
-        ctx.emit(Notice(message=message))
+        generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")),
+                                          regenerate=True, shuffle=True)
+        ctx.emit(Notice(message=_recall_message(f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}.",
+                                                len(generated), unit_rows(job.lesson_path))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
+def _recall_message(head: str, generated: int, rows: list) -> str:
+    message = head
+    if not generated:
+        message += " Non sono state trovate altre domande pertinenti."
+    selected = sum(1 for row in rows if row["selected"])
+    if rows and selected < len(rows):
+        message += f" Unità selezionate: {selected} di {len(rows)}."
+    return message
 
 
 MOCK_VOICE_TRANSCRIPT = "Risposta vocale di prova (trascrizione mock)."
@@ -174,7 +178,7 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Rifornisce la riserva di un tipo sotto soglia (dopo una domanda mostrata)."""
+    """Rifornisce il pool di un tipo arrivato alla soglia (dopo una domanda mostrata)."""
     from rt.core.models import RecallQuestionType
     from rt.services.recall_service import recall_overview, refill_active_type_if_low
     with ctx.activate():

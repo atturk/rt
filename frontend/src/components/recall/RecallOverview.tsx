@@ -40,7 +40,7 @@ function plural(n: number, one: string, many: string) {
 }
 
 /** "12 da porre · 3 risposte", o cosa manca per iniziare. */
-function reserveText(stats?: LessonRecallStats) {
+function poolText(stats?: LessonRecallStats) {
   if (!stats?.ready) return NOT_READY
   const total = Object.values(stats.questions).reduce((sum, byStatus) => sum + Object.values(byStatus).reduce((a, b) => a + b, 0), 0)
   if (total === 0) return 'nessuna domanda generata'
@@ -70,7 +70,7 @@ function LessonRecallCard({ lesson, stats }: { lesson: Lesson; stats?: LessonRec
   return (
     <Card className="flex flex-col gap-1 p-4" data-testid="picker-lesson" data-lesson-id={lesson.id}>
       <LessonTitle lesson={lesson} stats={stats} />
-      <span className="text-xs text-muted-foreground">{[lesson.data, reserveText(stats)].filter(Boolean).join(' · ')}</span>
+      <span className="text-xs text-muted-foreground">{[lesson.data, poolText(stats)].filter(Boolean).join(' · ')}</span>
       {stats?.telegram && (
         <div className="mt-1">
           <TelegramBadge stats={stats} />
@@ -258,7 +258,7 @@ function ViewControls({ shown, total, filtered, onReset, prefs, onChange }: {
   )
 }
 
-/** /recall: le lezioni per materia, con la riserva di domande di ognuna e il recall della materia. */
+/** /recall: le lezioni per materia, con il pool di domande di ognuna e il recall della materia. */
 export function RecallOverviewPage() {
   const lessons = useLessons()
   const recall = useSubjectsRecall()

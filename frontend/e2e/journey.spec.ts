@@ -91,9 +91,9 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await expect(page.getByTestId('lesson-document').locator('[data-unit-id]').first()).toBeVisible()
   await expect(page.locator('audio')).toHaveCount(1)
 
-  // 6. Recall sulla lezione nuova: riserva, una domanda quiz, risposta riletta dopo la ricarica.
+  // 6. Recall sulla lezione nuova: pool, una domanda quiz, risposta riletta dopo la ricarica.
   await page.goto(`/lezioni/${lessonId}/recall`)
-  await page.getByRole('button', { name: 'Genera la riserva iniziale' }).click()
+  await page.getByRole('button', { name: 'Genera il pool' }).click()
   await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: LONG })
   await page.getByRole('radio', { name: 'Quiz' }).click()
   await page.getByRole('button', { name: 'Prossima domanda' }).click()

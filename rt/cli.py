@@ -321,8 +321,22 @@ def cmd_recall(args):
     style = getattr(args, "style", None)
     force_mock = getattr(args, "mock", False)
 
+    units_arg = getattr(args, "units", None)
+    if isinstance(units_arg, str):
+        from rt.services.recall_units import set_selection
+        wanted = None if units_arg.strip().lower() == "rilevanti" else [u.strip() for u in units_arg.split(",") if u.strip()]
+        rows = set_selection(args.lesson_dir, wanted)
+        picked = [r["unit_id"] for r in rows if r["selected"]]
+        print(f"🎯 Unità per il recaller: {len(picked)} di {len(rows)} ({', '.join(picked) or 'nessuna'}).")
+
     if not force_mock:
         _ensure_config_ready(["recall"])
+
+    if getattr(args, "pool", False):
+        from rt.services.recall_service import generate_pool
+        generated = generate_pool(args.lesson_dir, force_mock=force_mock)
+        print("🧠 Pool rigenerato: " + ", ".join(f"{n} {t}" for t, n in generated.items()) + ".")
+        return
 
     channel = getattr(args, "channel", None)
     if not channel:
@@ -1212,6 +1226,12 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         help="Resetta le domande/risposte di recall già effettuate: senza valore o 'all' azzera "
              "tutto, 'quiz'/'mirata'/'vasta' azzera solo quel tipo."
     )
+    p_recall.add_argument("--units", default=None, metavar="1.1,2.3|rilevanti",
+                          help="Unità da cui il recaller genera le domande (resta salvata); 'rilevanti' torna alla "
+                               "selezione predefinita, le unità rilevanti per il classificatore")
+    p_recall.add_argument("--pool", action="store_true",
+                          help="Rigenera il pool: tutte le unità selezionate passano al recaller e le domande "
+                               "ancora da porre vengono sostituite (quelle già poste restano)")
     p_recall.add_argument("--check", action="store_true", help="Revisione interattiva da terminale delle domande stale per modifica dell'unità")
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)

@@ -132,8 +132,7 @@ def run_recall_terminal_session(lesson_dir: str, order: str = "alternato", style
 
             # Rifornimento proattivo se sotto soglia
             recall_service.refill_if_low(
-                lesson_dir, qtype, cfg.telegram.recall.refill_threshold,
-                cfg.telegram.recall.refill_batch_size, state_dir, force_mock=force_mock,
+                lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, state_dir, force_mock=force_mock,
             )
     except KeyboardInterrupt:
         print("\n  ⏹ Sessione di recall interrotta.")

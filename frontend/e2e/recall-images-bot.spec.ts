@@ -40,11 +40,11 @@ async function openRecall(page: Page) {
   return lesson
 }
 
-/** Genera la riserva se manca (i test del file condividono il server). */
-async function ensureReserve(page: Page, lessonId: number) {
+/** Genera il pool se manca (i test del file condividono il server). */
+async function ensurePool(page: Page, lessonId: number) {
   const overview = await apiGet<Overview>(page.request, `/lessons/${lessonId}/recall`)
   if (Object.keys(overview.questions).length > 0) return
-  await page.getByRole('button', { name: 'Genera la riserva iniziale' }).click()
+  await page.getByRole('button', { name: 'Genera il pool' }).click()
   await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: 30_000 })
 }
 
@@ -63,12 +63,12 @@ async function ask(page: Page, type: 'Quiz' | 'Mirata' | 'Vasta') {
   return (await question.getAttribute('data-question-id'))!
 }
 
-test('recall: riserva, sessione quiz con voto e salto, tutto riletto dopo la ricarica', async ({ page }) => {
+test('recall: pool, sessione quiz con voto e salto, tutto riletto dopo la ricarica', async ({ page }) => {
   const lesson = await openRecall(page)
-  await ensureReserve(page, lesson.id)
+  await ensurePool(page, lesson.id)
   const overview = await apiGet<Overview>(page.request, `/lessons/${lesson.id}/recall`)
   await page.reload()
-  const quizRow = page.locator('[data-testid=reserve-row][data-type=quiz]')
+  const quizRow = page.locator('[data-testid=pool-row][data-type=quiz]')
   await expect(quizRow.locator('[data-status=pending]')).toHaveText(String(overview.questions.quiz?.pending ?? 0))
 
   const quizId = await ask(page, 'Quiz')
@@ -102,7 +102,7 @@ test('recall: riserva, sessione quiz con voto e salto, tutto riletto dopo la ric
 
 test('recall: risposta aperta scritta valutata dal job', async ({ page }) => {
   const lesson = await openRecall(page)
-  await ensureReserve(page, lesson.id)
+  await ensurePool(page, lesson.id)
   const id = await ask(page, 'Mirata')
   await page.getByLabel('Risposta scritta').fill('Gli acidi grassi saturi non hanno doppi legami.')
   await page.getByRole('button', { name: 'Invia la risposta' }).click()
@@ -149,7 +149,7 @@ test('recall della materia: domande dalle lezioni della materia, risposta e riep
 
 test('recall: risposte vocali dal microfono e da un file audio', async ({ page }) => {
   const lesson = await openRecall(page)
-  await ensureReserve(page, lesson.id)
+  await ensurePool(page, lesson.id)
 
   const recorded = await ask(page, 'Vasta')
   await page.getByRole('button', { name: 'Registra' }).click()

@@ -70,20 +70,49 @@ def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     fs.replace(tmp_path, path)
 
 
-def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerate: bool = False) -> None:
+def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None) -> dict:
+    """Pool di domande dell'intera lezione: il recaller riceve tutte le unità selezionate
+    (una chiamata per unità, per le vaste una per gruppo) e per ognuna genera zero, una o
+    più domande. Le domande ancora da porre dei tipi rigenerati vengono sostituite; quelle
+    già poste restano, con risposte e voti. Restituisce quante domande nuove per tipo."""
     from rt.core.config import load_config
-    from rt.pipeline.recall import load_recall_bank, generate_recall_batch, load_fewshot_examples
+    from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples, load_recall_bank, recall_bank_lock, save_recall_bank
 
-    bank = load_recall_bank(lesson_dir)
-    if bank.questions and not regenerate:
-        return
-
-    cfg = load_config()
-    state_dir = cfg.telegram.state_dir
-    for qtype_str, count in cfg.telegram.recall.reserve_targets.items():
-        qtype = RecallQuestionType(qtype_str)
+    types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType])]
+    state_dir = load_config().telegram.state_dir
+    generated = {}
+    for qtype in types:
+        with recall_bank_lock(lesson_dir):
+            bank = load_recall_bank(lesson_dir)
+            removed = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
+            if removed:
+                bank.last_question_number = max([bank.last_question_number] + [
+                    int(q.id.split("_")[1]) for q in bank.questions if q.id.startswith("recall_") and q.id.split("_")[1].isdigit()])
+                gone = {id(q) for q in removed}
+                bank.questions = [q for q in bank.questions if id(q) not in gone]
+                save_recall_bank(bank, lesson_dir)
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generate_recall_batch(lesson_dir, qtype, count, examples, force_mock=force_mock, regenerate=regenerate)
+        try:
+            generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, None, examples,
+                                                               force_mock=force_mock, regenerate=True))
+        except Exception:
+            # Nessuna unità generata: il pool di prima torna com'era.
+            with recall_bank_lock(lesson_dir):
+                bank = load_recall_bank(lesson_dir)
+                present = {q.id for q in bank.questions}
+                bank.questions.extend(q for q in removed if q.id not in present)
+                save_recall_bank(bank, lesson_dir)
+            raise
+    return generated
+
+
+def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerate: bool = False) -> None:
+    """Genera il pool se la lezione non ha ancora domande (o se regenerate)."""
+    from rt.pipeline.recall import load_recall_bank
+
+    if load_recall_bank(lesson_dir).questions and not regenerate:
+        return
+    generate_pool(lesson_dir, force_mock=force_mock)
 
 
 def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None) -> Optional[str]:
@@ -120,47 +149,61 @@ def next_question(
     state_dir: Optional[str],
     force_mock: bool = False,
 ):
-    """Prossima domanda pendente del tipo richiesto; se la riserva è vuota ne genera un
-    nuovo batch e riprova. None se non c'è nulla da proporre."""
+    """Prossima domanda pendente del tipo richiesto; se il pool del tipo è vuoto ne genera
+    altre da unità selezionate a caso e riprova. None se non c'è nulla da proporre."""
     from rt.pipeline.recall import generate_recall_batch, get_next_pending_question, load_fewshot_examples
 
     question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
     if question is None:
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generate_recall_batch(lesson_dir, qtype, refill_batch_size, examples, force_mock=force_mock)
+        generate_recall_batch(lesson_dir, qtype, refill_batch_size, examples, force_mock=force_mock, shuffle=True)
         question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
     return question
+
+
+DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5}
+
+
+def refill_threshold(qtype: RecallQuestionType) -> int:
+    """Soglia del tipo: con questo numero di domande da porre, o meno, si rifornisce."""
+    from rt.core.config import load_config
+    thresholds = load_config().telegram.recall.refill_thresholds
+    return int(thresholds.get(qtype.value, DEFAULT_REFILL_THRESHOLDS[qtype.value]))
+
+
+def is_low(lesson_dir: str, qtype: RecallQuestionType) -> bool:
+    from rt.pipeline.recall import get_pool_count
+    return get_pool_count(lesson_dir, qtype) <= refill_threshold(qtype)
 
 
 def refill_if_low(
     lesson_dir: str,
     qtype: RecallQuestionType,
-    threshold: int,
     batch_size: int,
     state_dir: Optional[str],
     force_mock: bool = False,
 ) -> None:
-    """Rifornisce la riserva del tipo attivo quando scende sotto soglia."""
-    from rt.pipeline.recall import generate_recall_batch, get_reserve_count, load_fewshot_examples
+    """Quando le domande da porre del tipo scendono alla soglia (2 vaste, 3 mirate, 5 quiz
+    di predefinito), il recaller ne genera altre da unità selezionate scelte a caso."""
+    from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
 
-    if get_reserve_count(lesson_dir, qtype) < threshold:
+    if is_low(lesson_dir, qtype):
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generate_recall_batch(lesson_dir, qtype, batch_size, examples, force_mock=force_mock)
+        generate_recall_batch(lesson_dir, qtype, batch_size, examples, force_mock=force_mock, shuffle=True)
 
 
 def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_mock: bool = False) -> None:
-    """refill_if_low con soglia e batch della configurazione (come dopo ogni risposta del
-    recall da terminale)."""
+    """refill_if_low con il batch della configurazione (come dopo ogni risposta del recall
+    da terminale)."""
     from rt.core.config import load_config
     cfg = load_config()
-    refill_if_low(lesson_dir, qtype, cfg.telegram.recall.refill_threshold,
-                  cfg.telegram.recall.refill_batch_size, cfg.telegram.state_dir, force_mock=force_mock)
+    refill_if_low(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, cfg.telegram.state_dir,
+                  force_mock=force_mock)
 
 
 def needs_refill(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = False) -> bool:
-    from rt.core.config import load_config
-    from rt.pipeline.recall import get_reserve_count, generation_available
-    return generation_available(lesson_dir, qtype, force_mock=force_mock) and get_reserve_count(lesson_dir, qtype) < load_config().telegram.recall.refill_threshold
+    from rt.pipeline.recall import generation_available
+    return is_low(lesson_dir, qtype) and generation_available(lesson_dir, qtype, force_mock=force_mock)
 
 
 def is_question_stale(lesson_dir: str, question) -> bool:
@@ -206,7 +249,8 @@ def recall_overview(lesson_dir: str) -> dict:
     from rt.services.recall_context import POLICY_VERSION
     return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text]),
             "legacy_pending": sum(q.status == RecallQuestionStatus.PENDING and q.generation_version != POLICY_VERSION for q in bank.questions),
-            "evaluated_empty": sum(row.get("outcome") == "empty" for row in bank.generation_attempts.values())}
+            "evaluated_empty": sum(row.get("outcome") == "empty" for row in bank.generation_attempts.values()),
+            "refill_thresholds": {t.value: refill_threshold(t) for t in RecallQuestionType}}
 
 
 def recall_history(lesson_dir: str) -> dict:
@@ -220,8 +264,8 @@ def recall_history(lesson_dir: str) -> dict:
 
 def next_question_for(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",
                       exclude_id: Optional[str] = None):
-    """Prossima domanda pendente (la marca come posta) senza generarne di nuove; None se la
-    riserva è vuota. Il cursore dell'ordine alternato è quello della sessione salvata. La
+    """Prossima domanda pendente (la marca come posta) senza generarne di nuove; None se il
+    pool del tipo è vuoto. Il cursore dell'ordine alternato è quello della sessione salvata. La
     domanda entra nella sessione web della lezione (aperta qui se non c'è, vedi
     rt.services.recall_sessions)."""
     question = pick_pending_question(lesson_dir, qtype, order=order, exclude_id=exclude_id)

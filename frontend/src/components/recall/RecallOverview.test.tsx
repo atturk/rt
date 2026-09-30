@@ -36,7 +36,7 @@ const subject = (name: string) => document.querySelector<HTMLElement>(`[data-tes
 describe('pagina Recall', () => {
   beforeEach(() => localStorage.clear())
 
-  it('mostra le lezioni per materia con la riserva e il recall della materia', () => {
+  it('mostra le lezioni per materia con il pool e il recall della materia', () => {
     renderPage()
     const bio = subject('BIOCHIMICA')
     expect(within(bio).getByTestId('subject-pending')).toHaveTextContent('6 domande da porre')

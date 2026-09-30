@@ -395,6 +395,31 @@ class RecallOverview(BaseModel):
     evaluated_empty: int = 0
     questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
     answers: int
+    refill_thresholds: Dict[str, int] = Field(default_factory=dict,
+                                              description="tipo -> domande da porre a cui il pool si rifornisce")
+
+
+class RecallUnit(BaseModel):
+    unit_id: str
+    title: str
+    category: Optional[str] = Field(None, description="didactic | organizational | no_content; null se non classificata")
+    score: Optional[float] = Field(None, description="Score del classificatore (0-2)")
+    level: Optional[int] = Field(None, description="Livello: 0 nessuna domanda, 1 una, 2 più domande")
+    confidence: Optional[float] = None
+    error: Optional[str] = None
+    suggested: bool = Field(description="Rilevante secondo il classificatore: selezionata di predefinito")
+    selected: bool
+
+
+class RecallUnits(BaseModel):
+    units: List[RecallUnit]
+    custom: bool = Field(description="La selezione è stata cambiata dall'utente")
+    classifier: str = Field(description="Modo del classificatore: disabled | shadow | active")
+    selected: int
+
+
+class RecallUnitSelection(BaseModel):
+    unit_ids: Optional[List[str]] = Field(None, description="Unità selezionate; null torna alla selezione predefinita")
 
 
 class RecallAnswerRecord(BaseModel):
@@ -412,7 +437,7 @@ class RecallHistory(BaseModel):
 
 
 class RecallGenerate(BaseModel):
-    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: riserva iniziale di tutti i tipi")
+    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate")
     count: Optional[int] = Field(None, ge=1, le=50)
     mock: bool = False
 

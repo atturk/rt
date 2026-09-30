@@ -19,7 +19,7 @@ async function openRecall(page: Page) {
   await page.goto(`/lezioni/${lesson.id}/recall`)
   const overview = await apiGet<Overview>(page.request, `/lessons/${lesson.id}/recall`)
   if (Object.keys(overview.questions).length === 0) {
-    await page.getByRole('button', { name: 'Genera la riserva iniziale' }).click()
+    await page.getByRole('button', { name: 'Genera il pool' }).click()
     await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: 30_000 })
   }
   return lesson

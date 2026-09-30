@@ -28,7 +28,7 @@ import { SlideToggle } from '@/components/ui/slide-toggle'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { RECALL_TYPES, TYPE_OPTIONS, countStatus, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
 
-/** Le lezioni della materia con la loro riserva; genera quella delle lezioni che non ne hanno. */
+/** Le lezioni della materia con il loro pool; genera quello delle lezioni che non ne hanno. */
 function SubjectLessons({ materia, stats, lessons }: { materia: string; stats: LessonRecallStats[]; lessons: Map<number, Lesson> }) {
   const generate = useSubjectGenerate(materia)
   const client = useQueryClient()

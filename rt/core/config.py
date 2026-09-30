@@ -252,9 +252,11 @@ class TelegramRuntimeConfig(BaseModel):
     # Recall configuration
     # ------------------------------------------------------
     class RecallConfig(BaseModel):
-        reserve_targets: Dict[str, int] = Field(default_factory=lambda: {"mirata": 4, "quiz": 6, "vasta": 2})
-        refill_threshold: int = 3
-        refill_batch_size: int = 4
+        refill_thresholds: Dict[str, int] = Field(
+            default_factory=lambda: {"vasta": 2, "mirata": 3, "quiz": 5},
+            description="Quando le domande da porre di un tipo scendono a questa soglia (o sotto), "
+                        "il recaller ne genera altre da unità selezionate scelte a caso")
+        refill_batch_size: int = Field(default=4, ge=1, description="Domande cercate a ogni rifornimento")
         stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'custom' (il vecchio 'api' resta non implementato)")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 

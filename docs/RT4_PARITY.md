@@ -61,6 +61,7 @@ suo equivalente nei tre canali.
 | Riprova di un job fallito (FA1), dalla fase fallita | rilanciare lo stesso comando (riprende dai checkpoint) | `POST /jobs/{id}/retry` | **Riprova** nel dettaglio del job e nel pannello della lezione | `test_job_retry_and_notify.py`; `retry.spec.ts` |
 | Anteprima modificabile (FA3, beta): testo, titoli e timecode | modifica del Markdown esportato con un editor esterno | `POST /lessons/{id}/document/check`, `PUT /lessons/{id}/document/draft` | Matita sul documento: editor Markdown con anteprima | `test_document_edit.py`; `document-edit.spec.ts` |
 | Sessioni di recall con riepilogo, avvio e interruzione su Telegram (FA7) | `rt recall`, `rt recall --channel telegram`, `/quit` nel bot | `/recall/session`, `/recall/session/end`, `/recall/telegram/...` | Termina sessione, luogo Qui/Telegram, Interrompi | `test_api_recall_sessions.py`; `recall-sessions.spec.ts` |
+| Pool di domande dell'intera lezione dalle unità scelte (4.1.1): predefinite le rilevanti, con score e livello; rifornimento casuale a 5 quiz, 3 mirate, 2 vaste | `rt recall --units 1.1,2.3` (o `rilevanti`), `rt recall --pool` | `GET`/`PUT /lessons/{id}/recall/units`, `POST /lessons/{id}/recall/generate` | Recall della lezione: **Unità per il recaller** e **Rigenera pool** | `test_recall_pool.py`, `test_recall_unit_selection_and_pool`; `UnitSelector.test.tsx`; `recall-images-bot.spec.ts` |
 | Immagini dal web per unità, sulle unità scelte (FA7) | `rt add-images --web-search N --units 1.1,2.3` | `POST /lessons/{id}/images` (`web_search` per unità, `units`) | Immagini della lezione: numero per unità e scelta delle unità | `test_row_add_images_web_search_per_unit`; `recall-images-bot.spec.ts` |
 | SearXNG per la ricerca immagini (FA5) | `searxng_base_url` in `config/general.yaml` | `PUT /settings/web-search`, `POST /settings/web-search/test` | Impostazioni › Ricerca web, con **Prova** | `test_api_settings_probes.py`; `settings.spec.ts` |
 | Prova di connessione e modello prima di salvarli (FA5) | — (nel terminale un modello si verifica alla prima chiamata reale) | `POST /settings/models/test` | **Prova** accanto a ogni fase in Modelli e nella configurazione guidata | `test_api_settings_probes.py`; `settings.spec.ts` |
@@ -76,8 +77,8 @@ suo equivalente nei tre canali.
   lezione (trovato dal test Playwright di RT4-F4).
 - `POST /lessons/{id}/images` con una sola immagine la passava come file, formato che
   `add-images` non accetta: le immagini vanno sempre come cartella (un PDF da solo resta file).
-- Il recall da terminale rifornisce la riserva dopo ogni domanda mostrata; ora anche
-  `POST /recall/next` accoda il rifornimento (job `recall_refill`) quando la riserva è sotto
+- Il recall da terminale rifornisce il pool dopo ogni domanda mostrata; ora anche
+  `POST /recall/next` accoda il rifornimento (job `recall_refill`) quando il pool arriva alla
   soglia.
 
 - (RT4-FA2) Il build dipendeva dalla review: con una review STALE (lezioni revisionate con
