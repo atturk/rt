@@ -2,10 +2,11 @@
 rt.services.api_jobs
 Tipi di job usati dall'API (fase E) oltre a quelli standard di rt/services/job_handlers.py:
 rewrite di una sola unità, batch e rifornimento del recall, valutazione di una risposta aperta,
-revisione dell'outline, prova di una credenziale. Ogni handler chiama i servizi o le funzioni
-del motore che usa la CLI per lo stesso comando, così il risultato è identico. Un tipo già
-registrato non viene sostituito. Ai tipi standard che ricevono file caricati via API
-(run_pipeline, ingest_audio, add_images) si aggiunge la pulizia della cartella di upload.
+revisione dell'outline, prova di una credenziale, importazione di archivi ZIP di lezioni,
+esportazione di un topic Telegram. Ogni handler chiama i servizi o le funzioni del motore che
+usa la CLI per lo stesso comando, così il risultato è identico. Un tipo già registrato non
+viene sostituito. Ai tipi che ricevono file caricati via API (run_pipeline, ingest_audio,
+add_images, import_lesson_zips) si aggiunge la pulizia della cartella di upload.
 """
 import os
 from typing import Any, Callable, Dict
@@ -18,13 +19,17 @@ from rt.services.worker import JobOutcome, _HANDLERS, register_handler
 from rt.storage import fs
 
 REWRITE_UNIT = "rewrite_unit"
+REVIEW_UNIT = "review_unit"
 RECALL_BATCH = "recall_batch"
 RECALL_EVALUATE = "recall_evaluate"
 RECALL_REFILL = "recall_refill"
 OUTLINE_REVISION = "outline_revision"
 CREDENTIAL_TEST = "credential_test"
 TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
-UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images")
+IMPORT_LESSON_ZIPS = "import_lesson_zips"
+TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
+UNIT_RELEVANCE = "unit_relevance"
+UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
 
 
 def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
@@ -34,14 +39,36 @@ def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
 def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Come 'rt rewrite <cartella> --unit <id>'."""
     from rt.pipeline.rewrite import run_rewrite
+    from rt.services.prompt_settings import extra_scope
     opts = job.payload.get("options") or {}
-    force, mock = bool(opts.get("force")), bool(opts.get("mock"))
+    extra = str(job.payload.get("extra_prompt") or "").strip()
+    # Istruzioni nuove: l'unità va riscritta anche se l'impronta dice che è già valida.
+    force, mock = bool(opts.get("force")) or bool(extra), bool(opts.get("mock"))
     ctx.lesson_dir, ctx.force, ctx.force_mock = job.lesson_path, force, mock
-    with ctx.activate():
-        res = run_rewrite(job.lesson_path, target_unit_id=job.payload["unit"], force=force, force_mock=mock, ctx=ctx)
     from rt.pipeline.unit_failures import raise_if_incomplete
-    raise_if_incomplete("rewrite", res)
-    return _done({"phase": "rewrite", "unit": job.payload["unit"], "result": res}, lesson_path=job.lesson_path)
+    results = []
+    with extra_scope(job.lesson_path, "rewrite", job.payload), ctx.activate():
+        for unit in job.payload.get("units") or [job.payload["unit"]]:
+            res = run_rewrite(job.lesson_path, target_unit_id=unit, force=force, force_mock=mock, ctx=ctx)
+            raise_if_incomplete("rewrite", res)
+            results.append({"unit": unit, "result": res})
+    return _done({"phase": "rewrite", "units": results}, lesson_path=job.lesson_path)
+
+
+def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.review import run_review_unit
+    from rt.services.prompt_settings import extra_scope
+    from rt.pipeline.rewrite import load_draft
+    present = {unit.unit_id for unit in load_draft(job.lesson_path).units}
+    results = []
+    with extra_scope(job.lesson_path, "review", job.payload), ctx.activate():
+        for unit in job.payload.get("units") or [job.payload["unit"]]:
+            if unit not in present:
+                results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
+                continue
+            results.append(run_review_unit(job.lesson_path, unit,
+                                           force_mock=bool((job.payload.get("options") or {}).get("mock"))))
+    return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 
 def _cleanup_upload(payload: Dict[str, Any]) -> None:
@@ -105,8 +132,17 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     cfg = load_config()
     count = int(p.get("count") or cfg.telegram.recall.reserve_targets.get(qtype.value, 5))
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
+    from rt.services.unit_relevance import list_units, mode
+    from rt.services.events import Notice
     with ctx.activate():
-        generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")))
+        generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")))
+        units = list_units(job.lesson_path)["units"] if mode() != "disabled" else []
+        excluded = [u["unit_id"] for u in units if u["effective"] != "didactic"]
+        message = f"Recall {qtype.value}: richieste {count}, generate {len(generated)}."
+        if excluded:
+            label = "escluse" if mode() == "active" else "non didattiche rilevate (gate in ombra)"
+            message += f" Unità {label}: {len(excluded)} ({', '.join(excluded[:12])}{'…' if len(excluded) > 12 else ''})."
+        ctx.emit(Notice(message=message))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
 
@@ -143,6 +179,19 @@ def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         refill_active_type_if_low(job.lesson_path, RecallQuestionType(job.payload["qtype"]),
                                   force_mock=bool(job.payload.get("mock")))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
+def unit_relevance_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Come 'rt relevance': etichette JEV per le unità nuove o cambiate (force: tutte)."""
+    from rt.services.unit_relevance import list_units, refresh
+    with ctx.activate():
+        refresh(job.lesson_path, force_mock=bool(job.payload.get("mock")), ctx=ctx,
+                force=bool(job.payload.get("force")))
+    overview = list_units(job.lesson_path)
+    return _done({"mode": overview["mode"], "units": len(overview["units"]),
+                  "errors": sum(1 for unit in overview["units"] if unit.get("error")),
+                  "excluded": sum(1 for unit in overview["units"] if unit["effective"] != "didactic")},
+                 lesson_path=job.lesson_path)
 
 
 def outline_revision_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -183,9 +232,10 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Ascolta i messaggi al bot per rilevare chat e topic: l'esito (anche un errore) è il risultato."""
-    from rt.services.telegram_topics import TopicListenError, known_materie, listen_topics, match_materia
+    from rt.services.telegram_topics import TopicListenError, known_materie, listen_topics, listen_existing_daemon, match_materia
     try:
-        found = listen_topics(seconds=int(job.payload.get("seconds") or 20))
+        found = (listen_existing_daemon if job.payload.get("existing_daemon") else listen_topics)(
+            seconds=int(job.payload.get("seconds") or 20))
     except TopicListenError as exc:
         return _done({"ok": False, "message": str(exc), "chat_id": None, "topics": []})
     n = len(found["topics"])
@@ -198,11 +248,116 @@ def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done({"ok": True, "message": message, **found})
 
 
+def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Importa gli archivi ZIP completi caricati via API, uno alla volta: un archivio rifiutato
+    (anche già alla richiesta, per nome o firma) non ferma gli altri. Il risultato elenca per
+    ogni file l'esito e l'id della lezione creata."""
+    import zipfile
+    from rt.services.context import RunCancelled, _sanitize
+    from rt.services.errors import ServiceError
+    from rt.services.lesson_import_service import import_archive
+    entries = [e for e in job.payload.get("archives") or [] if isinstance(e, dict)]
+    total, results = len(entries), []
+    for index, entry in enumerate(entries):
+        ctx.check_cancelled()
+        name = str(entry.get("file") or "")
+        ctx.progress(IMPORT_LESSON_ZIPS, index, total, message=f"Importo {name}")
+        path = entry.get("path")
+        if entry.get("reason") or not path or not os.path.isfile(path):
+            results.append({"file": name, "status": "rejected",
+                            "reason": entry.get("reason") or "Archivio non più disponibile: caricalo di nuovo."})
+            continue
+        try:
+            lesson_id = import_archive(path)
+        except RunCancelled:
+            raise
+        except ServiceError as exc:
+            results.append({"file": name, "status": "rejected", "reason": exc.message})
+        except (zipfile.BadZipFile, ValueError):
+            results.append({"file": name, "status": "rejected", "reason": "Archivio ZIP non valido."})
+        except Exception as exc:  # noqa: BLE001 - l'esito del singolo archivio va nel risultato
+            results.append({"file": name, "status": "rejected",
+                            "reason": _sanitize(f"Importazione non riuscita: {type(exc).__name__}: {exc}")[:500]})
+        else:
+            results.append({"file": name, "status": "imported", "lesson_id": lesson_id})
+    imported = sum(1 for r in results if r["status"] == "imported")
+    ctx.progress(IMPORT_LESSON_ZIPS, total, total, message=f"Importate {imported} su {total}")
+    return _done({"results": results, "imported": imported, "rejected": total - imported})
+
+
+EXPORT_MAX_AGE_HOURS = 24
+
+
+def exports_root() -> str:
+    """Archivi prodotti dai job (es. export di un topic Telegram), sullo stesso disco delle
+    lezioni come gli upload: li serve l'API anche se il worker gira in un altro processo."""
+    from rt.services.lesson_service import work_dir
+    return os.path.join(work_dir(), "exports")
+
+
+def job_export_path(job_id: str, filename: str) -> str:
+    return os.path.join(exports_root(), os.path.basename(job_id), os.path.basename(filename))
+
+
+def sweep_stale_exports(max_age_hours: float = EXPORT_MAX_AGE_HOURS) -> int:
+    """Cancella gli archivi prodotti da più di max_age_hours: fino ad allora si possono
+    scaricare di nuovo. Restituisce quanti ne ha cancellati."""
+    import time
+    root = exports_root()
+    if not os.path.isdir(root):
+        return 0
+    cutoff, removed = time.time() - max_age_hours * 3600, 0
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        if os.path.isdir(path) and not os.path.islink(path) and os.path.getmtime(path) < cutoff:
+            fs.rmtree(path, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Esporta cronologia e media di un topic con l'account utente e lascia lo ZIP in
+    exports_root()/<job_id>/: lo scarica GET /settings/telegram/user/archives/{job_id}."""
+    import asyncio
+    import shutil
+    import time
+    from rt.services.telegram_user_archive import export_topic
+    chat_id, topic_id = int(job.payload["chat_id"]), int(job.payload["topic_id"])
+    sweep_stale_exports()
+    counted = {"messages": 0, "bytes": 0, "last": 0.0}
+
+    def progress(messages: int, media_bytes: int) -> None:
+        ctx.check_cancelled()
+        counted.update(messages=messages, bytes=media_bytes)
+        now = time.monotonic()
+        if now - counted["last"] >= 1.0:  # al massimo un evento al secondo, non uno per messaggio
+            counted["last"] = now
+            ctx.progress(TELEGRAM_TOPIC_EXPORT, messages, None,
+                         message=f"{messages} messaggi, {media_bytes / (1024 * 1024):.0f} MB di media")
+
+    ctx.progress(TELEGRAM_TOPIC_EXPORT, 0, None, message="Collegamento a Telegram")
+    # Gli errori di dominio (ServiceError: sessione scaduta, topic troppo grande, media non
+    # scaricato) diventano l'errore del job con il loro messaggio (job_error_message).
+    path, folder = asyncio.run(export_topic(chat_id, topic_id, progress=progress))
+    filename = f"telegram-topic-{topic_id}.zip"
+    target = job_export_path(job.id, filename)
+    try:
+        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
+        shutil.move(path, target)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    ctx.progress(TELEGRAM_TOPIC_EXPORT, counted["messages"], counted["messages"],
+                 message=f"Archivio pronto: {counted['messages']} messaggi")
+    return _done({"topic_id": topic_id, "file": filename, "size": os.path.getsize(target),
+                  "messages": counted["messages"], "media_bytes": counted["bytes"]})
+
+
 for _type, _handler in (
-    (REWRITE_UNIT, rewrite_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
-    (RECALL_REFILL, recall_refill_job),
+    (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
+    (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
+    (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),
 ):
     if _type not in _HANDLERS:
         register_handler(_type, _handler)

@@ -30,6 +30,14 @@ class PhaseWarning(BaseModel):
     count: Optional[int] = Field(None, description="Numero di issue, se l'avviso le conta")
 
 
+class ManualValidation(BaseModel):
+    at: str = Field(description="Quando è stata validata (ISO 8601, ora locale)")
+    actor: Optional[str] = None
+    channel: Optional[str] = Field(None, description="cli | api")
+    previous_status: Optional[str] = Field(None, description="Stato della fase prima della validazione")
+    previous_reason: Optional[str] = None
+
+
 class PhaseState(BaseModel):
     phase: str
     status: str
@@ -39,6 +47,18 @@ class PhaseState(BaseModel):
         description="Solo per build: avvisi di integrità della revisione (review non aggiornata o "
                     "incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li "
                     "mostra nel dialogo di conferma.")
+    manual_validation: Optional[ManualValidation] = Field(
+        None, description="Presente se la fase è stata validata a mano (senza rieseguirla) e non "
+                          "è stata più eseguita da allora")
+
+
+class PhaseValidationResult(BaseModel):
+    phase: str
+    previous_status: str
+    previous_reason: str
+    status: str
+    reason: str
+    changed: bool = Field(description="False se la fase era già valida (nessuna modifica)")
 
 
 class LessonAction(BaseModel):
@@ -80,6 +100,7 @@ class DocumentSection(BaseModel):
     start_seconds: Optional[float] = None
     end_seconds: Optional[float] = None
     start_formatted: Optional[str] = None
+    relevance: Optional[Literal["organizational", "no_content"]] = None
 
 
 class LessonDocument(BaseModel):
@@ -90,8 +111,66 @@ class LessonDocument(BaseModel):
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")
 
 
+class UnitRelevanceItem(BaseModel):
+    unit_id: str
+    title: str
+    content: str
+    prediction: Optional[Literal["didactic", "organizational", "no_content"]] = None
+    confidence: Optional[float] = None
+    label: Optional[str] = Field(None, description="Etichetta RT assegnata dalla mappatura del classificatore")
+    answer: Optional[Dict[str, Any]] = Field(None, description="Risposta completa del classificatore (scelta, confidenza, tutte le probabilità)")
+    override: Optional[Literal["didactic", "organizational", "no_content"]] = None
+    effective: Literal["didactic", "organizational", "no_content"]
+    error: Optional[str] = None
+    stale: bool = False
+    corrected_at: Optional[str] = None
+    corrected_by: Optional[str] = None
+    prior_override: Optional[Literal["didactic", "organizational", "no_content"]] = None
+
+
+class UnitRelevanceSummary(BaseModel):
+    total: int = Field(0, description="Unità della bozza")
+    classified: int = Field(0, description="Unità con una classificazione valida per il testo e la configurazione attuali")
+    errors: int = Field(0, description="Unità la cui classificazione non è riuscita (passano comunque)")
+    stale: int = Field(0, description="Unità classificate con un testo o una configurazione diversi")
+    missing: int = Field(0, description="Unità mai classificate")
+    corrected: int = Field(0, description="Unità corrette dall'utente")
+    excluded: int = Field(0, description="Unità la cui classe effettiva non è didattica")
+    by_outcome: Dict[str, int] = Field(default_factory=dict, description="Unità classificate per classe RT")
+    by_label: Dict[str, int] = Field(default_factory=dict, description="Unità classificate per etichetta del classificatore")
+    last_run_at: Optional[str] = Field(None, description="Ultima classificazione valida (ISO, UTC)")
+    model: Optional[str] = Field(None, description="Modello dell'ultima classificazione, se registrato")
+    last_run_mode: Optional[str] = None
+
+
+class UnitRelevanceOverview(BaseModel):
+    mode: Literal["disabled", "shadow", "active"]
+    units: List[UnitRelevanceItem]
+    summary: UnitRelevanceSummary = Field(default_factory=UnitRelevanceSummary)
+
+
+class UnitRelevanceRun(BaseModel):
+    force: bool = Field(False, description="Riclassifica anche le unità già etichettate con il testo e la configurazione attuali")
+    mock: bool = Field(False, description="Modalità prova: nessuna chiamata al classificatore")
+
+
+class UnitRelevanceOverride(BaseModel):
+    category: Optional[Literal["didactic", "organizational", "no_content"]] = None
+
+
 class DocumentEditIn(BaseModel):
     markdown: str = Field(description="Markdown dell'anteprima modificato (senza frontmatter)")
+    lease_token: Optional[str] = None
+
+
+class DocumentEditLease(BaseModel):
+    token: str
+    expires: Optional[str] = Field(None, description="Scadenza (ISO, UTC) se l'editor non rinnova la sessione")
+    lease_id: Optional[str] = Field(None, description="Identificativo breve della sessione di modifica")
+    acquired_at: Optional[str] = Field(None, description="Inizio della sessione di modifica (ISO, UTC)")
+    recovered: bool = Field(False, description="True se la richiesta ha sostituito la sessione di un'altra scheda")
+    previous_lease_id: Optional[str] = None
+    previous_acquired_at: Optional[str] = None
 
 
 class DocumentEditProblem(BaseModel):
@@ -253,14 +332,24 @@ class JobEvent(BaseModel):
     created_at: Optional[str] = None
 
 
+class UploadInventoryItem(BaseModel):
+    id: str
+    state: Literal["active", "referenced", "orphan"]
+    job_ids: List[str]
+    files: int
+    modified_at: str
+
+
 class JobRequest(BaseModel):
     type: Literal["run_pipeline", "run_phase"] = "run_pipeline"
     phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(
         None, description="Obbligatoria per run_phase")
-    unit: Optional[str] = Field(None, description="Solo rewrite: una sola unità")
+    unit: Optional[str] = Field(None, description="Rewrite o review: una sola unità")
+    units: Optional[List[str]] = Field(None, description="Rewrite o review: unità selezionate (lista multipla)")
+    extra_prompt: Optional[str] = Field(None, max_length=10000, description="Istruzioni aggiuntive per outline, rewrite o review")
     force: bool = False
     mock: bool = False
-    with_review: bool = True
+    with_review: bool = False
     auto_accept: bool = False
     rename: bool = True
     mock_fail_once: Optional[Literal["rewrite", "review"]] = Field(
@@ -355,6 +444,7 @@ class RecallSessionInfo(BaseModel):
     id: int
     lesson_id: Optional[int] = None
     lesson_title: str = ""
+    subject: Optional[str] = Field(None, description="Materia, per una sessione su tutte le sue lezioni")
     channel: Literal["web", "telegram"]
     state: Literal["active", "ended", "interrupted"]
     qtype: Optional[str] = None
@@ -379,6 +469,33 @@ class RecallSessionState(BaseModel):
     last: Optional[RecallSessionInfo] = Field(None, description="Ultima sessione web chiusa, con il riepilogo")
     telegram: Optional[RecallSessionInfo] = Field(None, description="Sessione in corso su Telegram per questa lezione")
     command: Optional[TelegramCommandInfo] = Field(None, description="Ultima richiesta al bot per questa lezione")
+
+
+class LessonRecallStats(BaseModel):
+    lesson_id: int
+    ready: bool = Field(description="Rielaborazione valida: la lezione può fare recall")
+    questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
+    answers: int
+    telegram: bool = Field(False, description="Sessione in corso su Telegram per la lezione")
+
+
+class SubjectRecall(BaseModel):
+    materia: str = Field(description="Vuota per le lezioni senza materia")
+    lessons: List[LessonRecallStats]
+    session: Optional[RecallSessionInfo] = Field(None, description="Sessione per materia in corso nella web app")
+
+
+class SubjectRecallState(SubjectRecall):
+    last: Optional[RecallSessionInfo] = Field(None, description="Ultima sessione per materia chiusa, con il riepilogo")
+
+
+class SubjectQuestion(BaseModel):
+    lesson_id: int
+    question: RecallQuestion
+
+
+class SubjectGenerateAccepted(BaseModel):
+    jobs: List[JobAccepted] = Field(description="Un job recall_generate per ogni lezione pronta senza domande")
 
 
 class TelegramRecallStart(BaseModel):

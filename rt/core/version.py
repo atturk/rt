@@ -133,12 +133,34 @@ def get_latest_remote_version(project_root: str, timeout: float = 5.0,
     if data is None:
         return None
     if channel != BETA:
+        if isinstance(data, dict) and not _assets_ready(data):
+            # release appena pubblicata: il workflow non ha ancora allegato i file
+            try:
+                listed = _get_json(f"{RELEASES_API}?per_page=50", timeout)
+            except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+                return None
+            return _highest_ready(listed, include_prerelease=False)
         tag_name = data.get("tag_name", "") if isinstance(data, dict) else ""
         return format_version(tag_name) if tag_name else ""
+    return _highest_ready(data, include_prerelease=True)
+
+
+def _assets_ready(release: dict) -> bool:
+    """False se la release elenca i suoi file e fra questi manca ancora SHA256SUMS: il workflow
+    di release li allega qualche minuto dopo la pubblicazione (prima 'rt -u' installava una
+    versione senza web app)."""
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        return True
+    return any(isinstance(a, dict) and a.get("name") == "SHA256SUMS" for a in assets)
+
+
+def _highest_ready(data, include_prerelease: bool) -> Optional[str]:
     if not isinstance(data, list):
         return None
     versions = [format_version(r.get("tag_name", "")) for r in data
-                if isinstance(r, dict) and not r.get("draft")]
+                if isinstance(r, dict) and not r.get("draft") and _assets_ready(r)
+                and (include_prerelease or not r.get("prerelease"))]
     versions = [v for v in versions if parse_version(v) is not None]
     return max(versions, key=parse_version) if versions else ""
 

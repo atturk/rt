@@ -4,6 +4,7 @@ incrementali per hash, configurazione e segreti cifrati, verifica dei media refe
 """
 import hashlib
 import os
+import shutil
 
 import pytest
 
@@ -114,7 +115,39 @@ def test_cli_backup_and_doctor(data, tmp_path, capsys):
     from rt.cli import main
     main(["backup", "--dest", str(tmp_path / "b")])
     assert "Backup completo" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
+    # Doctor exits nonzero only for a FAIL; warnings are actionable but not fatal.
+    exit_code = 0
+    try:
         main(["doctor", "--json"])
+    except SystemExit as exc:
+        exit_code = exc.code
     out = capsys.readouterr().out
     assert '"Database"' in out and '"Cartella dati"' in out
+    import json
+    assert exit_code == (1 if json.loads(out)["status"] == "fail" else 0)
+
+
+def test_doctor_ignores_missing_lessons_folder(data, tmp_path):
+    """Le lezioni stanno nel database: né una cartella delle lezioni assente né una configurata
+    e sparita (Mac del beta tester) danno avvisi; le lezioni a cartelle si cercano solo se c'è."""
+    from rt.services import doctor_service
+    data_dir, _db = data
+    general = data_dir / "config" / "general.yaml"
+    assert doctor_service.check_config().status == doctor_service.OK
+    general.write_text(general.read_text(encoding="utf-8")
+                       + f"\ntelegram:\n  lessons_root: {str(tmp_path / 'sparita')!r}\n", encoding="utf-8")
+    from rt.core.config import load_config
+    assert load_config().telegram.lessons_root == str(tmp_path / "sparita")
+    assert doctor_service.check_config().status == doctor_service.OK
+    assert doctor_service.check_folder_lessons().status == doctor_service.OK
+
+
+def test_restore_names_the_missing_media_store(data, tmp_path):
+    """Copiando solo rt-backup-<data> su un altro Mac, l'errore dice dove cercare i media."""
+    data_dir, db = data
+    _add_media(db, data_dir, 1, "audio.m4a", b"audio")
+    snap = bs.create_backup(str(tmp_path / "b"), say=lambda _m: None).path
+    moved = tmp_path / "altro-mac" / os.path.basename(snap)
+    shutil.copytree(snap, moved)
+    with pytest.raises(bs.BackupError, match="manca la cartella .*media-store.*Nulla è stato modificato"):
+        bs.restore_backup(str(moved), say=lambda _m: None, check_services=False)

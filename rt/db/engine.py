@@ -194,10 +194,11 @@ def restore_instructions(url: str, cause: BaseException) -> str:
                 "poi rilancia il comando.")
     return (f"Database di RT illeggibile: {path}\n"
             f"Causa: {cause}\n"
-            "Le lezioni sono al sicuro nelle loro cartelle. Per ripristinare il database:\n"
+            "Conserva il file danneggiato (RT non lo elimina). Per ripristinare il database:\n"
             f"  - da un backup:       cp /percorso/del/backup/rt.db \"{path}\"\n"
-            f"  - oppure dai file:    mv \"{path}\" \"{path}.rotto\"   e rilancia il comando:\n"
-            "    RT ricrea il database e reimporta da solo lezioni, decisioni e costi.")
+            f"  - se hai ancora lezioni a cartelle: mv \"{path}\" \"{path}.rotto\" e poi esegui "
+            "'rt db migrate-storage'. Lezioni già archiviate solo nel DB, decisioni e costi si "
+            "recuperano da un backup del database.")
 
 
 def migration_lock_path(url: str) -> Optional[str]:

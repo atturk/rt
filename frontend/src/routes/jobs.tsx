@@ -1,17 +1,21 @@
 import { Activity, Upload } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { ApiError, errorMessage } from '@/api/client'
+import { ApiError, api, errorMessage, unwrap } from '@/api/client'
 import { useLesson, useLessons } from '@/api/hooks'
+import { useSettings } from '@/api/settings'
 import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
+import { ZipImportCard } from '@/components/jobs/ZipImport'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -38,20 +42,61 @@ function Checkbox({ id, label, hint, checked, onChange }: { id: string; label: s
 
 // ---------------------------------------------------------------- importazione
 
+function OrphanUploads() {
+  const client = useQueryClient()
+  const inventory = useQuery({ queryKey: ['uploads'], queryFn: () => unwrap(api.GET('/api/v1/uploads')) })
+  const [selected, setSelected] = useState<{ id: string; referenced: boolean } | null>(null)
+  const [confirmation, setConfirmation] = useState('')
+  const deletion = useMutation({
+    mutationFn: (item: { id: string; referenced: boolean }) => unwrap(api.DELETE('/api/v1/uploads/{upload_id}', {
+      params: { path: { upload_id: item.id }, query: { include_referenced: item.referenced } },
+    })),
+    onSuccess: () => { setSelected(null); setConfirmation(''); void client.invalidateQueries({ queryKey: ['uploads'] }) },
+  })
+  // Attivi (job in corso o upload appena caricato) non si toccano; quelli di job falliti o
+  // annullati servono a Riprova e si eliminano solo con una conferma che lo dice.
+  const removable = inventory.data?.filter((item) => item.state !== 'active') ?? []
+  const orphans = removable.filter((item) => item.state === 'orphan').length
+  return <Card className="p-5">
+    <h2 className="text-sm font-bold">Audio temporanei non utilizzati</h2>
+    <p className="mt-1 text-xs text-muted-foreground">Gli upload dei job in corso restano protetti. La rimozione richiede sempre conferma.</p>
+    {inventory.isError && <Alert tone="danger">{errorMessage(inventory.error)}</Alert>}
+    {inventory.isPending && <p className="text-xs">Controllo gli upload…</p>}
+    {inventory.data && <p className="mt-2 text-xs">Orfani: {orphans} · Di job falliti o annullati: {removable.length - orphans} · In uso: {inventory.data.length - removable.length}</p>}
+    <ul className="mt-2 space-y-2">{removable.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-mono">{item.id.slice(0, 12)}…</span>
+      <span>{item.files} file · {new Date(item.modified_at).toLocaleString('it-IT')}</span>
+      {item.state === 'referenced' && <span className="text-muted-foreground">job non riuscito</span>}
+      <Button size="sm" variant="outline" onClick={() => { setConfirmation(''); setSelected({ id: item.id, referenced: item.state === 'referenced' }) }}>Elimina</Button>
+    </li>)}</ul>
+    <ConfirmDialog open={selected !== null} title="Elimina upload" confirmLabel="Elimina definitivamente"
+      confirmDisabled={confirmation !== 'elimina' || deletion.isPending} onCancel={() => setSelected(null)}
+      onConfirm={() => { if (selected) deletion.mutate(selected) }}>
+      <p>{selected?.referenced
+        ? 'Questo audio appartiene a un job fallito o annullato: dopo l\'eliminazione il job non si potrà più riprovare.'
+        : 'Questo audio temporaneo non è associato a un job.'} Scrivi <strong>elimina</strong> per cancellarlo definitivamente.</p>
+      <Input aria-label="Conferma eliminazione upload" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-2" />
+      {deletion.isError && <Alert tone="danger">{errorMessage(deletion.error)}</Alert>}
+    </ConfirmDialog>
+  </Card>
+}
+
 /** Importazione dell'audio: solo trascrizione (job ingest_audio) o pipeline completa (run_pipeline). */
 export function ImportPage() {
   const navigate = useNavigate()
   const lessons = useLessons()
+  const settings = useSettings()
   const create = useCreateLesson()
   const [files, setFiles] = useState<File[]>([])
   const [date, setDate] = useState(today())
   const [materia, setMateria] = useState('')
   const [argomenti, setArgomenti] = useState('')
   const [run, setRun] = useState(true)
+  const [withReview, setWithReview] = useState(false)
   const [mock, setMock] = useState(false)
   const [autoAccept, setAutoAccept] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  const subjects = [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
+  const subjects = [...new Set([...(lessons.data ?? []).map((l) => l.materia), ...Object.keys(settings.data?.telegram.topics ?? {})].filter(Boolean))].sort()
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -59,7 +104,7 @@ export function ImportPage() {
     setProblem(issue)
     if (issue) return
     create.mutate(
-      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), run, mock, auto_accept: autoAccept },
+      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), run, mock, auto_accept: autoAccept, with_review: withReview },
       { onSuccess: (accepted) => navigate(`/job/${accepted.job_id}`) },
     )
   }
@@ -72,9 +117,11 @@ export function ImportPage() {
     : create.isError ? errorMessage(create.error) : null
 
   return (
-    <section className="flex max-w-2xl flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
       <WorkerWarning />
+      <OrphanUploads />
+      <ZipImportCard />
       <Card className="p-5">
         <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Importa una lezione">
           <div className="flex flex-col gap-1">
@@ -88,11 +135,28 @@ export function ImportPage() {
               onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               disabled={create.isPending}
             />
+            <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+              event.preventDefault()
+              if (!create.isPending) setFiles((current) => [...current, ...Array.from(event.dataTransfer.files)])
+            }}>
+              Trascina qui i file audio oppure sceglili sopra.
+            </div>
             <span className="text-xs text-muted-foreground">
               {files.length > 0
                 ? `${files.length} file, ${formatBytes(total)}. Più file diventano un'unica lezione, nell'ordine scelto.`
                 : `Formati: ${AUDIO_EXTENSIONS.join(', ')}.`}
             </span>
+            {files.length > 0 && <ol aria-label="Ordine degli audio" className="space-y-1 text-xs">
+              {files.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-2 rounded border px-2 py-1">
+                <span className="min-w-0 flex-1 truncate">{index + 1}. {file.name}</span>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Sposta ${file.name} prima`} disabled={index === 0 || create.isPending} onClick={() => setFiles((current) => {
+                  const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next
+                })}>↑</Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Sposta ${file.name} dopo`} disabled={index === files.length - 1 || create.isPending} onClick={() => setFiles((current) => {
+                  const next = [...current]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next
+                })}>↓</Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`Rimuovi ${file.name}`} disabled={create.isPending} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>×</Button>
+              </li>)}</ol>}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
@@ -130,10 +194,11 @@ export function ImportPage() {
           <Checkbox
             id="import-run"
             label="Avvia subito la pipeline"
-            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione, review e documento. Senza, solo importazione e trascrizione."
+            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione e documento. Senza, solo importazione e trascrizione."
             checked={run}
             onChange={setRun}
           />
+          <Checkbox id="import-with-review" label="Includi la review" hint="Esegue la revisione scientifica prima di creare il documento." checked={withReview} onChange={setWithReview} />
           <details className="text-sm">
             <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Opzioni avanzate</summary>
             <div className="mt-3 flex flex-col gap-3">

@@ -67,5 +67,3 @@ export function filterLessons(lessons: Lesson[], filters: Partial<LessonListFilt
   )
 }
 
-export const SEARCH_HELP =
-  'Cerca nel titolo, negli argomenti, nella materia e nella data della lezione. La data si può scrivere come 2026-09-26, 26/09/2026 o 26 settembre 2026. Con più parole compaiono le lezioni che le contengono tutte.'

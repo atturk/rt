@@ -21,6 +21,7 @@ from rt.core.manifest import load_manifest, init_or_update_manifest
 from rt.core.config import load_config
 from rt.llm.client import LLMClient
 from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt
+from rt.services.prompt_settings import append_extra, effective_system
 from rt.pipeline.outline import load_outline
 from rt.pipeline.validator import validate_draft
 from rt.core.lesson_paths import lesson_path
@@ -111,7 +112,11 @@ def run_rewrite(
 ) -> Dict[str, Any]:
     """Rielaborazione delle unità (eventi e annullamento tra unità su ctx, se dato)."""
     with phase_scope(ctx, "rewrite") as scope:
-        return scope.complete(_run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx))
+        result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx)
+        if result.get("status") in ("draft_validated", "unit_regenerated"):
+            from rt.services.unit_relevance import refresh
+            refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
+        return scope.complete(result)
 
 
 def _run_rewrite(
@@ -276,8 +281,8 @@ def _run_rewrite(
 
         try:
             unit_draft = client.call_structured(
-                prompt=prompt,
-                system_prompt=REWRITE_SYSTEM_PROMPT,
+                prompt=append_extra(lesson_dir, "rewrite", prompt),
+                system_prompt=effective_system("rewrite", REWRITE_SYSTEM_PROMPT),
                 response_model=DraftUnit,
                 job_name="rewrite",
                 unit_id=unit_label,
@@ -434,4 +439,3 @@ def _run_rewrite(
         "failed_units": failures.as_dicts(),
         "stopped_early": stopped_early,
     }
-

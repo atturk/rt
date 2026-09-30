@@ -289,8 +289,10 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
 
 ## 8. Database (RT 4.0, fase B)
 
-Il pacchetto `rt/db` aggiunge un database SQLAlchemy 2.0 con migrazioni Alembic. I file della
-cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice, stato e storico.
+Il pacchetto `rt/db` usa un database SQLAlchemy 2.0 con migrazioni Alembic. Le lezioni
+create/importate dalla versione corrente usano il DB come archivio canonico dei testi e
+`media/` per gli originali binari. Le lezioni archiviate nel vecchio formato a cartelle
+restano leggibili finché non vengono convertite con il comando esplicito di migrazione.
 
 - **Dove vive**: `RT_DATABASE_URL` (variabile d'ambiente, `off` lo disattiva) >
   `database_url` in `config/general.yaml` > SQLite in `<lessons_root>/.rt/rt.db` (oppure
@@ -301,10 +303,10 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
 - **Creazione automatica** (fase D, `rt/db/bootstrap.py::ensure_database`): ogni comando `rt`
   (tranne `db`, `config` e `secrets`) crea il DB se manca e applica le migrazioni pendenti
   sotto il lock `rt.db.migrate.lock`; se è già aggiornato costa la sola lettura della
-  revisione. Al primo avvio con una `lessons_root` configurata importa da solo le lezioni
-  esistenti (come `rt db sync`, una volta, segnato in `settings` con `db.initial_import_done`).
-  L'utente non lancia mai comandi di database: `rt db upgrade|sync|check|status` restano per
-  la diagnosi. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
+  revisione. Non scansiona né importa le cartelle delle lezioni all'avvio; la conversione di
+  eventuali dati esistenti deve essere avviata esplicitamente con `rt db migrate-storage`.
+  `rt db upgrade`,
+  `rt db check` e `rt db status` restano disponibili. Se il DB è illeggibile il comando si ferma (`DatabaseUnavailable`) con le
   istruzioni per ripristinarlo da un backup o ricrearlo dai file. `RT_DATABASE_URL=off`
   resta solo per sviluppo e test; la coda dei job (sezione 9) richiede il DB.
   Nel codice di libreria `get_database()` resta tollerante (None se il DB manca o è rotto)
@@ -313,14 +315,15 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
   `LlmCall`, `Setting`, `StateDocument`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
 - **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
-- **Sincronizzazione** (`rt/db/sync.py`): `rt db sync` importa le lezioni di `lessons_root`
-  (info.yaml, fasi dal manifest, issue da `science_issues.json`, ledger) senza modificare i
-  file ed è idempotente; `rt db check` elenca le differenze tra DB e file. Il dual-write
-  (`dual_write_lesson`) aggiorna la lezione nel DB dopo ogni scrittura di `info.yaml`
-  (`rt/core/state.py`), `manifest.json` (`rt/core/manifest.py`) e del ledger: per lezione,
-  fasi e issue i file restano la fonte di verità, e un errore del DB diventa solo un avviso.
-  Le dashboard continuano a scansionare le cartelle perché mostrano la freschezza calcolata
-  al momento (`check_phase_status`), che il DB non conserva.
+- **Indice e controllo**: dashboard, costi e comandi Telegram enumerano le lezioni indicizzate
+  nel DB, senza scandire `lessons_root`. `rt db check` controlla integrità SQLite, contenuti,
+  checksum e riferimenti/media orfani o mancanti; segnala anche le lezioni ancora in formato
+  cartella e non modifica dati. La sincronizzazione manuale è stata rimossa; per convertire
+  esplicitamente le lezioni correnti a cartelle si usa `rt db migrate-storage`, che conserva le
+  cartelle di origine nel backup.
+- **Lezioni a cartelle**: il dual-write (`dual_write_lesson`) aggiorna i campi derivati nel DB
+  dopo scritture di `info.yaml`, `manifest.json` e ledger. Per le lezioni correnti in DB,
+  testi, stato e media sono letti da `rt.storage.fs`; non serve una cartella fisica di lezione.
 - **Test**: `tests/conftest.py` spegne il DB per ogni test (`RT_DATABASE_URL=off`); la
   fixture `rt_db` ne crea uno temporaneo.
 
@@ -329,8 +332,8 @@ cartella lezione restano gli artefatti (audio, JSON, Markdown); il DB è indice,
     `revert_last_decision` e `purge_decisions_by_prefix` scrivono nel DB in una transazione e
     riesportano `review_decisions.json` nello stesso formato (chi legge usa ancora il file).
     Gli annullamenti restano nel DB con `reverted_at`. Se il file cambia fuori da RT (hash
-    diverso da `Lesson.ledger_sha`) viene reimportato prima della modifica successiva, ed è
-    l'unico caso in cui `rt db sync` tocca il ledger. `review_service` tiene la scrittura
+    diverso da `Lesson.ledger_sha`) viene reimportato prima della modifica successiva.
+    `review_service` tiene la scrittura
     sotto il lock `.rt.lock` della lezione.
   - *Chiamate LLM* (`rt/db/llm_calls.py`): ogni riga di `llm_debug.log` diventa un `LlmCall`
     (la prima volta per una lezione si importa l'intero log); `rt cost` legge dal DB con
@@ -436,7 +439,7 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
   `L<id>_<nome>`; il DB ne conserva il percorso, come fa Anki. `Lesson.storage` vale `db` o
   `folder` (le lezioni ancora in cartella funzionano come prima).
 - **Identità**: `Lesson.path` resta `<lessons_root>/<nome lezione>` anche se la cartella non
-  esiste: job, id dell'API, stato Telegram e `rt run <percorso>` non cambiano. `rt build`
+  esiste (senza `telegram.lessons_root` il prefisso è `<cartella dati>/lessons`): job, id dell'API, stato Telegram e `rt run <percorso>` non cambiano. `rt build`
   che rinomina la lezione aggiorna solo il percorso nel DB.
 - **Accesso**: `rt/storage/fs.py` offre le stesse funzioni di `open`/`os`/`shutil` e sceglie
   il backend per percorso; tutti i moduli che leggono o scrivono file di lezione passano da
@@ -444,9 +447,8 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
   `fs.real_path`; i lock stanno in `<cartella dati>/locks`. Le letture usano transazioni di
   sola lettura, le scritture si uniscono alla transazione già aperta nel thread
   (`rt/db/session.py`).
-- **Nuove lezioni**: nel DB se il DB è attivo; `storage.new_lessons = "folder"` nella tabella
-  `settings` riporta al layout a cartelle. Con `RT_DATABASE_URL=off` (sviluppo e test) tutto
-  resta in cartella.
+- **Nuove lezioni**: sempre nel DB. Con `RT_DATABASE_URL=off` (sviluppo e test) tutto resta
+  in cartella.
 - **Migrazione** (`rt db migrate-storage [--dry-run]`, `rt/storage/migrate.py`): backup del
   file del DB, copia di ogni lezione in DB e `media/`, verifica file per file (sha256 e
   dimensione), poi la cartella originale viene spostata (mai cancellata) in

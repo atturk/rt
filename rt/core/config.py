@@ -10,7 +10,9 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 import os
 from typing import Dict, Any, Optional, List, Literal
 import yaml
-from pydantic import BaseModel, Field, AliasChoices, model_validator
+from pydantic import BaseModel, Field, AliasChoices, field_validator, model_validator
+
+from rt.core.jev_decision import JevDecisionConfig, validate_for_phase
 
 from rt.llm.pricing import ModelPricing
 
@@ -286,20 +288,44 @@ class JevConfig(BaseModel):
     scientifica LLM. Soglie provvisorie, non ancora calibrate su dati reali: usa
     'rt review --shadow-jev' per confrontare i verdetti di Jev con le decisioni reali
     prima di fidartene in produzione."""
-    enabled: bool = Field(default=False, description="Abilita il pre-filtro Jev nella fase di review")
-    model: str = Field(default="typesafe/jev-1.13", description="ID modello Jev su OpenRouter")
+    enabled: bool = Field(default=False, description="Abilita il pre-filtro del classificatore nella fase di review")
+    shadow: bool = Field(default=False, description="Valuta senza saltare la review: confronta i verdetti prima di attivare il gate")
+    model: str = Field(default="typesafe/jev-1.13", description="ID del modello classificatore (es. Jev su OpenRouter)")
     credential: str = Field(default="openrouter", description="Nome della credenziale da usare (stessa chiave OpenRouter già configurata)")
     base_url: str = Field(default="https://openrouter.ai/api/alpha/decisions", description="Endpoint 'decisions' di OpenRouter per i modelli System One")
-    timeout_seconds: float = Field(default=15.0, description="Timeout per singola chiamata Jev")
-    task_a_skip_confidence_threshold: float = Field(default=0.85, description="Confidenza minima per saltare la review LLM quando Jev classifica l'unità come non-'errore_grave'")
-    task_b_fabrication_threshold: float = Field(default=0.80, description="Probabilità minima (noul) per segnalare una possibile deriva/invenzione rispetto ai segmenti ASR grezzi")
+    timeout_seconds: float = Field(default=15.0, description="Timeout per singola chiamata al classificatore")
+    task_a_skip_confidence_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per saltare la review LLM quando il classificatore classifica l'unità come non-'errore_grave'")
+    task_b_fabrication_threshold: float = Field(default=0.80, ge=0, le=1, description="Probabilità minima (noul) per segnalare una possibile deriva/invenzione rispetto ai segmenti ASR grezzi")
+    relevance_mode: Literal["disabled", "shadow", "active"] = Field(default="shadow", description="Gate delle unità: disattivato, solo osservazione o filtro attivo")
+    relevance_model: str = Field(default="", description="Modello decisionale configurato esplicitamente per la rilevanza")
+    relevance_prompt: str = Field(default="", description="Istruzioni aggiuntive per la rilevanza didattica")
+    relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per escludere un'unità non didattica")
+    prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta del classificatore usato dal prefiltro errori (il gate rilevanza resta choice)")
+    prefilter_prompt: str = Field(default="", description="Istruzioni aggiuntive per il prefiltro errori")
+    # Domanda e mappatura configurate nel playground. None = comportamento predefinito,
+    # derivato dai campi qui sopra (rt.services.jev_mapping.effective_decision).
+    relevance_decision: Optional[JevDecisionConfig] = Field(default=None, description="Domanda del classificatore e mappatura del gate di rilevanza (None = predefinita)")
+    prefilter_decision: Optional[JevDecisionConfig] = Field(default=None, description="Domanda del classificatore e mappatura del prefiltro errori (None = predefinita)")
+
+    @field_validator("relevance_decision", "prefilter_decision", mode="wrap")
+    @classmethod
+    def _decision_fail_open(cls, value, handler, info):
+        """Una decisione non valida nello YAML non blocca RT: si torna alla predefinita."""
+        try:
+            phase = "relevance" if info.field_name == "relevance_decision" else "prefilter"
+            return validate_for_phase(phase, handler(value))
+        except ValueError:
+            import logging
+            logging.getLogger(__name__).warning("Configurazione del classificatore '%s' non valida: uso la predefinita", info.field_name,
+                                                exc_info=True)
+            return None
 
 
 class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
-    jev: JevConfig = Field(default_factory=JevConfig, description="Configurazione del pre-filtro Jev (System One) per la review scientifica")
+    jev: JevConfig = Field(default_factory=JevConfig, description="Configurazione del classificatore (es. Jev): pre-filtro della review scientifica e gate di rilevanza")
     ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")
     worker: WorkerConfig = Field(default_factory=WorkerConfig, description="Worker dei job della web ('rt web')")
     jobs: Dict[str, JobRoutingConfig] = Field(default_factory=_build_default_jobs)

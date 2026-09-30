@@ -10,10 +10,11 @@ type ConfirmDialogProps = {
   cancelLabel?: string
   onConfirm: () => void
   onCancel: () => void
+  confirmDisabled?: boolean
 }
 
 /** Dialogo modale di conferma (elemento <dialog> nativo: focus intrappolato, Esc chiude). */
-export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel = 'Annulla', onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel = 'Annulla', onConfirm, onCancel, confirmDisabled = false }: ConfirmDialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
   useEffect(() => {
@@ -48,7 +49,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel
             <Button variant="outline" onClick={onCancel}>
               {cancelLabel}
             </Button>
-            <Button onClick={onConfirm}>{confirmLabel}</Button>
+            <Button onClick={onConfirm} disabled={confirmDisabled}>{confirmLabel}</Button>
           </div>
         </div>
       )}

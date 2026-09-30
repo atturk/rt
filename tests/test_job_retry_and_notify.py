@@ -47,7 +47,8 @@ def _lesson_id(api_client, ws):
 def test_retry_resumes_from_failed_phase(api_client, ws, worker):
     lesson_id, lesson_dir = _lesson_id(api_client, ws)
     res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={
-        "type": "run_pipeline", "mock": True, "auto_accept": True, "rename": False, "mock_fail_once": "review"})
+        "type": "run_pipeline", "mock": True, "auto_accept": True, "rename": False, "with_review": True,
+        "mock_fail_once": "review"})
     assert res.status_code == 202, res.text
     first = res.json()["job_id"]
     drain(worker)
@@ -186,11 +187,13 @@ def test_worker_pipeline_sends_telegram_notification(api_client, ws, worker, rt_
     events = api_client.get(f"/api/v1/jobs/{res.json()['job_id']}/events/list").json()
     assert any(e["type"] == "notice" and "Telegram" in e["payload"]["message"] for e in events)
 
-    # build singolo
+    # build singolo: il messaggio della lezione viene aggiornato, non duplicato
     res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "build", "rename": False})
     drain(worker)
     assert job(api_client, res.json()["job_id"])["state"] == "succeeded"
-    assert len([m for m, _ in server.sent if m == "sendMessage"]) == 2
+    assert len([m for m, _ in server.sent if m == "sendMessage"]) == 1
+    edits = [body for method, body in server.sent if method == "editMessageText"]
+    assert len(edits) == 1 and "Aggiornata" in edits[0]["text"]
 
 
 def test_notification_error_does_not_fail_job(api_client, ws, worker, rt_db, telegram, monkeypatch):

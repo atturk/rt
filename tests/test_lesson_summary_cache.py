@@ -45,6 +45,13 @@ def test_unchanged_lessons_are_not_recomputed(tmp_path, monkeypatch, rt_db, coun
     assert after[0]["phases"]["outline"] == "VALID" != first[0]["phases"]["outline"]
 
 
+def test_lesson_listing_uses_database_index_without_scanning_root(tmp_path, monkeypatch, rt_db):
+    make_lesson(isolated_workspace(tmp_path, monkeypatch))
+    monkeypatch.setattr("rt.core.lesson_index.scan_lessons", lambda *_: (_ for _ in ()).throw(
+        AssertionError("non deve scandire la cartella delle lezioni")))
+    assert len(lesson_service.list_lessons()) == 1
+
+
 def test_cached_items_are_copies(tmp_path, monkeypatch, rt_db, counted):
     make_lesson(isolated_workspace(tmp_path, monkeypatch))
     lesson_service.list_lessons()[0]["phases"]["prepare"] = "ALTERATO"
@@ -76,3 +83,15 @@ def test_llm_call_invalidates_the_cost(tmp_path, monkeypatch, rt_db, counted):
         LlmCallRepository(session).add(lesson, {"job": "outline", "status": "success", "estimated_cost": 0.5,
                                                 "provider": "mock", "model": "m"})
     assert lesson_service.list_lessons()[0]["cost_usd"] == pytest.approx(0.5)
+
+
+def test_global_prompt_does_not_make_done_phases_stale(tmp_path, monkeypatch, rt_db, counted):
+    """Report 2, §5.3: cambiare un prompt vale per le esecuzioni future, non rende STALE le fasi fatte."""
+    from rt.services.prompt_settings import set_global_instruction
+    lesson_dir = make_lesson(isolated_workspace(tmp_path, monkeypatch))
+    run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
+    assert lesson_service.list_lessons()[0]["phases"]["rewrite"] == "VALID"
+    set_global_instruction("rewrite", "Metti in evidenza i collegamenti clinici.")
+    lesson_service.clear_summary_cache()
+    phases = lesson_service.list_lessons()[0]["phases"]
+    assert phases["rewrite"] == "VALID" and phases["review"] == "VALID"

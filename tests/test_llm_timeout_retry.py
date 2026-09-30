@@ -338,6 +338,9 @@ def test_f_rich_telemetry_metrics(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-telemetry-full")
     client = LLMClient(force_mock=False)
     client.config.llm["rewrite"].timeout_seconds = 180
+    # Esplicito come negli altri test: prima dipendeva da un test precedente che, nello
+    # stesso processo, aveva già impostato openrouter (con -n auto l'ordine cambia).
+    client.config.llm["rewrite"].provider = "openrouter"
 
     GLOBAL_TELEMETRY.clear()
 

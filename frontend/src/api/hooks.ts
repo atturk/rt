@@ -122,6 +122,18 @@ export function useRefreshLesson(id: number) {
     ])
 }
 
+export type PhaseName = 'prepare' | 'outline' | 'rewrite' | 'review' | 'build'
+
+/** Validazione manuale di una fase (Option su "Esegui"): VALID con gli input attuali, senza rieseguirla. */
+export function useValidatePhase(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: (phase: PhaseName) =>
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/phases/{phase}/validate', { params: { path: { lesson_id: id, phase } } })),
+    onSettled: () => refresh(),
+  })
+}
+
 export type JobRequest = Schemas['JobRequest']
 
 export function useRunJob(id: number) {

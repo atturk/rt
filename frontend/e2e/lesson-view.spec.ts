@@ -29,7 +29,7 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
     await expect(li).toHaveAttribute('data-status', row.status)
     await expect(li).toContainText(row.reason)
   }
-  await expect(page.getByTestId('outline-approved')).toHaveText(detail.outline_approved ? 'sì' : 'no')
+  expect(detail.outline_approved).toBe(true)
   await expect(page.getByTestId('validation-outline')).toContainText('valida')
   await expect(page.getByTestId('cost-panel')).toContainText('Scaletta')
 
@@ -38,6 +38,33 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
   const download = page.waitForEvent('download')
   await markdown.click()
   expect((await download).suggestedFilename()).toMatch(/\.md$/)
+})
+
+test('dall\'elenco, con Option, si scarica il Markdown finale senza aprire la lezione', async ({ page }) => {
+  await loginViaLink(page)
+  const lessons = await apiGet<(Lesson & { phases: Record<string, string> })[]>(page.request, '/lessons')
+  const built = lessons.find((l) => l.phases.build === 'VALID')!
+  const notBuilt = lessons.find((l) => l.phases.build !== 'VALID')!
+  await page.goto('/')
+  const card = (id: number) => page.locator(`[data-testid=lesson-card][data-lesson-id="${id}"]`)
+  await expect(card(notBuilt.id)).toBeVisible()
+  await expect(card(notBuilt.id).getByRole('link', { name: /Scarica il Markdown/ })).toHaveCount(0)
+
+  const link = card(built.id).getByRole('link', { name: /Scarica il Markdown/ })
+  await expect(link).toHaveCSS('opacity', '0')
+  await page.keyboard.down('Alt')
+  await expect(link).toHaveCSS('opacity', '1')
+  const trash = (await card(built.id).getByRole('button', { name: /^Elimina/ }).boundingBox())!
+  const icon = (await link.boundingBox())!
+  expect(icon.y).toBeGreaterThan(trash.y + trash.height - 1) // sotto il cestino
+  const download = page.waitForEvent('download')
+  await link.click()
+  await page.keyboard.up('Alt')
+  const file = await download
+  expect(file.suggestedFilename()).toMatch(/\.md$/)
+  const fromApi = await page.request.get(`/api/v1/lessons/${built.id}/export?format=markdown`, { headers: authHeaders() })
+  expect(readFileSync((await file.path())!, 'utf-8')).toBe(await fromApi.text())
+  await expect(page).toHaveURL(/\/$/)
 })
 
 test('il clic su un timecode sposta l\'audio e evidenzia l\'unità', async ({ page }) => {

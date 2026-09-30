@@ -166,10 +166,12 @@ def test_build_skip_moves_if_not_in_lessons_root(tmp_path):
     lessons_root = str(tmp_path / "final_lessons")
     os.makedirs(audio_dir, exist_ok=True)
 
-    lesson_dir = _create_synthetic_prepared_lesson(audio_dir, "skip_lesson")
-    # Eseguiamo la build SENZA lessons_root per completare la fase
     mock_cfg_none = RTConfig(telegram=TelegramRuntimeConfig(lessons_root=None))
     with patch("rt.core.config.load_config", return_value=mock_cfg_none):
+        # La scaletta e la bozza devono avere lo stesso routing della build: il cambio
+        # di modello adesso invalida correttamente la fingerprint delle fasi.
+        lesson_dir = _create_synthetic_prepared_lesson(audio_dir, "skip_lesson")
+        # Eseguiamo la build SENZA lessons_root per completare la fase
         res1 = run_build(lesson_dir, rename_folder=False)
         assert res1["action"] == "RUN"
         assert res1["lesson_dir"] == lesson_dir

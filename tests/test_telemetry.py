@@ -630,8 +630,11 @@ def test_build_writes_telemetry_summary_file(tmp_path):
     assert "by_provider" in data
 
 
-def test_llm_debug_log_includes_credential_ref_and_route_id(tmp_path):
+def test_llm_debug_log_includes_credential_ref_and_route_id(tmp_path, monkeypatch):
     """Verifica che llm_debug.log registri credential_ref, route_id e failure_class (Task 52)."""
+    # Chiavi finte esplicite: prima il test usava quelle lasciate nell'ambiente da altri test.
+    for name in ("DEEPSEEK_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.setenv(name, "sk-test-debug-log")
     lesson_dir = str(tmp_path / "lesson_debug")
     os.makedirs(lesson_dir, exist_ok=True)
 

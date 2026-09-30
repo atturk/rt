@@ -95,9 +95,13 @@ class JobEventReporter:
 
 def job_error_message(exc: BaseException) -> str:
     """Errore del job come lo legge l'utente: i messaggi già scritti per l'interfaccia (fase
-    incompleta, errori del modello spiegati) senza il nome della classe Python."""
+    incompleta, errori di dominio dei servizi, errori del modello spiegati) senza il nome
+    della classe Python."""
     from rt.llm.errors import LLMFailure, describe_llm_failure
     from rt.pipeline.unit_failures import PhaseIncomplete
+    from rt.services.errors import ServiceError
+    if isinstance(exc, ServiceError):
+        return exc.message
     if isinstance(exc, PhaseIncomplete):
         return str(exc)
     if isinstance(exc, LLMFailure):

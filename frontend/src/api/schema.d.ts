@@ -141,6 +141,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chiude un job in attesa di una decisione senza annullarlo (come 'rt jobs close')
+         * @description Il job finisce (succeeded, result.closed con il messaggio); le issue restano da valutare in Revisione o la scaletta da approvare, e decidere dopo non fa ripartire la pipeline. 409 job_not_closable se il job non è in attesa di una decisione che abbia una sua schermata.
+         */
+        post: operations["close_job_api_v1_jobs__job_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{job_id}/events": {
         parameters: {
             query?: never;
@@ -210,6 +230,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/import-zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Importa più archivi completi come nuove lezioni (job import_lesson_zips)
+         * @description Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
+         *     Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
+         *     supera finisce tra i rifiutati del risultato senza fermare gli altri.
+         */
+        post: operations["import_lesson_zips_api_v1_lessons_import_zip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}": {
         parameters: {
             query?: never;
@@ -221,7 +263,8 @@ export interface paths {
         get: operations["get_lesson_api_v1_lessons__lesson_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Elimina una lezione e i suoi media */
+        delete: operations["delete_lesson_api_v1_lessons__lesson_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -358,6 +401,24 @@ export interface paths {
         put: operations["put_document_draft_api_v1_lessons__lesson_id__document_draft_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/document/lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acquire Document Lease */
+        post: operations["acquire_document_lease_api_v1_lessons__lesson_id__document_lease_post"];
+        /** Release Document Lease */
+        delete: operations["release_document_lease_api_v1_lessons__lesson_id__document_lease_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -514,6 +575,26 @@ export interface paths {
         get: operations["get_phases_api_v1_lessons__lesson_id__phases_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/phases/{phase}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Valida a mano una fase senza rieseguirla (come 'rt validate-phase')
+         * @description Registra la fase come VALID per gli input attuali (per esempio dopo una modifica voluta ai suoi file). 409 phase_not_validatable se l'artefatto manca o non è valido, se una fase a monte non è valida o se la fase è incompleta; 409 lesson_busy con un job in coda o in esecuzione sulla lezione.
+         */
+        post: operations["validate_phase_api_v1_lessons__lesson_id__phases__phase__validate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -707,6 +788,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/relevance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Classificazioni del classificatore, correzioni per ogni unità e riepilogo */
+        get: operations["get_unit_relevance_api_v1_lessons__lesson_id__relevance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/relevance/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accoda l'attribuzione delle etichette del classificatore alle unità (come 'rt relevance'); 409 relevance_disabled se il classificatore è spento */
+        post: operations["run_unit_relevance_api_v1_lessons__lesson_id__relevance_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/relevance/{unit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Corregge o ripristina la classificazione di un'unità */
+        put: operations["put_unit_relevance_api_v1_lessons__lesson_id__relevance__unit_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/subject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lezioni di una materia con la loro riserva, sessione per materia in corso e ultimo riepilogo */
+        get: operations["subject_state_api_v1_recall_subject_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/subject/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Termina la sessione per materia e ne salva il riepilogo (404 se non ce n'è una) */
+        post: operations["subject_end_api_v1_recall_subject_end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/subject/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Riserva iniziale per le lezioni pronte della materia che non hanno ancora domande (un job per lezione) */
+        post: operations["subject_generate_api_v1_recall_subject_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/subject/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; sotto soglia accoda un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate) */
+        post: operations["subject_next_api_v1_recall_subject_next_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recall/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Riserva di domande di ogni lezione, per materia, e sessioni per materia in corso */
+        get: operations["subjects_api_v1_recall_subjects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recall/telegram": {
         parameters: {
             query?: never;
@@ -752,7 +969,8 @@ export interface paths {
         /** Salva un segreto dichiarato (archivio cifrato se inizializzato); il valore non viene mai restituito */
         put: operations["put_secret_api_v1_secrets__name__put"];
         post?: never;
-        delete?: never;
+        /** Elimina un segreto dichiarato dall'archivio cifrato, da .env e dall'ambiente (come 'rt secrets unset') */
+        delete: operations["delete_secret_api_v1_secrets__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -792,6 +1010,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/connections/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Elimina una connessione con i suoi modelli e le sue chiavi (409 se una route o il classificatore la usa) */
+        delete: operations["delete_connection_api_v1_settings_connections__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/connections/{name}/models": {
         parameters: {
             query?: never;
@@ -809,7 +1044,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/settings/lessons-root": {
+    "/api/v1/settings/decision-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Decision Model */
+        get: operations["get_decision_model_api_v1_settings_decision_model_get"];
+        /** Put Decision Model */
+        put: operations["put_decision_model_api_v1_settings_decision_model_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/decision-model/probe": {
         parameters: {
             query?: never;
             header?: never;
@@ -817,9 +1070,26 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Cartella delle lezioni */
-        put: operations["put_lessons_root_api_v1_settings_lessons_root_put"];
-        post?: never;
+        put?: never;
+        /** Probe Decision Model */
+        post: operations["probe_decision_model_api_v1_settings_decision_model_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/decision-model/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prova una configurazione del classificatore (anche non salvata) su un'unità di lezione */
+        post: operations["test_decision_model_api_v1_settings_decision_model_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -887,6 +1157,40 @@ export interface paths {
         get?: never;
         /** Pricing custom per provider e modello (USD per 1M token) */
         put: operations["put_pricing_api_v1_settings_pricing_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Istruzioni personalizzabili e predefinite per fase */
+        get: operations["list_prompt_overrides_api_v1_settings_prompts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/prompts/{phase}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Salva istruzioni per una fase; vuoto ripristina il default */
+        put: operations["save_prompt_override_api_v1_settings_prompts__phase__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -980,6 +1284,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/telegram/recreate-topic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Elimina tutti i messaggi del topic e lo ricrea vuoto */
+        post: operations["recreate_telegram_topic_api_v1_settings_telegram_recreate_topic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram/reveal": {
         parameters: {
             query?: never;
@@ -1008,6 +1329,125 @@ export interface paths {
         put?: never;
         /** Invia nel topic il messaggio di prova 'Questo è il topic di <materia>' */
         post: operations["test_topic_api_v1_settings_telegram_test_topic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/archives/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scarica l'archivio prodotto da un job telegram_topic_export concluso */
+        get: operations["download_telegram_topic_archive_api_v1_settings_telegram_user_archives__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Completa l'accesso utente con codice e 2FA */
+        post: operations["complete_telegram_user_api_v1_settings_telegram_user_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoca la sessione Telegram utente */
+        delete: operations["revoke_telegram_user_api_v1_settings_telegram_user_session_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invia un codice Telegram all'account utente */
+        post: operations["start_telegram_user_api_v1_settings_telegram_user_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stato della sessione Telegram utente */
+        get: operations["telegram_user_status_api_v1_settings_telegram_user_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Elenca i topic del gruppo con l'account utente */
+        get: operations["get_telegram_user_topics_api_v1_settings_telegram_user_topics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/telegram/user/topics/{topic_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Esporta cronologia e media del topic (job telegram_topic_export; si scarica da /settings/telegram/user/archives/{job_id}) */
+        post: operations["start_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1133,6 +1573,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versione, canale di aggiornamento e cartelle di RT */
+        get: operations["system_info_api_v1_system_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/telegram/daemon": {
         parameters: {
             query?: never;
@@ -1196,6 +1653,40 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Upload temporanei attivi, riferiti e orfani */
+        get: operations["get_uploads_api_v1_uploads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Elimina un upload non più in uso dopo conferma esplicita */
+        delete: operations["delete_orphan_upload_api_v1_uploads__upload_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1294,9 +1785,14 @@ export interface components {
             run: boolean;
             /**
              * With Review
-             * @default true
+             * @default false
              */
             with_review: boolean;
+        };
+        /** Body_import_lesson_zips_api_v1_lessons_import_zip_post */
+        Body_import_lesson_zips_api_v1_lessons_import_zip_post: {
+            /** Archives */
+            archives: string[];
         };
         /** ChooseFolderIn */
         ChooseFolderIn: {
@@ -1418,6 +1914,168 @@ export interface components {
             /** Timestamp */
             timestamp: string;
         };
+        /** DecisionModelIn */
+        DecisionModelIn: {
+            /**
+             * Credential
+             * @default openrouter
+             */
+            credential: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /** @description Domanda e mappatura del prefiltro errori (None = invariata/predefinita) */
+            prefilter_decision?: components["schemas"]["JevDecisionConfig"] | null;
+            /**
+             * Prefilter Prompt
+             * @default
+             */
+            prefilter_prompt: string;
+            /**
+             * Prefilter Type
+             * @default choice
+             * @enum {string}
+             */
+            prefilter_type: "choice" | "noul" | "score";
+            /** @description Domanda e mappatura del gate di rilevanza (None = invariata/predefinita) */
+            relevance_decision?: components["schemas"]["JevDecisionConfig"] | null;
+            /**
+             * Relevance Mode
+             * @default shadow
+             * @enum {string}
+             */
+            relevance_mode: "disabled" | "shadow" | "active";
+            /**
+             * Relevance Model
+             * @default
+             */
+            relevance_model: string;
+            /**
+             * Relevance Prompt
+             * @default
+             */
+            relevance_prompt: string;
+            /**
+             * Relevance Threshold
+             * @default 0.85
+             */
+            relevance_threshold: number;
+            /**
+             * Shadow
+             * @default true
+             */
+            shadow: boolean;
+            /**
+             * Threshold
+             * @default 0.85
+             */
+            threshold: number;
+        };
+        /** DecisionModelOut */
+        DecisionModelOut: {
+            /**
+             * Credential
+             * @default openrouter
+             */
+            credential: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Prefilter Customized
+             * @description True se il prefiltro non usa la domanda predefinita
+             * @default false
+             */
+            prefilter_customized: boolean;
+            prefilter_decision: components["schemas"]["JevDecisionConfig"];
+            /**
+             * Prefilter Prompt
+             * @default
+             */
+            prefilter_prompt: string;
+            /**
+             * Prefilter Type
+             * @default choice
+             * @enum {string}
+             */
+            prefilter_type: "choice" | "noul" | "score";
+            /**
+             * Relevance Customized
+             * @description True se la rilevanza non usa la domanda predefinita
+             * @default false
+             */
+            relevance_customized: boolean;
+            relevance_decision: components["schemas"]["JevDecisionConfig"];
+            /**
+             * Relevance Mode
+             * @default shadow
+             * @enum {string}
+             */
+            relevance_mode: "disabled" | "shadow" | "active";
+            /**
+             * Relevance Model
+             * @default
+             */
+            relevance_model: string;
+            /**
+             * Relevance Prompt
+             * @default
+             */
+            relevance_prompt: string;
+            /**
+             * Relevance Threshold
+             * @default 0.85
+             */
+            relevance_threshold: number;
+            /**
+             * Shadow
+             * @default true
+             */
+            shadow: boolean;
+            /**
+             * Templates
+             * @description Domanda e mappatura predefinite per fase e tipo di richiesta
+             */
+            templates: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["JevDecisionConfig"];
+                };
+            };
+            /**
+             * Threshold
+             * @default 0.85
+             */
+            threshold: number;
+        };
+        /** DecisionProbeOut */
+        DecisionProbeOut: {
+            /** Choice */
+            choice: string;
+            /** Confidence */
+            confidence: number;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Request Type
+             * @default choice
+             * @enum {string}
+             */
+            request_type: "choice" | "noul" | "score";
+        };
         /** DecisionRequest */
         DecisionRequest: {
             /**
@@ -1432,6 +2090,88 @@ export interface components {
              * @description Testo corretto (obbligatorio per 'edited')
              */
             text?: string | null;
+        };
+        /** DecisionTestIn */
+        DecisionTestIn: {
+            /**
+             * Credential
+             * @default openrouter
+             */
+            credential: string;
+            decision: components["schemas"]["JevDecisionConfig"];
+            /**
+             * Lesson Id
+             * @description Lezione su cui provare (assente = unità di esempio)
+             */
+            lesson_id?: number | null;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "relevance" | "prefilter";
+            /**
+             * Unit Id
+             * @description Unità della lezione (assente = la prima)
+             */
+            unit_id?: string | null;
+        };
+        /** DecisionTestOut */
+        DecisionTestOut: {
+            /**
+             * Answer
+             * @description Risposta alla domanda, con tutte le probabilità
+             */
+            answer: {
+                [key: string]: unknown;
+            };
+            /**
+             * Label
+             * @description Etichetta RT assegnata dalla mappatura
+             */
+            label: string;
+            /**
+             * Outcome
+             * @description Esito RT dell'etichetta
+             */
+            outcome: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "relevance" | "prefilter";
+            /**
+             * Request
+             * @description Richiesta inviata all'endpoint decisions
+             */
+            request: {
+                [key: string]: unknown;
+            };
+            /**
+             * Response
+             * @description Risposta JSON del classificatore
+             */
+            response: {
+                [key: string]: unknown;
+            };
+            /**
+             * Rule
+             * @description Regola scattata (da 0); null = nessuna, esito fail-open
+             */
+            rule?: number | null;
+            /**
+             * State
+             * @description Stato inviato al classificatore (l'unità di lezione)
+             */
+            state: string;
+            /** Unit Id */
+            unit_id?: string | null;
+            /** Unit Title */
+            unit_title: string;
         };
         /** DeleteFailure */
         DeleteFailure: {
@@ -1455,11 +2195,43 @@ export interface components {
         };
         /** DocumentEditIn */
         DocumentEditIn: {
+            /** Lease Token */
+            lease_token?: string | null;
             /**
              * Markdown
              * @description Markdown dell'anteprima modificato (senza frontmatter)
              */
             markdown: string;
+        };
+        /** DocumentEditLease */
+        DocumentEditLease: {
+            /**
+             * Acquired At
+             * @description Inizio della sessione di modifica (ISO, UTC)
+             */
+            acquired_at?: string | null;
+            /**
+             * Expires
+             * @description Scadenza (ISO, UTC) se l'editor non rinnova la sessione
+             */
+            expires?: string | null;
+            /**
+             * Lease Id
+             * @description Identificativo breve della sessione di modifica
+             */
+            lease_id?: string | null;
+            /** Previous Acquired At */
+            previous_acquired_at?: string | null;
+            /** Previous Lease Id */
+            previous_lease_id?: string | null;
+            /**
+             * Recovered
+             * @description True se la richiesta ha sostituito la sessione di un'altra scheda
+             * @default false
+             */
+            recovered: boolean;
+            /** Token */
+            token: string;
         };
         /** DocumentEditProblem */
         DocumentEditProblem: {
@@ -1502,6 +2274,8 @@ export interface components {
             end_seconds?: number | null;
             /** End Segment Id */
             end_segment_id: string;
+            /** Relevance */
+            relevance?: ("organizational" | "no_content") | null;
             /** Start Formatted */
             start_formatted?: string | null;
             /** Start Seconds */
@@ -1617,6 +2391,104 @@ export interface components {
             review_complete: boolean;
             /** Total */
             total: number;
+        };
+        /**
+         * JevCondition
+         * @description Una condizione: [campo della risposta] [operatore] [valore].
+         */
+        JevCondition: {
+            /**
+             * Field
+             * @description choice, confidence, noul, score o p:<opzione>
+             */
+            field: string;
+            /**
+             * Op
+             * @default eq
+             * @enum {string}
+             */
+            op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+            /** Value */
+            value: number | string;
+        };
+        /**
+         * JevDecisionConfig
+         * @description Domanda del classificatore e mappatura verso le etichette RT di una fase.
+         */
+        JevDecisionConfig: {
+            /**
+             * Fallback Label
+             * @description Etichetta quando nessuna regola scatta (esito fail-open)
+             * @default Nessuna regola
+             */
+            fallback_label: string;
+            /**
+             * Levels
+             * @description Livelli ordinati (solo score)
+             */
+            levels?: string[];
+            /**
+             * Options
+             * @description Opzioni (solo choice)
+             */
+            options?: components["schemas"]["JevOption"][];
+            /**
+             * Question
+             * @description Testo della domanda (istruzioni)
+             */
+            question: string;
+            /**
+             * Rules
+             * @description Regole valutate in ordine: vince la prima vera
+             */
+            rules?: components["schemas"]["JevRule"][];
+            /**
+             * Type
+             * @default choice
+             * @enum {string}
+             */
+            type: "choice" | "noul" | "score";
+        };
+        /**
+         * JevOption
+         * @description Un'opzione di una domanda choice: l'etichetta restituita dal classificatore e quando sceglierla.
+         */
+        JevOption: {
+            /**
+             * Description
+             * @description Quando scegliere questa opzione
+             */
+            description: string;
+            /**
+             * Label
+             * @description Etichetta restituita dal classificatore (lettere, cifre, _ e -)
+             */
+            label: string;
+        };
+        /**
+         * JevRule
+         * @description Una riga della mappatura: l'etichetta RT assegnata quando le condizioni sono vere.
+         */
+        JevRule: {
+            /** Conditions */
+            conditions: components["schemas"]["JevCondition"][];
+            /**
+             * Label
+             * @description Etichetta mostrata in anteprima
+             */
+            label: string;
+            /**
+             * Match
+             * @description Tutte le condizioni o almeno una
+             * @default all
+             * @enum {string}
+             */
+            match: "all" | "any";
+            /**
+             * Outcome
+             * @description Esito di RT a cui corrisponde l'etichetta
+             */
+            outcome: string;
         };
         /** Job */
         Job: {
@@ -1737,6 +2609,11 @@ export interface components {
              */
             auto_accept: boolean;
             /**
+             * Extra Prompt
+             * @description Istruzioni aggiuntive per outline, rewrite o review
+             */
+            extra_prompt?: string | null;
+            /**
              * Force
              * @default false
              */
@@ -1769,12 +2646,17 @@ export interface components {
             type: "run_pipeline" | "run_phase";
             /**
              * Unit
-             * @description Solo rewrite: una sola unità
+             * @description Rewrite o review: una sola unità
              */
             unit?: string | null;
             /**
+             * Units
+             * @description Rewrite o review: unità selezionate (lista multipla)
+             */
+            units?: string[] | null;
+            /**
              * With Review
-             * @default true
+             * @default false
              */
             with_review: boolean;
         };
@@ -1952,6 +2834,33 @@ export interface components {
             /** Images */
             images: components["schemas"]["LessonImage"][];
         };
+        /** LessonRecallStats */
+        LessonRecallStats: {
+            /** Answers */
+            answers: number;
+            /** Lesson Id */
+            lesson_id: number;
+            /**
+             * Questions
+             * @description tipo -> stato -> numero
+             */
+            questions: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /**
+             * Ready
+             * @description Rielaborazione valida: la lezione può fare recall
+             */
+            ready: boolean;
+            /**
+             * Telegram
+             * @description Sessione in corso su Telegram per la lezione
+             * @default false
+             */
+            telegram: boolean;
+        };
         /** LessonSummary */
         LessonSummary: {
             /**
@@ -2002,11 +2911,6 @@ export interface components {
              */
             titolo: string;
         };
-        /** LessonsRootIn */
-        LessonsRootIn: {
-            /** Path */
-            path: string;
-        };
         /** ListenMessages */
         ListenMessages: {
             /**
@@ -2049,6 +2953,28 @@ export interface components {
              */
             url: string;
         };
+        /** ManualValidation */
+        ManualValidation: {
+            /** Actor */
+            actor?: string | null;
+            /**
+             * At
+             * @description Quando è stata validata (ISO 8601, ora locale)
+             */
+            at: string;
+            /**
+             * Channel
+             * @description cli | api
+             */
+            channel?: string | null;
+            /** Previous Reason */
+            previous_reason?: string | null;
+            /**
+             * Previous Status
+             * @description Stato della fase prima della validazione
+             */
+            previous_status?: string | null;
+        };
         /** Me */
         Me: {
             /** Actor */
@@ -2075,6 +3001,11 @@ export interface components {
             mock: boolean;
             /** Model */
             model: string;
+            /**
+             * Vision
+             * @default false
+             */
+            vision: boolean;
         };
         /** ModelTestOut */
         ModelTestOut: {
@@ -2106,6 +3037,11 @@ export interface components {
              * @description Stato HTTP della risposta del provider
              */
             status_code?: number | null;
+            /**
+             * Vision Verified
+             * @default false
+             */
+            vision_verified: boolean;
         };
         /** NoticeIn */
         NoticeIn: {
@@ -2118,13 +3054,13 @@ export interface components {
              * Notice
              * @enum {string}
              */
-            notice: "preview_edit_beta" | "preview_edit_issues";
+            notice: "preview_edit_beta" | "preview_edit_issues" | "setup_wizard";
         };
         /** NoticeSettings */
         NoticeSettings: {
             /**
              * Dismissed
-             * @description Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues)
+             * @description Avvisi nascosti con 'Non mostrare più' (preview_edit_beta, preview_edit_issues, setup_wizard)
              */
             dismissed: string[];
         };
@@ -2239,6 +3175,8 @@ export interface components {
         };
         /** PhaseState */
         PhaseState: {
+            /** @description Presente se la fase è stata validata a mano (senza rieseguirla) e non è stata più eseguita da allora */
+            manual_validation?: components["schemas"]["ManualValidation"] | null;
             /** Phase */
             phase: string;
             /** Reason */
@@ -2250,6 +3188,24 @@ export interface components {
              * @description Solo per build: avvisi di integrità della revisione (review non aggiornata o incompleta, issue da valutare, issue orfane). Non bloccano il build: la web li mostra nel dialogo di conferma.
              */
             warnings?: components["schemas"]["PhaseWarning"][];
+        };
+        /** PhaseValidationResult */
+        PhaseValidationResult: {
+            /**
+             * Changed
+             * @description False se la fase era già valida (nessuna modifica)
+             */
+            changed: boolean;
+            /** Phase */
+            phase: string;
+            /** Previous Reason */
+            previous_reason: string;
+            /** Previous Status */
+            previous_status: string;
+            /** Reason */
+            reason: string;
+            /** Status */
+            status: string;
         };
         /** PhaseWarning */
         PhaseWarning: {
@@ -2268,6 +3224,18 @@ export interface components {
              * @description Testo per l'utente (italiano)
              */
             message: string;
+        };
+        /** PromptOverrideIn */
+        PromptOverrideIn: {
+            /** Instruction */
+            instruction: string;
+        };
+        /** PromptOverrideOut */
+        PromptOverrideOut: {
+            /** Default */
+            default: string;
+            /** Instruction */
+            instruction: string;
         };
         /** QuizResult */
         QuizResult: {
@@ -2409,6 +3377,11 @@ export interface components {
              * @enum {string}
              */
             state: "active" | "ended" | "interrupted";
+            /**
+             * Subject
+             * @description Materia, per una sessione su tutte le sue lezioni
+             */
+            subject?: string | null;
             /** @description Riepilogo salvato alla chiusura */
             summary?: components["schemas"]["RecallSummary"] | null;
         };
@@ -2520,6 +3493,21 @@ export interface components {
             /** Round Robin */
             round_robin: boolean;
         };
+        /** SecretDeleted */
+        SecretDeleted: {
+            /** Name */
+            name: string;
+            /**
+             * Removed From
+             * @description Dove era salvato; vuoto se non c'era (l'eliminazione è idempotente)
+             */
+            removed_from: ("store" | "env")[];
+            /**
+             * Set
+             * @default false
+             */
+            set: boolean;
+        };
         /** SecretIn */
         SecretIn: {
             /** Value */
@@ -2572,8 +3560,6 @@ export interface components {
              * @description Cartella dati in uso da questo processo: rt.db e media/
              */
             data_dir?: string | null;
-            /** Lessons Root */
-            lessons_root?: string | null;
             notices: components["schemas"]["NoticeSettings"];
             /**
              * Phases
@@ -2595,7 +3581,7 @@ export interface components {
             secrets_encrypted: boolean;
             /**
              * Setup Required
-             * @description True se la cartella delle lezioni non è impostata o non esiste: la SPA apre la configurazione guidata
+             * @description True se manca un passo obbligatorio della configurazione e la SPA apre la configurazione guidata (oggi nessuno: le lezioni stanno nel database della cartella dati)
              * @default false
              */
             setup_required: boolean;
@@ -2603,6 +3589,83 @@ export interface components {
             transcription: components["schemas"]["Transcription"];
             web_search: components["schemas"]["WebSearchSettings"];
             worker: components["schemas"]["WorkerSettings"];
+        };
+        /** SubjectGenerateAccepted */
+        SubjectGenerateAccepted: {
+            /**
+             * Jobs
+             * @description Un job recall_generate per ogni lezione pronta senza domande
+             */
+            jobs: components["schemas"]["JobAccepted"][];
+        };
+        /** SubjectQuestion */
+        SubjectQuestion: {
+            /** Lesson Id */
+            lesson_id: number;
+            question: components["schemas"]["RecallQuestion"];
+        };
+        /** SubjectRecall */
+        SubjectRecall: {
+            /** Lessons */
+            lessons: components["schemas"]["LessonRecallStats"][];
+            /**
+             * Materia
+             * @description Vuota per le lezioni senza materia
+             */
+            materia: string;
+            /** @description Sessione per materia in corso nella web app */
+            session?: components["schemas"]["RecallSessionInfo"] | null;
+        };
+        /** SubjectRecallState */
+        SubjectRecallState: {
+            /** @description Ultima sessione per materia chiusa, con il riepilogo */
+            last?: components["schemas"]["RecallSessionInfo"] | null;
+            /** Lessons */
+            lessons: components["schemas"]["LessonRecallStats"][];
+            /**
+             * Materia
+             * @description Vuota per le lezioni senza materia
+             */
+            materia: string;
+            /** @description Sessione per materia in corso nella web app */
+            session?: components["schemas"]["RecallSessionInfo"] | null;
+        };
+        /** SystemInfo */
+        SystemInfo: {
+            /**
+             * Config Dir
+             * @description Cartella config/ in uso
+             */
+            config_dir: string;
+            /**
+             * Data Dir
+             * @description Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media
+             */
+            data_dir: string;
+            /**
+             * Install Dir
+             * @description Cartella del codice di RT
+             */
+            install_dir: string;
+            /** Platform */
+            platform: string;
+            /**
+             * Prerelease
+             * @description True per una beta o release candidate (es. 4.1.0b2)
+             */
+            prerelease: boolean;
+            /** Python Version */
+            python_version: string;
+            /**
+             * Update Channel
+             * @description Canale di aggiornamento: stable o beta ('rt -u --beta' / '--stable')
+             */
+            update_channel: string;
+            /**
+             * Version
+             * @description Versione di RT installata (come 'rt -v')
+             */
+            version: string;
         };
         /** TelegramCommandInfo */
         TelegramCommandInfo: {
@@ -2718,6 +3781,48 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** TelegramTopicOut */
+        TelegramTopicOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /** TelegramUserCompleteIn */
+        TelegramUserCompleteIn: {
+            /** Code */
+            code: string;
+            /** Password */
+            password?: string | null;
+        };
+        /** TelegramUserStartIn */
+        TelegramUserStartIn: {
+            /** Api Hash */
+            api_hash: string;
+            /** Api Id */
+            api_id: number;
+            /** Phone */
+            phone: string;
+        };
+        /** TelegramUserStatusOut */
+        TelegramUserStatusOut: {
+            /** Authorized */
+            authorized: boolean;
+        };
+        /** TelegramUserTopicsOut */
+        TelegramUserTopicsOut: {
+            /** Topics */
+            topics: components["schemas"]["TelegramTopicOut"][];
+        };
+        /** TopicRecreateIn */
+        TopicRecreateIn: {
+            /** Confirmation */
+            confirmation: string;
+            /** Name */
+            name: string;
+            /** Topic Id */
+            topic_id: number;
+        };
         /** TopicTestIn */
         TopicTestIn: {
             /**
@@ -2778,6 +3883,169 @@ export interface components {
         UndoRequest: {
             /** Issue Id */
             issue_id: string;
+        };
+        /** UnitRelevanceItem */
+        UnitRelevanceItem: {
+            /**
+             * Answer
+             * @description Risposta completa del classificatore (scelta, confidenza, tutte le probabilità)
+             */
+            answer?: {
+                [key: string]: unknown;
+            } | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Content */
+            content: string;
+            /** Corrected At */
+            corrected_at?: string | null;
+            /** Corrected By */
+            corrected_by?: string | null;
+            /**
+             * Effective
+             * @enum {string}
+             */
+            effective: "didactic" | "organizational" | "no_content";
+            /** Error */
+            error?: string | null;
+            /**
+             * Label
+             * @description Etichetta RT assegnata dalla mappatura del classificatore
+             */
+            label?: string | null;
+            /** Override */
+            override?: ("didactic" | "organizational" | "no_content") | null;
+            /** Prediction */
+            prediction?: ("didactic" | "organizational" | "no_content") | null;
+            /** Prior Override */
+            prior_override?: ("didactic" | "organizational" | "no_content") | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Title */
+            title: string;
+            /** Unit Id */
+            unit_id: string;
+        };
+        /** UnitRelevanceOverride */
+        UnitRelevanceOverride: {
+            /** Category */
+            category?: ("didactic" | "organizational" | "no_content") | null;
+        };
+        /** UnitRelevanceOverview */
+        UnitRelevanceOverview: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "disabled" | "shadow" | "active";
+            summary?: components["schemas"]["UnitRelevanceSummary"];
+            /** Units */
+            units: components["schemas"]["UnitRelevanceItem"][];
+        };
+        /** UnitRelevanceRun */
+        UnitRelevanceRun: {
+            /**
+             * Force
+             * @description Riclassifica anche le unità già etichettate con il testo e la configurazione attuali
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Mock
+             * @description Modalità prova: nessuna chiamata al classificatore
+             * @default false
+             */
+            mock: boolean;
+        };
+        /** UnitRelevanceSummary */
+        UnitRelevanceSummary: {
+            /**
+             * By Label
+             * @description Unità classificate per etichetta del classificatore
+             */
+            by_label?: {
+                [key: string]: number;
+            };
+            /**
+             * By Outcome
+             * @description Unità classificate per classe RT
+             */
+            by_outcome?: {
+                [key: string]: number;
+            };
+            /**
+             * Classified
+             * @description Unità con una classificazione valida per il testo e la configurazione attuali
+             * @default 0
+             */
+            classified: number;
+            /**
+             * Corrected
+             * @description Unità corrette dall'utente
+             * @default 0
+             */
+            corrected: number;
+            /**
+             * Errors
+             * @description Unità la cui classificazione non è riuscita (passano comunque)
+             * @default 0
+             */
+            errors: number;
+            /**
+             * Excluded
+             * @description Unità la cui classe effettiva non è didattica
+             * @default 0
+             */
+            excluded: number;
+            /**
+             * Last Run At
+             * @description Ultima classificazione valida (ISO, UTC)
+             */
+            last_run_at?: string | null;
+            /** Last Run Mode */
+            last_run_mode?: string | null;
+            /**
+             * Missing
+             * @description Unità mai classificate
+             * @default 0
+             */
+            missing: number;
+            /**
+             * Model
+             * @description Modello dell'ultima classificazione, se registrato
+             */
+            model?: string | null;
+            /**
+             * Stale
+             * @description Unità classificate con un testo o una configurazione diversi
+             * @default 0
+             */
+            stale: number;
+            /**
+             * Total
+             * @description Unità della bozza
+             * @default 0
+             */
+            total: number;
+        };
+        /** UploadInventoryItem */
+        UploadInventoryItem: {
+            /** Files */
+            files: number;
+            /** Id */
+            id: string;
+            /** Job Ids */
+            job_ids: string[];
+            /** Modified At */
+            modified_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "referenced" | "orphan";
         };
         /** ValidationError */
         ValidationError: {
@@ -3289,6 +4557,73 @@ export interface operations {
             };
         };
     };
+    close_job_api_v1_jobs__job_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     stream_events_api_v1_jobs__job_id__events_get: {
         parameters: {
             query?: {
@@ -3638,6 +4973,75 @@ export interface operations {
             };
         };
     };
+    import_lesson_zips_api_v1_lessons_import_zip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_lesson_zips_api_v1_lessons_import_zip_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_lesson_api_v1_lessons__lesson_id__get: {
         parameters: {
             query?: never;
@@ -3658,6 +5062,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LessonDetail"];
                 };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_lesson_api_v1_lessons__lesson_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Autenticazione mancante o non valida */
             401: {
@@ -4222,6 +5692,145 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentEditResult"];
                 };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acquire_document_lease_api_v1_lessons__lesson_id__document_lease_post: {
+        parameters: {
+            query?: {
+                token?: string | null;
+                recover?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditLease"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    release_document_lease_api_v1_lessons__lesson_id__document_lease_delete: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Autenticazione mancante o non valida */
             401: {
@@ -4927,6 +6536,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhaseReport"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    validate_phase_api_v1_lessons__lesson_id__phases__phase__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                phase: "prepare" | "outline" | "rewrite" | "review" | "build";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhaseValidationResult"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -5764,6 +7442,560 @@ export interface operations {
             };
         };
     };
+    get_unit_relevance_api_v1_lessons__lesson_id__relevance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitRelevanceOverview"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_unit_relevance_api_v1_lessons__lesson_id__relevance_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitRelevanceRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_unit_relevance_api_v1_lessons__lesson_id__relevance__unit_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                unit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitRelevanceOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitRelevanceOverview"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    subject_state_api_v1_recall_subject_get: {
+        parameters: {
+            query: {
+                /** @description Materia, come nelle lezioni */
+                materia: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectRecallState"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    subject_end_api_v1_recall_subject_end_post: {
+        parameters: {
+            query: {
+                materia: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallSessionInfo"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    subject_generate_api_v1_recall_subject_generate_post: {
+        parameters: {
+            query: {
+                materia: string;
+                mock?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectGenerateAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    subject_next_api_v1_recall_subject_next_post: {
+        parameters: {
+            query: {
+                materia: string;
+                qtype?: "quiz" | "mirata" | "vasta";
+                order?: "alternato" | "sequenziale" | "casuale";
+                /** @description Domanda appena saltata, come <id lezione>:<id domanda> */
+                exclude?: string | null;
+                /** @description Rifornimento della riserva in mock */
+                mock?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectQuestion"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    subjects_api_v1_recall_subjects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectRecall"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     telegram_status_api_v1_recall_telegram_get: {
         parameters: {
             query?: never;
@@ -5967,6 +8199,73 @@ export interface operations {
             };
         };
     };
+    delete_secret_api_v1_secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretDeleted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_settings_api_v1_settings_get: {
         parameters: {
             query?: never;
@@ -6101,6 +8400,73 @@ export interface operations {
             };
         };
     };
+    delete_connection_api_v1_settings_connections__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     post_connection_model_api_v1_settings_connections__name__models_post: {
         parameters: {
             query?: never;
@@ -6172,7 +8538,72 @@ export interface operations {
             };
         };
     };
-    put_lessons_root_api_v1_settings_lessons_root_put: {
+    get_decision_model_api_v1_settings_decision_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionModelOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_decision_model_api_v1_settings_decision_model_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -6181,7 +8612,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LessonsRootIn"];
+                "application/json": components["schemas"]["DecisionModelIn"];
             };
         };
         responses: {
@@ -6191,7 +8622,145 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Settings"];
+                    "application/json": components["schemas"]["DecisionModelOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    probe_decision_model_api_v1_settings_decision_model_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionModelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionProbeOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_decision_model_api_v1_settings_decision_model_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionTestOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -6476,6 +9045,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_prompt_overrides_api_v1_settings_prompts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["PromptOverrideOut"];
+                    };
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_prompt_override_api_v1_settings_prompts__phase__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                phase: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromptOverrideIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -6929,6 +9636,75 @@ export interface operations {
             };
         };
     };
+    recreate_telegram_topic_api_v1_settings_telegram_recreate_topic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicRecreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     reveal_telegram_api_v1_settings_telegram_reveal_post: {
         parameters: {
             query?: never;
@@ -7018,6 +9794,473 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TopicTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_telegram_topic_archive_api_v1_settings_telegram_user_archives__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    complete_telegram_user_api_v1_settings_telegram_user_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramUserCompleteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revoke_telegram_user_api_v1_settings_telegram_user_session_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_telegram_user_api_v1_settings_telegram_user_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramUserStartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    telegram_user_status_api_v1_settings_telegram_user_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramUserStatusOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_telegram_user_topics_api_v1_settings_telegram_user_topics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramUserTopicsOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -7548,6 +10791,26 @@ export interface operations {
             };
         };
     };
+    system_info_api_v1_system_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
     daemon_status_api_v1_telegram_daemon_get: {
         parameters: {
             query?: never;
@@ -7762,6 +11025,138 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Notification"][];
                 };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_uploads_api_v1_uploads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadInventoryItem"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_orphan_upload_api_v1_uploads__upload_id__delete: {
+        parameters: {
+            query?: {
+                include_referenced?: boolean;
+            };
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Autenticazione mancante o non valida */
             401: {

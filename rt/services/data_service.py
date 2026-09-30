@@ -330,6 +330,28 @@ def auto_migrate(say: Callable[[str], None] = print) -> Optional[MigrationPlan]:
     return plan
 
 
+def _convert_folder_lessons(say: Callable[[str], None]) -> bool:
+    """Chi aggiorna dalla 3.x (o da una 4.0 con lezioni a cartelle) le ritrova nella web app:
+    le converte nel database e in media/ dopo un backup, come 'rt db migrate-storage'."""
+    from rt.core.config import load_config
+    from rt.db.engine import get_database
+    from rt.storage.migrate import folder_lessons, migrate_storage
+    db = get_database()
+    root = load_config().telegram.lessons_root
+    if db is None or not folder_lessons(db, root):
+        return True
+    say("📦 Converto le lezioni a cartelle nel database (con backup)...")
+    try:
+        report = migrate_storage(root, on_progress=say)
+    except Exception as exc:  # la conversione si può sempre rilanciare a mano
+        say(f"⚠️  Conversione non riuscita: {exc}. Rilancia con 'rt db migrate-storage'.")
+        return False
+    say(f"✅ Lezioni convertite: {len(report.migrated)}. Backup in {report.backup_dir}")
+    for err in report.errors:
+        say(f"  ⚠️  {err}")
+    return not report.errors
+
+
 def post_update(say: Callable[[str], None] = print,
                 confirm: Optional[Callable[[str], bool]] = None) -> bool:
     """Ultimo passo di 'rt -u' e dell'installer, con il codice nuovo: cartella dati (migrazione
@@ -353,11 +375,13 @@ def post_update(say: Callable[[str], None] = print,
     reset_database_cache()
     load_env_file(override=True)
     try:
-        ensure_database(on_progress=say)
+        ensure_database()
         say("🗄  Database aggiornato.")
     except DatabaseUnavailable as exc:
         say(f"❌ {exc}")
         ok = False
+    else:
+        ok = _convert_folder_lessons(say) and ok
     _offer_secrets_migration(say, confirm)
     if had_services:
         try:

@@ -1,13 +1,15 @@
-import { Plus } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { api, errorMessage, unwrap } from '@/api/client'
 import {
   isTerminal,
   useAddModel,
   useAssignPhase,
   useCreateConnection,
+  useDeleteConnection,
   useJob,
   useRoute,
   useSaveRoute,
@@ -19,14 +21,53 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
+import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
 import { PROVIDERS, ROUTE_ROLES, defaultBaseUrl, providerLabel, type Provider } from '@/lib/settings'
 import { Checkbox, Field, SaveFeedback, SecretBadge, Section } from './common'
 
 type Connection = Settings['connections'][number]
 type Phase = Settings['phases'][number]
+
+// La sezione "Classificatore" (playground delle domande e mappatura) vive in jev-playground.tsx.
+export { DecisionModelSection } from './jev-playground'
+
+export function PromptEditorSection() {
+  const client = useQueryClient()
+  const prompts = useQuery({ queryKey: ['prompt-overrides'], queryFn: () => unwrap(api.GET('/api/v1/settings/prompts')) })
+  const [phase, setPhase] = useState<'outline' | 'rewrite' | 'review' | 'image_description' | 'recall'>('outline')
+  const [drafts, setDrafts] = useState<Partial<Record<typeof phase, string>>>({})
+  const instruction = drafts[phase] ?? prompts.data?.[phase]?.instruction ?? ''
+  const save = useMutation({ mutationFn: () => unwrap(api.PUT('/api/v1/settings/prompts/{phase}', {
+    params: { path: { phase } }, body: { instruction },
+  })), onSuccess: () => { void client.invalidateQueries({ queryKey: ['prompt-overrides'] }) } })
+  return <Section id="prompt" title="Istruzioni dei prompt"
+    description="Ciò che scrivi si aggiunge all'istruzione predefinita della fase, non la sostituisce: il predefinito, il contratto strutturato e la validazione di RT restano attivi. Svuota la casella e salva per usare solo il predefinito.">
+    <Field label="Fase" htmlFor="prompt-phase"><Select id="prompt-phase" value={phase} onChange={(e) => setPhase(e.target.value as typeof phase)}>
+      <option value="outline">Scaletta</option><option value="rewrite">Rielaborazione</option><option value="review">Revisione</option>
+      <option value="image_description">Descrizione immagini</option><option value="recall">Recall</option>
+    </Select></Field>
+    <Field label="Istruzioni aggiuntive (in grigio il predefinito, sempre applicato)" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
+      className="w-full rounded border bg-background p-2 font-mono text-xs placeholder:text-muted-foreground/70" rows={16} maxLength={20000}
+      placeholder={prompts.data?.[phase]?.default ?? ''}
+      value={instruction} onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))} /></Field>
+    <Button disabled={save.isPending || prompts.isPending} onClick={() => save.mutate()}>Salva istruzioni</Button>
+    {save.isSuccess && <p role="status" className="text-xs text-success">Istruzioni salvate.</p>}
+    {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
+  </Section>
+}
+
+const PHASE_HINTS: Record<string, string> = {
+  outline: 'Organizza i segmenti temporali in una scaletta verificabile.',
+  rewrite: 'Rielabora le unità conservando riferimenti e provenienza.',
+  review: 'Cerca errori scientifici nel testo rielaborato.',
+  recall: 'Genera domande per il ripasso attivo.',
+  image_description: 'Descrive slide e immagini. Il modello selezionato deve supportare Vision.',
+  image_unit_judge: 'Associa le immagini alle unità della lezione.',
+}
 
 // ------------------------------------------------------------------ modelli per fase
 
@@ -75,7 +116,7 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       aria-label={`Fase ${phase.label}`}
     >
       <div className="flex flex-col gap-1 self-center">
-        <span className="text-sm font-semibold">{phase.label}</span>
+        <span className="text-sm font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
         {phase.model ? (
           <span className="text-[11px] text-muted-foreground" data-testid="phase-saved">
             {phase.connection} · {phase.model}
@@ -121,7 +162,7 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
         Salva
       </Button>
-      <ModelTest connection={connection} model={model} label={phase.label} className="contents" resultClassName="sm:col-span-5" />
+      <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />
       {assign.isError && (
         <Alert tone="danger" className="sm:col-span-5">
           {errorMessage(assign.error)}
@@ -140,18 +181,20 @@ export function ModelTest({
   connection,
   model,
   label,
+  vision = false,
   className,
   resultClassName,
 }: {
   connection: string
   model: string
   label?: string
+  vision?: boolean
   className?: string
   resultClassName?: string
 }) {
   const test = useTestModel()
   const tested = test.variables
-  const current = !!tested && tested.connection === connection && tested.model === model.trim()
+  const current = !!tested && tested.connection === connection && tested.model === model.trim() && !!tested.vision === vision
   let outcome = null
   if (current && test.isPending) {
     outcome = (
@@ -180,7 +223,7 @@ export function ModelTest({
         variant="outline"
         aria-label={label ? `Prova il modello di ${label}` : 'Prova il modello'}
         disabled={!connection || !model.trim() || (current && test.isPending)}
-        onClick={() => test.mutate({ connection, model: model.trim() })}
+        onClick={() => test.mutate({ connection, model: model.trim(), vision })}
       >
         Prova
       </Button>
@@ -207,9 +250,27 @@ export function ConnectionsSection({ settings }: { settings: Settings }) {
 function ConnectionItem({ connection }: { connection: Connection }) {
   const addModel = useAddModel()
   const [model, setModel] = useState('')
+  const optionDown = useOptionKey()
+  const deletion = useDeleteConnection()
+  const [confirm, setConfirm] = useState(false)
+  const keys = connection.credentials.filter((c) => c.set).length
   return (
-    <div className="rounded-lg border p-4" data-testid="connection" data-name={connection.name} aria-label={`Connessione ${connection.name}`} role="group">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <div className="group relative rounded-lg border p-4" data-testid="connection" data-name={connection.name} aria-label={`Connessione ${connection.name}`} role="group">
+      <Button type="button" variant="ghost" size="icon" aria-label={`Elimina la connessione ${connection.name}`}
+        className={`${optionRevealClass(optionDown)} absolute right-2 top-2 text-danger`}
+        onClick={() => { deletion.reset(); setConfirm(true) }}><Trash2 /></Button>
+      <ConfirmDialog open={confirm} title="Elimina connessione" confirmLabel="Elimina"
+        confirmDisabled={deletion.isPending}
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => deletion.mutate(connection.name, { onSuccess: () => setConfirm(false) })}>
+        <p>
+          Eliminare la connessione «{connection.name}» con i suoi modelli
+          {keys > 0 ? ` e ${keys === 1 ? 'la sua chiave' : `le sue ${keys} chiavi`} (dall'archivio di RT e da .env)` : ''}?
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">Le fasi e le route che la usano vanno prima assegnate a un'altra connessione.</p>
+        {deletion.isError && <Alert tone="danger" className="mt-3">{errorMessage(deletion.error)}</Alert>}
+      </ConfirmDialog>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-10">
         <h3 className="text-sm font-bold">{connection.name}</h3>
         <span className="text-xs text-muted-foreground">
           {providerLabel(connection.provider)} · {connection.base_url}
@@ -350,7 +411,7 @@ export function RoutesSection({ settings }: { settings: Settings }) {
     <Section
       id="route"
       title="Route avanzate"
-      description="Modello primario, secondario e di ripiego per ogni errore. Il primario è lo stesso dei modelli per fase."
+      description="Il primario è lo stesso dei modelli per fase. Il secondario si usa quando il primario fallisce (dopo aver provato tutte le chiavi in rotazione)."
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Fase" htmlFor="route-job">
@@ -449,8 +510,9 @@ function RouteForm({ route, settings, save }: { route: RouteOut; settings: Setti
 
 // ------------------------------------------------------------------ prova di una chiave
 
-/** Pulsante "Prova": accoda il job credential_test e ne mostra l'esito (mai la chiave). */
-export function CredentialTest({ credential, settings }: { credential: string; settings: Settings }) {
+/** Pulsante "Prova": accoda il job credential_test e ne mostra l'esito (mai la chiave).
+ * `action` prende il posto di Prova (Chiavi: "Elimina" mentre è premuto Option). */
+export function CredentialTest({ credential, settings, action }: { credential: string; settings: Settings; action?: ReactNode }) {
   const connection = settings.connections.find((c) => c.credentials.some((k) => k.name === credential))
   const provider = settings.credentials.find((c) => c.name === credential)?.provider ?? connection?.provider
   const assigned = settings.phases.find((p) => p.connection === connection?.name)?.model
@@ -500,9 +562,11 @@ export function CredentialTest({ credential, settings }: { credential: string; s
             ))}
           </datalist>
         </div>
-        <Button type="submit" variant="outline" disabled={!model.trim() || test.isPending || (!!test.data && !isTerminal(state))}>
-          Prova
-        </Button>
+        {action ?? (
+          <Button type="submit" variant="outline" disabled={!model.trim() || test.isPending || (!!test.data && !isTerminal(state))}>
+            Prova
+          </Button>
+        )}
       </form>
       {outcome}
     </div>

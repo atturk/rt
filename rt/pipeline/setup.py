@@ -32,6 +32,27 @@ DEFAULT_MODEL = "parakeet-v3"
 SUPPORTED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4b", ".wma"}
 
 
+def merge_audio_for_transcription(audios: List[str], output: str) -> None:
+    """Normalize and join clips in their supplied order on one playback time line."""
+    if len(audios) < 2:
+        raise ValueError("Servono almeno due file audio")
+    if not shutil.which("ffmpeg"):
+        raise SetupError("Per importare più audio installa ffmpeg e riprova.")
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+    for audio in audios:
+        command.extend(["-i", os.path.abspath(audio)])
+    filters = ";".join(f"[{i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono[a{i}]"
+                       for i in range(len(audios)))
+    filters += ";" + "".join(f"[a{i}]" for i in range(len(audios))) + f"concat=n={len(audios)}:v=0:a=1[out]"
+    # AAC in MP4 (.m4a): ~45 MB per ora invece dei ~345 di un WAV a 48 kHz, riproducibile nei
+    # browser (faststart per lo streaming) e letto da macparakeet come gli .m4a registrati.
+    command.extend(["-filter_complex", filters, "-map", "[out]", "-c:a", "aac", "-b:a", "96k",
+                    "-movflags", "+faststart", output])
+    result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
+    if result.returncode or not os.path.isfile(output) or os.path.getsize(output) == 0:
+        raise SetupError("Impossibile unire i file audio: controlla che siano leggibili e riprova.")
+
+
 class SetupError(Exception):
     """Eccezione bloccante per errori irreversibili durante la fase di setup.
 
@@ -436,13 +457,9 @@ def run_setup(
                 f"La directory di destinazione specificata '{clean_dest}' è un file, non una directory."
             )
         else:
+            # La cartella si crea solo per una lezione a cartelle (più sotto): per una lezione
+            # nel database è solo il prefisso del percorso e può non esistere.
             default_base = clean_dest
-            try:
-                fs.makedirs(default_base, exist_ok=True)
-            except OSError as e:
-                raise SetupError(
-                    f"Impossibile creare la directory di destinazione '{default_base}': {e}"
-                )
     else:
         default_base = audio_dir if (audio_dir and fs.isdir(audio_dir)) else os.getcwd()
 
@@ -478,7 +495,10 @@ def run_setup(
         if on_progress:
             on_progress(f"✔ Lezione nel database: {folder_name}")
     else:
-        fs.makedirs(target_folder_path, exist_ok=True)
+        try:
+            fs.makedirs(target_folder_path, exist_ok=True)
+        except OSError as e:
+            raise SetupError(f"Impossibile creare la cartella della lezione '{target_folder_path}': {e}")
         if on_progress:
             on_progress(f"✔ Cartella lezione: {target_folder_path}")
     now_iso = datetime.datetime.now().isoformat()
@@ -487,6 +507,7 @@ def run_setup(
     json_path = os.path.join(target_folder_path, "trascritto grezzo.json")
     md_path = os.path.join(target_folder_path, "trascritto grezzo.md")
 
+    merged_audio = None
     if mock_asr:
         # Mock ASR deterministico offline
         json_path, md_path = generate_deterministic_mock_asr(
@@ -527,7 +548,12 @@ def run_setup(
 
         temp_dir = tempfile.mkdtemp(prefix="rt_stt_")
         try:
-            for audio_idx, aud_file in enumerate(cleaned_audios, start=1):
+            if len(cleaned_audios) > 1:
+                # Both STT and playback use the same file; trailing silence stays on the timeline.
+                merged_audio = os.path.join(temp_dir, "audio completo.m4a")
+                merge_audio_for_transcription(cleaned_audios, merged_audio)
+                primary_audio_name = "audio completo.m4a"
+            for audio_idx, aud_file in enumerate([merged_audio] if merged_audio else cleaned_audios, start=1):
                 aud_abs = os.path.abspath(aud_file)
                 temp_audio_dir = os.path.join(temp_dir, f"audio_{audio_idx}")
                 fs.makedirs(temp_audio_dir, exist_ok=True)
@@ -601,6 +627,8 @@ def run_setup(
                     combined_text_parts.append(raw_txt)
 
                 cumulative_offset_ms = max_seg_end
+            if merged_audio:
+                fs.copy2(merged_audio, os.path.join(target_folder_path, primary_audio_name))
         finally:
             fs.rmtree(temp_dir, ignore_errors=True)
 

@@ -202,6 +202,26 @@ def test_loop_protection_prevents_routing_cycles(monkeypatch):
     assert next_route is None
 
 
+def test_secondary_used_after_round_robin_pool(monkeypatch):
+    """Con la rotazione la secondaria esplicita si prova dopo tutte le chiavi in rotazione."""
+    client = LLMClient(force_mock=False)
+    client.config.jobs["outline"] = JobRoutingConfig(
+        round_robin=True,
+        primary_routes=[
+            RouteConfig(route_id="k1", provider="google", credential="google_1", model="gemini-2.0-flash"),
+            RouteConfig(route_id="k2", provider="google", credential="google_2", model="gemini-2.0-flash"),
+        ],
+        secondary=RouteConfig(route_id="sec", provider="openrouter", credential="openrouter", model="x/y"),
+    )
+    fail = RateLimitFailure("429 Too Many Requests")
+    route = client.router.select_fallback_route("outline", failure=fail, visited_route_ids={"k1"}, current_attempt=1)
+    assert route.route_id == "k2"
+    route = client.router.select_fallback_route("outline", failure=fail, visited_route_ids={"k1", "k2"}, current_attempt=2)
+    assert route.route_id == "sec"
+    assert client.router.select_fallback_route(
+        "outline", failure=fail, visited_route_ids={"k1", "k2", "sec"}, current_attempt=3) is None
+
+
 # ======================================================================
 # 3. LE 4 CLASSI DI FAILOVER OBBLIGATORIE (SCENARI A, B, C, D)
 # ======================================================================
@@ -756,9 +776,9 @@ def test_round_robin_pool_exhaustion_before_dedicated_fallback(monkeypatch):
     Verifica che con un pool di 3 route round-robin, un 429 provi tutte le route del pool
     prima di scalare alla route di fallback dedicata (OpenRouter).
     """
-    monkeypatch.setenv("GOOGLE_API_KEY_1", "key-g1")
-    monkeypatch.setenv("GOOGLE_API_KEY_2", "key-g2")
-    monkeypatch.setenv("GOOGLE_API_KEY_3", "key-g3")
+    for i in range(1, 4):  # registrate qui: il test non dipende da quelli che lo precedono
+        monkeypatch.setenv(f"GOOGLE_API_KEY_{i}", f"key-g{i}")
+        GLOBAL_CREDENTIALS.register(CredentialRef(name=f"google_{i}", provider="google", env_var=f"GOOGLE_API_KEY_{i}"))
     monkeypatch.setenv("OPENROUTER_API_KEY", "key-openrouter")
     GLOBAL_CREDENTIALS.reload_from_env()
 

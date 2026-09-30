@@ -38,6 +38,12 @@ def worker_available(job_type: str, payload: Optional[Dict[str, Any]] = None,
 
 def enqueue_job(job_type: str, lesson_dir: Optional[str], payload: Dict[str, Any],
                 actor: str = "api") -> Dict[str, Any]:
+    if lesson_dir:
+        from rt.services.lesson_service import lesson_id_for_dir
+        from rt.services.document_edit_lease import assert_editable
+        lesson_id = lesson_id_for_dir(lesson_dir)
+        if lesson_id is not None:
+            assert_editable(lesson_id)
     return job_accepted(queue().enqueue(job_type, lesson_dir, payload, created_by=actor))
 
 
@@ -62,4 +68,3 @@ def ensure_no_running_job(lesson_dir: str) -> None:
     if busy:
         raise ApiError(409, "lesson_busy", "Un job sta lavorando su questa lezione: riprova quando ha finito.",
                        {"job_id": busy[0].id, "type": busy[0].type})
-

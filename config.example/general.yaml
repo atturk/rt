@@ -16,8 +16,9 @@ review:
   asr_statistical_floor: 0.35
 
 # Pre-filtro Jev (System One di typesafe.ai) davanti alla critica scientifica LLM: disabilitato
-# per default. Usa la stessa credenziale "openrouter" già configurata qui sotto, nessuna chiave
-# separata necessaria. Soglie provvisorie: valuta con 'rt review --shadow-jev' prima di fidartene.
+# per default. "openrouter" indica la chiave OpenRouter configurata (la prima connessione
+# OpenRouter, se il nome non corrisponde a una credenziale): senza, Jev resta inattivo.
+# Soglie provvisorie: valuta con 'rt review --shadow-jev' prima di fidartene.
 jev:
   enabled: false
   model: "typesafe/jev-1.13"
@@ -25,10 +26,9 @@ jev:
   task_a_skip_confidence_threshold: 0.85
   task_b_fabrication_threshold: 0.80
 
-credentials:
-  - name: "openrouter"
-    provider: "openrouter"
-    env_var: "OPENROUTER_API_KEY"
+# Nessuna credenziale preconfigurata: una nuova installazione parte senza connessioni.
+# Aggiungile dalla web (Impostazioni › Connessioni) o con 'rt configure'.
+credentials: []
 
 telegram:
   default_channel: "terminal"

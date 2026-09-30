@@ -141,6 +141,7 @@ class TestStartRecallViaTelegram:
              patch("rt.telegram.client.send_poll", side_effect=fake_send_poll), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             cfg_obj.telegram.recall.reserve_targets = {"mirata": 2, "quiz": 2, "vasta": 1}
@@ -181,6 +182,7 @@ class TestStartRecallViaTelegram:
              patch("rt.telegram.recall_channel.send_current_recall_question"), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             mock_cfg.return_value = cfg_obj
@@ -208,6 +210,7 @@ class TestStartRecallViaTelegram:
              patch("rt.telegram.recall_channel.send_current_recall_question"), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             mock_cfg.return_value = cfg_obj
@@ -234,6 +237,7 @@ class TestStartRecallViaTelegram:
              patch("rt.telegram.client.send_poll", return_value={"message_id": 500, "poll": {"id": "POLLZ"}}), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             cfg_obj.telegram.recall.reserve_targets = {"mirata": 1, "quiz": 1, "vasta": 1}
@@ -265,6 +269,7 @@ class TestStartRecallViaTelegram:
              patch("rt.telegram.client.send_poll", return_value={"message_id": 1, "poll": {"id": "POLLX"}}), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             cfg_obj.telegram.recall.reserve_targets = {"mirata": 1, "quiz": 1, "vasta": 1}
@@ -312,6 +317,7 @@ class TestSendCurrentRecallQuestion:
              patch("rt.telegram.client.send_message", side_effect=fake_send_message), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             cfg_obj.telegram.recall.refill_threshold = 5  # forza il rifornimento (1 < 5)
@@ -368,6 +374,7 @@ class TestSendCurrentRecallQuestion:
              patch("rt.telegram.client.send_poll", side_effect=fake_send_poll), \
              patch("rt.core.config.load_config") as mock_cfg:
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
             cfg_obj.telegram.recall.refill_threshold = 0
@@ -997,6 +1004,7 @@ class TestStileCommand:
 class TestRecallCommand:
     def _mock_cfg(self, topics=None):
         cfg_obj = MagicMock()
+        cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
         cfg_obj.telegram.topics = topics or {}
         return cfg_obj
 
@@ -1078,6 +1086,7 @@ class TestRecallTerminalSession:
              patch("rt.core.config.load_config") as mock_cfg:
             mock_stdin.isatty.return_value = True
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.recall.refill_threshold = 0
             cfg_obj.telegram.recall.refill_batch_size = 1
@@ -1104,6 +1113,7 @@ class TestRecallTerminalSession:
              patch("rt.core.config.load_config") as mock_cfg:
             mock_stdin.isatty.return_value = True
             cfg_obj = MagicMock()
+            cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.recall.refill_threshold = 0
             cfg_obj.telegram.recall.refill_batch_size = 1

@@ -21,11 +21,6 @@ export function defaultBaseUrl(provider: string): string {
 export const ROUTE_ROLES = [
   { value: 'primary', label: 'Primaria' },
   { value: 'secondary', label: 'Secondaria' },
-  { value: 'timeout', label: 'Fallback: timeout' },
-  { value: 'rate_limit', label: 'Fallback: limite di richieste' },
-  { value: 'safety', label: 'Fallback: filtro di sicurezza' },
-  { value: 'auth', label: 'Fallback: errore di autenticazione' },
-  { value: 'generic', label: 'Fallback: altri errori' },
 ] as const
 
 /** Segreti fuori dalle credenziali, come EXTRA_SECRET_NAMES in rt/services/secrets_service.py. */

@@ -43,7 +43,8 @@ FILE_FORMAT_VERSION = 1
 
 # Segreti che non passano da 'credentials:' in config/general.yaml ma vanno comunque trattati
 # come tali (migrazione, redazione).
-EXTRA_SECRET_NAMES = ("RT_TELEGRAM_BOT_TOKEN", "RT_STT_API_KEY")
+EXTRA_SECRET_NAMES = ("RT_TELEGRAM_BOT_TOKEN", "RT_STT_API_KEY", "RT_TELEGRAM_USER_API_HASH",
+                      "RT_TELEGRAM_USER_SESSION")
 
 
 class SecretStoreError(Exception):
@@ -415,6 +416,13 @@ def source_of(name: str) -> str:
     if injected is not None and os.environ.get(name) == injected:
         return "store"
     return "env" if name in os.environ else "missing"
+
+
+def forget_injected(name: str) -> None:
+    """Dopo l'eliminazione di un segreto: il valore non va più redatto né riapplicato."""
+    with _lock:
+        _injected.pop(name, None)
+        _cache.clear()
 
 
 def _reset_for_tests() -> None:

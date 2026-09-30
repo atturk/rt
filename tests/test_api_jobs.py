@@ -39,11 +39,12 @@ def job(client, job_id):
     return client.get(f"/api/v1/jobs/{job_id}").json()
 
 
-def upload(client, run=False, mock=True):
+def upload(client, run=False, mock=True, with_review=True):
     with open(AUDIO_FIXTURE, "rb") as f:
         return client.post("/api/v1/lessons", files={"audio": ("lezione.wav", f, "audio/wav")},
                            data={"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi",
-                                 "mock": str(mock).lower(), "run": str(run).lower()})
+                                 "mock": str(mock).lower(), "run": str(run).lower(),
+                                 "with_review": str(with_review).lower()})
 
 
 def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker):
@@ -58,7 +59,7 @@ def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker
     assert lesson_id is not None
     assert not os.listdir(os.path.join(ws, ".rt", "uploads"))  # upload temporaneo rimosso
 
-    res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False})
+    res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False, "with_review": True})
     assert res.status_code == 202
     run_id = res.json()["job_id"]
     drain(worker)
@@ -89,6 +90,35 @@ def test_end_to_end_upload_outline_review_decisions_build(api_client, ws, worker
     assert api_client.get(f"/api/v1/lessons/{lesson_id}/document").json()["final"] is True
 
 
+def test_fresh_config_without_lessons_root_creates_and_lists_lessons(api_client, tmp_path, monkeypatch, rt_db, worker):
+    """Installazione nuova (4.x): nessun telegram.lessons_root, che non serve:
+    la lezione va nel database con prefisso <cartella dati>/lessons, cartella
+    che non serve su disco."""
+    isolated_workspace(tmp_path, monkeypatch, lessons_root=False)
+    (tmp_path / "work" / "config" / "general.yaml").write_text(
+        "telegram:\n  default_channel: terminal\n", encoding="utf-8")
+    data_dir = tmp_path / "dati"
+    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(data_dir))
+    from rt.core.config import load_config
+    assert load_config().telegram.lessons_root is None
+
+    res = upload(api_client)
+    assert res.status_code == 202, res.text
+    drain(worker)
+    ingest = job(api_client, res.json()["job_id"])
+    assert ingest["state"] == "succeeded", ingest
+    listed = api_client.get("/api/v1/lessons").json()
+    items = listed["items"] if isinstance(listed, dict) else listed
+    assert [item["id"] for item in items] == [ingest["lesson_id"]]
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    with session_scope(rt_db) as session:
+        path = session.get(Lesson, ingest["lesson_id"]).path
+    assert os.path.dirname(path) == os.path.join(str(data_dir), "lessons")
+    assert not os.path.exists(os.path.join(str(data_dir), "lessons"))
+    assert not os.listdir(os.path.join(str(data_dir), "uploads"))  # upload temporaneo rimosso
+
+
 def test_upload_with_run_runs_whole_pipeline(api_client, ws, worker):
     accepted = upload(api_client, run=True).json()
     assert accepted["type"] == "run_pipeline"
@@ -106,6 +136,19 @@ def test_upload_with_run_runs_whole_pipeline(api_client, ws, worker):
     assert resumed["lesson_id"] == waiting["lesson_id"]
 
 
+def test_pipeline_defaults_to_build_without_review(api_client, lesson, worker):
+    lesson_id, _ = lesson
+    accepted = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                               json={"mock": True, "rename": False}).json()
+    drain(worker)
+    assert api_client.post(f"/api/v1/lessons/{lesson_id}/outline/approve").status_code == 200
+    drain(worker)
+    assert job(api_client, accepted["job_id"])["state"] == "succeeded"
+    phases = api_client.get(f"/api/v1/lessons/{lesson_id}").json()["phases"]
+    assert phases["build"] == "VALID"
+    assert phases["review"] != "VALID"
+
+
 def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
     res = api_client.post("/api/v1/lessons", files={"audio": ("note.txt", b"ciao", "text/plain")},
                           data={"date": "2026-09-05", "materia": "X"})
@@ -119,6 +162,16 @@ def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
                               data={"date": "2026-09-05", "materia": "X"})
     assert res.status_code == 413
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []  # niente file lasciati a metà
+
+
+def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
+    res = api_client.post("/api/v1/lessons", files=[
+        ("audio", ("same.wav", b"first", "audio/wav")),
+        ("audio", ("same.wav", b"second", "audio/wav")),
+    ], data={"date": "2026-09-05", "materia": "X"})
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "duplicate_filename"
+    assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
 
 
 @pytest.fixture
@@ -162,6 +215,63 @@ def test_cancel_queued_job(api_client, lesson):
     assert api_client.get("/api/v1/jobs/nope").status_code == 404
 
 
+def test_close_job_waiting_for_review_keeps_issues_for_later(api_client, lesson, worker):
+    """Una pipeline ferma sulle issue della review si chiude senza perdere nulla: il job finisce
+    con il messaggio, le issue restano da valutare in Revisione e deciderle non la fa ripartire."""
+    lesson_id, _ = lesson
+    run_id = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                             json={"mock": True, "rename": False, "with_review": True}).json()["job_id"]
+    drain(worker)
+    assert api_client.post(f"/api/v1/lessons/{lesson_id}/outline/approve").status_code == 200
+    drain(worker)
+    assert job(api_client, run_id)["decision"]["kind"] == "science_issue"
+    pending_before = api_client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["pending"]
+    assert pending_before > 0
+
+    res = api_client.post(f"/api/v1/jobs/{run_id}/close")
+    assert res.status_code == 200, res.text
+    closed = res.json()
+    assert closed["state"] == "succeeded" and closed["decision"] is None
+    assert closed["result"]["closed"] == {
+        "kind": "science_issue", "message": "Chiuso: le issue restano da valutare nella schermata Revisione"}
+    assert closed["result"]["phase_results"]  # il risultato delle fasi fatte resta
+    events = api_client.get(f"/api/v1/jobs/{run_id}/events/list").json()
+    assert events[-1]["type"] == "job_finished" and events[-1]["payload"]["closed"] is True
+
+    detail = api_client.get(f"/api/v1/lessons/{lesson_id}").json()
+    assert detail["pending_issues"] == pending_before
+    assert detail["state"] == "in_attesa_revisione_umana"
+    assert detail["phases"]["review"] == "VALID" and detail["phases"]["build"] == "MISSING"
+
+    # Decidere dopo dalla Revisione non riprende il job chiuso: il build si avvia a mano.
+    for item in api_client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["items"]:
+        api_client.post(f"/api/v1/lessons/{lesson_id}/issues/{item['issue']['id']}/decision",
+                        json={"decision": "rejected" if not item["issue"]["type"].startswith("ERR_ASR") else "accepted"})
+    assert job(api_client, run_id)["state"] == "succeeded"
+    assert drain(worker) == 0
+    assert api_client.get(f"/api/v1/lessons/{lesson_id}").json()["state"] == "pronto_per_build"
+
+    # Chiuso una volta, non si chiude di nuovo.
+    res = api_client.post(f"/api/v1/jobs/{run_id}/close")
+    assert res.status_code == 409 and res.json()["error"]["code"] == "job_not_closable"
+
+
+def test_close_refuses_jobs_not_waiting(api_client, lesson, rt_db):
+    lesson_id, _ = lesson
+    job_id = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True}).json()["job_id"]
+    res = api_client.post(f"/api/v1/jobs/{job_id}/close")
+    assert res.status_code == 409 and res.json()["error"]["code"] == "job_not_closable"
+    assert job(api_client, job_id)["state"] == "queued"
+    assert api_client.post("/api/v1/jobs/nope/close").status_code == 404
+    # Dati della lezione mancanti (import senza metadati): si decide solo lì, si può solo annullare.
+    q = DbJobQueue(rt_db)
+    api_client.post(f"/api/v1/jobs/{job_id}/cancel")
+    setup = q.enqueue("ingest_audio", None, {})
+    q.claim("w")
+    q.finish(setup, "w", "waiting_for_decision", decision={"kind": "setup_metadata"})
+    assert api_client.post(f"/api/v1/jobs/{setup}/close").status_code == 409
+
+
 def test_decisions_refused_while_job_runs(api_client, lesson, rt_db):
     lesson_id, lesson_dir = lesson
     q = DbJobQueue(rt_db)
@@ -176,7 +286,7 @@ def test_decisions_refused_while_job_runs(api_client, lesson, rt_db):
 
 def test_decision_undo_and_errors(api_client, lesson, worker):
     lesson_id, lesson_dir = lesson
-    api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True, "rename": False})
+    api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True, "rename": False, "with_review": True})
     drain(worker)
     api_client.post(f"/api/v1/lessons/{lesson_id}/outline/approve")
     drain(worker)

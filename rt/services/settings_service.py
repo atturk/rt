@@ -76,7 +76,9 @@ def save_credential(project_root: Path, provider: str, name: str, api_key: str) 
     return name
 
 
-ROUTE_ROLES = ("primary", "secondary", "timeout", "rate_limit", "safety", "auth", "generic")
+# Ruoli modificabili dalla web. I ripieghi per tipo di errore (fallback.timeout, ...) restano
+# supportati dal motore per chi li scrive a mano nei YAML, ma la web non li espone più.
+ROUTE_ROLES = ("primary", "secondary")
 
 
 def _legacy_recall_path(paths: dict[str, str]) -> Path | None:
@@ -259,7 +261,7 @@ def save_worker_concurrency(project_root: Path, concurrency: int) -> str:
 
 
 # Avvisi della web che si possono nascondere con "Non mostrare più" (salvati in ui.dismissed_notices).
-NOTICES = ("preview_edit_beta", "preview_edit_issues")
+NOTICES = ("preview_edit_beta", "preview_edit_issues", "setup_wizard")
 
 
 def save_notice(project_root: Path, notice: str, dismissed: bool) -> str:
@@ -277,7 +279,8 @@ def save_notice(project_root: Path, notice: str, dismissed: bool) -> str:
 
 
 def save_lessons_root(raw_path: str, project_root: Path) -> str:
-    """Imposta solo telegram.lessons_root e crea la cartella se necessario."""
+    """Imposta solo telegram.lessons_root e crea la cartella se necessario (solo web legacy:
+    dalla 4.x le lezioni stanno nel database e la cartella non si configura più)."""
     if not raw_path or not raw_path.strip():
         raise ValueError("Inserisci il percorso della cartella delle lezioni.")
     entered = Path(raw_path.strip()).expanduser()
@@ -411,7 +414,6 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         connection, model = phase_selection(project_root, job, all_connections)
         phases.append({"job": job, "label": label, "connection": connection, "model": model})
     return {
-        "lessons_root": cfg.telegram.lessons_root,
         "transcription": {
             "engine": cfg.transcription.engine, "base_url": cfg.transcription.base_url,
             "model": cfg.transcription.model, "api_key_set": secret_is_set("RT_STT_API_KEY"),
@@ -436,8 +438,9 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "web_search": {"searxng_base_url": cfg.searxng_base_url or None},
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
-        "setup_required": not (cfg.telegram.lessons_root
-                               and os.path.isdir(os.path.expanduser(cfg.telegram.lessons_root))),
+        # Primo avvio: senza connessioni non gira niente, la SPA porta alla configurazione
+        # guidata finché non se ne crea una o si sceglie "Configura dopo" (avviso setup_wizard).
+        "setup_required": not connections and "setup_wizard" not in cfg.ui.dismissed_notices,
     }
 
 
@@ -503,3 +506,12 @@ def save_secret_by_name(project_root: Path, name: str, value: str) -> str:
         raise KeyError(name)
     _validate_secret(value.strip())
     return config_service.set_secret(name, value.strip(), path=_env_path(project_root))
+
+
+def delete_secret_by_name(project_root: Path, name: str) -> list[str]:
+    """Elimina un segreto dichiarato (archivio cifrato, .env, ambiente del processo), come
+    'rt secrets unset'. La credenziale resta dichiarata: la chiave risulta "Mancante"."""
+    from rt.services.secrets_service import secret_names_from_config
+    if name not in secret_names_from_config(general_config_path(project_root)):
+        raise KeyError(name)
+    return config_service.unset_secret(name, path=_env_path(project_root))

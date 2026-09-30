@@ -20,7 +20,7 @@ export const routes: RouteObject[] = [
   {
     path: '/',
     element: <Layout areas={areas} />,
-    // SetupGate porta alla configurazione guidata finché la cartella dati non è impostata (RT4-F5).
+    // SetupGate porta alla configurazione guidata se il backend segnala setup_required (RT4-F5).
     children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }],
   },
   { path: '*', element: <NotFound /> },

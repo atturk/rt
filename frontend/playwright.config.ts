@@ -8,6 +8,13 @@ const PYTHON = process.env.RT_PYTHON ?? 'python3'
 
 export default defineConfig({
   testDir: './e2e',
+  // I test delle impostazioni cambiano il modello della rielaborazione e invalidano le
+  // lezioni preparate. Recall e immagini partono con un server di prova indipendente.
+  ...(process.env.RT_E2E_GROUP === 'recall-images'
+    ? { testMatch: '**/recall-images-bot.spec.ts' }
+    : process.env.RT_E2E_GROUP === 'other'
+      ? { testIgnore: '**/recall-images-bot.spec.ts' }
+      : {}),
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

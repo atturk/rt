@@ -8,15 +8,19 @@ Comandi disponibili:
   rt prepare            <cartella>
   rt outline            <cartella> [--mock]
   rt rewrite            <cartella> [--unit <id>] [--mock]
-  rt review             <cartella> [--mock]
+  rt review             <cartella> [--unit <id>]... [--mock]
   rt recall             <cartella>
   rt build              <cartella> [--no-rename] (rinomina la cartella col titolo finale, attivo di default)
   rt status             <cartella>
   rt telegram-daemon    [--state-dir <path>]
+  rt import             <archivio.zip>... (export completi fatti con 'rt export --all --zip')
+  rt delete             <cartella> [--yes]
+  rt relevance          <cartella> [--all] [--mock] (etichette JEV delle unità)
 
 Comandi diagnostici (uso avanzato):
   rt validate-outline   <cartella>
   rt validate-draft     <cartella>
+  rt validate-phase     <cartella> <fase> (segna la fase valida senza rieseguirla)
 """
 
 import sys
@@ -198,6 +202,10 @@ def cmd_review(args):
         run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
         return
 
+    if isinstance(getattr(args, "unit", None), list) and args.unit:
+        _review_units(args)
+        return
+
     from rt.core.idempotency import check_phase_status, PhaseStatus
     try:
         phase_status, reason = check_phase_status(args.lesson_dir, "review")
@@ -248,6 +256,38 @@ def cmd_review(args):
     history = getattr(args, "history", False)
     run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
 
+
+
+def _review_units(args) -> None:
+    """'rt review --unit': rivede solo le unità indicate (come il job review_unit della web);
+    le issue delle altre unità restano con i loro id e le loro decisioni."""
+    from rt.pipeline.review import run_review_unit
+    if not getattr(args, "mock", False):
+        _ensure_config_ready(["review"])
+    present = {unit.unit_id for unit in load_draft(args.lesson_dir).units}
+    results = []
+    for unit in dict.fromkeys(args.unit):
+        if unit not in present:
+            results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
+            print(f"⚠️  Unità {unit} non presente nella bozza: saltata.")
+            continue
+        res = run_review_unit(args.lesson_dir, unit, force_mock=args.mock)
+        results.append(res)
+        if res.get("status") == "skipped":
+            print(f"⚠️  Unità {unit} saltata: {res.get('reason')}.")
+        else:
+            print(f"✅ Revisione dell'unità {unit} completata.")
+            if res.get("orphaned_decisions"):
+                print(f"⚠️  {len(res['orphaned_decisions'])} decisioni riguardavano issue che la nuova revisione "
+                      f"non ha ritrovato: {', '.join(res['orphaned_decisions'])}.")
+    if getattr(args, "json", False):
+        print(json.dumps({"phase": "review", "units": results}, ensure_ascii=False, indent=2))
+    channel = getattr(args, "channel", None)
+    if not channel:
+        from rt.core.config import load_config as _load_cfg_for_channel
+        channel = _load_cfg_for_channel().telegram.default_channel
+    run_interactive_review(args.lesson_dir, "science", channel=channel,
+                           auto_accept=getattr(args, "auto_accept", None), history=getattr(args, "history", False))
 
 
 def cmd_recall(args):
@@ -526,8 +566,7 @@ def cmd_cost(args: argparse.Namespace) -> None:
 
 
 def _resolve_lesson_arg(value: str) -> str:
-    """Lezione indicata come percorso, id del database o nome sotto lessons_root."""
-    from rt.core.config import load_config
+    """Lezione indicata come percorso, id del database o nome della lezione."""
     if value.isdigit() and not fs.exists(value):
         from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
         try:
@@ -537,11 +576,10 @@ def _resolve_lesson_arg(value: str) -> str:
     path = os.path.abspath(os.path.expanduser(value))
     if fs.isdir(path):
         return path
-    root = load_config().telegram.lessons_root
-    if root:
-        candidate = os.path.join(os.path.abspath(os.path.expanduser(root)), value)
-        if fs.isdir(candidate):
-            return candidate
+    from rt.services.lesson_service import lessons_root
+    candidate = os.path.join(lessons_root(), value)
+    if fs.isdir(candidate):
+        return candidate
     return path
 
 
@@ -571,6 +609,127 @@ def cmd_export(args: argparse.Namespace) -> None:
         print(f"  - {path}")
     if is_preview(lesson_dir):
         print("ℹ️  Anteprima dalla bozza: il documento finale non c'è o non è aggiornato ('rt build' lo crea).")
+
+
+def _service_error(exc: Exception) -> Optional[str]:
+    """Messaggio per l'utente di un errore previsto dei servizi; None per un'eccezione
+    inattesa, che va lasciata salire."""
+    from rt.services.errors import ServiceError
+    return exc.message if isinstance(exc, ServiceError) else None
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    """Elimina una lezione e i suoi media (come DELETE /lessons/{id} della web)."""
+    from rt.services.lesson_delete_service import delete_lesson
+    from rt.services.lesson_service import LessonNotFound, lesson_id_for_dir, resolve_lesson_dir
+    lesson_id = lesson_id_for_dir(_resolve_lesson_arg(args.lesson))
+    try:
+        lesson_dir = resolve_lesson_dir(lesson_id) if lesson_id is not None else None
+    except LessonNotFound:
+        lesson_dir = None
+    if lesson_dir is None:
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    if not args.yes:
+        try:
+            answer = input(f"Eliminare definitivamente la lezione '{os.path.basename(lesson_dir)}' "
+                           "con testi, audio e immagini? [s/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() not in ("s", "si", "sì", "y", "yes"):
+            print("Operazione annullata.")
+            return
+    try:
+        delete_lesson(lesson_id, lesson_dir)
+    except Exception as exc:
+        message = _service_error(exc)
+        if message is None:
+            raise
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+    print(f"✅ Lezione eliminata: {os.path.basename(lesson_dir)}")
+
+
+def cmd_validate_phase(args: argparse.Namespace) -> None:
+    """Valida a mano una fase senza rieseguirla (come POST /lessons/{id}/phases/{fase}/validate)."""
+    from rt.services.phase_validation_service import validate_phase
+    lesson_dir = _resolve_lesson_arg(args.lesson)
+    if not fs.isdir(lesson_dir):
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    lesson_id = None
+    try:
+        from rt.services.lesson_service import lesson_id_for_dir
+        lesson_id = lesson_id_for_dir(lesson_dir)
+    except RuntimeError:
+        pass  # senza database: nessun lease da controllare
+    try:
+        result = validate_phase(lesson_dir, args.phase, lesson_id=lesson_id, actor="cli", channel="cli")
+    except Exception as exc:
+        message = _service_error(exc)
+        if message is None:
+            raise
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+    if not result["changed"]:
+        print(f"ℹ️  La fase {args.phase} è già valida: {result['reason']}")
+        return
+    print(f"✅ Fase {args.phase} validata manualmente (era {result['previous_status']}: {result['previous_reason']}).")
+    print("   Le fasi a valle costruite su input diversi restano da rifare ('rt status' le mostra).")
+
+
+def cmd_relevance(args: argparse.Namespace) -> None:
+    """Etichette JEV per le unità nuove o cambiate, --all per tutte (come POST /lessons/{id}/relevance/run)."""
+    from rt.services.unit_relevance import ensure_can_run, list_units, refresh
+    lesson_dir = _resolve_lesson_arg(args.lesson)
+    if not fs.isdir(lesson_dir):
+        print(f"❌ Lezione non trovata: {args.lesson}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        ensure_can_run()
+    except Exception as exc:
+        message = _service_error(exc)
+        if message is None:
+            raise
+        print(f"❌ {message}", file=sys.stderr)
+        sys.exit(1)
+    refresh(lesson_dir, force_mock=args.mock, force=args.all)
+    overview = list_units(lesson_dir)
+    for unit in overview["units"]:
+        label = unit.get("label") or unit.get("prediction") or "nessuna etichetta"
+        print(f"{unit['unit_id']}  {label}  → {unit['effective']}" + (f"  ⚠️ {unit['error']}" if unit.get("error") else ""))
+    excluded = sum(1 for unit in overview["units"] if unit["effective"] != "didactic")
+    print(f"✅ {len(overview['units'])} unità ({overview['mode']}), {excluded} non didattiche.")
+
+
+def cmd_import(args: argparse.Namespace) -> None:
+    """Importa archivi .zip completi di RT come nuove lezioni (come POST /lessons/import-zip)."""
+    import zipfile
+    from rt.services.lesson_import_service import import_archive
+    from rt.services.lesson_service import resolve_lesson_dir
+    rejected = 0
+    for archive in args.archives:
+        name = os.path.basename(archive)
+        path = os.path.abspath(os.path.expanduser(archive))
+        if not name.lower().endswith(".zip"):
+            reason = "Serve un archivio ZIP."
+        elif not os.path.isfile(path):
+            reason = "File non trovato."
+        else:
+            try:
+                lesson_id = import_archive(path)
+                print(f"✅ {name}: importata come {os.path.basename(resolve_lesson_dir(lesson_id))} (id {lesson_id})")
+                continue
+            except (zipfile.BadZipFile, ValueError):
+                reason = "Archivio ZIP non valido."
+            except Exception as exc:
+                reason = _service_error(exc)
+                if reason is None:
+                    raise
+        rejected += 1
+        print(f"❌ {name}: {reason}", file=sys.stderr)
+    if rejected:
+        sys.exit(1)
 
 
 class CliDecisionProvider:
@@ -734,8 +893,8 @@ def cmd_db(args: argparse.Namespace) -> None:
     if args.db_command == "migrate-storage":
         _cmd_db_migrate_storage(args)
         return
-    if args.db_command in ("sync", "check"):
-        _cmd_db_sync_or_check(args, url, shown)
+    if args.db_command == "check":
+        _cmd_db_check(args, url, shown)
         return
     if args.db_command == "upgrade":
         db = get_database(create=True, url=url)
@@ -756,7 +915,7 @@ def _cmd_db_migrate_storage(args: argparse.Namespace) -> None:
     from rt.core.config import load_config
     from rt.storage.migrate import migrate_storage
 
-    root = args.lessons_root or load_config().telegram.lessons_root
+    root = getattr(args, "lessons_root", None) or load_config().telegram.lessons_root
     report = migrate_storage(root, dry_run=args.dry_run, on_progress=print)
     if not report.plans:
         print("✅ Nessuna lezione in cartella da migrare: sono già tutte nel database.")
@@ -786,34 +945,21 @@ def _cmd_db_migrate_storage(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _cmd_db_sync_or_check(args: argparse.Namespace, url: str, shown: str) -> None:
-    from rt.core.config import load_config
+def _cmd_db_check(args: argparse.Namespace, url: str, shown: str) -> None:
     from rt.db.engine import get_database
-    from rt.db.sync import check_all, sync_all
-
-    root = args.lessons_root or load_config().telegram.lessons_root
-    if not root or not fs.isdir(os.path.expanduser(root)):
-        print("❌ Cartella delle lezioni non trovata: passa --lessons-root o imposta telegram.lessons_root.", file=sys.stderr)
-        sys.exit(1)
-    root = os.path.abspath(os.path.expanduser(root))
-    db = get_database(create=args.db_command == "sync", url=url)
+    db = get_database(url=url)
     if db is None:
         print(f"❌ Database non disponibile: {shown}\nEsegui 'rt db upgrade' per crearlo.", file=sys.stderr)
         sys.exit(1)
-    if args.db_command == "sync":
-        result = sync_all(db, root)
-        print(f"✅ Lezioni sincronizzate: {result['synced']} ({shown})")
-        for err in result["errors"]:
-            print(f"  ⚠️  {err}", file=sys.stderr)
-        if result["errors"]:
-            sys.exit(1)
+    from rt.core.config import load_config
+    from rt.db.health import check_database
+    issues = check_database(db, quick=getattr(args, "quick", False),
+                            lessons_root=load_config().telegram.lessons_root)
+    if not issues:
+        print(f"✅ Integrità database e media verificata ({shown}).")
         return
-    diffs = check_all(db, root)
-    if not diffs:
-        print("✅ Database allineato ai file delle lezioni.")
-        return
-    print(f"⚠️  {len(diffs)} differenze tra database e file (esegui 'rt db sync' per riallinearli):")
-    for d in diffs:
+    print(f"⚠️  {len(issues)} problemi nel database o nei media:")
+    for d in issues:
         print(f"  - {d}")
     sys.exit(1)
 
@@ -828,14 +974,14 @@ _COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets",
 
 
 def _ensure_database_or_exit(command: Optional[str]) -> None:
-    """Crea/migra il DB e importa le lezioni al primo avvio; se il DB è illeggibile il
+    """Crea/migra il DB senza scandire le cartelle; se il DB è illeggibile il
     comando si ferma con le istruzioni per ripristinarlo."""
     if command in _COMMANDS_WITHOUT_DATABASE:
         return
     from rt.db.bootstrap import ensure_database
     from rt.db.engine import DatabaseUnavailable
     try:
-        ensure_database(on_progress=lambda msg: print(msg, file=sys.stderr))
+        ensure_database()
     except DatabaseUnavailable as exc:
         print(f"❌ {exc}", file=sys.stderr)
         sys.exit(1)
@@ -853,7 +999,8 @@ def cmd_web(args: argparse.Namespace) -> None:
                              "si imposta dalla web (Impostazioni) o con 'rt config'.")
         from rt.api.launcher import run_spa
         from rt.api.server import DEFAULT_PORT
-        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser)
+        kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
+        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
         if code:
             sys.exit(code)
         return
@@ -873,6 +1020,12 @@ def cmd_web(args: argparse.Namespace) -> None:
     if args.log_file:
         argv += ["--log-file", args.log_file]
     web_main(argv)
+
+
+def cmd_logs(args: argparse.Namespace) -> None:
+    """Mostra le ultime righe dei log dei servizi."""
+    from rt.services.logs_service import show_logs
+    show_logs(args.service, lines=args.lines, follow=args.follow)
 
 
 def cmd_api(args: argparse.Namespace) -> None:
@@ -899,13 +1052,18 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "Comandi diagnostici:\n"
         "  cost                Mostra il costo stimato cumulativo di una lezione\n"
         "  export              Esporta il Markdown finale o tutti i dati di una lezione\n"
+        "  import              Importa archivi .zip completi di RT come nuove lezioni\n"
+        "  delete              Elimina una lezione (chiede conferma, --yes per saltarla)\n"
+        "  relevance           Assegna le etichette del classificatore alle unità (--all per rifarle tutte)\n"
         "  db                  Crea, aggiorna e sincronizza il database (rt db --help)\n"
         "  validate-outline    Valida deterministicamente l'outline\n"
-        "  validate-draft      Valida il draft rielaborato\n\n"
+        "  validate-draft      Valida il draft rielaborato\n"
+        "  validate-phase      Segna una fase come valida senza rieseguirla\n\n"
         "Installazione e manutenzione:\n"
         "  doctor              Controlla l'installazione e dice cosa sistemare\n"
         "  backup / restore    Backup completo (database, media, configurazione) e ripristino\n"
         "  service             Servizi in background con launchd: API, worker, bot\n"
+        "  logs                Ultime righe dei log dei servizi (--follow per seguirli)\n"
         "  data                Cartella dati di RT (~/.rt o RT_DATA_DIR)\n"
         "  uninstall           Disinstalla RT lasciando i dati\n\n"
         "Opzioni generali:\n"
@@ -937,9 +1095,16 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_web.add_argument("--legacy", action="store_true",
                        help="Vecchia interfaccia Gradio (deprecata, rimossa nella prossima release)")
     p_web.add_argument("--spa", action="store_true", help=argparse.SUPPRESS)  # compatibilità: ora è il default
+    p_web.add_argument("--verbose", action="store_true", help="Segui i log dei servizi già attivi fino a Ctrl+C")
     p_web.add_argument("--lessons-root", help="Cartella delle lezioni (solo con --legacy)")
     p_web.add_argument("--log-file", help="Percorso del log diagnostico (solo con --legacy)")
     p_web.set_defaults(func=cmd_web)
+
+    p_logs = subparsers.add_parser("logs", help="Mostra i log di API, worker e bot")
+    p_logs.add_argument("service", nargs="?", choices=["api", "worker", "bot"], help="Servizio (default: tutti)")
+    p_logs.add_argument("--lines", type=int, default=50, help="Righe recenti per servizio (default: 50)")
+    p_logs.add_argument("--follow", "-f", action="store_true", help="Segui le nuove righe fino a Ctrl+C")
+    p_logs.set_defaults(func=cmd_logs)
 
     p_api = subparsers.add_parser("api", help="Avvia l'API REST locale (FastAPI, documentazione su /docs)")
     p_api.add_argument("--host", default="127.0.0.1", help="Indirizzo di ascolto (default: 127.0.0.1, solo questo Mac)")
@@ -1016,10 +1181,12 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "--shadow-jev",
         action="store_true",
         dest="shadow_jev",
-        help="Esegue il pre-filtro Jev e ne registra il verdetto in llm_debug.log per confronto, "
+        help="Esegue il pre-filtro del classificatore e ne registra il verdetto in llm_debug.log per confronto, "
              "ma non salta né genera nulla: ogni unità passa comunque per l'intera critica LLM "
              "come oggi (richiede 'jev: {enabled: true}' in config/general.yaml — no-op altrimenti)"
     )
+    p_rsci.add_argument("--unit", action="append", metavar="ID",
+                        help="Rivede solo questa unità (ripetibile); le issue delle altre unità restano")
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
     p_rsci.add_argument(
         "--no-regenerate",
@@ -1143,10 +1310,9 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     db_sub = p_db.add_subparsers(dest="db_command", required=True, title="Comandi database")
     db_sub.add_parser("upgrade", help="Crea il database o applica le migrazioni mancanti")
     db_sub.add_parser("status", help="Mostra percorso e revisione del database")
-    for name, text in (("sync", "Importa nel database le lezioni di lessons_root (non modifica i file)"),
-                       ("check", "Confronta database e file delle lezioni e segnala le differenze")):
-        p_sub = db_sub.add_parser(name, help=text)
-        p_sub.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
+    p_check = db_sub.add_parser("check", help="Controlla integrità del database e dei media senza modificare dati")
+    p_check.add_argument("--quick", action="store_true",
+                         help="Salta i checksum dei media (controlla solo esistenza e dimensioni)")
     p_mig = db_sub.add_parser("migrate-storage", help="Sposta le lezioni in cartella nel database (testi) e in media/ (audio e immagini), con backup")
     p_mig.add_argument("--lessons-root", help="Cartella delle lezioni (default: telegram.lessons_root)")
     p_mig.add_argument("--dry-run", action="store_true", help="Mostra cosa verrebbe migrato senza modificare nulla")
@@ -1173,11 +1339,31 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_uni.set_defaults(func=cli_system.cmd_uninstall)
 
     p_exp = subparsers.add_parser("export", help="Esporta il Markdown finale (con immagini) o tutti i dati di una lezione")
-    p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione in lessons_root")
+    p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_exp.add_argument("-o", "--output", help="Cartella di destinazione (default: cartella corrente)")
     p_exp.add_argument("--all", action="store_true", help="Esporta tutti i file della lezione (testi, stato, audio, immagini)")
     p_exp.add_argument("--zip", action="store_true", help="Crea un archivio .zip invece di una cartella")
     p_exp.set_defaults(func=cmd_export)
+
+    p_imp = subparsers.add_parser("import", help="Importa archivi .zip completi di RT ('rt export --all --zip') come nuove lezioni")
+    p_imp.add_argument("archives", nargs="+", metavar="archivio.zip", help="Uno o più archivi .zip")
+    p_imp.set_defaults(func=cmd_import)
+
+    p_del = subparsers.add_parser("delete", help="Elimina una lezione con testi, audio e immagini (chiede conferma)")
+    p_del.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
+    p_del.add_argument("-y", "--yes", action="store_true", help="Non chiedere conferma")
+    p_del.set_defaults(func=cmd_delete)
+
+    p_rel = subparsers.add_parser("relevance", help="Assegna le etichette di rilevanza del classificatore alle unità nuove o cambiate")
+    p_rel.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
+    p_rel.add_argument("--all", action="store_true", help="Riclassifica anche le unità già etichettate")
+    p_rel.add_argument("--mock", action="store_true", help="Modalità prova: nessuna chiamata al classificatore")
+    p_rel.set_defaults(func=cmd_relevance)
+
+    p_vph = subparsers.add_parser("validate-phase", help="Segna una fase come valida senza rieseguirla (es. dopo una modifica voluta)")
+    p_vph.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
+    p_vph.add_argument("phase", choices=["prepare", "outline", "rewrite", "review", "build"], help="Fase da validare")
+    p_vph.set_defaults(func=cmd_validate_phase)
 
     return parser, {
         "web": p_web,

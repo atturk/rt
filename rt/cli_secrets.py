@@ -31,7 +31,7 @@ def configure_secrets_parser(p: argparse.ArgumentParser) -> None:
     p_set.add_argument("name", help="Nome della variabile, es. OPENROUTER_API_KEY")
     p_set.add_argument("--stdin", action="store_true", help="Legge il valore da stdin (per script)")
 
-    p_unset = sub.add_parser("unset", help="Rimuove un segreto dall'archivio")
+    p_unset = sub.add_parser("unset", help="Rimuove un segreto dall'archivio cifrato e dal file .env")
     p_unset.add_argument("name")
 
     p_show = sub.add_parser("show-key", help="Mostra la chiave master, per salvarla a parte (non è nei backup)")
@@ -136,11 +136,14 @@ def _cmd_set(args: argparse.Namespace) -> None:
 
 
 def _cmd_unset(args: argparse.Namespace) -> None:
-    from rt.services import secrets_service
-    if secrets_service.unset_secret(args.name):
-        print(f"✅ {args.name} rimosso dall'archivio.")
+    """Come Impostazioni › Chiavi › Elimina (DELETE /secrets/{name}): archivio cifrato e .env."""
+    from rt.services import config_service
+    removed = config_service.unset_secret(args.name)
+    where = {"store": "dall'archivio cifrato", "env": "dal file .env"}
+    if removed:
+        print(f"✅ {args.name} rimosso {' e '.join(where[w] for w in removed)}.")
     else:
-        print(f"{args.name} non è nell'archivio.")
+        print(f"{args.name} non è né nell'archivio né nel file .env.")
 
 
 def _cmd_rotate(args: argparse.Namespace) -> None:

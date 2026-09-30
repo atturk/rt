@@ -21,7 +21,7 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   })
 
   const search = page.getByLabel('Cerca')
-  await expect(search).toHaveAttribute('placeholder', 'Titolo, argomenti, materia o data')
+  await expect(search).toHaveAttribute('placeholder', 'Titolo, materia, data…')
   const started = Date.now()
   await search.pressSequentially('farmacologia')
   await expect(cards).toHaveCount(1)
@@ -37,12 +37,11 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   await expect(cards).toHaveCount(lessons.filter((l) => l.data === farm.data).length)
   expect(queries).toEqual([])
 
-  // Il punto interrogativo accanto a "Cerca" spiega cosa si cerca, anche al focus.
-  const help = page.getByRole('button', { name: 'Informazioni sul filtro di testo' })
-  await help.focus()
-  await expect(page.getByRole('tooltip')).toContainText('data')
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('tooltip')).toBeHidden()
+  // "Cerca" e "Materia" allineati: etichette e campi alla stessa altezza.
+  const box = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!
+  const [q, subject] = [await box('Cerca'), await box('Materia')]
+  expect(Math.abs(q.y - subject.y)).toBeLessThan(1)
+  expect(Math.abs(q.height - subject.height)).toBeLessThan(1)
 })
 
 test('Recall e Immagini hanno la stessa barra di ricerca', async ({ page }) => {
@@ -54,7 +53,9 @@ test('Recall e Immagini hanno la stessa barra di ricerca', async ({ page }) => {
     await expect(items).toHaveCount(lessons.length)
     await page.getByLabel('Cerca').fill('rene')
     await expect(items).toHaveCount(1)
-    await expect(items.first()).toContainText('FISIOLOGIA')
+    // In Recall la materia è l'intestazione del gruppo, non la riga della lezione
+    if (url === '/recall') await expect(page.locator('[data-testid=recall-subject][data-subject=FISIOLOGIA]').getByTestId('picker-lesson')).toHaveCount(1)
+    else await expect(items.first()).toContainText('FISIOLOGIA')
     await page.reload()
     await expect(page.getByLabel('Cerca')).toHaveValue('rene')
     await expect(items).toHaveCount(1)
@@ -85,10 +86,10 @@ test('la sezione Review elenca le lezioni con issue da valutare', async ({ page 
   await expect(page).toHaveURL(new RegExp(`/lezioni/${target.id}/revisione$`))
 })
 
-test('la voce Job porta il badge dei job; nessuna icona separata nell’intestazione', async ({ page }) => {
+test('il pulsante Job mostra il badge negli strumenti', async ({ page }) => {
   await loginViaLink(page)
-  const nav = page.getByRole('navigation', { name: 'Navigazione' })
-  const job = nav.getByRole('link', { name: /^Job/ })
+  const nav = page.getByRole('navigation', { name: 'Strumenti' })
+  const job = nav.getByRole('link', { name: 'Job' })
   await expect(job).toHaveCount(1)
   await expect(job.getByTestId('jobs-indicator')).toHaveCount(1)
   await expect(page.getByTestId('jobs-indicator')).toHaveCount(1)

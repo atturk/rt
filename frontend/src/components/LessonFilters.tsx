@@ -1,11 +1,8 @@
-import { CircleHelp } from 'lucide-react'
-
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Tooltip } from '@/components/ui/tooltip'
 import { STATE_LABELS, type Lesson } from '@/lib/format'
-import { SEARCH_HELP, type LessonListFilters } from '@/lib/lessonSearch'
+import type { LessonListFilters } from '@/lib/lessonSearch'
 
 /**
  * Barra di ricerca degli elenchi di lezioni (dashboard, Recall, Immagini, Review): testo,
@@ -26,25 +23,11 @@ export function LessonFilters({
   return (
     <form className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="search" aria-label="Filtra le lezioni" onSubmit={(e) => e.preventDefault()}>
       <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-1">
-          <Label htmlFor={`${idPrefix}-q`}>Cerca</Label>
-          <Tooltip content={SEARCH_HELP}>
-            {(props) => (
-              <button
-                type="button"
-                {...props}
-                aria-label="Informazioni sul filtro di testo"
-                className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-              >
-                <CircleHelp className="size-3.5" aria-hidden />
-              </button>
-            )}
-          </Tooltip>
-        </div>
+        <Label htmlFor={`${idPrefix}-q`}>Cerca</Label>
         <Input
           id={`${idPrefix}-q`}
           type="search"
-          placeholder="Titolo, argomenti, materia o data"
+          placeholder="Titolo, materia, data…"
           value={filters.q}
           onChange={(e) => onChange('q', e.target.value)}
         />

@@ -3,14 +3,19 @@ import { Link, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
-import { useCancelJob, useJob, useJobEvents, type StreamStatus } from '@/api/jobs'
+import { useState } from 'react'
+
+import { useCancelJob, useCloseJob, useJob, useJobEvents, type StreamStatus } from '@/api/jobs'
 import { JobStateBadge, ProgressBar, RetryButton } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { lessonTitle } from '@/lib/format'
 import { useFollowTail } from '@/lib/followTail'
-import { decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel, progressPercent } from '@/lib/jobs'
+import {
+  canCloseJob, closedJob, decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel, progressPercent,
+} from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
 const STREAM_LABELS: Record<StreamStatus, string> = {
@@ -34,6 +39,8 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   const job = useJob(jobId)
   const { events, status } = useJobEvents(jobId, job.data, job.dataUpdatedAt)
   const cancel = useCancelJob()
+  const close = useCloseJob()
+  const [confirmClose, setConfirmClose] = useState(false)
   const lessons = useLessons()
   const navigate = useNavigate()
   const { ref: logRef, onScroll: onLogScroll, following, jumpToLatest } = useFollowTail<HTMLOListElement>(events.length)
@@ -46,6 +53,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   const progress = progressLabel(j.progress)
   const link = j.state === 'waiting_for_decision' ? decisionLink(j) : null
   const canCancel = !isTerminal(j.state) && !j.cancel_requested
+  const closed = closedJob(j)
 
   return (
     <Card className="flex flex-col gap-4 p-5" data-testid="job-live" data-job-id={j.id} data-state={j.state}>
@@ -54,6 +62,11 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
         <JobStateBadge state={j.state} />
         {j.state === 'failed' && !j.retried_by && (
           <RetryButton jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
+        )}
+        {canCloseJob(j) && (
+          <Button size="sm" disabled={close.isPending} onClick={() => { close.reset(); setConfirmClose(true) }}>
+            Chiudi e decidi dopo
+          </Button>
         )}
         {canCancel && (
           <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(j.id)}>
@@ -119,7 +132,17 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           </Link>
         </Alert>
       )}
-      {j.state === 'succeeded' && j.lesson_id != null && !compact && (
+      {closed && (
+        <Alert data-testid="job-closed">
+          {closed.message}.{' '}
+          {closed.link && (
+            <Link to={closed.link} className="font-semibold underline">
+              {closed.kind === 'outline_approval' ? 'Apri la scaletta' : closed.kind === 'science_issue' ? 'Apri la revisione' : 'Apri la lezione'}
+            </Link>
+          )}
+        </Alert>
+      )}
+      {j.state === 'succeeded' && !closed && j.lesson_id != null && !compact && (
         <Alert>
           Job completato.{' '}
           <Link to={`/lezioni/${j.lesson_id}`} className="font-semibold underline">
@@ -128,6 +151,27 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
         </Alert>
       )}
       {cancel.isError && <Alert tone="danger">{errorMessage(cancel.error)}</Alert>}
+      {close.isError && !confirmClose && <Alert tone="danger">{errorMessage(close.error)}</Alert>}
+      <ConfirmDialog
+        open={confirmClose}
+        title="Chiudere il job e decidere dopo?"
+        confirmLabel="Chiudi il job"
+        confirmDisabled={close.isPending}
+        onCancel={() => setConfirmClose(false)}
+        onConfirm={() => close.mutate(j.id, { onSuccess: () => setConfirmClose(false) })}
+      >
+        <p>
+          Il job finisce qui e il lavoro fatto resta.{' '}
+          {j.decision?.kind === 'outline_approval'
+            ? 'La scaletta resta da approvare nella schermata Scaletta.'
+            : 'Le issue restano da valutare nella schermata Revisione.'}
+        </p>
+        <p className="mt-2 text-muted-foreground">
+          Quando avrai deciso la pipeline non riparte da sola: avvia tu le fasi successive dalla lezione. Annullare il job,
+          invece, lo segna come annullato.
+        </p>
+        {close.isError && <Alert tone="danger" className="mt-3">{errorMessage(close.error)}</Alert>}
+      </ConfirmDialog>
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-xs text-muted-foreground">

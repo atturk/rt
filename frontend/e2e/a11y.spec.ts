@@ -20,6 +20,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['dashboard', '/'],
     ['review (elenco)', '/review'],
     ['recall (elenco)', '/recall'],
+    ['recall della materia', '/recall/materie/BIOCHIMICA'],
     ['immagini (elenco)', '/immagini'],
     ['lezione', `/lezioni/${done}`],
     ['revisione', `/lezioni/${review}/revisione`],
@@ -79,8 +80,8 @@ for (const theme of ['light', 'dark'] as const) {
       await notice.getByRole('button', { name: 'Modifica' }).click()
     }
     await expect(page.getByTestId('markdown-editor')).toBeVisible()
-    await expect(page.locator('.rt-document-edit-preview')).toBeVisible()
-    await expectNoViolations(page, "anteprima in modifica")
+    await expect(page.locator('.rt-document-edit-preview')).toHaveCount(0)
+    await expectNoViolations(page, "editor a tutta larghezza")
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('markdown-editor')).toHaveCount(0)
 
@@ -96,6 +97,13 @@ for (const theme of ['light', 'dark'] as const) {
     await expectNoViolations(page, 'pannello della materia')
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Espandi la barra laterale' }).click()
+
+    // Elenco delle lezioni in tabella, raggruppato per materia, con un gruppo chiuso.
+    await page.getByLabel('Raggruppa per').selectOption('materia')
+    await page.getByRole('button', { name: 'Tabella' }).click()
+    await expect(page.getByTestId('lesson-table')).toBeVisible()
+    await page.getByTestId('lesson-group-toggle').first().click()
+    await expectNoViolations(page, 'tabella delle lezioni per materia')
   })
 }
 

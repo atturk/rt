@@ -42,20 +42,18 @@ describe('LessonFilters', () => {
     expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Il rene'])
   })
 
-  it('il punto interrogativo spiega cosa si cerca, al focus da tastiera', async () => {
+  it('Cerca, Materia e Stato hanno la stessa struttura: etichetta sopra il campo, niente "?"', () => {
     render(
       <MemoryRouter>
         <Page />
       </MemoryRouter>,
     )
-    const user = userEvent.setup()
-    const help = screen.getByRole('button', { name: 'Informazioni sul filtro di testo' })
-    expect(screen.getByLabelText('Cerca')).toHaveAttribute('placeholder', 'Titolo, argomenti, materia o data')
-    await user.tab()
-    expect(help).toHaveFocus()
-    expect(help).toHaveAccessibleDescription(/titolo.*argomenti.*materia.*data/i)
-    expect(screen.getByRole('tooltip')).toBeVisible()
-    await user.hover(help)
-    expect(screen.getByRole('tooltip')).toBeVisible()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByLabelText('Cerca')).toHaveAttribute('placeholder', 'Titolo, materia, data…')
+    const columns = ['Cerca', 'Materia', 'Stato'].map((name) => screen.getByLabelText(name).parentElement!)
+    for (const column of columns) {
+      expect(column.parentElement).toBe(columns[0].parentElement)
+      expect(Array.from(column.children, (el) => el.tagName)).toEqual(['LABEL', expect.stringMatching(/^(INPUT|SELECT)$/)])
+    }
   })
 })

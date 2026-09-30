@@ -81,20 +81,13 @@ def check_data_dir() -> Check:
 
 
 def check_config() -> Check:
-    from rt.core.config import load_config
     config_dir = paths.config_dir()
     if not os.path.isfile(os.path.join(config_dir, "general.yaml")):
         return Check("Configurazione", FAIL, f"{config_dir}/general.yaml mancante.",
                      "Rilancia il comando di installazione (ricrea la configurazione senza toccare i dati).")
-    cfg = load_config()
-    root = cfg.telegram.lessons_root
-    if not root:
-        return Check("Configurazione", WARN, "cartella delle lezioni non ancora scelta.",
-                     "Apri la web app (rt web) e completa la configurazione guidata.")
-    if not os.path.isdir(os.path.expanduser(root)):
-        return Check("Configurazione", WARN, f"la cartella delle lezioni {root} non esiste.",
-                     "Sceglila di nuovo in Impostazioni > Generali.")
-    return Check("Configurazione", OK, f"lezioni in {root}")
+    # Le lezioni stanno nel database: telegram.lessons_root (3.x) non si controlla più qui;
+    # le lezioni a cartelle ancora da convertire le segnala check_folder_lessons.
+    return Check("Configurazione", OK, f"{config_dir}/general.yaml")
 
 
 def check_database() -> Check:
@@ -129,6 +122,22 @@ def check_media() -> Check:
     return Check("Media", OK, fs.media_dir(db))
 
 
+def check_folder_lessons() -> Check:
+    """Lezioni ancora nel vecchio formato a cartelle: RT non le mostra finché non si convertono."""
+    from rt.core.config import load_config
+    from rt.db.engine import get_database
+    from rt.storage.migrate import folder_lessons
+    db = get_database()
+    if db is None:
+        return Check("Lezioni a cartelle", WARN, "database non disponibile: controllo saltato.")
+    pending = folder_lessons(db, load_config().telegram.lessons_root)
+    if pending:
+        return Check("Lezioni a cartelle", WARN,
+                     f"{len(pending)} lezioni nel vecchio formato a cartelle, non visibili nella web app.",
+                     "Esegui 'rt db migrate-storage' (fa prima un backup).")
+    return Check("Lezioni a cartelle", OK, "nessuna lezione da convertire")
+
+
 def check_secrets() -> Check:
     from rt.security.secrets import EncryptedFileSecretStore, default_store_path, resolve_master_key
     from rt.services.secrets_service import env_needs_migration
@@ -147,7 +156,7 @@ def check_secrets() -> Check:
 
 
 def check_spa() -> Check:
-    from rt.api.spa import find_spa_dir
+    from rt.core.paths import find_spa_dir
     found = find_spa_dir()
     if found:
         return Check("Web app", OK, found)
@@ -219,6 +228,7 @@ def run_checks() -> List[Check]:
         _safe("Trascrizione", check_transcription),
         _safe("Database", check_database),
         _safe("Media", check_media),
+        _safe("Lezioni a cartelle", check_folder_lessons),
         _safe("Segreti", check_secrets),
         _safe("Web app", check_spa),
     ]

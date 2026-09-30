@@ -627,3 +627,64 @@ def test_legacy_review_science_check_phase_status_end_to_end(synthetic_lesson):
     # Verifica status build
     st_build, reason_build = check_phase_status(lesson_dir, "build")
     assert st_build == PhaseStatus.VALID, f"Expected VALID but got {st_build}: {reason_build}"
+
+
+def _set_info(lesson_dir, key, value):
+    import yaml
+    path = lesson_path(lesson_dir, "info.yaml")
+    with open(path, encoding="utf-8") as f:
+        info = yaml.safe_load(f)
+    info[key] = value
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(info, f, allow_unicode=True)
+
+
+def test_rebuild_with_stale_outline_makes_the_document_valid(synthetic_lesson):
+    """4.1.0b2: con la scaletta STALE (qui: materia cambiata in info.yaml) il documento restava
+    STALE anche dopo averlo ricostruito, senza via d'uscita. Ricostruirlo lo rende aggiornato
+    ai file attuali; il motivo nomina la fase a monte, che resta STALE; un nuovo cambio a monte
+    lo rende di nuovo STALE. La review resta fuori dalle dipendenze del documento."""
+    lesson_dir = synthetic_lesson
+    run_prepare(lesson_dir)
+    run_outline(lesson_dir, force_mock=True)
+    run_rewrite(lesson_dir, force_mock=True)
+    run_build(lesson_dir)
+    assert check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
+
+    _set_info(lesson_dir, "materia", "FISIOLOGIA")
+    assert check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.STALE
+    st, reason = check_phase_status(lesson_dir, "build")
+    assert st == PhaseStatus.STALE
+    assert "'outline'" in reason and "ricostruisci il documento" in reason
+
+    res = run_build(lesson_dir)
+    assert res["action"] == "RUN"
+    st, reason = check_phase_status(lesson_dir, "build")
+    assert st == PhaseStatus.VALID, reason
+    assert "'outline' STALE" in reason
+    assert check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.STALE
+    assert run_build(lesson_dir)["action"] == "SKIP"
+
+    # La fase a monte cambia ancora: il documento torna STALE.
+    _set_info(lesson_dir, "materia", "ANATOMIA")
+    st, reason = check_phase_status(lesson_dir, "build")
+    assert st == PhaseStatus.STALE and "'outline'" in reason
+
+    # Rifatta la scaletta (e la bozza), la conferma non serve più: tutto torna VALID normalmente.
+    run_outline(lesson_dir, force=True, force_mock=True)
+    run_rewrite(lesson_dir, force=True, force_mock=True)
+    run_build(lesson_dir)
+    st, reason = check_phase_status(lesson_dir, "build")
+    assert st == PhaseStatus.VALID and reason == "Documenti Markdown finali completi e aggiornati"
+    assert "upstream_acknowledged" not in load_manifest(lesson_dir).phase_records["build"]
+
+
+def test_other_phases_do_not_acknowledge_stale_upstream(synthetic_lesson):
+    """Solo il documento si conferma ricostruendolo: la bozza con la scaletta STALE resta STALE."""
+    lesson_dir = synthetic_lesson
+    run_prepare(lesson_dir)
+    run_outline(lesson_dir, force_mock=True)
+    run_rewrite(lesson_dir, force_mock=True)
+    _set_info(lesson_dir, "materia", "FISIOLOGIA")
+    st, reason = check_phase_status(lesson_dir, "rewrite")
+    assert st == PhaseStatus.STALE and "ricostruisci" not in reason

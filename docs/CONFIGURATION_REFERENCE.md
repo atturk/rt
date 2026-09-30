@@ -27,14 +27,14 @@ cp -r config.example config
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
 | `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`). |
-| `telegram.lessons_root` | Cartella radice assoluta delle lezioni, usata anche dalla web app. |
+| `telegram.lessons_root` | Solo installazioni 3.x: cartella delle lezioni a cartelle da convertire (`rt db migrate-storage`) e prefisso dei loro percorsi nel database. Non si configura più: senza questa chiave il prefisso è `<cartella dati>/lessons`, che non deve esistere su disco. |
 | `telegram.topics` | Mappa da materia in maiuscolo (es. `BIOCHIMICA`) a `message_thread_id` del topic Telegram dedicato nel gruppo. |
 | `telegram.misc_topic_id` | `message_thread_id` del topic "Varie/Generale" per materie non presenti in `topics`. |
 | `transcription.engine` | `macparakeet` oppure `custom` per un server STT OpenAI-compatible. |
 | `transcription.base_url` / `transcription.model` | Indirizzo del server e ID modello quando `engine: custom`. Il server deve fornire `/audio/transcriptions` con risposta `verbose_json` e `segments` temporizzati. |
 | `transcription.timeout_seconds` | Tempo massimo della richiesta STT custom (default 600 s). |
 
-La pagina Impostazioni di `rt web` consente di gestire cartella lezioni,
+La pagina Impostazioni di `rt web` consente di gestire
 credenziali, modelli, prezzi, bot Telegram e motore STT.
 Le chiavi sono salvate nell'archivio cifrato `config/secrets.enc` se è stato creato con
 `rt secrets init`, altrimenti nel `.env` locale (vedi "Segreti cifrati a riposo" qui sotto);
@@ -50,7 +50,7 @@ per il server STT custom la variabile facoltativa è `RT_STT_API_KEY`.
 2. Salva le chiavi con `rt secrets set <ENV_VAR>` (archivio cifrato), oppure nel `.env`, oppure esportale nell'ambiente shell.
 3. Nei singoli file `config/<job>.yaml`, imposta `provider` e `model` sotto `primary:`.
 
-#### Esempio base con OpenRouter (già presente come template in `config.example/general.yaml`):
+#### Esempio base con OpenRouter (`config.example/general.yaml` parte senza credenziali: una nuova installazione non ha connessioni finché non ne aggiungi una):
 ```yaml
 credentials:
   - name: "openrouter"
@@ -94,7 +94,9 @@ Se assente si usa SQLite in `<cartella dati>/rt.db` (`~/.rt` o `RT_DATA_DIR`, ve
 [Self-hosting](SELF_HOSTING.md)); nelle installazioni 3.x non ancora migrate in
 `<lessons_root>/.rt/rt.db` (o `~/.rt/rt.db` senza `lessons_root`).
 La variabile d'ambiente `RT_DATABASE_URL` ha la precedenza. Il DB si crea e si aggiorna da solo
-al primo comando `rt`, che importa anche le lezioni esistenti: non serve alcun comando manuale.
+al primo comando `rt`, senza scandire o importare automaticamente le cartelle delle lezioni.
+Per convertire lezioni esistenti usa esplicitamente `rt db migrate-storage` dopo aver verificato
+il backup.
 `off` lo disattiva (solo per sviluppo e test: la coda dei job e `rt worker` richiedono il DB).
 ```yaml
 database_url: "sqlite:////Users/io/Lezioni/.rt/rt.db"
@@ -120,7 +122,7 @@ invece che in chiaro nel `.env`. Senza archivio tutto funziona come prima.
 | `rt secrets init` | Genera la chiave master, la salva nel portachiavi di sistema (servizio `rt`, voce `master_key`) e crea `config/secrets.enc`. Con `--no-keyring`, o se il portachiavi non è disponibile, la chiave viene mostrata **una sola volta** e va messa in `RT_MASTER_KEY`. `--print-key` la mostra anche quando è nel portachiavi. |
 | `rt secrets migrate` | Copia nell'archivio le variabili dichiarate in `credentials:`, `RT_TELEGRAM_BOT_TOKEN` e `RT_STT_API_KEY` presenti nel `.env`, rilegge l'archivio per verificarle e solo dopo, se confermi (o con `--yes`), crea il backup `.env.bak-<data>` (permessi 600) e toglie quei valori dal `.env`. `--keep-env` copia senza toccare il `.env`. È idempotente: rieseguito non trova nulla da fare. Se l'archivio ha già un valore diverso per una chiave, resta quello dell'archivio. |
 | `rt secrets list` | Nomi e data di modifica, mai i valori. |
-| `rt secrets set NOME` / `unset NOME` | Salva (valore chiesto senza eco, o da stdin con `--stdin`) o rimuove un segreto. |
+| `rt secrets set NOME` / `unset NOME` | Salva (valore chiesto senza eco, o da stdin con `--stdin`) o rimuove un segreto (`unset` lo toglie dall'archivio cifrato e dal file `.env`, come Impostazioni › Chiavi › Elimina). |
 | `rt secrets show-key` | Mostra la chiave master (con conferma, o `--yes`) per salvarla a parte: i backup di `rt backup` non la contengono. |
 | `rt secrets rotate` | Ricifra l'archivio con una chiave master nuova. Con il portachiavi lo aggiorna da solo; con `RT_MASTER_KEY` mostra la chiave nuova da sostituire. |
 

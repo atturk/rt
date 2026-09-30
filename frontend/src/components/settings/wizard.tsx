@@ -1,8 +1,9 @@
 import { Check } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
+import { useDismissNotice } from '@/api/documentEdit'
 import { useAssignAllPhases, useSaveTelegram, type Settings } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -12,24 +13,21 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { Field } from './common'
-import { LessonsRootForm } from './general'
 import { ModelTest, NewConnectionForm, PhaseRows } from './models'
 import { RevealableValue } from './telegram'
 
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
 
-const STEPS = ['Cartella dati', 'Connessione', 'Modelli', 'Telegram', 'Fatto'] as const
+const STEPS = ['Connessione', 'Modelli', 'Telegram', 'Fatto'] as const
 
 function stepDone(settings: Settings, index: number): boolean {
   switch (index) {
     case 0:
-      return !settings.setup_required
-    case 1:
       return settings.connections.length > 0
-    case 2:
+    case 1:
       return settings.phases.every((p) => !!p.model)
-    case 3:
+    case 2:
       return settings.telegram.bot_token_set && settings.telegram.chat_id_set
     default:
       return false
@@ -39,25 +37,34 @@ function stepDone(settings: Settings, index: number): boolean {
 export function SetupWizard({ settings }: { settings: Settings }) {
   const [params, setParams] = useSearchParams()
   const requested = Number(params.get('passo') ?? '1')
-  // Senza cartella dati non si va avanti: il resto della configurazione vive lì dentro.
-  const step = settings.setup_required ? 1 : Math.min(Math.max(1, Number.isFinite(requested) ? requested : 1), STEPS.length)
+  const step = Math.min(Math.max(1, Number.isFinite(requested) ? requested : 1), STEPS.length)
   const go = (n: number) => setParams({ passo: String(n) })
   const next = () => go(step + 1)
+  const navigate = useNavigate()
+  const dismiss = useDismissNotice()
+  // Senza connessioni ogni pagina porta qui (setup_required): "Configura dopo" lo spegne.
+  const later = () => dismiss.mutate('setup_wizard', { onSuccess: () => void navigate('/') })
 
   return (
     <section className="mx-auto flex max-w-2xl flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Configurazione guidata</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pochi passi per iniziare. Puoi cambiare tutto in seguito dalle impostazioni.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Configurazione guidata</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pochi passi per iniziare. Puoi cambiare tutto in seguito dalle impostazioni.
+          </p>
+        </div>
+        {settings.setup_required && (
+          <Button variant="outline" size="sm" onClick={later} disabled={dismiss.isPending}>
+            Configura dopo
+          </Button>
+        )}
       </div>
       <ol className="flex flex-wrap gap-2 text-xs" aria-label="Passi">
         {STEPS.map((label, i) => (
           <li key={label}>
             <button
               type="button"
-              disabled={settings.setup_required && i > 0}
               onClick={() => go(i + 1)}
               aria-current={step === i + 1 ? 'step' : undefined}
               className={cn(
@@ -76,15 +83,6 @@ export function SetupWizard({ settings }: { settings: Settings }) {
         <h2 className="mb-3 text-base font-bold">{STEPS[step - 1]}</h2>
         {step === 1 && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              Scegli dove RT tiene le lezioni. Nella stessa cartella stanno il database (<code>.rt/rt.db</code>) e i file audio e immagini
-              (<code>.rt/media/</code>).
-            </p>
-            <LessonsRootForm settings={settings} onSaved={() => go(2)} submitLabel="Salva e continua" />
-          </div>
-        )}
-        {step === 2 && (
-          <div className="flex flex-col gap-3">
             {settings.connections.length > 0 ? (
               <>
                 <p className="text-sm">
@@ -97,7 +95,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
                 <details>
                   <summary className="cursor-pointer text-sm">Aggiungi un'altra connessione</summary>
                   <div className="mt-3">
-                    <NewConnectionForm onCreated={() => go(3)} submitLabel="Crea e continua" />
+                    <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
                   </div>
                 </details>
               </>
@@ -106,21 +104,21 @@ export function SetupWizard({ settings }: { settings: Settings }) {
                 <p className="text-sm text-muted-foreground">
                   Una connessione è un provider LLM (OpenRouter, Google AI Studio, DeepSeek o un server compatibile) con la tua chiave API.
                 </p>
-                <NewConnectionForm onCreated={() => go(3)} submitLabel="Crea e continua" />
+                <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
               </>
             )}
           </div>
         )}
-        {step === 3 && <ModelsStep settings={settings} onDone={next} />}
-        {step === 4 && <TelegramStep settings={settings} onDone={next} />}
-        {step === 5 && (
+        {step === 2 && <ModelsStep settings={settings} onDone={next} />}
+        {step === 3 && <TelegramStep settings={settings} onDone={next} />}
+        {step === 4 && (
           <div className="flex flex-col gap-3 text-sm">
             <ul className="flex flex-col gap-1">
-              {STEPS.slice(0, 4).map((label, i) => (
+              {STEPS.slice(0, 3).map((label, i) => (
                 <li key={label} className="flex items-center gap-2">
                   {stepDone(settings, i) ? <Check className="size-4 text-success" aria-hidden /> : <span className="size-4 text-center">–</span>}
                   {label}
-                  {!stepDone(settings, i) && <span className="text-xs text-muted-foreground">{i === 3 ? '(facoltativo)' : 'da completare'}</span>}
+                  {!stepDone(settings, i) && <span className="text-xs text-muted-foreground">{i === 2 ? '(facoltativo)' : 'da completare'}</span>}
                 </li>
               ))}
             </ul>
@@ -171,7 +169,7 @@ function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => vo
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">Ogni fase si salva con il suo pulsante; Prova fa una chiamata minima prima di salvare.</p>
           <PhaseRows settings={settings} />
-          {stepDone(settings, 2) ? (
+          {stepDone(settings, 1) ? (
             <div>
               <Button onClick={onDone}>Continua</Button>
             </div>
@@ -235,7 +233,7 @@ function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () =>
           Usa per tutte le fasi
         </Button>
         <ModelTest connection={connection} model={model} className="contents" resultClassName="order-last basis-full" />
-        {stepDone(settings, 2) && (
+        {stepDone(settings, 1) && (
           <Button variant="outline" onClick={onDone}>
             Continua
           </Button>

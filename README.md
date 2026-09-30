@@ -40,13 +40,17 @@ Il comando scarica l'ultima release in `./rt` e fa tutto il resto: prerequisiti 
 Python 3.11+, `ffmpeg`, `macparakeet-cli` se lo vuoi), ambiente Python, web app già compilata,
 cartella dati `~/.rt` (configurazione, segreti cifrati, database, audio e immagini), servizi in
 background per API, worker e bot Telegram, e alla fine apre il browser sulla **configurazione
-guidata** (cartella delle lezioni, provider e chiavi, Telegram facoltativo). Non ci sono altri
+guidata** (provider e chiavi, modelli, Telegram facoltativo). Non ci sono altri
 passaggi. Rilanciarlo ripara un'installazione rotta senza toccare i dati.
 
 Dopo l'installazione:
 
 ```bash
 rt web          # apre la web app (i servizi sono già attivi)
+rt web --verbose # apre la web e segue i log dei servizi già attivi; Ctrl+C interrompe la lettura
+rt logs --follow # segue i log di API, worker e bot; rt logs bot --lines 100 per un servizio
+
+rt service status # mostra lo stato dei servizi; rt service stop/start/restart li controlla
 rt doctor       # controlla l'installazione e dice cosa sistemare
 rt backup --dest /Volumes/Disco/rt-backup   # backup completo: database, media, configurazione
 rt -u           # aggiorna codice, dipendenze, web app, database e servizi
@@ -55,8 +59,17 @@ rt -u --stable  # torna al canale stabile
 rt uninstall    # rimuove servizi e ambiente Python; dati e lezioni restano
 ```
 
+La pagina Importa accetta anche uno o più ZIP completi (`scope=all`). Nella pagina della
+lezione, Option (Mac) o il focus da tastiera mostra il cestino; la cancellazione richiede
+il nome della lezione e la parola «confermo». Il pannello Fasi accetta istruzioni aggiuntive
+per scaletta, riscrittura e revisione, e permette di revisionare una sola unità.
+Impostazioni > Modelli comprende istruzioni globali, prova multimodale per il descrittore
+immagini e un modello decisionale opzionale. Prima di abilitarne il gate, confronta le
+false omissioni con le revisioni di un campione reale in modalità ombra.
+
 Chi arriva dalla 3.x aggiorna con `rt -u` (se serve, due volte: la prima con il codice vecchio):
-configurazione e dati vengono spostati nella cartella dati, le lezioni importate nel database e
+configurazione e database vengono spostati nella cartella dati, le vecchie cartelle delle
+lezioni vengono convertite nel database (le originali restano nel backup della conversione) e
 viene proposta la cifratura delle chiavi.
 
 Le versioni beta (es. `4.1.0b1`) sono per chi vuole provare in anticipo le novità: `rt -u` le
@@ -110,8 +123,8 @@ Avvia l'API, un worker per i job e la web app, e apre il browser già autenticat
 `http://127.0.0.1:8765`. Dalla web fai tutto quello che fai nel terminale: importi l'audio,
 segui la pipeline in tempo reale, approvi la scaletta, fai la review accanto al testo con
 l'audio, leggi il documento con i timecode, fai il recall anche a voce, aggiungi immagini e
-configuri provider, modelli e Telegram. Al primo avvio una configurazione guidata chiede la
-cartella delle lezioni e il resto. `install.sh` e `rt -u` installano la web app compilata dalla
+configuri provider, modelli e Telegram. Al primo avvio una configurazione guidata chiede provider,
+modelli e Telegram. `install.sh` e `rt -u` installano la web app compilata dalla
 release. Dettagli in [Web app di RT](docs/WEB.md).
 
 La vecchia interfaccia Gradio resta per questa release con `rt web --legacy` (deprecata; richiede
@@ -130,14 +143,16 @@ Per testare offline senza consumare crediti API:
 
 ### 2-bis. Coda dei job e worker (opzionale)
 
-Il database di RT si crea e si aggiorna da solo al primo comando (e importa le lezioni già
-presenti): non servono comandi di database. Per far girare le elaborazioni lunghe in un
-processo separato, avvia un worker e accoda la pipeline:
+Il database di RT si crea e si aggiorna da solo al primo comando, senza scandire o importare
+automaticamente le vecchie cartelle delle lezioni. Per convertirle in modo esplicito, usa
+`rt db migrate-storage` dopo aver verificato il backup. Per far girare le elaborazioni lunghe
+in un processo separato, avvia un worker e accoda la pipeline:
 
 ```bash
 ./bin/rt worker                          # esegue i job in coda (Ctrl+C per fermarlo)
 ./bin/rt run "cartella_lezione" --queue  # accoda e segue il progresso
 ./bin/rt jobs                            # elenca i job; 'rt jobs cancel ID' ne annulla uno
+./bin/rt jobs close ID                   # chiude un job in attesa delle issue: le valuti dopo in Revisione
 ```
 
 Senza `--queue`, `rt run` lavora in processo come sempre. Con un worker attivo anche il daemon
@@ -152,6 +167,8 @@ finale (e, se servono, tutti gli altri dati) si scarica quando serve:
 ```bash
 ./bin/rt export "[2026-09-05] BIOCHIMICA - Lipidi" -o ~/Desktop   # Markdown finale con immagini
 ./bin/rt export "[2026-09-05] BIOCHIMICA - Lipidi" --all --zip    # tutti i dati in uno zip
+./bin/rt import "[2026-09-05] BIOCHIMICA - Lipidi.zip"            # reimporta uno zip completo come nuova lezione
+./bin/rt delete "[2026-09-05] BIOCHIMICA - Lipidi"                # elimina la lezione (chiede conferma, --yes per saltarla)
 ```
 
 Le lezioni create prima restano nelle loro cartelle e funzionano come sempre. Per portarle nel
@@ -170,7 +187,10 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ./bin/rt validate-outline "cartella_lezione"  # Valida monotonicità e copertura
 ./bin/rt rewrite "cartella_lezione"           # Rielabora a finestre con provenance
 ./bin/rt validate-draft "cartella_lezione"    # Valida il draft prodotto
+./bin/rt validate-phase "cartella_lezione" outline  # Segna valida una fase STALE senza rieseguirla
+./bin/rt relevance "cartella_lezione" --all         # Riassegna le etichette JEV a tutte le unità
 ./bin/rt review "cartella_lezione"            # Revisione scientifica e delle ambiguità ASR
+./bin/rt review "cartella_lezione" --unit 1.2 # Rivede solo un'unità (ripetibile)
 ./bin/rt build "cartella_lezione"             # Genera i documenti Markdown definitivi
 ./bin/rt status "cartella_lezione"            # Mostra lo stato di avanzamento
 ```
@@ -181,6 +201,11 @@ Le funzionalità Telegram (routing per topic in base alla materia, notifica di b
 `/list`, `/recall <query>`, active recall via bot) richiedono il bot sempre attivo. Con
 l'installazione in un comando è il servizio in background `bot`: parte da solo appena configuri
 token e chat (web app > Impostazioni > Telegram) e si avvia o ferma anche da lì.
+
+`/list` nel topic Generale elenca tutte le lezioni, raggruppate per materia e numerate di
+seguito; nel topic di una materia (o in "varie") solo le sue. Rispondendo a un elenco con un
+numero (o con `/recall <numero>`) la recall di quella lezione parte nel topic della sua materia,
+o in "varie" se la materia non ha un topic.
 
 ```bash
 rt service status        # stato di API, worker e bot

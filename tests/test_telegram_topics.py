@@ -158,10 +158,65 @@ def test_notify_build_completed_missing_config_silent(tmp_path, monkeypatch):
         notify_build_completed(lesson_dir, {"rielaborato": "test.md"}, "Lezione 1")
 
 
+def test_rebuild_edits_saved_telegram_message(tmp_path, monkeypatch):
+    import json
+    from unittest.mock import MagicMock, patch
+    from rt.telegram.notify import notify_build_completed
+
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
+    lesson_dir = str(tmp_path / "lesson_rebuild")
+    os.makedirs(lesson_dir, exist_ok=True)
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write("materia: BIOCHIMICA\ndata: '2026-09-10'\n")
+    runtime = MagicMock()
+    runtime.telegram.topics = {"BIOCHIMICA": 42}
+    runtime.telegram.misc_topic_id = None
+    runtime.telegram.state_dir = str(tmp_path / "state")
+    with patch("rt.core.config.load_config", return_value=runtime), \
+         patch("rt.telegram.client.send_message", return_value={"message_id": 77}) as send, \
+         patch("rt.telegram.client.edit_message_text") as edit:
+        assert notify_build_completed(lesson_dir, {"reason": "contenuto aggiornato"}, "Lezione")
+        assert notify_build_completed(lesson_dir, {"reason": "testo corretto"}, "Lezione")
+        send.assert_called_once()
+        edit.assert_called_once()
+        assert edit.call_args.args[1] == 77
+        assert "testo corretto" in edit.call_args.args[2]
+    with open(os.path.join(lesson_dir, "build_telegram_message.json"), encoding="utf-8") as f:
+        assert json.load(f)["message_id"] == 77
+
+
+def test_rebuild_sends_new_message_if_saved_message_cannot_be_edited(tmp_path, monkeypatch):
+    import json
+    from unittest.mock import MagicMock, patch
+    from rt.telegram.notify import notify_build_completed
+
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "fake_token")
+    monkeypatch.setenv("RT_TELEGRAM_CHAT_ID", "123456")
+    lesson_dir = str(tmp_path / "lesson_rebuild_fallback")
+    os.makedirs(lesson_dir, exist_ok=True)
+    with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write("materia: BIOCHIMICA\ndata: '2026-09-10'\n")
+    runtime = MagicMock()
+    runtime.telegram.topics = {"BIOCHIMICA": 42}
+    runtime.telegram.misc_topic_id = None
+    runtime.telegram.state_dir = str(tmp_path / "state")
+    with open(os.path.join(lesson_dir, "build_telegram_message.json"), "w", encoding="utf-8") as f:
+        json.dump({"message_id": 77, "chat_id": "123456", "thread_id": 42}, f)
+    with patch("rt.core.config.load_config", return_value=runtime), \
+         patch("rt.telegram.client.send_message", return_value={"message_id": 78}) as send, \
+         patch("rt.telegram.client.edit_message_text", side_effect=RuntimeError("not editable")) as edit:
+        notify_build_completed(lesson_dir, {}, "Lezione")
+        assert edit.call_count == 1 and send.call_count == 1
+        assert "Rebuild della lezione" in send.call_args.kwargs["text"]
+    with open(os.path.join(lesson_dir, "build_telegram_message.json"), encoding="utf-8") as f:
+        assert json.load(f)["message_id"] == 78
+
+
 import asyncio
 
 
-def test_handle_list_command_empty_lessons_root(tmp_path):
+def test_handle_list_command_empty_lessons_root(tmp_path, rt_db):
     from unittest.mock import AsyncMock, MagicMock, patch
     from rt.telegram.daemon import handle_list_command
 
@@ -185,8 +240,22 @@ def test_handle_list_command_empty_lessons_root(tmp_path):
 
     update.effective_message.reply_text.assert_called_once()
     reply = update.effective_message.reply_text.call_args[0][0]
-    assert f"Nessuna lezione trovata in '{empty_root}'" in reply
-    assert "rt config" in reply
+    assert "Nessuna lezione presente nel database" in reply
+
+
+def test_handle_list_command_says_when_the_database_is_off(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from rt.telegram.daemon import handle_list_command
+
+    update = MagicMock()
+    update.effective_message.message_thread_id = None
+    update.effective_message.reply_text = AsyncMock()
+    context = MagicMock()
+    context.bot_data = {"state_dir": str(tmp_path / "state")}
+    with patch("rt.core.config.load_config") as mock_cfg:
+        mock_cfg.return_value.telegram.topics = {}
+        asyncio.run(handle_list_command(update, context))
+    assert "Database di RT disattivato" in update.effective_message.reply_text.call_args[0][0]
 
 
 def test_handle_list_command_different_topic(tmp_path):
@@ -212,14 +281,16 @@ def test_handle_list_command_different_topic(tmp_path):
         cfg.telegram.topics = {"BIOCHIMICA": 42, "ANATOMIA": 99}
         mock_cfg.return_value = cfg
 
-        asyncio.run(handle_list_command(update, context))
+        with patch("rt.core.lesson_index.database_lessons", return_value=[
+            __import__("rt.core.lesson_index", fromlist=["LessonEntry"]).LessonEntry(
+                lesson_dir=l1, folder_name="lesson_bio", data="2026-09-08", materia="BIOCHIMICA",
+                titolo="", argomenti="")]):
+            asyncio.run(handle_list_command(update, context))
 
     update.effective_message.reply_text.assert_called_once()
     reply = update.effective_message.reply_text.call_args[0][0]
     assert "Nessuna lezione trovata per la materia di questo topic" in reply
     assert "1 lezioni totali in altri topic/materie" in reply
-
-
 
 
 

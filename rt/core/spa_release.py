@@ -129,8 +129,9 @@ def update_spa(project_root: str, version: str, opener: Optional[Callable] = Non
             print(f"✅ Web app {version} installata.")
         return True
     except SpaReleaseMissing:
-        print(f"⚠️ La release {version} non contiene la web app compilata: 'rt web' resterà senza "
-              "interfaccia finché non aggiorni (l'API funziona).", file=sys.stderr)
+        print(f"⚠️ La release {version} non contiene (ancora) la web app compilata: se è appena uscita "
+              "GitHub la allega entro qualche minuto, poi esegui di nuovo 'rt -u' (resti sulla stessa "
+              "versione e scarica la web app). Nel frattempo l'API funziona.", file=sys.stderr)
         return True
     except Exception as exc:  # rete, sha256, pacchetto: rt/spa resta com'era
         print(f"❌ Installazione della web app fallita: {exc}. Riprova con 'rt -u'.", file=sys.stderr)

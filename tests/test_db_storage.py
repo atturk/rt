@@ -97,6 +97,52 @@ def test_lessons_root_lists_db_lessons_and_rename_moves_the_id(db_lesson, rt_db)
         assert [l.folder_name for l in s.query(Lesson)] == ["[2026-09-05] BIOCHIMICA - Titolo"]
 
 
+def test_rename_moves_the_lesson_jobs(db_lesson, rt_db):
+    """4.1.0b3: dopo la build che rinomina la lezione GET /jobs?lesson_id= restituiva [] (i job
+    restavano sul vecchio percorso) e il pannello dei job non vedeva mai la fine del job."""
+    from rt.db.models import Job
+    from rt.services.jobs import DbJobQueue
+    with session_scope(rt_db) as s:
+        s.add(Job(id="build", type="run_phase", state="running", lesson_path=db_lesson, active_lesson=db_lesson))
+    renamed = os.path.join(os.path.dirname(db_lesson), "[2026-09-05] BIOCHIMICA - Titolo")
+    fs.rename(db_lesson, renamed)
+    with session_scope(rt_db) as s:
+        job = s.get(Job, "build")
+        assert (job.lesson_path, job.active_lesson) == (renamed, renamed)
+    assert [j.id for j in DbJobQueue(rt_db).list(lesson_id=renamed)] == ["build"]
+
+
+@pytest.mark.parametrize("outside_root", [False, True])
+def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypatch, rt_db, api_client,
+                                                              outside_root):
+    """4.1.0b2: dopo la build la lezione compariva due volte nell'elenco. Il worker (un altro
+    processo) rinomina/sposta la lezione "db"; la cache di rt.storage.fs del processo API
+    ricorda ancora il vecchio percorso, e la vista del job (lesson_path = vecchio percorso)
+    lo indicizzava come seconda lezione che legge gli stessi file."""
+    from rt.services.context import RunContext
+    from rt.services.lesson_service import lesson_id_for_dir
+    from rt.services.pipeline_service import PipelineOptions, run_pipeline
+    from tests.golden_support import INFO_YAML, TRANSCRIPT_MD
+    root = isolated_workspace(tmp_path, monkeypatch)
+    base = str(tmp_path / "upload") if outside_root else root
+    lesson = fs.create_db_lesson(os.path.join(base, LESSON_NAME))
+    for name, text in (("info.yaml", INFO_YAML), ("trascritto grezzo.md", TRANSCRIPT_MD)):
+        with fs.open(os.path.join(lesson, name), "w", encoding="utf-8") as f:
+            f.write(text)
+    lesson_id = fs.resolve(lesson).lesson_id
+    run_pipeline([lesson], PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=True,
+                                           channel="terminal"), RunContext())
+    # Come nel processo API: la cache di fs ricorda il percorso di prima della build.
+    with fs._lock:
+        fs._known[rt_db.url][lesson] = lesson_id
+    assert lesson_id_for_dir(lesson) is None
+    items = api_client.get("/api/v1/lessons").json()
+    assert [i["id"] for i in items] == [lesson_id]
+    assert os.path.dirname(items[0]["path"]) == root
+    with session_scope(rt_db) as s:
+        assert s.query(Lesson).count() == 1
+
+
 def test_lock_files_live_in_the_data_folder(db_lesson, rt_db):
     from rt.core.process_lock import lesson_lock_path, lesson_work_lock
     lock = lesson_lock_path(db_lesson)
@@ -126,13 +172,12 @@ def test_read_snapshot_reads_each_lesson_once_and_sees_its_own_writes(db_lesson,
     assert fs.isfile(os.path.join(db_lesson, "nuovo.json"))
 
 
-def test_new_lessons_can_stay_in_folders(rt_db, tmp_path):
-    """storage.new_lessons = folder (settings) riporta al layout a cartelle."""
+def test_new_lessons_always_use_database_when_available(rt_db):
     from rt.db.repositories import SettingRepository
     assert fs.new_lessons_use_db()
     with session_scope(rt_db) as s:
         SettingRepository(s).set("storage.new_lessons", "folder")
-    assert not fs.new_lessons_use_db()
+    assert fs.new_lessons_use_db()
 
 
 # ---------------------------------------------------------------- migrazione ed export

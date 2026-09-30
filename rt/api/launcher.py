@@ -61,7 +61,7 @@ def _already_running(port: int) -> bool:
 
 def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bool = True,
             worker: bool = True, worker_args: Optional[List[str]] = None,
-            say: Callable[[str], None] = print) -> int:
+            say: Callable[[str], None] = print, verbose: bool = False) -> int:
     import uvicorn
     from rt.api import auth
     from rt.api.app import create_app
@@ -76,6 +76,9 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
         prepare(host=host, say=say)
         say("✅ RT è già in funzione in background (servizi).")
         _open_when_ready(base, f"{base}/login?code={auth.create_login_code()}", say, open_browser)
+        if verbose:
+            from rt.services.logs_service import show_logs
+            show_logs(lines=50, follow=True)
         return 0
     if host not in LOOPBACK:
         say(f"⚠️  RT sarà raggiungibile da altri dispositivi su {host}:{port}. Proteggi il token.")

@@ -90,9 +90,25 @@ def ingest_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def run_phase_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.pipeline_service import build_notifiers, run_phase
+    from rt.services.prompt_settings import extra_scope
+    lesson_dir = _lesson_dir(job)
+    phase = job.payload["phase"]
+    extra = str(job.payload.get("extra_prompt") or "").strip()
+    if extra and phase == "outline":
+        from rt.pipeline.outline import get_outline_path
+        from rt.storage import fs
+        if fs.isfile(get_outline_path(lesson_dir)):
+            # Outline già presente: l'istruzione diventa una richiesta di revisione.
+            from rt.services.outline_service import request_outline_revision
+            ctx.force_mock = bool((job.payload.get("options") or {}).get("mock"))
+            return JobOutcome(state=JobState.SUCCEEDED,
+                              result=json_safe(request_outline_revision(lesson_dir, extra, ctx=ctx)),
+                              lesson_path=lesson_dir)
     options = pipeline_options(job.payload.get("options") or {})
-    with _mock_failure(job, options):
-        return outcome_from_pipeline(run_phase(_lesson_dir(job), job.payload["phase"], options, ctx,
+    if extra:
+        options.force = True  # istruzioni nuove: la fase va rifatta anche se è già valida
+    with extra_scope(lesson_dir, phase, job.payload), _mock_failure(job, options):
+        return outcome_from_pipeline(run_phase(lesson_dir, phase, options, ctx,
                                                notifiers=build_notifiers()))
 
 

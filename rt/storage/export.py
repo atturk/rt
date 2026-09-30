@@ -19,9 +19,12 @@ nome dei file e un LEGGIMI che lo spiega. Senza bozza pronta resta il documento 
 superato, se c'è.
 """
 import io
+import hashlib
+import json
 import os
 import re
 import zipfile
+import tempfile
 from typing import Dict, List, Optional, Tuple, Union
 
 from rt.storage import fs
@@ -192,13 +195,36 @@ def export_to_dir(lesson_dir: str, out_dir: str, scope: str = "final") -> List[s
 
 def export_zip(lesson_dir: str, scope: str = "final") -> bytes:
     """Archivio zip con i file nella cartella <nome lezione>/."""
-    folder = os.path.basename(os.path.normpath(lesson_dir))
     buf = io.BytesIO()
+    _export_zip_into(lesson_dir, scope, buf)
+    return buf.getvalue()
+
+
+def export_zip_to_tempfile(lesson_dir: str, scope: str = "final") -> str:
+    """Build a large ZIP on disk so FastAPI can stream it without buffering all media."""
+    with tempfile.NamedTemporaryFile(prefix="rt-export-", suffix=".zip", delete=False) as output:
+        path = output.name
+        try:
+            _export_zip_into(lesson_dir, scope, output)
+        except BaseException:
+            os.unlink(path)
+            raise
+    return path
+
+
+def _export_zip_into(lesson_dir: str, scope: str, buf) -> None:
+    folder = os.path.basename(os.path.normpath(lesson_dir))
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        entries = []
         for rel, src in collect(lesson_dir, scope):
             real = None if isinstance(src, bytes) else fs.real_path(src)
             if real is not None:
                 zf.write(real, f"{folder}/{rel}")
             else:
                 zf.writestr(f"{folder}/{rel}", src if isinstance(src, bytes) else _read(src))
-    return buf.getvalue()
+            if scope == "all" and rel not in (PREVIEW_README,) and not rel.endswith(PREVIEW_SUFFIX + ".md"):
+                payload = src if isinstance(src, bytes) else _read(src)
+                entries.append({"path": rel, "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+        if scope == "all":
+            zf.writestr(f"{folder}/rt-export.json", json.dumps({"format": "rt-lesson", "version": 1,
+                "scope": "all", "files": entries}, ensure_ascii=False))

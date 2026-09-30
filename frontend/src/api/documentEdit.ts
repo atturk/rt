@@ -15,11 +15,11 @@ export function useCheckDocument(lessonId: number) {
   })
 }
 
-export function useSaveDocument(lessonId: number) {
+export function useSaveDocument(lessonId: number, leaseToken?: string) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (markdown: string) =>
-      unwrap(api.PUT('/api/v1/lessons/{lesson_id}/document/draft', { params: { path: { lesson_id: lessonId } }, body: { markdown } })),
+      unwrap(api.PUT('/api/v1/lessons/{lesson_id}/document/draft', { params: { path: { lesson_id: lessonId } }, body: { markdown, lease_token: leaseToken } })),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: lessonKeys.all(lessonId) })
       void client.invalidateQueries({ queryKey: ['lessons'] })
@@ -33,7 +33,7 @@ export type Notice = 'preview_edit_beta' | 'preview_edit_issues'
 export function useDismissNotice() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (notice: Notice) => unwrap(api.PUT('/api/v1/settings/notices', { body: { notice, dismissed: true } })),
+    mutationFn: (notice: Notice | 'setup_wizard') => unwrap(api.PUT('/api/v1/settings/notices', { body: { notice, dismissed: true } })),
     onSuccess: () => client.invalidateQueries({ queryKey: settingsKeys.all }),
   })
 }

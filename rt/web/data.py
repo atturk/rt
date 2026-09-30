@@ -360,7 +360,7 @@ WARNING_LABELS = {
     ),
     ScienceType.ERR_REWRITE_DRIFT: (
         "Fedeltà al parlato",
-        "Il pre-filtro Jev segnala che l'unità potrebbe discostarsi dal trascritto grezzo. Confronta unità e audio: non è un errore confermato.",
+        "Il pre-filtro del classificatore segnala che l'unità potrebbe discostarsi dal trascritto grezzo. Confronta unità e audio: non è un errore confermato.",
     ),
 }
 

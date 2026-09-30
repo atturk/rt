@@ -96,6 +96,21 @@ def test_stale_review_does_not_block_build(root):
     assert compute_effective_workflow_state(lesson_dir) == WorkflowState.COMPLETED
 
 
+
+def test_stale_review_names_the_relevance_classification(root):
+    """Con il filtro di rilevanza attivo, correggere la classe di un'unità rende la review
+    STALE: il motivo lo dice, invece di incolpare bozza e segmenti che non sono cambiati."""
+    from unittest.mock import patch
+    from rt.core.config import JevConfig, RTConfig
+    lesson_dir = _reviewed_lesson(root)
+    with fs.open(lesson_path(lesson_dir, "unit_relevance.json"), "w", encoding="utf-8") as f:
+        f.write('{"units": {}}')
+    active = RTConfig(jev=JevConfig(relevance_model="typesafe/jev-1.13", relevance_mode="active"))
+    with patch("rt.core.config.load_config", return_value=active):
+        status, reason = check_phase_status(lesson_dir, "review")
+    assert status == PhaseStatus.STALE
+    assert "rilevanza" in reason and "draft.json" not in reason
+
 def test_rewrite_changes_after_build_make_it_stale(root):
     lesson_dir = _reviewed_lesson(root)
     run_build(lesson_dir)

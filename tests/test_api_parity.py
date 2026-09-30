@@ -96,7 +96,7 @@ def cli(tmp_path):
 @pytest.fixture
 def pair(api, cli):
     """La stessa lezione (trascritto Markdown) in una copia per parte."""
-    return make_lesson(cli.root), make_lesson(api.root)
+    return make_lesson(cli.root, index=False), make_lesson(api.root)
 
 
 # ---------------------------------------------------------------- confronto
@@ -260,6 +260,27 @@ def test_row_rewrite_single_unit(api, cli, pair):
     assert_same_lesson(cli_dir, api_dir)
 
 
+def test_row_review_single_unit(api, cli, pair):
+    """rt review --unit U1 ⇔ run_phase review con unit (job review_unit) + decisioni."""
+    from tests.api_support import run_mock_pipeline
+    cli_dir, api_dir = pair
+    from rt.pipeline.ledger import purge_decisions_by_prefix
+    # Issue ancora da decidere: rivedere l'unità le ritrova con gli stessi id e le decisioni
+    # arrivano dopo, da terminale o dalla web.
+    for lesson_dir in pair:
+        run_mock_pipeline(lesson_dir)
+        purge_decisions_by_prefix(lesson_dir, "sci_")
+    lesson_id = api.lesson_id()
+    unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
+    out = cli.rt("review", cli_dir, "--mock", "--unit", unit, "--auto-accept", "all", "--channel", "terminal")
+    assert f"Revisione dell'unità {unit} completata" in out
+    job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "review", "unit": unit,
+                                                       "mock": True})
+    assert job["state"] == "succeeded" and job["type"] == "review_unit", job
+    api.decide_pending(lesson_id, lambda issue: "accepted")  # come --auto-accept all
+    assert_same_lesson(cli_dir, api_dir)
+
+
 def test_row_validate_outline_and_draft(api, cli, pair):
     """rt validate-outline / validate-draft ⇔ GET /lessons/{id}/phases."""
     from tests.api_support import run_mock_pipeline
@@ -269,6 +290,36 @@ def test_row_validate_outline_and_draft(api, cli, pair):
     report = api.client.get(f"/api/v1/lessons/{api.lesson_id()}/phases").json()
     assert report["outline_validation"] == cli.json_out("validate-outline", cli_dir)
     assert report["draft_validation"] == cli.json_out("validate-draft", cli_dir)
+
+
+def test_row_validate_phase(api, cli, pair):
+    """rt validate-phase <lezione> <fase> ⇔ POST /lessons/{id}/phases/{fase}/validate."""
+    from rt.core.lesson_paths import lesson_path
+    from tests.api_support import run_mock_pipeline
+    cli_dir, api_dir = pair
+    for lesson_dir in pair:
+        run_mock_pipeline(lesson_dir)
+    lesson_id = api.lesson_id()
+    for lesson_dir in pair:  # la stessa modifica voluta alla scaletta: rewrite e build STALE
+        path = lesson_path(lesson_dir, "outline.json")
+        with fs.open(path, encoding="utf-8") as f:
+            outline = json.load(f)
+        outline["macro_sections"][0]["units"][0]["title"] += " (rivisto)"
+        with fs.open(path, "w", encoding="utf-8") as f:
+            json.dump(outline, f, ensure_ascii=False, indent=2)
+    out = cli.rt("validate-phase", cli_dir, "rewrite")
+    assert "validata manualmente" in out
+    assert api.post(f"/lessons/{lesson_id}/phases/rewrite/validate")["status"] == "VALID"
+    assert_same_lesson(cli_dir, api_dir)
+    phases = dict(lesson_state(api_dir)["phases"])
+    assert phases["rewrite"] == "VALID" and phases["build"] == "STALE"
+    # Stesso rifiuto con lo stesso messaggio: una fase MISSING non si forza.
+    for lesson_dir in pair:
+        fs.remove(lesson_path(lesson_dir, "science_issues.json"))
+    code, _, err = _run_cli(["validate-phase", cli_dir, "review"], cwd=cli.root, stdin="")
+    res = api.client.post(f"/api/v1/lessons/{lesson_id}/phases/review/validate")
+    assert code == 1 and res.status_code == 409
+    assert res.json()["error"]["message"].replace(api_dir, cli_dir) in err
 
 
 def test_row_outline_revise_and_approve(api, cli, pair):
@@ -465,8 +516,8 @@ def test_row_status_and_cost(api, cli, pair):
 
 
 def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypatch, rt_db):
-    """rt config (provider, modelli delle sei fasi, pricing, Telegram, trascrizione,
-    lessons_root) ⇔ endpoint di RT4-E4: quello che scrive l'API lo legge la CLI."""
+    """rt config (provider, modelli delle sei fasi, pricing, Telegram, trascrizione)
+    ⇔ endpoint di RT4-E4: quello che scrive l'API lo legge la CLI."""
     import subprocess
     import sys
     from tests.api_support import workspace_with_example_config
@@ -481,9 +532,6 @@ def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypa
     for n, job_name in enumerate(jobs):
         res = client.put(f"/api/v1/settings/phases/{job_name}", json={"connection": "Parita", "model": f"vendor/model-{n}"})
         assert res.status_code == 200, res.text
-    new_root = str(tmp_path / "altra_radice")
-    os.makedirs(new_root)
-    assert client.put("/api/v1/settings/lessons-root", json={"path": new_root}).status_code == 200
     res = client.put("/api/v1/settings/transcription", json={"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                                                "model": "whisper-parita"})
     assert res.status_code == 200, res.text
@@ -492,14 +540,13 @@ def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypa
 
     # la CLI in un processo nuovo, nella stessa cartella di lavoro
     script = ("import json; from rt.core.config import load_config; c = load_config(); "
-              "print(json.dumps({'root': c.telegram.lessons_root, 'engine': c.transcription.engine, "
+              "print(json.dumps({'engine': c.transcription.engine, "
               "'stt_model': c.transcription.model, 'topics': c.telegram.topics, "
               f"'models': {{j: c.jobs[j].primary.model for j in {jobs!r}}}}}))")
     env = dict(os.environ, PYTHONPATH=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     out = subprocess.run([sys.executable, "-c", script], cwd=os.getcwd(), env=env, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     seen = json.loads(out.stdout.strip().splitlines()[-1])
-    assert seen["root"] == new_root
     assert (seen["engine"], seen["stt_model"]) == ("custom", "whisper-parita")
     assert seen["topics"] == {"BIOCHIMICA": 7}
     assert seen["models"] == {j: f"vendor/model-{n}" for n, j in enumerate(jobs)}
@@ -515,3 +562,39 @@ def test_row_telegram_daemon_status(api, monkeypatch, tmp_path):
     assert api.client.get("/api/v1/telegram/daemon").json() == {"running": True, "pid": ds.get_daemon_pid(pid_path)}
     ds.remove_daemon_pid(pid_path)
     assert api.client.get("/api/v1/telegram/daemon").json()["running"] is False
+
+
+def test_row_relevance_run(api, cli, pair):
+    """rt relevance <lezione> [--all] ⇔ POST /lessons/{id}/relevance/run (job unit_relevance)."""
+    import yaml
+    from rt.services import config_service
+    from rt.services.config_service import general_config_path
+    from rt.services.unit_relevance import list_units
+    from tests.api_support import run_mock_pipeline
+    cli_dir, api_dir = pair
+    for lesson_dir in pair:
+        run_mock_pipeline(lesson_dir)
+    lesson_id = api.lesson_id()
+    # JEV spento: stesso rifiuto dai due lati, nessun job accodato
+    code, _, err = _run_cli(["relevance", cli_dir, "--mock"], cwd=cli.root, stdin="")
+    res = api.client.post(f"/api/v1/lessons/{lesson_id}/relevance/run", json={"mock": True})
+    assert code == 1 and res.status_code == 409 and res.json()["error"]["code"] == "relevance_disabled"
+    assert res.json()["error"]["message"] in err
+
+    # la CLI legge config/ nella sua cartella, l'API quella del workspace: la stessa modifica a entrambe
+    for path in (general_config_path(), os.path.join(cli.root, "config", "general.yaml")):
+        data = {}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        data["jev"] = {**data.get("jev", {}), "relevance_model": "typesafe/jev-1.13", "relevance_mode": "shadow"}
+        config_service.write_yaml_atomic(path, data)
+    out = cli.rt("relevance", cli_dir, "--mock", "--all")
+    assert "unità (shadow)" in out
+    job = api.run(f"/lessons/{lesson_id}/relevance/run", json={"mock": True, "force": True})
+    assert job["state"] == "succeeded" and job["type"] == "unit_relevance", job
+    assert job["result"]["mode"] == "shadow" and job["result"]["errors"] == 0
+
+    def rows(lesson_dir):
+        return [{k: v for k, v in unit.items() if k not in ("corrected_at",)} for unit in list_units(lesson_dir)["units"]]
+    assert rows(cli_dir) == rows(api_dir) and rows(api_dir)

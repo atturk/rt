@@ -1,8 +1,8 @@
 import { Brain, Download, Images, LayoutDashboard, Pencil } from 'lucide-react'
-import { lazy, Suspense, useId, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
-import { errorMessage, type Schemas } from '@/api/client'
+import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
 import { useDismissNotice, type Notice } from '@/api/documentEdit'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { useSettings } from '@/api/settings'
@@ -17,12 +17,15 @@ import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
 import { LessonFilters } from '@/components/LessonFilters'
+import { LessonList, LessonViewControls } from '@/components/LessonList'
 import { useFilteredLessons } from '@/lib/lessonFilters'
+import { groupLessons, sortLessons, useLessonViewPrefs } from '@/lib/lessonView'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from '@/lib/format'
+import { STATE_LABELS, formatCost, lessonTitle } from '@/lib/format'
 import type { Area } from './types'
+import { RelevancePage } from './relevance'
 
 function Stat({ value, label }: { value: number | string; label: string }) {
   return (
@@ -33,40 +36,16 @@ function Stat({ value, label }: { value: number | string; label: string }) {
   )
 }
 
-function LessonCard({ lesson }: { lesson: Lesson }) {
-  const meta = [lesson.materia, lesson.data, lesson.state ? STATE_LABELS[lesson.state] ?? lesson.state : null].filter(Boolean)
-  return (
-    <Card className="p-5" data-testid="lesson-card" data-lesson-id={lesson.id}>
-      <h2 className="text-lg font-bold leading-snug tracking-tight">
-        <Link to={`/lezioni/${lesson.id}`} className="hover:underline">
-          {lessonTitle(lesson)}
-        </Link>
-      </h2>
-      <p className="mb-3 mt-1 text-xs text-muted-foreground">{meta.join(' · ')}</p>
-      <PhaseBadges phases={lesson.phases} />
-      <div className="mt-4 flex flex-wrap items-baseline gap-3 border-t pt-3 text-xs">
-        <span className="tabular-nums text-muted-foreground" title="Costo stimato">
-          {formatCost(lesson.cost_usd)}
-        </span>
-        {lesson.pending_issues > 0 ? (
-          <Link to={`/lezioni/${lesson.id}/revisione`} className="font-bold text-accent-foreground hover:underline">
-            {lesson.pending_issues} issue da valutare →
-          </Link>
-        ) : (
-          <span className="text-muted-foreground">Nessuna issue da valutare</span>
-        )}
-      </div>
-      {lesson.error && <p className="mt-2 text-xs text-danger">{lesson.error}</p>}
-    </Card>
-  )
-}
-
 export function DashboardPage() {
   // Elenco completo una volta sola; testo, materia e stato si filtrano qui, senza una
   // richiesta per tasto (GET /lessons ricalcola fasi, issue e costi di ogni lezione).
   const all = useLessons()
   const lessons = all.data ?? []
-  const { filters, setFilter, filtered } = useFilteredLessons(all.data)
+  const { filters, setFilter, resetFilters, filtered } = useFilteredLessons(all.data)
+  const { prefs, update, sortBy, toggleGroup } = useLessonViewPrefs()
+  const groups = groupLessons(sortLessons(filtered, prefs.sort, prefs.dir), prefs.group, prefs.sort === 'data' ? prefs.dir : 'desc')
+  const hasFilters = Boolean(filters.q || filters.materia || filters.state)
+  useSearchShortcut('filter-q')
   return (
     <section className="flex flex-col gap-5">
       <h1 className="sr-only">Dashboard</h1>
@@ -80,20 +59,42 @@ export function DashboardPage() {
 
       {all.isError && <Alert tone="danger">{errorMessage(all.error)}</Alert>}
       {all.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
+      {all.data && lessons.length > 0 && (
+        <LessonViewControls shown={filtered.length} total={lessons.length} filtered={hasFilters}
+          onReset={resetFilters} prefs={prefs} onChange={update} />
+      )}
       {all.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          {lessons.length === 0 ? 'Nessuna lezione nella cartella delle lezioni.' : 'Nessuna lezione corrisponde ai filtri.'}
+          {lessons.length === 0 ? 'Nessuna lezione: importane una da un audio.' : 'Nessuna lezione corrisponde ai filtri.'}
         </Card>
       )}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {filtered.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} />)}
-      </div>
+      {filtered.length > 0 && (
+        <LessonList groups={groups} grouped={prefs.group !== 'nessuno'} prefs={prefs} onSort={sortBy} onToggleGroup={toggleGroup} />
+      )}
     </section>
   )
 }
 
+/** "/" porta nel campo di ricerca (se non si sta già scrivendo altrove). */
+function useSearchShortcut(inputId: string) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      const input = document.getElementById(inputId)
+      if (!input) return
+      event.preventDefault()
+      input.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inputId])
+}
+
 export function LessonPage() {
   const id = Number(useParams().lessonId)
+  const [editingDocument, setEditingDocument] = useState(false)
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   if (lesson.isPending) return <p className="text-sm text-muted-foreground">Carico la lezione…</p>
@@ -121,10 +122,6 @@ export function LessonPage() {
           </div>
           <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t pt-3 text-xs">
             <div className="flex gap-1.5">
-              <dt className="text-muted-foreground">Scaletta approvata</dt>
-              <dd data-testid="outline-approved">{l.outline_approved ? 'sì' : 'no'}</dd>
-            </div>
-            <div className="flex gap-1.5">
               <dt className="text-muted-foreground">Segmenti</dt>
               <dd>{l.segment_count}</dd>
             </div>
@@ -151,10 +148,10 @@ export function LessonPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex min-w-0 flex-col gap-4">
             {l.has_audio && <AudioPlayer lessonId={id} sections={sections} />}
-            <DocumentCard lesson={l} />
+            <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
           </div>
           <aside className="flex flex-col gap-4">
-            <PhasePanel lessonId={id} units={sections} />
+            <PhasePanel lessonId={id} units={sections} editingDocument={editingDocument} />
             <JobsPanel lessonId={id} />
             <CostPanel lesson={l} />
           </aside>
@@ -167,33 +164,72 @@ export function LessonPage() {
 // L'editor (CodeMirror) si carica solo quando si entra in modifica.
 const DocumentEditor = lazy(() => import('@/components/lesson/DocumentEditor').then((m) => ({ default: m.DocumentEditor })))
 
+const LEASE_RENEW_MS = 4 * 60 * 1000
+
 /** Riquadro del documento: anteprima o documento finale, con la modifica dell'anteprima (beta). */
-function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
+function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const settings = useSettings()
   const dismissNotice = useDismissNotice()
   const [mode, setMode] = useState<'view' | 'notice' | 'edit'>('view')
+  const [leaseToken, setLeaseToken] = useState<string | null>(null)
+  const [leaseError, setLeaseError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!leaseToken) return
+    // Il server fa scadere una sessione non rinnovata (scheda chiusa, crash): qui la teniamo viva.
+    const renew = window.setInterval(() => {
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id }, query: { token: leaseToken } } }))
+        .catch((error: unknown) => setLeaseError(errorMessage(error)))
+    }, LEASE_RENEW_MS)
+    return () => {
+      window.clearInterval(renew)
+      void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
+        params: { path: { lesson_id: id }, query: { token: leaseToken } },
+      })
+    }
+  }, [leaseToken, id])
   const [saved, setSaved] = useState<DocumentSaveResult | null>(null)
   const dismissed = settings.data?.notices.dismissed ?? []
   const notices = ([...(l.pending_issues > 0 ? ['preview_edit_issues'] : []), 'preview_edit_beta'] as Notice[]).filter((n) => !dismissed.includes(n))
 
   const startEdit = () => {
     setSaved(null)
-    setMode(notices.length > 0 ? 'notice' : 'edit')
+    if (notices.length > 0) setMode('notice')
+    else void beginEdit()
+  }
+  const beginEdit = async (recover = false) => {
+    try {
+      const lease = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id }, query: { recover } } }))
+      setLeaseToken(lease.token)
+      setLeaseError(null)
+      setMode('edit')
+      onEditingChange(true)
+    } catch (error) { setLeaseError(errorMessage(error)) }
   }
   return (
     <Card className="px-6 py-5">
       {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
       {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
+      {leaseError && <Alert tone="danger">{leaseError}<Button size="sm" variant="outline" className="ml-2" onClick={() => void beginEdit(true)}>Recupera sessione</Button></Alert>}
       {document.data && mode === 'edit' && (
         <Suspense fallback={<p className="text-sm text-muted-foreground">Preparo l'editor…</p>}>
           <DocumentEditor
           lessonId={id}
           markdown={document.data.markdown}
+          leaseToken={leaseToken ?? undefined}
           onClose={(result) => {
-            setMode('view')
-            if (result?.changed) setSaved(result)
+            const finishClose = () => {
+              setMode('view')
+              onEditingChange(false)
+              setLeaseToken(null)
+              if (result?.changed) setSaved(result)
+            }
+            if (leaseToken) {
+              void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
+                params: { path: { lesson_id: id }, query: { token: leaseToken } },
+              }).finally(finishClose)
+            } else finishClose()
           }}
           />
         </Suspense>
@@ -233,7 +269,7 @@ function DocumentCard({ lesson: l }: { lesson: Schemas['LessonDetail'] }) {
           onCancel={() => setMode('view')}
           onConfirm={(dismiss) => {
             for (const n of dismiss) dismissNotice.mutate(n)
-            setMode('edit')
+            void beginEdit()
           }}
         />
       )}
@@ -314,6 +350,7 @@ export const lessonsArea: Area = {
   routes: [
     { index: true, element: <DashboardPage /> },
     { path: 'lezioni/:lessonId', element: <LessonPage /> },
+    { path: 'lezioni/:lessonId/rilevanza', element: <RelevancePage /> },
   ],
   nav: [{ to: '/', label: 'Lezioni', icon: LayoutDashboard, end: true }],
 }

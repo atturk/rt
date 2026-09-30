@@ -77,6 +77,9 @@ sostituisci l'host con `localhost:5173`.
   `DocumentEditor.tsx`, caricato solo quando si entra in modifica (`React.lazy`) per non
   appesantire il bundle iniziale. L'anteprima e gli errori vengono dal backend
   (`POST /document/check`): il frontend non valida la struttura.
+- **Formule.** `lib/math.ts` trasforma in MathML con Temml i delimitatori espliciti (`$…$`,
+  `$$…$$`, `\(…\)`, `\[…\]`); Temml si carica solo se il documento ha formule. Il backend
+  (`rt/core/markdown_render.py`) le consegna intatte, senza corsivi né escape dentro la formula.
 - **Avvisi "Non mostrare più".** Sono impostazioni del server (`PUT /settings/notices`,
   `useDismissNotice` in `src/api/documentEdit.ts`), non `localStorage`.
 - **Lezioni per id.** Solo gli id numerici e gli endpoint dell'API: mai percorsi di cartelle

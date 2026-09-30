@@ -1,6 +1,6 @@
 """
 tests/test_db_sync.py
-RT4-B2: import delle lezioni nel DB (rt db sync), dual-write dalle scritture di info.yaml,
+RT4-B2: indicizzazione iniziale delle lezioni, dual-write dalle scritture di info.yaml,
 manifest e ledger, confronto DB/file (rt db check) e funzionamento senza DB o con DB rotto.
 """
 import json
@@ -157,21 +157,23 @@ def test_broken_database_does_not_break_writes(lessons, monkeypatch, tmp_path, c
     assert "Database non disponibile" in caplog.text
 
 
-def test_cli_db_sync_and_check(rt_db, lessons, capsys):
+def test_cli_rejects_manual_db_sync_and_checks_storage_migration(rt_db, lessons, capsys):
     from rt.cli import main
     root, dirs = lessons
+    main(["db", "check"])
+    assert "Integrità database e media verificata" in capsys.readouterr().out
     with pytest.raises(SystemExit):
-        main(["db", "check", "--lessons-root", root])
-    assert "lezione assente dal database" in capsys.readouterr().out
-    main(["db", "sync", "--lessons-root", root])
-    assert "Lezioni sincronizzate: 3" in capsys.readouterr().out
-    main(["db", "check", "--lessons-root", root])
-    assert "allineato" in capsys.readouterr().out
+        main(["db", "sync", "--lessons-root", root])
+    capsys.readouterr()
+    from rt.storage.migrate import migrate_storage
+    assert not migrate_storage(root).errors
+    main(["db", "check"])
+    assert "Integrità database e media verificata" in capsys.readouterr().out
 
 
 def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     """Run mock completo (sottoprocessi CLI) con il DB attivo: stessi file e output dei golden,
-    e 'rt db check' pulito senza aver mai lanciato 'rt db sync'.
+    e 'rt db check' pulito senza import manuali.
 
     Con il DB attivo la lezione nasce nel database (nessuna cartella): i file della lezione,
     letti da rt.storage.fs, sono identici ai golden; nell'output cambia solo la riga del
@@ -203,3 +205,31 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
         assert lesson.workflow_state == "pronto_per_build"  # come info.yaml nel golden
         assert PhaseRunRepository(s).for_lesson(lesson)["build"].status == "VALID"
         assert DecisionRepository(s).active(lesson)
+
+
+def test_relocate_moves_jobs_and_path_keyed_rows(rt_db, lessons):
+    """rt build rinomina la cartella: job, istruzioni aggiuntive e documenti di stato seguono
+    la lezione (prima GET /jobs?lesson_id= restituiva [] e il pannello non vedeva la fine)."""
+    from rt.db.models import Job, Setting, StateDocument
+    from rt.db.sync import relocate_lesson
+    from rt.services.jobs import DbJobQueue
+    from rt.services.prompt_settings import extra_keys
+    root, dirs = lessons
+    sync_all(rt_db, root)
+    old = dirs[2]
+    new = os.path.join(root, "[2026-09-03] ANATOMIA - Cuore rielaborato")
+    with session_scope(rt_db) as s:
+        s.add(Job(id="j1", type="build", state="running", lesson_path=old, active_lesson=old))
+        s.add(Job(id="j2", type="build", state="succeeded", lesson_path=dirs[0]))
+        s.add(Setting(key=extra_keys(old)[1], value="usa esempi"))
+        s.add(StateDocument(key=os.path.join(old, "_state", "x.json"), payload={"a": 1}))
+    os.rename(old, new)
+    relocate_lesson(old, new)
+    with session_scope(rt_db) as s:
+        job = s.get(Job, "j1")
+        assert (job.lesson_path, job.active_lesson) == (new, new)
+        assert s.get(Job, "j2").lesson_path == dirs[0]
+        assert s.get(Setting, extra_keys(new)[1]).value == "usa esempi"
+        assert s.get(StateDocument, os.path.join(new, "_state", "x.json")).payload == {"a": 1}
+        assert LessonRepository(s).get_by_path(new) is not None
+    assert [j.id for j in DbJobQueue(rt_db).list(lesson_id=new)] == ["j1"]

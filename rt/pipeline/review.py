@@ -10,12 +10,15 @@ import os
 import json
 import logging
 from typing import Dict, Any, List, Optional
+
+from pydantic import ValidationError
 from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, DraftUnit
 from rt.core.segments import load_segments_json
 from rt.core.state import transition_to, WorkflowState
 from rt.core.manifest import load_manifest
 from rt.core.config import load_config, JevConfig
 from rt.llm.client import LLMClient
+from rt.services.prompt_settings import append_extra, effective_system
 from rt.llm.prompts import (
     SCIENCE_REVIEW_SYSTEM_PROMPT,
     build_science_review_user_prompt,
@@ -24,7 +27,7 @@ from rt.llm.prompts import (
 from rt.pipeline.rewrite import load_draft
 from rt.core.lesson_paths import lesson_path
 from rt.core.asr_risk import detect_statistical_asr_risks
-from rt.llm.jev_client import call_jev, JevChoiceQuestion, JevNoulQuestion, JevError
+from rt.llm.jev_client import call_jev, JevNoulQuestion, JevError
 
 
 from rt.core.encoding import sanitize_object_encoding
@@ -116,7 +119,7 @@ def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
                              max_repair_attempts: int = 2) -> List[ScienceIssue]:
     """Non persiste claim concettuali che non sono nel draft esaminato dal critic."""
     result = client.call_structured(
-        prompt=prompt, system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+        prompt=prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
         response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
         min_elapsed_seconds=5.0, lesson_dir=lesson_dir,
     )
@@ -150,7 +153,7 @@ def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
                 f"ISSUE DA RIPARARE:\n{json.dumps(issue.model_dump(mode='json'), ensure_ascii=False)}"
             )
             repaired = client.call_structured(
-                prompt=repair_prompt, system_prompt=SCIENCE_REVIEW_SYSTEM_PROMPT,
+                prompt=repair_prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
                 response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
                 lesson_dir=lesson_dir,
             )
@@ -168,12 +171,20 @@ def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
 # -----------------------------------------------------------------------
 
 class JevTaskAVerdict:
-    """Esito del Task A (correttezza scientifica): Jev vede SOLO il testo rielaborato."""
+    """Esito del Task A (correttezza scientifica): Jev vede SOLO il testo rielaborato.
+    label/outcome/answer vengono dalla mappatura configurata (rt.services.jev_mapping)."""
 
-    def __init__(self, choice: str, confidence: float, should_skip_expensive_llm: bool):
+    def __init__(self, choice: str, confidence: float, should_skip_expensive_llm: bool,
+                 label: str = "", outcome: str = "", answer: Optional[Dict[str, Any]] = None):
         self.choice = choice
         self.confidence = confidence
         self.should_skip_expensive_llm = should_skip_expensive_llm
+        self.label = label
+        self.outcome = outcome
+        self.answer = answer or {}
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"label": self.label, "outcome": self.outcome, "answer": self.answer}
 
 
 class JevTaskBVerdict:
@@ -186,52 +197,19 @@ class JevTaskBVerdict:
 
 def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskAVerdict]:
     """
-    Chiede a Jev di classificare la correttezza scientifica dell'unità, vedendo SOLO il
-    testo rielaborato (mai il trascritto grezzo, per non contaminare il giudizio con
-    considerazioni sulla fedeltà ASR, di competenza del Task B).
+    Chiede a Jev la domanda configurata per il prefiltro errori (predefinita: gravità degli
+    errori scientifici), vedendo SOLO il testo rielaborato (mai il trascritto grezzo, per non
+    contaminare il giudizio con considerazioni sulla fedeltà ASR, di competenza del Task B),
+    e mappa la risposta su "salta la review" / "esegui la review".
     Ritorna None se la chiamata fallisce: fallback prudente, nessuno skip verrà applicato.
     """
+    from rt.services import jev_mapping
+    name = jev_mapping.QUESTION_NAMES["prefilter"]
     try:
+        decision = jev_mapping.effective_decision("prefilter", jev_cfg)
         resp = call_jev(
-            state=unit.content,
-            questions={
-                "correttezza": JevChoiceQuestion(
-                    instructions=(
-                        "Sei un revisore scientifico che classifica un singolo paragrafo di prosa "
-                        "accademica (già rielaborato da una trascrizione di lezione universitaria) "
-                        "in base alla gravità di eventuali errori scientifici presenti, SENZA accesso "
-                        "alla trascrizione originale. Non correggere il testo: classifica solo la "
-                        "gravità di ciò che vi leggi. Ignora eventuali refusi isolati o termini "
-                        "graficamente sospetti che sembrano artefatti di trascrizione automatica (ASR) "
-                        "non ancora corretti: non è compito tuo, e non contano come errore scientifico "
-                        "se isolati e privi di altro significato rilevante."
-                    ),
-                    criteria={
-                        "corretta": (
-                            "Il testo è scientificamente corretto, oppure contiene al più imprecisioni "
-                            "terminologiche irrilevanti che non cambiano il significato concettuale."
-                        ),
-                        "imprecisione": (
-                            "Il testo contiene una semplificazione o approssimazione minore, di nessuna "
-                            "reale conseguenza per la preparazione dell'esame — ad esempio una "
-                            "generalizzazione innocua o un dettaglio tecnico secondario reso in modo "
-                            "impreciso (es. descrivere come lo stesso enzima due isoforme distinte che "
-                            "catalizzano reazioni analoghe). Non merita una segnalazione: correggerla "
-                            "sarebbe pignoleria controproducente."
-                        ),
-                        "errore_grave": (
-                            "Il testo contiene un errore concettuale che potrebbe genuinamente "
-                            "confondere uno studente durante il ripasso attivo, generare domande di "
-                            "richiamo fuorvianti, o riflette un vero fraintendimento concettuale del "
-                            "docente — ad esempio confondere due strutture anatomicamente distinte in "
-                            "un modo che genera vera confusione (es. dire 'carotide' intendendo "
-                            "'coronaria'), oppure affermare con sicurezza il contrario di un fatto "
-                            "consolidato e ben noto (es. sostenere che i bastoncelli sono meno numerosi "
-                            "dei coni, quando è vero il contrario)."
-                        ),
-                    },
-                )
-            },
+            state=jev_mapping.state_for("prefilter", unit.title, unit.content),
+            questions={name: jev_mapping.build_question(decision)},
             job_name="jev_task_a",
             unit_id=unit.unit_id,
             lesson_dir=lesson_dir,
@@ -240,15 +218,23 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
             base_url=jev_cfg.base_url,
             timeout_seconds=jev_cfg.timeout_seconds,
         )
-    except JevError:
+    except (JevError, ValidationError, ValueError, TypeError):
+        # Risposta malformata o chiamata fallita: fallback prudente, la review LLM si fa.
         return None
 
-    answer = resp.answers.get("correttezza")
-    if answer is None or answer.type != "choice":
+    answer = resp.answers.get(name)
+    if answer is None or answer.type != decision.type:
         return None
-
-    should_skip = (answer.choice != "errore_grave") and (answer.confidence >= jev_cfg.task_a_skip_confidence_threshold)
-    return JevTaskAVerdict(choice=answer.choice, confidence=answer.confidence, should_skip_expensive_llm=should_skip)
+    result = jev_mapping.evaluate("prefilter", decision, answer)
+    should_skip = result.outcome == "skip_review"
+    if answer.type == "choice":
+        choice, confidence = answer.choice, answer.confidence
+    else:
+        # noul/score non hanno una scelta: si riporta l'esito come nelle versioni precedenti.
+        choice = "corretta" if should_skip else "errore_grave"
+        confidence = 1 - answer.noul if answer.type == "noul" else answer.confidence
+    return JevTaskAVerdict(choice=choice, confidence=confidence, should_skip_expensive_llm=should_skip,
+                           label=result.label, outcome=result.outcome, answer=result.answer)
 
 
 def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
@@ -291,7 +277,7 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
             base_url=jev_cfg.base_url,
             timeout_seconds=jev_cfg.timeout_seconds,
         )
-    except JevError:
+    except (JevError, ValidationError, ValueError, TypeError):
         return None
 
     answer = resp.answers.get("unsupported_content")
@@ -308,7 +294,7 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
     sullo stesso modello già usato da detect_statistical_asr_risks per le issue ERR_ASR_ST."""
     severity = ScienceSeverity.HIGH if verdict.noul_probability >= 0.9 else ScienceSeverity.MEDIUM
     reason = (
-        f"Il modello di pre-screening Jev ha rilevato con probabilità {verdict.noul_probability:.2f} "
+        f"Il classificatore di pre-screening ha rilevato con probabilità {verdict.noul_probability:.2f} "
         f"che questa unità rielaborata contiene contenuto non supportato dai segmenti ASR grezzi "
         f"corrispondenti, o si discosta significativamente dal loro significato. Nessuna revisione "
         f"LLM è stata eseguita su questo punto: verifica ascoltando l'audio originale (tasto P)."
@@ -329,7 +315,8 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
 
 def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int, seg_by_id: dict,
                  st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
-                 _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool) -> None:
+                 _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool, ctx: "Optional[RunContext]" = None,
+                 jev_log: Optional[Dict[str, Any]] = None) -> None:
     """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
     source_texts = []
     for s_id in unit.source_segment_ids:
@@ -345,8 +332,16 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     if _cfg.jev.enabled:
         verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
         verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
+        if verdict_a is not None:
+            # Risposta completa (tutte le probabilità) nei log e nel risultato del job.
+            if jev_log is not None:
+                jev_log[unit.unit_id] = verdict_a.as_dict()
+            if ctx is not None:
+                from rt.services.jev_mapping import DecisionResult, describe
+                ctx.emit(Notice(message=f"Classificatore prefiltro {unit.unit_id}: " + describe(DecisionResult(
+                    label=verdict_a.label, outcome=verdict_a.outcome, rule=None, answer=verdict_a.answer))))
 
-        if not shadow_jev:
+        if not (shadow_jev or _cfg.jev.shadow):
             if verdict_b is not None and verdict_b.is_high_confidence_drift:
                 all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
             if verdict_a is not None and verdict_a.should_skip_expensive_llm:
@@ -379,6 +374,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
             unit_title = unit_title[:25] + "..."
         unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
 
+        prompt = append_extra(lesson_dir, "review", prompt)
         for iss in _validated_review_issues(client, unit, prompt, lesson_dir, unit_label):
             iss.unit_id = unit.unit_id
             if iss.segment_id and iss.segment_id not in unit.source_segment_ids:
@@ -391,9 +387,94 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
 
 
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
-    """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx, se dato)."""
+    """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx)."""
+    from rt.services.unit_relevance import refresh
     with phase_scope(ctx, "review") as scope:
+        # Dentro lo scope: le chiamate JEV della rilevanza sono parte della fase (lock, errori, annullamento).
+        refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
+
+
+def _unit_hashes(units) -> Dict[str, str]:
+    """Impronta del testo di ogni unità revisionata: dice quali unità sono cambiate dopo la revisione."""
+    import hashlib
+    return {unit.unit_id: hashlib.sha256(unit.model_dump_json(exclude={"generated_at"}).encode("utf-8")).hexdigest() for unit in units}
+
+
+def _issue_key(issue) -> tuple:
+    return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
+
+
+def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> Dict[str, Any]:
+    """Refresh just one unit, retaining other issues and their stable IDs/decisions."""
+    from rt.services.unit_relevance import refresh, included
+    refresh(lesson_dir, force_mock=force_mock)
+    draft = load_draft(lesson_dir)
+    unit = next((item for item in draft.units if item.unit_id == unit_id), None)
+    if unit is None:
+        raise ValueError(f"Unità {unit_id} non presente nella bozza.")
+    if not included(lesson_dir, unit):
+        return {"status": "skipped", "unit": unit_id, "reason": "Unità priva di contenuto didattico"}
+    segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+    seg_by_id = {s.id: s for s in segments.segments}
+    cfg = load_config()
+    stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
+        k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
+    prior = load_science_issues(lesson_dir)
+    kept = [issue for issue in prior if issue.unit_id != unit_id]
+    generated = []
+    _review_unit(LLMClient(force_mock=force_mock), unit, 1, 1, seg_by_id,
+                 {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
+                 generated, cfg, lesson_dir, False, cfg.jev.shadow)
+    generated.extend(issue for issue in stats if issue.unit_id == unit_id)
+    used = {issue.id for issue in kept}
+    # Una issue ritrovata (stesso tipo, segmento e affermazione) riprende il suo id, così la
+    # decisione già presa resta agganciata; le decisioni su issue sparite vengono segnalate.
+    from rt.pipeline.ledger import load_ledger
+    previous: Dict[tuple, List[str]] = {}
+    for issue in prior:
+        if issue.unit_id == unit_id:
+            previous.setdefault(_issue_key(issue), []).append(issue.id)
+    fresh = []
+    for issue in generated:
+        candidates = previous.get(_issue_key(issue)) or []
+        reused = candidates.pop(0) if candidates else None
+        if reused and reused not in used:
+            issue.id = reused
+            used.add(reused)
+        else:
+            fresh.append(issue)
+    decided = {decision.issue_id for decision in load_ledger(lesson_dir).decisions}
+    orphaned = sorted({issue_id for ids in previous.values() for issue_id in ids} & decided)
+    sequence = max([int(issue.id.removeprefix("sci_")) for issue in prior
+                    if issue.id.startswith("sci_") and issue.id[4:].isdigit()] or [0])
+    for issue in fresh:
+        sequence += 1
+        issue.id = f"sci_{sequence:06d}"
+        while issue.id in used:
+            sequence += 1
+            issue.id = f"sci_{sequence:06d}"
+    save_science_issues(kept + generated, lesson_dir)
+    checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
+    current = _unit_hashes(draft.units)
+    reviewed = (checkpoint or {}).get("unit_hashes")
+    completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
+    # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
+    # rivista su questo stesso testo. Le altre unità cambiate (riscritte dopo la revisione)
+    # tornano da rivedere, invece di risultare valide senza che nessuno le abbia guardate.
+    if isinstance(reviewed, dict):
+        completed = [item for item in completed if reviewed.get(item) == current.get(item)]
+    elif status_before not in (PhaseStatus.VALID, PhaseStatus.PARTIAL):
+        completed = []  # checkpoint di una versione precedente e bozza cambiata: nessuna certezza
+    if unit_id not in completed:
+        completed.append(unit_id)
+    record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
+        source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
+        artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+        completed_items=completed,
+        metadata={"unit_hashes": {item: current[item] for item in completed if item in current}})
+    return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(kept),
+            "orphaned_decisions": orphaned}
 
 
 def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
@@ -436,11 +517,14 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     _cfg = load_config()
+    from rt.services.unit_relevance import included
+    eligible_ids = {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
     st_issues_all = detect_statistical_asr_risks(
         lesson_dir=lesson_dir,
         k=_cfg.review.asr_statistical_k,
         floor=_cfg.review.asr_statistical_floor,
     )
+    st_issues_all = [issue for issue in st_issues_all if not issue.unit_id or issue.unit_id in eligible_ids]
     st_issues_by_unit: Dict[str, List[ScienceIssue]] = {}
     for st_iss in st_issues_all:
         if st_iss.unit_id:
@@ -474,9 +558,11 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
+    unit_hashes = _unit_hashes(draft.units)
     total_units = len(draft.units)
     failures = UnitFailureTracker()
     stopped_early = False
+    jev_prefilter: Dict[str, Any] = {}
 
     for idx, unit in enumerate(draft.units, start=1):
         if not force and unit.unit_id in reviewed_set:
@@ -488,8 +574,11 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
                          unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
         issues_before = len(all_science_issues)
         try:
-            _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, all_science_issues,
-                         _cfg, lesson_dir, asr_llm, shadow_jev)
+            if unit.unit_id in eligible_ids:
+                _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, all_science_issues,
+                             _cfg, lesson_dir, asr_llm, shadow_jev, ctx=ctx, jev_log=jev_prefilter)
+            elif ctx is not None:
+                ctx.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
         except Exception as exc:
             if not is_unit_failure(exc):
                 raise
@@ -525,7 +614,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             phase_name="review",
             source_fingerprint=source_fp,
             artifact_fingerprints={"science_issues.json": sci_hash},
-            completed_items=reviewed_unit_ids
+            completed_items=reviewed_unit_ids,
+            metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes}},
         )
 
     # Finalizzazione se tutte le unità del draft sono state esaminate
@@ -602,4 +692,5 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         "expected_units": len(all_draft_unit_ids),
         "failed_units": failures.as_dicts(),
         "stopped_early": stopped_early,
+        **({"jev_prefilter": jev_prefilter} if jev_prefilter else {}),
     }

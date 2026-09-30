@@ -519,8 +519,11 @@ def _rename_lesson(ts: DbTarget, dst) -> None:
         raise FileExistsError(17, "File exists", os.fspath(dst))
     with _session(ts) as s:
         lesson = s.get(Lesson, ts.lesson_id)
+        old_path = lesson.path
         lesson.path = new_path
         lesson.folder_name = os.path.basename(new_path)
+        from rt.db.sync import relocate_path_keyed_rows
+        relocate_path_keyed_rows(s, old_path, new_path)
     forget(ts.lesson_path)
     with _lock:
         _known.setdefault(ts.db.url, {})[new_path] = ts.lesson_id
@@ -743,6 +746,14 @@ def db_lessons_under(root) -> List[str]:
     return sorted(p for p in paths if os.path.dirname(p) == r)
 
 
+def root_entries(root) -> List[str]:
+    """Come listdir(root), ma una radice che non esiste su disco (il prefisso delle lezioni
+    nel database, es. <cartella dati>/lessons) elenca solo le sue lezioni "db"."""
+    if isdir(root):
+        return listdir(root)
+    return [os.path.basename(p) for p in db_lessons_under(root)]
+
+
 def lesson_files(lesson_dir) -> List[Dict[str, object]]:
     """Elenco dei file di una lezione "db" (nome, dimensione, sha, media)."""
     t = resolve(lesson_dir)
@@ -775,13 +786,5 @@ def create_db_lesson(lesson_dir) -> str:
 
 
 def new_lessons_use_db() -> bool:
-    """Le nuove lezioni nascono nel DB quando il DB è attivo, salvo impostazione
-    storage.new_lessons = "folder" (tabella settings)."""
-    db = _database()
-    if db is None:
-        return False
-    from rt.db.repositories import SettingRepository
-    from rt.db.session import session_scope
-    with session_scope(db) as s:
-        value = SettingRepository(s).get("storage.new_lessons")
-    return str(value or STORAGE_DB) != STORAGE_FOLDER
+    """Le nuove lezioni usano sempre il database quando è attivo."""
+    return _database() is not None

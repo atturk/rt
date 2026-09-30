@@ -128,8 +128,9 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
     saveRate(rate)
   }
 
-  const audio = audioRef.current
+  // L'elemento si legge al momento del clic: al primo render audioRef.current è ancora null.
   const toggle = () => {
+    const audio = audioRef.current
     if (!audio) return
     if (audio.paused) audio.play().catch(() => setError(true))
     else audio.pause()
@@ -168,11 +169,11 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
         aria-valuetext={formatTime(currentTime)}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
-          if (Number.isFinite(duration)) seek(((e.clientX - rect.left) / rect.width) * duration, !audio?.paused)
+          if (Number.isFinite(duration)) seek(((e.clientX - rect.left) / rect.width) * duration, !audioRef.current?.paused)
         }}
         onKeyDown={(e) => {
-          if (e.key === 'ArrowRight') seek(currentTime + 5, !audio?.paused)
-          if (e.key === 'ArrowLeft') seek(currentTime - 5, !audio?.paused)
+          if (e.key === 'ArrowRight') seek(currentTime + 5, !audioRef.current?.paused)
+          if (e.key === 'ArrowLeft') seek(currentTime - 5, !audioRef.current?.paused)
         }}
       />
       <div className="mt-1 flex justify-between text-xs tabular-nums text-muted-foreground">
@@ -185,13 +186,13 @@ export function AudioPlayer({ lessonId, sections }: { lessonId: number; sections
           <Button variant="ghost" size="icon" aria-label="Unità precedente" title="Unità precedente" onClick={() => jump(-1)}>
             <SkipBack />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Indietro di 15 secondi" onClick={() => seek(currentTime - 15, !audio?.paused)}>
+          <Button variant="ghost" size="icon" aria-label="Indietro di 15 secondi" onClick={() => seek(currentTime - 15, !audioRef.current?.paused)}>
             <Rewind />
           </Button>
           <Button variant="outline" size="icon" className="size-11 rounded-full" aria-label={playing ? 'Pausa' : 'Riproduci'} onClick={toggle}>
             {playing ? <Pause /> : <Play />}
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Avanti di 15 secondi" onClick={() => seek(currentTime + 15, !audio?.paused)}>
+          <Button variant="ghost" size="icon" aria-label="Avanti di 15 secondi" onClick={() => seek(currentTime + 15, !audioRef.current?.paused)}>
             <FastForward />
           </Button>
           <Button variant="ghost" size="icon" aria-label="Unità successiva" title="Unità successiva" onClick={() => jump(1)}>

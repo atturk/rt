@@ -19,11 +19,12 @@ chat/completions endpoint. Use the /api/alpha/decisions endpoint instead.").
 """
 
 import datetime
+import math
 import time
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.pricing import calculate_cost
@@ -54,23 +55,40 @@ class JevNoulQuestion(BaseModel):
 JevQuestion = Union[JevChoiceQuestion, JevScoreQuestion, JevNoulQuestion]
 
 
+def _check_probabilities(values: Dict[str, float]) -> Dict[str, float]:
+    if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values.values()):
+        raise ValueError("Probabilità non valida")
+    return values
+
+
 class JevChoiceAnswer(BaseModel):
     type: Literal["choice"] = "choice"
     choice: str
     probabilities: Dict[str, float] = Field(default_factory=dict)
-    confidence: float = 0.0
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @field_validator("probabilities")
+    @classmethod
+    def validate_probabilities(cls, values: Dict[str, float]) -> Dict[str, float]:
+        return _check_probabilities(values)
 
 
 class JevScoreAnswer(BaseModel):
     type: Literal["score"] = "score"
-    score: float
+    score: float = Field(allow_inf_nan=False)
+    probabilities: Dict[str, float] = Field(default_factory=dict)
     legend: Dict[str, str] = Field(default_factory=dict)
-    confidence: float = 0.0
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @field_validator("probabilities")
+    @classmethod
+    def validate_probabilities(cls, values: Dict[str, float]) -> Dict[str, float]:
+        return _check_probabilities(values)
 
 
 class JevNoulAnswer(BaseModel):
     type: Literal["noul"] = "noul"
-    noul: float
+    noul: float = Field(ge=0, le=1, allow_inf_nan=False)
 
 
 JevAnswer = Union[JevChoiceAnswer, JevScoreAnswer, JevNoulAnswer]
@@ -80,6 +98,8 @@ class JevResponse(BaseModel):
     model: str
     answers: Dict[str, JevAnswer]
     usage: Dict[str, float] = Field(default_factory=dict)
+    # Risposta JSON così come restituita dall'endpoint (mostrata nel playground).
+    raw: Optional[Dict[str, Any]] = Field(default=None, exclude=True)
 
 
 class JevError(Exception):
@@ -98,7 +118,7 @@ def _parse_answer(name: str, raw: Dict) -> JevAnswer:
         return JevScoreAnswer.model_validate(raw)
     if a_type == "noul":
         return JevNoulAnswer.model_validate(raw)
-    raise JevError(f"Tipo di risposta Jev sconosciuto per la domanda '{name}': {a_type!r}")
+    raise JevError(f"Tipo di risposta del classificatore sconosciuto per la domanda '{name}': {a_type!r}")
 
 
 def call_jev(
@@ -123,7 +143,7 @@ def call_jev(
 
     api_key = GLOBAL_CREDENTIALS.get_api_key(credential)
     if not api_key:
-        raise JevError(f"Credenziale '{credential}' non configurata o chiave API mancante per Jev.")
+        raise JevError(f"Credenziale '{credential}' non configurata o chiave API mancante per il classificatore.")
 
     payload = {
         "state": state,
@@ -142,10 +162,10 @@ def call_jev(
         resp_json = resp.json()
         if resp.status_code != 200:
             error_message = GLOBAL_CREDENTIALS.sanitize_secrets(str(resp_json))
-            raise JevError(f"Jev ha risposto con status {resp.status_code}: {error_message}", http_status=resp.status_code)
+            raise JevError(f"Il classificatore ha risposto con status {resp.status_code}: {error_message}", http_status=resp.status_code)
     except (requests.RequestException, ValueError) as e:
         error_message = GLOBAL_CREDENTIALS.sanitize_secrets(str(e))
-        raise JevError(f"Errore chiamando Jev: {error_message}") from e
+        raise JevError(f"Errore chiamando il classificatore: {error_message}") from e
     finally:
         elapsed = time.time() - t_start
         usage = resp_json.get("usage", {}) if isinstance(resp_json, dict) else {}
@@ -166,7 +186,7 @@ def call_jev(
             latency_ms=round(elapsed * 1000.0, 2),
             input_tokens=in_tok,
             output_tokens=out_tok,
-            status="success" if http_status == 200 else "error",
+            status="success" if http_status == 200 and error_message is None else "error",
             http_status=http_status,
             error_message=error_message,
             estimated_cost=cost_est,
@@ -190,5 +210,20 @@ def call_jev(
                 "jev_answers": resp_json.get("answers") if isinstance(resp_json, dict) else None,
             })
 
-    answers = {name: _parse_answer(name, raw) for name, raw in resp_json.get("answers", {}).items()}
-    return JevResponse(model=resp_json.get("model", model), answers=answers, usage=resp_json.get("usage", {}))
+    if not isinstance(resp_json, dict) or not isinstance(resp_json.get("answers"), dict):
+        raise JevError("Risposta del modello decisionale incompleta.")
+    try:
+        answers = {name: _parse_answer(name, raw) for name, raw in resp_json["answers"].items()}
+    except (ValueError, TypeError, AttributeError) as e:  # ValidationError è un ValueError
+        raise JevError(f"Risposta del modello decisionale non valida: {e}") from e
+    for name, question in questions.items():
+        answer = answers.get(name)
+        if answer is None or answer.type != question.type:
+            raise JevError(f"Risposta mancante o di tipo errato per '{name}'.")
+        if isinstance(question, JevChoiceQuestion) and (
+            answer.choice not in question.criteria or
+            (answer.probabilities and set(answer.probabilities) != set(question.criteria))
+        ):
+            raise JevError(f"Scelta o probabilità non valide per '{name}'.")
+    return JevResponse(model=resp_json.get("model", model), answers=answers, usage=resp_json.get("usage", {}),
+                       raw=resp_json)

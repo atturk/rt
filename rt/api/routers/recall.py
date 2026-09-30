@@ -1,6 +1,6 @@
 """Active recall di una lezione (come 'rt recall'): domande, risposte ai quiz, risposte
 aperte valutate da un job, voti. La generazione di nuove domande è un job."""
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, File, Form, Query, UploadFile
 
@@ -198,3 +198,63 @@ def telegram_stop(session_id: int, actor: Actor):
         return interrupt_telegram_session(session_id, actor)
     except RecallSessionError as exc:
         raise _session_error(exc)
+
+
+# ---------------------------------------------------------------- recall per materia
+
+def _subject_call(fn, *args, **kwargs):
+    from rt.services.recall_sessions import RecallSessionError
+    from rt.services.recall_subject import NO_SUBJECT
+    try:
+        return fn(*args, **kwargs)
+    except RecallSessionError as exc:
+        if exc.code == NO_SUBJECT:
+            raise ApiError(422, "validation_error", str(exc))
+        raise _session_error(exc)
+
+
+@router.get("/recall/subjects", response_model=List[schemas.SubjectRecall],
+            summary="Riserva di domande di ogni lezione, per materia, e sessioni per materia in corso")
+def subjects(_actor: Actor):
+    from rt.services.recall_subject import recall_by_subject
+    return recall_by_subject()
+
+
+@router.get("/recall/subject", response_model=schemas.SubjectRecallState,
+            summary="Lezioni di una materia con la loro riserva, sessione per materia in corso e ultimo riepilogo")
+def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni")):
+    from rt.services.recall_subject import subject_overview
+    return _subject_call(subject_overview, materia)
+
+
+@router.post("/recall/subject/next", response_model=schemas.SubjectQuestion,
+             summary="Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; sotto soglia accoda "
+                     "un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate)")
+def subject_next(actor: Actor, materia: str = Query(...),
+                 qtype: Literal["quiz", "mirata", "vasta"] = Query("quiz"),
+                 order: Literal["alternato", "sequenziale", "casuale"] = Query("alternato"),
+                 exclude: Optional[str] = Query(None, description="Domanda appena saltata, come <id lezione>:<id domanda>"),
+                 mock: bool = Query(False, description="Rifornimento della riserva in mock")):
+    from rt.core.models import RecallQuestionType
+    from rt.services.recall_service import question_view
+    from rt.services.recall_subject import next_subject_question
+    picked = _subject_call(next_subject_question, materia, RecallQuestionType(qtype), order=order, exclude=exclude)
+    if picked is None:
+        raise ApiError(404, "no_questions", "Nessuna domanda di questo tipo da porre nelle lezioni della materia: generane altre.")
+    _refill_later(picked["lesson_dir"], picked["question"], mock, actor)
+    return {"lesson_id": picked["lesson_id"], "question": question_view(picked["question"])}
+
+
+@router.post("/recall/subject/end", response_model=schemas.RecallSessionInfo,
+             summary="Termina la sessione per materia e ne salva il riepilogo (404 se non ce n'è una)")
+def subject_end(_actor: Actor, materia: str = Query(...)):
+    from rt.services.recall_subject import end_subject_session
+    return _subject_call(end_subject_session, materia)
+
+
+@router.post("/recall/subject/generate", response_model=schemas.SubjectGenerateAccepted, status_code=202,
+             summary="Riserva iniziale per le lezioni pronte della materia che non hanno ancora domande (un job per lezione)")
+def subject_generate(actor: Actor, materia: str = Query(...), mock: bool = Query(False)):
+    from rt.services.recall_subject import lessons_without_reserve
+    lessons = _subject_call(lessons_without_reserve, materia)
+    return {"jobs": [enqueue_job("recall_generate", s["path"], {"force_mock": mock}, actor) for s in lessons]}

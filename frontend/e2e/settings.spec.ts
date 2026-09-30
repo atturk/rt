@@ -7,7 +7,6 @@ import { apiGet, authHeaders, loginViaLink, serverState } from './support'
 
 type Phase = { job: string; label: string; connection: string | null; model: string | null }
 type Settings = {
-  lessons_root: string | null
   data_dir: string | null
   setup_required: boolean
   transcription: { engine: string; base_url: string | null; model: string | null; api_key_set: boolean }
@@ -50,49 +49,17 @@ async function section(page: Page, title: string) {
 
 test.describe.configure({ mode: 'serial' })
 
-test('cartella dati: scegli dal navigatore, ricarica, rileggi (e ripristina a mano)', async ({ page }) => {
-  const original = serverState().lessons_root
-  // HOME del server e2e: accanto alla cartella delle lezioni (scripts/e2e_server.py).
-  const home = original.replace(/\/lessons$/, '/home')
+test('cartella dati: solo informativa, nessuna cartella delle lezioni da scegliere', async ({ page }) => {
   await loginViaLink(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
+  await page.getByRole('navigation', { name: 'Strumenti' }).getByRole('link', { name: 'Impostazioni' }).click()
   await expect(page).toHaveURL(/\/impostazioni$/)
   const card = await section(page, 'Cartella dati')
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(original)
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveAttribute('readonly', '')
   await expect(card.getByTestId('data-dir')).toHaveText((await settings(page)).data_dir!)
-
-  // Senza Finder (server e2e, come su Linux) "Scegli cartella…" apre il navigatore della home.
-  await card.getByRole('button', { name: 'Scegli cartella…' }).click()
-  const browser = card.getByRole('group', { name: 'Navigatore delle cartelle' })
-  await expect(browser.getByTestId('browser-path')).toHaveText(home)
-  const folders = browser.getByRole('list', { name: 'Sottocartelle' })
-  await expect(folders.getByRole('button')).toHaveText(['Documenti', 'Scrivania'])
-  await folders.getByRole('button', { name: 'Documenti' }).click()
-  await expect(browser.getByTestId('browser-path')).toHaveText(`${home}/Documenti`)
-  await expect(folders.getByRole('button')).toHaveText(['RT Lezioni e2e', 'Università'])
-  await browser.getByRole('button', { name: 'Cartella superiore' }).click()
-  await expect(browser.getByTestId('browser-path')).toHaveText(home)
-  await folders.getByRole('button', { name: 'Documenti' }).click()
-  await folders.getByRole('button', { name: 'RT Lezioni e2e' }).click()
-  await browser.getByRole('button', { name: 'Usa questa cartella' }).click()
-  await expect(browser).toBeHidden()
-  const chosen = `${home}/Documenti/RT Lezioni e2e`
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(chosen)
-  await card.getByRole('button', { name: 'Salva' }).click()
-  await expect(card.getByRole('status')).toHaveText('Salvato.')
-  await page.reload()
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(chosen)
-  expect((await settings(page)).lessons_root).toBe(chosen)
-
-  // Il percorso a mano resta l'alternativa.
-  await card.getByRole('button', { name: 'Inserisci il percorso a mano' }).click()
-  await card.getByLabel('Cartella delle lezioni').fill(original)
-  await card.getByRole('button', { name: 'Salva' }).click()
-  await expect(card.getByRole('status')).toHaveText('Salvato.')
-  await page.reload()
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(original)
-  expect((await settings(page)).lessons_root).toBe(original)
+  // Le lezioni stanno nel database: niente campo né pulsante per sceglierne la cartella.
+  await expect(page.getByLabel('Cartella delle lezioni')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Scegli cartella…' })).toHaveCount(0)
+  await expect(page.getByText(/cartella delle lezioni/i)).toHaveCount(0)
+  expect((await settings(page)).setup_required).toBe(false)
 })
 
 test('trascrizione: motore, server, modello e chiave', async ({ page }) => {
@@ -381,31 +348,25 @@ test('pricing: aggiungi, ricarica, rileggi, togli', async ({ page }) => {
 })
 
 test('configurazione guidata: passi salvati sul backend e ripresi dopo la ricarica', async ({ page }) => {
-  const root = serverState().lessons_root
   await loginViaLink(page)
   await page.goto('/impostazioni')
   await page.getByRole('link', { name: 'Configurazione guidata' }).click()
   await expect(page).toHaveURL(/\/impostazioni\/configurazione$/)
-  await expect(page.getByLabel('Cartella delle lezioni')).toHaveValue(root)
-  // Anche qui la scelta predefinita è il pulsante (navigatore senza Finder), il percorso a mano l'alternativa.
-  await page.getByRole('button', { name: 'Scegli cartella…' }).click()
-  await expect(page.getByRole('group', { name: 'Navigatore delle cartelle' })).toBeVisible()
-  await page.getByRole('button', { name: 'Chiudi' }).click()
-  await expect(page.getByRole('button', { name: 'Inserisci il percorso a mano' })).toBeVisible()
-  await page.getByRole('button', { name: 'Salva e continua' }).click()
-  await expect(page).toHaveURL(/passo=2/)
+  // Nessun passo per la cartella delle lezioni: si parte dalla connessione.
+  await expect(page.getByLabel('Cartella delle lezioni')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Connessione', level: 2 })).toBeVisible()
 
   // La connessione esiste già: si prosegue.
   await expect(page.getByText(`Connessioni già configurate: ${CONNECTION}`)).toBeVisible()
   await page.getByRole('button', { name: 'Continua', exact: true }).click()
-  await expect(page).toHaveURL(/passo=3/)
+  await expect(page).toHaveURL(/passo=2/)
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Modelli', level: 2 })).toBeVisible()
 
   await page.getByLabel('Connessione').selectOption(CONNECTION)
   await page.getByLabel('Modello', { exact: true }).fill('modello/unico')
   await page.getByRole('button', { name: 'Usa per tutte le fasi' }).click()
-  await expect(page).toHaveURL(/passo=4/)
+  await expect(page).toHaveURL(/passo=3/)
   expect((await settings(page)).phases.every((p) => p.connection === CONNECTION && p.model === 'modello/unico')).toBe(true)
 
   // Telegram già configurato: anteprime con l'occhio anche nel passo guidato.
@@ -413,10 +374,11 @@ test('configurazione guidata: passi salvati sul backend e ripresi dopo la ricari
   await page.getByRole('button', { name: 'Mostra Chat ID' }).click()
   await expect(page.getByTestId('chat_id-value')).toHaveText('-1001234567890')
   await page.getByRole('button', { name: 'Salta' }).click()
-  await expect(page).toHaveURL(/passo=5/)
+  await expect(page).toHaveURL(/passo=4/)
   await page.reload()
   const steps = page.getByRole('list', { name: 'Passi' })
-  for (const label of ['Cartella dati', 'Connessione', 'Modelli', 'Telegram']) {
+  await expect(steps.getByRole('button')).toHaveText([/Connessione/, /Modelli/, /Telegram/, /Fatto/])
+  for (const label of ['Connessione', 'Modelli', 'Telegram']) {
     await expect(steps.getByRole('button', { name: new RegExp(label) }).getByLabel('completato')).toBeVisible()
   }
   await page.getByRole('link', { name: 'Vai alle lezioni' }).click()
@@ -446,7 +408,7 @@ test('modelli per fase: Prova prima di salvare (in mock) con esito e latenza', a
 
 test('configurazione guidata: scelta per ogni fase, con Prova', async ({ page }) => {
   await loginViaLink(page)
-  await page.goto('/impostazioni/configurazione?passo=3')
+  await page.goto('/impostazioni/configurazione?passo=2')
   // Predefinito: lo stesso modello per tutte le fasi, provabile prima di salvare.
   await expect(page.getByRole('radio', { name: 'Usa lo stesso modello per tutte le fasi' })).toBeChecked()
   await page.getByRole('button', { name: 'Prova il modello' }).click()
@@ -474,7 +436,7 @@ test('configurazione guidata: scelta per ogni fase, con Prova', async ({ page })
   expect(phases.image_unit_judge).toBe('modello/giudice')
   expect(phases.outline).toBe('modello/unico')
   await page.getByRole('button', { name: 'Continua' }).click()
-  await expect(page).toHaveURL(/passo=4/)
+  await expect(page).toHaveURL(/passo=3/)
 })
 
 test('pricing: suggerimenti e avviso per provider o modello sconosciuti', async ({ page }) => {
@@ -566,15 +528,17 @@ test('campi segreti: niente type="password" (il portachiavi non propone password
 test('le scritture non valide mostrano il messaggio dell\'API', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni')
-  const card = await section(page, 'Cartella dati')
-  await card.getByRole('button', { name: 'Inserisci il percorso a mano' }).click()
-  await card.getByLabel('Cartella delle lezioni').fill('relativa/non/valida')
-  await card.getByRole('button', { name: 'Salva' }).click()
-  await expect(card.getByRole('alert')).toContainText('percorso assoluto')
+  const card = await section(page, 'Trascrizione')
+  const before = (await settings(page)).transcription
+  await card.getByLabel('Motore').selectOption('custom')
+  await card.getByLabel('Base URL del server').fill('ftp://127.0.0.1/non-valido')
+  await card.getByLabel('Modello').fill('whisper-e2e')
+  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
+  await expect(card.getByRole('alert')).toContainText('Base URL HTTP valido')
   await page.reload()
-  await expect(card.getByLabel('Cartella delle lezioni')).toHaveValue(serverState().lessons_root)
+  await expect(card.getByLabel('Motore')).toHaveValue(before.engine)
   const res = await page.request.get('/api/v1/settings', { headers: authHeaders() })
-  expect(((await res.json()) as Settings).lessons_root).toBe(serverState().lessons_root)
+  expect(((await res.json()) as Settings).transcription).toEqual(before)
 })
 
 test('job in parallelo: si salva, resta dopo la ricarica e vale dal prossimo avvio', async ({ page }) => {

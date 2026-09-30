@@ -238,12 +238,15 @@ class RecallSession(Base):
     aggiorna quando una sessione parte o si chiude, l'API lo legge. state: active | ended
     (chiusa da chi la stava usando) | interrupted (chiusa dall'app mentre era su Telegram).
     Gli orari sono ISO locali come answered_at del recall_bank, per contare le risposte date
-    durante la sessione."""
+    durante la sessione.
+    Una sessione per materia (subject valorizzato, lesson_path vuoto) pesca le domande da tutte
+    le lezioni della materia: question_ids sono allora "<id lezione>:<id domanda>"."""
     __tablename__ = "recall_sessions"
     __table_args__ = (Index("ix_recall_sessions_state_channel", "state", "channel"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lesson_path: Mapped[str] = mapped_column(String(1024), index=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     channel: Mapped[str] = mapped_column(String(16))
     state: Mapped[str] = mapped_column(String(16))
     qtype: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)

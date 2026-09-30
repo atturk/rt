@@ -622,6 +622,28 @@ def test_beta_channel_picks_highest_published_release():
         assert get_latest_remote_version("/x", channel="beta") == ""
 
 
+def test_release_without_files_yet_is_skipped():
+    """4.1.0b3: 'rt -u' subito dopo la pubblicazione installava la release prima che il workflow
+    allegasse i file (niente web app). Una release senza SHA256SUMS non si propone ancora."""
+    ready = [{"name": "rt-4.0.1.tar.gz"}, {"name": "SHA256SUMS"}]
+    releases = [
+        {"tag_name": "v4.1.0b3", "prerelease": True, "draft": False, "assets": []},
+        {"tag_name": "v4.1.0b2", "prerelease": True, "draft": False, "assets": ready},
+        {"tag_name": "v4.0.2", "prerelease": False, "draft": False, "assets": []},
+        {"tag_name": "v4.0.1", "prerelease": False, "draft": False, "assets": ready},
+    ]
+    urlopen, _ = _fake_github(releases=releases)
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        assert get_latest_remote_version("/x", channel="beta") == "4.1.0b2"
+
+    def latest_not_ready(req, timeout=None):
+        if req.full_url.endswith("/releases/latest"):
+            return _releases_response({"tag_name": "v4.0.2", "assets": []})
+        return _releases_response(releases)
+    with patch("urllib.request.urlopen", side_effect=latest_not_ready):
+        assert get_latest_remote_version("/x") == "4.0.1"
+
+
 def test_channel_defaults_to_stable_and_persists(channel_file):
     assert get_update_channel() == "stable"
     set_update_channel("beta")

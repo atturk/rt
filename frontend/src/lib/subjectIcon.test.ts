@@ -4,6 +4,7 @@ import {
   SUBJECT_PALETTE,
   contrastRatio,
   iconLayout,
+  iconLines,
   subjectIcons,
   subjectInitials,
 } from './subjectIcon'
@@ -55,15 +56,23 @@ describe('subjectInitials', () => {
 
 describe('iconLayout', () => {
   it('sceglie la disposizione dal numero di iniziali', () => {
-    expect([1, 2, 3, 4].map(iconLayout)).toEqual(['single', 'row', 'triangle', 'grid'])
+    expect([['A'], ['A', 'P'], ['P', 'G', '1'], ['A', 'II'], ['A', 'F', 'S', 'L'], ['P', 'G', '12']].map(iconLayout)).toEqual([
+      'single', 'row', 'row', 'row', 'stack', 'stack',
+    ])
+  })
+
+  it('su due righe mette sopra la prima metà delle iniziali', () => {
+    expect(iconLines({ initials: ['P', 'G', '1'], layout: 'row' })).toEqual(['PG1'])
+    expect(iconLines({ initials: ['A', 'F', 'S', 'L'], layout: 'stack' })).toEqual(['AF', 'SL'])
+    expect(iconLines({ initials: ['P', 'G', '12'], layout: 'stack' })).toEqual(['PG', '12'])
   })
 
   it('le icone riportano la disposizione giusta', () => {
     const icons = subjectIcons(['Anatomia', 'Anatomia patologica', 'Patologia generale 1', 'Anatomia e Fisiologia del Sistema Linfatico'])
     expect(icons.get('ANATOMIA')?.layout).toBe('single')
     expect(icons.get('ANATOMIA PATOLOGICA')?.layout).toBe('row')
-    expect(icons.get('PATOLOGIA GENERALE 1')?.layout).toBe('triangle')
-    expect(icons.get('ANATOMIA E FISIOLOGIA DEL SISTEMA LINFATICO')?.layout).toBe('grid')
+    expect(icons.get('PATOLOGIA GENERALE 1')?.layout).toBe('row')
+    expect(icons.get('ANATOMIA E FISIOLOGIA DEL SISTEMA LINFATICO')?.layout).toBe('stack')
   })
 })
 

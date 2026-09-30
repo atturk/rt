@@ -18,6 +18,18 @@ from rt.storage import fs
 
 router = APIRouter(tags=["job"])
 
+
+@router.get("/uploads", response_model=List[schemas.UploadInventoryItem], summary="Upload temporanei attivi, riferiti e orfani")
+def get_uploads(_actor: Actor):
+    from rt.services.upload_cleanup import list_uploads
+    return list_uploads()
+
+
+@router.delete("/uploads/{upload_id}", status_code=204, summary="Elimina un upload non più in uso dopo conferma esplicita")
+def delete_orphan_upload(upload_id: str, _actor: Actor, include_referenced: bool = False):
+    from rt.services.upload_cleanup import delete_orphan
+    delete_orphan(upload_id, include_referenced=include_referenced)
+
 MAX_UPLOAD_ENV = "RT_API_MAX_UPLOAD_MB"
 DEFAULT_MAX_UPLOAD_MB = 2048
 CHUNK = 1024 * 1024
@@ -34,23 +46,27 @@ def _max_upload_bytes() -> int:
 
 
 def _upload_dir() -> str:
-    """Cartella temporanea per i file caricati, sullo stesso disco delle lezioni."""
-    from rt.services.lesson_service import lessons_root
-    base = lessons_root() or os.path.expanduser("~")
-    path = os.path.join(base, ".rt", "uploads", uuid.uuid4().hex)
+    """Cartella temporanea per i file caricati, sullo stesso disco dei media delle lezioni."""
+    from rt.services.lesson_service import work_dir
+    path = os.path.join(work_dir(), "uploads", uuid.uuid4().hex)
     os.makedirs(path, mode=0o700)
     return path
 
 
-def _save_uploads(files: List[UploadFile], allowed: set, target: str) -> List[str]:
+def _save_uploads(files: List[UploadFile], allowed: set, target: str, prefix: str = "") -> List[str]:
     """Salva i file a blocchi con limite di dimensione complessiva; solo estensioni ammesse,
-    solo il nome base (nessun percorso dal client)."""
+    solo il nome base (nessun percorso dal client). prefix distingue file omonimi salvati con
+    chiamate diverse nella stessa cartella."""
     limit, total, saved = _max_upload_bytes(), 0, []
+    seen = set()
     for upload in files:
         name = os.path.basename((upload.filename or "").replace("\\", "/")).strip()
         if not name or name.startswith(".") or os.path.splitext(name)[1].lower() not in allowed:
             raise ApiError(415, "unsupported_media_type", f"Tipo di file non ammesso: {name or '(senza nome)'}.")
-        path = os.path.join(target, name)
+        if name.casefold() in seen:
+            raise ApiError(422, "duplicate_filename", f"Due file hanno lo stesso nome: {name}. Rinomina uno dei file prima di importare.")
+        seen.add(name.casefold())
+        path = os.path.join(target, prefix + name)
         with open(path, "wb") as out:
             while True:
                 chunk = upload.file.read(CHUNK)
@@ -76,6 +92,60 @@ def _with_upload_cleanup(target: str, fn):
 
 # ---------------------------------------------------------------- creazione
 
+MAX_ZIP_ARCHIVES = 20
+ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06")
+
+
+def _zip_signature_ok(path: str) -> bool:
+    with open(path, "rb") as stream:
+        return stream.read(4) in ZIP_SIGNATURES
+
+
+@router.post("/lessons/import-zip", response_model=schemas.JobAccepted, status_code=202,
+             summary="Importa più archivi completi come nuove lezioni (job import_lesson_zips)")
+def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
+    """Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
+    Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
+    supera finisce tra i rifiutati del risultato senza fermare gli altri."""
+    if len(archives) > MAX_ZIP_ARCHIVES:
+        raise ApiError(413, "too_many_archives", f"Importa al massimo {MAX_ZIP_ARCHIVES} archivi alla volta.")
+    target = _upload_dir()
+
+    def _go():
+        entries = []
+        for index, archive in enumerate(archives):
+            filename = os.path.basename((archive.filename or "").replace("\\", "/"))
+            entry = {"file": filename, "path": None, "reason": None}
+            entries.append(entry)
+            if not filename.lower().endswith(".zip"):
+                entry["reason"] = "Serve un archivio ZIP."
+                continue
+            try:
+                # Ogni archivio è indipendente (limite di dimensione compreso): il prefisso
+                # evita che due archivi con lo stesso nome si sovrascrivano.
+                path = _save_uploads([archive], {".zip"}, target, prefix=f"{index:02d}-")[0]
+            except ApiError as exc:
+                entry["reason"] = exc.message
+                _remove_partial(os.path.join(target, f"{index:02d}-{filename.strip()}"))
+                continue
+            if not _zip_signature_ok(path):
+                entry["reason"] = "Archivio ZIP non valido."
+                os.unlink(path)
+                continue
+            entry["path"] = path
+        if not any(entry["path"] for entry in entries):
+            reasons = "; ".join(f"{e['file'] or '(senza nome)'}: {e['reason']}" for e in entries)
+            raise ApiError(422, "invalid_archive", f"Nessun archivio valido da importare ({reasons})",
+                           {"results": [{"file": e["file"], "status": "rejected", "reason": e["reason"]} for e in entries]})
+        return enqueue_job("import_lesson_zips", None, {"archives": entries, "upload_dir": target}, actor)
+    return _with_upload_cleanup(target, _go)
+
+
+def _remove_partial(path: str) -> None:
+    if os.path.isfile(path):
+        os.unlink(path)
+
+
 @router.post("/lessons", response_model=schemas.JobAccepted, status_code=202,
              summary="Importa una lezione da audio (upload): job ingest_audio, o run_pipeline con run=true")
 def create_lesson(
@@ -86,7 +156,7 @@ def create_lesson(
     argomenti: str = Form(""),
     run: bool = Form(False, description="True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')"),
     mock: bool = Form(False),
-    with_review: bool = Form(True),
+    with_review: bool = Form(False),
     auto_accept: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
@@ -108,16 +178,23 @@ def create_lesson(
 def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, actor: Actor):
     if body.mock_fail_once and not body.mock:
         raise ApiError(422, "validation_error", "mock_fail_once vale solo in modalità prova (mock).")
+    if body.extra_prompt is not None and (body.type != "run_phase" or body.phase not in ("outline", "rewrite", "review")):
+        raise ApiError(422, "validation_error", "Le istruzioni aggiuntive sono disponibili solo per outline, rewrite e review.")
     extra = {"mock_fail_once": body.mock_fail_once} if body.mock_fail_once else {}
     if body.type == "run_phase":
         if not body.phase:
             raise ApiError(422, "validation_error", "Indica la fase da eseguire.")
         options = {"force": body.force, "mock": body.mock, "rename": body.rename}
-        if body.unit:
-            if body.phase != "rewrite":
-                raise ApiError(422, "validation_error", "L'unità si indica solo per il rewrite.")
-            return enqueue_job("rewrite_unit", lesson_dir, {"unit": body.unit, "options": options}, actor)
-        return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra}, actor)
+        prompt_payload = {"extra_prompt": body.extra_prompt} if body.extra_prompt is not None else {}
+        if body.unit or body.units:
+            if body.phase not in ("rewrite", "review"):
+                raise ApiError(422, "validation_error", "L'unità si indica solo per rewrite o review.")
+            units = list(dict.fromkeys(body.units or [body.unit]))
+            if not units or any(not unit or not unit.strip() for unit in units):
+                raise ApiError(422, "validation_error", "Seleziona unità valide.")
+            return enqueue_job("rewrite_unit" if body.phase == "rewrite" else "review_unit", lesson_dir,
+                               {"units": units, "options": options, **prompt_payload}, actor)
+        return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}
     return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options, **extra}, actor)
@@ -166,10 +243,8 @@ def test_credential(body: schemas.CredentialTest, actor: Actor):
              summary="Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)")
 def telegram_listen_topics(actor: Actor):
     from rt.telegram.daemon_status import is_daemon_running
-    if is_daemon_running():
-        raise ApiError(409, "telegram_daemon_running",
-                       "Il bot è già in ascolto: fermalo prima di cercare nuovi topic.")
-    return enqueue_job("telegram_listen_topics", None, {"seconds": 20}, actor)
+    return enqueue_job("telegram_listen_topics", None, {"seconds": 20,
+                         "existing_daemon": is_daemon_running()}, actor)
 
 
 # ---------------------------------------------------------------- consultazione
@@ -201,6 +276,21 @@ def get_job(job_id: str, _actor: Actor):
 def cancel_job(job_id: str, _actor: Actor):
     _get(job_id)
     return job_view(queue().cancel(job_id))
+
+
+@router.post("/jobs/{job_id}/close", response_model=schemas.Job,
+             summary="Chiude un job in attesa di una decisione senza annullarlo (come 'rt jobs close')",
+             description="Il job finisce (succeeded, result.closed con il messaggio); le issue restano da "
+                         "valutare in Revisione o la scaletta da approvare, e decidere dopo non fa ripartire "
+                         "la pipeline. 409 job_not_closable se il job non è in attesa di una decisione "
+                         "che abbia una sua schermata.")
+def close_job(job_id: str, _actor: Actor):
+    from rt.services.jobs import JobError
+    _get(job_id)
+    try:
+        return job_view(queue().close_waiting(job_id))
+    except JobError as exc:
+        raise ApiError(409, "job_not_closable", str(exc))
 
 
 @router.post("/jobs/{job_id}/retry", response_model=schemas.JobAccepted, status_code=202,

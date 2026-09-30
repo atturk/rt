@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
+import { useLocation } from 'react-router'
 
 import type { Schemas } from '@/api/client'
 import { activeUnit } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
+import { renderDelimitedMath } from '@/lib/math'
 import { useLessonAudio } from './audio'
 
 type Props = {
@@ -60,23 +62,36 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   const ref = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
+  const { hash } = useLocation()
 
   // Pulsante timecode dentro ogni intestazione di unità.
   useEffect(() => {
     const root = ref.current
     if (!root) return
+    void renderDelimitedMath(root)
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
-      if (!heading || section.start_seconds == null || heading.querySelector('.rt-timecode')) continue
-      const button = window.document.createElement('button')
-      button.type = 'button'
-      button.className = 'rt-timecode'
-      button.dataset.seconds = String(section.start_seconds)
-      button.textContent = section.start_formatted ?? ''
-      button.disabled = !hasAudio
-      button.title = hasAudio ? `Ascolta da ${section.start_formatted}` : 'Audio non disponibile'
-      button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
-      heading.append(' ', button)
+      if (!heading) continue
+      const meta = window.document.createElement('span')
+      meta.className = 'rt-unit-meta'
+      if (section.start_seconds != null) {
+        const button = window.document.createElement('button')
+        button.type = 'button'
+        button.className = 'rt-timecode'
+        button.dataset.seconds = String(section.start_seconds)
+        button.textContent = section.start_formatted ?? ''
+        button.disabled = !hasAudio
+        button.title = hasAudio ? `Ascolta da ${section.start_formatted}` : 'Audio non disponibile'
+        button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
+        meta.append(button)
+      }
+      if (section.relevance) {
+        const tag = window.document.createElement('span')
+        tag.className = 'rt-relevance-tag'
+        tag.textContent = section.relevance === 'organizational' ? 'Informazioni organizzative' : 'Assenza di contenuto didattico'
+        meta.append(tag)
+      }
+      if (meta.childNodes.length) heading.append(meta)
     }
   }, [doc, hasAudio])
 
@@ -108,6 +123,17 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     const visible = target ?? block[0]
     visible?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
   }, [highlightText, highlightUnit, doc])
+
+  // Link "Vai all'unità" (#unit-<id>, per esempio dalla pagina Rilevanza): porta l'unità in vista.
+  useEffect(() => {
+    const root = ref.current
+    const unitId = hash.startsWith('#unit-') ? decodeURIComponent(hash.slice('#unit-'.length)) : ''
+    if (!root || !unitId || highlightText) return
+    const block = unitBlock(root, unitId)
+    if (!block.length) return
+    block.forEach((el) => el.classList.add('rt-claim-unit'))
+    block[0].scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }, [hash, doc, highlightText])
 
   return (
     <article

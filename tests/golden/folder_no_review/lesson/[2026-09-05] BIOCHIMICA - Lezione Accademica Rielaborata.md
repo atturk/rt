@@ -6,8 +6,6 @@ argomenti:
   - 'Lipidi'
 ---
 
-# [2026-09-05] BIOCHIMICA - Lezione Accademica Rielaborata
-
 ## 1. Introduzione e concetti fondamentali
 
 ### 1.1 Panoramica generale e prima unità

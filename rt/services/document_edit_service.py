@@ -75,20 +75,20 @@ class _Macro:
     units: List[_Unit] = field(default_factory=list)
 
 
-def _parse_structure(markdown: str) -> Tuple[Optional[Tuple[int, str]], List[_Macro], List[Dict[str, Any]]]:
-    """Titolo H1, sezioni con immagini e unità, errori di forma."""
+def _parse_structure(markdown: str) -> Tuple[List[_Macro], List[Dict[str, Any]]]:
+    """Sezioni con immagini e unità, errori di forma."""
     errors: List[Dict[str, Any]] = []
-    title: Optional[Tuple[int, str]] = None
     macros: List[_Macro] = []
     unit: Optional[_Unit] = None
     for n, raw in enumerate(markdown.replace("\r\n", "\n").split("\n"), start=1):
         line = raw.rstrip()
         stripped = line.strip()
         if line.startswith("# "):
-            if title is None and not macros:
-                title = (n, line)
-            else:
-                errors.append({"line": n, "message": "Un solo titolo di primo livello (#), in cima al documento."})
+            # il titolo della lezione sta nel nome del file e nel frontmatter, non nel testo; un
+            # H1 in cima (documenti costruiti dalle versioni precedenti) si ignora
+            if macros:
+                errors.append({"line": n, "message": "Niente titoli di primo livello (#): il titolo della "
+                                                     "lezione non fa parte del documento."})
             continue
         if line.startswith("## "):
             m = MACRO_RE.match(line)
@@ -121,7 +121,7 @@ def _parse_structure(markdown: str) -> Tuple[Optional[Tuple[int, str]], List[_Ma
             continue
         where = "sotto il titolo di una sezione vanno solo immagini" if macros else "prima della prima sezione non va testo"
         errors.append({"line": n, "message": f"Testo fuori da un'unità: {where}. Spostalo dentro un'unità."})
-    return title, macros, errors
+    return macros, errors
 
 
 def _content(unit: _Unit) -> str:
@@ -146,12 +146,11 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     from rt.core.segments import load_segments_json
     from rt.core.timestamp import format_timestamp
     from rt.pipeline.add_images import load_image_descriptions
-    from rt.pipeline.build import clean_unit_content, render_lesson_documents
+    from rt.pipeline.build import clean_unit_content
     from rt.pipeline.document_edits import load_document_edits, unit_start_segment
     from rt.pipeline.image_placement import load_image_placement
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.outline import load_outline
-    from rt.services.lesson_service import strip_yaml_frontmatter
 
     status, reason = check_phase_status(lesson_dir, "rewrite")
     if status != PhaseStatus.VALID:
@@ -165,15 +164,7 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     resolved = {u.unit_id: u for u in load_resolved_draft(lesson_dir).units}
     descriptions = load_image_descriptions(lesson_dir)
     hash_by_file = {d.get("filename"): h for h, d in descriptions.items() if d.get("filename")}
-    current = strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
-    current_title = next((line.rstrip() for line in current.split("\n") if line.startswith("# ")), "")
-
-    title, macros, errors = _parse_structure(markdown)
-    if title is None:
-        errors.append({"line": 1, "message": "Manca il titolo della lezione (# ...) in cima."})
-    elif title[1] != current_title:
-        errors.append({"line": title[0], "message": "Il titolo della lezione non si modifica dall'anteprima: rimetti "
-                                                    f"«{current_title[2:]}»."})
+    macros, errors = _parse_structure(markdown)
 
     expected_macros = [(str(m.id), m) for m in outline.macro_sections]
     new_edits: Dict[str, Any] = {"macros": {}, "units": {}}
@@ -335,11 +326,11 @@ def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
 
 def check_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     """Anteprima renderizzata del Markdown in modifica e gli eventuali errori, senza salvare."""
-    from markdown_it import MarkdownIt
+    from rt.core.markdown_render import render_markdown
     try:
         plan_document_edit(lesson_dir, markdown)
         errors: List[Dict[str, Any]] = []
     except DocumentEditError as exc:
         errors = exc.errors
-    html = MarkdownIt("commonmark", {"html": False}).render(markdown)
+    html = render_markdown(markdown)
     return {"html": html, "errors": errors}

@@ -99,6 +99,14 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   timecode o per tipo e gravità (prima gli errori concettuali più gravi; `?ordine=gravita`
   nell'indirizzo) e dopo ogni decisione si passa alla successiva in quell'ordine. Con l'ultima
   decisione la pipeline in attesa riparte da sola.
+- **Pagina Recall (`/recall`):** le lezioni raggruppate per materia, in schede o in tabella
+  (domande da porre per tipo e risposte date), ordinate per data, titolo o domande da porre;
+  vista, ordine e materie chiuse restano nel browser come nella pagina Lezioni. **Recall della
+  materia** apre `/recall/materie/<materia>`: una sessione con la stessa logica di quella di una
+  lezione, ma le domande arrivano a turno da tutte le lezioni della materia (quelle in corso su
+  Telegram sono escluse), con risposta, voto, salto, **Termina sessione** e riepilogo. La pagina
+  genera anche le domande delle lezioni che non ne hanno ancora. La scelta della domanda è in
+  `rt/services/recall_subject.py`, riusabile dal bot.
 - **Recall:** riserva di domande, quiz, domande mirate e vaste, risposte scritte o a voce.
   Due selettori a slitta scelgono dove fare il recall (**Telegram** o **Qui**) e il tipo di
   domanda (Quiz, Mirata, Vasta, anche con le frecce della tastiera); sotto ciascuno c'è la
@@ -119,8 +127,8 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   l'occhio per vederli per intero); i topic per materia, ciascuno con il pulsante **Prova**; le
   ultime notifiche inviate (lezione pronta, issue da rivedere, prove dei topic); un link alle
   impostazioni di Telegram.
-- **Impostazioni:** cartella lezioni, job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
-  ricerca web, Telegram e trascrizione. Al primo avvio una configurazione guidata chiede quello
+- **Impostazioni:** cartella dati (solo lettura), job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
+  ricerca web, Telegram e trascrizione. La configurazione guidata (aperta dall'installer) chiede quello
   che manca; si riapre dal link **Configurazione guidata →** in cima alle impostazioni.
   - **Modelli:** nel passo Modelli della configurazione guidata si usa di norma lo stesso modello
     per tutte le fasi; **Scegli per ogni fase** mostra le sei fasi (Outline, Rewrite, Review,

@@ -127,6 +127,11 @@ def edit_message_reply_markup(cfg: TelegramConfig, message_id: int, reply_markup
     return _call(cfg, "editMessageReplyMarkup", payload)
 
 
+def edit_message_text(cfg: TelegramConfig, message_id: int, text: str) -> Dict[str, Any]:
+    return _call(cfg, "editMessageText", {"chat_id": cfg.chat_id, "message_id": message_id,
+                                          "text": text, "parse_mode": "HTML", "disable_web_page_preview": True})
+
+
 def send_poll(
     cfg: TelegramConfig,
     question: str,

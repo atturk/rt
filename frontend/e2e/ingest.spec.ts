@@ -22,9 +22,11 @@ async function importAudio(page: Page, fields: { materia: string; argomenti: str
   await page.getByLabel('Materia', { exact: true }).fill(fields.materia)
   await page.getByLabel('Argomenti', { exact: true }).fill(fields.argomenti)
   await page.getByLabel('Avvia subito la pipeline').setChecked(fields.run)
+  // La review nella pipeline è facoltativa (4.1): questi test arrivano fino alle sue issue.
+  if (fields.run) await page.getByLabel('Includi la review').check()
   await page.getByText('Opzioni avanzate').click()
   await page.getByLabel('Modalità prova (mock)').check()
-  await page.getByRole('button', { name: 'Importa' }).click()
+  await page.getByRole('button', { name: 'Importa', exact: true }).click()
   await expect(page).toHaveURL(/\/job\/[0-9a-f-]+$/)
   return page.url().split('/job/')[1]
 }
@@ -120,7 +122,7 @@ test('errori leggibili su formato e campi mancanti', async ({ page }) => {
   await page.goto('/importa')
   await page.getByLabel('File audio', { exact: true }).setInputFiles({ name: 'appunti.txt', mimeType: 'text/plain', buffer: Buffer.from('ciao') })
   await page.getByLabel('Materia', { exact: true }).fill('X')
-  await page.getByRole('button', { name: 'Importa' }).click()
+  await page.getByRole('button', { name: 'Importa', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Formato non supportato: appunti.txt')
   await expect(page).toHaveURL(/\/importa$/)
 })

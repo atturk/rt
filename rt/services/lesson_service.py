@@ -24,10 +24,27 @@ class LessonNotFound(LookupError):
 
 # ---------------------------------------------------------------- indice
 
-def lessons_root() -> Optional[str]:
+def configured_lessons_root() -> Optional[str]:
+    """telegram.lessons_root se impostato (installazioni 3.x e 4.0): serve alla conversione
+    delle lezioni a cartelle e a tenere validi i percorsi già nel database."""
     from rt.core.config import load_config
-    root = load_config().telegram.lessons_root
+    root = (load_config().telegram.lessons_root or "").strip()
     return os.path.abspath(os.path.expanduser(root)) if root else None
+
+
+def lessons_root() -> str:
+    """Prefisso dei percorsi (Lesson.path) delle lezioni: quello configurato, altrimenti
+    <cartella dati>/lessons. Le lezioni stanno nel database: la cartella può non esistere."""
+    from rt.core.paths import data_dir
+    return configured_lessons_root() or os.path.join(data_dir(), "lessons")
+
+
+def work_dir() -> str:
+    """Cartella per i file temporanei (upload, export, import): <lessons_root>/.rt come prima
+    se la cartella configurata esiste, altrimenti la cartella dati di RT."""
+    from rt.core.paths import data_dir
+    root = configured_lessons_root()
+    return os.path.join(root, ".rt") if root and os.path.isdir(root) else data_dir()
 
 
 def _require_db():
@@ -49,7 +66,17 @@ def ensure_indexed(lesson_dirs: List[str]) -> Dict[str, int]:
         repo = LessonRepository(session)
         for lesson_dir in lesson_dirs:
             path = normalize_lesson_path(lesson_dir)
-            lesson = repo.get_by_path(path) or sync_lesson(session, path)
+            lesson = repo.get_by_path(path)
+            if lesson is None:
+                # Solo una cartella reale può mancare dal DB: una lezione "db" ha sempre la sua
+                # riga. Un percorso senza riga che fs vede come lezione "db" è il vecchio nome di
+                # una lezione rinominata o spostata da un altro processo (il worker, a fine build):
+                # la cache di fs di questo processo lo ricorda ancora. Indicizzarlo creerebbe una
+                # seconda riga che legge gli stessi file (lezione doppia nell'elenco, 4.1.0b2).
+                if not os.path.isdir(path):
+                    fs.forget(path)
+                    continue
+                lesson = sync_lesson(session, path)
             if lesson is not None:
                 ids[path] = lesson.id
     return ids
@@ -60,16 +87,19 @@ def lesson_id_for_dir(lesson_dir: str) -> Optional[int]:
 
 
 def known_lesson_dirs() -> List[str]:
-    """Cartelle lezione di lessons_root più quelle già nel DB che esistono ancora."""
-    from rt.core.lesson_index import scan_lessons
-    from rt.db.repositories import LessonRepository, normalize_lesson_path
-    from rt.db.session import session_scope
-    dirs = [normalize_lesson_path(e.lesson_dir) for e in scan_lessons(lessons_root() or "")]
-    with session_scope(_require_db()) as session:
-        for lesson in LessonRepository(session).list_all():
-            if lesson.path not in dirs and fs.isfile(lesson_path(lesson.path, "info.yaml")):
-                dirs.append(lesson.path)
-    return dirs
+    """Percorsi delle lezioni indicizzate dal database, senza scansione della root."""
+    return list(indexed_lesson_ids())
+
+
+def indexed_lesson_ids() -> Dict[str, int]:
+    """Mappa path/ID dal DB. L'esistenza virtuale è verificata dal backend storage."""
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import read_scope
+    with read_scope(_require_db()) as session:
+        # Una lezione "folder" esiste solo come cartella reale: os.path, non fs, che potrebbe
+        # vedere nel percorso una lezione "db" dal vecchio nome rimasto nella sua cache.
+        return {lesson.path: lesson.id for lesson in LessonRepository(session).list_all()
+                if lesson.storage == fs.STORAGE_DB or os.path.isdir(lesson.path)}
 
 
 def resolve_lesson_dir(lesson_id: int) -> str:
@@ -151,11 +181,30 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     """Impronta degli input del riepilogo di ogni lezione (vedi _summary_cache)."""
     import hashlib
     from sqlalchemy import func, select
-    from rt.db.models import Lesson, LessonFile, LlmCall
+    from rt.db.models import Lesson, LessonFile, LlmCall, Setting
     from rt.db.session import read_scope
     lesson_ids = list(ids.values())
     rows: Dict[int, List[str]] = {i: [] for i in lesson_ids}
+    # Un cambio ai modelli o alle istruzioni globali può rendere STALE rewrite/review
+    # senza modificare alcun file della lezione. La cache deve seguirlo.
+    config_parts: List[str] = []
+    from rt.core.paths import config_dir as active_config_dir
+    config_dir = active_config_dir()
+    for top, dirs, files in os.walk(config_dir):
+        dirs.sort()
+        for name in sorted(files):
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            path = os.path.join(top, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            config_parts.append(f"{os.path.relpath(path, config_dir)}|{stat.st_size}|{stat.st_mtime_ns}")
     with read_scope(_require_db()) as s:
+        for key, value in s.execute(select(Setting.key, Setting.value).where(
+                Setting.key.like("prompt_override:%")).order_by(Setting.key)):
+            config_parts.append(f"{key}|{value}")
         storage = dict(s.execute(select(Lesson.id, Lesson.storage).where(Lesson.id.in_(lesson_ids))).all())
         for lesson_id, name, sha, mtime, size in s.execute(
                 select(LessonFile.lesson_id, LessonFile.name, LessonFile.sha256, LessonFile.mtime, LessonFile.size)
@@ -169,7 +218,7 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     for path, lesson_id in ids.items():
         if storage.get(lesson_id) != fs.STORAGE_DB:
             rows[lesson_id].append(_folder_fingerprint(path))
-        body = f"{path}\n{storage.get(lesson_id)}\n" + "\n".join(rows[lesson_id])
+        body = f"{path}\n{storage.get(lesson_id)}\n" + "\n".join(config_parts + rows[lesson_id])
         out[lesson_id] = hashlib.sha256(body.encode("utf-8", "surrogateescape")).hexdigest()
     return out
 
@@ -203,7 +252,7 @@ def clear_summary_cache() -> None:
 def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
                  text: Optional[str] = None) -> List[Dict[str, Any]]:
     with fs.read_snapshot():  # centinaia di letture per lezione, una query ciascuna senza
-        ids = ensure_indexed(known_lesson_dirs())
+        ids = indexed_lesson_ids()
         items = _cached_summaries(ids)
     if materia:
         items = [i for i in items if i["materia"] == materia.strip().upper()]
@@ -228,10 +277,14 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
 
     from rt.services.review_service import build_warnings
 
+    from rt.core.manifest import load_manifest
+    manifest = load_manifest(lesson_dir)
+    records = (getattr(manifest, "phase_records", None) or {}) if manifest else {}
     phases = []
     for ph in PHASES:
         status, reason = check_phase_status(lesson_dir, ph)
-        item = {"phase": ph, "status": status.value, "reason": reason, "warnings": []}
+        item = {"phase": ph, "status": status.value, "reason": reason, "warnings": [],
+                "manual_validation": (records.get(ph) or {}).get("manual_validation")}
         if ph == "build":
             try:
                 item["warnings"] = build_warnings(lesson_dir)
@@ -374,6 +427,8 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
         return []
     from rt.pipeline.document_edits import load_document_edits, unit_start_segment, unit_title
     edits = load_document_edits(lesson_dir)
+    from rt.services.unit_relevance import list_units
+    relevance = {row["unit_id"]: row["effective"] for row in list_units(lesson_dir)["units"]}
     by_id = {s.id: s for s in (segments.segments if segments else [])}
     out = []
     for unit in draft.units:
@@ -388,17 +443,17 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
             "start_seconds": start.start_seconds if start else None,
             "end_seconds": end.end_seconds if end else None,
             "start_formatted": start.start_formatted if start else None,
+            "relevance": relevance.get(unit.unit_id) if relevance.get(unit.unit_id) in ("organizational", "no_content") else None,
         })
     return out
 
 
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
-    from markdown_it import MarkdownIt
+    from rt.core.markdown_render import markdown_parser
     markdown = load_markdown_preview(lesson_dir)
     final = _document_is_final(lesson_dir)
     sections = document_sections(lesson_dir)
-    # html=False: l'HTML grezzo del Markdown viene escapato, quindi l'output è sicuro.
-    md = MarkdownIt("commonmark", {"html": False})
+    md = markdown_parser()  # HTML grezzo escapato, formule intatte
     tokens = md.parse(markdown)
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})
@@ -469,7 +524,7 @@ def lesson_audio_file(lesson_dir: str) -> Optional[str]:
 def costs_summary() -> Dict[str, Any]:
     """Riepilogo dei costi di tutte le lezioni note (stessi numeri di 'rt cost')."""
     from rt.pipeline.cost import compute_lesson_cost
-    ids = ensure_indexed(known_lesson_dirs())
+    ids = indexed_lesson_ids()
     lessons, by_job, total, requests = [], {}, 0.0, 0
     for path, lesson_id in ids.items():
         data = compute_lesson_cost(path)

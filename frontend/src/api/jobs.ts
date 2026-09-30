@@ -64,6 +64,18 @@ export function useCancelJob() {
   })
 }
 
+/**
+ * POST /jobs/{id}/close: chiude un job fermo su una decisione senza annullarlo (la decisione si
+ * prende poi dalla sua schermata, e non fa ripartire il job).
+ */
+export function useCloseJob() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/jobs/{job_id}/close', { params: { path: { job_id: id } } })),
+    onSettled: (job) => invalidateAfterJob(client, job?.lesson_id),
+  })
+}
+
 /** POST /jobs/{id}/retry: job nuovo (stesso tipo e payload) collegato a quello fallito. */
 export function useRetryJob() {
   const client = useQueryClient()
@@ -84,6 +96,7 @@ export type NewLesson = {
   run: boolean
   mock: boolean
   auto_accept: boolean
+  with_review: boolean
 }
 
 /** POST /lessons multipart con avanzamento dell'upload. */
@@ -100,6 +113,7 @@ export function useCreateLesson() {
       form.append('run', String(input.run))
       form.append('mock', String(input.mock))
       form.append('auto_accept', String(input.auto_accept))
+      form.append('with_review', String(input.with_review))
       setProgress({ loaded: 0, total: input.files.reduce((sum, f) => sum + f.size, 0) })
       const body = {
         audio: input.files.map((f) => f.name),
@@ -109,9 +123,32 @@ export function useCreateLesson() {
         run: input.run,
         mock: input.mock,
         auto_accept: input.auto_accept,
-        with_review: true,
+        with_review: input.with_review,
       } satisfies Schemas['Body_create_lesson_api_v1_lessons_post']
       return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
+    },
+    onSettled: () => invalidateAfterJob(client),
+  })
+  return { ...mutation, progress: mutation.isPending ? progress : null }
+}
+
+/** Esito di un archivio nel risultato del job import_lesson_zips. */
+export type ZipImportItem = { file: string; status: 'imported' | 'rejected'; lesson_id?: number | null; reason?: string | null }
+export type ZipImportResult = { results: ZipImportItem[]; imported: number; rejected: number }
+
+/** POST /lessons/import-zip multipart con avanzamento dell'upload: accoda il job
+ * import_lesson_zips (202). I rifiuti immediati (nome, firma ZIP) tornano nel risultato del job;
+ * se nessun archivio è valido l'API risponde subito 422. */
+export function useImportLessonZips() {
+  const client = useQueryClient()
+  const [progress, setProgress] = useState<UploadProgress | null>(null)
+  const mutation = useMutation({
+    mutationFn: (files: File[]) => {
+      const form = new FormData()
+      for (const file of files) form.append('archives', file, file.name)
+      setProgress({ loaded: 0, total: files.reduce((sum, f) => sum + f.size, 0) })
+      const body = { archives: files.map((f) => f.name) } satisfies Schemas['Body_import_lesson_zips_api_v1_lessons_import_zip_post']
+      return unwrap(api.POST('/api/v1/lessons/import-zip', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
     },
     onSettled: () => invalidateAfterJob(client),
   })

@@ -37,8 +37,6 @@ def main() -> int:
         code = api_smoke.run(
             f"http://127.0.0.1:{PORT}",
             lambda: compose("exec", "-T", "api", "rt", "web", "--no-browser", capture=True).stdout,
-            lessons_root="/data/lezioni",
-            on_setup_lessons_root=lambda path: compose("exec", "-T", "api", "mkdir", "-p", path),
         )
         if code:
             compose("logs", "api", "worker", check=False)

@@ -37,6 +37,12 @@ export function Layout({ areas }: { areas: Area[] }) {
   }
 
   const nav = areas.flatMap((a) => a.nav ?? [])
+  const primary = nav.filter((item) => item.to !== '/job' && item.to !== '/impostazioni')
+  const utilities = nav.filter((item) => item.to === '/job' || item.to === '/impostazioni')
+  const activeArea = (to: string) =>
+    (to === '/review' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/revisione')) ||
+    (to === '/recall' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/recall')) ||
+    (to === '/immagini' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/immagini'))
   return (
     <div className="flex min-h-dvh">
       <aside
@@ -92,19 +98,28 @@ export function Layout({ areas }: { areas: Area[] }) {
             <span className="ml-3 hidden text-xs text-muted-foreground sm:inline">Rielaborazione trascritti e active recall</span>
           </Link>
           <nav aria-label="Navigazione" className="flex items-center gap-1">
-            {nav.map(({ to, label, icon: Icon, end, badge: Badge }) => (
+            {primary.map(({ to, label, icon: Icon, end, badge: Badge }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
                 title={label}
+                aria-current={activeArea(to) ? 'page' : undefined}
                 className={({ isActive }) =>
-                  cn('inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm hover:bg-muted', isActive && 'bg-muted font-semibold')
+                  cn('inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm hover:bg-muted', (isActive || activeArea(to)) && 'bg-muted font-semibold')
                 }
               >
                 <Icon className="size-4" aria-hidden />
                 <span className="sr-only lg:not-sr-only">{label}</span>
                 {Badge && <Badge />}
+              </NavLink>
+            ))}
+          </nav>
+          <nav aria-label="Strumenti" className="flex items-center gap-1">
+            {utilities.map(({ to, label, icon: Icon, badge: Badge }) => (
+              <NavLink key={to} to={to} title={label} aria-label={label}
+                className={({ isActive }) => cn('inline-flex size-9 items-center justify-center gap-1 rounded-md hover:bg-muted', isActive && 'bg-muted font-semibold')}>
+                <Icon className="size-4" aria-hidden />{Badge && <Badge />}
               </NavLink>
             ))}
           </nav>

@@ -70,7 +70,7 @@ test("modifica dell'anteprima: testo e timecode salvati, documento da ricreare, 
   await page.keyboard.press('Enter')
   await page.keyboard.type('Paragrafo aggiunto a mano.')
   await expect(page.getByTestId('document-edit-errors')).toHaveCount(0)
-  await expect(page.locator('.rt-document-edit-preview')).toContainText('Paragrafo aggiunto a mano.')
+  await expect(editor(page)).toContainText('Paragrafo aggiunto a mano.')
   await page.getByRole('button', { name: 'Fine' }).click()
   await expect(editor(page)).toHaveCount(0)
   await expect(page.getByTestId('document-edit-saved')).toContainText('va ricreato')

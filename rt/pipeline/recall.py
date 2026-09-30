@@ -15,6 +15,7 @@ from typing import List, Optional, Dict
 from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer
 from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
+from rt.services.prompt_settings import effective_system
 from rt.core.config import load_config
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
@@ -74,7 +75,46 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
 def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
     """Conta le domande PENDING di un tipo specifico nel bank."""
     bank = load_recall_bank(lesson_dir)
-    return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING)
+    allowed = _allowed_units(lesson_dir)
+    return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
+               and _question_allowed(q, allowed))
+
+
+def _allowed_units(lesson_dir: str) -> Optional[set]:
+    """Unità da cui si possono fare domande (None = tutte), calcolate una volta per chiamata:
+    prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
+    from rt.services.unit_relevance import included, mode
+    if mode() != "active":
+        return None
+    try:
+        draft = load_resolved_draft(lesson_dir)
+    except (FileNotFoundError, ValueError):
+        return None
+    return {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
+
+
+def _question_allowed(question: RecallQuestion, allowed: Optional[set]) -> bool:
+    return allowed is None or all(uid in allowed for uid in question.unit_ids)
+
+
+def repair_duplicate_ids(bank: RecallBank) -> int:
+    """Rinumera le domande con ID già usato (bank scritti prima della correzione degli ID).
+    La prima occorrenza tiene l'ID e le risposte; se però una sola delle copie è stata
+    risposta, le risposte sono sue. Restituisce quante domande ha rinumerato."""
+    groups: Dict[str, List[RecallQuestion]] = {}
+    for question in bank.questions:
+        groups.setdefault(question.id, []).append(question)
+    renamed = 0
+    for qid, copies in groups.items():
+        if len(copies) < 2:
+            continue
+        answered = [q for q in copies if q.status == RecallQuestionStatus.ANSWERED]
+        keeper = answered[0] if len(answered) == 1 else copies[0]
+        for question in copies:
+            if question is not keeper:
+                question.id = _next_id(bank)
+                renamed += 1
+    return renamed
 
 # -----------------------------------------------------------------------
 # Pending question selection
@@ -116,9 +156,13 @@ def get_next_pending_question(
 
     Marca la domanda restituita come ASKED e salva il bank.
     """
+    allowed = _allowed_units(lesson_dir)
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
-        pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
+        if repair_duplicate_ids(bank):
+            save_recall_bank(bank, lesson_dir)
+        pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
+                   and _question_allowed(q, allowed)]
         if not pending:
             return None
 
@@ -156,10 +200,7 @@ def get_next_pending_question(
             selected = pending[0]
 
         if selected:
-            for q in bank.questions:
-                if q.id == selected.id:
-                    q.status = RecallQuestionStatus.ASKED
-                    break
+            selected.status = RecallQuestionStatus.ASKED  # è l'oggetto del bank, non una copia
             save_recall_bank(bank, lesson_dir)
 
         return selected
@@ -337,10 +378,15 @@ def generate_recall_batch(
     )
 
     draft = load_resolved_draft(lesson_dir)
+    from rt.services.unit_relevance import refresh, included
+    refresh(lesson_dir, force_mock=force_mock)
     bank = load_recall_bank(lesson_dir)
     new_questions: List[RecallQuestion] = []
     client = LLMClient(force_mock=force_mock)
-    units = draft.units
+    units = [u for u in draft.units if included(lesson_dir, u)]
+    if not units:
+        _LOG.info("Recall: nessuna unità didattica da cui generare domande")
+        return []
 
     # ---- Build list of unit index groups to generate questions for ----
     def _pick_unit_groups(num: int) -> List[List[int]]:
@@ -468,7 +514,7 @@ def generate_recall_batch(
         try:
             generated: RecallQuestion = client.call_structured(
                 prompt=user_prompt,
-                system_prompt=system_prompt,
+                system_prompt=effective_system("recall", system_prompt),
                 response_model=RecallQuestion,
                 job_name="recall",
                 unit_id=", ".join(units[i].unit_id for i in group_idxs),
@@ -499,7 +545,12 @@ def generate_recall_batch(
             raise last_error
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
+        repair_duplicate_ids(bank)
         for gen in new_questions:
+            # Il batch reale non aggiunge le domande al bank fino a questo punto.
+            # Assegna gli ID sul bank aggiornato, sotto lock: altrimenti tutte le
+            # risposte dello stesso batch (o di due job concorrenti) condividono ID.
+            gen.id = _next_id(bank)
             bank.questions.append(gen)
         save_recall_bank(bank, lesson_dir)
     return new_questions
@@ -558,7 +609,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         )
         result: "RecallEvalMirataResult" = client.call_structured(
             prompt=user_prompt,
-            system_prompt=RECALL_EVAL_MIRATA_SYSTEM_PROMPT,
+            system_prompt=effective_system("recall", RECALL_EVAL_MIRATA_SYSTEM_PROMPT),
             response_model=RecallEvalMirataResult,
             job_name="recall",
             unit_id=question.unit_ids[0],
@@ -578,7 +629,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         )
         result_v: "RecallEvalVastaResult" = client.call_structured(
             prompt=user_prompt,
-            system_prompt=RECALL_EVAL_VASTA_SYSTEM_PROMPT,
+            system_prompt=effective_system("recall", RECALL_EVAL_VASTA_SYSTEM_PROMPT),
             response_model=RecallEvalVastaResult,
             job_name="recall",
             unit_id=", ".join(question.unit_ids),

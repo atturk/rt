@@ -24,7 +24,7 @@ test('review: accetta, mantieni, modifica, annulla; il ledger resta dopo la rica
   await page.locator(`[data-testid=lesson-card][data-lesson-id="${id}"]`).getByRole('link', { name: /issue da valutare/ }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${id}/revisione`))
   await expect(counter(page)).toHaveText('10 da decidere su 10')
-  await expect(page.getByTestId('issue-diff')).toBeVisible()
+  await expect(page.getByTestId('issue-suggestion')).toBeVisible()
   await expect(page.locator('mark.rt-claim')).toBeVisible()
 
   const first = await page.getByTestId('issue-detail').getAttribute('data-issue-id')
@@ -65,7 +65,7 @@ test('review: con l\'ultima decisione la pipeline in attesa riparte', async ({ p
   // Pipeline in mock che si ferma sulle issue da decidere (come 'rt run' senza --auto-accept).
   const res = await page.request.post(`/api/v1/lessons/${id}/jobs`, {
     headers: authHeaders(),
-    data: { type: 'run_pipeline', mock: true, auto_accept: false, rename: false },
+    data: { type: 'run_pipeline', with_review: true, mock: true, auto_accept: false, rename: false },
   })
   expect(res.status()).toBe(202)
   const { job_id } = (await res.json()) as { job_id: string }

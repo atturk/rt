@@ -43,9 +43,10 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.getByLabel('Materia', { exact: true }).fill('EMBRIOLOGIA')
   await page.getByLabel('Argomenti', { exact: true }).fill('Gastrulazione')
   await page.getByLabel('Avvia subito la pipeline').setChecked(true)
+  await page.getByLabel('Includi la review').check()
   await page.getByText('Opzioni avanzate').click()
   await page.getByLabel('Modalità prova (mock)').check()
-  await page.getByRole('button', { name: 'Importa' }).click()
+  await page.getByRole('button', { name: 'Importa', exact: true }).click()
   await expect(page).toHaveURL(/\/job\/[0-9a-f-]+$/)
   const jobId = page.url().split('/job/')[1]
   await waitJob(page, jobId, (j) => j.decision?.kind === 'outline_approval')

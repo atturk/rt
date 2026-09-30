@@ -25,9 +25,9 @@ def scan_lessons(lessons_root: str) -> List[LessonEntry]:
     annidamento) con un info.yaml leggibile. Cartelle senza info.yaml valido sono
     ignorate silenziosamente."""
     entries = []
-    if not lessons_root or not fs.isdir(lessons_root):
+    if not lessons_root:
         return entries
-    for name in sorted(fs.listdir(lessons_root)):
+    for name in sorted(fs.root_entries(lessons_root)):
         full = os.path.join(lessons_root, name)
         if not fs.isdir(full):
             continue
@@ -47,6 +47,25 @@ def scan_lessons(lessons_root: str) -> List[LessonEntry]:
             argomenti=str(info.get("argomenti", "")),
         ))
     return entries
+
+
+def database_lessons() -> List[LessonEntry]:
+    """Elenco canonico delle lezioni dal DB, senza scansione della cartella dati."""
+    from rt.db.engine import get_database
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import read_scope
+
+    db = get_database()
+    if db is None:
+        return []
+    with read_scope(db) as session:
+        rows = LessonRepository(session).list_all()
+        # Stesso filtro della web app (lesson_service.indexed_lesson_ids): una riga a cartelle
+        # la cui cartella non esiste più non è una lezione da proporre.
+        return [LessonEntry(lesson_dir=row.path, folder_name=row.folder_name, data=row.data,
+                            materia=(row.materia or "").strip().upper(), titolo=row.titolo,
+                            argomenti=row.argomenti) for row in rows
+                if row.storage == fs.STORAGE_DB or os.path.isdir(row.path)]
 
 
 def filter_by_materia(entries: List[LessonEntry], materia_upper: str) -> List[LessonEntry]:
