@@ -377,3 +377,28 @@ def test_migration_keeps_valid_phases_valid(root, rt_db, flat_layout):
     assert not os.path.isdir(lesson_dir)
     after = {ph: check_phase_status(lesson_dir, ph) for ph in PHASES}
     assert after == before
+
+
+def test_api_group_export_markdown_and_archives(api_client, api_lesson):
+    """Download di un gruppo dell'elenco: i Markdown finali aggiornati, oppure gli archivi."""
+    lesson_id = _lesson_id(api_client)
+    # senza documento finale non c'è nulla da scaricare in Markdown
+    res = api_client.get("/api/v1/lesson-exports", params={"ids": [lesson_id], "format": "markdown"})
+    assert res.status_code == 404 and res.json()["error"]["code"] == "export_not_available"
+
+    run_build(api_lesson)
+    res = api_client.get("/api/v1/lesson-exports", params={"ids": [lesson_id, lesson_id], "name": "Oggi: 30/09"})
+    assert res.status_code == 200, res.text
+    assert "Oggi%203009.zip" in res.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        names = zf.namelist()
+    assert len(names) == 1 and names[0].endswith(".md")
+
+    res = api_client.get("/api/v1/lesson-exports", params={"ids": [lesson_id], "format": "zip"})
+    assert res.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(res.content)) as outer:
+        [inner_name] = outer.namelist()
+        with zipfile.ZipFile(io.BytesIO(outer.read(inner_name))) as inner:
+            assert any(n.endswith("/rt-export.json") for n in inner.namelist())
+
+    assert api_client.get("/api/v1/lesson-exports", params={"ids": [999999]}).status_code == 404

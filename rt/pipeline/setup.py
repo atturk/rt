@@ -13,6 +13,7 @@ import json
 import subprocess
 import datetime
 import time
+import yaml
 from typing import Dict, Any, List, Optional, Tuple, Union, Callable, Protocol
 from pydantic import BaseModel
 from rich.console import Console
@@ -98,6 +99,7 @@ class SetupRequest(BaseModel):
     date: str
     materia: str
     argomenti: str = ""
+    docente: str = ""
 
 
 def is_audio_file(path: str) -> bool:
@@ -304,8 +306,12 @@ def generate_deterministic_mock_asr(
     return json_path, md_path
 
 
-def _run_transcribe_with_spinner(cmd: List[str], label: str) -> subprocess.CompletedProcess:
+def _run_transcribe_with_spinner(cmd: List[str], label: str,
+                                 on_percent: Optional[Callable[[int], None]] = None) -> subprocess.CompletedProcess:
+    """on_percent riceve la percentuale che macparakeet-cli stampa (solo quando cambia):
+    l'interfaccia web la mostra nella barra del job."""
     console = Console()
+    last_pct: Optional[int] = None
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -328,6 +334,12 @@ def _run_transcribe_with_spinner(cmd: List[str], label: str) -> subprocess.Compl
                         if match:
                             pct = match.group(1)
                             last_status_text = f"{label} ({pct}%)"
+                            if on_percent is not None and int(pct) != last_pct and 0 <= int(pct) <= 100:
+                                last_pct = int(pct)
+                                try:
+                                    on_percent(last_pct)
+                                except Exception:  # l'avanzamento non deve fermare la trascrizione
+                                    pass
                         else:
                             last_status_text = f"{label} - {line_str}"
                     elapsed = int(time.monotonic() - start)
@@ -343,6 +355,7 @@ def resolve_setup_request(
     argomenti: Optional[str] = None,
     prompter: Optional[SetupPrompter] = None,
     strict: bool = False,
+    docente: Optional[str] = None,
 ) -> SetupRequest:
     """Raccoglie e valida i metadati di setup senza mai leggere da stdin.
 
@@ -405,6 +418,8 @@ def resolve_setup_request(
         materia=sanitize_filename_part(materia_val.upper()),
         # Argomenti opzionali: se vuoti non vengono registrati né mostrati all'LLM.
         argomenti=sanitize_filename_part(argomenti.strip()) if argomenti and argomenti.strip() else "",
+        # Il docente non entra nel nome della cartella: resta com'è scritto (una riga).
+        docente=" ".join((docente or "").split()),
     )
 
 
@@ -422,6 +437,8 @@ def run_setup(
     on_progress: Optional[Callable[[str], None]] = None,
     prompter: Optional[SetupPrompter] = None,
     strict: bool = False,
+    docente: Optional[str] = None,
+    on_transcription_progress: Optional[Callable[[int], None]] = None,
 ) -> Dict[str, Any]:
     """
     Esegue l'ingest audio e il setup strutturato della lezione.
@@ -437,7 +454,7 @@ def run_setup(
         model = DEFAULT_MODEL
     request = resolve_setup_request(
         audio, date=date, materia=materia, argomenti=argomenti,
-        prompter=prompter if interactive else None, strict=strict,
+        prompter=prompter if interactive else None, strict=strict, docente=docente,
     )
     cleaned_audios = request.audio
     primary_audio = cleaned_audios[0]
@@ -446,6 +463,7 @@ def run_setup(
     date_val = request.date
     materia_val = request.materia
     argomenti_val = request.argomenti
+    docente_val = request.docente
 
     # 3. Risoluzione cartella di destinazione
     if dest_dir:
@@ -572,7 +590,8 @@ def run_setup(
                         model_param = model.replace("parakeet-", "") if model.startswith("parakeet-") else model
                         cmd_json.extend(["--parakeet-model", model_param])
                     cmd_json.append(aud_abs)
-                    res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)")
+                    progress_kw = {"on_percent": on_transcription_progress} if on_transcription_progress else {}
+                    res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)", **progress_kw)
                     json_files = [f for f in fs.listdir(temp_audio_dir) if f.endswith(".json")]
                     raw_data = None
                     if json_files:
@@ -707,6 +726,8 @@ creato_il: '{now_iso}'
 fase_corrente: {current_state}
 stato: {current_status}
 """
+    if docente_val:
+        info_content += yaml.safe_dump({"docente": docente_val}, allow_unicode=True, default_flow_style=False)
     tmp_info = info_yaml_path + ".tmp"
     with fs.open(tmp_info, "w", encoding="utf-8") as f:
         f.write(info_content)
@@ -722,6 +743,7 @@ stato: {current_status}
         "date": date_val,
         "materia": materia_val,
         "argomenti": argomenti_val,
+        "docente": docente_val,
         "audio_files": [os.path.join(target_folder_path, os.path.basename(a)) for a in cleaned_audios],
         "info_yaml": info_yaml_path,
         "trascritto_json": json_path if fs.isfile(json_path) else None,
@@ -735,6 +757,7 @@ def configure_setup_parser(parser: Any) -> Any:
     parser.add_argument("-d", "--date", help="Data della lezione (es. '2026-09-05', '26 sett 2025', '3 marzo 2024')")
     parser.add_argument("-m", "--materia", help="Nome della materia (es. BIOCHIMICA, BIOINFORMATICA)")
     parser.add_argument("-a", "--argomenti", help="Argomenti trattati (es. 'Trigliceridi e beta-ossidazione')")
+    parser.add_argument("--docente", help="Nome del docente (facoltativo)")
     parser.add_argument("-o", "--dest-dir", help="Directory base di destinazione")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello macparakeet-cli (default: {DEFAULT_MODEL})")
     parser.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")

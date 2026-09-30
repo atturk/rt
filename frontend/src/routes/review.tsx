@@ -51,6 +51,12 @@ const sortKey = (item: IssueItem) => {
 }
 
 const DECISIONS: Record<string, string> = { accepted: 'accettata', rejected: 'originale mantenuto', edited: 'modificata' }
+// Segnalazioni da verificare sull'audio (qualità ASR, fedeltà al parlato): non hanno una
+// correzione proposta. Accettare conserva il paragrafo corrente e Modifica ne sostituisce
+// l'intero testo (come nel terminale), quindi "Mantieni originale" non serve.
+const PARAGRAPH_TYPES = new Set(['ERR_ASR_ST', 'ERR_ASR_LLM', 'ERR_REWRITE_DRIFT'])
+const PARAGRAPH_DECISIONS: Record<string, string> = { accepted: 'paragrafo accettato', rejected: 'paragrafo accettato', edited: 'modificata' }
+const isParagraphIssue = (type: string) => PARAGRAPH_TYPES.has(type)
 
 function decisionError(error: unknown): string {
   if (error instanceof ApiError && error.code === 'lesson_busy')
@@ -72,7 +78,8 @@ function IssueDetail({
   setEditing: (v: boolean) => void
 }) {
   const issue = item.issue as unknown as Issue
-  const [text, setText] = useState(issue.suggested_fix ?? issue.claim)
+  const paragraph = isParagraphIssue(issue.type)
+  const [text, setText] = useState(paragraph ? (item.context?.unit_content ?? issue.claim) : (issue.suggested_fix ?? issue.claim))
   const [sevLabel, sevTone] = SEVERITY[issue.severity] ?? [issue.severity, 'neutral']
   const ctx = item.context
   return (
@@ -80,13 +87,15 @@ function IssueDetail({
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-bold">{TYPE_LABELS[issue.type] ?? issue.type}</h2>
         <Badge tone={sevTone}>gravità {sevLabel}</Badge>
-        {item.decision && <Badge tone="success">{DECISIONS[item.decision.decision] ?? item.decision.decision}</Badge>}
+        {item.decision && <Badge tone="success">{(paragraph ? PARAGRAPH_DECISIONS : DECISIONS)[item.decision.decision] ?? item.decision.decision}</Badge>}
       </div>
       {ctx?.unit_info && <p className="text-[11px] text-muted-foreground">Unità {ctx.unit_info}</p>}
-      <div>
-        <h3 className="mb-1 text-xs font-semibold">Correzione proposta</h3>
-        <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed" data-testid="issue-suggestion">{issue.suggested_fix || issue.claim}</p>
-      </div>
+      {!paragraph && (
+        <div>
+          <h3 className="mb-1 text-xs font-semibold">Correzione proposta</h3>
+          <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed" data-testid="issue-suggestion">{issue.suggested_fix || issue.claim}</p>
+        </div>
+      )}
       <p className="text-xs">{issue.reason}</p>
       {issue.source_quote && (
         <p className="border-l-2 pl-2 text-xs text-muted-foreground">
@@ -104,12 +113,13 @@ function IssueDetail({
           }}
         >
           <label htmlFor="edit-text" className="text-xs font-semibold">
-            Testo corretto
+            {paragraph ? 'Testo del paragrafo' : 'Testo corretto'}
           </label>
+          {paragraph && <p className="text-[11px] text-muted-foreground">Sostituisce l’intero paragrafo: correggilo ascoltando l’audio.</p>}
           <textarea
             id="edit-text"
             autoFocus
-            rows={5}
+            rows={paragraph ? 10 : 5}
             className="rounded-md border border-input bg-card p-2 text-sm"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -129,11 +139,13 @@ function IssueDetail({
       ) : (
         <div className="flex flex-wrap gap-2">
           <Button size="sm" disabled={busy} onClick={() => onDecide('accepted')} aria-keyshortcuts="A">
-            <Check /> Accetta correzione <kbd className="opacity-60">A</kbd>
+            <Check /> {paragraph ? 'Accetta paragrafo' : 'Accetta correzione'} <kbd className="opacity-60">A</kbd>
           </Button>
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => onDecide('rejected')} aria-keyshortcuts="R">
-            <X /> Mantieni originale <kbd className="opacity-60">R</kbd>
-          </Button>
+          {!paragraph && (
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => onDecide('rejected')} aria-keyshortcuts="R">
+              <X /> Mantieni originale <kbd className="opacity-60">R</kbd>
+            </Button>
+          )}
           <Button variant="outline" size="sm" disabled={busy} onClick={() => setEditing(true)} aria-keyshortcuts="E">
             <Pencil /> Modifica <kbd className="opacity-60">E</kbd>
           </Button>
@@ -161,7 +173,8 @@ export function ReviewPage() {
   const pending = sortIssues(items.filter((i) => !i.decision), order, sortKey)
   const decided = sortIssues(items.filter((i) => i.decision), order, sortKey)
   const ordered = [...pending, ...decided]
-  const selectedId = params.get('issue') ?? (pending[0] ? issueOf(pending[0]).id : undefined) ?? (items[0] ? issueOf(items[0]).id : undefined) ?? null
+  // A revisione finita il pannello di decisione resta chiuso: si riapre un'issue dalla lista.
+  const selectedId = params.get('issue') ?? (pending[0] ? issueOf(pending[0]).id : undefined) ?? null
   const selected = items.find((i) => issueOf(i).id === selectedId) ?? null
   const selectedIssue = selected ? issueOf(selected) : undefined
   const claim = selectedIssue?.claim
@@ -172,6 +185,13 @@ export function ReviewPage() {
     setEditing(false)
     const next = new URLSearchParams(params)
     next.set('issue', issueId)
+    setParams(next, { replace: true })
+  }
+
+  const closeDetail = () => {
+    setEditing(false)
+    const next = new URLSearchParams(params)
+    next.delete('issue')
     setParams(next, { replace: true })
   }
 
@@ -202,12 +222,14 @@ export function ReviewPage() {
         onSuccess: () => {
           setEditing(false)
           if (next) select(issueOf(next).id)
-          else
+          else {
+            closeDetail()
             setNotice(
               wasWaiting
                 ? 'Hai deciso tutte le issue: la pipeline in attesa è ripartita.'
                 : 'Hai deciso tutte le issue: ora puoi generare il documento finale dalla pagina della lezione.',
             )
+          }
         },
       },
     )
@@ -229,7 +251,7 @@ export function ReviewPage() {
       const index = ordered.findIndex((i) => issueOf(i).id === selectedId)
       const key = e.key.toLowerCase()
       if (key === 'a' && selected && !selected.decision) onDecide('accepted')
-      else if (key === 'r' && selected && !selected.decision) onDecide('rejected')
+      else if (key === 'r' && selected && !selected.decision && !isParagraphIssue(issueOf(selected).type)) onDecide('rejected')
       else if (key === 'e' && selected && !selected.decision) setEditing(true)
       else if (key === 'u') onUndo()
       else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') select(idAt(ordered, Math.min(index + 1, ordered.length - 1)))
@@ -283,6 +305,10 @@ export function ReviewPage() {
                 editing={editing}
                 setEditing={setEditing}
               />
+            ) : items.length ? (
+              <Card className="p-4 text-sm text-muted-foreground" data-testid="review-complete">
+                Revisione completata: tutte le issue sono decise. Per cambiare una decisione apri l’issue dalla lista qui sotto.
+              </Card>
             ) : (
               <Card className="p-4 text-sm text-muted-foreground">Nessuna issue per questa lezione.</Card>
             )}

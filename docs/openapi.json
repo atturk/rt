@@ -107,6 +107,12 @@
             "title": "Date",
             "type": "string"
           },
+          "docente": {
+            "default": "",
+            "description": "Nome del docente (facoltativo)",
+            "title": "Docente",
+            "type": "string"
+          },
           "materia": {
             "title": "Materia",
             "type": "string"
@@ -2211,6 +2217,11 @@
             "title": "Data",
             "type": "string"
           },
+          "docente": {
+            "default": "",
+            "title": "Docente",
+            "type": "string"
+          },
           "error": {
             "anyOf": [
               {
@@ -2457,6 +2468,11 @@
           "data": {
             "default": "",
             "title": "Data",
+            "type": "string"
+          },
+          "docente": {
+            "default": "",
+            "title": "Docente",
             "type": "string"
           },
           "error": {
@@ -6346,6 +6362,126 @@
         "summary": "Riprova un job fallito: job nuovo con lo stesso tipo e payload (retry_of), che riparte dalla fase fallita",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lesson-exports": {
+      "get": {
+        "operationId": "export_lessons_api_v1_lesson_exports_get",
+        "parameters": [
+          {
+            "description": "Id delle lezioni",
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "description": "Id delle lezioni",
+              "items": {
+                "type": "integer"
+              },
+              "title": "Ids",
+              "type": "array"
+            }
+          },
+          {
+            "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione",
+              "enum": [
+                "markdown",
+                "zip"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Nome del file scaricato (senza estensione)",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "default": "lezioni",
+              "description": "Nome del file scaricato (senza estensione)",
+              "maxLength": 120,
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/zip": {}
+            },
+            "description": "Archivio ZIP"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scarica più lezioni in un solo ZIP (es. un gruppo dell'elenco)",
+        "tags": [
+          "lezioni"
         ]
       }
     },

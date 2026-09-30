@@ -228,3 +228,51 @@ def _export_zip_into(lesson_dir: str, scope: str, buf) -> None:
         if scope == "all":
             zf.writestr(f"{folder}/rt-export.json", json.dumps({"format": "rt-lesson", "version": 1,
                 "scope": "all", "files": entries}, ensure_ascii=False))
+
+
+def export_many_to_tempfile(lesson_dirs: List[str], fmt: str) -> Tuple[str, int]:
+    """Un gruppo di lezioni in un solo ZIP (percorso, lezioni incluse).
+
+    markdown: il documento finale di ogni lezione che ne ha uno aggiornato (le altre si
+    saltano, come il download da Option nell'elenco); zip: l'archivio completo di ogni
+    lezione (scope all), ciascuno come file .zip reimportabile da «Importa lezioni da ZIP».
+    """
+    if fmt not in ("markdown", "zip"):
+        raise ExportError(f"Formato sconosciuto: {fmt} (usa markdown o zip)")
+    included = 0
+    used: set = set()
+
+    def unique(name: str) -> str:
+        stem, ext = os.path.splitext(name)
+        candidate, n = name, 2
+        while candidate in used:
+            candidate, n = f"{stem} ({n}){ext}", n + 1
+        used.add(candidate)
+        return candidate
+
+    with tempfile.NamedTemporaryFile(prefix="rt-export-many-", suffix=".zip", delete=False) as output:
+        path = output.name
+    try:
+        # Gli archivi delle lezioni sono già compressi: dentro l'archivio del gruppo si salvano così.
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED if fmt == "zip" else zipfile.ZIP_DEFLATED) as zf:
+            for lesson_dir in lesson_dirs:
+                if fmt == "markdown":
+                    names = lesson_file_names(lesson_dir)
+                    if export_mode(lesson_dir, names) != "final":
+                        continue
+                    final = final_markdown_name(names)
+                    zf.writestr(unique(final), _read(names[final]))
+                else:
+                    single = export_zip_to_tempfile(lesson_dir, "all")
+                    try:
+                        zf.write(single, unique(zip_name(lesson_dir)))
+                    finally:
+                        os.unlink(single)
+                included += 1
+        if not included:
+            raise ExportError("Nessuna lezione del gruppo ha un documento finale aggiornato."
+                              if fmt == "markdown" else "Nessuna lezione da esportare.")
+    except BaseException:
+        os.unlink(path)
+        raise
+    return path, included

@@ -212,6 +212,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lesson-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scarica più lezioni in un solo ZIP (es. un gruppo dell'elenco) */
+        get: operations["export_lessons_api_v1_lesson_exports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons": {
         parameters: {
             query?: never;
@@ -1770,6 +1787,12 @@ export interface components {
              * @description Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')
              */
             date: string;
+            /**
+             * Docente
+             * @description Nome del docente (facoltativo)
+             * @default
+             */
+            docente: string;
             /** Materia */
             materia: string;
             /**
@@ -2728,6 +2751,11 @@ export interface components {
              * @default
              */
             data: string;
+            /**
+             * Docente
+             * @default
+             */
+            docente: string;
             /** Error */
             error?: string | null;
             /** Folder Name */
@@ -2881,6 +2909,11 @@ export interface components {
              * @default
              */
             data: string;
+            /**
+             * Docente
+             * @default
+             */
+            docente: string;
             /** Error */
             error?: string | null;
             /** Folder Name */
@@ -4809,6 +4842,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    export_lessons_api_v1_lesson_exports_get: {
+        parameters: {
+            query: {
+                /** @description Id delle lezioni */
+                ids: number[];
+                /** @description markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione */
+                format?: "markdown" | "zip";
+                /** @description Nome del file scaricato (senza estensione) */
+                name?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archivio ZIP */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/zip": unknown;
                 };
             };
             /** @description Autenticazione mancante o non valida */

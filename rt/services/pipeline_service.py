@@ -32,6 +32,7 @@ class PipelineOptions:
     date: Optional[str] = None
     materia: Optional[str] = None
     argomenti: Optional[str] = None
+    docente: Optional[str] = None
     dest_dir: Optional[str] = None
     model: Optional[str] = None
     skip_transcribe: bool = False
@@ -247,6 +248,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         date=options.date,
         materia=options.materia,
         argomenti=options.argomenti,
+        docente=options.docente,
         dest_dir=options.dest_dir,
         model=options.model or DEFAULT_MODEL,
         skip_transcribe=options.skip_transcribe,
@@ -254,6 +256,8 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         mock_asr=options.mock,
         interactive=prompter is not None,
         on_progress=lambda msg: ctx.emit(Notice(message=msg)),
+        # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
+        on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
         prompter=prompter,
         # Senza DecisionProvider (API/worker) i metadati mancanti non si inventano.
         strict=decisions is None,

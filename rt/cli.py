@@ -436,6 +436,7 @@ def cmd_setup(args):
             date=args.date,
             materia=args.materia,
             argomenti=args.argomenti,
+            docente=getattr(args, "docente", None),
             dest_dir=args.dest_dir,
             model=getattr(args, "model", None) or DEFAULT_MODEL,
             skip_transcribe=args.skip_transcribe,
@@ -791,6 +792,7 @@ def cmd_run(args):
         date=getattr(args, "date", None),
         materia=getattr(args, "materia", None),
         argomenti=getattr(args, "argomenti", None),
+        docente=getattr(args, "docente", None),
         dest_dir=getattr(args, "dest_dir", None),
         model=getattr(args, "model", None) or DEFAULT_MODEL,
         skip_transcribe=getattr(args, "skip_transcribe", False),
@@ -1131,6 +1133,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_run.add_argument("-d", "--date", help="Data della lezione (se input è audio)")
     p_run.add_argument("-m", "--materia", help="Nome della materia (se input è audio)")
     p_run.add_argument("-a", "--argomenti", help="Argomenti trattati (se input è audio)")
+    p_run.add_argument("--docente", help="Nome del docente (se input è audio, facoltativo)")
     p_run.add_argument("-o", "--dest-dir", help="Directory base di destinazione per nuova lezione")
     p_run.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello macparakeet-cli per trascrizione (default: {DEFAULT_MODEL})")
     p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")

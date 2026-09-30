@@ -91,11 +91,13 @@ export function ImportPage() {
   const [date, setDate] = useState(today())
   const [materia, setMateria] = useState('')
   const [argomenti, setArgomenti] = useState('')
+  const [docente, setDocente] = useState('')
   const [run, setRun] = useState(true)
   const [withReview, setWithReview] = useState(false)
   const [mock, setMock] = useState(false)
   const [autoAccept, setAutoAccept] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const teachers = [...new Set((lessons.data ?? []).map((l) => l.docente).filter(Boolean))].sort()
   const subjects = [...new Set([...(lessons.data ?? []).map((l) => l.materia), ...Object.keys(settings.data?.telegram.topics ?? {})].filter(Boolean))].sort()
 
   function submit(event: FormEvent) {
@@ -104,7 +106,7 @@ export function ImportPage() {
     setProblem(issue)
     if (issue) return
     create.mutate(
-      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), run, mock, auto_accept: autoAccept, with_review: withReview },
+      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), docente: docente.trim(), run, mock, auto_accept: autoAccept, with_review: withReview },
       { onSuccess: (accepted) => navigate(`/job/${accepted.job_id}`) },
     )
   }
@@ -120,8 +122,6 @@ export function ImportPage() {
     <section className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
       <WorkerWarning />
-      <OrphanUploads />
-      <ZipImportCard />
       <Card className="p-5">
         <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Importa una lezione">
           <div className="flex flex-col gap-1">
@@ -181,15 +181,33 @@ export function ImportPage() {
               </datalist>
             </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="import-argomenti">Argomenti</Label>
-            <Input
-              id="import-argomenti"
-              value={argomenti}
-              onChange={(e) => setArgomenti(e.target.value)}
-              placeholder="Facoltativi: se mancano li ricava la pipeline"
-              disabled={create.isPending}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="import-argomenti">Argomenti</Label>
+              <Input
+                id="import-argomenti"
+                value={argomenti}
+                onChange={(e) => setArgomenti(e.target.value)}
+                placeholder="Facoltativi: se mancano li ricava la pipeline"
+                disabled={create.isPending}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="import-docente">Docente</Label>
+              <Input
+                id="import-docente"
+                list="import-docenti"
+                value={docente}
+                onChange={(e) => setDocente(e.target.value)}
+                placeholder="Facoltativo"
+                disabled={create.isPending}
+              />
+              <datalist id="import-docenti">
+                {teachers.map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            </div>
           </div>
           <Checkbox
             id="import-run"
@@ -237,6 +255,8 @@ export function ImportPage() {
           </div>
         </form>
       </Card>
+      <ZipImportCard />
+      <OrphanUploads />
     </section>
   )
 }

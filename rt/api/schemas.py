@@ -16,6 +16,7 @@ class LessonSummary(BaseModel):
     materia: str = ""
     titolo: str = ""
     argomenti: str = ""
+    docente: str = ""
     state: Optional[str] = Field(None, description="Stato effettivo del workflow (come 'rt status')")
     phases: Dict[str, str] = Field(description="fase -> VALID | PARTIAL | STALE | MISSING | INVALID")
     pending_issues: int = 0

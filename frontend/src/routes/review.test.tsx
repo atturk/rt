@@ -5,7 +5,7 @@ import { vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import { ReviewPage } from './review'
 
-type Item = { issue: Record<string, unknown>; decision?: { decision: string } | null; context?: { start_s?: number; timecode?: string } }
+type Item = { issue: Record<string, unknown>; decision?: { decision: string } | null; context?: { start_s?: number; timecode?: string; unit_content?: string } }
 type MutateOptions = { onSuccess?: () => void }
 
 const state = vi.hoisted(() => ({
@@ -96,13 +96,12 @@ describe('ReviewPage', () => {
   })
 
   it("con la tastiera: R mantiene l'originale, le frecce navigano, E apre la modifica", () => {
-    renderReview()
+    renderReview('?issue=medio')
     fireEvent.keyDown(document.body, { key: 'r' })
-    expect(state.decide).toHaveBeenLastCalledWith({ issueId: 'asr', decision: 'rejected', text: undefined }, expect.anything())
-    expect(selected()).toBe('medio')
-    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    expect(state.decide).toHaveBeenLastCalledWith({ issueId: 'medio', decision: 'rejected', text: undefined }, expect.anything())
     expect(selected()).toBe('grave')
     fireEvent.keyDown(document.body, { key: 'ArrowUp' })
+    expect(selected()).toBe('medio')
     fireEvent.keyDown(document.body, { key: 'e' })
     const editor = screen.getByLabelText('Testo corretto')
     expect(editor).toHaveValue('Correzione medio')
@@ -138,6 +137,42 @@ describe('ReviewPage', () => {
     renderReview()
     fireEvent.click(screen.getByRole('button', { name: /Annulla ultima/ }))
     expect(state.undo).toHaveBeenCalledWith('fatta', expect.anything())
+    expect(selected()).toBe('fatta')
+  })
+
+  it("un'issue di qualità ASR si accetta come paragrafo: niente correzione proposta né Mantieni originale", () => {
+    state.items = [{ ...item('asr', 'ERR_ASR_ST', 'low', 10), context: { start_s: 10, timecode: '0:10', unit_content: 'Paragrafo intero.' } }]
+    renderReview()
+    expect(screen.queryByTestId('issue-suggestion')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Mantieni originale/ })).not.toBeInTheDocument()
+    fireEvent.keyDown(document.body, { key: 'r' })
+    expect(state.decide).not.toHaveBeenCalled()
+    // Modifica parte dall'intero paragrafo, che la decisione sostituisce per intero.
+    fireEvent.keyDown(document.body, { key: 'e' })
+    expect(screen.getByLabelText('Testo del paragrafo')).toHaveValue('Paragrafo intero.')
+    fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+    fireEvent.click(screen.getByRole('button', { name: /Accetta paragrafo/ }))
+    expect(state.decide).toHaveBeenCalledWith({ issueId: 'asr', decision: 'accepted', text: undefined }, expect.anything())
+  })
+
+  it('a revisione finita il pannello di decisione si chiude e si riapre dalla lista', () => {
+    state.items = [item('sola', 'IMPRECISIONE', 'low', 1)]
+    // Come dopo il refetch: l'issue risulta decisa.
+    state.decide.mockImplementation((_body: unknown, options?: MutateOptions) => {
+      state.items = [item('sola', 'IMPRECISIONE', 'low', 1, true)]
+      options?.onSuccess?.()
+    })
+    renderReview()
+    fireEvent.click(screen.getByRole('button', { name: /Accetta correzione/ }))
+    expect(screen.queryByTestId('issue-detail')).not.toBeInTheDocument()
+    expect(screen.getByTestId('review-complete')).toBeInTheDocument()
+  })
+
+  it('tornando su una revisione finita non apre l’ultima decisa, ma la si può riaprire', () => {
+    state.items = [item('fatta', 'IMPRECISIONE', 'low', 5, true)]
+    renderReview()
+    expect(screen.queryByTestId('issue-detail')).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('list', { name: 'Decise' })).getByRole('button'))
     expect(selected()).toBe('fatta')
   })
 

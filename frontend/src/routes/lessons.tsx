@@ -1,4 +1,4 @@
-import { Brain, Download, Images, LayoutDashboard, Pencil } from 'lucide-react'
+import { Brain, Download, Images, LayoutDashboard, PanelRightClose, PanelRightOpen, Pencil } from 'lucide-react'
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
@@ -16,7 +16,6 @@ import { JobsPanel } from '@/components/lesson/JobsPanel'
 import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
-import { LessonFilters } from '@/components/LessonFilters'
 import { LessonList, LessonViewControls } from '@/components/LessonList'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { groupLessons, sortLessons, useLessonViewPrefs } from '@/lib/lessonView'
@@ -27,18 +26,11 @@ import { STATE_LABELS, formatCost, lessonTitle } from '@/lib/format'
 import type { Area } from './types'
 import { RelevancePage } from './relevance'
 
-function Stat({ value, label }: { value: number | string; label: string }) {
-  return (
-    <Card className="flex items-baseline gap-2.5 px-4 py-2.5">
-      <strong className="text-2xl font-bold tabular-nums">{value}</strong>
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
-    </Card>
-  )
-}
-
 export function DashboardPage() {
-  // Elenco completo una volta sola; testo, materia e stato si filtrano qui, senza una
-  // richiesta per tasto (GET /lessons ricalcola fasi, issue e costi di ogni lezione).
+  // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
+  // (GET /lessons ricalcola fasi, issue e costi di ogni lezione). Materia e stato restano
+  // filtri dell'URL (link dalla barra laterale), azzerabili da "Azzera filtri".
+  // La ricerca cerca già in materia, titolo, docente e data: niente riquadri né menu separati.
   const all = useLessons()
   const lessons = all.data ?? []
   const { filters, setFilter, resetFilters, filtered } = useFilteredLessons(all.data)
@@ -49,19 +41,13 @@ export function DashboardPage() {
   return (
     <section className="flex flex-col gap-5">
       <h1 className="sr-only">Dashboard</h1>
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        <Stat value={lessons.length} label="Lezioni" />
-        <Stat value={lessons.filter((l) => l.pending_issues > 0).length} label="Da rivedere" />
-        <Stat value={lessons.filter((l) => l.state === 'completato').length} label="Completate" />
-      </div>
-
-      <LessonFilters lessons={lessons} filters={filters} onChange={setFilter} />
 
       {all.isError && <Alert tone="danger">{errorMessage(all.error)}</Alert>}
       {all.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
       {all.data && lessons.length > 0 && (
         <LessonViewControls shown={filtered.length} total={lessons.length} filtered={hasFilters}
-          onReset={resetFilters} prefs={prefs} onChange={update} />
+          onReset={resetFilters} prefs={prefs} onChange={update}
+          search={{ id: 'filter-q', value: filters.q, onChange: (value) => setFilter('q', value) }} />
       )}
       {all.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
@@ -92,9 +78,33 @@ function useSearchShortcut(inputId: string) {
   }, [inputId])
 }
 
+const SIDE_PANEL_KEY = 'rt-lesson-side-panel'
+
+/** Pannello laterale della lezione (fasi, job, costi): aperto di default, si può nascondere
+ * per leggere il documento a tutta larghezza. La scelta resta nel browser. */
+function useSidePanel(): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(SIDE_PANEL_KEY) !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  const update = (next: boolean) => {
+    setOpen(next)
+    try {
+      localStorage.setItem(SIDE_PANEL_KEY, next ? 'open' : 'closed')
+    } catch {
+      /* archiviazione non disponibile: vale solo per questa pagina */
+    }
+  }
+  return [open, update]
+}
+
 export function LessonPage() {
   const id = Number(useParams().lessonId)
   const [editingDocument, setEditingDocument] = useState(false)
+  const [panelOpen, setPanelOpen] = useSidePanel()
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   if (lesson.isPending) return <p className="text-sm text-muted-foreground">Carico la lezione…</p>
@@ -143,17 +153,31 @@ export function LessonPage() {
           </dl>
           {l.error && <p className="mt-2 text-xs text-danger">{l.error}</p>}
         </Card>
-        <LessonJobBanner lessonId={l.id} />
+        <LessonJobBanner
+          lessonId={l.id}
+          review={Boolean(l.phases.review && l.phases.review !== 'MISSING')}
+          extra={
+            <button type="button" className="ml-auto inline-flex items-center gap-1 underline" aria-expanded={panelOpen}
+              aria-controls="lesson-side-panel" onClick={() => setPanelOpen(!panelOpen)}>
+              {panelOpen ? <PanelRightClose className="size-3.5" aria-hidden /> : <PanelRightOpen className="size-3.5" aria-hidden />}
+              {panelOpen ? 'Nascondi fasi e costi' : 'Mostra fasi e costi'}
+            </button>
+          }
+        />
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className={panelOpen ? 'grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]' : 'grid grid-cols-1 gap-4'}>
           <div className="flex min-w-0 flex-col gap-4">
             {l.has_audio && <AudioPlayer lessonId={id} sections={sections} />}
             <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
           </div>
-          <aside className="flex flex-col gap-4">
-            <PhasePanel lessonId={id} units={sections} editingDocument={editingDocument} />
-            <JobsPanel lessonId={id} />
-            <CostPanel lesson={l} />
+          <aside id="lesson-side-panel" className="flex flex-col gap-4" hidden={!panelOpen} aria-label="Fasi, job e costi">
+            {panelOpen && (
+              <>
+                <PhasePanel lessonId={id} units={sections} editingDocument={editingDocument} />
+                <JobsPanel lessonId={id} />
+                <CostPanel lesson={l} />
+              </>
+            )}
           </aside>
         </div>
       </section>

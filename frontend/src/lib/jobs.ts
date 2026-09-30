@@ -167,7 +167,8 @@ export function progressLabel(progress: Job['progress']): { phase: string | null
   const phase = typeof p.phase === 'string' ? (PHASE_LABELS[p.phase] ?? (p.phase === 'setup' ? 'Trascrizione e setup' : p.phase)) : null
   const current = Number(p.current)
   const total = Number(p.total)
-  const count = Number.isFinite(current) && Number.isFinite(total) && total > 0 && !p.completed ? `${current}/${total}` : null
+  // La trascrizione (fase setup) avanza in percentuale: il dettaglio la dice già, niente "42/100".
+  const count = Number.isFinite(current) && Number.isFinite(total) && total > 0 && !p.completed && p.phase !== 'setup' ? `${current}/${total}` : null
   const unit = typeof p.unit_id === 'string' ? [p.unit_id, typeof p.unit_title === 'string' ? p.unit_title : null].filter(Boolean).join(' ') : null
   const failed = Number(p.failed)
   const parts = [unit ?? (typeof p.message === 'string' && p.message ? p.message : null)]

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, Download, LayoutGrid, Table2, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, Download, FileArchive, LayoutGrid, Table2, Trash2 } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
@@ -9,6 +9,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { PHASE_LABELS, PHASE_ORDER, STATE_LABELS, formatCost, lessonTitle, phaseTone, type Lesson } from '@/lib/format'
@@ -22,7 +23,7 @@ import {
   type LessonViewPrefs,
   type SortDir,
 } from '@/lib/lessonView'
-import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
+import { optionRevealClass, useOptionShiftKeys } from '@/lib/optionKey'
 import { cn } from '@/lib/utils'
 
 /** Link con l'aspetto di un Button ghost/icon. */
@@ -31,9 +32,38 @@ const iconLink =
 
 const stateLabel = (lesson: Lesson) => (lesson.state ? STATE_LABELS[lesson.state] ?? lesson.state : null)
 
-/** Elimina (con conferma scritta) e, a documento valido, scarica il Markdown: compaiono con Option. */
+/** Scarica: con Option il Markdown finale (solo a build valido, non l'anteprima), con
+ * Option+Shift l'archivio completo. Per una lezione o per tutte quelle di un gruppo. */
+function DownloadAction({ lessons, label, reveal }: { lessons: Lesson[]; label: string; reveal: string }) {
+  const { shift } = useOptionShiftKeys()
+  if (shift) {
+    const href = lessons.length === 1
+      ? `/api/v1/lessons/${lessons[0].id}/export?format=zip&scope=all`
+      : `/api/v1/lesson-exports?${new URLSearchParams([...lessons.map((l) => ['ids', String(l.id)]), ['format', 'zip'], ['name', label]])}`
+    return (
+      <a href={href} download aria-label={`Scarica l'archivio di ${label}`} title="Scarica l'archivio completo (zip)"
+        className={`${reveal} ${iconLink}`} data-testid="download-archive">
+        <FileArchive className="size-4" aria-hidden />
+      </a>
+    )
+  }
+  const ready = lessons.filter((l) => l.phases.build === 'VALID')
+  if (ready.length === 0) return null
+  const href = lessons.length === 1
+    ? `/api/v1/lessons/${ready[0].id}/export?format=markdown`
+    : `/api/v1/lesson-exports?${new URLSearchParams([...ready.map((l) => ['ids', String(l.id)]), ['format', 'markdown'], ['name', label]])}`
+  return (
+    <a href={href} download aria-label={`Scarica il Markdown di ${label}`}
+      title={lessons.length === 1 ? 'Scarica il Markdown finale' : `Scarica i Markdown finali (${ready.length})`}
+      className={`${reveal} ${iconLink}`} data-testid="download-markdown">
+      <Download className="size-4" aria-hidden />
+    </a>
+  )
+}
+
+/** Elimina (con conferma scritta) e scarica: compaiono con Option (archivio con Option+Shift). */
 function LessonQuickActions({ lesson, className, layout }: { lesson: Lesson; className?: string; layout: 'card' | 'row' }) {
-  const optionDown = useOptionKey()
+  const { option: optionDown } = useOptionShiftKeys()
   const [confirm, setConfirm] = useState(false)
   const [typed, setTyped] = useState('')
   const client = useQueryClient()
@@ -47,14 +77,7 @@ function LessonQuickActions({ lesson, className, layout }: { lesson: Lesson; cla
       <Button type="button" variant="ghost" size="icon" aria-label={`Elimina ${lessonTitle(lesson)}`}
         className={`${reveal} text-danger`}
         onClick={() => { setTyped(''); setConfirm(true) }}><Trash2 /></Button>
-      {/* con Option: il Markdown finale (solo a build valido, non l'anteprima) */}
-      {lesson.phases.build === 'VALID' && (
-        <a href={`/api/v1/lessons/${lesson.id}/export?format=markdown`} download
-          aria-label={`Scarica il Markdown di ${lessonTitle(lesson)}`} title="Scarica il Markdown finale"
-          className={`${reveal} ${iconLink}`}>
-          <Download className="size-4" aria-hidden />
-        </a>
-      )}
+      <DownloadAction lessons={[lesson]} label={lessonTitle(lesson)} reveal={reveal} />
       <ConfirmDialog open={confirm} title="Elimina lezione" confirmLabel="Elimina"
         confirmDisabled={typed !== 'confermo' || deletion.isPending}
         onCancel={() => setConfirm(false)} onConfirm={() => deletion.mutate()}>
@@ -156,6 +179,12 @@ export function SortHeader<K extends string>({ label, sortKey, prefs, onSort, cl
   )
 }
 
+/** Download del gruppo (solo quello, non l'eliminazione), accanto al nome del gruppo. */
+function GroupDownload({ group }: { group: LessonGroup }) {
+  const { option } = useOptionShiftKeys()
+  return <DownloadAction lessons={group.lessons} label={group.label} reveal={optionRevealClass(option)} />
+}
+
 export function GroupToggle({ group, expanded, onToggle, controls }: { group: LessonGroup; expanded: boolean; onToggle: () => void; controls: string }) {
   return (
     <button type="button" aria-expanded={expanded} aria-controls={controls} onClick={onToggle} data-testid="lesson-group-toggle"
@@ -194,9 +223,12 @@ function CardsView({ groups, grouped, prefs, onToggleGroup }: ListProps) {
         const panel = `${base}-${index}`
         return (
           <section key={id} aria-label={group.label} data-testid="lesson-group" data-group={group.key}>
-            <h2 className="mb-2 border-b pb-1">
-              <GroupToggle group={group} expanded={expanded} onToggle={() => onToggleGroup(id)} controls={panel} />
-            </h2>
+            <div className="group mb-2 flex items-center justify-between border-b pb-1">
+              <h2>
+                <GroupToggle group={group} expanded={expanded} onToggle={() => onToggleGroup(id)} controls={panel} />
+              </h2>
+              <GroupDownload group={group} />
+            </div>
             <div id={panel} hidden={!expanded} className={grid}>
               {expanded && group.lessons.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} headingLevel={3} />)}
             </div>
@@ -257,10 +289,11 @@ function TableView({ groups, grouped, prefs, onSort, onToggleGroup }: ListProps)
           return (
             <tbody key={id} id={rows} data-testid={grouped ? 'lesson-group' : undefined} data-group={grouped ? group.key : undefined}>
               {grouped && (
-                <tr className="border-t bg-muted/40">
-                  <th scope="rowgroup" colSpan={COLUMNS} className="px-2 py-1 text-left">
+                <tr className="group border-t bg-muted/40">
+                  <th scope="rowgroup" colSpan={COLUMNS - 1} className="px-2 py-1 text-left">
                     <GroupToggle group={group} expanded={expanded} onToggle={() => onToggleGroup(id)} controls={rows} />
                   </th>
+                  <td className="w-0 px-1 py-1"><div className="flex justify-end"><GroupDownload group={group} /></div></td>
                 </tr>
               )}
               {expanded && group.lessons.map((lesson) => <LessonRow key={lesson.id} lesson={lesson} />)}
@@ -298,14 +331,16 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
   )
 }
 
-/** Riga sopra l'elenco: quante lezioni, azzera filtri, raggruppa, ordina e vista. */
-export function LessonViewControls({ shown, total, filtered, onReset, prefs, onChange }: {
+/** Riga sopra l'elenco: ricerca, quante lezioni, azzera filtri, raggruppa, ordina e vista. */
+export function LessonViewControls({ shown, total, filtered, onReset, prefs, onChange, search }: {
   shown: number
   total: number
   filtered: boolean
   onReset: () => void
   prefs: LessonViewPrefs
   onChange: (patch: Partial<LessonViewPrefs>) => void
+  /** Campo "Cerca" a sinistra del numero di lezioni (dashboard). */
+  search?: { id: string; value: string; onChange: (value: string) => void }
 }) {
   const id = useId()
   const DirIcon = prefs.dir === 'asc' ? ArrowUp : ArrowDown
@@ -314,7 +349,15 @@ export function LessonViewControls({ shown, total, filtered, onReset, prefs, onC
     : prefs.dir === 'asc' ? 'crescente' : 'decrescente'
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <p className="text-sm text-muted-foreground" role="status" data-testid="lesson-count">
+      <div className="flex flex-wrap items-end gap-3">
+      {search && (
+        <form className="flex flex-col gap-1" role="search" aria-label="Filtra le lezioni" onSubmit={(e) => e.preventDefault()}>
+          <Label htmlFor={search.id} className="text-xs">Cerca</Label>
+          <Input id={search.id} type="search" className="w-64" placeholder="Titolo, materia, docente, data…"
+            value={search.value} onChange={(e) => search.onChange(e.target.value)} />
+        </form>
+      )}
+      <p className="pb-2 text-sm text-muted-foreground" role="status" data-testid="lesson-count">
         {filtered ? (
           <>
             <strong className="font-semibold text-foreground tabular-nums">{shown}</strong> di {total} lezioni
@@ -324,6 +367,7 @@ export function LessonViewControls({ shown, total, filtered, onReset, prefs, onC
           <><strong className="font-semibold text-foreground tabular-nums">{total}</strong> {total === 1 ? 'lezione' : 'lezioni'}</>
         )}
       </p>
+      </div>
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
           <Label htmlFor={`${id}-group`} className="text-xs">Raggruppa per</Label>

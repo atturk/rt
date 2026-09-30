@@ -6,7 +6,7 @@ import { vi } from 'vitest'
 import { DashboardPage } from './lessons'
 
 const LESSONS = [
-  { id: 1, materia: 'PATOLOGIA GENERALE 2', data: '2026-09-28', titolo: 'Infiammazione', folder_name: 'a', argomenti: '', path: '', phases: { build: 'VALID' }, pending_issues: 0 },
+  { id: 1, materia: 'PATOLOGIA GENERALE 2', data: '2026-09-28', titolo: 'Infiammazione', folder_name: 'a', argomenti: '', docente: 'Maria Rossi', path: '', phases: { build: 'VALID' }, pending_issues: 0 },
   { id: 2, materia: 'BIOCHIMICA', data: '2026-09-05', titolo: 'Lipidi', folder_name: 'b', argomenti: '', path: '', phases: { build: 'STALE' }, pending_issues: 0 },
 ]
 
@@ -59,5 +59,22 @@ describe('scheda della lezione con Option', () => {
     renderDashboard()
     fireEvent.click(within(card(1)).getByRole('link', { name: /Scarica il Markdown/ }))
     expect(screen.getByTestId('where').textContent).toBe('/')
+  })
+})
+
+describe('dashboard', () => {
+  it('solo la ricerca accanto al conteggio: niente statistiche né menu Materia e Stato', () => {
+    renderDashboard()
+    expect(screen.queryByText('Da rivedere')).toBeNull()
+    expect(screen.queryByLabelText('Materia')).toBeNull()
+    expect(screen.queryByLabelText('Stato')).toBeNull()
+    const search = screen.getByLabelText('Cerca')
+    // Stessa riga del numero di lezioni, alla sua sinistra.
+    const row = screen.getByTestId('lesson-count').parentElement!
+    expect(row.contains(search)).toBe(true)
+    expect(search.compareDocumentPosition(screen.getByTestId('lesson-count')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.change(search, { target: { value: 'rossi' } })
+    expect(document.querySelectorAll('[data-testid=lesson-card]')).toHaveLength(1)
+    expect(card(1)).not.toBeNull()
   })
 })

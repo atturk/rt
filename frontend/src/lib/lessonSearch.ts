@@ -42,10 +42,10 @@ export function dateForms(date: string): string[] {
   ].filter(Boolean)
 }
 
-/** Testo in cui cerca il campo "Cerca": titolo, argomenti, materia e data (in più formati). */
+/** Testo in cui cerca il campo "Cerca": titolo, argomenti, materia, docente e data (in più formati). */
 export function searchableText(lesson: Lesson): string {
   return normalizeText(
-    [lessonTitle(lesson), lesson.titolo, lesson.argomenti, lesson.materia, ...dateForms(lesson.data)].join('\n'),
+    [lessonTitle(lesson), lesson.titolo, lesson.argomenti, lesson.materia, lesson.docente ?? '', ...dateForms(lesson.data)].join('\n'),
   )
 }
 

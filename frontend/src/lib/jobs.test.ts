@@ -87,6 +87,11 @@ describe('avanzamento delle fasi a unità (RT4-FA1)', () => {
     expect(progressLabel({ phase: 'setup', message: 'Trascrizione' })).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione' })
     expect(progressTitle(null)).toBeNull()
   })
+  it('la trascrizione avanza in percentuale: barra e messaggio, niente "42/100"', () => {
+    const progress = { phase: 'setup', current: 42, total: 100, message: 'Trascrizione audio: 42%' }
+    expect(progressLabel(progress)).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione audio: 42%' })
+    expect(progressPercent(progress)).toBe(42)
+  })
   it('una fase finita parziale è un avviso con le unità completate', () => {
     const e = event(9, 'phase_completed', { phase: 'review', partial: true, result: { completed_units: 30, expected_units: 31 } })
     expect(describeEvent(e)).toEqual({ text: 'Revisione: parziale (30/31 unità)', tone: 'warning' })
