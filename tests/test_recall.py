@@ -91,9 +91,10 @@ def test_real_batch_uses_distinct_ids_and_keeps_answers_with_their_question(less
     from unittest.mock import patch
 
     def generated(_client, **kwargs):
-        return RecallQuestion(id="temporary", type=RecallQuestionType.QUIZ,
-                              unit_ids=["1.1"], question_text=kwargs["unit_id"],
-                              options=["A", "B", "C", "D"], correct_index=0)
+        return kwargs["response_model"].model_validate({"questions": [{
+            "type": "quiz", "question_text": kwargs["unit_id"],
+            "options": ["A", "B", "C", "D"], "correct_index": 0,
+            "pregenerated_material": "Spiegazione corretta."}]})
 
     with patch("rt.llm.client.LLMClient.call_structured", generated):
         questions = generate_recall_batch(lesson_dir, RecallQuestionType.QUIZ, 3, [], force_mock=False)
@@ -499,7 +500,7 @@ class TestGenerateBatch:
         qs = generate_recall_batch(
             lesson_dir, RecallQuestionType.QUIZ, count=20, few_shot_examples=[], force_mock=True
         )
-        assert len(qs) == 20  # deve funzionare riutilizzando le unità
+        assert len(qs) == 6  # ogni unità viene valutata una volta nel batch
 
     def test_all_questions_pending_after_generation(self, lesson_dir):
         qs = generate_recall_batch(lesson_dir, RecallQuestionType.QUIZ, count=3, few_shot_examples=[], force_mock=True)
@@ -583,10 +584,8 @@ class TestRecallUsesResolvedDraft:
 
         def fake_call_structured(self, prompt, system_prompt, response_model, **kwargs):
             captured["prompt"] = prompt
-            return response_model(
-                id="placeholder", type=RecallQuestionType.MIRATA, unit_ids=["1.1"],
-                question_text="Domanda di prova?",
-            )
+            return response_model.model_validate({"questions": [{
+                "type": "mirata", "question_text": "Domanda di prova?"}]})
 
         from unittest.mock import patch
         with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):

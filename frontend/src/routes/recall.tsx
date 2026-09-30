@@ -64,6 +64,8 @@ function Reserve({ lessonId }: { lessonId: number }) {
         </Button>
       </div>
       {overview.isError && <Alert tone="danger">{errorMessage(overview.error)}</Alert>}
+      {!!overview.data?.legacy_pending && <Alert>Ci sono domande generate prima della nuova politica di pertinenza. Generare altre domande conserva risposte e voti precedenti.</Alert>}
+      {!!overview.data?.evaluated_empty && <Alert>Alcune unità sono state valutate senza trovare altre domande pertinenti. Puoi rivalutarle con Genera altre.</Alert>}
       <table className="w-full text-sm" aria-label="Domande per tipo">
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">

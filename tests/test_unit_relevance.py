@@ -9,7 +9,9 @@ from tests.test_jev_prefilter import setup_mock_lesson
 
 
 def _config(mode="shadow"):
-    return RTConfig(jev=JevConfig(relevance_model="typesafe/jev-1.13", relevance_mode=mode))
+    from rt.services.jev_mapping import template
+    cfg = JevConfig(relevance_model="typesafe/jev-1.13", relevance_mode=mode)
+    return RTConfig(jev=cfg.model_copy(update={"relevance_decision": template("relevance", "choice", cfg)}))
 
 
 def test_shadow_active_override_and_stale_text(tmp_path):
@@ -97,7 +99,7 @@ def test_rows_saved_before_the_playground_keep_their_threshold_rule(tmp_path):
     path = setup_mock_lesson(tmp_path, num_units=1)
     cfg = _config("active")
     unit = load_draft(path).units[0]
-    legacy_row = {"text_hash": gate._unit_hash(unit), "config_hash": gate._config_hash(cfg.jev),
+    legacy_row = {"text_hash": gate._unit_hash(unit, path), "config_hash": gate._config_hash(cfg.jev),
                   "prediction": "organizational", "confidence": 0.6, "override": None, "error": None}
 
     def write(row):

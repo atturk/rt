@@ -1576,6 +1576,12 @@
             "title": "Question",
             "type": "string"
           },
+          "recall_richness": {
+            "default": false,
+            "description": "Associa esplicitamente i tre livelli score 0/1/2 alla ricchezza del recall",
+            "title": "Recall Richness",
+            "type": "boolean"
+          },
           "rules": {
             "description": "Regole valutate in ordine: vince la prima vera",
             "items": {
@@ -3449,6 +3455,16 @@
             "title": "Answers",
             "type": "integer"
           },
+          "evaluated_empty": {
+            "default": 0,
+            "title": "Evaluated Empty",
+            "type": "integer"
+          },
+          "legacy_pending": {
+            "default": 0,
+            "title": "Legacy Pending",
+            "type": "integer"
+          },
           "questions": {
             "additionalProperties": {
               "additionalProperties": {
@@ -4902,6 +4918,18 @@
             ],
             "title": "Prior Override"
           },
+          "recall_assessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall Assessment"
+          },
           "stale": {
             "default": false,
             "title": "Stale",
@@ -4967,6 +4995,15 @@
             },
             "title": "Units",
             "type": "array"
+          },
+          "view": {
+            "default": "draft",
+            "enum": [
+              "draft",
+              "resolved"
+            ],
+            "title": "View",
+            "type": "string"
           }
         },
         "required": [
@@ -9952,6 +9989,20 @@
               "description": "Id della lezione (da GET /lessons)",
               "title": "Lesson Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "draft",
+              "enum": [
+                "draft",
+                "resolved"
+              ],
+              "title": "View",
+              "type": "string"
             }
           }
         ],

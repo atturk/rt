@@ -70,12 +70,12 @@ def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     fs.replace(tmp_path, path)
 
 
-def ensure_initial_batch(lesson_dir: str, force_mock: bool = False) -> None:
+def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerate: bool = False) -> None:
     from rt.core.config import load_config
     from rt.pipeline.recall import load_recall_bank, generate_recall_batch, load_fewshot_examples
 
     bank = load_recall_bank(lesson_dir)
-    if bank.questions:
+    if bank.questions and not regenerate:
         return
 
     cfg = load_config()
@@ -83,7 +83,7 @@ def ensure_initial_batch(lesson_dir: str, force_mock: bool = False) -> None:
     for qtype_str, count in cfg.telegram.recall.reserve_targets.items():
         qtype = RecallQuestionType(qtype_str)
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generate_recall_batch(lesson_dir, qtype, count, examples, force_mock=force_mock)
+        generate_recall_batch(lesson_dir, qtype, count, examples, force_mock=force_mock, regenerate=regenerate)
 
 
 def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None) -> Optional[str]:
@@ -159,8 +159,8 @@ def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_
 
 def needs_refill(lesson_dir: str, qtype: RecallQuestionType) -> bool:
     from rt.core.config import load_config
-    from rt.pipeline.recall import get_reserve_count
-    return get_reserve_count(lesson_dir, qtype) < load_config().telegram.recall.refill_threshold
+    from rt.pipeline.recall import get_reserve_count, generation_available
+    return generation_available(lesson_dir, qtype) and get_reserve_count(lesson_dir, qtype) < load_config().telegram.recall.refill_threshold
 
 
 def is_question_stale(lesson_dir: str, question) -> bool:
@@ -203,7 +203,10 @@ def recall_overview(lesson_dir: str) -> dict:
     for q in bank.questions:
         by_status = counts.setdefault(q.type.value, {})
         by_status[q.status.value] = by_status.get(q.status.value, 0) + 1
-    return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text])}
+    from rt.services.recall_context import POLICY_VERSION
+    return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text]),
+            "legacy_pending": sum(q.status == RecallQuestionStatus.PENDING and q.generation_version != POLICY_VERSION for q in bank.questions),
+            "evaluated_empty": sum(row.get("outcome") == "empty" for row in bank.generation_attempts.values())}
 
 
 def recall_history(lesson_dir: str) -> dict:

@@ -27,6 +27,7 @@ _STATE_ENTRIES: Set[str] = {
     "segments.json",
     "draft.json",
     "unit_relevance.json",
+    "unit_relevance_resolved.json",
     "outline.json",
     "outline_approval.json",
     "science_issues.json",

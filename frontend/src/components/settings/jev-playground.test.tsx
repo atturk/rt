@@ -9,7 +9,7 @@ import type { Decision } from '@/lib/jev'
 import { DecisionEditor, DecisionModelSection } from './jev-playground'
 
 const relevanceChoice: Decision = {
-  question: 'Classifica l’unità.', type: 'choice', fallback_label: 'Didattica', levels: [],
+  recall_richness: false, question: 'Classifica l’unità.', type: 'choice', fallback_label: 'Didattica', levels: [],
   options: [
     { label: 'didactic', description: 'Contenuto didattico' },
     { label: 'organizational', description: 'Solo organizzazione' },
@@ -23,11 +23,11 @@ const relevanceChoice: Decision = {
   ],
 }
 const relevanceNoul: Decision = {
-  question: 'Stima la probabilità che l’unità non sia didattica.', type: 'noul', fallback_label: 'Didattica', options: [], levels: [],
+  recall_richness: false, question: 'Stima la probabilità che l’unità non sia didattica.', type: 'noul', fallback_label: 'Didattica', options: [], levels: [],
   rules: [{ label: 'Non didattica', outcome: 'no_content', match: 'all', conditions: [{ field: 'noul', op: 'gte', value: 0.85 }] }],
 }
 const prefilterChoice: Decision = {
-  question: 'Gravità degli errori.', type: 'choice', fallback_label: 'Da revisionare', levels: [],
+  recall_richness: false, question: 'Gravità degli errori.', type: 'choice', fallback_label: 'Da revisionare', levels: [],
   options: [{ label: 'corretta', description: 'Corretta' }, { label: 'errore_grave', description: 'Errore grave' }],
   rules: [{ label: 'Nessun errore grave', outcome: 'skip_review', match: 'all', conditions: [
     { field: 'choice', op: 'ne', value: 'errore_grave' }, { field: 'confidence', op: 'gte', value: 0.85 }] }],

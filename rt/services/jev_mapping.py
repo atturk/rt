@@ -3,7 +3,7 @@ rt.services.jev_mapping
 Domande Jev configurabili per fase e mappatura della risposta sulle etichette di RT.
 
 - effective_decision(): la configurazione in uso (salvata dal playground o predefinita,
-  derivata dai campi storici di JevConfig così che nulla cambi finché l'utente non modifica).
+  score 0/1/2 per la rilevanza; le decisioni personalizzate e il prefiltro restano disponibili).
 - template(): la domanda predefinita di una fase per un tipo di richiesta (choice/noul/score).
 - build_question() / state_for(): cosa si invia a Jev.
 - evaluate(): regole valutate in ordine, vince la prima vera; nessuna regola vera, o risposta
@@ -13,6 +13,13 @@ Domande Jev configurabili per fase e mappatura della risposta sulle etichette di
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+from rt.services.recall_context import RELEVANCE_DEFINITION, context_block
+
+RICHNESS_LEVELS = [
+    "Nessuna informazione disciplinare rilevante da testare: solo logistica, episodi incidentali, annunci di argomenti o testo senza nozioni utili.",
+    "Uno o due nuclei informativi distinti e rilevanti, anche brevi o ulteriormente sviluppati in altre unità.",
+    "Tre o più nuclei informativi distinti e rilevanti, su cui formulare domande su conoscenze diverse.",
+]
 
 from rt.core.jev_decision import (
     FALLBACK_OUTCOME, PROBABILITY_PREFIX, JevCondition, JevDecisionConfig, JevOption, JevRule,
@@ -126,9 +133,14 @@ def template(phase: str, question_type: str, jev_cfg) -> JevDecisionConfig:
                 question=_with_extra(_RELEVANCE_PROBABILITY, extra), type="noul", fallback_label="Didattica",
                 rules=[JevRule(label="Non didattica", outcome="no_content", conditions=[_cond("noul", "gte", threshold)])])
         return JevDecisionConfig(
-            question=_with_extra(_RELEVANCE_PROBABILITY, extra), type="score", fallback_label="Didattica",
-            levels=["Probabilità che l'unità sia priva di contenuto didattico (0 = sicuramente didattica, 1 = sicuramente non didattica)."],
-            rules=[JevRule(label="Non didattica", outcome="no_content", conditions=[_cond("score", "gte", threshold)])])
+            question=_with_extra("Valuta la quantità di nuclei informativi distinti rilevanti nell'unità. " + RELEVANCE_DEFINITION +
+                " Ripetizioni e parafrasi non sono nuovi nuclei. Usa materia e argomenti come contesto; il livello non è una quota di domande.", extra),
+            type="score", recall_richness=True, fallback_label="Valutazione incerta", levels=RICHNESS_LEVELS,
+            rules=[JevRule(label=label, outcome="didactic", conditions=[
+                _cond("score", "gte", low), _cond("score", "lte" if high == 2 else "lt", high),
+                _cond("confidence", "gte", threshold)])
+                for label, low, high in [("Contenuto assente", 0, .5), ("Contenuto limitato", .5, 1.5),
+                                         ("Contenuto ricco", 1.5, 2)]])
 
     threshold = jev_cfg.task_a_skip_confidence_threshold
     extra = jev_cfg.prefilter_prompt
@@ -156,8 +168,8 @@ def template(phase: str, question_type: str, jev_cfg) -> JevDecisionConfig:
 
 
 def default_decision(phase: str, jev_cfg) -> JevDecisionConfig:
-    """La decisione predefinita: quella in uso prima del playground."""
-    return template(phase, "choice" if phase == "relevance" else jev_cfg.prefilter_type, jev_cfg)
+    """Score di ricchezza per la rilevanza; prefiltro scientifico invariato."""
+    return template(phase, "score" if phase == "relevance" else jev_cfg.prefilter_type, jev_cfg)
 
 
 def effective_decision(phase: str, jev_cfg) -> JevDecisionConfig:
@@ -178,10 +190,10 @@ def build_question(decision: JevDecisionConfig):
     return JevNoulQuestion(instructions=decision.question)
 
 
-def state_for(phase: str, title: str, content: str) -> str:
+def state_for(phase: str, title: str, content: str, context=None) -> str:
     """Lo stato inviato a Jev: il prefiltro vede SOLO il testo rielaborato dell'unità."""
     if phase == "relevance":
-        return f"Titolo: {title}\nTesto: {content}"
+        return (context_block(context) + "\n\n" if context is not None else "") + f"Titolo: {title}\nTesto: {content}"
     return content
 
 

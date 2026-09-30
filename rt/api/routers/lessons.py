@@ -72,9 +72,9 @@ def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 @router.get("/lessons/{lesson_id}/relevance", response_model=schemas.UnitRelevanceOverview,
             summary="Classificazioni del classificatore, correzioni per ogni unità e riepilogo")
-def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, view: Literal["draft", "resolved"] = "draft"):
     from rt.services.unit_relevance import list_units
-    return list_units(lesson_dir)
+    return list_units(lesson_dir, view=view)
 
 
 @router.post("/lessons/{lesson_id}/relevance/run", response_model=schemas.JobAccepted, status_code=202,

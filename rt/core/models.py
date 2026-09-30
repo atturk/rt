@@ -4,7 +4,7 @@ Schemi dati Pydantic per il workflow accademico RT.
 Tutti i contratti tra codice deterministico, LLM e ledger umano sono definiti qui.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from enum import Enum
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -218,8 +218,71 @@ class RecallQuestion(BaseModel):
     correct_index: Optional[int] = None  # only quiz
     pregenerated_material: Optional[str] = None
     content_fingerprint: Optional[str] = None
+    generation_version: Optional[str] = None
+    generation_fingerprint: Optional[str] = None
+    classifier_level: Optional[int] = None
     status: RecallQuestionStatus = RecallQuestionStatus.PENDING
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+class GeneratedRecallQuestion(BaseModel):
+    """Contratto rigoroso dell'LLM, distinto dalle banche storiche."""
+    type: RecallQuestionType
+    question_text: str = Field(min_length=1)
+    options: Optional[List[str]] = None
+    correct_index: Optional[int] = Field(default=None, strict=True)
+    pregenerated_material: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_style(self):
+        if not self.question_text.strip():
+            raise ValueError("Domanda vuota")
+        if self.type == RecallQuestionType.QUIZ:
+            options = self.options or []
+            if len(options) != 4 or any(not x.strip() or len(x) > 100 for x in options):
+                raise ValueError("Quiz: quattro opzioni non vuote, al massimo 100 caratteri")
+            if len({x.strip().casefold() for x in options}) != 4:
+                raise ValueError("Quiz: opzioni duplicate")
+            if self.correct_index not in range(4) or len(self.question_text) >= 290:
+                raise ValueError("Quiz: indice o lunghezza della domanda non valido")
+            if not (self.pregenerated_material or "").strip():
+                raise ValueError("Quiz: spiegazione obbligatoria")
+        else:
+            if self.options is not None or self.correct_index is not None:
+                raise ValueError("Le domande aperte non hanno opzioni o indice")
+            if self.type == RecallQuestionType.MIRATA and self.pregenerated_material is not None:
+                raise ValueError("La mirata non ha materiale pregenerato")
+            if self.type == RecallQuestionType.VASTA and not (self.pregenerated_material or "").strip():
+                raise ValueError("Vasta: scaletta obbligatoria")
+        return self
+
+
+class GeneratedQuiz(GeneratedRecallQuestion):
+    type: Literal[RecallQuestionType.QUIZ]
+
+
+class GeneratedMirata(GeneratedRecallQuestion):
+    type: Literal[RecallQuestionType.MIRATA]
+
+
+class GeneratedVasta(GeneratedRecallQuestion):
+    type: Literal[RecallQuestionType.VASTA]
+
+
+class RecallGenerationResult(BaseModel):
+    questions: List[GeneratedRecallQuestion] = Field(..., max_length=12)
+
+
+class RecallQuizGenerationResult(RecallGenerationResult):
+    questions: List[GeneratedQuiz] = Field(..., max_length=12)
+
+
+class RecallMirataGenerationResult(RecallGenerationResult):
+    questions: List[GeneratedMirata] = Field(..., max_length=12)
+
+
+class RecallVastaGenerationResult(RecallGenerationResult):
+    questions: List[GeneratedVasta] = Field(..., max_length=12)
+
 
 class RecallAnswer(BaseModel):
     question_id: str
@@ -233,3 +296,4 @@ class RecallBank(BaseModel):
     schema_version: str = "1.0"
     questions: List[RecallQuestion] = Field(default_factory=list)
     answers: List[RecallAnswer] = Field(default_factory=list)
+    generation_attempts: Dict[str, Any] = Field(default_factory=dict)

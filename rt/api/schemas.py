@@ -126,6 +126,7 @@ class UnitRelevanceItem(BaseModel):
     corrected_at: Optional[str] = None
     corrected_by: Optional[str] = None
     prior_override: Optional[Literal["didactic", "organizational", "no_content"]] = None
+    recall_assessment: Optional[Dict[str, Any]] = None
 
 
 class UnitRelevanceSummary(BaseModel):
@@ -144,6 +145,7 @@ class UnitRelevanceSummary(BaseModel):
 
 
 class UnitRelevanceOverview(BaseModel):
+    view: Literal["draft", "resolved"] = "draft"
     mode: Literal["disabled", "shadow", "active"]
     units: List[UnitRelevanceItem]
     summary: UnitRelevanceSummary = Field(default_factory=UnitRelevanceSummary)
@@ -388,6 +390,8 @@ class RecallQuestion(BaseModel):
 
 
 class RecallOverview(BaseModel):
+    legacy_pending: int = 0
+    evaluated_empty: int = 0
     questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
     answers: int
 

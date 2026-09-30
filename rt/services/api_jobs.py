@@ -135,10 +135,12 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.unit_relevance import list_units, mode
     from rt.services.events import Notice
     with ctx.activate():
-        generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")))
-        units = list_units(job.lesson_path)["units"] if mode() != "disabled" else []
+        generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")), regenerate=True)
+        units = list_units(job.lesson_path, view="resolved")["units"] if mode() != "disabled" else []
         excluded = [u["unit_id"] for u in units if u["effective"] != "didactic"]
-        message = f"Recall {qtype.value}: richieste {count}, generate {len(generated)}."
+        message = f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}."
+        if not generated:
+            message += " Non sono state trovate altre domande pertinenti."
         if excluded:
             label = "escluse" if mode() == "active" else "non didattiche rilevate (gate in ombra)"
             message += f" Unità {label}: {len(excluded)} ({', '.join(excluded[:12])}{'…' if len(excluded) > 12 else ''})."

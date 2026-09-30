@@ -299,8 +299,8 @@ class JevConfig(BaseModel):
     relevance_mode: Literal["disabled", "shadow", "active"] = Field(default="shadow", description="Gate delle unità: disattivato, solo osservazione o filtro attivo")
     relevance_model: str = Field(default="", description="Modello decisionale configurato esplicitamente per la rilevanza")
     relevance_prompt: str = Field(default="", description="Istruzioni aggiuntive per la rilevanza didattica")
-    relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per escludere un'unità non didattica")
-    prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta del classificatore usato dal prefiltro errori (il gate rilevanza resta choice)")
+    relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per orientare il recall o applicare esclusioni personalizzate")
+    prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta del classificatore usato dal prefiltro errori (la rilevanza predefinita usa score)")
     prefilter_prompt: str = Field(default="", description="Istruzioni aggiuntive per il prefiltro errori")
     # Domanda e mappatura configurate nel playground. None = comportamento predefinito,
     # derivato dai campi qui sopra (rt.services.jev_mapping.effective_decision).

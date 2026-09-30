@@ -180,7 +180,7 @@ def send_current_recall_question(lesson_dir: str, force_mock: Optional[bool] = N
             tg_session.end_session(state_dir, tg_cfg.chat_id, thread_id)
             tg_client.send_message(
                 tg_cfg,
-                text=f"✨ Nessuna domanda '{active_style}' disponibile al momento. Cambia stile con /stile oppure riprova più tardi.",
+                text=f"✨ Non sono state trovate altre domande pertinenti di tipo '{active_style}'. Puoi cambiare stile con /stile.",
                 message_thread_id=thread_id,
             )
         except Exception:

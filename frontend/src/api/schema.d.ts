@@ -2438,6 +2438,12 @@ export interface components {
              */
             question: string;
             /**
+             * Recall Richness
+             * @description Associa esplicitamente i tre livelli score 0/1/2 alla ricchezza del recall
+             * @default false
+             */
+            recall_richness: boolean;
+            /**
              * Rules
              * @description Regole valutate in ordine: vince la prima vera
              */
@@ -3311,6 +3317,16 @@ export interface components {
             /** Answers */
             answers: number;
             /**
+             * Evaluated Empty
+             * @default 0
+             */
+            evaluated_empty: number;
+            /**
+             * Legacy Pending
+             * @default 0
+             */
+            legacy_pending: number;
+            /**
              * Questions
              * @description tipo -> stato -> numero
              */
@@ -3919,6 +3935,10 @@ export interface components {
             prediction?: ("didactic" | "organizational" | "no_content") | null;
             /** Prior Override */
             prior_override?: ("didactic" | "organizational" | "no_content") | null;
+            /** Recall Assessment */
+            recall_assessment?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Stale
              * @default false
@@ -3944,6 +3964,12 @@ export interface components {
             summary?: components["schemas"]["UnitRelevanceSummary"];
             /** Units */
             units: components["schemas"]["UnitRelevanceItem"][];
+            /**
+             * View
+             * @default draft
+             * @enum {string}
+             */
+            view: "draft" | "resolved";
         };
         /** UnitRelevanceRun */
         UnitRelevanceRun: {
@@ -7444,7 +7470,9 @@ export interface operations {
     };
     get_unit_relevance_api_v1_lessons__lesson_id__relevance_get: {
         parameters: {
-            query?: never;
+            query?: {
+                view?: "draft" | "resolved";
+            };
             header?: never;
             path: {
                 /** @description Id della lezione (da GET /lessons) */

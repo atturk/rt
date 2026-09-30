@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -13,6 +14,7 @@ from rt.pipeline.rewrite import load_draft
 from rt.services import jev_mapping
 from rt.services.jev_mapping import RELEVANCE_CRITERIA, RELEVANCE_INSTRUCTIONS
 from rt.storage import fs
+from rt.services.recall_context import lesson_context, POLICY_VERSION, RELEVANCE_DEFINITION
 
 LOG = logging.getLogger(__name__)
 CLASSES = ("didactic", "organizational", "no_content")
@@ -25,26 +27,25 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _unit_hash(unit) -> str:
-    return _hash(json.dumps([unit.title, unit.content], ensure_ascii=False))
+def _unit_hash(unit, lesson_dir=None) -> str:
+    return _hash(json.dumps([unit.title, unit.content, lesson_context(lesson_dir) if lesson_dir else {},
+                             POLICY_VERSION, RELEVANCE_DEFINITION], sort_keys=True, ensure_ascii=False))
 
 
 def _config_hash(cfg) -> str:
-    if cfg.relevance_decision is None:
-        # Decisione predefinita: stessa impronta di prima del playground, così le
-        # classificazioni già salvate restano valide dopo l'aggiornamento.
-        return _hash(json.dumps([cfg.relevance_model, cfg.credential, cfg.base_url, cfg.relevance_prompt,
-                                 cfg.relevance_threshold, INSTRUCTIONS, CRITERIA], sort_keys=True, ensure_ascii=False))
     return _hash(json.dumps([cfg.relevance_model, cfg.credential, cfg.base_url,
-                             cfg.relevance_decision.model_dump()], sort_keys=True, ensure_ascii=False))
+                             jev_mapping.effective_decision("relevance", cfg).model_dump()],
+                            sort_keys=True, ensure_ascii=False))
 
 
-def _path(lesson_dir: str) -> str:
-    return lesson_path(lesson_dir, "unit_relevance.json")
+def _path(lesson_dir: str, view="draft") -> str:
+    if view not in ("draft", "resolved"):
+        raise ValueError("Vista di rilevanza non valida")
+    return lesson_path(lesson_dir, "unit_relevance.json" if view == "draft" else "unit_relevance_resolved.json")
 
 
-def _load(lesson_dir: str) -> dict:
-    path = _path(lesson_dir)
+def _load(lesson_dir: str, view="draft") -> dict:
+    path = _path(lesson_dir, view)
     if fs.isfile(path):
         try:
             with fs.open(path, "r", encoding="utf-8") as stream:
@@ -55,16 +56,16 @@ def _load(lesson_dir: str) -> dict:
     return {}
 
 
-def _save(lesson_dir: str, records: dict) -> None:
-    path = _path(lesson_dir)
+def _save(lesson_dir: str, records: dict, view="draft") -> None:
+    path = _path(lesson_dir, view)
     temp = path + ".tmp"
     with fs.open(temp, "w", encoding="utf-8") as stream:
         json.dump(records, stream, ensure_ascii=False, indent=2)
     fs.replace(temp, path)
 
 
-def _lock(lesson_dir: str):
-    return file_lock(fs.lock_path(_path(lesson_dir) + ".lock"), retries=100, backoff=0.05)
+def _lock(lesson_dir: str, view="draft"):
+    return file_lock(fs.lock_path(_path(lesson_dir, view) + ".lock"), retries=100, backoff=0.05)
 
 
 def mode() -> str:
@@ -80,25 +81,36 @@ def ensure_can_run() -> None:
                        "Impostazioni > Modelli > Classificatore.")
 
 
-def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False) -> dict:
+def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False, view: str = "draft") -> dict:
     """Classifica le unità cambiate (force: tutte). Un errore lascia passare l'unità e resta
     visibile; le correzioni dell'utente su un testo invariato restano."""
     cfg = load_config().jev
     if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
-        return _load(lesson_dir)
+        return _load(lesson_dir, view)
     from rt.llm import jev_client
 
     decision = jev_mapping.effective_decision("relevance", cfg)
-    previous = _load(lesson_dir)
+    previous = _load(lesson_dir, view)
     result = {}
     configuration = _config_hash(cfg)
-    units = load_draft(lesson_dir).units
+    from rt.pipeline.ledger import load_resolved_draft
+    units = (load_resolved_draft(lesson_dir) if view == "resolved" else load_draft(lesson_dir)).units
+    context = lesson_context(lesson_dir)
+    other = _load(lesson_dir, "draft" if view == "resolved" else "resolved")
     errors = 0
     for unit in units:
-        digest = _unit_hash(unit)
+        digest = _unit_hash(unit, lesson_dir)
         old = previous.get(unit.unit_id, {})
+        shared = other.get(unit.unit_id, {})
+        if shared.get("text_hash") == digest and shared.get("config_hash") == configuration:
+            if old.get("text_hash") != digest or old.get("config_hash") != configuration or old.get("prediction") not in CLASSES:
+                old = dict(shared)
+            if (shared.get("override_changed_at") or "") > (old.get("override_changed_at") or ""):
+                old = {**old, **{k: shared.get(k) for k in ("override", "override_changed_at", "corrected_at", "corrected_by")}}
         if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration \
                 and old.get("prediction") in CLASSES:
+            old = dict(old)
+            old["view"] = view
             old["last_run_mode"] = cfg.relevance_mode
             result[unit.unit_id] = old
             continue
@@ -112,7 +124,7 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
                                                     answer={"type": "mock"})
             else:
                 answer = jev_client.call_jev(
-                    state=jev_mapping.state_for("relevance", unit.title, unit.content),
+                    state=jev_mapping.state_for("relevance", unit.title, unit.content, context),
                     questions={jev_mapping.QUESTION_NAMES["relevance"]: jev_mapping.build_question(decision)},
                     job_name="relevance", unit_id=unit.unit_id, lesson_dir=lesson_dir,
                     model=cfg.relevance_model, credential=cfg.credential, base_url=cfg.base_url,
@@ -126,7 +138,7 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
             errors += 1
             LOG.warning("Classificatore rilevanza %s: %s", unit.unit_id, exc)
         answer_data = mapped.answer if mapped else None
-        result[unit.unit_id] = {"text_hash": digest, "config_hash": configuration,
+        result[unit.unit_id] = {"text_hash": digest, "config_hash": configuration, "view": view,
                                 # prediction è già l'esito della mappatura (soglie comprese).
                                 "prediction": mapped.outcome if mapped else None,
                                 "confidence": _confidence(answer_data),
@@ -136,21 +148,23 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
                                 "override": override, "error": error,
                                 "prior_override": prior_override if prior_override in CLASSES else None,
                                 "last_run_mode": cfg.relevance_mode, "model": cfg.relevance_model,
-                                "classified_at": now, "updated_at": now}
+                                "classified_at": now, "updated_at": now,
+                                "override_changed_at": old.get("override_changed_at"),
+                                "corrected_at": old.get("corrected_at") if override else None,
+                                "corrected_by": old.get("corrected_by") if override else None}
         if ctx is not None and mapped is not None and not force_mock:
             from rt.services.events import Notice
             ctx.emit(Notice(message=f"Classificatore rilevanza {unit.unit_id}: {jev_mapping.describe(mapped)}"))
     try:
-        with _lock(lesson_dir):
-            latest = _load(lesson_dir)
+        with _lock(lesson_dir, view):
+            latest = _load(lesson_dir, view)
             for unit_id, row in result.items():
                 current = latest.get(unit_id, {})
-                if current.get("text_hash") == row["text_hash"] and current.get("override") in CLASSES:
-                    row["override"] = current["override"]
-                    row["corrected_at"] = current.get("corrected_at")
-                    row["corrected_by"] = current.get("corrected_by")
+                if current.get("text_hash") == row["text_hash"] and (current.get("override_changed_at") or "") > (row.get("override_changed_at") or ""):
+                    for key in ("override", "override_changed_at", "corrected_at", "corrected_by"):
+                        row[key] = current.get(key)
             if result != latest:
-                _save(lesson_dir, result)
+                _save(lesson_dir, result, view)
     except (OSError, TimeoutError):
         LOG.exception("Impossibile salvare le classificazioni; tutte le unità passeranno")
     if ctx is not None:
@@ -180,27 +194,33 @@ def _effective(row: dict, cfg) -> str:
     return "didactic"
 
 
-def included(lesson_dir: str, unit) -> bool:
+def included(lesson_dir: str, unit, *, view="draft") -> bool:
     cfg = load_config().jev
     if not cfg.relevance_model.strip() or cfg.relevance_mode != "active":
         return True
-    row = _load(lesson_dir).get(unit.unit_id, {})
-    if row.get("text_hash") != _unit_hash(unit) or row.get("config_hash") != _config_hash(cfg):
+    row = _load(lesson_dir, view).get(unit.unit_id, {})
+    if row.get("text_hash") != _unit_hash(unit, lesson_dir) or row.get("config_hash") != _config_hash(cfg):
         return True  # classificazione mancante/stale: fail-open
     return _effective(row, cfg) == "didactic"
 
 
-def list_units(lesson_dir: str) -> dict:
+def list_units(lesson_dir: str, *, view="draft") -> dict:
     cfg = load_config().jev
-    records = _load(lesson_dir)
+    records = _load(lesson_dir, view)
     try:
-        units = load_draft(lesson_dir).units
+        from rt.pipeline.ledger import load_resolved_draft
+        units = (load_resolved_draft(lesson_dir) if view == "resolved" else load_draft(lesson_dir)).units
     except FileNotFoundError:
         units = []
     rows = []
+    from rt.pipeline.ledger import load_resolved_draft
+    try:
+        resolved = {u.unit_id: u for u in load_resolved_draft(lesson_dir).units}
+    except (FileNotFoundError, ValueError):
+        resolved = {}
     for unit in units:
         row = records.get(unit.unit_id, {})
-        fresh = row.get("text_hash") == _unit_hash(unit) and row.get("config_hash") == _config_hash(cfg)
+        fresh = row.get("text_hash") == _unit_hash(unit, lesson_dir) and row.get("config_hash") == _config_hash(cfg)
         effective = _effective(row, cfg) if fresh else "didactic"
         rows.append({"unit_id": unit.unit_id, "title": unit.title, "content": unit.content,
                      "prediction": row.get("prediction") if fresh else None,
@@ -212,8 +232,9 @@ def list_units(lesson_dir: str) -> dict:
                      "stale": bool(row) and not fresh,
                      "corrected_at": row.get("corrected_at") if fresh else None,
                      "corrected_by": row.get("corrected_by") if fresh else None,
-                     "prior_override": row.get("prior_override") if fresh else row.get("override")})
-    return {"mode": mode(), "units": rows, "summary": _summary(rows, records, units)}
+                     "prior_override": row.get("prior_override") if fresh else row.get("override"),
+                     "recall_assessment": recall_assessment(lesson_dir, resolved[unit.unit_id]) if unit.unit_id in resolved else {"state": "unavailable", "level": None}})
+    return {"mode": mode(), "view": view, "units": rows, "summary": _summary(rows, records, units)}
 
 
 def _summary(rows: list, records: dict, units: list) -> dict:
@@ -252,8 +273,8 @@ def set_override(lesson_dir: str, unit_id: str, category: Optional[str], actor: 
     with _lock(lesson_dir):
         records = _load(lesson_dir)
         row = records.get(unit_id, {})
-        if row.get("text_hash") != _unit_hash(unit):
-            row = {"text_hash": _unit_hash(unit), "config_hash": _config_hash(cfg),
+        if row.get("text_hash") != _unit_hash(unit, lesson_dir):
+            row = {"text_hash": _unit_hash(unit, lesson_dir), "config_hash": _config_hash(cfg),
                    "prediction": None, "confidence": None, "error": None}
         row["config_hash"] = _config_hash(cfg)
         row["override"] = category
@@ -261,6 +282,50 @@ def set_override(lesson_dir: str, unit_id: str, category: Optional[str], actor: 
         row["corrected_at"] = datetime.now(timezone.utc).isoformat() if category else None
         row["corrected_by"] = actor if category else None
         row["updated_at"] = datetime.now(timezone.utc).isoformat()
+        row["override_changed_at"] = row["updated_at"]
         records[unit_id] = row
         _save(lesson_dir, records)
+    with _lock(lesson_dir, "resolved"):
+        resolved = _load(lesson_dir, "resolved")
+        other = resolved.get(unit_id, {})
+        if other.get("text_hash") == row["text_hash"]:
+            for key in ("override", "override_changed_at", "prior_override", "corrected_at", "corrected_by"):
+                other[key] = row.get(key)
+            _save(lesson_dir, resolved, "resolved")
     return list_units(lesson_dir)
+
+
+def recall_assessment(lesson_dir: str, unit) -> dict:
+    """Score indicativo, mai una quota; shadow, errori e scale estranee restano neutri."""
+    cfg = load_config().jev
+    decision = jev_mapping.effective_decision("relevance", cfg)
+    row = _load(lesson_dir, "resolved").get(unit.unit_id, {})
+    neutral = {"state": "unavailable", "level": None}
+    if not cfg.relevance_model.strip() or cfg.relevance_mode != "active" or not decision.recall_richness:
+        return neutral
+    if row.get("text_hash") != _unit_hash(unit, lesson_dir) or row.get("config_hash") != _config_hash(cfg) or row.get("error"):
+        return neutral
+    answer = row.get("answer") or {}
+    score, confidence = answer.get("score"), answer.get("confidence")
+
+    def valid(value, low, high):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and low <= value <= high
+
+    result = {"state": "uncertain", "level": None, "score": score,
+              "confidence": confidence, "probabilities": answer.get("probabilities") or {}}
+    if answer.get("type") != "score" or not valid(score, 0, 2) or not valid(confidence, cfg.relevance_threshold, 1):
+        return result
+    probabilities = result["probabilities"]
+    if probabilities:
+        if not isinstance(probabilities, dict) or set(probabilities) != {"0", "1", "2"} or not all(valid(v, 0, 1) for v in probabilities.values()):
+            return result
+        if not math.isclose(sum(probabilities.values()), 1, abs_tol=.02):
+            return result
+        top = max(probabilities.values())
+        winners = [k for k, v in probabilities.items() if math.isclose(v, top, abs_tol=1e-9)]
+        if len(winners) != 1 or top < cfg.relevance_threshold:
+            return result
+        level = int(winners[0])
+    else:
+        level = 0 if score < .5 else 1 if score < 1.5 else 2
+    return {**result, "state": "assessed", "level": level}

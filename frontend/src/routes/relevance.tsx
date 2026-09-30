@@ -113,8 +113,9 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Unit; 
     {open && <div id={panel} className="mb-3 ml-5 flex flex-col gap-2 text-sm">
       <p className="whitespace-pre-wrap">{unit.content}</p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>Classificatore: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</span>
+        <span>Classificatore sulla bozza: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</span>
         {unit.label && <span>Etichetta restituita: {unit.label}</span>}
+        <span>Orientamento recall sul testo corretto: {unit.recall_assessment?.level != null ? `livello ${unit.recall_assessment.level}` : 'neutro'}</span>
         {unit.confidence != null && <span>{unit.answer?.type === 'noul' ? 'Probabilità' : 'Confidenza'}: {Math.round(unit.confidence * 100)}%</span>}
         {unit.answer?.probabilities != null && typeof unit.answer.probabilities === 'object' &&
           <span data-testid="relevance-probabilities">Probabilità: {Object.entries(unit.answer.probabilities as Record<string, number>)

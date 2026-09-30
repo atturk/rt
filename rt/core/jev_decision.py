@@ -87,6 +87,7 @@ class JevDecisionConfig(BaseModel):
     type: QuestionType = "choice"
     options: List[JevOption] = Field(default_factory=list, max_length=12, description="Opzioni (solo choice)")
     levels: List[str] = Field(default_factory=list, max_length=12, description="Livelli ordinati (solo score)")
+    recall_richness: bool = Field(False, description="Associa esplicitamente i tre livelli score 0/1/2 alla ricchezza del recall")
     rules: List[JevRule] = Field(default_factory=list, max_length=20, description="Regole valutate in ordine: vince la prima vera")
     fallback_label: str = Field("Nessuna regola", min_length=1, max_length=80,
                                 description="Etichetta quando nessuna regola scatta (esito fail-open)")
@@ -109,6 +110,8 @@ class JevDecisionConfig(BaseModel):
                 raise ValueError("Le etichette delle opzioni devono essere distinte.")
         if self.type == "score" and not self.levels:
             raise ValueError("Una domanda score richiede almeno un livello.")
+        if self.recall_richness and (self.type != "score" or len(self.levels) != 3):
+            raise ValueError("La ricchezza del recall richiede tre livelli score.")
         fields = answer_fields(self.type, labels)
         for index, rule in enumerate(self.rules, start=1):
             for condition in rule.conditions:
@@ -144,6 +147,8 @@ def validate_for_phase(phase: str, decision: Optional[JevDecisionConfig]) -> Opt
     if decision is None:
         return None
     allowed = PHASE_OUTCOMES[phase]
+    if decision.recall_richness and phase != "relevance":
+        raise ValueError("La ricchezza del recall è disponibile soltanto per la rilevanza.")
     for index, rule in enumerate(decision.rules, start=1):
         if rule.outcome not in allowed:
             raise ValueError(f"Regola {index}: esito '{rule.outcome}' non valido per questa fase "
