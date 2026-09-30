@@ -177,6 +177,29 @@ test('recall: risposte vocali dal microfono e da un file audio', async ({ page }
   }
 })
 
+test('recall: unità per il recaller e domande eliminate in blocco, rilette dopo la ricarica', async ({ page }) => {
+  const lesson = await openRecall(page)
+  await ensurePool(page, lesson.id)
+  await page.getByTestId('unit-selector').locator('summary').click()
+  await expect(page.getByTestId('recall-unit').first()).toBeVisible()
+
+  await page.getByTestId('questions-link').click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/recall/domande$`))
+  const before = (await history(page, lesson.id)).questions.length
+  const items = page.getByTestId('question-item')
+  await expect(items).toHaveCount(before)
+  const doomed = [await items.nth(0).getAttribute('data-question-id'), await items.nth(1).getAttribute('data-question-id')]
+  await items.nth(0).getByRole('checkbox').click()
+  await items.nth(1).getByRole('checkbox').click({ modifiers: ['Shift'] })
+  await page.getByRole('button', { name: /Elimina selezionate \(2\)/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Elimina' }).click()
+  await expect(items).toHaveCount(before - 2)
+  await page.reload()
+  await expect(items).toHaveCount(before - 2)
+  const left = new Set((await history(page, lesson.id)).questions.map((q) => q.id))
+  for (const id of doomed) expect(left.has(id!), `domanda ${id} eliminata`).toBe(false)
+})
+
 test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel documento', async ({ page }) => {
   await loginViaLink(page)
   const lesson = await builtLesson(page)

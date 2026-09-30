@@ -23,6 +23,7 @@ import {
   type RecallType,
 } from '@/api/recall'
 import { JobProgress } from '@/components/JobProgress'
+import { QuestionsPage } from '@/components/recall/QuestionsPage'
 import { AnsweredQuestion, OpenAnswerForm, QuizForm, SessionSummary } from '@/components/recall/parts'
 import { RecallOverviewPage } from '@/components/recall/RecallOverview'
 import { SubjectRecallPage } from '@/components/recall/SubjectRecall'
@@ -68,11 +69,16 @@ function Pool({ lessonId }: { lessonId: number }) {
       </div>
       <p className="text-xs text-muted-foreground">
         {empty ? 'Genera il pool' : 'Rigenera pool'} passa al recaller tutte le unità selezionate
-        {empty ? '.' : ' e sostituisce le domande ancora da porre; quelle già poste restano con risposte e voti.'}
+        {empty ? '.' : ', che aggiunge domande nuove a quelle già generate.'}
         {Object.keys(thresholds).length > 0 &&
           ` Quando restano ${RECALL_TYPES.map((t) => `${thresholds[t.value]} ${PLURAL[t.value]}`).join(', ')} da porre, il recaller ne genera altre da unità selezionate a caso.`}
       </p>
       <UnitSelector lessonId={lessonId} />
+      {!empty && (
+        <Link to={`/lezioni/${lessonId}/recall/domande`} className="self-start text-sm underline-offset-4 hover:underline" data-testid="questions-link">
+          Rivedi le domande generate
+        </Link>
+      )}
       {overview.isError && <Alert tone="danger">{errorMessage(overview.error)}</Alert>}
       {!!overview.data?.legacy_pending && <Alert>Ci sono domande generate prima della nuova politica di pertinenza. Generare altre domande conserva risposte e voti precedenti.</Alert>}
       {!!overview.data?.evaluated_empty && <Alert>Alcune unità sono state valutate senza trovare altre domande pertinenti. Puoi rivalutarle con Genera altre.</Alert>}
@@ -432,6 +438,7 @@ export const recallArea: Area = {
     { path: 'recall', element: <RecallOverviewPage /> },
     { path: 'recall/materie/:materia', element: <SubjectRecallPage /> },
     { path: 'lezioni/:lessonId/recall', element: <RecallPage /> },
+    { path: 'lezioni/:lessonId/recall/domande', element: <QuestionsPage /> },
   ],
   nav: [{ to: '/recall', label: 'Recall', icon: Brain }],
 }

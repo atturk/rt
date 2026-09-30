@@ -57,7 +57,7 @@ def test_user_selection_persists_and_new_units_start_from_default(tmp_path):
     assert recall.load_recall_bank(path).unit_selection is None
 
 
-def test_pool_covers_every_selected_unit_and_replaces_only_pending(tmp_path):
+def test_pool_covers_every_selected_unit_and_regenerating_adds_questions(tmp_path):
     path = setup_mock_lesson(tmp_path, num_units=6)
     recall_units.set_selection(path, ['1.1', '1.2', '1.3', '1.4', '1.5'])
     first = recall_service.generate_pool(path, force_mock=True)
@@ -69,27 +69,49 @@ def test_pool_covers_every_selected_unit_and_replaces_only_pending(tmp_path):
 
     asked = recall.get_next_pending_question(path, RecallQuestionType.QUIZ, order='sequenziale')
     recall.record_recall_answer(path, asked.id, 'A')
-    highest = max(int(q.id.split('_')[1]) for q in recall.load_recall_bank(path).questions)
-    recall_service.generate_pool(path, force_mock=True, qtypes=['quiz'])
+    before = {q.id: q.question_text for q in recall.load_recall_bank(path).questions}
+    again = recall_service.generate_pool(path, force_mock=True, qtypes=['quiz'])
     bank = recall.load_recall_bank(path)
-    kept = next(q for q in bank.questions if q.id == asked.id)
-    assert kept.status == RecallQuestionStatus.ANSWERED and bank.answers[0].question_id == asked.id
-    new_quiz = [q for q in bank.questions if q.type == RecallQuestionType.QUIZ and q.status == RecallQuestionStatus.PENDING]
-    assert new_quiz and all(int(q.id.split('_')[1]) > highest for q in new_quiz)  # ID mai riusati
-    assert len({q.id for q in bank.questions}) == len(bank.questions)
-    assert sum(q.type == RecallQuestionType.MIRATA for q in bank.questions) == 10  # le mirate restano
+    assert again['quiz'] == 10
+    assert all(before[qid] == text for qid, text in ((q.id, q.question_text) for q in bank.questions) if qid in before)
+    assert set(before) <= {q.id for q in bank.questions}  # nessuna domanda tolta
+    assert sum(q.type == RecallQuestionType.QUIZ for q in bank.questions) == 20
+    assert len({q.question_text for q in bank.questions}) == len(bank.questions)
+    assert next(q for q in bank.questions if q.id == asked.id).status == RecallQuestionStatus.ANSWERED
 
 
-def test_failed_pool_generation_restores_the_previous_pool(tmp_path):
+def test_delete_questions_with_their_answers_and_never_reuse_ids(tmp_path):
     path = setup_mock_lesson(tmp_path, num_units=2)
+    recall_service.generate_pool(path, force_mock=True, qtypes=['mirata'])
+    bank = recall.load_recall_bank(path)
+    ids = [q.id for q in bank.questions]
+    answered = recall.get_next_pending_question(path, RecallQuestionType.MIRATA, order='sequenziale')
+    recall.record_recall_answer(path, answered.id, 'risposta')
+    state = recall_service.load_recall_session_state(path)
+    state['current_question_id'] = answered.id
+    recall_service.save_recall_session_state(path, state)
+
+    doomed = [answered.id, ids[-1], 'recall_999999']
+    assert recall_service.delete_questions(path, doomed) == 2
+    bank = recall.load_recall_bank(path)
+    assert {q.id for q in bank.questions} == set(ids) - set(doomed)
+    assert bank.answers == []
+    assert recall_service.load_recall_session_state(path)['current_question_id'] is None
+    assert recall_service.delete_questions(path, doomed) == 0
+
+    recall_service.generate_pool(path, force_mock=True, qtypes=['mirata'])
+    highest = max(int(i.split('_')[1]) for i in ids)
+    new = [q for q in recall.load_recall_bank(path).questions if q.id not in ids]
+    assert new and all(int(q.id.split('_')[1]) > highest for q in new)
+
+
+def test_question_list_hides_pending_solutions_unless_revealed(tmp_path):
+    path = setup_mock_lesson(tmp_path, num_units=1)
     recall_service.generate_pool(path, force_mock=True, qtypes=['quiz'])
-    before = [q.id for q in recall.load_recall_bank(path).questions]
-    with patch('rt.pipeline.recall.generate_recall_batch', side_effect=RuntimeError('provider giù')):
-        try:
-            recall_service.generate_pool(path, force_mock=True, qtypes=['quiz'])
-        except RuntimeError:
-            pass
-    assert sorted(q.id for q in recall.load_recall_bank(path).questions) == sorted(before)
+    listed = recall_service.question_list(path)
+    assert listed['unit_titles'] == {'1.1': recall.load_resolved_draft(path).units[0].title}
+    assert all('correct_index' not in q and q['created_at'] for q in listed['questions'])
+    assert all(q['correct_index'] == 0 and q['explanation'] for q in recall_service.question_list(path, reveal=True)['questions'])
 
 
 def test_pool_count_and_questions_follow_the_selection(tmp_path):
@@ -147,3 +169,7 @@ def test_cli_units_and_pool(tmp_path, capsys):
     with patch('rt.core.idempotency.check_phase_status', return_value=(PhaseStatus.VALID, '')):
         main(['recall', path, '--units', 'rilevanti', '--pool', '--mock'])
     assert recall.load_recall_bank(path).unit_selection is None
+    first = recall.load_recall_bank(path).questions[0].id
+    main(['recall', path, '--delete', first + ',recall_999999'])
+    assert 'Domande eliminate: 1 di 2' in capsys.readouterr().out
+    assert first not in {q.id for q in recall.load_recall_bank(path).questions}

@@ -390,6 +390,25 @@ class RecallQuestion(BaseModel):
     explanation: Optional[str] = None
 
 
+class RecallQuestionDetail(RecallQuestion):
+    created_at: Optional[str] = None
+    classifier_level: Optional[int] = None
+    vote: Optional[str] = Field(None, description="up | down | lightning")
+
+
+class RecallQuestionList(BaseModel):
+    questions: List[RecallQuestionDetail]
+    unit_titles: Dict[str, str] = Field(default_factory=dict, description="unità -> titolo, per le unità delle domande")
+
+
+class RecallQuestionDelete(BaseModel):
+    question_ids: List[str] = Field(min_length=1, max_length=2000)
+
+
+class RecallDeleted(BaseModel):
+    deleted: int
+
+
 class RecallOverview(BaseModel):
     legacy_pending: int = 0
     evaluated_empty: int = 0
@@ -437,7 +456,7 @@ class RecallHistory(BaseModel):
 
 
 class RecallGenerate(BaseModel):
-    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate")
+    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
     mock: bool = False
 

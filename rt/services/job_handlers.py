@@ -127,7 +127,7 @@ def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Pool di domande della lezione: se non ne ha ancora, o sempre con regenerate ("Rigenera pool")."""
+    """Pool di domande della lezione: se non ne ha ancora, o sempre con regenerate ("Rigenera pool", aggiunge domande)."""
     from rt.pipeline.recall import load_recall_bank
     from rt.services.api_jobs import _recall_message
     from rt.services.events import Notice

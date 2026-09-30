@@ -3400,6 +3400,19 @@
         "title": "RecallAnswerRecord",
         "type": "object"
       },
+      "RecallDeleted": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "RecallDeleted",
+        "type": "object"
+      },
       "RecallGenerate": {
         "properties": {
           "count": {
@@ -3434,7 +3447,7 @@
                 "type": "null"
               }
             ],
-            "description": "Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate",
+            "description": "Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)",
             "title": "Qtype"
           }
         },
@@ -3578,6 +3591,154 @@
           "status"
         ],
         "title": "RecallQuestion",
+        "type": "object"
+      },
+      "RecallQuestionDelete": {
+        "properties": {
+          "question_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Question Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question_ids"
+        ],
+        "title": "RecallQuestionDelete",
+        "type": "object"
+      },
+      "RecallQuestionDetail": {
+        "properties": {
+          "classifier_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classifier Level"
+          },
+          "correct_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Index"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "question_text": {
+            "title": "Question Text",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Ids",
+            "type": "array"
+          },
+          "vote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "up | down | lightning",
+            "title": "Vote"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "unit_ids",
+          "question_text",
+          "status"
+        ],
+        "title": "RecallQuestionDetail",
+        "type": "object"
+      },
+      "RecallQuestionList": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/RecallQuestionDetail"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "unit_titles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "unità -> titolo, per le unità delle domande",
+            "title": "Unit Titles",
+            "type": "object"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "title": "RecallQuestionList",
         "type": "object"
       },
       "RecallSessionInfo": {
@@ -9542,7 +9703,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Genera domande: rigenera il pool della lezione (job recall_generate) o un tipo (job recall_batch)",
+        "summary": "Genera domande: aggiunge al pool domande da tutte le unità selezionate (job recall_generate) o di un tipo (job recall_batch)",
         "tags": [
           "recall"
         ]
@@ -9781,6 +9942,206 @@
           }
         ],
         "summary": "Prossima domanda del tipo scelto; alla soglia accoda un job recall_refill (404 se il pool è vuoto: usa /recall/generate)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/questions": {
+      "get": {
+        "operationId": "questions_api_v1_lessons__lesson_id__recall_questions_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mostra anche le soluzioni delle domande ancora da porre",
+            "in": "query",
+            "name": "reveal",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Mostra anche le soluzioni delle domande ancora da porre",
+              "title": "Reveal",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallQuestionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Tutte le domande della lezione per rivederle (soluzioni delle domande da porre solo con reveal)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/questions/delete": {
+      "post": {
+        "operationId": "delete_questions_api_v1_lessons__lesson_id__recall_questions_delete_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallQuestionDelete"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallDeleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina domande (e le loro risposte) dal pool; gli ID sconosciuti si ignorano",
         "tags": [
           "recall"
         ]

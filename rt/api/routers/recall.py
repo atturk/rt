@@ -42,12 +42,27 @@ def history(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 
 @router.post("/lessons/{lesson_id}/recall/generate", response_model=schemas.JobAccepted, status_code=202,
-             summary="Genera domande: rigenera il pool della lezione (job recall_generate) o un tipo (job recall_batch)")
+             summary="Genera domande: aggiunge al pool domande da tutte le unità selezionate (job recall_generate) o di un tipo (job recall_batch)")
 def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir, actor: Actor):
     _require_draft(lesson_dir)
     if body.qtype:
         return enqueue_job("recall_batch", lesson_dir, body.model_dump(), actor)
     return enqueue_job("recall_generate", lesson_dir, {"force_mock": body.mock, "regenerate": True}, actor)
+
+
+@router.get("/lessons/{lesson_id}/recall/questions", response_model=schemas.RecallQuestionList,
+            summary="Tutte le domande della lezione per rivederle (soluzioni delle domande da porre solo con reveal)")
+def questions(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+              reveal: bool = Query(False, description="Mostra anche le soluzioni delle domande ancora da porre")):
+    from rt.services.recall_service import question_list
+    return question_list(lesson_dir, reveal=reveal)
+
+
+@router.post("/lessons/{lesson_id}/recall/questions/delete", response_model=schemas.RecallDeleted,
+             summary="Elimina domande (e le loro risposte) dal pool; gli ID sconosciuti si ignorano")
+def delete_questions(lesson_id: int, body: schemas.RecallQuestionDelete, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_service import delete_questions as delete
+    return {"deleted": delete(lesson_dir, body.question_ids)}
 
 
 @router.get("/lessons/{lesson_id}/recall/units", response_model=schemas.RecallUnits,

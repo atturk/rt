@@ -306,6 +306,13 @@ def cmd_recall(args):
         print(f"🗑 Rimossi {count} elementi di recall per {type_str} da '{args.lesson_dir}'.")
         return
 
+    delete_arg = getattr(args, "delete", None)
+    if isinstance(delete_arg, str):
+        from rt.services.recall_service import delete_questions
+        ids = [q.strip() for q in delete_arg.split(",") if q.strip()]
+        print(f"🗑 Domande eliminate: {delete_questions(args.lesson_dir, ids)} di {len(ids)} richieste.")
+        return
+
     from rt.core.idempotency import check_phase_status, PhaseStatus
 
     status, reason = check_phase_status(args.lesson_dir, "rewrite")
@@ -335,7 +342,7 @@ def cmd_recall(args):
     if getattr(args, "pool", False):
         from rt.services.recall_service import generate_pool
         generated = generate_pool(args.lesson_dir, force_mock=force_mock)
-        print("🧠 Pool rigenerato: " + ", ".join(f"{n} {t}" for t, n in generated.items()) + ".")
+        print("🧠 Pool rigenerato, domande nuove: " + ", ".join(f"{n} {t}" for t, n in generated.items()) + ".")
         return
 
     channel = getattr(args, "channel", None)
@@ -1230,8 +1237,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
                           help="Unità da cui il recaller genera le domande (resta salvata); 'rilevanti' torna alla "
                                "selezione predefinita, le unità rilevanti per il classificatore")
     p_recall.add_argument("--pool", action="store_true",
-                          help="Rigenera il pool: tutte le unità selezionate passano al recaller e le domande "
-                               "ancora da porre vengono sostituite (quelle già poste restano)")
+                          help="Rigenera il pool: tutte le unità selezionate passano al recaller, che aggiunge "
+                               "domande nuove a quelle già generate (che restano)")
+    p_recall.add_argument("--delete", default=None, metavar="recall_000012,...",
+                          help="Elimina queste domande (e le loro risposte) dal pool della lezione")
     p_recall.add_argument("--check", action="store_true", help="Revisione interattiva da terminale delle domande stale per modifica dell'unità")
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)

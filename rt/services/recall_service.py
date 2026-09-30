@@ -73,37 +73,44 @@ def save_recall_session_state(lesson_dir: str, state: dict) -> None:
 def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None) -> dict:
     """Pool di domande dell'intera lezione: il recaller riceve tutte le unità selezionate
     (una chiamata per unità, per le vaste una per gruppo) e per ognuna genera zero, una o
-    più domande. Le domande ancora da porre dei tipi rigenerati vengono sostituite; quelle
-    già poste restano, con risposte e voti. Restituisce quante domande nuove per tipo."""
+    più domande nuove. Le domande già nel pool restano (il recaller le vede e non le ripete);
+    quelle che non piacciono si eliminano con delete_questions. Restituisce quante domande
+    nuove per tipo."""
     from rt.core.config import load_config
-    from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples, load_recall_bank, recall_bank_lock, save_recall_bank
+    from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
 
     types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType])]
     state_dir = load_config().telegram.state_dir
     generated = {}
     for qtype in types:
-        with recall_bank_lock(lesson_dir):
-            bank = load_recall_bank(lesson_dir)
-            removed = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING]
-            if removed:
-                bank.last_question_number = max([bank.last_question_number] + [
-                    int(q.id.split("_")[1]) for q in bank.questions if q.id.startswith("recall_") and q.id.split("_")[1].isdigit()])
-                gone = {id(q) for q in removed}
-                bank.questions = [q for q in bank.questions if id(q) not in gone]
-                save_recall_bank(bank, lesson_dir)
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        try:
-            generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, None, examples,
-                                                               force_mock=force_mock, regenerate=True))
-        except Exception:
-            # Nessuna unità generata: il pool di prima torna com'era.
-            with recall_bank_lock(lesson_dir):
-                bank = load_recall_bank(lesson_dir)
-                present = {q.id for q in bank.questions}
-                bank.questions.extend(q for q in removed if q.id not in present)
-                save_recall_bank(bank, lesson_dir)
-            raise
+        generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, None, examples,
+                                                           force_mock=force_mock, regenerate=True))
     return generated
+
+
+def delete_questions(lesson_dir: str, question_ids) -> int:
+    """Elimina domande dal bank (con le loro risposte). Gli ID non tornano più in uso e le
+    sessioni che le avevano poste restano leggibili. Restituisce quante ne ha eliminate."""
+    from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
+
+    wanted = set(question_ids)
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        removed = [q for q in bank.questions if q.id in wanted]
+        if not removed:
+            return 0
+        bank.last_question_number = max([bank.last_question_number] + [
+            int(q.id.split("_")[1]) for q in bank.questions if q.id.startswith("recall_") and q.id.split("_")[1].isdigit()])
+        gone = {q.id for q in removed}
+        bank.questions = [q for q in bank.questions if q.id not in gone]
+        bank.answers = [a for a in bank.answers if a.question_id not in gone]
+        save_recall_bank(bank, lesson_dir)
+    state = load_recall_session_state(lesson_dir)
+    if state.get("current_question_id") in gone:
+        state["current_question_id"] = None
+        save_recall_session_state(lesson_dir, state)
+    return len(removed)
 
 
 def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerate: bool = False) -> None:
@@ -260,6 +267,27 @@ def recall_history(lesson_dir: str) -> dict:
     bank = load_recall_bank(lesson_dir)
     questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING) for q in bank.questions]
     return {"questions": questions, "answers": [a.model_dump(mode="json") for a in bank.answers]}
+
+
+def question_list(lesson_dir: str, reveal: bool = False) -> dict:
+    """Tutte le domande della lezione per rivederle: stato, unità (con titolo), livello del
+    classificatore, voto. Le soluzioni solo con reveal (per le domande ancora da porre
+    rovinerebbero il recall)."""
+    from rt.pipeline.recall import load_recall_bank
+    from rt.pipeline.ledger import load_resolved_draft
+    bank = load_recall_bank(lesson_dir)
+    votes = {a.question_id: a.vote for a in bank.answers if a.vote}
+    try:
+        titles = {u.unit_id: u.title for u in load_resolved_draft(lesson_dir).units}
+    except (FileNotFoundError, ValueError):
+        titles = {}
+    questions = []
+    for q in bank.questions:
+        view = question_view(q, reveal=reveal or q.status != RecallQuestionStatus.PENDING)
+        view.update(created_at=q.created_at, classifier_level=q.classifier_level, vote=votes.get(q.id))
+        questions.append(view)
+    used = {uid for q in bank.questions for uid in q.unit_ids}
+    return {"questions": questions, "unit_titles": {uid: titles[uid] for uid in titles if uid in used}}
 
 
 def next_question_for(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",

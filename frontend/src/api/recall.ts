@@ -12,6 +12,7 @@ export const recallKeys = {
   overview: (id: number) => ['recall', id, 'overview'] as const,
   history: (id: number) => ['recall', id, 'history'] as const,
   units: (id: number) => ['recall', id, 'units'] as const,
+  questions: (id: number, reveal: boolean) => ['recall', id, 'questions', reveal] as const,
   all: (id: number) => ['recall', id] as const,
 }
 
@@ -81,6 +82,22 @@ export function useSelectRecallUnits(id: number) {
     onSuccess: (data) => client.setQueryData(key, data),
     onSettled: () => client.invalidateQueries({ queryKey: recallKeys.overview(id) }),
   })
+}
+
+export type RecallQuestionDetail = Schemas['RecallQuestionDetail']
+
+/** Tutte le domande della lezione da rivedere; le soluzioni di quelle da porre solo con reveal. */
+export function useRecallQuestions(id: number, reveal: boolean) {
+  return useQuery({
+    queryKey: recallKeys.questions(id, reveal),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/questions', { params: { ...path(id), query: { reveal } } })),
+  })
+}
+
+export function useDeleteQuestions(id: number) {
+  return useRecallMutation(id, (questionIds: string[]) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/questions/delete', { params: path(id), body: { question_ids: questionIds } })),
+  )
 }
 
 export function useNextQuestion(id: number) {

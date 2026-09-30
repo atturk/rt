@@ -236,6 +236,24 @@ def test_recall_unit_selection_and_pool(api_client, api_token, ws, worker):
     assert not reset["custom"]
 
 
+def test_recall_questions_review_and_delete(api_client, api_token, ws, worker):
+    c = api_client
+    run_mock_pipeline(make_lesson(ws))
+    lid = lesson_id(c)
+    ok(c.post(f"/api/v1/lessons/{lid}/recall/generate", json={"mock": True}))
+    drain(worker)
+    listed = ok(c.get(f"/api/v1/lessons/{lid}/recall/questions"))
+    assert listed["questions"] and all(q.get("correct_index") is None for q in listed["questions"])
+    assert listed["unit_titles"]
+    revealed = ok(c.get(f"/api/v1/lessons/{lid}/recall/questions?reveal=true"))
+    assert any(q["correct_index"] is not None for q in revealed["questions"] if q["type"] == "quiz")
+    doomed = [q["id"] for q in listed["questions"][:2]]
+    assert ok(c.post(f"/api/v1/lessons/{lid}/recall/questions/delete", json={"question_ids": doomed + ["recall_999999"]})) == {"deleted": 2}
+    assert c.post(f"/api/v1/lessons/{lid}/recall/questions/delete", json={"question_ids": []}).status_code == 422
+    left = reread(api_token, f"/lessons/{lid}/recall/questions")[f"/lessons/{lid}/recall/questions"]
+    assert {q["id"] for q in left["questions"]} == {q["id"] for q in listed["questions"]} - set(doomed)
+
+
 def test_recall_writes_persist(api_client, api_token, ws, worker):
     c = api_client
     run_mock_pipeline(make_lesson(ws))

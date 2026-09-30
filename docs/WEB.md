@@ -109,7 +109,9 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   `rt/services/recall_subject.py`, riusabile dal bot.
 - **Recall:** pool di domande dell'intera lezione dalle unità scelte (di predefinito le
   rilevanti, con score e livello del classificatore), quiz, domande mirate e vaste, risposte
-  scritte o a voce. **Rigenera pool** passa al recaller tutte le unità selezionate; quando
+  scritte o a voce. **Rigenera pool** passa al recaller tutte le unità selezionate e aggiunge domande a
+  quelle già generate; la pagina **Domande** le mostra tutte e permette di eliminare,
+  anche in blocco, quelle che non convincono. Quando
   restano 5 quiz, 3 mirate o 2 vaste da porre ne arrivano altre da unità scelte a caso.
   Due selettori a slitta scelgono dove fare il recall (**Telegram** o **Qui**) e il tipo di
   domanda (Quiz, Mirata, Vasta, anche con le frecce della tastiera); sotto ciascuno c'è la
