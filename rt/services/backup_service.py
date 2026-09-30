@@ -277,9 +277,15 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
     if int(manifest.get("format", 0)) > FORMAT:
         raise BackupError("Il backup viene da una versione di RT più recente: aggiorna RT prima.")
     store_root = os.path.dirname(snap)
-    for entry in manifest.get("media") or []:
-        if not os.path.isfile(_store_path(store_root, entry["sha256"])):
-            raise BackupError(f"Backup incompleto: manca il contenuto di {entry['path']} in {STORE}/.")
+    absent = [e["path"] for e in manifest.get("media") or []
+              if not os.path.isfile(_store_path(store_root, e["sha256"]))]
+    if absent:
+        store = os.path.join(store_root, STORE)
+        where = (f"manca la cartella {store}" if not os.path.isdir(store)
+                 else f"in {store} mancano {len(absent)} media su {len(manifest.get('media') or [])}")
+        raise BackupError(f"Backup incompleto: {where} (es. {absent[0]}). I media stanno in {STORE}/, "
+                          f"accanto a {os.path.basename(snap)}: se hai copiato il backup da un altro disco, "
+                          f"copia tutta la cartella che li contiene entrambi. Nulla è stato modificato.")
     if check_services:
         from rt.services.data_service import running_services
         busy = running_services()
