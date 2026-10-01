@@ -5,6 +5,10 @@ client generato della SPA).
 """
 from typing import Any, Dict, List, Literal, Optional
 
+# Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
+QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
+NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mista"]
+
 from pydantic import BaseModel, Field
 
 
@@ -456,7 +460,7 @@ class RecallHistory(BaseModel):
 
 
 class RecallGenerate(BaseModel):
-    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
+    qtype: Optional[QuestionType] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
     mock: bool = False
 
@@ -558,7 +562,7 @@ class SubjectGenerateAccepted(BaseModel):
 
 
 class TelegramRecallStart(BaseModel):
-    qtype: Literal["quiz", "mirata", "vasta"] = "quiz"
+    qtype: QuestionType = "quiz"
     mock: bool = False
 
 
@@ -566,3 +570,26 @@ class TelegramRecallStatus(BaseModel):
     configured: bool = Field(description="Token e chat del bot salvati")
     running: bool = Field(description="Bot in esecuzione")
     sessions: List[RecallSessionInfo] = Field(description="Sessioni di recall in corso su Telegram, per tutte le lezioni")
+
+
+class SectionLabelRow(BaseModel):
+    section_id: str
+    title: str
+    unit_ids: List[str]
+    fresh: bool = Field(description="Classificata sul testo attuale")
+    esercizio: Optional[str] = None
+    caso: Optional[str] = None
+    override_esercizio: Optional[str] = None
+    override_caso: Optional[str] = None
+    error: Optional[str] = None
+
+
+class SectionLabels(BaseModel):
+    mode: Literal["active", "mock", "disabled"]
+    sections: List[SectionLabelRow]
+    options: Dict[str, List[str]]
+
+
+class SectionLabelOverride(BaseModel):
+    kind: Literal["esercizio", "caso"]
+    value: Optional[str] = Field(None, description="Nuovo valore; null torna a quello del classificatore")

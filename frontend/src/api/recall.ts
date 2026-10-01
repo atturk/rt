@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap, type Schemas } from './client'
 import { formData } from './jobStatus'
 
-export type RecallType = 'quiz' | 'mirata' | 'vasta'
+export type RecallType = 'quiz' | 'mirata' | 'vasta' | 'caso' | 'esercizio'
 export type RecallQuestion = Schemas['RecallQuestion']
 export type RecallAnswerRecord = Schemas['RecallAnswerRecord']
 export type Vote = 'up' | 'down' | 'lightning'

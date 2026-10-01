@@ -244,3 +244,31 @@ def test_resume_rejects_a_question_from_a_previously_ended_session(client, lesso
     assert current["id"] != old["id"]
     assert client.get(f"{BASE}/lessons/{lid}/resume", params={"question_id": old["id"]}).status_code == 404
     assert client.get(f"{BASE}/lessons/{lid}/resume", params={"question_id": current["id"]}).status_code == 200
+
+
+def test_mixed_type_unit_review_and_day_session(client, lesson, tmp_path):
+    lid, worker = lesson
+    client.post(f"{BASE}/lessons/{lid}/generate?qtype=mirata")
+    while worker.run_once() is not None:
+        pass
+    detail = client.get(f"{BASE}/lessons/{lid}").json()
+    unit = next(u for u in detail["units"] if u["pending"])
+    assert set(unit["pending"]) <= {"quiz", "mirata", "caso", "esercizio"}
+    # Leggi e ripeti: solo domande di quell'unità, tipi a turno.
+    first = client.post(f"{BASE}/lessons/{lid}/next", params={"qtype": "mista", "unit_id": unit["id"]}).json()
+    assert unit["id"] in first["unit_ids"]
+    again = client.post(f"{BASE}/lessons/{lid}/next", params={"qtype": "mista", "unit_id": unit["id"]}).json()
+    assert again["id"] == first["id"]  # riconnessione: la domanda posta resta quella
+    client.post(f"{BASE}/lessons/{lid}/skip", json={"question_id": first["id"]})
+    client.post(f"{BASE}/lessons/{lid}/end")
+    # Ripasso del giorno: la sessione per materia con le lezioni della data.
+    day = client.get(BASE + "/lessons").json()[0]["data"]
+    params = {"materia": f"GIORNO:{day}", "qtype": "mista"}
+    picked = client.post(BASE + "/subject/next", params=params).json()
+    assert picked["lesson_id"] == lid and picked["question"]["type"] in {"quiz", "mirata"}
+    client.post(f"{BASE}/lessons/{lid}/answer", json={"question_id": picked["question"]["id"], "dont_know": True})
+    while worker.run_once() is not None:  # una mirata si valuta in un job
+        pass
+    nxt = client.post(BASE + "/subject/next", params=params).json()
+    assert nxt["question"]["id"] != picked["question"]["id"]
+    assert client.post(BASE + "/subject/end", params={"materia": f"GIORNO:{day}"}).json()["summary"]["questions"] == 2

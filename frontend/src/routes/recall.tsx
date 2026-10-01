@@ -38,7 +38,7 @@ import { lessonTitle } from '@/lib/format'
 import { RECALL_TYPES, TYPE_OPTIONS, VOTES, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
 import type { Area } from './types'
 
-const PLURAL: Record<RecallType, string> = { quiz: 'quiz', mirata: 'mirate', vasta: 'vaste' }
+const PLURAL: Record<RecallType, string> = { quiz: 'quiz', mirata: 'mirate', vasta: 'vaste', caso: 'casi', esercizio: 'esercizi' }
 const STATUS_LABELS: Record<string, string> = { pending: 'Da porre', asked: 'Poste', answered: 'Risposte' }
 
 /** Pool di domande per tipo, unità del recaller e generazione (job recall_generate o recall_batch). */

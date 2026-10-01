@@ -297,7 +297,7 @@ def cmd_recall(args):
         return
 
     reset_val = getattr(args, "reset", None)
-    if isinstance(reset_val, str) and reset_val in ("all", "quiz", "mirata", "vasta"):
+    if isinstance(reset_val, str) and reset_val in ("all", "quiz", "mirata", "vasta", "caso", "esercizio"):
         from rt.pipeline.recall import purge_recall_by_type
         from rt.core.models import RecallQuestionType
         qtype = None if reset_val == "all" else RecallQuestionType(reset_val)
@@ -1226,10 +1226,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
                            help="Ordine di proposta delle domande per questa sessione (default: alternato)")
     p_recall.add_argument("--channel", choices=["terminal", "telegram"], default=None,
                            help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
-    p_recall.add_argument("--style", choices=["quiz", "mirata", "vasta"], default=None,
+    p_recall.add_argument("--style", choices=["quiz", "mirata", "vasta", "caso", "esercizio"], default=None,
                            help="Tipo di domanda per questa sessione; se passato, aggiorna anche lo stile attivo globale (default: stile attivo corrente)")
     p_recall.add_argument(
-        "--reset", nargs="?", const="all", choices=["all", "quiz", "mirata", "vasta"], default=None,
+        "--reset", nargs="?", const="all", choices=["all", "quiz", "mirata", "vasta", "caso", "esercizio"], default=None,
         help="Resetta le domande/risposte di recall già effettuate: senza valore o 'all' azzera "
              "tutto, 'quiz'/'mirata'/'vasta' azzera solo quel tipo."
     )

@@ -7,6 +7,7 @@ import { useLesson, useLessonDocument } from '@/api/hooks'
 import { useRunClassifier } from '@/api/relevance'
 import { RUN_ALL, RUN_NEW } from '@/lib/classification'
 import { JobProgress } from '@/components/JobProgress'
+import { SectionLabelsCard } from '@/components/recall/SectionLabels'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -207,6 +208,7 @@ export function RelevancePage() {
         </ul>
         {units.length === 0 && <p className="mt-2 text-sm text-muted-foreground">Nessuna unità in questa vista.</p>}
       </Card>
+      <SectionLabelsCard lessonId={id} />
     </>}
   </section>
 }

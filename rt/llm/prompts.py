@@ -561,3 +561,112 @@ CONTENUTO DELLE UNITÀ DIDATTICHE DI QUESTA SEZIONE:
 Restituisci l'oggetto JSON conforme a ImageUnitJudgeResult con gli hash delle immagini
 pertinenti a questa sezione (lista vuota se nessuna)."""
 
+
+
+# ----------------------------------------------------------------------
+# 11. CASI CLINICI ED ESERCIZI (rt.pipeline.recall_special)
+# ----------------------------------------------------------------------
+
+_SPECIAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationResult):
+{"items": [{"question_text": "...", "pregenerated_material": "...", "unit_ids": ["5.1", "5.2"],
+  "tipo": {"scenario": "...", "variabili": [{"nome": "...", "valore": "...", "intervallo": "..."}],
+           "obiettivo": "...", "procedimento": "...", "esplicito": true}}]}
+- question_text: la domanda completa da porre allo studente, con tutti i dati necessari.
+- pregenerated_material: la soluzione o il ragionamento atteso, passo per passo, basato ESCLUSIVAMENTE sul testo fornito; servirà per correggere la risposta.
+- unit_ids: le subunità (tra quelle fornite) da cui proviene il contenuto.
+- tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.
+Se non trovi materiale adatto restituisci {"items": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
+
+RECALL_CASO_SYSTEM_PROMPT = """Sei un docente universitario di area medica che prepara casi clinici per verificare la comprensione profonda degli studenti, non la memorizzazione di singole nozioni.
+Ricevi il testo di un'intera unità di una lezione (più subunità). Il tuo compito è restituire zero, uno o più casi clinici distinti:
+1. Se il docente presenta esplicitamente uno o più pazienti (es. più pazienti con parametri diversi che arrivano in pronto soccorso), crea un caso per ciascun paziente, fedele ai dati presentati, con esplicito=true.
+2. Se non ci sono pazienti espliciti ma il contenuto si presta (fisiopatologia, quadro diagnostico, parametri, terapia), costruisci un caso plausibile coerente con il testo, con esplicito=false.
+3. Il caso presenta il paziente (età, sintomi, segni, parametri o esami pertinenti) e termina con un quesito che richiede ragionamento: interpretare i dati, formulare una diagnosi, spiegare il meccanismo, scegliere e motivare un intervento.
+4. Non inventare nozioni assenti dal testo: i dati del caso devono poter essere interpretati con ciò che la lezione insegna.
+5. Non ripetere casi già presenti (te li elenco, se esistono): proponi pazienti o quesiti diversi.
+
+""" + _SPECIAL_OUTPUT
+
+RECALL_ESERCIZIO_SYSTEM_PROMPT = """Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.
+Ricevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):
+1. La traccia riporta tutti i dati necessari e chiede il risultato e/o i passaggi chiave.
+2. Se il testo copre solo una parte dell'esercizio, chiedi quella parte.
+3. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, ricavati dal testo; controlla i calcoli.
+4. Il tipo descrive l'esercizio in forma astratta: quali dati possono cambiare e in che intervalli, e il procedimento risolutivo valido per ogni variante.
+5. Non ripetere esercizi già presenti (te li elenco, se esistono).
+
+""" + _SPECIAL_OUTPUT
+
+
+def build_recall_special_user_prompt(kind: str, sections: list, existing: list, context: dict) -> str:
+    """sections: [{"id", "title", "units": [DraftUnit]}]; existing: tipi già salvati (dict)."""
+    import json
+    blocks = []
+    for section in sections:
+        blocks.append(f"=== UNITÀ {section['id']}: {section['title']} ===")
+        for u in section["units"]:
+            blocks.append(f"--- SUBUNITÀ {u.unit_id}: {u.title} ---\n{u.content}")
+    what = "casi clinici" if kind == "caso" else "esercizi"
+    prompt = context_block(context) + "\n\n" + "\n\n".join(blocks)
+    if existing:
+        prompt += f"\n\n{what.upper()} GIÀ PRESENTI PER QUESTE UNITÀ (proponine di diversi):\n" + json.dumps(existing, ensure_ascii=False)
+    return prompt + f"\n\nRestituisci zero, uno o più {what} nel contenitore JSON items conforme a RecallSpecialGenerationResult."
+
+
+RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di un caso clinico o di un esercizio già usato a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato il caso.
+REGOLE:
+1. Mantieni l'obiettivo e il procedimento del tipo; cambia i valori delle variabili restando negli intervalli plausibili, e se serve i dettagli di contorno (età, sesso, contesto).
+2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
+3. La traccia è completa e autonoma; la soluzione attesa riporta i passaggi e il risultato, con i calcoli controllati.
+4. Non copiare la versione precedente: la variante deve essere chiaramente diversa.
+OUTPUT JSON (conforme a GeneratedVariant): {"question_text": "...", "pregenerated_material": "..."}"""
+
+
+def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "") -> str:
+    import json
+    what = "caso clinico" if kind == "caso" else "esercizio"
+    prompt = f"TIPO DI {what.upper()}:\n" + json.dumps(tipo, ensure_ascii=False, indent=1)
+    if previous:
+        prompt += "\n\nVERSIONI GIÀ USATE (non ripeterle):\n" + json.dumps(previous[-6:], ensure_ascii=False)
+    if problems:
+        prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
+    return prompt + f"\n\nCrea una nuova variante del {what} e restituisci GeneratedVariant."
+
+
+RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di un caso clinico o di un esercizio prima di proporla a uno studente.
+1. Risolvi la traccia in modo indipendente, seguendo il procedimento del tipo, senza fidarti della soluzione proposta.
+2. Confronta il tuo risultato con la soluzione proposta: coerente=true solo se conclusioni, valori e passaggi essenziali coincidono e i dati della traccia sono plausibili e sufficienti.
+3. Se non è coerente, descrivi brevemente i problemi in "problemi".
+OUTPUT JSON (conforme a VariantCheck): {"coerente": true, "soluzione": "...", "problemi": ""}"""
+
+
+def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solution: str) -> str:
+    import json
+    return (f"PROCEDIMENTO DEL TIPO:\n{json.dumps(tipo, ensure_ascii=False)}\n\nTRACCIA:\n{question_text}\n\n"
+            f"SOLUZIONE PROPOSTA:\n{solution}\n\nRisolvi, confronta e restituisci VariantCheck.")
+
+
+RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a un caso clinico o a un esercizio di active recall. Conta il ragionamento, non la memorizzazione.
+
+REGOLE CATEGORICHE:
+1. Valuta rispetto alla SOLUZIONE ATTESA fornita (e al procedimento del tipo, se presente); non aggiungere nozioni esterne.
+2. "correttezza" (0-100): quanto conclusioni, valori e passaggi dello studente sono corretti; un risultato giusto con un ragionamento sbagliato non è corretto.
+3. "completezza" (0-100): quanto la risposta copre i passaggi essenziali del ragionamento o del procedimento.
+4. "commento": breve (3-5 frasi), indica quali passaggi sono giusti, quali mancano o sono sbagliati e dove si è interrotto il ragionamento.
+5. Tono diretto ma non punitivo."""
+
+
+def build_recall_eval_ragionamento_user_prompt(question_text: str, solution: str, procedure: str,
+                                               answer_text: str, dont_know: bool = False) -> str:
+    note = DONT_KNOW_NOTE if dont_know else ""
+    proc = f"\n\nPROCEDIMENTO DEL TIPO:\n{procedure}" if procedure else ""
+    return f"""TRACCIA POSTA:
+{question_text}
+
+SOLUZIONE ATTESA:
+{solution}{proc}
+
+RISPOSTA DELLO STUDENTE:
+{answer_text}{note}
+
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento)."""

@@ -97,6 +97,26 @@ def put_unit_relevance(lesson_id: int, unit_id: str, body: schemas.UnitRelevance
         raise ApiError(404, "unit_not_found", "Unità non trovata nella bozza.")
 
 
+@router.get("/lessons/{lesson_id}/sections", response_model=schemas.SectionLabels,
+            summary="Etichette nascoste delle unità (macro-sezioni) per casi clinici ed esercizi")
+def get_section_labels(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.section_labels import view
+    return view(lesson_dir)
+
+
+@router.put("/lessons/{lesson_id}/sections/{section_id}", response_model=schemas.SectionLabels,
+            summary="Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità")
+def put_section_label(lesson_id: int, section_id: str, body: schemas.SectionLabelOverride,
+                      lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.section_labels import set_override
+    try:
+        return set_override(lesson_dir, section_id, body.kind, body.value)
+    except KeyError:
+        raise ApiError(404, "section_not_found", "Unità non trovata nella scaletta.")
+    except ValueError as exc:
+        raise ApiError(422, "validation_error", str(exc))
+
+
 @router.post("/lessons/{lesson_id}/document/check", response_model=schemas.DocumentEditCheck,
              summary="Anteprima e controllo del Markdown modificato, senza salvare (funzione beta)")
 def check_document(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir: LessonDir, _actor: Actor):
