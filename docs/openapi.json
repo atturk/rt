@@ -1617,7 +1617,7 @@
       "EnrichmentConfig": {
         "properties": {
           "automatic": {
-            "default": true,
+            "default": false,
             "title": "Automatic",
             "type": "boolean"
           },

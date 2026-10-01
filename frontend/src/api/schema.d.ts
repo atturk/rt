@@ -3023,7 +3023,7 @@ export interface components {
         EnrichmentConfig: {
             /**
              * Automatic
-             * @default true
+             * @default false
              */
             automatic: boolean;
             /**

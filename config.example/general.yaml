@@ -57,7 +57,7 @@ searxng_base_url: null  # es. "http://localhost:8088"
 
 # L'analisi prepara idee; la generazione richiede sempre un'azione dell'utente.
 enrichment:
-  automatic: true
+  automatic: false  # true: analizza anche dentro la pipeline
   cap_mode: proportional  # off | fixed | proportional (numero di subunità)
   cap_number: 5
   utility_threshold: 0.65

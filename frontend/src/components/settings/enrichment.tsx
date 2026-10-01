@@ -21,7 +21,7 @@ function EnrichmentForm({ settings }: { settings: EnrichmentSettings }) {
   return <Section id="arricchimento" title="Arricchimento: decisioni e suggerimenti"
     description="Il classificatore usa la Decision API per scegliere le macro unità delle immagini e valutare l’utilità dei suggerimenti. Arricchitore, visualizzazioni e infografiche si assegnano nei ruoli modello sopra. Nessun elemento viene generato automaticamente.">
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <label className="flex gap-2 text-sm"><input type="checkbox" checked={draft.automatic ?? true} onChange={e => set('automatic', e.target.checked)} />Analizza automaticamente nella pipeline</label>
+      <label className="flex gap-2 text-sm"><input type="checkbox" checked={draft.automatic ?? false} onChange={e => set('automatic', e.target.checked)} />Analizza anche nella pipeline (altrimenti solo dalla pagina Arricchimento)</label>
       <Field label="Tetto globale" htmlFor="global-enrichment-cap"><Select id="global-enrichment-cap" value={draft.cap_mode} onChange={e => set('cap_mode', e.target.value as EnrichmentSettings['cap_mode'])}>
         <option value="proportional">Proporzionale: numero di subunità</option><option value="fixed">Numero fisso</option><option value="off">Disattivato</option>
       </Select></Field>

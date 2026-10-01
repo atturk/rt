@@ -21,14 +21,16 @@ def ready(tmp_path, monkeypatch, rt_db, api_client):
 def test_analyze_dedup_generate_export_edit_delete(api_client, ready):
     path, lid, worker = ready
     base = f"/api/v1/lessons/{lid}/enrichment"
-    ideas = api_client.get(base).json()
-    assert ideas["elements"] and not any(e["asset_image"] for e in ideas["elements"])
+    # Per default la pipeline non analizza: le idee arrivano dalla pagina Arricchimento.
+    assert api_client.get(base).json()["elements"] == []
     a = api_client.post(base + "/analyze", json={})
     b = api_client.post(base + "/analyze", json={})
     assert a.status_code == b.status_code == 202
     assert a.json()["job_id"] == b.json()["job_id"]
     worker.run_once()
-    idea = api_client.get(base).json()["elements"][0]
+    ideas = api_client.get(base).json()["elements"]
+    assert ideas and not any(e["asset_image"] for e in ideas)
+    idea = ideas[0]
     generated = api_client.post(base + "/generate", json={"element_id": idea["id"]})
     assert generated.status_code == 202
     again = api_client.post(base + "/generate", json={"element_id": idea["id"]})
@@ -81,6 +83,8 @@ def test_batch_skips_unready_and_manual_generation_is_not_capped(api_client, rea
 def test_cancelled_generation_is_recoverable_and_asset_paths_are_protected(api_client, ready):
     _, lid, worker = ready
     base = f"/api/v1/lessons/{lid}/enrichment"
+    api_client.post(base + "/analyze", json={})
+    worker.run_once()
     idea = api_client.get(base).json()["elements"][0]
     queued = api_client.post(base + "/generate", json={"element_id": idea["id"]}).json()
     api_client.post(f"/api/v1/jobs/{queued['job_id']}/cancel")

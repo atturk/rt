@@ -14,7 +14,7 @@ Jev valuta separatamente l'utilità di una **visualizzazione** e di un'**infogra
 
 La soglia iniziale di utilità è `0.65`, configurabile. Il QC sulla matrice ha restituito `0.69` per la visualizzazione e `0.46` per l'infografica; questo è un primo riferimento, non una calibrazione statistica. Il tetto globale può essere proporzionale al numero di subunità (default), un numero fisso, oppure disattivato. Ogni lezione può ereditare o sostituire la scelta. Un tetto è sempre un massimo, mai una quantità da raggiungere. I contenuti manuali non sono soggetti al tetto dei suggerimenti.
 
-La pipeline analizza automaticamente il testo prima del documento, anche dopo rielaborazione/revisione eseguite separatamente. Se i modelli non sono configurati, l'analisi viene saltata con un avviso; se fallisce, la produzione del documento può proseguire. Si possono rilanciare le analisi dalla pagina Arricchimento. Le valutazioni già completate sono in cache; testi cambiati vengono riconsiderati. Idee ignorate, prompt modificati e contenuti generati vengono conservati.
+Per default l'analisi si avvia dalla pagina Arricchimento. Con **Impostazioni → Arricchimento → Analizza anche nella pipeline** (`enrichment.automatic: true`) la pipeline analizza il testo prima del documento, anche dopo rielaborazione/revisione eseguite separatamente. Se i modelli non sono configurati, l'analisi viene saltata con un avviso; se fallisce, la produzione del documento può proseguire. Si possono rilanciare le analisi dalla pagina Arricchimento. Le valutazioni già completate sono in cache; testi cambiati vengono riconsiderati. Idee ignorate, prompt modificati e contenuti generati vengono conservati.
 
 Nell'anteprima le idee compaiono sotto il testo della subunità:
 

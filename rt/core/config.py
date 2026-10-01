@@ -327,7 +327,8 @@ class JevConfig(BaseModel):
 
 
 class EnrichmentConfig(BaseModel):
-    automatic: bool = True
+    # Analisi dentro la pipeline: spenta per default, si avvia dalla pagina Arricchimento.
+    automatic: bool = False
     cap_mode: Literal["off", "fixed", "proportional"] = "proportional"
     cap_number: int = Field(default=5, ge=1, le=1000)
     utility_threshold: float = Field(default=0.65, ge=0, le=1)
