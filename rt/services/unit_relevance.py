@@ -237,6 +237,40 @@ def list_units(lesson_dir: str, *, view="draft") -> dict:
     return {"mode": mode(), "view": view, "units": rows, "summary": _summary(rows, records, units)}
 
 
+def classification_status(lesson_dir: str) -> dict:
+    """In breve, se il classificatore è passato sulla lezione (per elenchi come la pagina del
+    recall): state = done | partial | stale | never | disabled | unavailable (senza bozza),
+    con le stesse regole del riepilogo della pagina Classificatore."""
+    if mode() == "disabled":
+        return {"state": "disabled", "classified": 0, "total": 0}
+    try:
+        units = load_draft(lesson_dir).units
+    except (FileNotFoundError, ValueError):
+        return {"state": "unavailable", "classified": 0, "total": 0}
+    cfg = load_config().jev
+    config_hash = _config_hash(cfg)
+    records = _load(lesson_dir)
+    classified = errors = stale = 0
+    for unit in units:
+        row = records.get(unit.unit_id)
+        if not row:
+            continue
+        if row.get("text_hash") != _unit_hash(unit, lesson_dir) or row.get("config_hash") != config_hash:
+            stale += 1
+        elif row.get("prediction") in CLASSES:
+            classified += 1
+        elif row.get("error"):
+            errors += 1
+    total = len(units)
+    if total and classified == total:
+        state = "done"
+    elif classified == 0 and errors == 0:
+        state = "stale" if stale else "never"
+    else:
+        state = "partial"
+    return {"state": state, "classified": classified, "total": total}
+
+
 def _summary(rows: list, records: dict, units: list) -> dict:
     """Riepilogo per capire a colpo d'occhio se il classificatore è passato sulla lezione e con che esito."""
     current = {unit.unit_id for unit in units}

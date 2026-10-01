@@ -239,6 +239,38 @@
         "title": "ChooseFolderIn",
         "type": "object"
       },
+      "ClassificationStatus": {
+        "properties": {
+          "classified": {
+            "default": 0,
+            "title": "Classified",
+            "type": "integer"
+          },
+          "state": {
+            "description": "done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione cambiati); never: mai eseguito; disabled: classificatore spento; unavailable: lezione senza bozza",
+            "enum": [
+              "done",
+              "partial",
+              "stale",
+              "never",
+              "disabled",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ClassificationStatus",
+        "type": "object"
+      },
       "Connection": {
         "properties": {
           "base_url": {
@@ -2485,6 +2517,17 @@
             "title": "Answers",
             "type": "integer"
           },
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassificationStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Classificatore sulla lezione (null se non pronta)"
+          },
           "lesson_id": {
             "title": "Lesson Id",
             "type": "integer"
@@ -4560,7 +4603,7 @@
             "type": "array"
           },
           "materia": {
-            "description": "Vuota per le lezioni senza materia",
+            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso",
             "title": "Materia",
             "type": "string"
           },
@@ -4604,7 +4647,7 @@
             "type": "array"
           },
           "materia": {
-            "description": "Vuota per le lezioni senza materia",
+            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso",
             "title": "Materia",
             "type": "string"
           },
@@ -12995,12 +13038,12 @@
         "operationId": "subject_state_api_v1_recall_subject_get",
         "parameters": [
           {
-            "description": "Materia, come nelle lezioni",
+            "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno",
             "in": "query",
             "name": "materia",
             "required": true,
             "schema": {
-              "description": "Materia, come nelle lezioni",
+              "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno",
               "title": "Materia",
               "type": "string"
             }

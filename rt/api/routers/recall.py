@@ -253,7 +253,7 @@ def subjects(_actor: Actor):
 
 @router.get("/recall/subject", response_model=schemas.SubjectRecallState,
             summary="Lezioni di una materia con il loro pool, sessione per materia in corso e ultimo riepilogo")
-def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni")):
+def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno")):
     from rt.services.recall_subject import subject_overview
     return _subject_call(subject_overview, materia)
 

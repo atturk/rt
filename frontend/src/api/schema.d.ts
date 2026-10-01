@@ -2221,6 +2221,25 @@ export interface components {
              */
             start?: string | null;
         };
+        /** ClassificationStatus */
+        ClassificationStatus: {
+            /**
+             * Classified
+             * @default 0
+             */
+            classified: number;
+            /**
+             * State
+             * @description done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione cambiati); never: mai eseguito; disabled: classificatore spento; unavailable: lezione senza bozza
+             * @enum {string}
+             */
+            state: "done" | "partial" | "stale" | "never" | "disabled" | "unavailable";
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** Connection */
         Connection: {
             /** Base Url */
@@ -3276,6 +3295,8 @@ export interface components {
         LessonRecallStats: {
             /** Answers */
             answers: number;
+            /** @description Classificatore sulla lezione (null se non pronta) */
+            classification?: components["schemas"]["ClassificationStatus"] | null;
             /** Lesson Id */
             lesson_id: number;
             /**
@@ -4178,7 +4199,7 @@ export interface components {
             lessons: components["schemas"]["LessonRecallStats"][];
             /**
              * Materia
-             * @description Vuota per le lezioni senza materia
+             * @description Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso
              */
             materia: string;
             /** @description Sessione per materia in corso nella web app */
@@ -4192,7 +4213,7 @@ export interface components {
             lessons: components["schemas"]["LessonRecallStats"][];
             /**
              * Materia
-             * @description Vuota per le lezioni senza materia
+             * @description Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso
              */
             materia: string;
             /** @description Sessione per materia in corso nella web app */
@@ -9909,7 +9930,7 @@ export interface operations {
     subject_state_api_v1_recall_subject_get: {
         parameters: {
             query: {
-                /** @description Materia, come nelle lezioni */
+                /** @description Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno */
                 materia: string;
             };
             header?: never;

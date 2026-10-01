@@ -13,6 +13,7 @@ Il modulo non dipende dal canale: la web app lo usa, il bot Telegram può riusar
 channel=TELEGRAM.
 """
 import random
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
@@ -26,6 +27,16 @@ from rt.services.recall_sessions import (
 )
 
 NO_SUBJECT = "no_subject"
+# Recall del giorno: stessa sessione della materia, con le lezioni di una data al posto di
+# quelle di una materia ("GIORNO:2026-09-30" nella colonna subject).
+DAY_PREFIX = "GIORNO:"
+_DAY = re.compile(r"^GIORNO:(\d{4}-\d{2}-\d{2})$")
+
+
+def subject_day(subject: str) -> Optional[str]:
+    """La data di una sessione del giorno ("GIORNO:2026-09-30" -> "2026-09-30"), se lo è."""
+    match = _DAY.match(subject or "")
+    return match.group(1) if match else None
 
 
 def normalize_subject(materia: Optional[str]) -> str:
@@ -55,9 +66,11 @@ def _ready(summary: Dict[str, Any]) -> bool:
 
 
 def subject_lessons(materia: str) -> List[Dict[str, Any]]:
-    """Riepiloghi delle lezioni della materia, dalla più vecchia (l'ordine dei turni)."""
+    """Riepiloghi delle lezioni della materia (o del giorno), dalla più vecchia (l'ordine dei turni)."""
     from rt.services.lesson_service import list_lessons
-    items = list_lessons(materia=normalize_subject(materia))
+    subject = normalize_subject(materia)
+    day = subject_day(subject)
+    items = [i for i in list_lessons() if i["data"] == day] if day else list_lessons(materia=subject)
     return sorted(items, key=lambda i: (i["data"] or "9999", i["folder_name"]))
 
 
@@ -69,10 +82,12 @@ def _telegram_busy() -> set:
 def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None) -> Dict[str, Any]:
     """Domande per tipo e stato e risposte date di una lezione, come GET /lessons/{id}/recall."""
     from rt.services.recall_service import recall_overview
+    from rt.services.unit_relevance import classification_status
     ready = _ready(summary)
     overview = recall_overview(summary["path"]) if ready else {"questions": {}, "answers": 0}
     return {"lesson_id": summary["id"], "ready": ready, "questions": overview["questions"],
-            "answers": overview["answers"], "telegram": summary["id"] in (telegram_busy or set())}
+            "answers": overview["answers"], "telegram": summary["id"] in (telegram_busy or set()),
+            "classification": classification_status(summary["path"]) if ready else None}
 
 
 def recall_by_subject() -> List[Dict[str, Any]]:
@@ -84,8 +99,11 @@ def recall_by_subject() -> List[Dict[str, Any]]:
     for summary in list_lessons():
         subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, busy))
     active = {s["subject"]: s for s in _subject_sessions(state=ACTIVE)}
-    return [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
-            for materia, lessons in sorted(subjects.items())]
+    out = [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
+           for materia, lessons in sorted(subjects.items())]
+    # Sessioni del giorno in corso: senza lezioni proprie (sono già sotto le loro materie).
+    return out + [{"materia": subject, "lessons": [], "session": session}
+                  for subject, session in sorted(active.items()) if subject_day(subject)]
 
 
 def subject_overview(materia: str) -> Dict[str, Any]:

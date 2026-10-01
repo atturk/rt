@@ -520,16 +520,25 @@ class RecallSessionState(BaseModel):
     command: Optional[TelegramCommandInfo] = Field(None, description="Ultima richiesta al bot per questa lezione")
 
 
+class ClassificationStatus(BaseModel):
+    state: Literal["done", "partial", "stale", "never", "disabled", "unavailable"] = Field(
+        description="done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione "
+                    "cambiati); never: mai eseguito; disabled: classificatore spento; unavailable: lezione senza bozza")
+    classified: int = 0
+    total: int = 0
+
+
 class LessonRecallStats(BaseModel):
     lesson_id: int
     ready: bool = Field(description="Rielaborazione valida: la lezione può fare recall")
     questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
     answers: int
     telegram: bool = Field(False, description="Sessione in corso su Telegram per la lezione")
+    classification: Optional[ClassificationStatus] = Field(None, description="Classificatore sulla lezione (null se non pronta)")
 
 
 class SubjectRecall(BaseModel):
-    materia: str = Field(description="Vuota per le lezioni senza materia")
+    materia: str = Field(description="Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso")
     lessons: List[LessonRecallStats]
     session: Optional[RecallSessionInfo] = Field(None, description="Sessione per materia in corso nella web app")
 
