@@ -77,6 +77,8 @@ class _Macro:
 
 def _parse_structure(markdown: str) -> Tuple[List[_Macro], List[Dict[str, Any]]]:
     """Sezioni con immagini e unità, errori di forma."""
+    from rt.services.enrichment_service import strip_generated
+    markdown = strip_generated(markdown)
     errors: List[Dict[str, Any]] = []
     macros: List[_Macro] = []
     unit: Optional[_Unit] = None

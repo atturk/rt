@@ -719,6 +719,13 @@ function stopAudio() {
   tg?.BackButton?.onClick(goBack);tg?.onEvent('themeChanged',applyTheme);
   $('.tg-close').onclick=()=>{if(tg)tg.close();else goBack();};
   if(tg){document.querySelector('.tg-top').hidden=true;tg.ready();tg.expand();}
+  // Telegram 8.0+: collegamento alla Mini App sulla schermata Home, offerto solo finché manca.
+  if(tg?.isVersionAtLeast?.('8.0')&&tg.checkHomeScreenStatus){
+    const homeBtn=$('#homeScreenBtn');
+    tg.checkHomeScreenStatus(status=>{homeBtn.hidden=status!=='missing';});
+    homeBtn.onclick=()=>tg.addToHomeScreen();
+    tg.onEvent('homeScreenAdded',()=>{homeBtn.hidden=true;toast('Aggiunta alla schermata Home');});
+  }
   window.addEventListener('pagehide',()=>{stopAudio();stopRecording();});
   window.addEventListener('unhandledrejection',event=>{event.preventDefault();errorMessage(event.reason);});
   async function boot(){

@@ -23,6 +23,7 @@ export const jobKeys = {
 
 /** Dopo un job o una decisione cambiano lezioni, fasi, outline e job: si rilegge tutto. */
 export function invalidateAfterJob(client: QueryClient, lessonId?: number | null) {
+  void client.invalidateQueries({ queryKey: ['enrichment'] })
   void client.invalidateQueries({ queryKey: jobKeys.all })
   void client.invalidateQueries({ queryKey: queryKeys.allLessons })
   if (lessonId != null) {

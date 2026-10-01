@@ -29,8 +29,9 @@ function sortFor(lessons: Lesson[], sort: BrowserSortKey, dir: SortDir, extra?: 
   })
 }
 
-export function LessonBrowser({ storageKey, lessons, total, card, columns, link, extraSort, testId, emptyText }: {
+export function LessonBrowser({ storageKey, lessons, total, card, columns, link, extraSort, testId, emptyText, groupActions }: {
   storageKey: string
+  groupActions?: (lessons: Lesson[]) => ReactNode
   /** Lezioni della pagina (già ristrette, es. quelle con issue). */
   lessons: Lesson[]
   /** Quante lezioni ha la pagina senza filtri. */
@@ -66,6 +67,7 @@ export function LessonBrowser({ storageKey, lessons, total, card, columns, link,
           search={{ id: searchId, value: filters.q, onChange: (value) => setFilter('q', value) }}
           prefs={prefs} onChange={update} sortLabels={sortLabels} groupLabels={GROUP_LABELS} defaultDir={spec.defaultDir} />
       )}
+      {!grouped && filtered.length > 0 && groupActions?.(filtered)}
       {count > 0 && filtered.length === 0 && <Card className="p-6 text-sm text-muted-foreground">{emptyText}</Card>}
       {filtered.length > 0 && prefs.view === 'schede' && (
         <div className="flex flex-col gap-5">
@@ -78,6 +80,7 @@ export function LessonBrowser({ storageKey, lessons, total, card, columns, link,
                 {grouped && (
                   <h2 className="mb-2 border-b pb-1">
                     <GroupToggle group={group} expanded={expanded} onToggle={() => toggleGroup(id)} controls={panel} />
+                    {groupActions?.(group.lessons)}
                   </h2>
                 )}
                 <ul id={panel} hidden={!expanded} className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -116,6 +119,7 @@ export function LessonBrowser({ storageKey, lessons, total, card, columns, link,
                     <tr className="border-t bg-muted/40">
                       <th scope="rowgroup" colSpan={3 + columns.length} className="px-2 py-1 text-left font-normal">
                         <GroupToggle group={group} expanded={expanded} onToggle={() => toggleGroup(id)} controls={rows} />
+                        {groupActions?.(group.lessons)}
                       </th>
                     </tr>
                   )}

@@ -128,6 +128,7 @@ def render_rielaborato_md(
     topics: str,
     images_by_macro: Optional[Dict[str, List[dict]]] = None,
     edits: Optional[Dict[str, Any]] = None,
+    enrichment_by_unit: Optional[Dict[str, List[str]]] = None,
 ) -> str:
     """
     Renderizza rielaborato.md pulito e pronto per lo studio/Obsidian/Telegram.
@@ -187,6 +188,8 @@ def render_rielaborato_md(
             
             lines.append(content)
             lines.append("")
+            if enrichment_by_unit:
+                lines.extend(enrichment_by_unit.get(str(unit.id), []))
             
     return "\n".join(lines)
 
@@ -323,6 +326,7 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     edited = {uid for uid, v in edits["units"].items() if v.get("edited")}
     resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues, edited)
     images_by_macro, _carousel = images_for_document(lesson_dir, outline)
+    from rt.services.enrichment_service import document_blocks
 
     return {
         "outline": outline,
@@ -337,7 +341,8 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
             subject=subject_val, topics=topics_val, science_issues=science_issues),
         "rielaborato": render_rielaborato_md(
             outline=outline, draft=resolved_draft, segments_data=segments_data, date=date_val,
-            subject=subject_val, topics=topics_val, images_by_macro=images_by_macro, edits=edits),
+            subject=subject_val, topics=topics_val, images_by_macro=images_by_macro, edits=edits,
+            enrichment_by_unit=document_blocks(lesson_dir)),
         "errori_concettuali": render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger),
     }
 

@@ -125,6 +125,10 @@ def save_route(project_root: Path, job: str, role: str, provider: str,
     if role not in ROUTE_ROLES or provider not in (*KNOWN_PROVIDER_DEFAULT_BASE_URLS, "openai_compatible"):
         raise ValueError("Ruolo o provider non riconosciuto.")
     paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    if job in {"enrichment_writer", "enrichment_visualizer", "enrichment_image"} and job not in paths:
+        target = general_config_path(project_root).parent / "rt" / f"{job}.yaml"
+        _atomic_yaml(target, {"primary": {}})
+        paths[job] = str(target)
     if job == "recall" and job not in paths:
         target = general_config_path(project_root).parent / "telegram" / "recall.yaml"
         target.parent.mkdir(parents=True, exist_ok=True)

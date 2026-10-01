@@ -8,6 +8,7 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 ## ⚡ Caratteristiche Principali
 
+- **Arricchimento delle lezioni**: immagini sulle macro unità con Decision API, idee grafiche sotto le subunità, visualizzazioni interattive e infografiche generate su richiesta. [Configurazione e utilizzo](docs/ENRICHMENT.md).
 - **Timestamp Deterministici e Tracciabili**: Nessun timestamp arbitrario generato dall'LLM. Tutti i timecode nel Markdown derivano rigorosamente dai segmenti audio ASR (`seg_ID → start_seconds → MM:SS`).
 - **Provenienza Completa**: Ogni paragrafo rielaborato è collegato in modo bidirezionale ai segmenti sorgente (`source_segment_ids`).
 - **Routing Engine Multi-Provider & Round-Robin N-way**:

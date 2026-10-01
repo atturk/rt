@@ -54,3 +54,14 @@ ui:
 # Si imposta anche dalla web: Impostazioni › Ricerca web. SearXNG deve avere il formato json
 # abilitato (search.formats in settings.yml di SearXNG).
 searxng_base_url: null  # es. "http://localhost:8088"
+
+# L'analisi prepara idee; la generazione richiede sempre un'azione dell'utente.
+enrichment:
+  automatic: true
+  cap_mode: proportional  # off | fixed | proportional (numero di subunità)
+  cap_number: 5
+  utility_threshold: 0.65
+  decision_model: typesafe/jev-1.13
+  decision_credential: openrouter
+  decision_base_url: https://openrouter.ai/api/alpha/decisions
+  decision_timeout: 30

@@ -1,0 +1,14 @@
+round_robin: false
+max_attempts: 5
+max_output_chars: null
+
+primary:
+  provider: null
+  credential: null
+  model: null
+  base_url: null
+  thinking: true
+  reasoning_effort: "low"
+  max_thinking_tokens: null
+  max_tokens: 2048
+  timeout_seconds: 120
