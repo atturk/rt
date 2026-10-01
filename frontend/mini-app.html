@@ -35,13 +35,21 @@
         <main class="app" id="app"><div id="studyError" class="study-error" role="alert" hidden></div>
           <!-- ═══ 1 · ELENCO LEZIONI ═══ -->
           <section class="view active" id="view-lessons">
-            <div class="vh">
-              <h1>Lezioni</h1>
-              <p class="sub">Appunti e domande di recall dalle tue registrazioni</p>
-            </div>
             <button class="btn btn-secondary btn-block" id="homeScreenBtn" hidden>Aggiungi alla schermata Home</button>
-            <div class="section-label"><h2>Ripasso per materia</h2><span class="meta">quiz · mirate · vaste</span></div>
+            <div class="section-label" id="practiceHeader">
+              <div class="seg" id="practiceSeg" role="group" aria-label="Modalità di ripasso">
+                <button class="seg-btn" type="button" data-pmode="materia" aria-label="Per materia" title="Per materia" aria-pressed="true"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h11a2 2 0 0 1 2 2V19H6a2 2 0 0 1-2-2V5.5Z"></path><path d="M7 8.5h6M7 12h6M17 8h2a2 2 0 0 1 2 2v9h-4"></path></svg></button>
+                <button class="seg-btn" type="button" data-pmode="giorno" aria-label="Per giorno" title="Per giorno" aria-pressed="false"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="15" rx="2"></rect><path d="M7.5 3.5v4M16.5 3.5v4M3.5 10h17M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"></path></svg></button>
+              </div>
+              <div id="practiceType" role="radiogroup" aria-label="Tipo di domanda">
+                <button class="type-btn" type="button" role="radio" data-practice-type="quiz" aria-label="Quiz" title="Quiz" aria-checked="true" tabindex="0"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"></rect><path d="M9 3.5h6v3H9zM8.5 12l2 2 5-5M8.5 17h7"></path></svg></button>
+                <button class="type-btn" type="button" role="radio" data-practice-type="mirata" aria-label="Mirata" title="Mirata" aria-checked="false" tabindex="-1"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="13" r="7.5"></circle><circle cx="11" cy="13" r="3"></circle><path d="m13.5 10.5 6-6M16 4.5h3.5V8"></path></svg></button>
+                <button class="type-btn" type="button" role="radio" data-practice-type="vasta" aria-label="Vasta" title="Vasta" aria-checked="false" tabindex="-1"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6.5c-2-2-5-2-8-1v13c3-1 6-1 8 1 2-2 5-2 8-1v-13c-3-1-6-1-8 1Z"></path><path d="M12 6.5v13M7 9h2M15 9h2M7 12h2M15 12h2"></path></svg></button>
+                <button class="type-btn" type="button" role="radio" data-practice-type="mista" aria-label="Mista" title="Mista" aria-checked="false" tabindex="-1"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h2.5c4.5 0 6.5 10 11 10H20M17 14l3 3-3 3M4 17h2.5c1.8 0 3-1.5 4.2-3.3M13.5 9.3c1.2-1.5 2.4-2.3 4-2.3H20M17 4l3 3-3 3"></path></svg></button>
+              </div>
+            </div>
             <div class="subject-row" id="subjectRow"></div>
+            <div class="day-list" id="dayRow" hidden></div>
             <div class="section-label"><h2>Lezioni</h2><span class="meta" id="lessonHead"></span></div>
             <div class="search">
               <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -62,6 +70,9 @@
 
           <!-- ═══ 2 · DETTAGLIO LEZIONE ═══ -->
           <section class="view" id="view-lesson"></section>
+
+          <!-- ═══ 2b · LEGGI E RIPETI ═══ -->
+          <section class="view" id="view-read"></section>
 
           <!-- ═══ 3 · PREPARAZIONE RECALL ═══ -->
           <section class="view" id="view-setup"></section>

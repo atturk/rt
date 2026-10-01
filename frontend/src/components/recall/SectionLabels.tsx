@@ -36,7 +36,7 @@ export function SectionLabelsCard({ lessonId }: { lessonId: number }) {
       })),
     onSuccess: (result) => client.setQueryData(key, result),
   })
-  if (!data.data) return data.isError ? <Alert tone="danger">{errorMessage(data.error)}</Alert> : null
+  if (!data.data?.sections) return data.isError ? <Alert tone="danger">{errorMessage(data.error)}</Alert> : null
   const { mode, sections, options } = data.data
   return <Card className="flex flex-col gap-3 p-4 text-sm" data-testid="section-labels">
     <div>

@@ -1206,7 +1206,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate */
+        /**
+         * Generate
+         * @description Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi).
+         */
         post: operations["generate_api_v1_mini_app_lessons__lesson_id__generate_post"];
         delete?: never;
         options?: never;
@@ -10290,7 +10293,7 @@ export interface operations {
     generate_api_v1_mini_app_lessons__lesson_id__generate_post: {
         parameters: {
             query?: {
-                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio";
+                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
             };
             header?: never;
             path: {

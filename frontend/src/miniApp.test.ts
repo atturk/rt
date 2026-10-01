@@ -4,7 +4,7 @@ import html from '../mini-app.html?raw'
 
 const question = { id: 'q1', type: 'quiz', question_text: 'Quale struttura?', unit_ids: ['u1'], options: ['Cuore', 'Fegato'] }
 const counts = { quiz: { pending: 1 }, mirata: { pending: 1 }, vasta: { pending: 0 } }
-let pending: boolean, completed: boolean, voiceResult: boolean, calls: string[]
+let pending: boolean, completed: boolean, voiceResult: boolean, calls: string[], urls: URL[]
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 const click = (s: string) => fireEvent.click($(s))
 const ready = (s: string, text: string) => waitFor(() => expect($(s)).toHaveTextContent(text))
@@ -14,17 +14,21 @@ beforeEach(async () => {
   localStorage.clear(); sessionStorage.clear()
   document.body.innerHTML = html.split('<body>')[1].split('</body>')[0]
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn() }))
-  pending = false; completed = false; voiceResult = false; calls = []
+  pending = false; completed = false; voiceResult = false; calls = []; urls = []
   vi.stubGlobal('fetch', vi.fn(async (input: string, options: RequestInit = {}) => {
     const url = new URL(input, 'http://localhost')
     const path = url.pathname.replace('/api/v1/mini-app', '')
-    calls.push((options.method || 'GET') + ' ' + path)
+    calls.push((options.method || 'GET') + ' ' + path); urls.push(url)
     let data: unknown, status = 200
     if (path === '/auth') data = { token: 'study-token' }
     else if (path === '/lessons') data = [{ id: 1, materia: 'ANATOMIA', titolo: 'Lezione di anatomia', data: '2026-09-01', ready: true, questions: counts }]
-    else if (path === '/lessons/1') data = { ready: true, has_audio: false, units: [{ id: 'u1', title: 'Il cuore', content: 'Appunti di RT', html: '<p>Appunti di RT</p>', start: 0, end: 60 }], questions: counts }
+    else if (path === '/lessons/1') data = { ready: true, has_audio: false, units: [{ id: 'u1', title: 'Il cuore', content: 'Appunti di RT', html: '<p>Appunti di RT</p>', start: 0, end: 60, pending: { quiz: 1, mirata: 1 } }, { id: 'u2', title: 'Il fegato', content: 'Fegato', html: '<p>Fegato</p>', start: 60, end: 120, pending: {} }], questions: counts }
     else if (path === '/lessons/1/next') data = { ...question, type: url.searchParams.get('qtype') || 'quiz' }
-    else if (path === '/lessons/1/resume') data = { question, answer: null, pending_job: pending ? { job_id: 'job1', worker_available: completed } : null }
+    else if (path === '/subject/next') data = { lesson_id: 1, question: { ...question, type: 'quiz' } }
+    else if (path === '/subject/end') data = { summary: { questions: 1, answered: 1, quiz_answered: 1, correct: 1 } }
+    else if (path === '/lessons/1/generate') { status = 202; data = { job_id: 'gen1', worker_available: true } }
+    else if (path === '/jobs/gen1') data = { state: 'succeeded', worker_available: true, result: {} }
+    else if (path === '/lessons/1/resume') data = { question: { ...question, type: pending ? 'mirata' : 'quiz' }, answer: null, pending_job: pending ? { job_id: 'job1', worker_available: completed } : null }
     else if (path === '/lessons/1/answer') {
       const body = JSON.parse(options.body as string)
       if (body.choice == null && !body.dont_know) { pending = true; status = 202; data = { job_id: 'job1', worker_available: false } }
@@ -99,5 +103,50 @@ describe('Telegram study frontend', () => {
     expect($('#qFeedback')).toHaveTextContent('Risposta dello studente')
     expect($('#qFeedback')).toHaveTextContent('Valutazione del worker')
     expect(calls.filter(c => c === 'POST /lessons/1/answer')).toHaveLength(0)
+  })
+
+  it('reads a unit and repeats it right away with a mixed review limited to that unit', async () => {
+    click('.lesson-row')
+    await ready('#view-lesson', 'Leggi e ripeti')
+    click('[data-read]')
+    await ready('#view-read', 'Il cuore')
+    expect($('#view-read')).toHaveTextContent('Appunti di RT')
+    expect($('#view-read')).toHaveTextContent('2 domande · quiz e mirata su questa unità')
+    click('[data-next]')
+    await ready('#view-read', 'Il fegato')
+    expect($('[data-repeat]')).toBeNull()
+    click('[data-prev]')
+    await ready('#view-read', 'Il cuore')
+    click('[data-repeat]')
+    await ready('#qText', 'Quale struttura?')
+    const next = urls.find(u => u.pathname.endsWith('/lessons/1/next'))!
+    expect(next.searchParams.get('qtype')).toBe('mista')
+    expect(next.searchParams.get('unit_id')).toBe('u1')
+    expect($('#qProg')).toHaveTextContent('Domanda 1 di 2')
+  })
+
+  it('reviews by day through the shared day session', async () => {
+    click('[data-pmode="giorno"]')
+    expect($('#subjectRow')).not.toBeVisible()
+    await ready('#dayRow', 'Lezione di anatomia')
+    click('[data-practice-type="mista"]')
+    expect($('#dayRow')).toHaveTextContent('2 domande pronte')
+    click('[data-day="2026-09-01"]')
+    await ready('#view-setup', 'Ripasso del giorno')
+    click('#mainBtn')
+    await ready('#qText', 'Quale struttura?')
+    const next = urls.find(u => u.pathname.endsWith('/subject/next'))!
+    expect(next.searchParams.get('materia')).toBe('GIORNO:2026-09-01')
+    expect(next.searchParams.get('qtype')).toBe('mista')
+    click('[data-opt="A"]'); click('#mainBtn')
+    await ready('#qFeedback', 'Spiegazione del backend')
+  })
+
+  it('regenerates the whole pool with every question type', async () => {
+    click('.lesson-row')
+    await ready('#view-lesson', 'Rigenera il pool di domande')
+    click('[data-regen]')
+    await waitFor(() => expect(calls).toContain('GET /jobs/gen1'))
+    expect(urls.find(u => u.pathname.endsWith('/generate'))!.searchParams.get('qtype')).toBe('mista')
   })
 })

@@ -13519,6 +13519,7 @@
     },
     "/api/v1/mini-app/lessons/{lesson_id}/generate": {
       "post": {
+        "description": "Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi).",
         "operationId": "generate_api_v1_mini_app_lessons__lesson_id__generate_post",
         "parameters": [
           {
@@ -13543,7 +13544,8 @@
                 "mirata",
                 "vasta",
                 "caso",
-                "esercizio"
+                "esercizio",
+                "mista"
               ],
               "title": "Qtype",
               "type": "string"

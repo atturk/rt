@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from rt.api import schemas
-from rt.api.schemas import NextQuestionType, QuestionType
+from rt.api.schemas import NextQuestionType
 from rt.api.deps import LessonDir
 from rt.api.errors import ApiError
 from rt.api.mini_auth import StudyActor, issue_session, study_actor, verify_init_data
@@ -198,14 +198,17 @@ def voice(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
 
 @router.post("/lessons/{lesson_id}/generate", status_code=202)
 def generate(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
-             qtype: QuestionType = "quiz"):
+             qtype: NextQuestionType = "quiz"):
+    """Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi)."""
     from rt.api.jobs import queue, job_accepted
     from rt.services.jobs import ACTIVE_STATES
+    mixed = qtype == "mista"
     pending = next((j for j in queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)
-                    if j.type == "recall_batch" and j.payload.get("qtype") == qtype and j.created_by == actor), None)
+                    if j.created_by == actor and (j.type == "recall_generate" if mixed else
+                                                  j.type == "recall_batch" and j.payload.get("qtype") == qtype)), None)
     if pending:
         return job_accepted(pending.id)
-    return recall.generate(lesson_id, schemas.RecallGenerate(qtype=qtype, mock=False), lesson_dir, actor)
+    return recall.generate(lesson_id, schemas.RecallGenerate(qtype=None if mixed else qtype, mock=False), lesson_dir, actor)
 
 
 @router.post("/lessons/{lesson_id}/skip")
