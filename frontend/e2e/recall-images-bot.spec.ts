@@ -217,9 +217,9 @@ test('recall: unità per il recaller e domande eliminate in blocco, rilette dopo
 test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel documento', async ({ page }) => {
   await loginViaLink(page)
   const lesson = await builtLesson(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Immagini' }).click()
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Arricchimento' }).click()
   await page.locator(`[data-testid=picker-lesson][data-lesson-id="${lesson.id}"]`).getByRole('link').click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/immagini$`))
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/arricchimento$`))
   const before = (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images
 
   await page.getByLabel('PDF o foto').setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
