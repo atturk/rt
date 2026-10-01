@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "Answer": {
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "maxLength": 30000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "dont_know": {
+            "default": false,
+            "title": "Dont Know",
+            "type": "boolean"
+          },
+          "question_id": {
+            "maxLength": 200,
+            "title": "Question Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id"
+        ],
+        "title": "Answer",
+        "type": "object"
+      },
       "Body_add_images_api_v1_lessons__lesson_id__images_post": {
         "properties": {
           "files": {
@@ -157,6 +200,25 @@
           "archives"
         ],
         "title": "Body_import_lesson_zips_api_v1_lessons_import_zip_post",
+        "type": "object"
+      },
+      "Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post": {
+        "properties": {
+          "audio": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Audio",
+            "type": "string"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id",
+          "audio"
+        ],
+        "title": "Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post",
         "type": "object"
       },
       "ChooseFolderIn": {
@@ -1359,6 +1421,18 @@
           "database"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "Init": {
+        "properties": {
+          "init_data": {
+            "default": "",
+            "maxLength": 16384,
+            "title": "Init Data",
+            "type": "string"
+          }
+        },
+        "title": "Init",
         "type": "object"
       },
       "IssueContext": {
@@ -11115,6 +11189,1804 @@
         "summary": "Corregge o ripristina la classificazione di un'unità",
         "tags": [
           "lezioni"
+        ]
+      }
+    },
+    "/api/v1/mini-app/auth": {
+      "post": {
+        "operationId": "authenticate_api_v1_mini_app_auth_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Init"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Authenticate",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/jobs/{job_id}": {
+      "get": {
+        "operationId": "job_api_v1_mini_app_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Job",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons": {
+      "get": {
+        "operationId": "lessons_api_v1_mini_app_lessons_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lessons",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}": {
+      "get": {
+        "operationId": "lesson_api_v1_mini_app_lessons__lesson_id__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lesson",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/answer": {
+      "post": {
+        "operationId": "answer_api_v1_mini_app_lessons__lesson_id__answer_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Answer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Answer",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/answer-voice": {
+      "post": {
+        "operationId": "voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Voice",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/end": {
+      "post": {
+        "operationId": "end_api_v1_mini_app_lessons__lesson_id__end_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "End",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/generate": {
+      "post": {
+        "operationId": "generate_api_v1_mini_app_lessons__lesson_id__generate_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qtype",
+            "required": false,
+            "schema": {
+              "default": "quiz",
+              "enum": [
+                "quiz",
+                "mirata",
+                "vasta"
+              ],
+              "title": "Qtype",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/images/{name}": {
+      "get": {
+        "operationId": "image_api_v1_mini_app_lessons__lesson_id__images__name__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Image",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/next": {
+      "post": {
+        "operationId": "next_question_api_v1_mini_app_lessons__lesson_id__next_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qtype",
+            "required": false,
+            "schema": {
+              "default": "quiz",
+              "enum": [
+                "quiz",
+                "mirata",
+                "vasta"
+              ],
+              "title": "Qtype",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exclude Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Next Question",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/resume": {
+      "get": {
+        "operationId": "resume_api_v1_mini_app_lessons__lesson_id__resume_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "question_id",
+            "required": true,
+            "schema": {
+              "title": "Question Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "materia",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Materia"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resume",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/session": {
+      "get": {
+        "operationId": "session_api_v1_mini_app_lessons__lesson_id__session_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Session",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/skip": {
+      "post": {
+        "operationId": "skip_api_v1_mini_app_lessons__lesson_id__skip_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallSkip"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Skip",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/units/{unit_id}/audio": {
+      "get": {
+        "operationId": "audio_api_v1_mini_app_lessons__lesson_id__units__unit_id__audio_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "title": "Unit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Audio",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/units/{unit_id}/send-audio": {
+      "post": {
+        "operationId": "send_audio_api_v1_mini_app_lessons__lesson_id__units__unit_id__send_audio_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "title": "Unit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Audio",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/vote": {
+      "post": {
+        "operationId": "vote_api_v1_mini_app_lessons__lesson_id__vote_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallVote"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Vote",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/subject/end": {
+      "post": {
+        "operationId": "subject_end_api_v1_mini_app_subject_end_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "title": "Materia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Subject End",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/subject/generate": {
+      "post": {
+        "operationId": "subject_generate_api_v1_mini_app_subject_generate_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "title": "Materia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Subject Generate",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/subject/next": {
+      "post": {
+        "operationId": "subject_next_api_v1_mini_app_subject_next_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "materia",
+            "required": true,
+            "schema": {
+              "title": "Materia",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qtype",
+            "required": false,
+            "schema": {
+              "default": "quiz",
+              "enum": [
+                "quiz",
+                "mirata",
+                "vasta"
+              ],
+              "title": "Qtype",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exclude"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Subject Next",
+        "tags": [
+          "Telegram Mini App"
         ]
       }
     },
