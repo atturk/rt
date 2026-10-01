@@ -32,7 +32,7 @@ from rt.storage import fs
 SCOPES = ("final", "all")
 ERRORS_FILE = "Errori concettuali.md"
 _TITLED_MD = re.compile(r"^\[\d{4}-\d{2}-\d{2}\] .+\.md$")
-_MD_LINK = re.compile(r"!\[[^\]]*\]\(<?([^)>\s]+)>?(?:\s+\"[^\"]*\")?\)|<img[^>]+src=\"([^\"]+)\"")
+_MD_LINK = re.compile(r"!?\[[^\]]*\]\(<?([^)>\s]+)>?(?:\s+\"[^\"]*\")?\)|<img[^>]+src=\"([^\"]+)\"")
 
 
 PREVIEW_SUFFIX = " (anteprima)"

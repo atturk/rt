@@ -1,6 +1,35 @@
 {
   "components": {
     "schemas": {
+      "Action": {
+        "properties": {
+          "action": {
+            "enum": [
+              "dismiss",
+              "restore",
+              "delete"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "Action",
+        "type": "object"
+      },
+      "AnalyzeIn": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          }
+        },
+        "title": "AnalyzeIn",
+        "type": "object"
+      },
       "Answer": {
         "properties": {
           "answer": {
@@ -42,6 +71,70 @@
           "question_id"
         ],
         "title": "Answer",
+        "type": "object"
+      },
+      "BatchIn": {
+        "properties": {
+          "lesson_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Lesson Ids",
+            "type": "array"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lesson_ids"
+        ],
+        "title": "BatchIn",
+        "type": "object"
+      },
+      "BatchOut": {
+        "properties": {
+          "existing": {
+            "title": "Existing",
+            "type": "integer"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobAccepted"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "skipped": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "skipped_reasons": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Skipped Reasons",
+            "type": "object"
+          }
+        },
+        "required": [
+          "jobs",
+          "queued",
+          "existing",
+          "skipped"
+        ],
+        "title": "BatchOut",
         "type": "object"
       },
       "Body_add_images_api_v1_lessons__lesson_id__images_post": {
@@ -219,6 +312,30 @@
           "audio"
         ],
         "title": "Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post",
+        "type": "object"
+      },
+      "Cap": {
+        "properties": {
+          "mode": {
+            "default": "inherit",
+            "enum": [
+              "inherit",
+              "off",
+              "fixed",
+              "proportional"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "number": {
+            "default": 5,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Number",
+            "type": "integer"
+          }
+        },
+        "title": "Cap",
         "type": "object"
       },
       "ChooseFolderIn": {
@@ -1293,6 +1410,306 @@
         "title": "DocumentSection",
         "type": "object"
       },
+      "Element": {
+        "properties": {
+          "asset_html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Html"
+          },
+          "asset_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Image"
+          },
+          "asset_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "static",
+                  "interactive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Mode"
+          },
+          "description": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "edited": {
+            "default": false,
+            "title": "Edited",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "kind": {
+            "enum": [
+              "infographic",
+              "visualization"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "manual": {
+            "default": false,
+            "title": "Manual",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "static",
+            "enum": [
+              "static",
+              "interactive"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "source_hash": {
+            "default": "",
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "default": "suggestion",
+            "enum": [
+              "suggestion",
+              "dismissed",
+              "suppressed",
+              "queued",
+              "generating",
+              "ready",
+              "error",
+              "deleted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          },
+          "utility": {
+            "default": 0,
+            "title": "Utility",
+            "type": "number"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "prompt",
+          "id",
+          "unit_id",
+          "kind"
+        ],
+        "title": "Element",
+        "type": "object"
+      },
+      "ElementEdit": {
+        "properties": {
+          "description": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "infographic",
+              "visualization"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "default": "static",
+            "enum": [
+              "static",
+              "interactive"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "prompt",
+          "kind"
+        ],
+        "title": "ElementEdit",
+        "type": "object"
+      },
+      "EnrichmentConfig": {
+        "properties": {
+          "automatic": {
+            "default": true,
+            "title": "Automatic",
+            "type": "boolean"
+          },
+          "cap_mode": {
+            "default": "proportional",
+            "enum": [
+              "off",
+              "fixed",
+              "proportional"
+            ],
+            "title": "Cap Mode",
+            "type": "string"
+          },
+          "cap_number": {
+            "default": 5,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Cap Number",
+            "type": "integer"
+          },
+          "decision_base_url": {
+            "default": "https://openrouter.ai/api/alpha/decisions",
+            "title": "Decision Base Url",
+            "type": "string"
+          },
+          "decision_credential": {
+            "default": "openrouter",
+            "title": "Decision Credential",
+            "type": "string"
+          },
+          "decision_model": {
+            "default": "typesafe/jev-1.13",
+            "title": "Decision Model",
+            "type": "string"
+          },
+          "decision_timeout": {
+            "default": 30,
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Decision Timeout",
+            "type": "number"
+          },
+          "utility_threshold": {
+            "default": 0.65,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Utility Threshold",
+            "type": "number"
+          }
+        },
+        "title": "EnrichmentConfig",
+        "type": "object"
+      },
+      "EnrichmentView": {
+        "properties": {
+          "cap": {
+            "$ref": "#/components/schemas/Cap"
+          },
+          "effective_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Limit"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/components/schemas/Element"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/Unit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cap",
+          "effective_limit",
+          "units",
+          "elements"
+        ],
+        "title": "EnrichmentView",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -1417,6 +1834,77 @@
           "folders"
         ],
         "title": "FolderListing",
+        "type": "object"
+      },
+      "GenerateIn": {
+        "properties": {
+          "description": {
+            "default": "Generazione manuale",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Element Id"
+          },
+          "kind": {
+            "default": "visualization",
+            "enum": [
+              "infographic",
+              "visualization"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "interactive",
+            "enum": [
+              "static",
+              "interactive"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 12000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "title": {
+            "default": "Elemento grafico",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Id"
+          }
+        },
+        "title": "GenerateIn",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2464,6 +2952,14 @@
             "description": "True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)",
             "title": "In Document",
             "type": "boolean"
+          },
+          "macro_ids": {
+            "description": "Macro unità a cui è assegnata",
+            "items": {
+              "type": "string"
+            },
+            "title": "Macro Ids",
+            "type": "array"
           },
           "name": {
             "description": "Nome del file in assets/images",
@@ -5229,6 +5725,24 @@
         "title": "UndoRequest",
         "type": "object"
       },
+      "Unit": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "Unit",
+        "type": "object"
+      },
       "UnitRelevanceItem": {
         "properties": {
           "answer": {
@@ -6079,6 +6593,92 @@
         "summary": "Riepilogo dei costi LLM di tutte le lezioni",
         "tags": [
           "lezioni"
+        ]
+      }
+    },
+    "/api/v1/enrichment/analyze": {
+      "post": {
+        "operationId": "batch_api_v1_enrichment_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Batch",
+        "tags": [
+          "arricchimento"
         ]
       }
     },
@@ -7388,6 +7988,97 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/assets/enrichment/{name}": {
+      "get": {
+        "operationId": "asset_api_v1_lessons__lesson_id__assets_enrichment__name__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Asset",
+        "tags": [
+          "arricchimento"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/assets/images/{name}": {
       "get": {
         "operationId": "get_image_api_v1_lessons__lesson_id__assets_images__name__get",
@@ -8339,6 +9030,608 @@
         "summary": "Acquire Document Lease",
         "tags": [
           "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/enrichment": {
+      "get": {
+        "operationId": "enrichment_api_v1_lessons__lesson_id__enrichment_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Enrichment",
+        "tags": [
+          "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/enrichment/analyze": {
+      "post": {
+        "operationId": "analyze_api_v1_lessons__lesson_id__enrichment_analyze_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analyze",
+        "tags": [
+          "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/enrichment/cap": {
+      "put": {
+        "operationId": "cap_api_v1_lessons__lesson_id__enrichment_cap_put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cap"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cap",
+        "tags": [
+          "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/enrichment/generate": {
+      "post": {
+        "operationId": "generate_api_v1_lessons__lesson_id__enrichment_generate_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate",
+        "tags": [
+          "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/enrichment/{element_id}": {
+      "put": {
+        "operationId": "edit_api_v1_lessons__lesson_id__enrichment__element_id__put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "element_id",
+            "required": true,
+            "schema": {
+              "title": "Element Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ElementEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit",
+        "tags": [
+          "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/enrichment/{element_id}/action": {
+      "post": {
+        "operationId": "action_api_v1_lessons__lesson_id__enrichment__element_id__action_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "element_id",
+            "required": true,
+            "schema": {
+              "title": "Element Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Action"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Action",
+        "tags": [
+          "arricchimento"
         ]
       }
     },
@@ -14553,6 +15846,166 @@
         "summary": "Prova una configurazione del classificatore (anche non salvata) su un'unità di lezione",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/enrichment": {
+      "get": {
+        "operationId": "settings_api_v1_settings_enrichment_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Settings",
+        "tags": [
+          "arricchimento"
+        ]
+      },
+      "put": {
+        "operationId": "save_settings_api_v1_settings_enrichment_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrichmentConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Settings",
+        "tags": [
+          "arricchimento"
         ]
       }
     },

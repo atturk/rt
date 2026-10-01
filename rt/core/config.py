@@ -219,6 +219,9 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "review": empty_shell(max_tokens=8192, timeout=180),
         "image_description": empty_shell(max_tokens=2048, timeout=120),
         "image_unit_judge": empty_shell(max_tokens=8192, timeout=180),
+        "enrichment_writer": empty_shell(max_tokens=2048, timeout=120),
+        "enrichment_visualizer": empty_shell(max_tokens=16384, timeout=240),
+        "enrichment_image": empty_shell(timeout=300),
         "recall": empty_shell(max_tokens=8192, timeout=180),
     }
 
@@ -323,7 +326,19 @@ class JevConfig(BaseModel):
             return None
 
 
+class EnrichmentConfig(BaseModel):
+    automatic: bool = True
+    cap_mode: Literal["off", "fixed", "proportional"] = "proportional"
+    cap_number: int = Field(default=5, ge=1, le=1000)
+    utility_threshold: float = Field(default=0.65, ge=0, le=1)
+    decision_model: str = "typesafe/jev-1.13"
+    decision_credential: str = "openrouter"
+    decision_base_url: str = "https://openrouter.ai/api/alpha/decisions"
+    decision_timeout: float = Field(default=30, ge=1, le=300)
+
+
 class RTConfig(BaseModel):
+    enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")

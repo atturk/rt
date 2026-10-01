@@ -342,9 +342,9 @@ function LessonActions({ lessonId, actions }: { lessonId: number; actions?: Sche
             </Link>
           )}
         </ActionSlot>
-        <ActionSlot action={a.images} label="Immagini" icon={<Images className="size-4" aria-hidden />}>
+        <ActionSlot action={a.images} label="Arricchimento" icon={<Images className="size-4" aria-hidden />}>
           {(content) => (
-            <Link className={linkButton} to={`/lezioni/${lessonId}/immagini`}>
+            <Link className={linkButton} to={`/lezioni/${lessonId}/arricchimento`}>
               {content}
             </Link>
           )}

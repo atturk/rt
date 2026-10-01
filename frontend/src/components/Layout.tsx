@@ -42,7 +42,7 @@ export function Layout({ areas }: { areas: Area[] }) {
   const activeArea = (to: string) =>
     (to === '/review' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/revisione')) ||
     (to === '/recall' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/recall')) ||
-    (to === '/immagini' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/immagini'))
+    (to === '/arricchimento' && location.pathname.startsWith('/lezioni/') && (location.pathname.endsWith('/arricchimento') || location.pathname.endsWith('/immagini')))
   return (
     <div className="flex min-h-dvh">
       <aside

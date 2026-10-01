@@ -9,6 +9,10 @@ const JOB_NAMES: Record<string, string> = {
   recall: 'Recall',
   image_description: 'Descrizione immagini',
   image_unit_judge: 'Posizione immagini',
+  enrichment_decision: 'Utilità arricchimento',
+  enrichment_writer: 'Idee e prompt',
+  enrichment_visualizer: 'Visualizzazioni',
+  enrichment_image: 'Infografiche',
 }
 
 type JobCost = { total_calls?: number; total_cost?: number; has_unknown_cost?: boolean }

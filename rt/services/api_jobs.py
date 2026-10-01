@@ -52,6 +52,8 @@ def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             res = run_rewrite(job.lesson_path, target_unit_id=unit, force=force, force_mock=mock, ctx=ctx)
             raise_if_incomplete("rewrite", res)
             results.append({"unit": unit, "result": res})
+        from rt.services.pipeline_service import automatic_enrichment
+        automatic_enrichment(job.lesson_path, mock, ctx)
     return _done({"phase": "rewrite", "units": results}, lesson_path=job.lesson_path)
 
 

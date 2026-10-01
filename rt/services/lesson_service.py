@@ -455,7 +455,8 @@ def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     final = _document_is_final(lesson_dir)
     sections = document_sections(lesson_dir)
     md = markdown_parser()  # HTML grezzo escapato, formule intatte
-    tokens = md.parse(markdown)
+    from rt.services.enrichment_service import strip_generated
+    tokens = md.parse(strip_generated(markdown))
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})
     return {"final": final, "markdown": markdown, "html": html, "sections": sections}

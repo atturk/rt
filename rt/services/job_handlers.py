@@ -159,3 +159,26 @@ register_handler(RUN_PHASE, run_phase_job)
 register_handler(ADD_IMAGES, add_images_job)
 register_handler(RECALL_GENERATE, recall_generate_job)
 register_handler(TRANSCRIBE_VOICE, transcribe_voice_job)
+
+
+def enrichment_analyze_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.enrichment_service import analyze
+    with ctx.activate():
+        result = analyze(_lesson_dir(job), mock=bool(job.payload.get("mock")), ctx=ctx)
+    return JobOutcome(state=JobState.SUCCEEDED, result=result)
+
+
+def enrichment_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.enrichment_service import generate, load, get_element, save
+    from rt.services.review_service import lesson_lock
+    with lesson_lock(_lesson_dir(job)):
+        state = load(_lesson_dir(job))
+        get_element(state, job.payload["element_id"]).job_id = job.id
+        save(_lesson_dir(job), state)
+    with ctx.activate():
+        result = generate(_lesson_dir(job), job.payload["element_id"], mock=bool(job.payload.get("mock")), ctx=ctx)
+    return JobOutcome(state=JobState.SUCCEEDED, result=result)
+
+
+register_handler("enrichment_analyze", enrichment_analyze_job)
+register_handler("enrichment_generate", enrichment_generate_job)

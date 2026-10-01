@@ -21,7 +21,9 @@ PHASES = (
     ("review", "Review"),
     ("recall", "Recall"),
     ("image_description", "Descrizione immagine"),
-    ("image_unit_judge", "Giudice immagini"),
+    ("enrichment_writer", "Arricchitore"),
+    ("enrichment_visualizer", "Visualizzazioni HTML"),
+    ("enrichment_image", "Generazione infografiche"),
 )
 PROVIDERS = (
     ("OpenRouter", "openrouter"),

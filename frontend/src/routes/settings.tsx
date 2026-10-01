@@ -9,6 +9,7 @@ import { InfoSection } from '@/components/settings/info'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { WebSearchSection } from '@/components/settings/websearch'
+import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { Alert } from '@/components/ui/alert'
@@ -118,6 +119,7 @@ export const settingsArea: Area = {
           element: page((s) => (
             <>
               <PhasesSection settings={s} />
+              <EnrichmentSettingsSection />
               <ConnectionsSection settings={s} />
               <NewConnectionSection />
               <RoutesSection settings={s} />

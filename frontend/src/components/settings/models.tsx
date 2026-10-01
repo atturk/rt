@@ -66,7 +66,9 @@ const PHASE_HINTS: Record<string, string> = {
   review: 'Cerca errori scientifici nel testo rielaborato.',
   recall: 'Genera domande per il ripasso attivo.',
   image_description: 'Descrive slide e immagini. Il modello selezionato deve supportare Vision.',
-  image_unit_judge: 'Associa le immagini alle unità della lezione.',
+  enrichment_writer: 'Prepara idee e prompt JSON da una singola subunità, senza generare contenuti.',
+  enrichment_visualizer: 'Genera HTML/SVG/JavaScript autonomo per grafici, matrici, diagrammi e simulazioni.',
+  enrichment_image: 'Generatore di immagini tramite Images API. Usa un modello con output immagine su OpenRouter o OpenAI-compatible.',
 }
 
 // ------------------------------------------------------------------ modelli per fase
@@ -76,7 +78,7 @@ export function PhasesSection({ settings }: { settings: Settings }) {
     <Section
       id="fasi"
       title="Modelli per fase"
-      description="Connessione e modello usati da ciascuna delle sei fasi. Un modello nuovo viene aggiunto alla connessione. Prova fa una chiamata minima, anche prima di salvare."
+      description="Connessione e modello usati da ciascuna fase. Un modello nuovo viene aggiunto alla connessione. Prova fa una chiamata minima, anche prima di salvare."
     >
       {settings.connections.length === 0 && <Alert tone="warning">Crea prima una connessione qui sotto.</Alert>}
       <PhaseRows settings={settings} />
@@ -162,7 +164,7 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
         Salva
       </Button>
-      <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />
+      {!phase.job.startsWith('enrichment_') && <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />}
       {assign.isError && (
         <Alert tone="danger" className="sm:col-span-5">
           {errorMessage(assign.error)}

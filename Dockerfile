@@ -20,7 +20,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH=/opt/rt/bin:$PATH \
     PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg chromium \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/rt
 COPY requirements.txt constraints.txt ./

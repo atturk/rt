@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
 import { LessonBrowser } from '@/components/LessonBrowser'
@@ -15,6 +16,8 @@ export function LessonPicker({
   ready,
   notReady,
   storageKey,
+  action,
+  groupActions,
 }: {
   title: string
   intro: string
@@ -22,6 +25,8 @@ export function LessonPicker({
   ready: (lesson: Lesson) => boolean
   notReady: string
   storageKey: string
+  action?: (lesson: Lesson) => ReactNode
+  groupActions?: (lessons: Lesson[]) => ReactNode
 }) {
   const lessons = useLessons()
   const all = lessons.data ?? []
@@ -35,6 +40,7 @@ export function LessonPicker({
       <LessonBrowser
         storageKey={storageKey}
         lessons={all}
+        groupActions={groupActions}
         card={(lesson) => (
           <Card className="flex flex-col gap-1 p-4" data-testid="picker-lesson" data-lesson-id={lesson.id}>
             {ready(lesson) ? (
@@ -48,10 +54,11 @@ export function LessonPicker({
               {[lesson.materia, lesson.data].filter(Boolean).join(' · ')}
               {!ready(lesson) && ` · ${notReady}`}
             </span>
+            {action?.(lesson)}
           </Card>
         )}
         link={(lesson) => (ready(lesson) ? href(lesson) : null)}
-        columns={[{ label: 'Stato', className: 'text-muted-foreground', cell: (lesson) => (ready(lesson) ? 'Pronta' : notReady) }]}
+        columns={[{ label: 'Stato', className: 'text-muted-foreground', cell: (lesson) => (ready(lesson) ? 'Pronta' : notReady) }, ...(action ? [{ label: 'Arricchimento', cell: action }] : [])]}
         testId="picker-lesson"
         emptyText="Nessuna lezione corrisponde ai filtri."
       />

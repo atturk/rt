@@ -6,6 +6,7 @@ import { activeUnit } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { useLessonAudio } from './audio'
+import { EnrichmentSlots } from './Enrichment'
 
 type Props = {
   document: Schemas['LessonDocument']
@@ -136,6 +137,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   }, [hash, doc, highlightText])
 
   return (
+    <>
     <article
       ref={ref}
       className="rt-document"
@@ -147,5 +149,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
       }}
       dangerouslySetInnerHTML={{ __html: withImageUrls(doc.html, lessonId) }}
     />
+    <EnrichmentSlots root={ref} lessonId={lessonId} documentKey={doc.html} />
+    </>
   )
 }

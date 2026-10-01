@@ -366,7 +366,7 @@ def cmd_add_images(args):
         print("❌ Nessuna sorgente di immagini indicata. Usa -i <pdf_o_cartella> e/o --web-search N.", file=sys.stderr)
         sys.exit(1)
     if not getattr(args, "mock", False):
-        _ensure_config_ready(["image_description", "image_unit_judge"])
+        _ensure_config_ready(["image_description"])
     from rt.pipeline.add_images import run_add_images
     try:
         res = run_add_images(

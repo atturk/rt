@@ -342,6 +342,10 @@ fi
 echo ""
 
 # 4. Cartella dati, segreti, database e web app
+echo "Installazione del browser per le catture delle visualizzazioni..."
+if ! "${VENV_DIR}/bin/python" -m playwright install chromium >>"$LOG_FILE" 2>&1; then
+    echo "Browser non installato: le visualizzazioni richiedono 'python -m playwright install chromium' oppure RT_ENRICHMENT_CHROMIUM."
+fi
 echo "${CYAN}${BOLD}[4/5] Dati, segreti, database e web app${RESET}"
 chmod +x "${REPO_DIR}/bin/rt"
 RT_BIN=("${VENV_DIR}/bin/python" "${REPO_DIR}/bin/rt")

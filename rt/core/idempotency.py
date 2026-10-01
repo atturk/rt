@@ -61,6 +61,7 @@ IMAGE_PLACEMENT_FILE = "assets/images/placement.json"
 # Modifiche fatte a mano all'anteprima (titoli, timecode; RT4-FA3, rt.pipeline.document_edits).
 # Entra nell'impronta del build solo se esiste, così i documenti creati prima restano validi.
 DOCUMENT_EDITS_FILE = "document_edits.json"
+ENRICHMENT_MANIFEST = "assets/enrichment/manifest.json"
 
 # Input del documento finale: quello che cambia il testo dell'anteprima. science_issues.json
 # non c'è: una nuova review non cambia il documento finché non si decide sulle sue issue.
@@ -74,7 +75,7 @@ _LEGACY_BUILD_INPUT_FILES = ["segments.json", "outline.json", "draft.json", "sci
 PHASE_INPUT_FILES = {
     "rewrite": ["segments.json", "outline.json"],
     "review": ["draft.json", "segments.json"],
-    "build": BUILD_INPUT_FILES + [DOCUMENT_EDITS_FILE],
+    "build": BUILD_INPUT_FILES + [DOCUMENT_EDITS_FILE, ENRICHMENT_MANIFEST],
 }
 
 INPUT_LABELS = {
@@ -84,6 +85,7 @@ INPUT_LABELS = {
     "review_decisions.json": "decisioni della revisione",
     IMAGE_PLACEMENT_FILE: "immagini",
     DOCUMENT_EDITS_FILE: "modifiche all'anteprima",
+    ENRICHMENT_MANIFEST: "elementi grafici",
 }
 
 
@@ -222,6 +224,8 @@ def compute_source_fingerprint(
         in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in BUILD_INPUT_FILES]
         if fs.isfile(lesson_path(lesson_dir, DOCUMENT_EDITS_FILE)):
             in_hashes.append("edits:" + compute_file_sha256(lesson_path(lesson_dir, DOCUMENT_EDITS_FILE)))
+        if fs.isfile(lesson_path(lesson_dir, ENRICHMENT_MANIFEST)):
+            in_hashes.append("enrichment:" + compute_file_sha256(lesson_path(lesson_dir, ENRICHMENT_MANIFEST)))
         return compute_string_sha256("|".join(in_hashes) + f"|inputs_v2|{proc_ver}")
 
     return compute_string_sha256(f"unknown_{phase_name}|{proc_ver}")
@@ -229,7 +233,7 @@ def compute_source_fingerprint(
 
 def _legacy_build_fingerprint(lesson_dir: str) -> Optional[str]:
     """Impronta del build nel formato precedente, valida solo senza immagini posizionate."""
-    if fs.isfile(lesson_path(lesson_dir, IMAGE_PLACEMENT_FILE)) or fs.isfile(lesson_path(lesson_dir, DOCUMENT_EDITS_FILE)):
+    if any(fs.isfile(lesson_path(lesson_dir, name)) for name in (IMAGE_PLACEMENT_FILE, DOCUMENT_EDITS_FILE, ENRICHMENT_MANIFEST)):
         return None
     in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in _LEGACY_BUILD_INPUT_FILES]
     return compute_string_sha256("|".join(in_hashes) + f"|{PROCESSOR_VERSIONS['build']}")
@@ -249,7 +253,7 @@ def accepted_fingerprints(lesson_dir: str, phase_name: str) -> List[str]:
 
 # Input facoltativi: registrati solo quando esistono, così il manifest delle lezioni che non li
 # usano resta quello di prima.
-OPTIONAL_INPUT_FILES = {DOCUMENT_EDITS_FILE}
+OPTIONAL_INPUT_FILES = {DOCUMENT_EDITS_FILE, ENRICHMENT_MANIFEST}
 
 
 def phase_input_hashes(lesson_dir: str, phase_name: str) -> Dict[str, str]:
