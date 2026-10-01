@@ -15,7 +15,8 @@ KEY_B = "sk-or-v1-segreto-connessione-BBBB-9876543210"
 BOT = "987654321:AAH-segreto-bot-telegram-zyxwvu"
 STT = "stt-segreto-chiave-5555-abcdef"
 SECRETS = (KEY_A, KEY_B, BOT, STT)
-JOBS = ("outline", "rewrite", "review", "recall", "image_description", "image_unit_judge")
+JOBS = ("outline", "rewrite", "review", "recall", "image_description",
+        "enrichment_writer", "enrichment_visualizer", "enrichment_image")
 
 
 @pytest.fixture

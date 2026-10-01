@@ -74,11 +74,18 @@ def standalone(body: str) -> str:
 </style></head><body><main id="rt-visualization-root">{body}</main>{_RESIZE_BRIDGE}</body></html>'''
 
 
+# Su macOS Chrome non è nel PATH: se manca il browser di Playwright si usa quello installato.
+_MAC_BROWSERS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                 "/Applications/Chromium.app/Contents/MacOS/Chromium")
+
+
 def snapshot(html: str) -> bytes:
     """Capture the same sandboxed frame used in-app, with all network blocked."""
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         executable = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
+        if not executable and not os.path.isfile(p.chromium.executable_path):
+            executable = next((path for path in _MAC_BROWSERS if os.path.isfile(path)), None)
         browser = p.chromium.launch(headless=True, executable_path=executable)
         try:
             context = browser.new_context(viewport={"width": 1200, "height": 900}, device_scale_factor=1)
