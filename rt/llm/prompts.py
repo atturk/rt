@@ -195,7 +195,7 @@ Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON confo
 # ----------------------------------------------------------------------
 
 RECALL_QUIZ_SYSTEM_PROMPT = """Sei un docente universitario esperto nella preparazione di test a scelta multipla per l'active recall degli studenti.
-Il tuo compito è generare UNA domanda a scelta multipla (quiz) basata sul contenuto di una specifica unità didattica fornita.
+Il tuo compito è generare zero, una o più domande distinte a scelta multipla (quiz) basate sul contenuto di una specifica unità didattica fornita.
 
 REGOLE CATEGORICHE:
 1. La domanda deve vertere ESCLUSIVAMENTE sui concetti trattati nell'unità didattica fornita — nessun contenuto esterno, nessuna generalizzazione enciclopedica.
@@ -206,18 +206,12 @@ REGOLE CATEGORICHE:
 6. La domanda deve essere precisa, non ambigua, e formulata in italiano accademico.
 7. Non inserire numeri progressivi nelle opzioni (es. "A)", "1.") — solo testo.
 8. Ogni opzione deve essere breve e concisa: massimo 100 caratteri (limite tecnico dell'API di Telegram per i quiz nativi). La domanda stessa deve restare sotto i 290 caratteri.
+9. Varia la posizione dell'opzione corretta fra le domande: l'indice 0 nell'esempio JSON è solo illustrativo, non un valore da ripetere.
 
-OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
-{
-  "id": "recall_NNNNNN",  (placeholder, verrà sovrascritto)
-  "type": "quiz",
-  "unit_ids": ["<unit_id>"],
-  "question_text": "<domanda>",
-  "options": ["<opz_0>", "<opz_1>", "<opz_2>", "<opz_3>"],
-  "correct_index": <0|1|2|3>,
-  "pregenerated_material": "<spiegazione perché corretta + perché le altre 3 sono sbagliate>",
-  "status": "pending"
-}"""
+OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
+{"questions": [{"type": "quiz", "question_text": "domanda", "options": ["opzione 0", "opzione 1", "opzione 2", "opzione 3"], "correct_index": 0, "pregenerated_material": "spiegazione"}]}
+Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota obbligatoria.
+Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
 
 
 def build_recall_quiz_user_prompt(
@@ -243,7 +237,7 @@ def build_recall_quiz_user_prompt(
                 label = "❌ ESEMPIO BOCCIATO"
             lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
         fewshot_block = "\n".join(lines) + "\n\n"
-    return f"""{fewshot_block}Genera UNA domanda quiz (scelta multipla, 4 opzioni) per la seguente unità didattica:
+    return f"""{fewshot_block}Genera zero, una o più domande quiz distinte (scelta multipla, 4 opzioni) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
 TITOLO: {unit_title}
@@ -251,7 +245,7 @@ TITOLO: {unit_title}
 CONTENUTO:
 {unit_content}
 
-Restituisci l'oggetto JSON conforme a RecallQuestion (type=quiz) con question_text, options (4 elementi), correct_index e pregenerated_material compilati."""
+Restituisci il contenitore JSON questions conforme a RecallGenerationResult (type=quiz) con question_text, options (4 elementi), correct_index e pregenerated_material compilati."""
 
 
 # ----------------------------------------------------------------------
@@ -259,7 +253,7 @@ Restituisci l'oggetto JSON conforme a RecallQuestion (type=quiz) con question_te
 # ----------------------------------------------------------------------
 
 RECALL_MIRATA_SYSTEM_PROMPT = """Sei un docente universitario esperto nell'identificare i concetti chiave di ogni lezione per guidare l'active recall degli studenti.
-Il tuo compito è generare UNA domanda mirata (risposta aperta su concetto atomico) basata sul contenuto di una specifica unità didattica fornita.
+Il tuo compito è generare zero, una o più domande mirate distinte (risposta aperta su concetto atomico) basate sul contenuto di una specifica unità didattica fornita.
 
 REGOLE CATEGORICHE:
 1. La domanda deve vertere su UN SINGOLO concetto atomico dell'unità: una definizione, un meccanismo, una struttura, una relazione causa-effetto specifica.
@@ -268,17 +262,10 @@ REGOLE CATEGORICHE:
 4. La domanda deve essere formulata in italiano accademico, concisa (1-2 righe).
 5. Adatta la difficoltà al livello universitario: non troppo banale, non enciclopedicamente esaustiva.
 
-OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
-{
-  "id": "recall_NNNNNN",  (placeholder, verrà sovrascritto)
-  "type": "mirata",
-  "unit_ids": ["<unit_id>"],
-  "question_text": "<domanda sul concetto atomico>",
-  "options": null,
-  "correct_index": null,
-  "pregenerated_material": null,
-  "status": "pending"
-}"""
+OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
+{"questions": [{"type": "mirata", "question_text": "domanda", "options": null, "correct_index": null, "pregenerated_material": null}]}
+Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota obbligatoria.
+Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
 
 
 def build_recall_mirata_user_prompt(
@@ -304,7 +291,7 @@ def build_recall_mirata_user_prompt(
                 label = "❌ ESEMPIO BOCCIATO"
             lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
         fewshot_block = "\n".join(lines) + "\n\n"
-    return f"""{fewshot_block}Genera UNA domanda mirata (risposta aperta su concetto atomico) per la seguente unità didattica:
+    return f"""{fewshot_block}Genera zero, una o più domande mirate distinte (risposta aperta su concetto atomico) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
 TITOLO: {unit_title}
@@ -312,7 +299,7 @@ TITOLO: {unit_title}
 CONTENUTO:
 {unit_content}
 
-Restituisci l'oggetto JSON conforme a RecallQuestion (type=mirata) con solo question_text compilato (options=null, correct_index=null, pregenerated_material=null)."""
+Restituisci il contenitore JSON questions conforme a RecallGenerationResult (type=mirata) con question_text compilato per ciascuna domanda (options=null, correct_index=null, pregenerated_material=null)."""
 
 
 # ----------------------------------------------------------------------
@@ -320,7 +307,7 @@ Restituisci l'oggetto JSON conforme a RecallQuestion (type=mirata) con solo ques
 # ----------------------------------------------------------------------
 
 RECALL_VASTA_SYSTEM_PROMPT = """Sei un docente universitario esperto nella strutturazione di domande da esame orale per l'active recall degli studenti.
-Il tuo compito è generare UNA domanda vasta (risposta organizzata stile esame orale) che copra 2-4 unità didattiche contigue fornite.
+Il tuo compito è generare zero, una o più domande vaste distinte (risposta organizzata stile esame orale) che coprano 2-4 unità didattiche contigue fornite.
 
 REGOLE CATEGORICHE:
 1. La domanda deve richiedere una risposta strutturata che attraversi i concetti principali delle unità citate.
@@ -329,17 +316,10 @@ REGOLE CATEGORICHE:
 4. La scaletta è strumento di valutazione per il docente (verrà usata in D3): deve essere concisa, precisa, priva di divagazioni enciclopediche esterne.
 5. Formulazione in italiano accademico, stile domanda d'esame.
 
-OUTPUT JSON RICHIESTO (conforme a RecallQuestion):
-{
-  "id": "recall_NNNNNN",  (placeholder, verrà sovrascritto)
-  "type": "vasta",
-  "unit_ids": ["<unit_id_1>", "<unit_id_2>", ...],  (2-4 ID)
-  "question_text": "<domanda stile esame orale>",
-  "options": null,
-  "correct_index": null,
-  "pregenerated_material": "<scaletta: punto 1; punto 2; punto 3; ...>",
-  "status": "pending"
-}"""
+OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
+{"questions": [{"type": "vasta", "question_text": "domanda", "options": null, "correct_index": null, "pregenerated_material": "scaletta ideale"}]}
+Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota obbligatoria.
+Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
 
 
 def build_recall_vasta_user_prompt(
@@ -370,13 +350,62 @@ def build_recall_vasta_user_prompt(
     for uid, title, content in zip(unit_ids, unit_titles, unit_contents):
         units_block += f"\n--- UNITÀ {uid}: {title} ---\n{content}\n"
 
-    return f"""{fewshot_block}Genera UNA domanda vasta (stile esame orale) che copra le seguenti {len(unit_ids)} unità didattiche contigue:
+    return f"""{fewshot_block}Genera zero, una o più domande vaste distinte (stile esame orale) che coprano le seguenti {len(unit_ids)} unità didattiche contigue:
 {units_block}
-Restituisci l'oggetto JSON conforme a RecallQuestion (type=vasta) con question_text e pregenerated_material (scaletta ideale) compilati, e unit_ids=[{', '.join(repr(u) for u in unit_ids)}]."""
+Restituisci il contenitore JSON questions conforme a RecallGenerationResult (type=vasta) con question_text e pregenerated_material (scaletta ideale) compilati, e unit_ids=[{', '.join(repr(u) for u in unit_ids)}]."""
 
 
 
 # ----------------------------------------------------------------------
+from rt.services.recall_context import RELEVANCE_DEFINITION, context_block
+
+RECALL_RELEVANCE_RULES = ("\n\nRILEVANZA:\n" + RELEVANCE_DEFINITION +
+    " Formula domande sulle informazioni effettivamente affermate, senza richiedere dettagli "
+    "sviluppati altrove e non forniti. Una nozione breve resta valida: restringi la domanda a "
+    "quella nozione. Evita particolari arbitrari di esempi narrativi e nuove versioni di "
+    "domande già presenti. Zero domande è sempre un esito valido. Prima di emettere ciascuna "
+    "domanda verifica che la risposta insegni una conoscenza della materia: nome o appartenenza "
+    "dell'insegnamento, architettura del corso, piattaforme, contatti, ricevimento e competenze "
+    "promesse sono organizzazione didattica, anche se contengono termini disciplinari. "
+    "Non renderli interrogabili chiamandoli inquadramento o finalità. Domande che chiedono la "
+    "stessa conoscenza con parole diverse, o nei due versi della medesima relazione, sono "
+    "ridondanti: conserva soltanto la formulazione più utile. Rileggi infine l'italiano per "
+    "correggere refusi e parole accidentalmente in altre lingue. "
+    "Esempi di distinzione: 'Il corso svilupperà la capacità di formulare problemi decisionali' "
+    "è un obiettivo didattico: nessuna domanda. 'Il sistema sanitario persegue tutela e promozione "
+    "della salute' descrive la funzione del sistema sanitario: è interrogabile. 'Il corso appartiene "
+    "all'insegnamento integrato di management sanitario' è organizzazione: nessuna domanda. "
+    "Non basta che un obiettivo prometta problem solving o approcci sistemici: deve essere "
+    "spiegato un concetto, una relazione o un procedimento concreto della disciplina.")
+RECALL_QUIZ_SYSTEM_PROMPT += RECALL_RELEVANCE_RULES
+RECALL_MIRATA_SYSTEM_PROMPT += RECALL_RELEVANCE_RULES
+RECALL_VASTA_SYSTEM_PROMPT += RECALL_RELEVANCE_RULES
+
+RICHNESS_GUIDANCE = {
+    0: "Il classificatore non ha individuato contenuti interrogabili in questa unità. Verifica la presenza di informazioni rilevanti. Restituisci domande solo se trovi informazioni rilevanti, altrimenti restituisci una lista vuota.",
+    1: "Il classificatore ha individuato alcuni concetti interrogabili. Individua i concetti rilevanti e genera una o più domande. Se non trovi informazioni rilevanti puoi anche restituire una lista vuota.",
+    2: "Il classificatore ha individuato diversi concetti interrogabili. Genera più domande quando verificano conoscenze distinte; evita domande ripetitive e non raggiungere una quota obbligatoria.",
+}
+GROUP_GUIDANCE = "Usa le valutazioni delle singole unità come orientamento per scegliere conoscenze pertinenti e collegamenti. Non sommare i livelli per ricavare una quota di domande. Le unità prive di contenuti pertinenti non devono diventare domande di contorno: puoi restituire una lista vuota anche per il gruppo."
+NEUTRAL_GUIDANCE = "Valutazione del classificatore assente o non utilizzabile. Decidi dal contenuto e dal contesto, restituendo zero o più domande pertinenti e distinte, senza quota obbligatoria."
+
+
+def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, previous_questions: list) -> str:
+    import json
+    before, separator, after = prompt.partition("Genera zero, una o più domande")
+    prompt = before + context_block(context) + "\n\n" + separator + after
+    if previous_questions:
+        # Mantieni un array completo; troncare una stringa JSON può tagliare una domanda.
+        previous = []
+        for question in reversed(previous_questions[-30:]):
+            candidate = [question] + previous
+            if len(json.dumps(candidate, ensure_ascii=False)) > 12000:
+                break
+            previous = candidate
+        prompt += "\n\nDOMANDE GIÀ PRESENTI (cerca altri concetti, non parafrasi):\n" + json.dumps(previous, ensure_ascii=False)
+    return prompt + "\n\nVALUTAZIONE CLASSIFICATORE:\n" + json.dumps(assessment, ensure_ascii=False, sort_keys=True) + "\n" + (GROUP_GUIDANCE if assessment.get("state") == "group" else RICHNESS_GUIDANCE.get(assessment.get("level"), NEUTRAL_GUIDANCE))
+
+
 # 8. RECALL EVAL MIRATA JOB (Fase D3)
 # ----------------------------------------------------------------------
 
@@ -531,5 +560,4 @@ CONTENUTO DELLE UNITÀ DIDATTICHE DI QUESTA SEZIONE:
 
 Restituisci l'oggetto JSON conforme a ImageUnitJudgeResult con gli hash delle immagini
 pertinenti a questa sezione (lista vuota se nessuna)."""
-
 

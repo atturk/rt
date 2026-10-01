@@ -41,8 +41,8 @@ def test_get_returns_effective_defaults_and_templates(api_client, rt_db, tmp_pat
     isolated_workspace(tmp_path, monkeypatch)
     data = api_client.get(PATH).json()
     assert data["relevance_customized"] is False and data["prefilter_customized"] is False
-    assert data["relevance_decision"]["type"] == "choice"
-    assert [o["label"] for o in data["relevance_decision"]["options"]] == ["didactic", "organizational", "no_content"]
+    assert data["relevance_decision"]["type"] == "score"
+    assert data["relevance_decision"]["recall_richness"] is True and len(data["relevance_decision"]["levels"]) == 3
     assert data["prefilter_decision"]["rules"][0]["outcome"] == "skip_review"
     assert set(data["templates"]) == {"relevance", "prefilter"}
     assert set(data["templates"]["prefilter"]) == {"choice", "noul", "score"}
@@ -67,7 +67,7 @@ def test_saving_the_default_stores_nothing_and_custom_decisions_are_persisted(ap
     assert api_client.get(PATH).json()["relevance_decision"]["question"] == "L'unità è priva di nozioni?"
 
     # Tornare alla domanda predefinita rimuove la personalizzazione.
-    reset = api_client.put(PATH, json={**body, "relevance_decision": current["templates"]["relevance"]["choice"]})
+    reset = api_client.put(PATH, json={**body, "relevance_decision": current["templates"]["relevance"]["score"]})
     assert reset.json()["relevance_customized"] is False and "relevance_decision" not in _general()["jev"]
 
     # Il prefiltro con il modello noul predefinito resta "predefinito" e segue il tipo storico.
@@ -100,7 +100,7 @@ def test_playground_runs_a_draft_on_the_sample_without_saving(api_client, rt_db,
     data = response.json()
     assert (data["label"], data["outcome"], data["rule"]) == ("Vuota", "no_content", 0)
     assert data["response"] == {"model": "m", "answers": {"rilevanza": {"type": "noul", "noul": 0.9}}}
-    assert data["unit_id"] is None and data["state"].startswith("Titolo: Esempio")
+    assert data["unit_id"] is None and "Titolo: Esempio" in data["state"] and "Anatomia" in data["state"]
     assert called.call_args.args[1]["rilevanza"].instructions == "L'unità è priva di nozioni?"
     assert "jev" not in _general() or "relevance_decision" not in _general()["jev"]
 
@@ -143,3 +143,16 @@ def test_playground_reports_jev_errors_and_invalid_mappings(api_client, rt_db, t
     bad_field["rules"][0]["conditions"][0]["field"] = "choice"
     assert api_client.post(PATH + "/test", json={"phase": "relevance", "decision": bad_field, "model": "m"}).status_code == 422
     assert api_client.post(PATH + "/test", json={"phase": "relevance", "decision": _noul_decision(), "model": " "}).status_code == 422
+
+
+def test_active_default_relevance_requires_score_probe(api_client, rt_db, tmp_path, monkeypatch):
+    from rt.llm.jev_client import JevScoreAnswer
+    isolated_workspace(tmp_path, monkeypatch)
+    body = {'relevance_model': 'decision/richness-score', 'relevance_mode': 'active'}
+    refused = api_client.put(PATH, json=body)
+    assert refused.status_code == 422 and 'score' in refused.json()['error']['message']
+    answer = JevResponse(model=body['relevance_model'], answers={'rilevanza': JevScoreAnswer(score=0, confidence=.99)})
+    decision = api_client.get(PATH).json()['relevance_decision']
+    with patch('rt.llm.jev_client.call_jev', return_value=answer):
+        assert api_client.post(PATH + '/test', json={'phase': 'relevance', 'decision': decision, 'model': body['relevance_model']}).status_code == 200
+    assert api_client.put(PATH, json=body).status_code == 200

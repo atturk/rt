@@ -1,5 +1,5 @@
 import { Images } from 'lucide-react'
-import { useCallback, useState, type FormEvent } from 'react'
+import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
@@ -18,6 +18,8 @@ import { Label } from '@/components/ui/label'
 import { lessonTitle } from '@/lib/format'
 import { PER_UNIT_MAX, PER_UNIT_MIN, parseCount } from '@/lib/count'
 import { withImageUrls } from '@/lib/images'
+import { AnalyzeLesson, AnalyzeGroup, EnrichmentPanel } from '@/components/EnrichmentPanel'
+import { EnrichmentSlots } from '@/components/lesson/Enrichment'
 import type { Area } from './types'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
@@ -25,11 +27,14 @@ const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
 function ImagesIndex() {
   return (
     <LessonPicker
-      title="Immagini"
-      intro="Scegli una lezione per aggiungere slide in PDF, foto della lavagna o immagini dal web al documento."
-      href={(l) => `/lezioni/${l.id}/immagini`}
+      title="Arricchimento"
+      intro="Idee grafiche, visualizzazioni interattive, infografiche e immagini delle lezioni. L’analisi propone; sei tu a decidere cosa generare."
+      href={(l) => `/lezioni/${l.id}/arricchimento`}
+      action={(l) => <AnalyzeLesson id={l.id} ready={l.phases.rewrite === 'VALID'} />}
+      groupActions={(lessons) => <AnalyzeGroup lessons={lessons} />}
       ready={(l) => l.phases.rewrite === 'VALID'}
       notReady="serve prima la rielaborazione"
+      storageKey="rt-images-view"
     />
   )
 }
@@ -168,8 +173,8 @@ function UploadForm({ lessonId, onStarted }: { lessonId: number; onStarted: (job
           onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
         />
         <p className="text-xs text-muted-foreground">
-          Un PDF di slide viene diviso in pagine; più foto vengono analizzate insieme. Ogni immagine riceve una descrizione e finisce
-          nella sezione giusta del documento.
+          Un PDF di slide viene diviso in pagine; le foto vengono descritte singolarmente. Ogni immagine riceve una descrizione e finisce
+          nella macro unità più pertinente confrontando il testo completo della lezione.
         </p>
       </div>
       <div className="flex flex-col gap-1 sm:max-w-xs">
@@ -242,7 +247,7 @@ function Gallery({ lessonId }: { lessonId: number }) {
                 {img.source}
               </span>
               <Badge tone={img.in_document ? 'success' : 'neutral'} className="self-start">
-                {img.in_document ? 'Nel documento' : 'Non usata'}
+                {img.in_document ? `Macro unità ${(img.macro_ids ?? []).join(', ')}` : 'Non assegnata'}
               </Badge>
             </div>
           </Card>
@@ -255,6 +260,7 @@ function Gallery({ lessonId }: { lessonId: number }) {
 /** Documento (finale se aggiornato, altrimenti anteprima dalla bozza) con le immagini servite dall'API. */
 function DocumentPreview({ lessonId }: { lessonId: number }) {
   const doc = useLessonDocument(lessonId)
+  const root = useRef<HTMLDivElement>(null)
   if (doc.isPending) return <p className="text-sm text-muted-foreground">Carico il documento…</p>
   if (doc.isError) return <Alert tone="danger">{errorMessage(doc.error)}</Alert>
   return (
@@ -265,11 +271,13 @@ function DocumentPreview({ lessonId }: { lessonId: number }) {
         </Alert>
       )}
       <div
+        ref={root}
         data-testid="document-preview"
         className="rt-document max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-5"
         // HTML già sanificato dall'API (markdown-it con html=False)
         dangerouslySetInnerHTML={{ __html: withImageUrls(doc.data.html, lessonId) }}
       />
+      <EnrichmentSlots root={root} lessonId={lessonId} documentKey={doc.data.html} />
     </>
   )
 }
@@ -287,15 +295,16 @@ export function ImagesPage() {
   const ready = lesson.data.actions?.images.available ?? lesson.data.phases.rewrite === 'VALID'
   return (
     <section className="flex flex-col gap-4">
-      <Link to="/immagini" className="text-xs text-muted-foreground hover:underline">
-        ← Immagini: tutte le lezioni
+      <Link to="/arricchimento" className="text-xs text-muted-foreground hover:underline">
+        ← Arricchimento: tutte le lezioni
       </Link>
-      <h1 className="text-xl font-bold tracking-tight">Immagini · {lessonTitle(lesson.data)}</h1>
+      <h1 className="text-xl font-bold tracking-tight">Arricchimento · {lessonTitle(lesson.data)}</h1>
       {!ready && (
         <Alert tone="warning">
           {lesson.data.actions?.images.reason ?? 'Le immagini si aggiungono alla bozza: completa prima la rielaborazione.'}
         </Alert>
       )}
+      {ready && <EnrichmentPanel lessonId={id} />}
       {ready && (
         <Card className="flex flex-col gap-4 p-5">
           <h2 className="text-base font-bold">Aggiungi immagini</h2>
@@ -319,8 +328,10 @@ export function ImagesPage() {
 
 export const imagesArea: Area = {
   routes: [
+    { path: 'arricchimento', element: <ImagesIndex /> },
+    { path: 'lezioni/:lessonId/arricchimento', element: <ImagesPage /> },
     { path: 'immagini', element: <ImagesIndex /> },
     { path: 'lezioni/:lessonId/immagini', element: <ImagesPage /> },
   ],
-  nav: [{ to: '/immagini', label: 'Immagini', icon: Images }],
+  nav: [{ to: '/arricchimento', label: 'Arricchimento', icon: Images }],
 }

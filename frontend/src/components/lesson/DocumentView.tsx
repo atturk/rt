@@ -6,6 +6,7 @@ import { activeUnit } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { useLessonAudio } from './audio'
+import { EnrichmentSlots } from './Enrichment'
 
 type Props = {
   document: Schemas['LessonDocument']
@@ -24,7 +25,8 @@ function unitBlock(root: HTMLElement, unitId: string): Element[] {
   const out: Element[] = []
   let el: Element | null = first
   while (el && (el === first || !/^H[1-3]$/.test(el.tagName))) {
-    out.push(el)
+    // i riquadri dell'arricchimento (gestiti da React) non fanno parte del testo dell'unità
+    if (!el.classList.contains('rt-enrichment-slot')) out.push(el)
     el = el.nextElementSibling
   }
   return out
@@ -136,6 +138,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   }, [hash, doc, highlightText])
 
   return (
+    <>
     <article
       ref={ref}
       className="rt-document"
@@ -147,5 +150,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
       }}
       dangerouslySetInnerHTML={{ __html: withImageUrls(doc.html, lessonId) }}
     />
+    <EnrichmentSlots root={ref} lessonId={lessonId} documentKey={doc.html} />
+    </>
   )
 }

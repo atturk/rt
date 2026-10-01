@@ -52,10 +52,15 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
         <textarea aria-label={`Livello ${i + 1}`} className="w-full rounded border bg-background p-2 text-sm" rows={2} value={level}
           onChange={(e) => onChange({ ...decision, levels: levels.map((l, j) => (j === i ? e.target.value : l)) })} />
         <Button variant="ghost" size="icon" aria-label={`Rimuovi livello ${i + 1}`} disabled={levels.length <= 1}
-          onClick={() => onChange({ ...decision, levels: levels.filter((_, j) => j !== i) })}><Trash2 /></Button>
+          onClick={() => onChange({ ...decision, levels: levels.filter((_, j) => j !== i), recall_richness: false })}><Trash2 /></Button>
       </div>)}
-      <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ ...decision, levels: [...levels, ''] })}><Plus />Aggiungi livello</Button>
+      <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ ...decision, levels: [...levels, ''], recall_richness: false })}><Plus />Aggiungi livello</Button>
     </fieldset>}
+
+    {phase === 'relevance' && decision.type === 'score' && levels.length === 3 && <label className="flex items-center gap-2 text-sm">
+      <input type="checkbox" checked={decision.recall_richness ?? false} onChange={(e) => onChange({ ...decision, recall_richness: e.target.checked })} />
+      Usa questi tre livelli per orientare il recall
+    </label>}
 
     <fieldset className="flex flex-col gap-2 border-t pt-3"><legend className="text-sm font-medium">Mappatura verso le etichette RT</legend>
       <p className="text-xs text-muted-foreground">Le regole sono valutate in ordine: vale la prima vera. Se nessuna è vera l’unità {phase === 'relevance' ? 'resta inclusa' : 'va comunque in review'}.</p>
@@ -249,7 +254,7 @@ export function DecisionModelSection() {
     </>}
     <div className="flex flex-wrap gap-2">
       <Button variant="outline" disabled={!decision || !phaseModel.trim() || test.isPending} onClick={() => test.mutate()}>{test.isPending ? 'Prova in corso…' : 'Prova configurazione'}</Button>
-      <Button variant="ghost" disabled={!data} onClick={() => data && setDecision(data.templates[phase][phase === 'relevance' ? 'choice' : data.prefilter_type])}>Ripristina predefinita</Button>
+      <Button variant="ghost" disabled={!data} onClick={() => data && setDecision(data.templates[phase][phase === 'relevance' ? 'score' : data.prefilter_type])}>Ripristina predefinita</Button>
       <Button disabled={save.isPending || (enabled && !model.trim())} onClick={() => save.mutate()}>Salva</Button>
     </div>
     {!phaseModel.trim() && <p className="text-xs text-muted-foreground">Indica il modello della fase per provare la configurazione.</p>}

@@ -36,7 +36,7 @@ const KEY_2 = 'sk-e2e-seconda-chiave-fedcba9876543210'
 const BOT_TOKEN = '123456789:AAE2E-token-del-bot-di-prova-xyz'
 const STT_KEY = 'stt-e2e-chiave-trascrizione-4242'
 const SECRETS = [KEY_1, KEY_2, BOT_TOKEN, STT_KEY]
-const JOBS = ['outline', 'rewrite', 'review', 'recall', 'image_description', 'image_unit_judge']
+const JOBS = ['outline', 'rewrite', 'review', 'recall', 'image_description', 'enrichment_writer', 'enrichment_visualizer', 'enrichment_image']
 
 async function expectNoSecretIn(page: Page) {
   const html = await page.content()
@@ -205,7 +205,7 @@ test('Telegram: token, chat, topic per materia dal link, topic generale', async 
   await expectNoSecretIn(page)
 })
 
-test('connessione nuova e un modello per ciascuna delle sei fasi', async ({ page }) => {
+test('connessione nuova e un modello per ciascuna fase', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni/modelli')
   const form = page.getByRole('form', { name: 'Nuova connessione' })
@@ -417,23 +417,23 @@ test('configurazione guidata: scelta per ogni fase, con Prova', async ({ page })
   await page.getByRole('radio', { name: 'Scegli per ogni fase' }).check()
   await expect(page).toHaveURL(/modelli=per-fase/)
   const rows = page.getByTestId('phase-row')
-  await expect(rows).toHaveCount(6)
-  for (const label of ['Outline', 'Rewrite', 'Review', 'Recall', 'Descrizione immagine', 'Giudice immagini']) {
+  await expect(rows).toHaveCount(8)
+  for (const label of ['Outline', 'Rewrite', 'Review', 'Recall', 'Descrizione immagine', 'Arricchitore', 'Visualizzazioni HTML', 'Generazione infografiche']) {
     await expect(page.getByRole('form', { name: `Fase ${label}` })).toBeVisible()
   }
-  const judge = page.locator('[data-testid=phase-row][data-job="image_unit_judge"]')
-  await judge.locator('#fase-image_unit_judge-connessione').selectOption(CONNECTION)
-  await judge.locator('#fase-image_unit_judge-modello').fill('modello/giudice')
-  await judge.getByRole('button', { name: 'Prova il modello di Giudice immagini' }).click()
-  await expect(judge.getByTestId('model-test-result')).toContainText('Raggiungibile')
-  await judge.getByRole('button', { name: 'Salva' }).click()
-  await expect(judge.getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/giudice`)
+  const recall = page.locator('[data-testid=phase-row][data-job="recall"]')
+  await recall.locator('#fase-recall-connessione').selectOption(CONNECTION)
+  await recall.locator('#fase-recall-modello').fill('modello/recall')
+  await recall.getByRole('button', { name: 'Prova il modello di Recall' }).click()
+  await expect(recall.getByTestId('model-test-result')).toContainText('Raggiungibile')
+  await recall.getByRole('button', { name: 'Salva' }).click()
+  await expect(recall.getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/recall`)
 
   await page.reload()
   await expect(page.getByRole('radio', { name: 'Scegli per ogni fase' })).toBeChecked()
-  await expect(judge.getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/giudice`)
+  await expect(recall.getByTestId('phase-saved')).toHaveText(`${CONNECTION} · modello/recall`)
   const phases = Object.fromEntries((await settings(page)).phases.map((p) => [p.job, p.model]))
-  expect(phases.image_unit_judge).toBe('modello/giudice')
+  expect(phases.recall).toBe('modello/recall')
   expect(phases.outline).toBe('modello/unico')
   await page.getByRole('button', { name: 'Continua' }).click()
   await expect(page).toHaveURL(/passo=3/)
@@ -446,12 +446,12 @@ test('pricing: suggerimenti e avviso per provider o modello sconosciuti', async 
   await expect(card).toContainText('non considera il caching dei token')
   // I suggerimenti vengono dalle connessioni e dai modelli in uso.
   await expect(card.locator('#pricing-providers option[value="openai_compatible"]')).toHaveCount(1)
-  await expect(card.locator('#pricing-models option[value="modello/giudice"]')).toHaveCount(1)
+  await expect(card.locator('#pricing-models option[value="modello/recall"]')).toHaveCount(1)
   await card.getByRole('button', { name: 'Aggiungi modello' }).click()
   const provider = card.getByLabel('Provider 2', { exact: true })
   const model = card.getByLabel('Modello 2', { exact: true })
   await provider.fill('openai_compatible')
-  await model.fill('modello/giudice')
+  await model.fill('modello/recall')
   const row = card.getByTestId('pricing-row').nth(1)
   await expect(row.getByTestId('field-warning')).toHaveCount(0)
   await provider.fill('fornitore-ignoto')

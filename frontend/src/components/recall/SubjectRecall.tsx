@@ -27,8 +27,14 @@ import { Card } from '@/components/ui/card'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { RECALL_TYPES, TYPE_OPTIONS, countStatus, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
+import { dayLabel } from '@/lib/lessonView'
+import { daySubject } from '@/lib/recallView'
 
-/** Le lezioni della materia con la loro riserva; genera quella delle lezioni che non ne hanno. */
+/** "della materia" o "del giorno" (la sessione del giorno è una sessione per materia GIORNO:<data>). */
+const scopeNoun = (materia: string) => (dayOf(materia) ? 'del giorno' : 'della materia')
+const dayOf = (materia: string) => /^GIORNO:(\d{4}-\d{2}-\d{2})$/i.exec(materia)?.[1] ?? null
+
+/** Le lezioni della materia con il loro pool; genera quello delle lezioni che non ne hanno. */
 function SubjectLessons({ materia, stats, lessons }: { materia: string; stats: LessonRecallStats[]; lessons: Map<number, Lesson> }) {
   const generate = useSubjectGenerate(materia)
   const client = useQueryClient()
@@ -42,7 +48,7 @@ function SubjectLessons({ materia, stats, lessons }: { materia: string; stats: L
     <Card className="flex flex-col gap-3 p-5" aria-labelledby="subject-lessons-title">
       <div className="flex flex-wrap items-center gap-3">
         <h2 id="subject-lessons-title" className="mr-auto text-base font-bold">
-          Lezioni della materia
+          Lezioni {scopeNoun(materia)}
         </h2>
         {missing > 0 && (
           <Button size="sm" disabled={generate.isPending}
@@ -164,7 +170,7 @@ function SubjectSession({ materia, lessons }: { materia: string; lessons: Map<nu
   return (
     <Card className="flex flex-col gap-4 p-5" aria-labelledby="subject-session-title">
       <h2 id="subject-session-title" className="text-base font-bold">
-        Sessione della materia
+        Sessione {scopeNoun(materia)}
       </h2>
       <SlideToggle
         label="Tipo di domanda"
@@ -198,7 +204,7 @@ function SubjectSession({ materia, lessons }: { materia: string; lessons: Map<nu
       {end.isError && <Alert tone="danger">{errorMessage(end.error)}</Alert>}
       {!session && state.data?.last && <SessionSummary session={state.data.last} />}
 
-      {noQuestions && <Alert tone="warning">Nessuna domanda di questo tipo da porre nelle lezioni della materia: generane altre.</Alert>}
+      {noQuestions && <Alert tone="warning">Nessuna domanda di questo tipo da porre nelle lezioni {scopeNoun(materia)}: generane altre.</Alert>}
       {next.isError && !noQuestions && <Alert tone="danger">{errorMessage(next.error)}</Alert>}
       {history.isError && <Alert tone="danger">{errorMessage(history.error)}</Alert>}
       {!questionId && !noQuestions && !state.data?.last && (
@@ -248,9 +254,13 @@ function SubjectSession({ materia, lessons }: { materia: string; lessons: Map<nu
   )
 }
 
-/** /recall/materie/:materia: recall su tutte le lezioni di una materia. */
+/** /recall/materie/:materia: recall su tutte le lezioni di una materia; /recall/giorno/:day
+ * (Recall del giorno): su tutte le lezioni di una data. */
 export function SubjectRecallPage() {
-  const materia = useParams().materia ?? ''
+  const params = useParams()
+  const materia = params.day ? daySubject(params.day) : (params.materia ?? '')
+  const day = dayOf(materia)
+  const noun = scopeNoun(materia)
   const state = useSubjectRecall(materia)
   const all = useLessons()
   const lessons = new Map((all.data ?? []).map((l) => [l.id, l]))
@@ -260,17 +270,21 @@ export function SubjectRecallPage() {
       <Link to="/recall" className="text-xs text-muted-foreground hover:underline">
         ← Recall: tutte le lezioni
       </Link>
-      <h1 className="text-xl font-bold tracking-tight">Recall · {state.data?.materia ?? materia}</h1>
-      {state.isPending && <p className="text-sm text-muted-foreground">Carico la materia…</p>}
+      <h1 className="text-xl font-bold tracking-tight">
+        {day ? `Recall del giorno · ${dayLabel(day)}` : `Recall · ${state.data?.materia ?? materia}`}
+      </h1>
+      {state.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
       {state.isError && <Alert tone="danger">{errorMessage(state.error)}</Alert>}
-      {state.data && state.data.lessons.length === 0 && <Alert tone="warning">Nessuna lezione di questa materia.</Alert>}
+      {state.data && state.data.lessons.length === 0 && (
+        <Alert tone="warning">{day ? 'Nessuna lezione in questo giorno.' : 'Nessuna lezione di questa materia.'}</Alert>
+      )}
       {state.data && state.data.lessons.length > 0 && (
         <>
           <SubjectLessons materia={materia} stats={state.data.lessons} lessons={lessons} />
           {ready > 0 ? (
             <SubjectSession materia={materia} lessons={lessons} />
           ) : (
-            <Alert tone="warning">Nessuna lezione della materia ha ancora una rielaborazione valida: il recall parte dal draft.</Alert>
+            <Alert tone="warning">Nessuna lezione {noun} ha ancora una rielaborazione valida: il recall parte dal draft.</Alert>
           )}
         </>
       )}

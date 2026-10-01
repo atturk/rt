@@ -87,8 +87,8 @@ def test_web_session_end_saves_summary(api_client, lesson_id):
     from rt.services.recall_service import load_recall_session_state
     assert load_recall_session_state(resolve_lesson_dir(lid))["current_question_id"] is None
 
-    # una nuova domanda apre una nuova sessione e nasconde il riepilogo precedente
-    api_client.post(f"/api/v1/lessons/{lid}/recall/next", params={"qtype": "quiz"})
+    # Quiz e mirata sono consumati: la riserva vasta apre una nuova sessione.
+    api_client.post(f"/api/v1/lessons/{lid}/recall/next", params={"qtype": "vasta"})
     state = _state(api_client, lid)
     assert state["web"]["id"] != ended["id"] and state["web"]["questions"] == 1 and state["last"] is None
 

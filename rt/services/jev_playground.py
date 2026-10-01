@@ -92,7 +92,9 @@ def run_test(phase: str, decision: JevDecisionConfig, model: str, credential: st
     decision = check_phase(phase, decision)
     jev_cfg = load_config().jev
     selected_unit, title, content, _lesson_dir = _unit(lesson_id, unit_id, phase)
-    state = jev_mapping.state_for(phase, title, content)
+    from rt.services.recall_context import lesson_context
+    context = lesson_context(_lesson_dir) if _lesson_dir else {"materia": "Anatomia", "titolo_lezione": "Esempio", "argomenti_lezione": ["Circolazione"]}
+    state = jev_mapping.state_for(phase, title, content, context)
     name = jev_mapping.QUESTION_NAMES[phase]
     question = jev_mapping.build_question(decision)
     try:

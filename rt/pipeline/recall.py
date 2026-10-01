@@ -9,8 +9,9 @@ import logging
 import os
 import json
 import random as _random
+import time
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import Callable, Dict, List, Optional
 
 from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer
 from rt.pipeline.ledger import load_resolved_draft
@@ -69,28 +70,25 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
 
 
 # -----------------------------------------------------------------------
-# Reserve count utilities
+# Pool: domande da porre delle unità selezionate
 # -----------------------------------------------------------------------
 
-def get_reserve_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
-    """Conta le domande PENDING di un tipo specifico nel bank."""
+def get_pool_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
+    """Domande PENDING di un tipo nel pool (solo delle unità selezionate)."""
     bank = load_recall_bank(lesson_dir)
     allowed = _allowed_units(lesson_dir)
     return sum(1 for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
                and _question_allowed(q, allowed))
 
 
+get_reserve_count = get_pool_count  # nome storico
+
+
 def _allowed_units(lesson_dir: str) -> Optional[set]:
-    """Unità da cui si possono fare domande (None = tutte), calcolate una volta per chiamata:
-    prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
-    from rt.services.unit_relevance import included, mode
-    if mode() != "active":
-        return None
-    try:
-        draft = load_resolved_draft(lesson_dir)
-    except (FileNotFoundError, ValueError):
-        return None
-    return {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
+    """Unità selezionate per il recall (None = tutte, bozza illeggibile), calcolate una volta
+    per chiamata: prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
+    from rt.services.recall_units import selected_unit_ids
+    return selected_unit_ids(lesson_dir)
 
 
 def _question_allowed(question: RecallQuestion, allowed: Optional[set]) -> bool:
@@ -347,213 +345,230 @@ def load_fewshot_examples(
 
 def _next_id(bank: RecallBank) -> str:
     existing = [int(q.id.split("_")[1]) for q in bank.questions if q.id.startswith("recall_")]
-    nxt = max(existing, default=0) + 1
+    nxt = max(existing + [bank.last_question_number], default=0) + 1
     return f"recall_{nxt:06d}"
 
 # -----------------------------------------------------------------------
 # Batch generation (mockable)
 # -----------------------------------------------------------------------
 
-def generate_recall_batch(
-    lesson_dir: str,
-    qtype: RecallQuestionType,
-    count: int,
-    few_shot_examples: List[dict],
-    force_mock: bool = False,
-) -> List[RecallQuestion]:
-    """Genera `count` nuove domande di tipo qtype e le appende al recall bank.
+def _generation_policy(qtype, few_shot_examples, force_mock=False):
+    from rt.llm import prompts
+    from rt.services.recall_context import POLICY_VERSION
+    from rt.services.jev_mapping import effective_decision
+    cfg = load_config()
+    routing = cfg.jobs.get("recall") or cfg.llm.get("recall") or cfg.jobs.get("default") or cfg.llm.get("default")
+    return {"version": POLICY_VERSION, "style": qtype.value, "fewshot": few_shot_examples,
+            "system": effective_system("recall", getattr(prompts, "RECALL_" + qtype.value.upper() + "_SYSTEM_PROMPT")),
+            "routing": routing.model_dump(mode="json") if routing else None,
+            "guidance": prompts.RICHNESS_GUIDANCE, "neutral": prompts.NEUTRAL_GUIDANCE, "group": prompts.GROUP_GUIDANCE,
+            "decision": effective_decision("relevance", cfg.jev).model_dump(mode="json"),
+            "mode": cfg.jev.relevance_mode, "classifier": cfg.jev.relevance_model,
+            "confidence_threshold": cfg.jev.relevance_threshold, "mock": force_mock or cfg.mock_llm}
 
-    - Carica draft.json per ricavare le unita' didattiche.
-    - Per quiz/mirata: una chiamata LLM per unita' (batch piccoli, <= count unita').
-    - Per vasta: raggruppa 2-4 unita' contigue per chiamata.
-    - Se count supera il numero di unita' disponibili per quiz/mirata, permette piu'
-      domande sulla stessa unita' (mai solleva eccezione per lezioni corte).
-    - AGGIUNGE al bank esistente, non rigenera da zero.
-    - Supporta force_mock per test offline senza costi reali.
-    """
-    from rt.llm.prompts import (
-        RECALL_QUIZ_SYSTEM_PROMPT, build_recall_quiz_user_prompt,
-        RECALL_MIRATA_SYSTEM_PROMPT, build_recall_mirata_user_prompt,
-        RECALL_VASTA_SYSTEM_PROMPT, build_recall_vasta_user_prompt,
-    )
 
-    draft = load_resolved_draft(lesson_dir)
-    from rt.services.unit_relevance import refresh, included
-    refresh(lesson_dir, force_mock=force_mock)
+def _generation_groups(units, bank, qtype, shuffle=False):
+    """Una chiamata per unità (quiz, mirate) o per gruppi di 4 unità consecutive (vaste).
+    Di norma prima le meno coperte; shuffle (rifornimento) in ordine casuale."""
+    covered = {u.unit_id: 0 for u in units}
+    for question in bank.questions:
+        if question.type == qtype:
+            for uid in question.unit_ids:
+                if uid in covered:
+                    covered[uid] += 1
+    if qtype != RecallQuestionType.VASTA:
+        groups = [[u] for u in sorted(units, key=lambda u: covered[u.unit_id])]
+    else:
+        groups = [units[i:i + 4] for i in range(0, len(units), 4)]
+        if len(groups) > 1 and len(groups[-1]) == 1:
+            groups[-1].insert(0, groups[-2].pop())
+        groups.sort(key=lambda group: sum(covered[u.unit_id] for u in group))
+    if shuffle:
+        _random.shuffle(groups)
+    return groups
+
+
+def _generation_key(qtype, group):
+    return qtype.value + ":" + ",".join(u.unit_id for u in group)
+
+
+def _generation_digest(lesson_dir, group, policy):
+    from rt.services.recall_context import digest, lesson_context
+    from rt.services.unit_relevance import recall_assessment
+    return digest({"units": [(u.unit_id, u.title, u.content) for u in group],
+                   "context": lesson_context(lesson_dir), "policy": policy,
+                   "assessments": [recall_assessment(lesson_dir, u) for u in group]})
+
+
+def generation_available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock=False) -> bool:
+    """Consulta checkpoint senza LLM: un'astensione invariata non avvia altri refill."""
+    from rt.services.recall_units import selected_units
+    units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
-    new_questions: List[RecallQuestion] = []
-    client = LLMClient(force_mock=force_mock)
-    units = [u for u in draft.units if included(lesson_dir, u)]
-    if not units:
-        _LOG.info("Recall: nessuna unità didattica da cui generare domande")
-        return []
+    examples = load_fewshot_examples(qtype, load_config().telegram.state_dir)
+    policy = _generation_policy(qtype, examples, force_mock)
+    for group in _generation_groups(units, bank, qtype):
+        row = bank.generation_attempts.get(_generation_key(qtype, group), {})
+        if not row.get("exhausted") or row.get("fingerprint") != _generation_digest(lesson_dir, group, policy):
+            return True
+    return False
 
-    # ---- Build list of unit index groups to generate questions for ----
-    def _pick_unit_groups(num: int) -> List[List[int]]:
-        """Restituisce i gruppi di indici di unità su cui generare domande.
 
-        Per quiz/mirata: favorisce le unità MENO rappresentate nel bank esistente per
-        quel qtype (conteggio domande in qualsiasi stato: pending/asked/answered),
-        ordinando per conteggio crescente e scegliendo le prime `num`.
-
-        Per vasta: favorisce le finestre (gruppi di 2-4 unità contigue) che coprono
-        le unità meno rappresentate da domande vasta esistenti, scegliendo il punto
-        di partenza basandosi sul conteggio minimo anziché sempre da i=0.
-        """
-        if qtype == RecallQuestionType.VASTA:
-            # Conta copertura per unità (ogni domanda vasta copre un gruppo di unità)
-            unit_count: Dict[str, int] = {u.unit_id: 0 for u in units}
-            for q in bank.questions:
-                if q.type == RecallQuestionType.VASTA:
-                    for uid in q.unit_ids:
-                        if uid in unit_count:
-                            unit_count[uid] += 1
-            # Scegli il punto di partenza come l'unità con minimo conteggio
-            if units:
-                min_uid = min(unit_count, key=lambda uid: unit_count[uid])
-                start_i = next((i for i, u in enumerate(units) if u.unit_id == min_uid), 0)
-            else:
-                start_i = 0
-            groups: List[List[int]] = []
-            i = start_i
-            seen_start = set()
-            while len(groups) < num:
-                if i >= len(units):
-                    i = 0  # wrap-around
-                if i in seen_start:
-                    break  # evita loop infinito
-                seen_start.add(i)
-                size = min(4, max(2, len(units) - i))
-                group = list(range(i, min(i + size, len(units))))
-                groups.append(group)
-                i += size
-            return groups
-        else:
-            if not units:
-                return []
-            # Conta quante domande (qualsiasi stato) già coprono ciascuna unità
-            covered: Dict[str, int] = {u.unit_id: 0 for u in units}
-            for q in bank.questions:
-                if q.type == qtype:
-                    uid = q.unit_ids[0] if q.unit_ids else None
-                    if uid and uid in covered:
-                        covered[uid] += 1
-            # Ordina le unità per conteggio crescente (a parità: ordine naturale del draft)
-            sorted_units = sorted(range(len(units)), key=lambda i: covered[units[i].unit_id])
-            groups_idx: List[List[int]] = []
-            pool_idx = 0
-            while len(groups_idx) < num:
-                idx = sorted_units[pool_idx % len(sorted_units)]
-                groups_idx.append([idx])
-                pool_idx += 1
-            return groups_idx
-
-    unit_index_groups = _pick_unit_groups(count)
-    failures = UnitFailureTracker()
-    last_error: Optional[BaseException] = None
-
-    for group_idxs in unit_index_groups:
-        qid = _next_id(bank)
-
-        # ---- Mock path ----
-        if force_mock:
-            ug_ids = [units[i].unit_id for i in group_idxs]
-            qtext = f"Domanda mock {qtype.value} per unita' {', '.join(ug_ids)}"
-            options = None
-            correct_index = None
-            pregenerated = None
-            if qtype == RecallQuestionType.QUIZ:
-                options = ["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"]
-                correct_index = 0
-                pregenerated = "Opzione A e' corretta perche'... Le altre tre sono sbagliate perche'..."
-            elif qtype == RecallQuestionType.VASTA:
-                pregenerated = "Scaletta ideale: 1) Punto essenziale; 2) Punto essenziale; 3) Punto essenziale."
-            question = RecallQuestion(
-                id=qid,
-                type=qtype,
-                unit_ids=ug_ids,
-                question_text=qtext,
-                options=options,
-                correct_index=correct_index,
-                pregenerated_material=pregenerated,
-                content_fingerprint=_compute_units_fingerprint(lesson_dir, ug_ids),
-            )
-            bank.questions.append(question)
-            new_questions.append(question)
-            continue
-
-        # ---- Real LLM path ----
-        if qtype == RecallQuestionType.QUIZ:
-            u = units[group_idxs[0]]
-            system_prompt = RECALL_QUIZ_SYSTEM_PROMPT
-            user_prompt = build_recall_quiz_user_prompt(
-                unit_id=u.unit_id,
-                unit_title=u.title,
-                unit_content=u.content,
-                few_shot_examples=few_shot_examples or [],
-            )
-        elif qtype == RecallQuestionType.MIRATA:
-            u = units[group_idxs[0]]
-            system_prompt = RECALL_MIRATA_SYSTEM_PROMPT
-            user_prompt = build_recall_mirata_user_prompt(
-                unit_id=u.unit_id,
-                unit_title=u.title,
-                unit_content=u.content,
-                few_shot_examples=few_shot_examples or [],
-            )
-        else:  # VASTA
-            grp_units = [units[i] for i in group_idxs]
-            system_prompt = RECALL_VASTA_SYSTEM_PROMPT
-            user_prompt = build_recall_vasta_user_prompt(
-                unit_ids=[u.unit_id for u in grp_units],
-                unit_titles=[u.title for u in grp_units],
-                unit_contents=[u.content for u in grp_units],
-                few_shot_examples=few_shot_examples or [],
-            )
-
-        try:
-            generated: RecallQuestion = client.call_structured(
-                prompt=user_prompt,
-                system_prompt=effective_system("recall", system_prompt),
-                response_model=RecallQuestion,
-                job_name="recall",
-                unit_id=", ".join(units[i].unit_id for i in group_idxs),
-                lesson_dir=lesson_dir,
-            )
-        except Exception as exc:
-            # Una domanda che il modello non riesce a generare (risposta fuori schema anche dopo
-            # i nuovi tentativi) non ferma il batch: la riserva si ricarica alla prossima
-            # occasione. Senza nessuna domanda generata l'errore sale.
-            if not is_unit_failure(exc):
-                raise
-            failures.failed(", ".join(units[i].unit_id for i in group_idxs), qtype.value, exc)
-            last_error = exc
-            if failures.too_many():
-                break
-            continue
-        failures.succeeded()
-        generated.id = qid
-        generated.type = qtype
-        generated.unit_ids = [units[i].unit_id for i in group_idxs]
-        generated.content_fingerprint = _compute_units_fingerprint(lesson_dir, generated.unit_ids)
-        new_questions.append(generated)
-
-    if last_error is not None:
-        _LOG.warning("Recall %s: %d domande non generate (%s)", qtype.value, len(failures.failures),
-                     failures.failures[0].message)
-        if not new_questions:
-            raise last_error
+def _persist_generation(lesson_dir, questions, key, attempt):
+    """Checkpoint atomico dopo ogni risposta valida, anche se il job viene interrotto."""
+    persisted = []
     with recall_bank_lock(lesson_dir):
+        latest = load_recall_bank(lesson_dir)
+        repair_duplicate_ids(latest)
+        known = {(q.type, q.question_text.strip().casefold()) for q in latest.questions}
+        for question in questions:
+            text_key = (question.type, question.question_text.strip().casefold())
+            if text_key in known:
+                continue
+            known.add(text_key)
+            question.id = _next_id(latest)
+            latest.questions.append(question)
+            persisted.append(question)
+        attempt["question_ids"] = [q.id for q in persisted]
+        if not persisted:
+            attempt["exhausted"] = True
+            attempt["outcome"] = "empty"
+        latest.generation_attempts[key] = attempt
+        save_recall_bank(latest, lesson_dir)
+    return persisted
+
+
+def generate_recall_batch(
+    lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
+    force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
+    progress: Optional[Callable[..., None]] = None,
+) -> List[RecallQuestion]:
+    """Zero o più domande per chiamata dalle unità selezionate; count è un obiettivo, mai una
+    quota del modello, e None vuol dire tutte le unità (il pool dell'intera lezione).
+
+    Ogni gruppo viene visitato al massimo una volta nel job. Un esito vuoto è valido e
+    viene ricordato nello storage del bank; regenerate è una richiesta esplicita. shuffle
+    visita le unità in ordine casuale (rifornimento) invece che dalle meno coperte.
+
+    progress(current, total, message, unit_id=..., unit_title=...) racconta il lavoro (il
+    job lo scrive tra i suoi eventi); l'annullamento della run si controlla prima di ogni
+    gruppo e chiude anche la chiamata in corso (rt.llm.cancel).
+    """
+    from rt.llm.cancel import raise_if_cancelled
+    from rt.llm import prompts
+    from rt.core.models import (RecallQuizGenerationResult, RecallMirataGenerationResult,
+                                RecallVastaGenerationResult)
+    from rt.services.recall_context import lesson_context, POLICY_VERSION
+    from rt.services.unit_relevance import refresh, recall_assessment
+    from rt.services.recall_units import selected_units
+    if count is not None and count <= 0:
+        return []
+    label = qtype.value.capitalize()
+    report = progress or (lambda *args, **kwargs: None)
+    client = LLMClient(force_mock=force_mock)
+    mock = client.force_mock
+    raise_if_cancelled()
+    report(None, None, f"{label}: aggiorno le etichette del classificatore sulle unità")
+    refresh(lesson_dir, force_mock=mock, view="resolved")
+    raise_if_cancelled()
+    units = selected_units(lesson_dir)
+    bank = load_recall_bank(lesson_dir)
+    context = lesson_context(lesson_dir)
+    policy = _generation_policy(qtype, few_shot_examples or [], mock)
+    results = []
+    failures = UnitFailureTracker()
+    last_error = None
+    succeeded = False
+    system = getattr(prompts, "RECALL_" + qtype.value.upper() + "_SYSTEM_PROMPT")
+    response_model = {RecallQuestionType.QUIZ: RecallQuizGenerationResult,
+                      RecallQuestionType.MIRATA: RecallMirataGenerationResult,
+                      RecallQuestionType.VASTA: RecallVastaGenerationResult}[qtype]
+    groups = _generation_groups(units, bank, qtype, shuffle=shuffle)
+    report(0, len(groups), f"{label}: {len(units)} unità selezionate, {len(groups)} "
+           + ("gruppi" if qtype == RecallQuestionType.VASTA else "chiamate") + " al recaller")
+    for position, group in enumerate(groups):
+        raise_if_cancelled()
+        key = _generation_key(qtype, group)
+        fingerprint = _generation_digest(lesson_dir, group, policy)
+        old = bank.generation_attempts.get(key, {})
+        ids = [u.unit_id for u in group]
+        where = {"unit_id": ", ".join(ids), "unit_title": group[0].title if len(group) == 1 else None}
+        head = f"{label} · unità {where['unit_id']}" + (f" «{where['unit_title']}»" if where["unit_title"] else "")
+        if not regenerate and old.get("exhausted") and old.get("fingerprint") == fingerprint:
+            report(position + 1, len(groups), f"{head}: già valutata, nessuna domanda nuova possibile", **where)
+            continue
+        report(position, len(groups), f"{head}: chiedo le domande al recaller", **where)
+        started = time.monotonic()
+        assessment = recall_assessment(lesson_dir, group[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None,
+            "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in group]}
+        previous = [q.question_text for q in bank.questions if q.type == qtype and set(q.unit_ids) & set(ids)]
+        if mock:
+            # Come un modello reale, il mock può restituire più domande per gruppo: numerate,
+            # così i refill successivi non sono duplicati e anche le lezioni corte
+            # raggiungono l'obiettivo del batch.
+            wanted = 2 if count is None else max(1, -(-(count - len(results)) // (len(groups) - position)))
+            start = sum(1 for q in bank.questions if q.type == qtype and q.unit_ids == ids)
+            batch = []
+            for n in range(start + 1, start + 1 + min(wanted, 12)):
+                data = {"type": qtype, "question_text": f"Domanda mock {qtype.value} n. {n} per unita' {', '.join(ids)}"}
+                if qtype == RecallQuestionType.QUIZ:
+                    data.update(options=["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"],
+                                correct_index=0, pregenerated_material="La A è corretta; B, C e D sono errate.")
+                elif qtype == RecallQuestionType.VASTA:
+                    data["pregenerated_material"] = "Scaletta ideale: 1) Punto essenziale; 2) Collegamento."
+                batch.append(data)
+            generated = response_model.model_validate({"questions": batch}).questions
+        else:
+            if qtype == RecallQuestionType.VASTA:
+                prompt = prompts.build_recall_vasta_user_prompt(ids, [u.title for u in group],
+                         [u.content for u in group], few_shot_examples or [])
+            else:
+                u = group[0]
+                builder = getattr(prompts, "build_recall_" + qtype.value + "_user_prompt")
+                prompt = builder(u.unit_id, u.title, u.content, few_shot_examples or [])
+            prompt = prompts.contextualize_recall_prompt(prompt, context, assessment, previous)
+            try:
+                generated = client.call_structured(prompt=prompt, system_prompt=effective_system("recall", system),
+                    response_model=response_model, job_name="recall", unit_id=", ".join(ids), lesson_dir=lesson_dir).questions
+            except Exception as exc:
+                if not is_unit_failure(exc):
+                    raise
+                failures.failed(", ".join(ids), qtype.value, exc)
+                report(position + 1, len(groups), f"{head}: non riuscita ({type(exc).__name__}), si riprova alla prossima generazione",
+                       failed=len(failures.failures), **where)
+                last_error = exc
+                if failures.too_many():
+                    break
+                continue
+        failures.succeeded()
+        succeeded = True
+        known = {q.question_text.strip().casefold() for q in bank.questions if q.type == qtype}
+        group_results = []
+        for question in generated:
+            text_key = question.question_text.strip().casefold()
+            if text_key in known:
+                continue
+            known.add(text_key)
+            question = RecallQuestion(id="temporary", unit_ids=ids,
+                **question.model_dump(), content_fingerprint=_compute_units_fingerprint(lesson_dir, ids),
+                generation_version=POLICY_VERSION, generation_fingerprint=fingerprint,
+                classifier_level=assessment.get("level"))
+            group_results.append(question)
+        attempt = {"fingerprint": fingerprint, "exhausted": not group_results,
+                   "outcome": "questions" if group_results else "empty",
+                   "generated_at": datetime.now().isoformat(), "question_ids": []}
+        results.extend(_persist_generation(lesson_dir, group_results, key, attempt))
         bank = load_recall_bank(lesson_dir)
-        repair_duplicate_ids(bank)
-        for gen in new_questions:
-            # Il batch reale non aggiunge le domande al bank fino a questo punto.
-            # Assegna gli ID sul bank aggiornato, sotto lock: altrimenti tutte le
-            # risposte dello stesso batch (o di due job concorrenti) condividono ID.
-            gen.id = _next_id(bank)
-            bank.questions.append(gen)
-        save_recall_bank(bank, lesson_dir)
-    return new_questions
+        found = len(group_results)
+        report(position + 1, len(groups), f"{head}: " + (f"{found} {'domanda nuova' if found == 1 else 'domande nuove'}" if found
+               else "nessuna domanda nuova") + f" ({time.monotonic() - started:.0f}s)", **where)
+        if count is not None and len(results) >= count:
+            break
+    if last_error is not None:
+        _LOG.warning("Recall %s: %d gruppi non generati; restano riprovabili", qtype.value, len(failures.failures))
+        if not succeeded:
+            raise last_error
+    return results
 
 
 # -----------------------------------------------------------------------
@@ -650,6 +665,9 @@ def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = 
             removed_ids = {q.id for q in bank.questions if q.type == qtype}
             bank.questions = [q for q in bank.questions if q.type != qtype]
         bank.answers = [a for a in bank.answers if a.question_id not in removed_ids]
-        if removed_ids:
+        old_attempts = len(bank.generation_attempts)
+        bank.generation_attempts = {k: v for k, v in bank.generation_attempts.items()
+                                    if qtype is not None and not k.startswith(qtype.value + ":")}
+        if removed_ids or len(bank.generation_attempts) != old_attempts:
             save_recall_bank(bank, lesson_dir)
         return len(removed_ids)

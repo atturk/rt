@@ -144,8 +144,7 @@ class TestStartRecallViaTelegram:
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
-            cfg_obj.telegram.recall.reserve_targets = {"mirata": 2, "quiz": 2, "vasta": 1}
-            cfg_obj.telegram.recall.refill_threshold = 3
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": 3, "mirata": 3, "vasta": 3}
             cfg_obj.telegram.recall.refill_batch_size = 2
             mock_cfg.return_value = cfg_obj
 
@@ -240,8 +239,7 @@ class TestStartRecallViaTelegram:
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
-            cfg_obj.telegram.recall.reserve_targets = {"mirata": 1, "quiz": 1, "vasta": 1}
-            cfg_obj.telegram.recall.refill_threshold = 0
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": -1, "mirata": -1, "vasta": -1}  # mai rifornire
             cfg_obj.telegram.recall.refill_batch_size = 1
             mock_cfg.return_value = cfg_obj
 
@@ -272,8 +270,7 @@ class TestStartRecallViaTelegram:
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
-            cfg_obj.telegram.recall.reserve_targets = {"mirata": 1, "quiz": 1, "vasta": 1}
-            cfg_obj.telegram.recall.refill_threshold = 5  # forza sempre il rifornimento
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": 5, "mirata": 5, "vasta": 5}  # forza sempre il rifornimento
             cfg_obj.telegram.recall.refill_batch_size = 1
             mock_cfg.return_value = cfg_obj
 
@@ -320,7 +317,7 @@ class TestSendCurrentRecallQuestion:
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
-            cfg_obj.telegram.recall.refill_threshold = 5  # forza il rifornimento (1 < 5)
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": 5, "mirata": 5, "vasta": 5}  # forza il rifornimento (1 <= 5)
             cfg_obj.telegram.recall.refill_batch_size = 2
             mock_cfg.return_value = cfg_obj
 
@@ -338,7 +335,7 @@ class TestSendCurrentRecallQuestion:
         entry_msg = registry.resolve_pending("300", state_dir)
         assert entry_msg is not None and entry_msg["kind"] == "recall_question_message"
 
-        # Il rifornimento deve aver aggiunto nuove domande quiz (partiva da 1, sotto soglia 5)
+        # Il rifornimento deve aver aggiunto nuove domande quiz (partiva da 1, alla soglia 5 o sotto)
         assert get_reserve_count(lesson_dir, RecallQuestionType.QUIZ) >= 2
 
         state = load_recall_session_state(lesson_dir)
@@ -377,7 +374,7 @@ class TestSendCurrentRecallQuestion:
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
             cfg_obj.telegram.topics = {}
-            cfg_obj.telegram.recall.refill_threshold = 0
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": -1, "mirata": -1, "vasta": -1}  # mai rifornire
             cfg_obj.telegram.recall.refill_batch_size = 1
             mock_cfg.return_value = cfg_obj
 
@@ -1088,9 +1085,8 @@ class TestRecallTerminalSession:
             cfg_obj = MagicMock()
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
-            cfg_obj.telegram.recall.refill_threshold = 0
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": -1, "mirata": -1, "vasta": -1}  # mai rifornire
             cfg_obj.telegram.recall.refill_batch_size = 1
-            cfg_obj.telegram.recall.reserve_targets = {"mirata": 1, "quiz": 1, "vasta": 1}
             mock_cfg.return_value = cfg_obj
 
             run_recall_terminal_session(lesson_dir, order="sequenziale", style="quiz", force_mock=True)
@@ -1115,9 +1111,8 @@ class TestRecallTerminalSession:
             cfg_obj = MagicMock()
             cfg_obj.jev.relevance_model = ""  # rilevanza JEV spenta: niente chiamate né hash della config finta
             cfg_obj.telegram.state_dir = state_dir
-            cfg_obj.telegram.recall.refill_threshold = 0
+            cfg_obj.telegram.recall.refill_thresholds = {"quiz": -1, "mirata": -1, "vasta": -1}  # mai rifornire
             cfg_obj.telegram.recall.refill_batch_size = 1
-            cfg_obj.telegram.recall.reserve_targets = {"mirata": 1, "quiz": 1, "vasta": 1}
             mock_cfg.return_value = cfg_obj
 
             run_recall_terminal_session(lesson_dir, order="sequenziale", style="mirata", force_mock=True)

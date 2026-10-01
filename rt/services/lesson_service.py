@@ -134,7 +134,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.cost import compute_lesson_cost
     out: Dict[str, Any] = {
         "id": lesson_id, "folder_name": os.path.basename(lesson_dir), "path": lesson_dir,
-        "data": "", "materia": "", "titolo": "", "argomenti": "", "state": None,
+        "data": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
     }
     try:
@@ -145,6 +145,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
             "materia": str(info.get("materia") or "").strip().upper(),
             "titolo": str(info.get("titolo") or ""),
             "argomenti": str(info.get("argomenti") or ""),
+            "docente": str(info.get("docente") or ""),
             "state": state.value if state else info.get("fase_corrente"),
             "phases": {ph: check_phase_status(lesson_dir, ph)[0].value for ph in PHASES},
             "pending_issues": _pending_count(lesson_dir),
@@ -261,7 +262,7 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
     if text:
         needle = text.casefold()
         items = [i for i in items if any(needle in str(i[k]).casefold()
-                                         for k in ("folder_name", "titolo", "argomenti", "materia"))]
+                                         for k in ("folder_name", "titolo", "argomenti", "materia", "docente"))]
     items.sort(key=lambda i: (i["data"], i["folder_name"]), reverse=True)
     return items
 
@@ -454,7 +455,8 @@ def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     final = _document_is_final(lesson_dir)
     sections = document_sections(lesson_dir)
     md = markdown_parser()  # HTML grezzo escapato, formule intatte
-    tokens = md.parse(markdown)
+    from rt.services.enrichment_service import strip_generated
+    tokens = md.parse(strip_generated(markdown))
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})
     return {"final": final, "markdown": markdown, "html": html, "sections": sections}

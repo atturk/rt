@@ -167,9 +167,9 @@ test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e
   expect(doc.final).toBe(true)
 })
 
-test('intestazione: Recall, Immagini e download sempre nello stesso posto, disabilitati con il motivo', async ({ page }) => {
+test('intestazione: Recall, Arricchimento e download sempre nello stesso posto, disabilitati con il motivo', async ({ page }) => {
   await loginViaLink(page)
-  const labels = ['Recall', 'Immagini', 'Markdown', 'Tutti i dati (zip)']
+  const labels = ['Recall', 'Arricchimento', 'Markdown', 'Tutti i dati (zip)']
 
   // Lezione senza rielaborazione: le quattro azioni ci sono, disabilitate con il motivo
   const setupOnly = await lessonId(page, 'FISIOLOGIA')
@@ -198,7 +198,7 @@ test('intestazione: Recall, Immagini e download sempre nello stesso posto, disab
   await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/recall$`))
   await expect(page.getByText('La lezione non ha ancora una rielaborazione valida')).toHaveCount(0)
   await page.goto(`/lezioni/${reviewed}`)
-  await actions.getByRole('link', { name: 'Immagini' }).click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/immagini$`))
+  await actions.getByRole('link', { name: 'Arricchimento' }).click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/arricchimento$`))
   await expect(page.getByRole('button', { name: 'Aggiungi le immagini' })).toBeVisible()
 })

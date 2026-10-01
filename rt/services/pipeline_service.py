@@ -32,6 +32,7 @@ class PipelineOptions:
     date: Optional[str] = None
     materia: Optional[str] = None
     argomenti: Optional[str] = None
+    docente: Optional[str] = None
     dest_dir: Optional[str] = None
     model: Optional[str] = None
     skip_transcribe: bool = False
@@ -211,6 +212,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
             mark_ready_to_build(lesson_dir)
 
     ctx.check_cancelled()
+    result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
     bld_res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
     result.phase_results["build"] = bld_res
     final_dir = bld_res.get("lesson_dir") or lesson_dir
@@ -247,6 +249,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         date=options.date,
         materia=options.materia,
         argomenti=options.argomenti,
+        docente=options.docente,
         dest_dir=options.dest_dir,
         model=options.model or DEFAULT_MODEL,
         skip_transcribe=options.skip_transcribe,
@@ -254,6 +257,8 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         mock_asr=options.mock,
         interactive=prompter is not None,
         on_progress=lambda msg: ctx.emit(Notice(message=msg)),
+        # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
+        on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
         prompter=prompter,
         # Senza DecisionProvider (API/worker) i metadati mancanti non si inventano.
         strict=decisions is None,
@@ -278,6 +283,27 @@ def _wait(result: PipelineResult, ctx: RunContext, kind: str, lesson_dir: str, p
 # ---------------------------------------------------------------- job singoli (fase D)
 
 RUNNABLE_PHASES = ("prepare", "outline", "rewrite", "review", "build")
+
+
+def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext) -> Dict[str, Any]:
+    """Optional analysis: failures do not prevent the lesson from being built."""
+    from rt.core.config import load_config
+    cfg = load_config()
+    if not cfg.enrichment.automatic:
+        return {"skipped": "disabled"}
+    route = cfg.jobs.get("enrichment_writer")
+    if not mock and (not route or not route.primary.is_configured):
+        ctx.emit(Notice(message="Arricchimento automatico disponibile dopo aver configurato l'Arricchitore in Modelli."))
+        return {"skipped": "not_configured"}
+    try:
+        from rt.services.enrichment_service import analyze
+        return analyze(lesson_dir, mock=mock, ctx=ctx)
+    except RunCancelled:
+        raise
+    except Exception as exc:
+        from rt.services.context import _sanitize
+        ctx.emit(Notice(level="warning", message=f"Analisi di arricchimento da riprovare: {_sanitize(str(exc))}"))
+        return {"error": _sanitize(str(exc))}
 
 
 class TranscriptionUnavailable(RuntimeError):
@@ -348,10 +374,14 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
         elif phase == "review":
             res = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         else:
+            result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
             res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
             result.lesson_dir = res.get("lesson_dir") or lesson_dir
     result.phase_results[phase] = res
     raise_if_incomplete(phase, res)
+    if phase in ("rewrite", "review"):
+        with ctx.activate():
+            result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
     if phase == "build" and not mock:
         notify_build_completed(result.lesson_dir, res, ctx, notifiers)
     return result

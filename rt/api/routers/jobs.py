@@ -154,6 +154,7 @@ def create_lesson(
     date: str = Form(..., description="Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')"),
     materia: str = Form(...),
     argomenti: str = Form(""),
+    docente: str = Form("", description="Nome del docente (facoltativo)"),
     run: bool = Form(False, description="True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')"),
     mock: bool = Form(False),
     with_review: bool = Form(False),
@@ -165,7 +166,8 @@ def create_lesson(
 
     def _go():
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
-        options = {"date": date, "materia": materia, "argomenti": argomenti or None, "dest_dir": lessons_root(),
+        options = {"date": date, "materia": materia, "argomenti": argomenti or None, "docente": docente.strip() or None,
+                   "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "auto_accept": auto_accept, "channel": "terminal"}
         # run=true: tutta la pipeline dall'audio (come 'rt run audio'); altrimenti solo setup
         return enqueue_job("run_pipeline" if run else "ingest_audio", None,

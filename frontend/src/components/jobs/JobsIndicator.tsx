@@ -1,6 +1,8 @@
 import { Link } from 'react-router'
+import type { ReactNode } from 'react'
 
 import { useJobs, useWorkers } from '@/api/jobs'
+import { ClassificationNotice } from '@/components/ClassificationNotice'
 import { Alert } from '@/components/ui/alert'
 import { decisionLabel, decisionLink, isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
@@ -42,7 +44,7 @@ export function JobsNavBadge() {
 }
 
 /** Nella pagina lezione: pipeline in attesa ("serve la tua approvazione") o job in corso. */
-export function LessonJobBanner({ lessonId }: { lessonId: number }) {
+export function LessonJobBanner({ lessonId, review = false, extra }: { lessonId: number; review?: boolean; extra?: ReactNode }) {
   const jobs = useJobs({ lesson_id: lessonId, limit: 20 }, { poll: 5_000 })
   const waiting = (jobs.data ?? []).find((j) => j.state === 'waiting_for_decision')
   const running = (jobs.data ?? []).find((j) => isActive(j.state))
@@ -64,7 +66,8 @@ export function LessonJobBanner({ lessonId }: { lessonId: number }) {
           </Link>
         </Alert>
       )}
-      <p className="flex gap-4 text-xs">
+      <ClassificationNotice lessonId={lessonId} />
+      <p className="flex flex-wrap gap-4 text-xs">
         <Link to={`/lezioni/${lessonId}/outline`} className="underline">
           Scaletta e approvazione
         </Link>
@@ -74,6 +77,13 @@ export function LessonJobBanner({ lessonId }: { lessonId: number }) {
         <Link to={`/lezioni/${lessonId}/rilevanza`} className="underline">
           Classificatore
         </Link>
+        {/* Anche a revisione finita si torna alle issue per cambiare una decisione. */}
+        {review && (
+          <Link to={`/lezioni/${lessonId}/revisione`} className="underline">
+            Revisione
+          </Link>
+        )}
+        {extra}
       </p>
     </div>
   )

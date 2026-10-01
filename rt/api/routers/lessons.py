@@ -72,9 +72,9 @@ def get_document(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 @router.get("/lessons/{lesson_id}/relevance", response_model=schemas.UnitRelevanceOverview,
             summary="Classificazioni del classificatore, correzioni per ogni unità e riepilogo")
-def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+def get_unit_relevance(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, view: Literal["draft", "resolved"] = "draft"):
     from rt.services.unit_relevance import list_units
-    return list_units(lesson_dir)
+    return list_units(lesson_dir, view=view)
 
 
 @router.post("/lessons/{lesson_id}/relevance/run", response_model=schemas.JobAccepted, status_code=202,
@@ -186,6 +186,33 @@ def export_lesson(
         raise ApiError(404, "export_not_available", str(exc))
     disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
     return Response(content=content, media_type=media_type, headers={"Content-Disposition": disposition})
+
+
+@router.get("/lesson-exports", summary="Scarica più lezioni in un solo ZIP (es. un gruppo dell'elenco)",
+            responses={200: {"content": {"application/zip": {}}, "description": "Archivio ZIP"}})
+def export_lessons(
+    _actor: Actor,
+    ids: List[int] = Query(..., description="Id delle lezioni"),
+    format: Literal["markdown", "zip"] = Query("markdown", description="markdown: i documenti finali aggiornati; "
+                                               "zip: l'archivio completo di ogni lezione"),
+    name: str = Query("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)"),
+):
+    from urllib.parse import quote
+    from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
+    from rt.storage.export import ExportError, export_many_to_tempfile
+    try:
+        dirs = [resolve_lesson_dir(i) for i in dict.fromkeys(ids)]
+    except LessonNotFound as exc:
+        raise ApiError(404, "lesson_not_found", str(exc))
+    try:
+        path, _count = export_many_to_tempfile(dirs, format)
+    except ExportError as exc:
+        raise ApiError(404, "export_not_available", str(exc))
+    base = "".join(c for c in name if c not in '/\\:*?"<>|').strip() or "lezioni"
+    filename = f"{base}{' - archivi' if format == 'zip' else ''}.zip"
+    return FileResponse(path, media_type="application/zip", filename=filename,
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+                        background=BackgroundTask(os.unlink, path))
 
 
 @router.get("/lessons/{lesson_id}/outline", response_model=schemas.Outline,

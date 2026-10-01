@@ -2,7 +2,7 @@
 rt.services.recall_subject
 Recall per materia: una sessione che pesca le domande da tutte le lezioni di una materia, con la
 stessa logica della sessione di una lezione (tipo scelto, ordine fra le unità, salto, rifornimento
-della riserva). Le lezioni si danno il turno: dopo una domanda di una lezione tocca alla
+del pool). Le lezioni si danno il turno: dopo una domanda di una lezione tocca alla
 successiva (per data) che ha ancora domande di quel tipo da porre; con l'ordine casuale la
 lezione si sceglie a caso.
 
@@ -12,7 +12,9 @@ salti restano quelli della lezione a cui appartiene la domanda (rt.services.reca
 Il modulo non dipende dal canale: la web app lo usa, il bot Telegram può riusarlo passando
 channel=TELEGRAM.
 """
+import logging
 import random
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
@@ -25,7 +27,19 @@ from rt.services.recall_sessions import (
     ACTIVE, ENDED, TELEGRAM, WEB, RecallSessionError, _now, _views, list_sessions, summarize,
 )
 
+LOG = logging.getLogger(__name__)
+
 NO_SUBJECT = "no_subject"
+# Recall del giorno: stessa sessione della materia, con le lezioni di una data al posto di
+# quelle di una materia ("GIORNO:2026-09-30" nella colonna subject).
+DAY_PREFIX = "GIORNO:"
+_DAY = re.compile(r"^GIORNO:(\d{4}-\d{2}-\d{2})$")
+
+
+def subject_day(subject: str) -> Optional[str]:
+    """La data di una sessione del giorno ("GIORNO:2026-09-30" -> "2026-09-30"), se lo è."""
+    match = _DAY.match(subject or "")
+    return match.group(1) if match else None
 
 
 def normalize_subject(materia: Optional[str]) -> str:
@@ -48,16 +62,18 @@ def split_question_key(key: str) -> Tuple[Optional[int], str]:
         return None, key
 
 
-# ---------------------------------------------------------------- lezioni e riserva
+# ---------------------------------------------------------------- lezioni e pool
 
 def _ready(summary: Dict[str, Any]) -> bool:
     return summary.get("phases", {}).get("rewrite") == "VALID"
 
 
 def subject_lessons(materia: str) -> List[Dict[str, Any]]:
-    """Riepiloghi delle lezioni della materia, dalla più vecchia (l'ordine dei turni)."""
+    """Riepiloghi delle lezioni della materia (o del giorno), dalla più vecchia (l'ordine dei turni)."""
     from rt.services.lesson_service import list_lessons
-    items = list_lessons(materia=normalize_subject(materia))
+    subject = normalize_subject(materia)
+    day = subject_day(subject)
+    items = [i for i in list_lessons() if i["data"] == day] if day else list_lessons(materia=subject)
     return sorted(items, key=lambda i: (i["data"] or "9999", i["folder_name"]))
 
 
@@ -66,32 +82,55 @@ def _telegram_busy() -> set:
     return {s["lesson_id"] for s in list_sessions(channel=TELEGRAM) if s.get("lesson_id") is not None}
 
 
-def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None) -> Dict[str, Any]:
+def _classifying() -> set:
+    """Lezioni con un job del classificatore in coda o in corso (percorsi come nella coda)."""
+    from rt.services.jobs import JobState, get_job_queue
+    try:
+        jobs = get_job_queue().list(state=[JobState.QUEUED.value, JobState.RUNNING.value],
+                                    job_type="unit_relevance", limit=1000)
+    except Exception:  # coda non disponibile: lo stato resta quello delle etichette salvate
+        LOG.debug("Coda dei job non disponibile per lo stato del classificatore", exc_info=True)
+        return set()
+    return {j.lesson_path for j in jobs if j.lesson_path}
+
+
+def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None,
+                 classifying: Optional[set] = None) -> Dict[str, Any]:
     """Domande per tipo e stato e risposte date di una lezione, come GET /lessons/{id}/recall."""
+    from rt.db.repositories import normalize_lesson_path
     from rt.services.recall_service import recall_overview
+    from rt.services.unit_relevance import classification_status
     ready = _ready(summary)
     overview = recall_overview(summary["path"]) if ready else {"questions": {}, "answers": 0}
+    classification = classification_status(summary["path"]) if ready else None
+    if classification and classification["state"] != "disabled" \
+            and normalize_lesson_path(summary["path"]) in (classifying or set()):
+        classification = {**classification, "state": "running"}
     return {"lesson_id": summary["id"], "ready": ready, "questions": overview["questions"],
-            "answers": overview["answers"], "telegram": summary["id"] in (telegram_busy or set())}
+            "answers": overview["answers"], "telegram": summary["id"] in (telegram_busy or set()),
+            "classification": classification}
 
 
 def recall_by_subject() -> List[Dict[str, Any]]:
-    """Per la pagina del recall: ogni materia con la riserva delle sue lezioni e la sessione per
+    """Per la pagina del recall: ogni materia con il pool delle sue lezioni e la sessione per
     materia in corso. Le lezioni senza materia stanno sotto materia vuota."""
     from rt.services.lesson_service import list_lessons
-    busy = _telegram_busy()
+    busy, classifying = _telegram_busy(), _classifying()
     subjects: Dict[str, List[Dict[str, Any]]] = {}
     for summary in list_lessons():
-        subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, busy))
+        subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, busy, classifying))
     active = {s["subject"]: s for s in _subject_sessions(state=ACTIVE)}
-    return [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
-            for materia, lessons in sorted(subjects.items())]
+    out = [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
+           for materia, lessons in sorted(subjects.items())]
+    # Sessioni del giorno in corso: senza lezioni proprie (sono già sotto le loro materie).
+    return out + [{"materia": subject, "lessons": [], "session": session}
+                  for subject, session in sorted(active.items()) if subject_day(subject)]
 
 
 def subject_overview(materia: str) -> Dict[str, Any]:
     subject = normalize_subject(materia)
-    busy = _telegram_busy()
-    lessons = [lesson_stats(s, busy) for s in subject_lessons(subject)]
+    busy, classifying = _telegram_busy(), _classifying()
+    lessons = [lesson_stats(s, busy, classifying) for s in subject_lessons(subject)]
     return {"materia": subject, "lessons": lessons, "session": active_subject_session(subject),
             "last": last_ended_subject_session(subject)}
 
@@ -139,6 +178,26 @@ def _last_lesson(subject: str, channel: str) -> Optional[int]:
         row = _active_row(session, subject, channel)
         ids = list(row.question_ids or []) if row is not None else []
     return split_question_key(ids[-1])[0] if ids else None
+
+
+def current_subject_question(materia: str, channel: str = WEB):
+    """Last question in the active subject session, for reconnecting study clients."""
+    from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
+    from rt.services.recall_service import find_question
+    with read_scope(require_database()) as session:
+        row = _active_row(session, normalize_subject(materia), channel)
+        key = (row.question_ids or [])[-1] if row and row.question_ids else None
+    if not key:
+        return None
+    lesson_id, question_id = split_question_key(key)
+    if lesson_id is None:
+        return None
+    try:
+        lesson_dir = resolve_lesson_dir(lesson_id)
+    except LessonNotFound:
+        return None
+    question = find_question(lesson_dir, question_id)
+    return {"lesson_id": lesson_id, "lesson_dir": lesson_dir, "question": question} if question else None
 
 
 def record_subject_question(materia: str, lesson_id: int, question_id: str, qtype: str,

@@ -1,30 +1,32 @@
-import { ArrowDown, ArrowUp, Brain, LayoutGrid, Send, Table2 } from 'lucide-react'
+import { Brain, CalendarDays, RefreshCw, Send, Tags } from 'lucide-react'
 import { useId } from 'react'
 import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
-import { useSubjectsRecall, type LessonRecallStats, type SubjectRecall } from '@/api/recall'
-import { LessonFilters } from '@/components/LessonFilters'
-import { GroupToggle, Segmented, SortHeader } from '@/components/LessonList'
+import { useQueueForLessons, useSubjectsRecall, type LessonRecallStats, type SubjectRecall } from '@/api/recall'
+import { GroupToggle, SortHeader, ViewToolbar } from '@/components/LessonList'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
+import { classificationLabel } from '@/lib/classification'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { useFilteredLessons } from '@/lib/lessonFilters'
-import type { LessonGroup, SortDir } from '@/lib/lessonView'
+import type { LessonGroup } from '@/lib/lessonView'
 import { RECALL_TYPES, countStatus } from '@/lib/recall'
 import {
   RECALL_DEFAULT_DIR,
+  RECALL_GROUP_LABELS,
   RECALL_SORT_LABELS,
+  dayPath,
+  daySubject,
   groupForRecall,
   pendingOf,
   subjectPath,
   subjectTotals,
   useRecallViewPrefs,
+  type RecallGroupBy,
   type RecallSortKey,
   type RecallViewPrefs,
 } from '@/lib/recallView'
@@ -40,7 +42,7 @@ function plural(n: number, one: string, many: string) {
 }
 
 /** "12 da porre · 3 risposte", o cosa manca per iniziare. */
-function reserveText(stats?: LessonRecallStats) {
+function poolText(stats?: LessonRecallStats) {
   if (!stats?.ready) return NOT_READY
   const total = Object.values(stats.questions).reduce((sum, byStatus) => sum + Object.values(byStatus).reduce((a, b) => a + b, 0), 0)
   if (total === 0) return 'nessuna domanda generata'
@@ -66,13 +68,69 @@ function TelegramBadge({ stats }: { stats?: LessonRecallStats }) {
   )
 }
 
-function LessonRecallCard({ lesson, stats }: { lesson: Lesson; stats?: LessonRecallStats }) {
+/** Il classificatore sulla lezione: il recall usa le sue etichette, una lezione non
+ * classificata si vede subito e porta alla pagina del classificatore; con Option il clic
+ * accoda subito la classificazione, senza aprire la pagina. */
+function ClassificationBadge({ lesson, stats }: { lesson: Lesson; stats?: LessonRecallStats }) {
+  const classify = useQueueForLessons('classify')
+  if (!stats?.ready || !stats.classification) return null
+  const label = classificationLabel(stats.classification)
+  if (label.text === '—') return null
+  const badge = <Badge tone={label.tone} data-testid="classification">{classify.isPending ? 'Classificazione in corso' : label.text}</Badge>
+  return label.pending ? (
+    <Link to={`/lezioni/${lesson.id}/rilevanza`} title="Apri il classificatore della lezione (Option-clic: classifica subito)"
+      className="inline-flex" onClick={(event) => {
+        if (!event.altKey) return
+        event.preventDefault()
+        if (!classify.isPending) classify.mutate([lesson.id])
+      }}>
+      {badge}
+    </Link>
+  ) : badge
+}
+
+/** Lezioni del gruppo ancora da classificare (anche quelle con la classificazione in coda). */
+function unclassified(lessons: Lesson[], stats: Map<number, LessonRecallStats>) {
+  return lessons.filter((l) => {
+    const s = stats.get(l.id)
+    return s?.ready && s.classification && (classificationLabel(s.classification).pending || s.classification.state === 'running')
+  })
+}
+
+/** Nella barra del gruppo: classifica tutte le lezioni da classificare, o ne rigenera i pool. */
+function GroupQueueButton({ kind, lessons, stats }: { kind: 'classify' | 'pool'; lessons: Lesson[]; stats: Map<number, LessonRecallStats> }) {
+  const queue = useQueueForLessons(kind)
+  const pending = unclassified(lessons, stats)
+  const targets = kind === 'classify' ? pending.filter((l) => stats.get(l.id)?.classification?.state !== 'running') : pending
+  const classify = kind === 'classify'
+  const done = queue.data && `${queue.data.queued} ${classify ? 'accodate' : 'pool accodati'}${queue.data.failed ? `, ${queue.data.failed} non riuscite` : ''}`
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={targets.length === 0 || queue.isPending}
+        data-testid={classify ? 'group-classify' : 'group-pools'}
+        title={classify
+          ? 'Accoda il classificatore (unità nuove o modificate) per ogni lezione del gruppo ancora da classificare'
+          : 'Rigenera il pool di ogni lezione del gruppo ancora da classificare: dopo la classificazione, se accodata prima'}
+        onClick={() => queue.mutate(targets.map((l) => l.id))}>
+        {classify ? <Tags aria-hidden /> : <RefreshCw aria-hidden />}
+        {classify ? 'Classifica tutte' : 'Rigenera tutti i pool'}
+        {targets.length > 0 && <span className="tabular-nums text-muted-foreground">({targets.length})</span>}
+      </Button>
+      {done && <span role="status" className="text-xs text-muted-foreground">{done}</span>}
+      {queue.isError && <span role="alert" className="text-xs text-danger">{errorMessage(queue.error)}</span>}
+    </span>
+  )
+}
+
+function LessonRecallCard({ lesson, stats, group }: { lesson: Lesson; stats?: LessonRecallStats; group: RecallGroupBy }) {
+  const where = group === 'giorno' ? lesson.materia : lesson.data
   return (
     <Card className="flex flex-col gap-1 p-4" data-testid="picker-lesson" data-lesson-id={lesson.id}>
       <LessonTitle lesson={lesson} stats={stats} />
-      <span className="text-xs text-muted-foreground">{[lesson.data, reserveText(stats)].filter(Boolean).join(' · ')}</span>
-      {stats?.telegram && (
-        <div className="mt-1">
+      <span className="text-xs text-muted-foreground">{[where, poolText(stats)].filter(Boolean).join(' · ')}</span>
+      {(stats?.telegram || stats?.classification) && (
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          <ClassificationBadge lesson={lesson} stats={stats} />
           <TelegramBadge stats={stats} />
         </div>
       )}
@@ -80,9 +138,11 @@ function LessonRecallCard({ lesson, stats }: { lesson: Lesson; stats?: LessonRec
   )
 }
 
-/** Intestazione di una materia: apri/chiudi, totali e la sessione su tutte le sue lezioni. */
-function SubjectHeader({ group, stats, subject, expanded, onToggle, controls }: {
+/** Intestazione di una materia o di un giorno: apri/chiudi, totali e la sessione su tutte le
+ * sue lezioni (Recall della materia, Recall del giorno). */
+function SubjectHeader({ group, by, stats, subject, expanded, onToggle, controls }: {
   group: LessonGroup
+  by: RecallGroupBy
   stats: Map<number, LessonRecallStats>
   subject?: SubjectRecall
   expanded: boolean
@@ -90,6 +150,7 @@ function SubjectHeader({ group, stats, subject, expanded, onToggle, controls }: 
   controls: string
 }) {
   const totals = subjectTotals(group.lessons, stats)
+  const day = by === 'giorno'
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <GroupToggle group={group} expanded={expanded} onToggle={onToggle} controls={controls} />
@@ -97,11 +158,14 @@ function SubjectHeader({ group, stats, subject, expanded, onToggle, controls }: 
         {plural(totals.pending, 'domanda da porre', 'domande da porre')}
       </span>
       {subject?.session && <Badge tone="success">Sessione in corso</Badge>}
+      <GroupQueueButton kind="classify" lessons={group.lessons} stats={stats} />
       {group.key && (
-        <span className="ml-auto">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <GroupQueueButton kind="pool" lessons={group.lessons} stats={stats} />
           {totals.ready > 0 ? (
-            <Link to={subjectPath(group.key)} className={subjectLink} data-testid="subject-recall">
-              <Brain aria-hidden /> Recall della materia<span className="sr-only">: {group.label}</span>
+            <Link to={day ? dayPath(group.key) : subjectPath(group.key)} className={subjectLink} data-testid="subject-recall">
+              {day ? <CalendarDays aria-hidden /> : <Brain aria-hidden />} {day ? 'Recall del giorno' : 'Recall della materia'}
+              <span className="sr-only">: {group.label}</span>
             </Link>
           ) : (
             <span className="text-xs text-muted-foreground">Nessuna lezione pronta</span>
@@ -121,26 +185,29 @@ type ViewProps = {
   onToggleGroup: (id: string) => void
 }
 
-const groupId = (group: LessonGroup) => `materia:${group.key}`
+const groupId = (prefs: RecallViewPrefs, group: LessonGroup) => `${prefs.group}:${group.key}`
+const sessionOf = (prefs: RecallViewPrefs, subjects: Map<string, SubjectRecall>, group: LessonGroup) =>
+  subjects.get(prefs.group === 'giorno' ? daySubject(group.key) : group.key)
 
 function CardsView({ groups, stats, subjects, prefs, onToggleGroup }: ViewProps) {
   const base = useId()
   return (
     <div className="flex flex-col gap-5">
       {groups.map((group, index) => {
-        const id = groupId(group)
+        const id = groupId(prefs, group)
         const expanded = !prefs.collapsed.includes(id)
         const panel = `${base}-${index}`
         return (
           <section key={id} aria-label={group.label} data-testid="recall-subject" data-subject={group.key}>
             <h2 className="mb-2 border-b pb-1">
-              <SubjectHeader group={group} stats={stats} subject={subjects.get(group.key)} expanded={expanded} onToggle={() => onToggleGroup(id)} controls={panel} />
+              <SubjectHeader group={group} by={prefs.group} stats={stats} subject={sessionOf(prefs, subjects, group)} expanded={expanded}
+                onToggle={() => onToggleGroup(id)} controls={panel} />
             </h2>
             <ul id={panel} hidden={!expanded} className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {expanded &&
                 group.lessons.map((lesson) => (
                   <li key={lesson.id}>
-                    <LessonRecallCard lesson={lesson} stats={stats.get(lesson.id)} />
+                    <LessonRecallCard lesson={lesson} stats={stats.get(lesson.id)} group={prefs.group} />
                   </li>
                 ))}
             </ul>
@@ -151,18 +218,21 @@ function CardsView({ groups, stats, subjects, prefs, onToggleGroup }: ViewProps)
   )
 }
 
-const COLUMNS = 3 + RECALL_TYPES.length
+const COLUMNS = 4 + RECALL_TYPES.length
 
 function TableView({ groups, stats, subjects, prefs, onSort, onToggleGroup }: ViewProps) {
   const base = useId()
   return (
     <Card className="overflow-x-auto p-0">
       <table className="w-full min-w-[40rem] border-collapse text-sm" data-testid="recall-table">
-        <caption className="sr-only">Lezioni per materia, ordinate per {RECALL_SORT_LABELS[prefs.sort].toLowerCase()}</caption>
+        <caption className="sr-only">Lezioni per {prefs.group}, ordinate per {RECALL_SORT_LABELS[prefs.sort].toLowerCase()}</caption>
         <thead className="text-left text-xs text-muted-foreground">
           <tr>
             <SortHeader label="Lezione" sortKey="titolo" prefs={prefs} onSort={onSort} />
-            <SortHeader label="Data" sortKey="data" prefs={prefs} onSort={onSort} />
+            {prefs.group === 'giorno'
+              ? <th scope="col" className="px-3 py-2 font-medium">Materia</th>
+              : <SortHeader label="Data" sortKey="data" prefs={prefs} onSort={onSort} />}
+            <th scope="col" className="px-3 py-2 font-medium">Classificatore</th>
             {RECALL_TYPES.map((t) => (
               <th key={t.value} scope="col" className="px-3 py-2 text-right font-medium">
                 {t.label} <span className="sr-only">da porre</span>
@@ -172,14 +242,15 @@ function TableView({ groups, stats, subjects, prefs, onSort, onToggleGroup }: Vi
           </tr>
         </thead>
         {groups.map((group, index) => {
-          const id = groupId(group)
+          const id = groupId(prefs, group)
           const expanded = !prefs.collapsed.includes(id)
           const rows = `${base}-${index}`
           return (
             <tbody key={id} id={rows} data-testid="recall-subject" data-subject={group.key}>
               <tr className="border-t bg-muted/40">
                 <th scope="rowgroup" colSpan={COLUMNS} className="px-2 py-1 text-left font-normal">
-                  <SubjectHeader group={group} stats={stats} subject={subjects.get(group.key)} expanded={expanded} onToggle={() => onToggleGroup(id)} controls={rows} />
+                  <SubjectHeader group={group} by={prefs.group} stats={stats} subject={sessionOf(prefs, subjects, group)} expanded={expanded}
+                    onToggle={() => onToggleGroup(id)} controls={rows} />
                 </th>
               </tr>
               {expanded &&
@@ -192,7 +263,10 @@ function TableView({ groups, stats, subjects, prefs, onSort, onToggleGroup }: Vi
                         {!s?.ready && <span className="block text-xs text-muted-foreground">{NOT_READY}</span>}
                         {s?.telegram && <div className="mt-1"><TelegramBadge stats={s} /></div>}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">{lesson.data || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
+                        {(prefs.group === 'giorno' ? lesson.materia : lesson.data) || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5">{s?.ready ? <ClassificationBadge lesson={lesson} stats={s} /> : '—'}</td>
                       {RECALL_TYPES.map((t) => (
                         <td key={t.value} className="px-3 py-2.5 text-right tabular-nums">
                           {s?.ready ? countStatus(s.questions, 'pending', t.value) : '—'}
@@ -210,60 +284,14 @@ function TableView({ groups, stats, subjects, prefs, onSort, onToggleGroup }: Vi
   )
 }
 
-function ViewControls({ shown, total, filtered, onReset, prefs, onChange }: {
-  shown: number
-  total: number
-  filtered: boolean
-  onReset: () => void
-  prefs: RecallViewPrefs
-  onChange: (patch: Partial<RecallViewPrefs>) => void
-}) {
-  const id = useId()
-  const DirIcon = prefs.dir === 'asc' ? ArrowUp : ArrowDown
-  const dirText = prefs.sort === 'data'
-    ? prefs.dir === 'desc' ? 'dalla più recente' : 'dalla meno recente'
-    : prefs.dir === 'asc' ? 'crescente' : 'decrescente'
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <p className="text-sm text-muted-foreground" role="status" data-testid="lesson-count">
-        {filtered ? (
-          <>
-            <strong className="font-semibold text-foreground tabular-nums">{shown}</strong> di {total} lezioni
-            <Button variant="link" size="sm" className="ml-1 h-auto px-1" onClick={onReset}>Azzera filtri</Button>
-          </>
-        ) : (
-          <><strong className="font-semibold text-foreground tabular-nums">{total}</strong> {total === 1 ? 'lezione' : 'lezioni'}</>
-        )}
-      </p>
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-sort`} className="text-xs">Ordina per</Label>
-          <div className="flex">
-            <Select id={`${id}-sort`} className="w-44 rounded-r-none" value={prefs.sort}
-              onChange={(e) => { const sort = e.target.value as RecallSortKey; onChange({ sort, dir: RECALL_DEFAULT_DIR[sort] }) }}>
-              {(Object.keys(RECALL_SORT_LABELS) as RecallSortKey[]).map((s) => <option key={s} value={s}>{RECALL_SORT_LABELS[s]}</option>)}
-            </Select>
-            <Button variant="outline" size="icon" className="-ml-px rounded-l-none" aria-label={`Ordine ${dirText}: inverti`} title={`Ordine ${dirText}`}
-              onClick={() => onChange({ dir: (prefs.dir === 'asc' ? 'desc' : 'asc') as SortDir })}>
-              <DirIcon />
-            </Button>
-          </div>
-        </div>
-        <Segmented label="Vista" value={prefs.view} onChange={(view) => onChange({ view })} options={[
-          { value: 'schede', label: 'Schede', icon: <LayoutGrid aria-hidden /> },
-          { value: 'tabella', label: 'Tabella', icon: <Table2 aria-hidden /> },
-        ]} />
-      </div>
-    </div>
-  )
-}
-
-/** /recall: le lezioni per materia, con la riserva di domande di ognuna e il recall della materia. */
+/** /recall: le lezioni per materia o per giorno, con il pool di domande di ognuna e il recall
+ * della materia o del giorno. */
 export function RecallOverviewPage() {
   const lessons = useLessons()
   const recall = useSubjectsRecall()
   const { filters, setFilter, resetFilters, filtered } = useFilteredLessons(lessons.data)
   const { prefs, update, sortBy, toggleGroup } = useRecallViewPrefs()
+  const searchId = useId()
   const stats = new Map((recall.data ?? []).flatMap((s) => s.lessons.map((l) => [l.lesson_id, l] as const)))
   const subjects = new Map((recall.data ?? []).map((s) => [s.materia, s]))
   const groups = groupForRecall(filtered, stats, prefs)
@@ -273,15 +301,17 @@ export function RecallOverviewPage() {
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-bold tracking-tight">Active recall</h1>
       <p className="text-sm text-muted-foreground">
-        Ripassa una lezione, oppure tutta una materia: la sessione della materia pesca le domande da tutte le sue lezioni.
+        Ripassa una lezione, oppure tutta una materia o un giorno: la sessione della materia (o del giorno) pesca le domande da
+        tutte le sue lezioni.
       </p>
-      <LessonFilters lessons={all} filters={filters} onChange={setFilter} />
       {lessons.isError && <Alert tone="danger">{errorMessage(lessons.error)}</Alert>}
       {recall.isError && <Alert tone="danger">{errorMessage(recall.error)}</Alert>}
       {lessons.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
       {lessons.data && all.length > 0 && (
-        <ViewControls shown={filtered.length} total={all.length} filtered={Boolean(filters.q || filters.materia || filters.state)}
-          onReset={resetFilters} prefs={prefs} onChange={update} />
+        <ViewToolbar<RecallSortKey, RecallGroupBy> shown={filtered.length} total={all.length}
+          filtered={Boolean(filters.q || filters.materia || filters.state)} onReset={resetFilters}
+          search={{ id: searchId, value: filters.q, onChange: (value) => setFilter('q', value) }}
+          prefs={prefs} onChange={update} sortLabels={RECALL_SORT_LABELS} groupLabels={RECALL_GROUP_LABELS} defaultDir={RECALL_DEFAULT_DIR} />
       )}
       {lessons.data && filtered.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">

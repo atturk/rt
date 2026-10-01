@@ -10,7 +10,7 @@ import { lessonTitle, type Lesson } from './format'
 export type LessonViewMode = 'schede' | 'tabella'
 export type LessonSortKey = 'data' | 'titolo' | 'materia' | 'stato' | 'issue' | 'costo'
 export type SortDir = 'asc' | 'desc'
-export type LessonGroupBy = 'nessuno' | 'giorno' | 'mese' | 'materia'
+export type LessonGroupBy = 'nessuno' | 'giorno' | 'mese' | 'materia' | 'docente'
 
 export type LessonViewPrefs = {
   view: LessonViewMode
@@ -37,6 +37,7 @@ export const GROUP_LABELS: Record<LessonGroupBy, string> = {
   giorno: 'Giorno',
   mese: 'Mese',
   materia: 'Materia',
+  docente: 'Docente',
 }
 
 /** Direzione naturale al primo clic: date, issue e costi dal più alto; testi dalla A. */
@@ -108,6 +109,7 @@ export type LessonGroup = { key: string; label: string; lessons: Lesson[] }
 
 const NO_DATE = 'Senza data'
 const NO_SUBJECT = 'Senza materia'
+const NO_TEACHER = 'Senza docente'
 
 function isoDay(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -144,13 +146,14 @@ export function monthLabel(date: string): string {
 
 /**
  * Raggruppa l'elenco già ordinato: dentro ogni gruppo resta l'ordine scelto. I gruppi per data
- * seguono la direzione dell'ordinamento per data (altrimenti i più recenti prima); le materie
- * vanno in ordine alfabetico. "Senza data" e "Senza materia" stanno in fondo.
+ * seguono la direzione dell'ordinamento per data (altrimenti i più recenti prima); materie e
+ * docenti vanno in ordine alfabetico. "Senza data", "Senza materia" e "Senza docente" stanno in fondo.
  */
 export function groupLessons(sorted: Lesson[], group: LessonGroupBy, dateDir: SortDir = 'desc', now = new Date()): LessonGroup[] {
   if (group === 'nessuno') return [{ key: 'tutte', label: 'Tutte le lezioni', lessons: sorted }]
   const keyOf = (l: Lesson): string => {
     if (group === 'materia') return l.materia || ''
+    if (group === 'docente') return (l.docente ?? '').trim()
     const d = parseIso(l.data || '')
     if (!d) return ''
     return group === 'giorno' ? isoDay(d) : isoDay(d).slice(0, 7)
@@ -160,12 +163,14 @@ export function groupLessons(sorted: Lesson[], group: LessonGroupBy, dateDir: So
     const key = keyOf(lesson)
     groups.set(key, [...(groups.get(key) ?? []), lesson])
   }
-  const sign = group === 'materia' || dateDir === 'asc' ? 1 : -1
+  const byName = group === 'materia' || group === 'docente'
+  const sign = byName || dateDir === 'asc' ? 1 : -1
+  const empty = group === 'materia' ? NO_SUBJECT : group === 'docente' ? NO_TEACHER : NO_DATE
   return [...groups.entries()]
-    .sort(([a], [b]) => (!a !== !b ? (a ? -1 : 1) : sign * (group === 'materia' ? collator.compare(a, b) : a.localeCompare(b))))
+    .sort(([a], [b]) => (!a !== !b ? (a ? -1 : 1) : sign * (byName ? collator.compare(a, b) : a.localeCompare(b))))
     .map(([key, lessons]) => ({
       key,
-      label: !key ? (group === 'materia' ? NO_SUBJECT : NO_DATE) : group === 'materia' ? key : group === 'giorno' ? dayLabel(key, now) : monthLabel(`${key}-01`),
+      label: !key ? empty : byName ? key : group === 'giorno' ? dayLabel(key, now) : monthLabel(`${key}-01`),
       lessons,
     }))
 }

@@ -137,8 +137,10 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /lessons/{id}/outline/revise` | Job `outline_revision` con feedback | "modifica" nell'approvazione |
 | `POST /lessons/{id}/issues/{issue_id}/decision` | accepted, rejected, edited (con testo); con l'ultima decisione il job riparte | `rt review` |
 | `POST /lessons/{id}/decisions/undo` | Annulla l'ultima decisione su un'issue | "annulla" in `rt review` |
-| `GET /lessons/{id}/recall`, `GET .../recall/history` | Riserva per tipo e stato; domande (con soluzione se già poste) e risposte con valutazione e voto | `rt recall` |
-| `POST .../recall/generate`, `POST .../recall/next` | Generazione (job `recall_generate`, o `recall_batch` con `qtype`); prossima domanda, che sotto soglia accoda il rifornimento (job `recall_refill`) come il terminale | `rt recall` |
+| `GET /lessons/{id}/recall`, `GET .../recall/history` | Pool per tipo e stato, soglie di rifornimento; domande (con soluzione se già poste) e risposte con valutazione e voto | `rt recall` |
+| `GET /lessons/{id}/recall/questions` (`reveal`), `POST .../recall/questions/delete` `{question_ids}` | Tutte le domande della lezione da rivedere (soluzioni delle domande da porre solo con `reveal`); elimina domande con le loro risposte, senza riusarne gli ID | `rt recall --delete` |
+| `GET /lessons/{id}/recall/units`, `PUT .../recall/units` `{unit_ids}` | Unità da cui il recaller genera le domande, con categoria, score e livello del classificatore; `unit_ids: null` torna alle sole rilevanti | `rt recall --units` |
+| `POST .../recall/generate`, `POST .../recall/next` | Senza `qtype` rigenera il pool dell'intera lezione dalle unità selezionate, aggiungendo domande a quelle già generate (job `recall_generate`); con `qtype` altre domande di quel tipo (job `recall_batch`); prossima domanda, che alla soglia (5 quiz, 3 mirate, 2 vaste) accoda il rifornimento da unità selezionate a caso (job `recall_refill`) come il terminale | `rt recall --pool`, `rt recall` |
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
 | `GET /lessons/{id}/recall/session` | Sessione in corso qui (`web`) e su Telegram (`telegram`), ultimo riepilogo (`last`), ultima richiesta al bot (`command`) | — |
 | `POST .../recall/session/end` | Termina la sessione della web app e ne salva il riepilogo (domande, risposte date, quiz giusti); 404 se non ce n'è una | uscita da `rt recall` |
@@ -164,7 +166,7 @@ per i test: la prima unità di quella fase fallisce una volta con una risposta f
 **Sessioni di recall (RT4-FA7).** La tabella `recall_sessions` è il registro condiviso delle
 sessioni: la web app apre la sua con la prima domanda (`/recall/next`) e la chiude con
 `/recall/session/end`; il daemon Telegram registra e chiude le sue (da `/recall`, `/quit`, fine
-della riserva o interruzione dall'app). L'API non parla con Telegram: scrive le richieste nella
+del pool o interruzione dall'app). L'API non parla con Telegram: scrive le richieste nella
 tabella `telegram_commands` e il daemon le esegue ogni due secondi, scrivendone l'esito. Mentre
 una sessione è su Telegram la web non pone domande di quella lezione (`409
 telegram_session_active`), e viceversa.

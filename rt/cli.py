@@ -306,6 +306,13 @@ def cmd_recall(args):
         print(f"🗑 Rimossi {count} elementi di recall per {type_str} da '{args.lesson_dir}'.")
         return
 
+    delete_arg = getattr(args, "delete", None)
+    if isinstance(delete_arg, str):
+        from rt.services.recall_service import delete_questions
+        ids = [q.strip() for q in delete_arg.split(",") if q.strip()]
+        print(f"🗑 Domande eliminate: {delete_questions(args.lesson_dir, ids)} di {len(ids)} richieste.")
+        return
+
     from rt.core.idempotency import check_phase_status, PhaseStatus
 
     status, reason = check_phase_status(args.lesson_dir, "rewrite")
@@ -321,8 +328,22 @@ def cmd_recall(args):
     style = getattr(args, "style", None)
     force_mock = getattr(args, "mock", False)
 
+    units_arg = getattr(args, "units", None)
+    if isinstance(units_arg, str):
+        from rt.services.recall_units import set_selection
+        wanted = None if units_arg.strip().lower() == "rilevanti" else [u.strip() for u in units_arg.split(",") if u.strip()]
+        rows = set_selection(args.lesson_dir, wanted)
+        picked = [r["unit_id"] for r in rows if r["selected"]]
+        print(f"🎯 Unità per il recaller: {len(picked)} di {len(rows)} ({', '.join(picked) or 'nessuna'}).")
+
     if not force_mock:
         _ensure_config_ready(["recall"])
+
+    if getattr(args, "pool", False):
+        from rt.services.recall_service import generate_pool
+        generated = generate_pool(args.lesson_dir, force_mock=force_mock)
+        print("🧠 Pool rigenerato, domande nuove: " + ", ".join(f"{n} {t}" for t, n in generated.items()) + ".")
+        return
 
     channel = getattr(args, "channel", None)
     if not channel:
@@ -345,7 +366,7 @@ def cmd_add_images(args):
         print("❌ Nessuna sorgente di immagini indicata. Usa -i <pdf_o_cartella> e/o --web-search N.", file=sys.stderr)
         sys.exit(1)
     if not getattr(args, "mock", False):
-        _ensure_config_ready(["image_description", "image_unit_judge"])
+        _ensure_config_ready(["image_description"])
     from rt.pipeline.add_images import run_add_images
     try:
         res = run_add_images(
@@ -436,6 +457,7 @@ def cmd_setup(args):
             date=args.date,
             materia=args.materia,
             argomenti=args.argomenti,
+            docente=getattr(args, "docente", None),
             dest_dir=args.dest_dir,
             model=getattr(args, "model", None) or DEFAULT_MODEL,
             skip_transcribe=args.skip_transcribe,
@@ -791,6 +813,7 @@ def cmd_run(args):
         date=getattr(args, "date", None),
         materia=getattr(args, "materia", None),
         argomenti=getattr(args, "argomenti", None),
+        docente=getattr(args, "docente", None),
         dest_dir=getattr(args, "dest_dir", None),
         model=getattr(args, "model", None) or DEFAULT_MODEL,
         skip_transcribe=getattr(args, "skip_transcribe", False),
@@ -1131,6 +1154,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_run.add_argument("-d", "--date", help="Data della lezione (se input è audio)")
     p_run.add_argument("-m", "--materia", help="Nome della materia (se input è audio)")
     p_run.add_argument("-a", "--argomenti", help="Argomenti trattati (se input è audio)")
+    p_run.add_argument("--docente", help="Nome del docente (se input è audio, facoltativo)")
     p_run.add_argument("-o", "--dest-dir", help="Directory base di destinazione per nuova lezione")
     p_run.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello macparakeet-cli per trascrizione (default: {DEFAULT_MODEL})")
     p_run.add_argument("--skip-transcribe", action="store_true", help="Salta trascrizione e crea segnaposto METADATA_ONLY")
@@ -1209,6 +1233,14 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         help="Resetta le domande/risposte di recall già effettuate: senza valore o 'all' azzera "
              "tutto, 'quiz'/'mirata'/'vasta' azzera solo quel tipo."
     )
+    p_recall.add_argument("--units", default=None, metavar="1.1,2.3|rilevanti",
+                          help="Unità da cui il recaller genera le domande (resta salvata); 'rilevanti' torna alla "
+                               "selezione predefinita, le unità rilevanti per il classificatore")
+    p_recall.add_argument("--pool", action="store_true",
+                          help="Rigenera il pool: tutte le unità selezionate passano al recaller, che aggiunge "
+                               "domande nuove a quelle già generate (che restano)")
+    p_recall.add_argument("--delete", default=None, metavar="recall_000012,...",
+                          help="Elimina queste domande (e le loro risposte) dal pool della lezione")
     p_recall.add_argument("--check", action="store_true", help="Revisione interattiva da terminale delle domande stale per modifica dell'unità")
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)

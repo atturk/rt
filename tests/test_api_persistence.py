@@ -88,9 +88,9 @@ def test_settings_writes_persist(api_client, api_token, ws, tmp_path):
     settings = ok(c.post("/api/v1/settings/connections", json={"name": "Casa", "provider": "openrouter",
                                                                  "api_keys": [KEY]}))
     jobs = [p["job"] for p in settings["phases"]]
-    assert len(jobs) == 6
+    assert len(jobs) == 8
     ok(c.post("/api/v1/settings/connections/Casa/models", json={"model": "vendor/extra"}))
-    for n, job in enumerate(jobs):  # tutte e sei le fasi
+    for n, job in enumerate(jobs):  # tutte le fasi
         ok(c.put(f"/api/v1/settings/phases/{job}", json={"connection": "Casa", "model": f"vendor/fase-{n}"}))
     cred = ok(c.get("/api/v1/settings"))["connections"][-1]["credentials"][0]["name"]
     ok(c.put("/api/v1/settings/routes/rewrite/secondary", json={"provider": "openrouter", "credential": cred,
@@ -214,6 +214,45 @@ def test_outline_and_review_decisions_persist(api_client, api_token, ws, worker)
 
 
 # ---------------------------------------------------------------- recall
+
+def test_recall_unit_selection_and_pool(api_client, api_token, ws, worker):
+    c = api_client
+    run_mock_pipeline(make_lesson(ws))
+    lid = lesson_id(c)
+    units = ok(c.get(f"/api/v1/lessons/{lid}/recall/units"))
+    assert not units["custom"] and units["selected"] == len(units["units"]) >= 1
+    first = units["units"][0]["unit_id"]
+    chosen = ok(c.put(f"/api/v1/lessons/{lid}/recall/units", json={"unit_ids": [first]}))
+    assert chosen["custom"] and [u["unit_id"] for u in chosen["units"] if u["selected"]] == [first]
+    accepted = ok(c.post(f"/api/v1/lessons/{lid}/recall/generate", json={"mock": True}))
+    drain(worker)
+    job = ok(c.get(f"/api/v1/jobs/{accepted['job_id']}"))
+    assert job["type"] == "recall_generate" and job["payload"]["regenerate"] is True
+    data = reread(api_token, f"/lessons/{lid}/recall/units", f"/lessons/{lid}/recall/history", f"/lessons/{lid}/recall")
+    assert data[f"/lessons/{lid}/recall/units"]["custom"]
+    assert {q["unit_ids"][0] for q in data[f"/lessons/{lid}/recall/history"]["questions"]} == {first}
+    assert data[f"/lessons/{lid}/recall"]["refill_thresholds"] == {"quiz": 5, "mirata": 3, "vasta": 2}
+    reset = ok(c.put(f"/api/v1/lessons/{lid}/recall/units", json={"unit_ids": None}))
+    assert not reset["custom"]
+
+
+def test_recall_questions_review_and_delete(api_client, api_token, ws, worker):
+    c = api_client
+    run_mock_pipeline(make_lesson(ws))
+    lid = lesson_id(c)
+    ok(c.post(f"/api/v1/lessons/{lid}/recall/generate", json={"mock": True}))
+    drain(worker)
+    listed = ok(c.get(f"/api/v1/lessons/{lid}/recall/questions"))
+    assert listed["questions"] and all(q.get("correct_index") is None for q in listed["questions"])
+    assert listed["unit_titles"]
+    revealed = ok(c.get(f"/api/v1/lessons/{lid}/recall/questions?reveal=true"))
+    assert any(q["correct_index"] is not None for q in revealed["questions"] if q["type"] == "quiz")
+    doomed = [q["id"] for q in listed["questions"][:2]]
+    assert ok(c.post(f"/api/v1/lessons/{lid}/recall/questions/delete", json={"question_ids": doomed + ["recall_999999"]})) == {"deleted": 2}
+    assert c.post(f"/api/v1/lessons/{lid}/recall/questions/delete", json={"question_ids": []}).status_code == 422
+    left = reread(api_token, f"/lessons/{lid}/recall/questions")[f"/lessons/{lid}/recall/questions"]
+    assert {q["id"] for q in left["questions"]} == {q["id"] for q in listed["questions"]} - set(doomed)
+
 
 def test_recall_writes_persist(api_client, api_token, ws, worker):
     c = api_client

@@ -24,6 +24,32 @@ export function useOptionKey(): boolean {
   return down
 }
 
+/**
+ * Come useOptionKey, distinguendo Option da Option+Shift: con Option+Shift le azioni di
+ * download scaricano l'archivio completo invece del Markdown.
+ */
+export function useOptionShiftKeys(): { option: boolean; shift: boolean } {
+  const [keys, setKeys] = useState({ option: false, shift: false })
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      // Su macOS keydown di Alt ha già altKey; keyup no: gli stati si leggono dall'evento.
+      const option = event.key === 'Alt' ? event.type === 'keydown' : event.altKey
+      const shift = event.key === 'Shift' ? event.type === 'keydown' : event.shiftKey
+      setKeys((current) => (current.option === option && current.shift === shift ? current : { option, shift }))
+    }
+    const reset = () => setKeys({ option: false, shift: false })
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+    window.addEventListener('blur', reset)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+      window.removeEventListener('blur', reset)
+    }
+  }, [])
+  return keys
+}
+
 /** Classi di un pulsante che compare con Option o quando il gruppo (`group`) ha il focus da
  * tastiera; su mobile (niente Option) resta visibile. */
 export function optionRevealClass(optionDown: boolean): string {

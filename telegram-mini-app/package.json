@@ -1,0 +1,6 @@
+{
+  "name": "rt-telegram-mini-app-launcher",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test test/*.test.js" }
+}

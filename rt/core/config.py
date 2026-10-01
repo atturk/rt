@@ -219,6 +219,9 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "review": empty_shell(max_tokens=8192, timeout=180),
         "image_description": empty_shell(max_tokens=2048, timeout=120),
         "image_unit_judge": empty_shell(max_tokens=8192, timeout=180),
+        "enrichment_writer": empty_shell(max_tokens=2048, timeout=120),
+        "enrichment_visualizer": empty_shell(max_tokens=16384, timeout=240),
+        "enrichment_image": empty_shell(timeout=300),
         "recall": empty_shell(max_tokens=8192, timeout=180),
     }
 
@@ -252,9 +255,11 @@ class TelegramRuntimeConfig(BaseModel):
     # Recall configuration
     # ------------------------------------------------------
     class RecallConfig(BaseModel):
-        reserve_targets: Dict[str, int] = Field(default_factory=lambda: {"mirata": 4, "quiz": 6, "vasta": 2})
-        refill_threshold: int = 3
-        refill_batch_size: int = 4
+        refill_thresholds: Dict[str, int] = Field(
+            default_factory=lambda: {"vasta": 2, "mirata": 3, "quiz": 5},
+            description="Quando le domande da porre di un tipo scendono a questa soglia (o sotto), "
+                        "il recaller ne genera altre da unità selezionate scelte a caso")
+        refill_batch_size: int = Field(default=4, ge=1, description="Domande cercate a ogni rifornimento")
         stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'custom' (il vecchio 'api' resta non implementato)")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 
@@ -299,8 +304,8 @@ class JevConfig(BaseModel):
     relevance_mode: Literal["disabled", "shadow", "active"] = Field(default="shadow", description="Gate delle unità: disattivato, solo osservazione o filtro attivo")
     relevance_model: str = Field(default="", description="Modello decisionale configurato esplicitamente per la rilevanza")
     relevance_prompt: str = Field(default="", description="Istruzioni aggiuntive per la rilevanza didattica")
-    relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per escludere un'unità non didattica")
-    prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta del classificatore usato dal prefiltro errori (il gate rilevanza resta choice)")
+    relevance_threshold: float = Field(default=0.85, ge=0, le=1, description="Confidenza minima per orientare il recall o applicare esclusioni personalizzate")
+    prefilter_type: Literal["choice", "noul", "score"] = Field(default="choice", description="Tipo di richiesta del classificatore usato dal prefiltro errori (la rilevanza predefinita usa score)")
     prefilter_prompt: str = Field(default="", description="Istruzioni aggiuntive per il prefiltro errori")
     # Domanda e mappatura configurate nel playground. None = comportamento predefinito,
     # derivato dai campi qui sopra (rt.services.jev_mapping.effective_decision).
@@ -321,7 +326,20 @@ class JevConfig(BaseModel):
             return None
 
 
+class EnrichmentConfig(BaseModel):
+    # Analisi dentro la pipeline: spenta per default, si avvia dalla pagina Arricchimento.
+    automatic: bool = False
+    cap_mode: Literal["off", "fixed", "proportional"] = "proportional"
+    cap_number: int = Field(default=5, ge=1, le=1000)
+    utility_threshold: float = Field(default=0.65, ge=0, le=1)
+    decision_model: str = "typesafe/jev-1.13"
+    decision_credential: str = "openrouter"
+    decision_base_url: str = "https://openrouter.ai/api/alpha/decisions"
+    decision_timeout: float = Field(default=30, ge=1, le=300)
+
+
 class RTConfig(BaseModel):
+    enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")

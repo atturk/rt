@@ -6,7 +6,7 @@ Telegram (tabella telegram_commands).
 - Sessione web: si apre con la prima domanda chiesta dalla web app e si chiude con "Termina
   sessione", che salva il riepilogo (domande poste, risposte date, quiz giusti).
 - Sessione Telegram: il daemon la registra quando parte e la chiude quando finisce (/quit,
-  riserva esaurita, interruzione dall'app). L'API la legge da qui.
+  pool esaurito, interruzione dall'app). L'API la legge da qui.
 - Comandi: l'API chiede al daemon di avviare o interrompere una sessione Telegram con una riga
   in telegram_commands; il daemon la esegue e ne scrive l'esito.
 

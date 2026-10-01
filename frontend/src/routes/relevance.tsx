@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument } from '@/api/hooks'
-import { jobFinished, useJobStatus } from '@/api/jobStatus'
+import { useRunClassifier } from '@/api/relevance'
+import { RUN_ALL, RUN_NEW } from '@/lib/classification'
 import { JobProgress } from '@/components/JobProgress'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -30,23 +31,30 @@ function origin(unit: Unit): { text: string; tone: 'neutral' | 'success' | 'warn
   return { text: 'Classificatore', tone: 'neutral' }
 }
 
+/** Score 0–2 del classificatore (contenuto assente, limitato, ricco): il colore lo dice subito. */
+function scoreOf(unit: Unit): number | null {
+  const score = (unit.answer as { score?: unknown } | null | undefined)?.score
+  return typeof score === 'number' && Number.isFinite(score) ? score : null
+}
+function scoreTone(score: number | null): 'neutral' | 'success' | 'warning' | 'danger' {
+  if (score == null) return 'neutral'
+  return score < 0.5 ? 'danger' : score < 1.5 ? 'warning' : 'success'
+}
+const formatScore = (score: number) => score.toLocaleString('it-IT', { maximumFractionDigits: 1, minimumFractionDigits: 1 })
+
+/** Etichetta restituita dal classificatore (es. "Contenuto limitato") con lo score. */
+function LabelBadge({ unit }: { unit: Unit }) {
+  if (!unit.label && unit.prediction == null) return null
+  const score = scoreOf(unit)
+  return <Badge tone={scoreTone(score)} data-testid="relevance-label" title={score != null ? `Score ${formatScore(score)} su 2` : undefined}>
+    {unit.label ?? labels[unit.prediction as Category]}{score != null ? ` · ${formatScore(score)}` : ''}
+  </Badge>
+}
+
 /** Stato della classificazione sulla lezione, con i pulsanti per eseguirla (job unit_relevance,
  * come 'rt relevance'). A job finito la pagina rilegge le classificazioni. */
 function StatusCard({ lessonId, overview }: { lessonId: number; overview: Schemas['UnitRelevanceOverview'] }) {
-  const client = useQueryClient()
-  const [jobId, setJobId] = useState<string | null>(null)
-  const start = useMutation({
-    mutationFn: (force: boolean) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/relevance/run', {
-      params: { path: { lesson_id: lessonId } }, body: { force, mock: false },
-    })),
-    onSuccess: (accepted) => setJobId(accepted.job_id),
-  })
-  const finished = useCallback(() => {
-    void client.invalidateQueries({ queryKey: ['relevance', lessonId] })
-    void client.invalidateQueries({ queryKey: ['lesson', lessonId] })
-  }, [client, lessonId])
-  const job = useJobStatus(jobId)
-  const busy = start.isPending || (!!jobId && !job.isError && !jobFinished(job.data))
+  const run = useRunClassifier(lessonId)
   const disabled = overview.mode === 'disabled'
   const s = overview.summary
   const total = s?.total ?? overview.units.length
@@ -55,26 +63,52 @@ function StatusCard({ lessonId, overview }: { lessonId: number; overview: Schema
     : s.classified === total ? { tone: 'success' as const, text: 'Eseguito su tutte le unità' }
       : { tone: 'warning' as const, text: `Eseguito su ${s.classified} / ${total} unità` }
   const counts = CATEGORIES.map((c) => [c, overview.units.filter((u) => u.effective === c).length] as const)
+  // Etichette del classificatore (es. Contenuto assente/limitato/ricco), dalla più povera di contenuto.
+  const byLabel = Object.entries(s?.by_label ?? {}).map(([label, n]) => {
+    const scores = overview.units.filter((u) => (u.label ?? u.prediction) === label).map(scoreOf).filter((x): x is number => x != null)
+    return { label, n, score: scores.length ? Math.min(...scores) : null }
+  }).sort((a, b) => (a.score ?? 3) - (b.score ?? 3))
   const details = s ? [s.errors > 0 && `${s.errors} non riuscite (passano come didattiche)`, s.stale > 0 && `${s.stale} da rivalutare`,
     s.missing > 0 && s.classified > 0 && `${s.missing} mai classificate`, s.corrected > 0 && `${s.corrected} corrette da te`].filter(Boolean) : []
+  const ran = !!s && (s.classified > 0 || s.errors > 0)
   return <Card className="flex flex-col gap-3 p-4 text-sm" data-testid="relevance-summary">
     <div className="flex flex-wrap items-center gap-2">
       <Badge tone={status.tone} className="text-xs">{status.text}</Badge>
       {s?.last_run_at && <span className="text-xs text-muted-foreground">Ultima esecuzione: {new Date(s.last_run_at).toLocaleString('it-IT')}
         {s.model ? ` · ${s.model}` : ''}</span>}
     </div>
-    <ul className="flex flex-wrap gap-2 text-xs" aria-label="Unità per etichetta">
-      {counts.map(([c, n]) => <li key={c}><Badge tone={c !== 'didactic' && n > 0 ? 'warning' : 'neutral'}>{labels[c]}: {n}</Badge></li>)}
-    </ul>
+    {byLabel.length > 0 && <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium">Esito del classificatore</span>
+      <ul className="flex flex-wrap gap-2 text-xs" aria-label="Unità per etichetta del classificatore" data-testid="relevance-by-label">
+        {byLabel.map(({ label, n, score }) => <li key={label}><Badge tone={scoreTone(score)}>{label}: {n}</Badge></li>)}
+      </ul>
+    </div>}
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium">Effetto su review e recall</span>
+      <ul className="flex flex-wrap gap-2 text-xs" aria-label="Unità per etichetta">
+        {counts.map(([c, n]) => <li key={c}><Badge tone={c !== 'didactic' && n > 0 ? 'warning' : 'neutral'}>{labels[c]}: {n}</Badge></li>)}
+      </ul>
+      <p className="text-xs text-muted-foreground">
+        Le etichette del classificatore diventano «didattica», «organizzativa» o «assenza di contenuto» secondo la mappatura in
+        Impostazioni › Modelli › Classificatore.{' '}
+        {overview.mode === 'active'
+          ? 'Lo score (0–2) orienta il recaller: dove il contenuto è scarso chiede meno domande (L0 nessuna, L1 una, L2 più domande).'
+          : 'In modalità ombra lo score è solo informativo: il recaller non lo riceve.'}
+      </p>
+    </div>
     {details.length > 0 && <p className="text-xs text-muted-foreground">{details.join(' · ')}</p>}
     <div className="flex flex-wrap items-center gap-2" data-testid="relevance-run">
-      <Button size="sm" disabled={disabled || busy} onClick={() => { setJobId(null); start.mutate(false) }}>
-        {s && (s.classified > 0 || s.errors > 0) ? 'Classifica le unità nuove o cambiate' : 'Classifica la lezione'}</Button>
-      <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => { setJobId(null); start.mutate(true) }}>Riclassifica tutte</Button>
+      <Button size="sm" disabled={disabled || run.busy} title={RUN_NEW.title} onClick={() => run.start.mutate(false)}>
+        {ran ? RUN_NEW.label : RUN_NEW.first}</Button>
+      <Button size="sm" variant="outline" disabled={disabled || run.busy} title={RUN_ALL.title} onClick={() => run.start.mutate(true)}>{RUN_ALL.label}</Button>
       {disabled && <span className="text-xs text-muted-foreground">Il classificatore di rilevanza è disattivato: attivalo in <Link className="underline" to="/impostazioni/modelli">Impostazioni</Link>.</span>}
     </div>
-    {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
-    {jobId && <JobProgress jobId={jobId} label="Etichette del classificatore" onFinished={finished} />}
+    {!disabled && <ul className="list-disc pl-5 text-xs text-muted-foreground">
+      <li><strong>{ran ? RUN_NEW.label : RUN_NEW.first}</strong>: {RUN_NEW.title}</li>
+      <li><strong>{RUN_ALL.label}</strong>: {RUN_ALL.title}</li>
+    </ul>}
+    {run.start.isError && <Alert tone="danger">{errorMessage(run.start.error)}</Alert>}
+    {run.jobId && <JobProgress jobId={run.jobId} label="Etichette del classificatore" onFinished={run.finished} />}
   </Card>
 }
 
@@ -103,6 +137,7 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Unit; 
         <span className="font-medium">{unit.unit_id} · {unit.title}</span>
         {timestamp && <span className="rounded bg-accent px-1.5 py-0.5 text-xs text-accent-foreground">{timestamp}</span>}
       </button>
+      <LabelBadge unit={unit} />
       <Badge tone={from.tone}>{from.text}</Badge>
       <Select className="w-auto" aria-label={`Etichetta di ${unit.unit_id}`} value={unit.effective} disabled={update.isPending}
         onChange={(e) => choose(e.target.value as Category)}>
@@ -113,8 +148,9 @@ function UnitRow({ lessonId, unit, timestamp }: { lessonId: number; unit: Unit; 
     {open && <div id={panel} className="mb-3 ml-5 flex flex-col gap-2 text-sm">
       <p className="whitespace-pre-wrap">{unit.content}</p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>Classificatore: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</span>
+        <span>Classificatore sulla bozza: {unit.prediction ? labels[unit.prediction] : 'nessuna classificazione'}</span>
         {unit.label && <span>Etichetta restituita: {unit.label}</span>}
+        <span>Orientamento recall sul testo corretto: {unit.recall_assessment?.level != null ? `livello ${unit.recall_assessment.level}` : 'neutro'}</span>
         {unit.confidence != null && <span>{unit.answer?.type === 'noul' ? 'Probabilità' : 'Confidenza'}: {Math.round(unit.confidence * 100)}%</span>}
         {unit.answer?.probabilities != null && typeof unit.answer.probabilities === 'object' &&
           <span data-testid="relevance-probabilities">Probabilità: {Object.entries(unit.answer.probabilities as Record<string, number>)

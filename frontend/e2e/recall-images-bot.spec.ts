@@ -40,11 +40,11 @@ async function openRecall(page: Page) {
   return lesson
 }
 
-/** Genera la riserva se manca (i test del file condividono il server). */
-async function ensureReserve(page: Page, lessonId: number) {
+/** Genera il pool se manca (i test del file condividono il server). */
+async function ensurePool(page: Page, lessonId: number) {
   const overview = await apiGet<Overview>(page.request, `/lessons/${lessonId}/recall`)
   if (Object.keys(overview.questions).length > 0) return
-  await page.getByRole('button', { name: 'Genera la riserva iniziale' }).click()
+  await page.getByRole('button', { name: 'Genera il pool' }).click()
   await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: 30_000 })
 }
 
@@ -63,12 +63,12 @@ async function ask(page: Page, type: 'Quiz' | 'Mirata' | 'Vasta') {
   return (await question.getAttribute('data-question-id'))!
 }
 
-test('recall: riserva, sessione quiz con voto e salto, tutto riletto dopo la ricarica', async ({ page }) => {
+test('recall: pool, sessione quiz con voto e salto, tutto riletto dopo la ricarica', async ({ page }) => {
   const lesson = await openRecall(page)
-  await ensureReserve(page, lesson.id)
+  await ensurePool(page, lesson.id)
   const overview = await apiGet<Overview>(page.request, `/lessons/${lesson.id}/recall`)
   await page.reload()
-  const quizRow = page.locator('[data-testid=reserve-row][data-type=quiz]')
+  const quizRow = page.locator('[data-testid=pool-row][data-type=quiz]')
   await expect(quizRow.locator('[data-status=pending]')).toHaveText(String(overview.questions.quiz?.pending ?? 0))
 
   const quizId = await ask(page, 'Quiz')
@@ -102,7 +102,7 @@ test('recall: riserva, sessione quiz con voto e salto, tutto riletto dopo la ric
 
 test('recall: risposta aperta scritta valutata dal job', async ({ page }) => {
   const lesson = await openRecall(page)
-  await ensureReserve(page, lesson.id)
+  await ensurePool(page, lesson.id)
   const id = await ask(page, 'Mirata')
   await page.getByLabel('Risposta scritta').fill('Gli acidi grassi saturi non hanno doppi legami.')
   await page.getByRole('button', { name: 'Invia la risposta' }).click()
@@ -113,6 +113,20 @@ test('recall: risposta aperta scritta valutata dal job', async ({ page }) => {
   expect(answer.is_voice).toBe(false)
   expect(answer.evaluation).toBeTruthy()
   await expect(page.getByTestId('recall-evaluation')).toHaveText(answer.evaluation!)
+})
+
+test('recall del giorno: raggruppa per giorno e apre la sessione sulle lezioni di quella data', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await builtLesson(page)
+  const { data } = lesson as unknown as { data: string }
+  await page.goto('/recall')
+  await page.getByLabel('Raggruppa per').selectOption('giorno')
+  await page.locator(`[data-testid=recall-subject][data-subject="${data}"]`).getByTestId('subject-recall').click()
+  await expect(page).toHaveURL(new RegExp(`/recall/giorno/${data}$`))
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Recall del giorno')
+  await expect(page.locator(`[data-testid=subject-lesson][data-lesson-id="${lesson.id}"]`)).toBeVisible()
+  await page.goto('/recall')
+  await page.getByLabel('Raggruppa per').selectOption('materia')
 })
 
 test('recall della materia: domande dalle lezioni della materia, risposta e riepilogo', async ({ page }) => {
@@ -149,7 +163,7 @@ test('recall della materia: domande dalle lezioni della materia, risposta e riep
 
 test('recall: risposte vocali dal microfono e da un file audio', async ({ page }) => {
   const lesson = await openRecall(page)
-  await ensureReserve(page, lesson.id)
+  await ensurePool(page, lesson.id)
 
   const recorded = await ask(page, 'Vasta')
   await page.getByRole('button', { name: 'Registra' }).click()
@@ -177,12 +191,35 @@ test('recall: risposte vocali dal microfono e da un file audio', async ({ page }
   }
 })
 
+test('recall: unità per il recaller e domande eliminate in blocco, rilette dopo la ricarica', async ({ page }) => {
+  const lesson = await openRecall(page)
+  await ensurePool(page, lesson.id)
+  await page.getByTestId('unit-selector').locator('summary').click()
+  await expect(page.getByTestId('recall-unit').first()).toBeVisible()
+
+  await page.getByTestId('questions-link').click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/recall/domande$`))
+  const before = (await history(page, lesson.id)).questions.length
+  const items = page.getByTestId('question-item')
+  await expect(items).toHaveCount(before)
+  const doomed = [await items.nth(0).getAttribute('data-question-id'), await items.nth(1).getAttribute('data-question-id')]
+  await items.nth(0).getByRole('checkbox').click()
+  await items.nth(1).getByRole('checkbox').click({ modifiers: ['Shift'] })
+  await page.getByRole('button', { name: /Elimina selezionate \(2\)/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Elimina' }).click()
+  await expect(items).toHaveCount(before - 2)
+  await page.reload()
+  await expect(items).toHaveCount(before - 2)
+  const left = new Set((await history(page, lesson.id)).questions.map((q) => q.id))
+  for (const id of doomed) expect(left.has(id!), `domanda ${id} eliminata`).toBe(false)
+})
+
 test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel documento', async ({ page }) => {
   await loginViaLink(page)
   const lesson = await builtLesson(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Immagini' }).click()
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Arricchimento' }).click()
   await page.locator(`[data-testid=picker-lesson][data-lesson-id="${lesson.id}"]`).getByRole('link').click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/immagini$`))
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/arricchimento$`))
   const before = (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images
 
   await page.getByLabel('PDF o foto').setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })

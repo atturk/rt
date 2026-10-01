@@ -16,6 +16,7 @@ class LessonSummary(BaseModel):
     materia: str = ""
     titolo: str = ""
     argomenti: str = ""
+    docente: str = ""
     state: Optional[str] = Field(None, description="Stato effettivo del workflow (come 'rt status')")
     phases: Dict[str, str] = Field(description="fase -> VALID | PARTIAL | STALE | MISSING | INVALID")
     pending_issues: int = 0
@@ -126,6 +127,7 @@ class UnitRelevanceItem(BaseModel):
     corrected_at: Optional[str] = None
     corrected_by: Optional[str] = None
     prior_override: Optional[Literal["didactic", "organizational", "no_content"]] = None
+    recall_assessment: Optional[Dict[str, Any]] = None
 
 
 class UnitRelevanceSummary(BaseModel):
@@ -144,6 +146,7 @@ class UnitRelevanceSummary(BaseModel):
 
 
 class UnitRelevanceOverview(BaseModel):
+    view: Literal["draft", "resolved"] = "draft"
     mode: Literal["disabled", "shadow", "active"]
     units: List[UnitRelevanceItem]
     summary: UnitRelevanceSummary = Field(default_factory=UnitRelevanceSummary)
@@ -387,9 +390,55 @@ class RecallQuestion(BaseModel):
     explanation: Optional[str] = None
 
 
+class RecallQuestionDetail(RecallQuestion):
+    created_at: Optional[str] = None
+    classifier_level: Optional[int] = None
+    vote: Optional[str] = Field(None, description="up | down | lightning")
+
+
+class RecallQuestionList(BaseModel):
+    questions: List[RecallQuestionDetail]
+    unit_titles: Dict[str, str] = Field(default_factory=dict, description="unità -> titolo, per le unità delle domande")
+
+
+class RecallQuestionDelete(BaseModel):
+    question_ids: List[str] = Field(min_length=1, max_length=2000)
+
+
+class RecallDeleted(BaseModel):
+    deleted: int
+
+
 class RecallOverview(BaseModel):
+    legacy_pending: int = 0
+    evaluated_empty: int = 0
     questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
     answers: int
+    refill_thresholds: Dict[str, int] = Field(default_factory=dict,
+                                              description="tipo -> domande da porre a cui il pool si rifornisce")
+
+
+class RecallUnit(BaseModel):
+    unit_id: str
+    title: str
+    category: Optional[str] = Field(None, description="didactic | organizational | no_content; null se non classificata")
+    score: Optional[float] = Field(None, description="Score del classificatore (0-2)")
+    level: Optional[int] = Field(None, description="Livello: 0 nessuna domanda, 1 una, 2 più domande")
+    confidence: Optional[float] = None
+    error: Optional[str] = None
+    suggested: bool = Field(description="Rilevante secondo il classificatore: selezionata di predefinito")
+    selected: bool
+
+
+class RecallUnits(BaseModel):
+    units: List[RecallUnit]
+    custom: bool = Field(description="La selezione è stata cambiata dall'utente")
+    classifier: str = Field(description="Modo del classificatore: disabled | shadow | active")
+    selected: int
+
+
+class RecallUnitSelection(BaseModel):
+    unit_ids: Optional[List[str]] = Field(None, description="Unità selezionate; null torna alla selezione predefinita")
 
 
 class RecallAnswerRecord(BaseModel):
@@ -407,7 +456,7 @@ class RecallHistory(BaseModel):
 
 
 class RecallGenerate(BaseModel):
-    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: riserva iniziale di tutti i tipi")
+    qtype: Optional[Literal["quiz", "mirata", "vasta"]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
     mock: bool = False
 
@@ -471,16 +520,26 @@ class RecallSessionState(BaseModel):
     command: Optional[TelegramCommandInfo] = Field(None, description="Ultima richiesta al bot per questa lezione")
 
 
+class ClassificationStatus(BaseModel):
+    state: Literal["done", "partial", "stale", "never", "running", "disabled", "unavailable"] = Field(
+        description="done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione "
+                    "cambiati); never: mai eseguito; running: classificazione in coda o in corso; disabled: classificatore "
+                    "spento; unavailable: lezione senza bozza")
+    classified: int = 0
+    total: int = 0
+
+
 class LessonRecallStats(BaseModel):
     lesson_id: int
     ready: bool = Field(description="Rielaborazione valida: la lezione può fare recall")
     questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
     answers: int
     telegram: bool = Field(False, description="Sessione in corso su Telegram per la lezione")
+    classification: Optional[ClassificationStatus] = Field(None, description="Classificatore sulla lezione (null se non pronta)")
 
 
 class SubjectRecall(BaseModel):
-    materia: str = Field(description="Vuota per le lezioni senza materia")
+    materia: str = Field(description="Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso")
     lessons: List[LessonRecallStats]
     session: Optional[RecallSessionInfo] = Field(None, description="Sessione per materia in corso nella web app")
 

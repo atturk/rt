@@ -750,7 +750,7 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
         relevance = None
     if prefilter and jev_mapping.is_default("prefilter", prefilter, legacy):
         prefilter = None
-    relevance_type = relevance.type if relevance else "choice"
+    relevance_type = relevance.type if relevance else jev_mapping.effective_decision("relevance", legacy).type
     if body.enabled and not body.model.strip():
         raise ApiError(422, "decision_model_required", "Indica il modello del prefiltro errori.")
     checks = ([(body.credential, body.model.strip(), prefilter_type)] if body.enabled else []) + (

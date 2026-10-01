@@ -133,6 +133,11 @@ def test_recall_generate_job(queue, tmp_path):
     job = _worker(queue).run_once()
     assert job.state == "succeeded", job.error
     assert job.result["questions"] > 0
+    # Riavviare una sessione (es. da Telegram) accoda di nuovo il job: senza una richiesta
+    # esplicita di rigenerare, la riserva esistente non cresce.
+    queue.enqueue(RECALL_GENERATE, lesson_dir, {"force_mock": True})
+    again = _worker(queue).run_once()
+    assert again.state == "succeeded" and again.result["questions"] == job.result["questions"]
 
 
 @pytest.fixture

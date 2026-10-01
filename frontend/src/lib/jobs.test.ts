@@ -1,4 +1,4 @@
-import { audioFileProblem, canCloseJob, closedJob, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
+import { audioFileProblem, canCloseJob, closedJob, collapseTranscription, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
 
 const event = (id: number, type = 'notice', payload: Record<string, unknown> = {}): JobEvent => ({ id, job_id: 'j', type, payload })
 
@@ -15,6 +15,12 @@ describe('describeEvent', () => {
       text: 'Trascrizione e setup: errore. ffmpeg mancante',
       tone: 'danger',
     })
+  })
+  it('mostra la trascrizione solo in percentuale e una riga per serie di avanzamenti', () => {
+    const progress = (id: number, pct: number) => event(id, 'phase_progress', { phase: 'setup', current: pct, total: 100, message: `Trascrizione audio: ${pct}%` })
+    expect(describeEvent(progress(1, 12)).text).toBe('Trascrizione audio: 12%')
+    const events = [event(1, 'job_started'), progress(2, 0), progress(3, 1), progress(4, 2), event(5, 'phase_completed', { phase: 'setup' }), progress(6, 0)]
+    expect(collapseTranscription(events).map((e) => e.id)).toEqual([1, 4, 5, 6])
   })
   it('segnala decisioni e fine del job con il tono giusto', () => {
     expect(describeEvent(event(4, 'decision_required', { kind: 'outline_approval' }))).toEqual({
@@ -86,6 +92,11 @@ describe('avanzamento delle fasi a unità (RT4-FA1)', () => {
     expect(progressLabel({ phase: 'rewrite', current: 3, total: 9, unit_id: '1.3', failed: 2 }).detail).toBe('1.3 · 2 unità non riuscite')
     expect(progressLabel({ phase: 'setup', message: 'Trascrizione' })).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione' })
     expect(progressTitle(null)).toBeNull()
+  })
+  it('la trascrizione avanza in percentuale: barra e messaggio, niente "42/100"', () => {
+    const progress = { phase: 'setup', current: 42, total: 100, message: 'Trascrizione audio: 42%' }
+    expect(progressLabel(progress)).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione audio: 42%' })
+    expect(progressPercent(progress)).toBe(42)
   })
   it('una fase finita parziale è un avviso con le unità completate', () => {
     const e = event(9, 'phase_completed', { phase: 'review', partial: true, result: { completed_units: 30, expected_units: 31 } })

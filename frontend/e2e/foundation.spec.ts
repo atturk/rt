@@ -51,21 +51,21 @@ test('la dashboard mostra le lezioni dell\'API, con filtri', async ({ page }) =>
   await expect(sidebar.getByText('BIOCHIMICA')).toBeVisible()
   await expect(sidebar.getByText('FISIOLOGIA')).toBeVisible()
 
-  await page.getByLabel('Materia', { exact: true }).selectOption('FISIOLOGIA')
+  // Solo la ricerca (titolo, materia, docente, data), accanto al numero di lezioni.
+  await expect(page.getByText('Da rivedere', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Materia', { exact: true })).toHaveCount(0)
+  await page.getByLabel('Cerca').fill('rene')
   await expect(cards).toHaveCount(1)
   await expect(cards.first()).toContainText('Il rene')
   await page.reload()
-  await expect(page.getByLabel('Materia', { exact: true })).toHaveValue('FISIOLOGIA')
+  await expect(page.getByLabel('Cerca')).toHaveValue('rene')
   await expect(cards).toHaveCount(1)
 
-  await page.getByLabel('Materia', { exact: true }).selectOption('')
-  await page.getByLabel('Stato', { exact: true }).selectOption('completato')
-  await expect(cards).toHaveCount(lessons.filter((lesson) => lesson.state === 'completato').length)
-  await expect(cards.first()).toContainText('BIOCHIMICA')
-
-  await page.getByLabel('Stato', { exact: true }).selectOption('')
-  await page.getByLabel('Cerca').fill('rene')
-  await expect(cards).toHaveCount(1)
+  // La materia dalla barra laterale (?materia=) resta un filtro, azzerabile.
+  await page.goto('/?materia=BIOCHIMICA')
+  await expect(cards).toHaveCount(lessons.filter((lesson) => lesson.materia === 'BIOCHIMICA').length)
+  await page.getByRole('button', { name: 'Azzera filtri' }).click()
+  await expect(cards).toHaveCount(lessons.length)
 })
 
 test('dalla barra laterale si apre la lezione', async ({ page }) => {

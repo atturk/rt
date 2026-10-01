@@ -8,6 +8,8 @@ export const PHASE_LABELS: Record<string, string> = {
   rewrite: 'Rielaborazione',
   review: 'Revisione',
   build: 'Documento',
+  // Fase dei job che generano domande (eventi phase_progress di recall_generate/batch/refill)
+  recall: 'Domande di recall',
 }
 export const PHASE_ORDER = ['prepare', 'outline', 'rewrite', 'review', 'build']
 

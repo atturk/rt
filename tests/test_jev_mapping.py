@@ -116,13 +116,13 @@ def test_values_are_auto_typed_and_outcomes_checked_per_phase():
 
 # ---------------------------------------------------------------- default e migrazione
 
-def test_missing_decisions_default_to_the_previous_behavior():
+def test_missing_decisions_default_to_recall_richness_and_keep_prefilter():
     cfg = JevConfig(relevance_threshold=0.9, relevance_prompt="EXTRA", task_a_skip_confidence_threshold=0.7)
     assert cfg.relevance_decision is None and cfg.prefilter_decision is None
     relevance = mapping.effective_decision("relevance", cfg)
-    assert relevance.type == "choice" and relevance.question.endswith("\nEXTRA")
-    assert [o.label for o in relevance.options] == ["didactic", "organizational", "no_content"]
-    assert {r.conditions[1].value for r in relevance.rules} == {0.9}
+    assert relevance.type == "score" and relevance.recall_richness and relevance.question.endswith("\nEXTRA")
+    assert len(relevance.levels) == 3
+    assert {c.value for r in relevance.rules for c in r.conditions if c.field == "confidence"} == {0.9}
     prefilter = mapping.effective_decision("prefilter", cfg)
     assert prefilter.type == "choice" and prefilter.rules[0].conditions[1].value == 0.7
     noul = mapping.effective_decision("prefilter", JevConfig(prefilter_type="noul"))
@@ -135,7 +135,7 @@ def test_default_relevance_mapping_matches_the_old_threshold_rule(choice, confid
     cfg = JevConfig()
     answer = JevChoiceAnswer(choice=choice, confidence=confidence)
     old = choice if confidence >= cfg.relevance_threshold else "didactic"
-    assert mapping.evaluate("relevance", mapping.effective_decision("relevance", cfg), answer).outcome == old
+    assert mapping.evaluate("relevance", mapping.template("relevance", "choice", cfg), answer).outcome == old
 
 
 def test_invalid_decision_in_yaml_falls_back_to_default():
@@ -144,13 +144,13 @@ def test_invalid_decision_in_yaml_falls_back_to_default():
     assert cfg.jev.relevance_decision is None
 
 
-def test_relevance_cache_hash_is_unchanged_for_the_default_decision():
+def test_relevance_cache_hash_changes_with_new_default_and_custom_decisions():
     from rt.services import unit_relevance
     cfg = JevConfig(relevance_model="typesafe/jev-1.13")
     legacy = hashlib.sha256(json.dumps([cfg.relevance_model, cfg.credential, cfg.base_url, cfg.relevance_prompt,
-                                        cfg.relevance_threshold, unit_relevance.INSTRUCTIONS, unit_relevance.CRITERIA],
+                                        cfg.relevance_threshold, "Legacy instructions", "Legacy criteria"],
                                        sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
-    assert unit_relevance._config_hash(cfg) == legacy
+    assert unit_relevance._config_hash(cfg) != legacy
     custom = cfg.model_copy(update={"relevance_decision": mapping.template("relevance", "noul", cfg)})
     assert unit_relevance._config_hash(custom) != legacy
     edited = custom.relevance_decision.model_copy(update={"question": "Altra domanda"})

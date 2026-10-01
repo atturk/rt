@@ -528,7 +528,7 @@ def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypa
                       json={"name": "Parita", "provider": "openrouter", "api_keys": ["sk-or-v1-parita-0123456789"]})
     assert res.status_code == 201, res.text
     jobs = [p["job"] for p in res.json()["phases"]]
-    assert len(jobs) == 6
+    assert len(jobs) == 8
     for n, job_name in enumerate(jobs):
         res = client.put(f"/api/v1/settings/phases/{job_name}", json={"connection": "Parita", "model": f"vendor/model-{n}"})
         assert res.status_code == 200, res.text

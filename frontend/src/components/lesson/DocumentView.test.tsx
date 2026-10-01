@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
@@ -17,9 +18,11 @@ describe('DocumentView', () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
     const { container } = render(
-      <MemoryRouter initialEntries={['/lezioni/1#unit-1.2']}>
-        <AudioProvider><DocumentView document={doc} hasAudio={false} lessonId={1} /></AudioProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/lezioni/1#unit-1.2']}>
+          <AudioProvider><DocumentView document={doc} hasAudio={false} lessonId={1} /></AudioProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
     const marked = Array.from(container.querySelectorAll('.rt-claim-unit')).map((el) => el.textContent)
     expect(marked).toEqual(['Secondo', 'due'])

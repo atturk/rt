@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:mini": "tsc -b && vite build --mode mini",
     "lint": "oxlint --deny-warnings",
     "preview": "vite preview",
     "gen:api": "openapi-typescript ../docs/openapi.json -o src/api/schema.d.ts",

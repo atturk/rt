@@ -49,6 +49,18 @@ def test_subject_session_rotates_lessons_and_saves_summary(api_client, lessons, 
     assert state["materia"] == "BIOCHIMICA" and state["session"] is None and state["last"] is None
     assert all(l["questions"]["quiz"]["pending"] > 0 for l in state["lessons"])
 
+    # Il test della rotazione richiede almeno due domande per lezione, a prescindere
+    # da quante ne genera una singola unità nel protocollo a cardinalità variabile.
+    from rt.pipeline.recall import load_recall_bank, save_recall_bank
+    from rt.services.lesson_service import resolve_lesson_dir
+    for lesson_id in lessons:
+        directory = resolve_lesson_dir(lesson_id)
+        bank = load_recall_bank(directory)
+        quiz = next(q for q in bank.questions if q.type.value == "quiz")
+        bank.questions.append(quiz.model_copy(update={
+            "id": f"rotation_extra_{lesson_id}", "question_text": f"Seconda domanda di rotazione {lesson_id}?"}))
+        save_recall_bank(bank, directory)
+
     first = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
     second = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
     assert {first["lesson_id"], second["lesson_id"]} == set(lessons)  # le lezioni si danno il turno
@@ -87,3 +99,42 @@ def test_subject_requires_a_name(api_client, lessons):
     assert res.status_code == 422
     res = api_client.post("/api/v1/recall/subject/next", params={"materia": "ANATOMIA"})
     assert res.status_code == 404 and res.json()["error"]["code"] == "no_questions"
+
+
+def test_day_session_uses_the_lessons_of_that_day(api_client, lessons, rt_db):
+    items = api_client.get("/api/v1/lessons").json()
+    day = items[0]["data"]
+    same_day = sorted(i["id"] for i in items if i["data"] == day)
+    subject = f"GIORNO:{day}"
+    state = api_client.get("/api/v1/recall/subject", params={"materia": subject}).json()
+    assert state["materia"] == subject and sorted(l["lesson_id"] for l in state["lessons"]) == same_day
+    assert all(l["classification"]["state"] in ("disabled", "never", "done", "partial", "stale") for l in state["lessons"])
+
+    api_client.post("/api/v1/recall/subject/generate", params={"materia": subject, "mock": True})
+    _drain(rt_db)
+    res = api_client.post("/api/v1/recall/subject/next", params={"materia": subject, "qtype": "quiz", "mock": True})
+    assert res.status_code == 200, res.text
+    assert res.json()["lesson_id"] in same_day
+    # la sessione del giorno in corso compare nell'elenco della pagina del recall, senza lezioni sue
+    subjects = {s["materia"]: s for s in api_client.get("/api/v1/recall/subjects").json()}
+    assert subjects[subject]["session"] is not None and subjects[subject]["lessons"] == []
+    assert api_client.post("/api/v1/recall/subject/end", params={"materia": subject}).status_code == 200
+    assert subject not in {s["materia"] for s in api_client.get("/api/v1/recall/subjects").json()}
+
+
+def test_queued_classifier_shows_running_until_the_job_ends(api_client, lessons, rt_db, monkeypatch):
+    """Con un job del classificatore in coda o in corso la lezione è "in classificazione"."""
+    from rt.services import unit_relevance
+    monkeypatch.setattr(unit_relevance, "classification_status", lambda path: {"state": "stale", "classified": 0, "total": 2})
+    monkeypatch.setattr(unit_relevance, "ensure_can_run", lambda: None)
+
+    def states():
+        subject = api_client.get("/api/v1/recall/subjects").json()[0]
+        return {l["lesson_id"]: l["classification"]["state"] for l in subject["lessons"]}
+
+    assert set(states().values()) == {"stale"}
+    res = api_client.post(f"/api/v1/lessons/{lessons[0]}/relevance/run", json={"force": False, "mock": True})
+    assert res.status_code == 202, res.text
+    assert states() == {lessons[0]: "running", lessons[1]: "stale"}
+    _drain(rt_db)
+    assert set(states().values()) == {"stale"}

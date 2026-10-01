@@ -18,3 +18,5 @@ Dockerfile export-ignore
 docker-compose.yml export-ignore
 .dockerignore export-ignore
 docker/ export-ignore
+# Launcher Serverless della Mini App: si distribuisce su Telegram da un clone (tgcloud push)
+telegram-mini-app/ export-ignore

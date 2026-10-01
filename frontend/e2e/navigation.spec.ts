@@ -21,7 +21,7 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   })
 
   const search = page.getByLabel('Cerca')
-  await expect(search).toHaveAttribute('placeholder', 'Titolo, materia, data…')
+  await expect(search).toHaveAttribute('placeholder', 'Titolo, materia, docente, data…')
   const started = Date.now()
   await search.pressSequentially('farmacologia')
   await expect(cards).toHaveCount(1)
@@ -37,14 +37,14 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   await expect(cards).toHaveCount(lessons.filter((l) => l.data === farm.data).length)
   expect(queries).toEqual([])
 
-  // "Cerca" e "Materia" allineati: etichette e campi alla stessa altezza.
+  // "Cerca" sulla riga di "Raggruppa per", stessa altezza (report del 30 settembre).
   const box = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!
-  const [q, subject] = [await box('Cerca'), await box('Materia')]
-  expect(Math.abs(q.y - subject.y)).toBeLessThan(1)
-  expect(Math.abs(q.height - subject.height)).toBeLessThan(1)
+  const [q, group] = [await box('Cerca'), await box('Raggruppa per')]
+  expect(Math.abs(q.y - group.y)).toBeLessThan(1)
+  expect(Math.abs(q.height - group.height)).toBeLessThan(1)
 })
 
-test('Recall e Immagini hanno la stessa barra di ricerca', async ({ page }) => {
+test('Recall, Immagini e Review hanno la barra della dashboard', async ({ page }) => {
   await loginViaLink(page)
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
   for (const url of ['/recall', '/immagini']) {
@@ -60,9 +60,19 @@ test('Recall e Immagini hanno la stessa barra di ricerca', async ({ page }) => {
     await expect(page.getByLabel('Cerca')).toHaveValue('rene')
     await expect(items).toHaveCount(1)
     await page.getByLabel('Cerca').fill('')
-    await page.getByLabel('Materia', { exact: true }).selectOption('BIOCHIMICA')
+    // Stessa barra della dashboard: niente menu Materia/Stato, la materia arriva dall'URL.
+    await expect(page.getByLabel('Materia', { exact: true })).toHaveCount(0)
+    await expect(page.getByLabel('Raggruppa per')).toBeVisible()
+    await expect(page.getByLabel('Ordina per')).toBeVisible()
+    await page.goto(`${url}?materia=BIOCHIMICA`)
     await expect(items).toHaveCount(lessons.filter((l) => l.materia === 'BIOCHIMICA').length)
+    await page.getByRole('button', { name: 'Tabella' }).click()
+    await expect(items).toHaveCount(lessons.filter((l) => l.materia === 'BIOCHIMICA').length)
+    await page.getByRole('button', { name: 'Schede' }).click()
   }
+  await page.goto('/review')
+  await expect(page.getByLabel('Raggruppa per')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Tabella' })).toBeVisible()
 })
 
 test('la sezione Review elenca le lezioni con issue da valutare', async ({ page }) => {

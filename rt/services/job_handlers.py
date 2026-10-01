@@ -127,11 +127,21 @@ def add_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Pool di domande della lezione: se non ne ha ancora, o sempre con regenerate ("Rigenera pool", aggiunge domande)."""
     from rt.pipeline.recall import load_recall_bank
-    from rt.services.recall_service import ensure_initial_batch
+    from rt.services.api_jobs import _recall_message, recall_progress
+    from rt.services.events import Notice
+    from rt.services.recall_service import generate_pool
+    from rt.services.recall_units import unit_rows
     lesson_dir = _lesson_dir(job)
     with ctx.activate():
-        ensure_initial_batch(lesson_dir, force_mock=bool(job.payload.get("force_mock")))
+        if job.payload.get("regenerate") or not load_recall_bank(lesson_dir).questions:
+            generated = generate_pool(lesson_dir, force_mock=bool(job.payload.get("force_mock")),
+                                      progress=recall_progress(ctx))
+            total = sum(generated.values())
+            detail = ", ".join(f"{n} {t}" for t, n in generated.items())
+            ctx.emit(Notice(message=_recall_message(f"Pool di domande: {total} nuove ({detail}).", total,
+                                                    unit_rows(lesson_dir))))
     return JobOutcome(state=JobState.SUCCEEDED, result={"questions": len(load_recall_bank(lesson_dir).questions)})
 
 
@@ -149,3 +159,26 @@ register_handler(RUN_PHASE, run_phase_job)
 register_handler(ADD_IMAGES, add_images_job)
 register_handler(RECALL_GENERATE, recall_generate_job)
 register_handler(TRANSCRIBE_VOICE, transcribe_voice_job)
+
+
+def enrichment_analyze_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.enrichment_service import analyze
+    with ctx.activate():
+        result = analyze(_lesson_dir(job), mock=bool(job.payload.get("mock")), ctx=ctx)
+    return JobOutcome(state=JobState.SUCCEEDED, result=result)
+
+
+def enrichment_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.enrichment_service import generate, load, get_element, save
+    from rt.services.review_service import lesson_lock
+    with lesson_lock(_lesson_dir(job)):
+        state = load(_lesson_dir(job))
+        get_element(state, job.payload["element_id"]).job_id = job.id
+        save(_lesson_dir(job), state)
+    with ctx.activate():
+        result = generate(_lesson_dir(job), job.payload["element_id"], mock=bool(job.payload.get("mock")), ctx=ctx)
+    return JobOutcome(state=JobState.SUCCEEDED, result=result)
+
+
+register_handler("enrichment_analyze", enrichment_analyze_job)
+register_handler("enrichment_generate", enrichment_generate_job)

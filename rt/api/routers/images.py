@@ -19,6 +19,7 @@ _IMAGE_NAME = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(png|jpe?g|webp|gif|he
 
 
 class LessonImage(BaseModel):
+    macro_ids: List[str] = Field(default_factory=list, description="Macro unità a cui è assegnata")
     name: str = Field(description="Nome del file in assets/images")
     url: str = Field(description="Percorso dell'API che serve il file")
     source: str = Field("", description="Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>")
@@ -41,10 +42,12 @@ def _asset_url(lesson_id: int, name: str) -> str:
 def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     from rt.pipeline.add_images import load_image_descriptions
     from rt.services.lesson_service import load_markdown_preview
+    from rt.pipeline.image_placement import load_image_placement
+    placement = load_image_placement(lesson_dir) or {}
     # il documento mostrato dalla vista lezione: finale se aggiornato, altrimenti l'anteprima
     document = load_markdown_preview(lesson_dir)
     images = []
-    for desc in load_image_descriptions(lesson_dir).values():
+    for image_hash, desc in load_image_descriptions(lesson_dir).items():
         rel = str(desc.get("filename") or "")
         name = os.path.basename(rel)
         if not _IMAGE_NAME.match(name):
@@ -53,6 +56,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             name=name, url=_asset_url(lesson_id, name), source=str(desc.get("source") or ""),
             slide_title=str(desc.get("slide_title") or ""), alt_text=str(desc.get("alt_text") or ""),
             in_document=bool(rel) and rel in document,
+            macro_ids=[mid for mid, hashes in placement.get("macros", {}).items() if image_hash in hashes],
         ))
     images.sort(key=lambda img: (not img.in_document, img.source, img.name))
     return LessonImages(images=images)
