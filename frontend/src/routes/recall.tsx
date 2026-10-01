@@ -22,6 +22,7 @@ import {
   type RecallSessionInfo,
   type RecallType,
 } from '@/api/recall'
+import { ClassificationNotice } from '@/components/ClassificationNotice'
 import { JobProgress } from '@/components/JobProgress'
 import { QuestionsPage } from '@/components/recall/QuestionsPage'
 import { AnsweredQuestion, OpenAnswerForm, QuizForm, SessionSummary } from '@/components/recall/parts'
@@ -73,6 +74,7 @@ function Pool({ lessonId }: { lessonId: number }) {
         {Object.keys(thresholds).length > 0 &&
           ` Quando restano ${RECALL_TYPES.map((t) => `${thresholds[t.value]} ${PLURAL[t.value]}`).join(', ')} da porre, il recaller ne genera altre da unità selezionate a caso.`}
       </p>
+      <ClassificationNotice lessonId={lessonId} compact />
       <UnitSelector lessonId={lessonId} />
       {!empty && (
         <Link to={`/lezioni/${lessonId}/recall/domande`} className="self-start text-sm underline-offset-4 hover:underline" data-testid="questions-link">
@@ -437,6 +439,7 @@ export const recallArea: Area = {
   routes: [
     { path: 'recall', element: <RecallOverviewPage /> },
     { path: 'recall/materie/:materia', element: <SubjectRecallPage /> },
+    { path: 'recall/giorno/:day', element: <SubjectRecallPage /> },
     { path: 'lezioni/:lessonId/recall', element: <RecallPage /> },
     { path: 'lezioni/:lessonId/recall/domande', element: <QuestionsPage /> },
   ],

@@ -115,6 +115,20 @@ test('recall: risposta aperta scritta valutata dal job', async ({ page }) => {
   await expect(page.getByTestId('recall-evaluation')).toHaveText(answer.evaluation!)
 })
 
+test('recall del giorno: raggruppa per giorno e apre la sessione sulle lezioni di quella data', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await builtLesson(page)
+  const { data } = lesson as unknown as { data: string }
+  await page.goto('/recall')
+  await page.getByLabel('Raggruppa per').selectOption('giorno')
+  await page.locator(`[data-testid=recall-subject][data-subject="${data}"]`).getByTestId('subject-recall').click()
+  await expect(page).toHaveURL(new RegExp(`/recall/giorno/${data}$`))
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Recall del giorno')
+  await expect(page.locator(`[data-testid=subject-lesson][data-lesson-id="${lesson.id}"]`)).toBeVisible()
+  await page.goto('/recall')
+  await page.getByLabel('Raggruppa per').selectOption('materia')
+})
+
 test('recall della materia: domande dalle lezioni della materia, risposta e riepilogo', async ({ page }) => {
   await loginViaLink(page)
   const lesson = await builtLesson(page)

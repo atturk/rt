@@ -6,21 +6,25 @@ import { groupLessons, sortLessons, type LessonGroup, type LessonViewMode, type 
 import { countStatus } from './recall'
 
 /**
- * Come si guarda la pagina del recall: lezioni sempre raggruppate per materia, in schede o in
- * tabella, ordinate per data, titolo o domande da porre. Come per la pagina Lezioni sono
- * preferenze del browser (localStorage), non filtri nell'URL.
+ * Come si guarda la pagina del recall: lezioni raggruppate per materia (predefinito) o per
+ * giorno, in schede o in tabella, ordinate per data, titolo o domande da porre. Come per la
+ * pagina Lezioni sono preferenze del browser (localStorage), non filtri nell'URL.
  */
 export type RecallSortKey = 'data' | 'titolo' | 'domande'
+export type RecallGroupBy = 'materia' | 'giorno'
 
 export type RecallViewPrefs = {
   view: LessonViewMode
   sort: RecallSortKey
   dir: SortDir
-  /** Materie chiuse, come `materia:<nome>`. */
+  group: RecallGroupBy
+  /** Gruppi chiusi, come `materia:<nome>` o `giorno:<data>`. */
   collapsed: string[]
 }
 
-export const DEFAULT_RECALL_PREFS: RecallViewPrefs = { view: 'schede', sort: 'data', dir: 'desc', collapsed: [] }
+export const DEFAULT_RECALL_PREFS: RecallViewPrefs = { view: 'schede', sort: 'data', dir: 'desc', group: 'materia', collapsed: [] }
+
+export const RECALL_GROUP_LABELS: Record<RecallGroupBy, string> = { materia: 'Materia', giorno: 'Giorno' }
 
 export const RECALL_SORT_LABELS: Record<RecallSortKey, string> = {
   data: 'Data',
@@ -32,8 +36,10 @@ export const RECALL_DEFAULT_DIR: Record<RecallSortKey, SortDir> = { data: 'desc'
 
 export const pendingOf = (stats?: LessonRecallStats) => countStatus(stats?.questions, 'pending')
 
-/** Lezioni ordinate e raggruppate per materia (alfabetico, "Senza materia" in fondo). */
-export function groupForRecall(lessons: Lesson[], stats: Map<number, LessonRecallStats>, prefs: Pick<RecallViewPrefs, 'sort' | 'dir'>): LessonGroup[] {
+/** Lezioni ordinate e raggruppate per materia (alfabetico, "Senza materia" in fondo) o per
+ * giorno (nella direzione della data, "Senza data" in fondo). */
+export function groupForRecall(lessons: Lesson[], stats: Map<number, LessonRecallStats>,
+  prefs: Pick<RecallViewPrefs, 'sort' | 'dir'> & Partial<Pick<RecallViewPrefs, 'group'>>): LessonGroup[] {
   let sorted: Lesson[]
   if (prefs.sort === 'domande') {
     const sign = prefs.dir === 'asc' ? 1 : -1
@@ -42,7 +48,8 @@ export function groupForRecall(lessons: Lesson[], stats: Map<number, LessonRecal
   } else {
     sorted = sortLessons(lessons, prefs.sort, prefs.dir)
   }
-  return groupLessons(sorted, 'materia')
+  const group = prefs.group ?? 'materia'
+  return groupLessons(sorted, group, prefs.sort === 'data' ? prefs.dir : 'desc')
 }
 
 /** Totali di una materia: lezioni pronte, domande da porre, risposte date. */
@@ -56,6 +63,9 @@ export function subjectTotals(lessons: Lesson[], stats: Map<number, LessonRecall
 }
 
 export const subjectPath = (materia: string) => `/recall/materie/${encodeURIComponent(materia)}`
+/** Recall del giorno: la sessione per materia sulle lezioni di una data (materia GIORNO:<data>). */
+export const dayPath = (day: string) => `/recall/giorno/${encodeURIComponent(day)}`
+export const daySubject = (day: string) => `GIORNO:${day}`
 
 const STORAGE_KEY = 'rt-recall-view'
 
@@ -76,6 +86,7 @@ export function parseRecallPrefs(raw: string | null): RecallViewPrefs {
     view: pick(data.view, ['schede', 'tabella'], d.view),
     sort: pick(data.sort, Object.keys(RECALL_SORT_LABELS) as RecallSortKey[], d.sort),
     dir: pick(data.dir, ['asc', 'desc'], d.dir),
+    group: pick(data.group, Object.keys(RECALL_GROUP_LABELS) as RecallGroupBy[], d.group),
     collapsed: Array.isArray(data.collapsed) ? data.collapsed.filter((c): c is string => typeof c === 'string').slice(-200) : [],
   }
 }

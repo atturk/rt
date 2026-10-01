@@ -1,6 +1,6 @@
 import type { LessonRecallStats } from '@/api/recall'
 import type { Lesson } from './format'
-import { groupForRecall, parseRecallPrefs, subjectPath, subjectTotals } from './recallView'
+import { dayPath, daySubject, groupForRecall, parseRecallPrefs, subjectPath, subjectTotals } from './recallView'
 
 const lesson = (id: number, materia: string, data: string, titolo = `L${id}`) =>
   ({ id, materia, data, titolo, folder_name: `f${id}`, argomenti: '', path: '', phases: {}, pending_issues: 0 }) as unknown as Lesson
@@ -30,8 +30,11 @@ describe('pagina del recall per materia', () => {
 
   it('scarta preferenze sconosciute e codifica la materia nel link', () => {
     expect(parseRecallPrefs('{"view":"tabella","sort":"costo","collapsed":["materia:X",3]}')).toEqual({
-      view: 'tabella', sort: 'data', dir: 'desc', collapsed: ['materia:X'],
+      view: 'tabella', sort: 'data', dir: 'desc', group: 'materia', collapsed: ['materia:X'],
     })
+    expect(parseRecallPrefs('{"group":"giorno"}').group).toBe('giorno')
+    expect(dayPath('2026-09-30')).toBe('/recall/giorno/2026-09-30')
+    expect(daySubject('2026-09-30')).toBe('GIORNO:2026-09-30')
     expect(parseRecallPrefs('non json').view).toBe('schede')
     expect(subjectPath('PATOLOGIA GENERALE 2')).toBe('/recall/materie/PATOLOGIA%20GENERALE%202')
   })

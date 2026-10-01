@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import type { ReactNode } from 'react'
 
 import { useJobs, useWorkers } from '@/api/jobs'
+import { ClassificationNotice } from '@/components/ClassificationNotice'
 import { Alert } from '@/components/ui/alert'
 import { decisionLabel, decisionLink, isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
@@ -65,6 +66,7 @@ export function LessonJobBanner({ lessonId, review = false, extra }: { lessonId:
           </Link>
         </Alert>
       )}
+      <ClassificationNotice lessonId={lessonId} />
       <p className="flex flex-wrap gap-4 text-xs">
         <Link to={`/lezioni/${lessonId}/outline`} className="underline">
           Scaletta e approvazione

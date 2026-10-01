@@ -124,7 +124,7 @@ describe('RelevancePage: assegnazione delle etichette', () => {
       job_id: 'rel-1', type: 'unit_relevance', state: 'queued', lesson_id: 5, worker_available: true, retry_of: null,
     }) as never)
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'Riclassifica tutte' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Riclassifica tutte le unità' }))
     await vi.waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/lessons/{lesson_id}/relevance/run',
       { params: { path: { lesson_id: 5 } }, body: { force: true, mock: false } }))
     expect(await screen.findByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded')
@@ -151,7 +151,7 @@ describe('RelevancePage: assegnazione delle etichette', () => {
     expect(within(within(summary).getByRole('list', { name: 'Unità per etichetta' })).getAllByRole('listitem').map((li) => li.textContent))
       .toEqual(['Contenuto didattico: 2', 'Informazioni organizzative: 1', 'Assenza di contenuto didattico: 0'])
     expect(within(summary).getByText(/1 non riuscite/)).toBeInTheDocument()
-    expect(within(summary).getByRole('button', { name: 'Classifica le unità nuove o cambiate' })).toBeInTheDocument()
+    expect(within(summary).getByRole('button', { name: 'Classifica solo le unità nuove o modificate' })).toBeInTheDocument()
   })
 
   it('dice quando il classificatore non è mai stato eseguito sulla lezione', async () => {
@@ -161,5 +161,21 @@ describe('RelevancePage: assegnazione delle etichette', () => {
     renderPage()
     expect(await screen.findByText('Mai eseguito su questa lezione')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Classifica la lezione' })).toBeInTheDocument()
+  })
+
+  it('mostra l\'etichetta del classificatore con lo score, anche quando la mappatura dice didattica', async () => {
+    mockApi([
+      unit('1.1', { label: 'Contenuto limitato', answer: { type: 'score', score: 0.8, confidence: 0.9 } }),
+      unit('1.2', { label: 'Contenuto ricco', answer: { type: 'score', score: 1.9, confidence: 0.9 } }),
+    ], 'shadow', {
+      total: 2, classified: 2, errors: 0, stale: 0, missing: 0, corrected: 0, excluded: 0,
+      by_outcome: { didactic: 2 }, by_label: { 'Contenuto ricco': 1, 'Contenuto limitato': 1 },
+    })
+    renderPage()
+    const summary = await screen.findByTestId('relevance-summary')
+    expect(within(within(summary).getByTestId('relevance-by-label')).getAllByRole('listitem').map((li) => li.textContent))
+      .toEqual(['Contenuto limitato: 1', 'Contenuto ricco: 1'])
+    expect(within(summary).getByText(/il recaller non lo riceve/)).toBeInTheDocument()
+    expect(screen.getAllByTestId('relevance-label').map((b) => b.textContent)).toEqual(['Contenuto limitato · 0,8', 'Contenuto ricco · 1,9'])
   })
 })

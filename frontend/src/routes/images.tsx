@@ -30,6 +30,7 @@ function ImagesIndex() {
       href={(l) => `/lezioni/${l.id}/immagini`}
       ready={(l) => l.phases.rewrite === 'VALID'}
       notReady="serve prima la rielaborazione"
+      storageKey="rt-images-view"
     />
   )
 }

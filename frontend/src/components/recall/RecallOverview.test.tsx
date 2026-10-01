@@ -12,10 +12,13 @@ const LESSONS = [
 ]
 const SUBJECTS = [
   { materia: 'BIOCHIMICA', session: { id: 9 }, lessons: [
-    { lesson_id: 1, ready: true, questions: { quiz: { pending: 4, answered: 1 }, mirata: { pending: 2 } }, answers: 1, telegram: false },
+    { lesson_id: 1, ready: true, questions: { quiz: { pending: 4, answered: 1 }, mirata: { pending: 2 } }, answers: 1, telegram: false,
+      classification: { state: 'never', classified: 0, total: 3 } },
     { lesson_id: 2, ready: false, questions: {}, answers: 0, telegram: false },
   ] },
-  { materia: 'FISIOLOGIA', session: null, lessons: [{ lesson_id: 3, ready: true, questions: {}, answers: 0, telegram: true }] },
+  { materia: 'FISIOLOGIA', session: null, lessons: [{ lesson_id: 3, ready: true, questions: {}, answers: 0, telegram: true,
+    classification: { state: 'done', classified: 2, total: 2 } }] },
+  { materia: 'GIORNO:2026-09-07', session: { id: 11 }, lessons: [] },
 ]
 
 vi.mock('@/api/hooks', () => ({ useLessons: () => ({ isPending: false, isError: false, data: LESSONS }) }))
@@ -53,9 +56,24 @@ describe('pagina Recall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tabella' }))
     expect(screen.getByTestId('recall-table')).toBeInTheDocument()
     const row = document.querySelector('[data-testid=picker-lesson][data-lesson-id="1"]')!
-    expect(Array.from(row.querySelectorAll('td')).map((td) => td.textContent)).toEqual(['Lipidi', '2026-09-05', '4', '2', '0', '1'])
+    expect(Array.from(row.querySelectorAll('td')).map((td) => td.textContent)).toEqual(['Lipidi', '2026-09-05', 'Non classificata', '4', '2', '0', '1'])
     fireEvent.click(within(subject('FISIOLOGIA')).getByTestId('lesson-group-toggle'))
     expect(document.querySelector('[data-testid=picker-lesson][data-lesson-id="3"]')).toBeNull()
     expect(JSON.parse(localStorage.getItem('rt-recall-view')!)).toMatchObject({ view: 'tabella', collapsed: ['materia:FISIOLOGIA'] })
+  })
+
+  it('raggruppa per giorno con il Recall del giorno e mostra il classificatore', () => {
+    renderPage()
+    expect(within(subject('BIOCHIMICA')).getByTestId('classification')).toHaveTextContent('Non classificata')
+    expect(within(subject('BIOCHIMICA')).getByTestId('classification').closest('a')).toHaveAttribute('href', '/lezioni/1/rilevanza')
+    expect(within(subject('FISIOLOGIA')).getByTestId('classification')).toHaveTextContent('Classificata')
+    fireEvent.change(screen.getByLabelText('Raggruppa per'), { target: { value: 'giorno' } })
+    const day = subject('2026-09-07')
+    expect(within(day).getByTestId('subject-recall')).toHaveAttribute('href', '/recall/giorno/2026-09-07')
+    expect(within(day).getByTestId('subject-recall')).toHaveTextContent('Recall del giorno')
+    expect(within(day).getByText('Sessione in corso')).toBeInTheDocument()
+    // giorno senza lezioni pronte: niente recall del giorno
+    expect(within(subject('2026-09-06')).queryByTestId('subject-recall')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('rt-recall-view')!)).toMatchObject({ group: 'giorno' })
   })
 })

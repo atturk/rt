@@ -331,16 +331,21 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
   )
 }
 
-/** Riga sopra l'elenco: ricerca, quante lezioni, azzera filtri, raggruppa, ordina e vista. */
-export function LessonViewControls({ shown, total, filtered, onReset, prefs, onChange, search }: {
+/** Riga sopra un elenco di lezioni (dashboard, Recall, Review, Immagini): ricerca, quante
+ * lezioni, azzera filtri, raggruppa, ordina e vista. */
+export function ViewToolbar<S extends string, G extends string>({ shown, total, filtered, onReset, search, prefs, onChange, sortLabels, groupLabels, defaultDir }: {
   shown: number
   total: number
   filtered: boolean
   onReset: () => void
-  prefs: LessonViewPrefs
-  onChange: (patch: Partial<LessonViewPrefs>) => void
-  /** Campo "Cerca" a sinistra del numero di lezioni (dashboard). */
+  /** Campo "Cerca" a sinistra del numero di lezioni. */
   search?: { id: string; value: string; onChange: (value: string) => void }
+  prefs: { view: 'schede' | 'tabella'; sort: S; dir: SortDir; group: G }
+  onChange: (patch: { view?: 'schede' | 'tabella'; sort?: S; dir?: SortDir; group?: G }) => void
+  sortLabels: Record<S, string>
+  /** Senza, niente "Raggruppa per". */
+  groupLabels?: Record<G, string>
+  defaultDir: Record<S, SortDir>
 }) {
   const id = useId()
   const DirIcon = prefs.dir === 'asc' ? ArrowUp : ArrowDown
@@ -369,18 +374,20 @@ export function LessonViewControls({ shown, total, filtered, onReset, prefs, onC
       </p>
       </div>
       <div className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`${id}-group`} className="text-xs">Raggruppa per</Label>
-          <Select id={`${id}-group`} className="w-32" value={prefs.group} onChange={(e) => onChange({ group: e.target.value as LessonGroupBy })}>
-            {(Object.keys(GROUP_LABELS) as LessonGroupBy[]).map((g) => <option key={g} value={g}>{GROUP_LABELS[g]}</option>)}
-          </Select>
-        </div>
+        {groupLabels && (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`${id}-group`} className="text-xs">Raggruppa per</Label>
+            <Select id={`${id}-group`} className="w-32" value={prefs.group} onChange={(e) => onChange({ group: e.target.value as G })}>
+              {(Object.keys(groupLabels) as G[]).map((g) => <option key={g} value={g}>{groupLabels[g]}</option>)}
+            </Select>
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <Label htmlFor={`${id}-sort`} className="text-xs">Ordina per</Label>
           <div className="flex">
             <Select id={`${id}-sort`} className="w-40 rounded-r-none" value={prefs.sort}
-              onChange={(e) => { const sort = e.target.value as LessonSortKey; onChange({ sort, dir: DEFAULT_DIR[sort] }) }}>
-              {(Object.keys(SORT_LABELS) as LessonSortKey[]).map((s) => <option key={s} value={s}>{SORT_LABELS[s]}</option>)}
+              onChange={(e) => { const sort = e.target.value as S; onChange({ sort, dir: defaultDir[sort] }) }}>
+              {(Object.keys(sortLabels) as S[]).map((s) => <option key={s} value={s}>{sortLabels[s]}</option>)}
             </Select>
             <Button variant="outline" size="icon" className="-ml-px rounded-l-none" aria-label={`Ordine ${dirText}: inverti`} title={`Ordine ${dirText}`}
               onClick={() => onChange({ dir: (prefs.dir === 'asc' ? 'desc' : 'asc') as SortDir })}>
@@ -394,5 +401,22 @@ export function LessonViewControls({ shown, total, filtered, onReset, prefs, onC
         ]} />
       </div>
     </div>
+  )
+}
+
+/** La riga sopra l'elenco della dashboard. */
+export function LessonViewControls({ shown, total, filtered, onReset, prefs, onChange, search }: {
+  shown: number
+  total: number
+  filtered: boolean
+  onReset: () => void
+  prefs: LessonViewPrefs
+  onChange: (patch: Partial<LessonViewPrefs>) => void
+  /** Campo "Cerca" a sinistra del numero di lezioni (dashboard). */
+  search?: { id: string; value: string; onChange: (value: string) => void }
+}) {
+  return (
+    <ViewToolbar<LessonSortKey, LessonGroupBy> shown={shown} total={total} filtered={filtered} onReset={onReset} search={search}
+      prefs={prefs} onChange={onChange} sortLabels={SORT_LABELS} groupLabels={GROUP_LABELS} defaultDir={DEFAULT_DIR} />
   )
 }
