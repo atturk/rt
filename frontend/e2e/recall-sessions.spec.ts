@@ -37,7 +37,7 @@ async function endWebSession(page: Page, lessonId: number) {
   }
 }
 
-test('tipo di domanda: slitta a tre stati da tastiera, scelta riletta dopo la ricarica', async ({ page }) => {
+test('tipo di domanda: slitta dei tipi da tastiera, scelta riletta dopo la ricarica', async ({ page }) => {
   const lesson = await openRecall(page)
   const group = page.getByRole('radiogroup', { name: 'Tipo di domanda' })
   const toggle = page.getByTestId('type-toggle')
@@ -55,12 +55,20 @@ test('tipo di domanda: slitta a tre stati da tastiera, scelta riletta dopo la ri
   await expect(group.getByRole('radio', { name: 'Vasta' })).toHaveAttribute('aria-checked', 'true')
   await expect(toggle).toContainText('Vasta: Domanda aperta di collegamento')
   await page.keyboard.press('ArrowRight')
+  await expect(group.getByRole('radio', { name: 'Casi' })).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('ArrowRight')
+  await expect(group.getByRole('radio', { name: 'Esercizi' })).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('ArrowRight')
   await expect(group.getByRole('radio', { name: 'Quiz' })).toHaveAttribute('aria-checked', 'true')
   await page.keyboard.press('ArrowLeft')
-  await expect(group.getByRole('radio', { name: 'Vasta' })).toHaveAttribute('aria-checked', 'true')
+  await expect(group.getByRole('radio', { name: 'Esercizi' })).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('End')
+  await expect(toggle).toHaveAttribute('data-value', 'esercizio')
   await page.keyboard.press('Home')
   await expect(group.getByRole('radio', { name: 'Quiz' })).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('End')
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ArrowLeft')
   await expect(toggle).toHaveAttribute('data-value', 'vasta')
 
   await page.reload()
