@@ -141,6 +141,26 @@ def _last_lesson(subject: str, channel: str) -> Optional[int]:
     return split_question_key(ids[-1])[0] if ids else None
 
 
+def current_subject_question(materia: str, channel: str = WEB):
+    """Last question in the active subject session, for reconnecting study clients."""
+    from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
+    from rt.services.recall_service import find_question
+    with read_scope(require_database()) as session:
+        row = _active_row(session, normalize_subject(materia), channel)
+        key = (row.question_ids or [])[-1] if row and row.question_ids else None
+    if not key:
+        return None
+    lesson_id, question_id = split_question_key(key)
+    if lesson_id is None:
+        return None
+    try:
+        lesson_dir = resolve_lesson_dir(lesson_id)
+    except LessonNotFound:
+        return None
+    question = find_question(lesson_dir, question_id)
+    return {"lesson_id": lesson_id, "lesson_dir": lesson_dir, "question": question} if question else None
+
+
 def record_subject_question(materia: str, lesson_id: int, question_id: str, qtype: str,
                             channel: str = WEB) -> Dict[str, Any]:
     """Domanda posta nella sessione per materia: la apre se non c'è e la annota."""
