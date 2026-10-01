@@ -24,6 +24,7 @@ from rt.core.config import load_config, RouteConfig, JobRoutingConfig
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.llm.providers import get_provider
 from rt.llm.pricing import calculate_cost
+from rt.llm.cancel import RunCancelled, current_cancel_token, raise_if_cancelled
 from rt.llm.telemetry import LLMTelemetryRecord, current_telemetry
 from rt.llm.monitor import LiveTerminalMonitor
 from rt.llm.credentials import GLOBAL_CREDENTIALS
@@ -64,6 +65,25 @@ def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
         pass  # Il log di debug non deve mai far fallire la pipeline
     finally:
         record_llm_call(lesson_dir, entry)
+
+
+def _cancel_requested() -> bool:
+    token = current_cancel_token()
+    return token is not None and token.cancelled
+
+
+def _close_on_cancel(response):
+    """Registra la chiusura della risposta sull'annullamento della run corrente."""
+    token = current_cancel_token()
+    if token is None or not hasattr(response, "close"):
+        return lambda: None
+
+    def close():
+        try:
+            response.close()
+        except Exception:
+            pass
+    return token.on_cancel(close)
 
 
 _MOCK_FAILURE: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar("rt_mock_failure", default=None)
@@ -503,6 +523,7 @@ class LLMClient:
                         stream_req_timeout = None
 
                     try:
+                        raise_if_cancelled()
                         if use_stream:
                             post_kwargs = {
                                 "headers": headers,
@@ -524,6 +545,10 @@ class LLMClient:
 
                             if hasattr(response, "encoding"):
                                 response.encoding = "utf-8"
+
+                            # Annullamento della run: chiude lo stream subito, senza aspettare
+                            # la fine della risposta (la lettura si interrompe con un errore di rete).
+                            _close_on_cancel(response)
 
                             if response.status_code != 200:
                                 try:
@@ -955,6 +980,13 @@ class LLMClient:
 
                         return validated_obj
 
+                    except RunCancelled:
+                        if 'response' in locals() and hasattr(response, "close"):
+                            try:
+                                response.close()
+                            except Exception:
+                                pass
+                        raise
                     except KeyboardInterrupt:
                         # Interruzione volontaria dell'utente: il fallback esiste per gli ERRORI,
                         # non per sostituirsi alla volontà esplicita di fermarsi — propaga senza
@@ -966,6 +998,8 @@ class LLMClient:
                                 pass
                         raise
                     except Exception as e:
+                        if _cancel_requested():
+                            raise RunCancelled("Esecuzione annullata") from e
                         attempt_exception = e
                         if 'content_parts' in locals() and content_parts and not raw_content:
                             raw_content = "".join(content_parts)

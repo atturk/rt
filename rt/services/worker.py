@@ -119,9 +119,13 @@ def _sanitize(message: str) -> str:
         return message
 
 
+CANCEL_POLL_SECONDS = 2.0
+
+
 class _Heartbeat(threading.Thread):
     """Rinnova il lease ogni lease/3 secondi; su richiesta di annullamento o lease perso
-    ferma il job tramite il CancelToken."""
+    ferma il job tramite il CancelToken. L'annullamento si controlla più spesso (ogni
+    CANCEL_POLL_SECONDS): dall'app deve fermare il job subito, anche a metà di una chiamata."""
 
     def __init__(self, queue: DbJobQueue, job_id: str, worker_id: str, lease_seconds: int, token: CancelToken):
         super().__init__(name=f"rt-heartbeat-{job_id[:8]}", daemon=True)
@@ -133,8 +137,21 @@ class _Heartbeat(threading.Thread):
         self.interval = max(0.05, lease_seconds / 3)
 
     def run(self) -> None:
-        while not self._stop_event.wait(self.interval):
-            self.beat()
+        poll = min(self.interval, CANCEL_POLL_SECONDS)
+        last_beat = time.monotonic()
+        while not self._stop_event.wait(poll):
+            if time.monotonic() - last_beat >= self.interval:
+                last_beat = time.monotonic()
+                self.beat()
+            elif not self.token.cancelled:
+                self.poll_cancel()
+
+    def poll_cancel(self) -> None:
+        try:
+            if self.queue.cancel_requested(self.job_id):
+                self.token.cancel()
+        except Exception as exc:  # DB occupato: ci pensa il prossimo controllo
+            logger.debug("Controllo dell'annullamento non riuscito per il job %s: %s", self.job_id, exc)
 
     def beat(self) -> None:
         try:

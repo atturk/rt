@@ -70,7 +70,7 @@ def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     fs.replace(tmp_path, path)
 
 
-def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None) -> dict:
+def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progress=None) -> dict:
     """Pool di domande dell'intera lezione: il recaller riceve tutte le unità selezionate
     (una chiamata per unità, per le vaste una per gruppo) e per ognuna genera zero, una o
     più domande nuove. Le domande già nel pool restano (il recaller le vede e non le ripete);
@@ -85,7 +85,7 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None) -> dic
     for qtype in types:
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
         generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, None, examples,
-                                                           force_mock=force_mock, regenerate=True))
+                                                           force_mock=force_mock, regenerate=True, progress=progress))
     return generated
 
 
@@ -189,6 +189,7 @@ def refill_if_low(
     batch_size: int,
     state_dir: Optional[str],
     force_mock: bool = False,
+    progress=None,
 ) -> None:
     """Quando le domande da porre del tipo scendono alla soglia (2 vaste, 3 mirate, 5 quiz
     di predefinito), il recaller ne genera altre da unità selezionate scelte a caso."""
@@ -196,16 +197,18 @@ def refill_if_low(
 
     if is_low(lesson_dir, qtype):
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generate_recall_batch(lesson_dir, qtype, batch_size, examples, force_mock=force_mock, shuffle=True)
+        generate_recall_batch(lesson_dir, qtype, batch_size, examples, force_mock=force_mock, shuffle=True,
+                              progress=progress)
 
 
-def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_mock: bool = False) -> None:
+def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_mock: bool = False,
+                              progress=None) -> None:
     """refill_if_low con il batch della configurazione (come dopo ogni risposta del recall
     da terminale)."""
     from rt.core.config import load_config
     cfg = load_config()
     refill_if_low(lesson_dir, qtype, cfg.telegram.recall.refill_batch_size, cfg.telegram.state_dir,
-                  force_mock=force_mock)
+                  force_mock=force_mock, progress=progress)
 
 
 def needs_refill(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = False) -> bool:

@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Optional
 
+from rt.llm.cancel import RunCancelled, use_cancel_token  # noqa: F401  (RunCancelled riesportato)
 from rt.llm.telemetry import TelemetryStore, use_telemetry
 from rt.services.events import (
     CostUpdated,
@@ -23,18 +24,41 @@ from rt.services.events import (
 )
 
 
-class RunCancelled(Exception):
-    """La run è stata annullata tramite CancelToken; il lavoro già salvato resta valido."""
-
-
 class CancelToken:
-    """Flag di annullamento controllabile da un altro thread (API, worker, segnale)."""
+    """Flag di annullamento controllabile da un altro thread (API, worker, segnale). Chi sta
+    aspettando qualcosa di lungo (lo streaming di una chiamata LLM) registra con on_cancel
+    come interromperlo."""
 
     def __init__(self) -> None:
         self._event = threading.Event()
+        self._callbacks: list = []
+        self._lock = threading.Lock()
 
     def cancel(self) -> None:
-        self._event.set()
+        with self._lock:
+            already = self._event.is_set()
+            self._event.set()
+            callbacks = [] if already else list(self._callbacks)
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:  # noqa: BLE001 - interrompere è un tentativo, mai un errore
+                pass
+
+    def on_cancel(self, callback):
+        """Esegue callback all'annullamento (subito se è già annullato); restituisce la
+        funzione che lo toglie."""
+        with self._lock:
+            if not self._event.is_set():
+                self._callbacks.append(callback)
+                return lambda: self._remove(callback)
+        callback()
+        return lambda: None
+
+    def _remove(self, callback) -> None:
+        with self._lock:
+            if callback in self._callbacks:
+                self._callbacks.remove(callback)
 
     @property
     def cancelled(self) -> bool:
@@ -75,8 +99,9 @@ class RunContext:
 
     @contextmanager
     def activate(self) -> Iterator["RunContext"]:
-        """Rende la telemetria di questo contesto quella corrente per il client LLM."""
-        with use_telemetry(self.telemetry):
+        """Rende la telemetria e l'annullamento di questo contesto quelli correnti per il
+        client LLM."""
+        with use_telemetry(self.telemetry), use_cancel_token(self.cancel_token):
             yield self
 
 

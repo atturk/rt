@@ -136,10 +136,17 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
     with ctx.activate():
         generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")),
-                                          regenerate=True, shuffle=True)
+                                          regenerate=True, shuffle=True, progress=recall_progress(ctx))
         ctx.emit(Notice(message=_recall_message(f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}.",
                                                 len(generated), unit_rows(job.lesson_path))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
+def recall_progress(ctx: RunContext):
+    """Avanzamento della generazione delle domande negli eventi del job (fase "recall")."""
+    def report(current, total, message, **unit):
+        ctx.progress("recall", current, total, message=message, **unit)
+    return report
 
 
 def _recall_message(head: str, generated: int, rows: list) -> str:
@@ -183,7 +190,7 @@ def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.recall_service import recall_overview, refill_active_type_if_low
     with ctx.activate():
         refill_active_type_if_low(job.lesson_path, RecallQuestionType(job.payload["qtype"]),
-                                  force_mock=bool(job.payload.get("mock")))
+                                  force_mock=bool(job.payload.get("mock")), progress=recall_progress(ctx))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
 

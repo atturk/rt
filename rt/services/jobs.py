@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from rt.db.engine import Database
 from rt.db.models import Job, JobEvent, Worker, utcnow
 from rt.db.repositories import normalize_lesson_path
-from rt.db.session import session_scope
+from rt.db.session import read_scope, session_scope
 
 
 class JobState(str, Enum):
@@ -353,6 +353,11 @@ class DbJobQueue:
             s.add(JobEvent(job_id=job_id, type=event_type, payload=json_safe(payload or {})))
             if progress is not None:
                 s.execute(update(Job).where(Job.id == job_id).values(progress=json_safe(progress), updated_at=utcnow()))
+            return bool(s.scalar(select(Job.cancel_requested).where(Job.id == job_id)))
+
+    def cancel_requested(self, job_id: str) -> bool:
+        """Lettura leggera per il worker: è stato chiesto l'annullamento del job?"""
+        with read_scope(self.db) as s:
             return bool(s.scalar(select(Job.cancel_requested).where(Job.id == job_id)))
 
     # ------------------------------------------------------------ worker
