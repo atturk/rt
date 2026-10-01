@@ -364,12 +364,13 @@
             "type": "integer"
           },
           "state": {
-            "description": "done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione cambiati); never: mai eseguito; disabled: classificatore spento; unavailable: lezione senza bozza",
+            "description": "done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione cambiati); never: mai eseguito; running: classificazione in coda o in corso; disabled: classificatore spento; unavailable: lezione senza bozza",
             "enum": [
               "done",
               "partial",
               "stale",
               "never",
+              "running",
               "disabled",
               "unavailable"
             ],

@@ -53,9 +53,16 @@ def lesson_context(lesson_dir):
                         outline = data
             except (ValueError, OSError, yaml.YAMLError):
                 pass
+    generated = normalize_topics(outline.get("generated_topics"))
+    topics = info.get("argomenti")
+    # Il build copia gli argomenti generati in info.yaml uniti da ", ": rilette, le virgole dentro
+    # un argomento lo spezzerebbero e le etichette del classificatore risulterebbero da rifare.
+    raw = outline.get("generated_topics")
+    if generated and isinstance(raw, list) and isinstance(topics, str) and topics.strip() == ", ".join(map(str, raw)).strip():
+        topics = generated
     return {"materia": str(info.get("materia") or ""),
             "titolo_lezione": str(outline.get("lesson_title") or info.get("titolo") or ""),
-            "argomenti_lezione": normalize_topics(info.get("argomenti")) or normalize_topics(outline.get("generated_topics"))}
+            "argomenti_lezione": normalize_topics(topics) or generated}
 
 
 def context_block(context):

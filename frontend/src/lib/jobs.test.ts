@@ -1,4 +1,4 @@
-import { audioFileProblem, canCloseJob, closedJob, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
+import { audioFileProblem, canCloseJob, closedJob, collapseTranscription, decisionLink, describeEvent, jobTypeLabel, mergeEvents, progressLabel, progressPercent, progressTitle, type JobEvent } from './jobs'
 
 const event = (id: number, type = 'notice', payload: Record<string, unknown> = {}): JobEvent => ({ id, job_id: 'j', type, payload })
 
@@ -15,6 +15,12 @@ describe('describeEvent', () => {
       text: 'Trascrizione e setup: errore. ffmpeg mancante',
       tone: 'danger',
     })
+  })
+  it('mostra la trascrizione solo in percentuale e una riga per serie di avanzamenti', () => {
+    const progress = (id: number, pct: number) => event(id, 'phase_progress', { phase: 'setup', current: pct, total: 100, message: `Trascrizione audio: ${pct}%` })
+    expect(describeEvent(progress(1, 12)).text).toBe('Trascrizione audio: 12%')
+    const events = [event(1, 'job_started'), progress(2, 0), progress(3, 1), progress(4, 2), event(5, 'phase_completed', { phase: 'setup' }), progress(6, 0)]
+    expect(collapseTranscription(events).map((e) => e.id)).toEqual([1, 4, 5, 6])
   })
   it('segnala decisioni e fine del job con il tono giusto', () => {
     expect(describeEvent(event(4, 'decision_required', { kind: 'outline_approval' }))).toEqual({

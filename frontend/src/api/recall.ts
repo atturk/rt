@@ -215,7 +215,33 @@ export const subjectKeys = {
 
 /** Pool di ogni lezione, per materia, e sessioni per materia in corso. */
 export function useSubjectsRecall() {
-  return useQuery({ queryKey: subjectKeys.list, queryFn: () => unwrap(api.GET('/api/v1/recall/subjects')) })
+  return useQuery({
+    queryKey: subjectKeys.list,
+    queryFn: () => unwrap(api.GET('/api/v1/recall/subjects')),
+    // Finché una lezione è in classificazione il suo stato si aggiorna da solo.
+    refetchInterval: (query) =>
+      query.state.data?.some((s) => s.lessons.some((l) => l.classification?.state === 'running')) ? 3000 : false,
+  })
+}
+
+/**
+ * Accoda per più lezioni il classificatore (solo unità nuove o modificate, come "Classifica")
+ * o la rigenerazione del pool (come "Rigenera pool"). Il worker esegue i job di una lezione in
+ * ordine: classificando e poi rigenerando, il pool usa le etichette nuove.
+ */
+export function useQueueForLessons(kind: 'classify' | 'pool') {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => unwrap(kind === 'classify'
+        ? api.POST('/api/v1/lessons/{lesson_id}/relevance/run', { params: path(id), body: { force: false, mock: false } })
+        : api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { mock: false } }))))
+      const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (failed.length === ids.length && failed.length > 0) throw failed[0].reason
+      return { queued: ids.length - failed.length, failed: failed.length }
+    },
+    onSettled: () => void client.invalidateQueries({ queryKey: subjectKeys.all }),
+  })
 }
 
 export function useSubjectRecall(materia: string) {

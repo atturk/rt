@@ -132,6 +132,8 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
       return { text: `${phaseName(p)}: avviata${step}`, tone: 'neutral' }
     }
     case 'phase_progress': {
+      // La trascrizione avanza in percentuale e il messaggio la dice già ("Trascrizione audio: 12%").
+      if (p.phase === 'setup' && p.message) return { text: String(p.message), tone: 'neutral' }
       const count = p.current != null && p.total ? ` ${p.current}/${p.total}` : ''
       return { text: `${phaseName(p)}:${count} ${String(p.message ?? '')}`.trim(), tone: 'neutral' }
     }
@@ -154,6 +156,15 @@ export function describeEvent(event: Pick<JobEvent, 'type' | 'payload'>): { text
     default:
       return { text: event.type, tone: 'neutral' }
   }
+}
+
+const isTranscriptionProgress = (event: Pick<JobEvent, 'type' | 'payload'>) =>
+  event.type === 'phase_progress' && (event.payload as Record<string, unknown> | null)?.phase === 'setup'
+
+/** Eventi da mostrare: di una serie di avanzamenti della trascrizione (uno per punto
+ * percentuale) resta solo l'ultimo, che si aggiorna sul posto. */
+export function collapseTranscription<T extends Pick<JobEvent, 'type' | 'payload'>>(events: T[]): T[] {
+  return events.filter((event, i) => !(isTranscriptionProgress(event) && events[i + 1] && isTranscriptionProgress(events[i + 1])))
 }
 
 /**

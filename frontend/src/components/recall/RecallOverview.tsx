@@ -1,13 +1,14 @@
-import { Brain, CalendarDays, Send } from 'lucide-react'
+import { Brain, CalendarDays, RefreshCw, Send, Tags } from 'lucide-react'
 import { useId } from 'react'
 import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
-import { useSubjectsRecall, type LessonRecallStats, type SubjectRecall } from '@/api/recall'
+import { useQueueForLessons, useSubjectsRecall, type LessonRecallStats, type SubjectRecall } from '@/api/recall'
 import { GroupToggle, SortHeader, ViewToolbar } from '@/components/LessonList'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { classificationLabel } from '@/lib/classification'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -68,17 +69,57 @@ function TelegramBadge({ stats }: { stats?: LessonRecallStats }) {
 }
 
 /** Il classificatore sulla lezione: il recall usa le sue etichette, una lezione non
- * classificata si vede subito e porta alla pagina del classificatore. */
+ * classificata si vede subito e porta alla pagina del classificatore; con Option il clic
+ * accoda subito la classificazione, senza aprire la pagina. */
 function ClassificationBadge({ lesson, stats }: { lesson: Lesson; stats?: LessonRecallStats }) {
+  const classify = useQueueForLessons('classify')
   if (!stats?.ready || !stats.classification) return null
   const label = classificationLabel(stats.classification)
   if (label.text === '—') return null
-  const badge = <Badge tone={label.tone} data-testid="classification">{label.text}</Badge>
+  const badge = <Badge tone={label.tone} data-testid="classification">{classify.isPending ? 'Classificazione in corso' : label.text}</Badge>
   return label.pending ? (
-    <Link to={`/lezioni/${lesson.id}/rilevanza`} title="Apri il classificatore della lezione" className="inline-flex">
+    <Link to={`/lezioni/${lesson.id}/rilevanza`} title="Apri il classificatore della lezione (Option-clic: classifica subito)"
+      className="inline-flex" onClick={(event) => {
+        if (!event.altKey) return
+        event.preventDefault()
+        if (!classify.isPending) classify.mutate([lesson.id])
+      }}>
       {badge}
     </Link>
   ) : badge
+}
+
+/** Lezioni del gruppo ancora da classificare (anche quelle con la classificazione in coda). */
+function unclassified(lessons: Lesson[], stats: Map<number, LessonRecallStats>) {
+  return lessons.filter((l) => {
+    const s = stats.get(l.id)
+    return s?.ready && s.classification && (classificationLabel(s.classification).pending || s.classification.state === 'running')
+  })
+}
+
+/** Nella barra del gruppo: classifica tutte le lezioni da classificare, o ne rigenera i pool. */
+function GroupQueueButton({ kind, lessons, stats }: { kind: 'classify' | 'pool'; lessons: Lesson[]; stats: Map<number, LessonRecallStats> }) {
+  const queue = useQueueForLessons(kind)
+  const pending = unclassified(lessons, stats)
+  const targets = kind === 'classify' ? pending.filter((l) => stats.get(l.id)?.classification?.state !== 'running') : pending
+  const classify = kind === 'classify'
+  const done = queue.data && `${queue.data.queued} ${classify ? 'accodate' : 'pool accodati'}${queue.data.failed ? `, ${queue.data.failed} non riuscite` : ''}`
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={targets.length === 0 || queue.isPending}
+        data-testid={classify ? 'group-classify' : 'group-pools'}
+        title={classify
+          ? 'Accoda il classificatore (unità nuove o modificate) per ogni lezione del gruppo ancora da classificare'
+          : 'Rigenera il pool di ogni lezione del gruppo ancora da classificare: dopo la classificazione, se accodata prima'}
+        onClick={() => queue.mutate(targets.map((l) => l.id))}>
+        {classify ? <Tags aria-hidden /> : <RefreshCw aria-hidden />}
+        {classify ? 'Classifica tutte' : 'Rigenera tutti i pool'}
+        {targets.length > 0 && <span className="tabular-nums text-muted-foreground">({targets.length})</span>}
+      </Button>
+      {done && <span role="status" className="text-xs text-muted-foreground">{done}</span>}
+      {queue.isError && <span role="alert" className="text-xs text-danger">{errorMessage(queue.error)}</span>}
+    </span>
+  )
 }
 
 function LessonRecallCard({ lesson, stats, group }: { lesson: Lesson; stats?: LessonRecallStats; group: RecallGroupBy }) {
@@ -117,8 +158,10 @@ function SubjectHeader({ group, by, stats, subject, expanded, onToggle, controls
         {plural(totals.pending, 'domanda da porre', 'domande da porre')}
       </span>
       {subject?.session && <Badge tone="success">Sessione in corso</Badge>}
+      <GroupQueueButton kind="classify" lessons={group.lessons} stats={stats} />
       {group.key && (
-        <span className="ml-auto">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <GroupQueueButton kind="pool" lessons={group.lessons} stats={stats} />
           {totals.ready > 0 ? (
             <Link to={day ? dayPath(group.key) : subjectPath(group.key)} className={subjectLink} data-testid="subject-recall">
               {day ? <CalendarDays aria-hidden /> : <Brain aria-hidden />} {day ? 'Recall del giorno' : 'Recall della materia'}

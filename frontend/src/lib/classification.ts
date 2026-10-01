@@ -18,6 +18,8 @@ export function classificationLabel(status?: ClassificationStatus | null): { tex
       return { text: 'Da riclassificare', tone: 'warning', pending: true }
     case 'never':
       return { text: 'Non classificata', tone: 'warning', pending: true }
+    case 'running':
+      return { text: 'Classificazione in corso', tone: 'neutral', pending: false }
     case 'disabled':
       return { text: 'Classificatore spento', tone: 'neutral', pending: false }
     default:

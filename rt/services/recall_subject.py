@@ -12,6 +12,7 @@ salti restano quelli della lezione a cui appartiene la domanda (rt.services.reca
 Il modulo non dipende dal canale: la web app lo usa, il bot Telegram può riusarlo passando
 channel=TELEGRAM.
 """
+import logging
 import random
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,6 +26,8 @@ from rt.db.session import read_scope, session_scope
 from rt.services.recall_sessions import (
     ACTIVE, ENDED, TELEGRAM, WEB, RecallSessionError, _now, _views, list_sessions, summarize,
 )
+
+LOG = logging.getLogger(__name__)
 
 NO_SUBJECT = "no_subject"
 # Recall del giorno: stessa sessione della materia, con le lezioni di una data al posto di
@@ -79,25 +82,43 @@ def _telegram_busy() -> set:
     return {s["lesson_id"] for s in list_sessions(channel=TELEGRAM) if s.get("lesson_id") is not None}
 
 
-def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None) -> Dict[str, Any]:
+def _classifying() -> set:
+    """Lezioni con un job del classificatore in coda o in corso (percorsi come nella coda)."""
+    from rt.services.jobs import JobState, get_job_queue
+    try:
+        jobs = get_job_queue().list(state=[JobState.QUEUED.value, JobState.RUNNING.value],
+                                    job_type="unit_relevance", limit=1000)
+    except Exception:  # coda non disponibile: lo stato resta quello delle etichette salvate
+        LOG.debug("Coda dei job non disponibile per lo stato del classificatore", exc_info=True)
+        return set()
+    return {j.lesson_path for j in jobs if j.lesson_path}
+
+
+def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None,
+                 classifying: Optional[set] = None) -> Dict[str, Any]:
     """Domande per tipo e stato e risposte date di una lezione, come GET /lessons/{id}/recall."""
+    from rt.db.repositories import normalize_lesson_path
     from rt.services.recall_service import recall_overview
     from rt.services.unit_relevance import classification_status
     ready = _ready(summary)
     overview = recall_overview(summary["path"]) if ready else {"questions": {}, "answers": 0}
+    classification = classification_status(summary["path"]) if ready else None
+    if classification and classification["state"] != "disabled" \
+            and normalize_lesson_path(summary["path"]) in (classifying or set()):
+        classification = {**classification, "state": "running"}
     return {"lesson_id": summary["id"], "ready": ready, "questions": overview["questions"],
             "answers": overview["answers"], "telegram": summary["id"] in (telegram_busy or set()),
-            "classification": classification_status(summary["path"]) if ready else None}
+            "classification": classification}
 
 
 def recall_by_subject() -> List[Dict[str, Any]]:
     """Per la pagina del recall: ogni materia con il pool delle sue lezioni e la sessione per
     materia in corso. Le lezioni senza materia stanno sotto materia vuota."""
     from rt.services.lesson_service import list_lessons
-    busy = _telegram_busy()
+    busy, classifying = _telegram_busy(), _classifying()
     subjects: Dict[str, List[Dict[str, Any]]] = {}
     for summary in list_lessons():
-        subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, busy))
+        subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, busy, classifying))
     active = {s["subject"]: s for s in _subject_sessions(state=ACTIVE)}
     out = [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
            for materia, lessons in sorted(subjects.items())]
@@ -108,8 +129,8 @@ def recall_by_subject() -> List[Dict[str, Any]]:
 
 def subject_overview(materia: str) -> Dict[str, Any]:
     subject = normalize_subject(materia)
-    busy = _telegram_busy()
-    lessons = [lesson_stats(s, busy) for s in subject_lessons(subject)]
+    busy, classifying = _telegram_busy(), _classifying()
+    lessons = [lesson_stats(s, busy, classifying) for s in subject_lessons(subject)]
     return {"materia": subject, "lessons": lessons, "session": active_subject_session(subject),
             "last": last_ended_subject_session(subject)}
 

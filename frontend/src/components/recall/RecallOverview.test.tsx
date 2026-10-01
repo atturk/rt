@@ -22,7 +22,11 @@ const SUBJECTS = [
 ]
 
 vi.mock('@/api/hooks', () => ({ useLessons: () => ({ isPending: false, isError: false, data: LESSONS }) }))
-vi.mock('@/api/recall', () => ({ useSubjectsRecall: () => ({ isPending: false, isError: false, data: SUBJECTS }) }))
+const queued = vi.hoisted(() => ({ classify: vi.fn(), pool: vi.fn() }))
+vi.mock('@/api/recall', () => ({
+  useSubjectsRecall: () => ({ isPending: false, isError: false, data: SUBJECTS }),
+  useQueueForLessons: (kind: 'classify' | 'pool') => ({ mutate: queued[kind], isPending: false, isError: false, data: undefined }),
+}))
 
 function renderPage() {
   render(
@@ -37,7 +41,26 @@ function renderPage() {
 const subject = (name: string) => document.querySelector<HTMLElement>(`[data-testid=recall-subject][data-subject="${name}"]`)!
 
 describe('pagina Recall', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => { localStorage.clear(); queued.classify.mockReset(); queued.pool.mockReset() })
+
+  it('nella barra del gruppo classifica tutte e rigenera i pool delle lezioni da classificare', () => {
+    renderPage()
+    const bio = subject('BIOCHIMICA')
+    fireEvent.click(within(bio).getByTestId('group-classify'))
+    expect(queued.classify).toHaveBeenCalledWith([1])
+    fireEvent.click(within(bio).getByTestId('group-pools'))
+    expect(queued.pool).toHaveBeenCalledWith([1])
+    // tutte classificate: niente da accodare
+    expect(within(subject('FISIOLOGIA')).getByTestId('group-classify')).toBeDisabled()
+    expect(within(subject('FISIOLOGIA')).getByTestId('group-pools')).toBeDisabled()
+  })
+
+  it('con Option il clic sull\'etichetta classifica subito, senza aprire il classificatore', () => {
+    renderPage()
+    const badge = within(subject('BIOCHIMICA')).getByTestId('classification').closest('a')!
+    fireEvent.click(badge, { altKey: true })
+    expect(queued.classify).toHaveBeenCalledWith([1])
+  })
 
   it('mostra le lezioni per materia con il pool e il recall della materia', () => {
     renderPage()

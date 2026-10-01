@@ -34,6 +34,21 @@ def test_context_handles_yaml_list_and_fallback(tmp_path):
     assert lesson_context(path)['argomenti_lezione'] == ['Fallback']
 
 
+def test_context_unchanged_when_build_copies_generated_topics(tmp_path):
+    """Il build scrive in info.yaml gli argomenti generati uniti da ", ": un argomento con una
+    virgola non deve cambiare il contesto (le etichette risulterebbero da rifare a pipeline finita)."""
+    from rt.core.state import update_info_yaml
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    topics = ['Strutture algebriche, vincoli e variabili', 'Problemi di trasporto']
+    with open(lesson_path(path, 'outline.json'), 'w') as stream:
+        json.dump({'lesson_title': 'Ottimizzazione', 'generated_topics': topics}, stream)
+    with open(lesson_path(path, 'info.yaml'), 'w') as stream:
+        stream.write('materia: PGSS\n')
+    before = lesson_context(path)
+    update_info_yaml(lesson_path(path, 'info.yaml'), {'argomenti': ', '.join(topics), 'titolo': 'Ottimizzazione'})
+    assert lesson_context(path) == before == {'materia': 'PGSS', 'titolo_lezione': 'Ottimizzazione', 'argomenti_lezione': topics}
+
+
 @pytest.mark.parametrize('level', [0, 1, 2])
 def test_score_levels_are_guidance_and_never_exclude(tmp_path, level):
     path = setup_mock_lesson(tmp_path, num_units=1)

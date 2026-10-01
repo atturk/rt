@@ -120,3 +120,21 @@ def test_day_session_uses_the_lessons_of_that_day(api_client, lessons, rt_db):
     assert subjects[subject]["session"] is not None and subjects[subject]["lessons"] == []
     assert api_client.post("/api/v1/recall/subject/end", params={"materia": subject}).status_code == 200
     assert subject not in {s["materia"] for s in api_client.get("/api/v1/recall/subjects").json()}
+
+
+def test_queued_classifier_shows_running_until_the_job_ends(api_client, lessons, rt_db, monkeypatch):
+    """Con un job del classificatore in coda o in corso la lezione è "in classificazione"."""
+    from rt.services import unit_relevance
+    monkeypatch.setattr(unit_relevance, "classification_status", lambda path: {"state": "stale", "classified": 0, "total": 2})
+    monkeypatch.setattr(unit_relevance, "ensure_can_run", lambda: None)
+
+    def states():
+        subject = api_client.get("/api/v1/recall/subjects").json()[0]
+        return {l["lesson_id"]: l["classification"]["state"] for l in subject["lessons"]}
+
+    assert set(states().values()) == {"stale"}
+    res = api_client.post(f"/api/v1/lessons/{lessons[0]}/relevance/run", json={"force": False, "mock": True})
+    assert res.status_code == 202, res.text
+    assert states() == {lessons[0]: "running", lessons[1]: "stale"}
+    _drain(rt_db)
+    assert set(states().values()) == {"stale"}

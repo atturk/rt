@@ -14,7 +14,7 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { lessonTitle } from '@/lib/format'
 import { useFollowTail } from '@/lib/followTail'
 import {
-  canCloseJob, closedJob, decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel, progressPercent,
+  canCloseJob, closedJob, collapseTranscription, decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel, progressPercent,
 } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
@@ -190,7 +190,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
             className={cn('flex flex-col gap-1 overflow-y-auto rounded-lg bg-muted/60 p-3 font-mono text-xs', compact ? 'max-h-40' : 'max-h-96')}
           >
             {events.length === 0 && <li className="text-muted-foreground">Nessun evento per ora.</li>}
-            {events.map((event) => {
+            {collapseTranscription(events).map((event) => {
               const { text, tone } = describeEvent(event)
               return (
                 <li key={event.id} data-event-type={event.type} className={cn('flex gap-3', TONE_CLASSES[tone])}>

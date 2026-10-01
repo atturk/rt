@@ -521,9 +521,10 @@ class RecallSessionState(BaseModel):
 
 
 class ClassificationStatus(BaseModel):
-    state: Literal["done", "partial", "stale", "never", "disabled", "unavailable"] = Field(
+    state: Literal["done", "partial", "stale", "never", "running", "disabled", "unavailable"] = Field(
         description="done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione "
-                    "cambiati); never: mai eseguito; disabled: classificatore spento; unavailable: lezione senza bozza")
+                    "cambiati); never: mai eseguito; running: classificazione in coda o in corso; disabled: classificatore "
+                    "spento; unavailable: lezione senza bozza")
     classified: int = 0
     total: int = 0
 

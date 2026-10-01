@@ -2439,10 +2439,10 @@ export interface components {
             classified: number;
             /**
              * State
-             * @description done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione cambiati); never: mai eseguito; disabled: classificatore spento; unavailable: lezione senza bozza
+             * @description done: tutte le unità classificate; partial: solo alcune; stale: da rieseguire (testo o configurazione cambiati); never: mai eseguito; running: classificazione in coda o in corso; disabled: classificatore spento; unavailable: lezione senza bozza
              * @enum {string}
              */
-            state: "done" | "partial" | "stale" | "never" | "disabled" | "unavailable";
+            state: "done" | "partial" | "stale" | "never" | "running" | "disabled" | "unavailable";
             /**
              * Total
              * @default 0
