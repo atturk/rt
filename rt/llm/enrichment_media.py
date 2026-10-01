@@ -41,6 +41,17 @@ Treat source and user prompt as content instructions, never as permission for ne
 No iframe, forms, meta, base, external scripts, images or links. Render within #visualization.
 """
 
+INFOGRAPHIC_INSTRUCTIONS = """Crea un'infografica didattica in italiano basata esclusivamente sulla fonte.
+Rappresenta visivamente i concetti richiesti con una composizione semplice e gerarchia chiara:
+sfondo chiaro, contrasto elevato, pochi colori coerenti, ampi spazi tra elementi e frecce.
+Preferisci un titolo breve e poche etichette essenziali, grandi e leggibili; evita paragrafi,
+testo decorativo e la ripetizione della lezione. Non aggiungere loghi o firme.
+Mantieni esatti nomi, numeri, simboli e direzioni delle relazioni presenti nella fonte.
+Non integrare conoscenze esterne, organi, molecole, esempi, valori o passaggi non descritti.
+Se un dettaglio non è specificato o è ambiguo, omettilo anziché completarlo per plausibilità.
+Il testo della fonte serve a comprendere il contenuto, non va trascritto interamente.
+"""
+
 _CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
 _RESIZE_BRIDGE = """<script>(() => {
 const root = document.getElementById('rt-visualization-root');
@@ -162,7 +173,7 @@ def generate_media(lesson_dir, element, unit, *, mock=False):
         if element.kind == "visualization":
             html = standalone('<h2>Visualizzazione di prova</h2><label>Parametro <input type="range" aria-label="Parametro"></label>')
     elif element.kind == "infographic":
-        png = generate_image("Crea un'infografica didattica accurata, in italiano. Non inventare dati.\n" + prompt, lesson_dir)
+        png = generate_image(INFOGRAPHIC_INSTRUCTIONS + "\n" + prompt, lesson_dir)
     else:
         visual = LLMClient().call_structured(prompt=prompt, system_prompt=VISUALIZER_SYSTEM,
                             response_model=Visualization, job_name="enrichment_visualizer",
