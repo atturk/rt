@@ -19,7 +19,7 @@ function ReviewCard({ lesson }: { lesson: Lesson }) {
         <span className="text-xs text-muted-foreground">{[lesson.materia, lesson.data].filter(Boolean).join(' · ')}</span>
       </span>
       <span className="flex shrink-0 flex-col items-end">
-        <strong className="text-2xl font-bold tabular-nums text-accent-foreground" data-testid="review-count">
+        <strong className="text-2xl font-bold tabular-nums text-link" data-testid="review-count">
           {lesson.pending_issues}
         </strong>
         <span className="text-[11px] text-muted-foreground">da valutare</span>

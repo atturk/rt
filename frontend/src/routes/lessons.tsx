@@ -138,7 +138,7 @@ export function LessonPage() {
               <dd>
                 {l.pending_issues}
                 {l.phases.review && l.phases.review !== 'MISSING' && (
-                  <Link to={`/lezioni/${id}/revisione`} className="ml-2 font-semibold text-accent-foreground hover:underline">
+                  <Link to={`/lezioni/${id}/revisione`} className="ml-2 font-semibold text-link hover:underline">
                     {l.pending_issues > 0 ? 'Rivedi →' : 'Vedi la revisione'}
                   </Link>
                 )}

@@ -216,7 +216,7 @@ function SubjectSession({ materia, lessons }: { materia: string; lessons: Map<nu
         <article className="flex flex-col gap-3" data-testid="recall-question" data-question-id={question.id} data-type={question.type} data-lesson-id={lessonId}>
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{typeLabel(question.type)}</Badge>
-            <Link to={`/lezioni/${lessonId}`} className="text-xs font-medium text-accent-foreground hover:underline" data-testid="question-lesson">
+            <Link to={`/lezioni/${lessonId}`} className="text-xs font-medium text-link hover:underline" data-testid="question-lesson">
               {lesson ? lessonTitle(lesson) : `Lezione ${lessonId}`}
             </Link>
             <span className="text-xs text-muted-foreground">

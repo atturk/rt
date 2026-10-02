@@ -2,49 +2,82 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Palette della web Gradio (rt/web/style.css): nero, grigi, accento verde. */
+/*
+ * Design 4.2, direzione "A · Precisione" (OpenDesign, piano-4.2/opendesign-nuovo/tokens.css):
+ * scala di grigi con un solo accento (verde menta), caratteri di sistema a spaziatura fissa,
+ * angoli da 8 px. I nomi restano quelli dei componenti (background, muted, accent…); i valori
+ * sono quelli del design. Tema scuro con la classe .dark su <html> (lib/theme.ts).
+ *   --soft    = sfondo tenue (hover, gruppi di icone)      → muted
+ *   --mute    = testo secondario                           → muted-foreground
+ *   --acc     = testo sull'accento                         → accent-foreground
+ *   --link    = testo d'accento sullo sfondo della pagina (nel design "--muted")
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --muted: #f1f1f1;
-  --muted-foreground: #595959;
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --fg: #171717;
+  --soft: #f1f1f1;
+  --mute: color-mix(in oklch, var(--fg) 72%, var(--bg));
+  --acc: #155f52;
+  --link: #155f52;
+  --overlay: color-mix(in oklch, var(--bg) 78%, transparent);
+  --shadow: 0 12px 32px color-mix(in oklch, var(--fg) 9%, transparent);
+
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --muted: var(--soft);
+  --muted-foreground: var(--mute);
   --border: #d4d4d4;
-  --input: #c9c9c9;
-  --ring: #171717;
-  --card: #ffffff;
-  --sidebar: #f7f7f7;
-  --primary: #171717;
-  --primary-foreground: #ffffff;
+  --input: #d4d4d4;
+  --ring: var(--fg);
+  --card: var(--surface);
+  --sidebar: var(--bg);
+  --primary: #dceee7;
+  --primary-foreground: var(--acc);
   --accent: #dceee7;
-  --accent-foreground: #155f52;
+  --accent-foreground: var(--acc);
   --success: #147464;
   --success-soft: #e4f3ed;
   --warning: #98620c;
   --warning-soft: #fff3df;
   --danger: #a04232;
   --danger-soft: #ffe9e3;
+
+  --size-meta: 12px;
+  --size-body: 15px;
+  --size-heading: 22px;
+  --rail-width: 56px;
+  --header-height: 52px;
+  --control-size: 34px;
+  --reading-width: 720px;
 }
 
 .dark {
-  --background: #121212;
-  --foreground: #ececec;
-  --muted: #232323;
-  --muted-foreground: #a8a8a8;
-  --border: #333333;
-  --input: #444444;
-  --ring: #ececec;
-  --card: #1a1a1a;
-  --sidebar: #171717;
-  --primary: #ececec;
-  --primary-foreground: #121212;
-  --accent: #1d3a32;
-  --accent-foreground: #8fdcc4;
+  color-scheme: dark;
+  --bg: #171717;
+  --surface: #1a1a1a;
+  --fg: #ffffff;
+  --soft: color-mix(in oklch, #ffffff 7%, #171717);
+  --acc: #155f52;
+  --link: #dceee7;
+  --shadow: 0 12px 32px color-mix(in oklch, #171717 65%, transparent);
+
+  --border: color-mix(in oklch, #d4d4d4 25%, #171717);
+  --input: color-mix(in oklch, #d4d4d4 35%, #171717);
   --success: #6fd3b3;
   --success-soft: #16312a;
   --warning: #f1c27a;
   --warning-soft: #3a2c14;
   --danger: #ff9f8c;
   --danger-soft: #3d1d17;
+}
+
+/* Telefono: aree da toccare di 44 px (linee guida §5). */
+@media (max-width: 767px) {
+  :root {
+    --control-size: 44px;
+  }
 }
 
 @theme inline {
@@ -61,13 +94,24 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-link: var(--link);
+  --color-overlay: var(--overlay);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
-  --font-sans: Seravek, 'Helvetica Neue', Arial, sans-serif;
+  /* Caratteri di sistema (nessun font scaricato): SF Mono sul Mac, poi i caratteri del sistema. */
+  --font-sans: SFMono, 'SF Mono', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: SFMono, 'SF Mono', ui-monospace, Menlo, monospace;
+  --text-meta: var(--size-meta);
+  --text-body: var(--size-body);
+  --text-heading: var(--size-heading);
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --shadow-panel: var(--shadow);
 }
 
 @layer base {
@@ -78,7 +122,41 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+    font-size: var(--size-body);
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--fg);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--acc);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--mute);
+    opacity: 1;
+  }
+}
+
+@keyframes rt-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
   }
 }
 

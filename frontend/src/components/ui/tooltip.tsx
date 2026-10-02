@@ -78,7 +78,7 @@ export function Tooltip({
           hidden={!visible}
           style={pos ? { top: pos.top, left: pos.left, transform } : undefined}
           className={cn(
-            'pointer-events-none fixed z-[60] max-w-72 rounded-md bg-primary px-2.5 py-1.5 text-xs leading-snug text-primary-foreground shadow-lg',
+            'pointer-events-none fixed z-[60] max-w-72 rounded-md bg-foreground px-2 py-1 text-xs leading-snug text-background shadow-lg',
           )}
         >
           {content}

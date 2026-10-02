@@ -40,7 +40,7 @@ export function SettingsLayout() {
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight">Impostazioni</h1>
-        <Link to={SETUP_PATH} className="text-sm font-bold text-accent-foreground hover:underline">
+        <Link to={SETUP_PATH} className="text-sm font-bold text-link hover:underline">
           Configurazione guidata <span aria-hidden>→</span>
         </Link>
       </div>
