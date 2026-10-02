@@ -67,8 +67,11 @@ test('tipo di domanda: slitta dei tipi da tastiera, scelta riletta dopo la ricar
   await page.keyboard.press('Home')
   await expect(group.getByRole('radio', { name: 'Quiz' })).toHaveAttribute('aria-checked', 'true')
   await page.keyboard.press('ArrowLeft')
+  await expect(group.getByRole('radio', { name: 'Esercizi' })).toBeFocused()
   await page.keyboard.press('ArrowLeft')
+  await expect(group.getByRole('radio', { name: 'Casi' })).toBeFocused()
   await page.keyboard.press('ArrowLeft')
+  await expect(group.getByRole('radio', { name: 'Vasta' })).toBeFocused()
   await expect(toggle).toHaveAttribute('data-value', 'vasta')
 
   await page.reload()

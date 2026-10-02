@@ -38,12 +38,14 @@ export function SlideToggle<T extends string>({
     refs.current[next]?.focus()
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
+  // Le frecce partono dall'opzione che ha il focus, non da `value`: se la scelta arriva
+  // dall'URL il nuovo valore può non essere ancora reso quando si preme il tasto successivo.
+  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>, from: number) {
     const keys: Record<string, number> = {
-      ArrowRight: index + 1,
-      ArrowDown: index + 1,
-      ArrowLeft: index - 1,
-      ArrowUp: index - 1,
+      ArrowRight: from + 1,
+      ArrowDown: from + 1,
+      ArrowLeft: from - 1,
+      ArrowUp: from - 1,
       Home: 0,
       End: options.length - 1,
     }
@@ -86,7 +88,7 @@ export function SlideToggle<T extends string>({
               tabIndex={checked ? 0 : -1}
               disabled={disabled}
               onClick={() => onChange(option.value)}
-              onKeyDown={onKeyDown}
+              onKeyDown={(e) => onKeyDown(e, i)}
               className={cn(
                 'relative z-10 inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed [&_svg]:size-4 [&_svg]:shrink-0',
                 checked ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
