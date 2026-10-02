@@ -3620,6 +3620,11 @@ export interface components {
              * @default
              */
             docente: string;
+            /**
+             * Duration Seconds
+             * @description Durata dell'audio della lezione, se nota
+             */
+            duration_seconds?: number | null;
             /** Error */
             error?: string | null;
             /** Folder Name */
@@ -3658,6 +3663,18 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Recall Pending
+             * @description Domande del pool non ancora poste (da fare)
+             * @default 0
+             */
+            recall_pending: number;
+            /**
+             * Recall Questions
+             * @description Domande di recall nel pool della lezione
+             * @default 0
+             */
+            recall_questions: number;
+            /**
              * Segment Count
              * @default 0
              */
@@ -3672,6 +3689,11 @@ export interface components {
              * @default
              */
             titolo: string;
+            /**
+             * Unit Count
+             * @description Unità della scaletta (null se non c'è ancora)
+             */
+            unit_count?: number | null;
         };
         /** LessonDocument */
         LessonDocument: {
@@ -3785,6 +3807,11 @@ export interface components {
              * @default
              */
             docente: string;
+            /**
+             * Duration Seconds
+             * @description Durata dell'audio della lezione, se nota
+             */
+            duration_seconds?: number | null;
             /** Error */
             error?: string | null;
             /** Folder Name */
@@ -3811,6 +3838,18 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Recall Pending
+             * @description Domande del pool non ancora poste (da fare)
+             * @default 0
+             */
+            recall_pending: number;
+            /**
+             * Recall Questions
+             * @description Domande di recall nel pool della lezione
+             * @default 0
+             */
+            recall_questions: number;
+            /**
              * State
              * @description Stato effettivo del workflow (come 'rt status')
              */
@@ -3820,6 +3859,11 @@ export interface components {
              * @default
              */
             titolo: string;
+            /**
+             * Unit Count
+             * @description Unità della scaletta (null se non c'è ancora)
+             */
+            unit_count?: number | null;
         };
         /** ListenMessages */
         ListenMessages: {

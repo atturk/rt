@@ -359,6 +359,18 @@ class DbJobQueue:
 
     # ------------------------------------------------------------ eventi e progresso
 
+    def attach_lesson(self, job_id: str, lesson_path: str) -> None:
+        """Collega alla lezione appena creata un job partito dall'audio (ancora senza lezione):
+        da qui il job compare fra quelli della lezione e la tiene occupata finché gira."""
+        path = normalize_lesson_path(lesson_path)
+        with session_scope(self.db) as s:
+            row = s.get(Job, job_id)
+            if row is None or row.lesson_path:
+                return
+            row.lesson_path = path
+            if row.state == JobState.RUNNING.value:
+                row.active_lesson = path
+
     def add_event(self, job_id: str, event_type: str, payload: Optional[Dict[str, Any]] = None,
                   progress: Optional[Dict[str, Any]] = None) -> bool:
         """Salva un evento (e il progresso). Restituisce True se è stato chiesto

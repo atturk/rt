@@ -25,6 +25,10 @@ class LessonSummary(BaseModel):
     phases: Dict[str, str] = Field(description="fase -> VALID | PARTIAL | STALE | MISSING | INVALID")
     pending_issues: int = 0
     cost_usd: Optional[float] = None
+    unit_count: Optional[int] = Field(None, description="Unità della scaletta (null se non c'è ancora)")
+    duration_seconds: Optional[float] = Field(None, description="Durata dell'audio della lezione, se nota")
+    recall_questions: int = Field(0, description="Domande di recall nel pool della lezione")
+    recall_pending: int = Field(0, description="Domande del pool non ancora poste (da fare)")
     error: Optional[str] = None
 
 

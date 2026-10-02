@@ -2817,6 +2817,18 @@
             "title": "Docente",
             "type": "string"
           },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durata dell'audio della lezione, se nota",
+            "title": "Duration Seconds"
+          },
           "error": {
             "anyOf": [
               {
@@ -2875,6 +2887,18 @@
             "title": "Phases",
             "type": "object"
           },
+          "recall_pending": {
+            "default": 0,
+            "description": "Domande del pool non ancora poste (da fare)",
+            "title": "Recall Pending",
+            "type": "integer"
+          },
+          "recall_questions": {
+            "default": 0,
+            "description": "Domande di recall nel pool della lezione",
+            "title": "Recall Questions",
+            "type": "integer"
+          },
           "segment_count": {
             "default": 0,
             "title": "Segment Count",
@@ -2896,6 +2920,18 @@
             "default": "",
             "title": "Titolo",
             "type": "string"
+          },
+          "unit_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità della scaletta (null se non c'è ancora)",
+            "title": "Unit Count"
           }
         },
         "required": [
@@ -3089,6 +3125,18 @@
             "title": "Docente",
             "type": "string"
           },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durata dell'audio della lezione, se nota",
+            "title": "Duration Seconds"
+          },
           "error": {
             "anyOf": [
               {
@@ -3130,6 +3178,18 @@
             "title": "Phases",
             "type": "object"
           },
+          "recall_pending": {
+            "default": 0,
+            "description": "Domande del pool non ancora poste (da fare)",
+            "title": "Recall Pending",
+            "type": "integer"
+          },
+          "recall_questions": {
+            "default": 0,
+            "description": "Domande di recall nel pool della lezione",
+            "title": "Recall Questions",
+            "type": "integer"
+          },
           "state": {
             "anyOf": [
               {
@@ -3146,6 +3206,18 @@
             "default": "",
             "title": "Titolo",
             "type": "string"
+          },
+          "unit_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità della scaletta (null se non c'è ancora)",
+            "title": "Unit Count"
           }
         },
         "required": [
