@@ -12,7 +12,8 @@
     "gen:api": "openapi-typescript ../docs/openapi.json -o src/api/schema.d.ts",
     "test": "vitest run",
     "e2e": "playwright test",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "check:bundle": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
