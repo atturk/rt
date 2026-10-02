@@ -1,7 +1,9 @@
+import { LogOut, Moon, Sun, Wand2 } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
+import { useLogout } from '@/api/hooks'
 import { useSettings, type Settings } from '@/api/settings'
 import { DataDirSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
 import { InfoSection } from '@/components/settings/info'
@@ -11,7 +13,10 @@ import { WebSearchSection } from '@/components/settings/websearch'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
+import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
+import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import { SETUP_PATH } from './setupGate'
 
@@ -32,26 +37,43 @@ const TABS = [
   { to: '/impostazioni/costi', label: 'Costi' },
   { to: '/impostazioni/ricerca-web', label: 'Ricerca web' },
   { to: '/impostazioni/decisioni', label: 'Prompt e decisioni' },
+  { to: '/impostazioni/bot', label: 'Bot Telegram' },
   { to: '/impostazioni/info', label: 'Info' },
 ]
 
+/** Tema e uscita: nel design 4.2 non stanno nel menu, ma nell'intestazione delle impostazioni. */
+function SettingsActions() {
+  const [theme, toggleTheme] = useTheme()
+  const logout = useLogout()
+  const navigate = useNavigate()
+  return (
+    <>
+      <IconLink to={SETUP_PATH} label="Configurazione guidata" icon={Wand2} />
+      <IconButton label={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'} icon={theme === 'dark' ? Sun : Moon} onClick={toggleTheme} />
+      <IconButton
+        label="Esci"
+        icon={LogOut}
+        disabled={logout.isPending}
+        onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })}
+      />
+    </>
+  )
+}
+
 export function SettingsLayout() {
   return (
+    <>
+      <PageHeader title="Impostazioni" actions={<SettingsActions />} />
+      <PageBody>
     <section className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight">Impostazioni</h1>
-        <Link to={SETUP_PATH} className="text-sm font-bold text-link hover:underline">
-          Configurazione guidata <span aria-hidden>→</span>
-        </Link>
-      </div>
-      <nav aria-label="Sezioni delle impostazioni" className="flex gap-1 border-b">
+      <nav aria-label="Sezioni delle impostazioni" className="flex gap-1 overflow-x-auto border-b">
         {TABS.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
             className={({ isActive }) =>
-              cn('-mb-px border-b-2 px-3 py-2 text-sm', isActive ? 'border-foreground font-semibold' : 'border-transparent text-muted-foreground hover:text-foreground')
+              cn('-mb-px shrink-0 border-b-2 px-3 py-2 text-sm', isActive ? 'border-foreground font-semibold' : 'border-transparent text-muted-foreground hover:text-foreground')
             }
           >
             {tab.label}
@@ -60,6 +82,8 @@ export function SettingsLayout() {
       </nav>
       <Outlet />
     </section>
+      </PageBody>
+    </>
   )
 }
 

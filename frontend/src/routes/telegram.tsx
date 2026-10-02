@@ -22,7 +22,7 @@ export function TelegramPage() {
   return (
     <section className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold tracking-tight">Bot Telegram</h1>
+        <h2 className="text-lg font-bold tracking-tight">Bot Telegram</h2>
         <Link to={SETTINGS_LINK} className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
           Impostazioni Telegram
         </Link>

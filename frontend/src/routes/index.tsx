@@ -1,15 +1,16 @@
-import { Activity, Bot, Brain, ClipboardCheck, Images, LayoutDashboard, Settings as SettingsIcon, Upload } from 'lucide-react'
 import { lazy, Suspense, type ComponentType } from 'react'
-import type { RouteObject } from 'react-router'
+import { Navigate, type RouteObject } from 'react-router'
 
-import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { Layout } from '@/components/Layout'
 import { SetupGate } from './setupGate'
 import type { Area } from './types'
 
 /**
  * Le pagine di ogni area stanno in routes/<area>.tsx e si caricano solo quando servono (un
- * chunk per area, React.lazy): qui restano le rotte e le voci di menu, che servono subito.
+ * chunk per area, React.lazy): qui restano le rotte, che servono subito. Il menu (design 4.2)
+ * ha solo Nuova lezione, Lezioni, Job in corso e Impostazioni (components/Layout.tsx): le altre
+ * pagine restano raggiungibili dall'URL e dai link nelle pagine. `handle.bare` = pagina con la
+ * sua intestazione a tutta larghezza (design 4.2).
  * Il layout si mostra senza aspettare il chunk: l'attesa è il Suspense attorno al suo Outlet.
  */
 function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType): ComponentType {
@@ -22,31 +23,28 @@ const recall = () => import('./recall')
 const images = () => import('./images')
 const settings = () => import('./settings')
 
+const bare = { bare: true }
+
 const lessonsArea: Area = {
   routes: [
-    { index: true, Component: page(lessons, (m) => m.DashboardPage) },
-    { path: 'lezioni/:lessonId', Component: page(lessons, (m) => m.LessonPage) },
+    { index: true, Component: page(lessons, (m) => m.DashboardPage), handle: bare },
+    { path: 'lezioni/nuova/:jobId', Component: page(lessons, (m) => m.NewLessonPage), handle: bare },
+    { path: 'lezioni/:lessonId', Component: page(lessons, (m) => m.LessonPage), handle: bare },
     { path: 'lezioni/:lessonId/rilevanza', Component: page(() => import('./relevance'), (m) => m.RelevancePage) },
   ],
-  nav: [{ to: '/', label: 'Lezioni', icon: LayoutDashboard, end: true }],
 }
 
 const jobsArea: Area = {
   routes: [
     { path: 'importa', Component: page(jobs, (m) => m.ImportPage) },
-    { path: 'job', Component: page(jobs, (m) => m.JobsPage) },
-    { path: 'job/:jobId', Component: page(jobs, (m) => m.JobPage) },
+    { path: 'job', Component: page(jobs, (m) => m.JobsPage), handle: bare },
+    { path: 'job/:jobId', Component: page(jobs, (m) => m.JobPage), handle: bare },
     { path: 'lezioni/:lessonId/outline', Component: page(jobs, (m) => m.OutlinePage) },
-  ],
-  nav: [
-    { to: '/importa', label: 'Importa', icon: Upload },
-    { to: '/job', label: 'Job', icon: Activity, badge: JobsNavBadge },
   ],
 }
 
 const reviewsArea: Area = {
   routes: [{ path: 'review', Component: page(() => import('./reviews'), (m) => m.ReviewsPage) }],
-  nav: [{ to: '/review', label: 'Review', icon: ClipboardCheck }],
 }
 
 const reviewArea: Area = {
@@ -61,7 +59,6 @@ const recallArea: Area = {
     { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.RecallPage) },
     { path: 'lezioni/:lessonId/recall/domande', Component: page(recall, (m) => m.QuestionsPage) },
   ],
-  nav: [{ to: '/recall', label: 'Recall', icon: Brain }],
 }
 
 const imagesArea: Area = {
@@ -71,13 +68,6 @@ const imagesArea: Area = {
     { path: 'immagini', Component: page(images, (m) => m.ImagesIndex) },
     { path: 'lezioni/:lessonId/immagini', Component: page(images, (m) => m.ImagesPage) },
   ],
-  nav: [{ to: '/arricchimento', label: 'Arricchimento', icon: Images }],
-}
-
-/** Il pannello di avvio sta anche nelle impostazioni (RT4-F5); qui la pagina completa (RT4-FA6). */
-const telegramArea: Area = {
-  routes: [{ path: 'bot', Component: page(() => import('./telegram'), (m) => m.TelegramPage) }],
-  nav: [{ to: '/bot', label: 'Bot Telegram', icon: Bot }],
 }
 
 const settingsArea: Area = {
@@ -86,6 +76,7 @@ const settingsArea: Area = {
     {
       path: 'impostazioni',
       Component: page(settings, (m) => m.SettingsLayout),
+      handle: bare,
       children: [
         { index: true, Component: page(settings, (m) => m.GeneralSettingsPage) },
         { path: 'modelli', Component: page(settings, (m) => m.ModelsSettingsPage) },
@@ -94,13 +85,15 @@ const settingsArea: Area = {
         { path: 'ricerca-web', Component: page(settings, (m) => m.WebSearchSettingsPage) },
         { path: 'decisioni', Component: page(settings, (m) => m.DecisionsSettingsPage) },
         { path: 'info', Component: page(settings, (m) => m.InfoSettingsPage) },
+        // Bot Telegram (RT4-FA6): nel design 4.2 sta nelle impostazioni; /bot resta valido.
+        { path: 'bot', Component: page(() => import('./telegram'), (m) => m.TelegramPage) },
       ],
     },
+    { path: 'bot', element: <Navigate to="/impostazioni/bot" replace /> },
   ],
-  nav: [{ to: '/impostazioni', label: 'Impostazioni', icon: SettingsIcon }],
 }
 
-export const areas: Area[] = [lessonsArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, telegramArea, settingsArea]
+export const areas: Area[] = [lessonsArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 
@@ -115,7 +108,7 @@ export const routes: RouteObject[] = [
   },
   {
     path: '/',
-    element: <Layout areas={areas} />,
+    element: <Layout />,
     // SetupGate porta alla configurazione guidata se il backend segnala setup_required (RT4-F5).
     children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }],
   },

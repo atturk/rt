@@ -11,6 +11,8 @@ import { AudioOrder } from '@/components/jobs/AudioOrder'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
 import { ZipImportCard } from '@/components/jobs/ZipImport'
+import { PhaseProgress } from '@/components/jobs/PhaseProgress'
+import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { lessonTitle } from '@/lib/format'
-import { AUDIO_EXTENSIONS, JOB_STATE_LABELS, audioFileProblem, decisionLabel, decisionLink, formatBytes, jobTypeLabel } from '@/lib/jobs'
+import { AUDIO_EXTENSIONS, JOB_STATE_LABELS, audioFileProblem, decisionLabel, decisionLink, formatBytes, isActive, jobTypeLabel } from '@/lib/jobs'
 
 function today(): string {
   const d = new Date()
@@ -275,9 +277,11 @@ export function JobsPage() {
   }
 
   return (
+    <>
+    <PageHeader title="Job in corso" />
+    <PageBody>
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
-        <h1 className="mr-auto text-xl font-bold tracking-tight">Job</h1>
         <div className="flex flex-col gap-1">
           <Label htmlFor="jobs-stato">Stato</Label>
           <Select id="jobs-stato" value={state} onChange={(e) => setFilter('stato', e.target.value)} className="w-56">
@@ -289,10 +293,6 @@ export function JobsPage() {
             ))}
           </Select>
         </div>
-        <Link to="/importa" className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Upload className="size-4" aria-hidden />
-          Importa
-        </Link>
       </div>
       {lessonId != null && (
         <p className="text-xs text-muted-foreground">
@@ -326,26 +326,30 @@ export function JobsPage() {
                   )}
                   <JobStateBadge state={job.state} />
                 </span>
+                {isActive(job.state) && <PhaseProgress jobId={job.id} className="basis-full" />}
               </Card>
             </li>
           )
         })}
       </ul>
     </section>
+    </PageBody>
+    </>
   )
 }
 
 export function JobPage() {
   const jobId = useParams().jobId ?? ''
   return (
-    <section className="flex flex-col gap-4">
-      <Link to="/job" className="text-xs text-muted-foreground hover:underline">
-        ← Tutti i job
-      </Link>
-      <h1 className="sr-only">Dettaglio del job</h1>
-      <WorkerWarning />
-      <JobLive jobId={jobId} />
-    </section>
+    <>
+      <PageHeader title="Dettaglio del job" back={{ to: '/job', label: 'Tutti i job' }} />
+      <PageBody>
+        <section className="flex flex-col gap-4">
+          <WorkerWarning />
+          <JobLive jobId={jobId} />
+        </section>
+      </PageBody>
+    </>
   )
 }
 

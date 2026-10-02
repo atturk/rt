@@ -1,6 +1,6 @@
-import { Brain, Download, Images, PanelRightClose, PanelRightOpen, Pencil } from 'lucide-react'
+import { Brain, Download, Images, PanelRightClose, PanelRightOpen, Pencil, Plus } from 'lucide-react'
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
 import { useDismissNotice, type Notice } from '@/api/documentEdit'
@@ -16,9 +16,15 @@ import { JobsPanel } from '@/components/lesson/JobsPanel'
 import { PhasePanel } from '@/components/lesson/PhasePanel'
 import { PhaseBadges } from '@/components/PhaseBadges'
 import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
-import { LessonList, LessonViewControls } from '@/components/LessonList'
+import { PhaseProgress } from '@/components/jobs/PhaseProgress'
+import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
+import { PageBody, PageHeader } from '@/components/shell/PageHeader'
+import { useOpenNewLesson } from '@/components/shell/newLesson'
+import { useJob, useJobs } from '@/api/jobs'
+import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
-import { groupLessons, sortLessons, useLessonViewPrefs } from '@/lib/lessonView'
+import { lessonsGroups, shortDate, subjectName, useLessonsPrefs } from '@/lib/lessonsPage'
+import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -26,36 +32,123 @@ import { STATE_LABELS, formatCost, lessonTitle } from '@/lib/format'
 
 export function DashboardPage() {
   // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
-  // (GET /lessons ricalcola fasi, issue e costi di ogni lezione). Materia e stato restano
-  // filtri dell'URL (link dalla barra laterale), azzerabili da "Azzera filtri".
-  // La ricerca cerca già in materia, titolo, docente e data: niente riquadri né menu separati.
+  // (GET /lessons ricalcola fasi, issue e costi di ogni lezione). Il testo cercato e la
+  // materia (link vecchi con ?materia=) restano filtri dell'URL.
   const all = useLessons()
-  const lessons = all.data ?? []
+  const jobs = useJobs({ limit: 50 })
+  const openNewLesson = useOpenNewLesson()
   const { filters, setFilter, resetFilters, filtered } = useFilteredLessons(all.data)
-  const { prefs, update, sortBy, toggleGroup } = useLessonViewPrefs()
-  const groups = groupLessons(sortLessons(filtered, prefs.sort, prefs.dir), prefs.group, prefs.sort === 'data' ? prefs.dir : 'desc')
-  const hasFilters = Boolean(filters.q || filters.materia || filters.state)
-  useSearchShortcut('filter-q')
+  const [prefs, setPrefs] = useLessonsPrefs()
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(() => new Set())
+  const running = new Set((jobs.data ?? []).filter((j) => isActive(j.state) && j.lesson_id != null).map((j) => j.lesson_id!))
+  const groups = lessonsGroups(filtered, prefs)
+  const chosen = filtered.filter((l) => selected.has(l.id))
+  useSearchShortcut('lessons-search')
+  const stopSelecting = () => {
+    setSelecting(false)
+    setSelected(new Set())
+  }
   return (
-    <section className="flex flex-col gap-5">
-      <h1 className="sr-only">Dashboard</h1>
+    <>
+      <PageHeader
+        title="Lezioni"
+        actions={
+          <LessonsHeaderActions
+            prefs={prefs}
+            onPrefs={setPrefs}
+            query={filters.q}
+            onQuery={(q) => setFilter('q', q)}
+            selecting={selecting}
+            onSelecting={(on) => (on ? setSelecting(true) : stopSelecting())}
+          />
+        }
+      />
+      <div className={cn('flex-1 px-7 py-6 max-md:px-4 max-md:py-2', selecting && 'pb-24')} data-testid="lessons-page">
+        {all.isPending && <LessonsSkeleton />}
+        {all.isError && (
+          <p role="alert" className="flex items-center gap-3 text-body">
+            <span className="text-danger">{errorMessage(all.error)}</span>
+            <Button variant="outline" size="sm" onClick={() => void all.refetch()}>Riprova</Button>
+          </p>
+        )}
+        {all.data?.length === 0 && (
+          <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
+            Nessuna lezione.
+            <Button onClick={openNewLesson}><Plus aria-hidden />Nuova lezione</Button>
+          </p>
+        )}
+        {all.data && all.data.length > 0 && filtered.length === 0 && (
+          <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
+            Nessuna lezione corrisponde alla ricerca.
+            <Button variant="outline" size="sm" onClick={resetFilters}>Azzera</Button>
+          </p>
+        )}
+        {filters.materia && filtered.length > 0 && (
+          <p className="mb-4 text-meta text-muted-foreground">
+            Solo {subjectName(filters.materia)}.{' '}
+            <button type="button" className="underline" onClick={resetFilters}>Mostra tutte</button>
+          </p>
+        )}
+        {filtered.length > 0 && (
+          <LessonsList groups={groups} grouping={prefs.group} running={running} selecting={selecting} selected={selected} onSelected={setSelected} />
+        )}
+      </div>
+      {selecting && <SelectionBar lessons={chosen} onCancel={stopSelecting} />}
+    </>
+  )
+}
 
-      {all.isError && <Alert tone="danger">{errorMessage(all.error)}</Alert>}
-      {all.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
-      {all.data && lessons.length > 0 && (
-        <LessonViewControls shown={filtered.length} total={lessons.length} filtered={hasFilters}
-          onReset={resetFilters} prefs={prefs} onChange={update}
-          search={{ id: 'filter-q', value: filters.q, onChange: (value) => setFilter('q', value) }} />
-      )}
-      {all.data && filtered.length === 0 && (
-        <Card className="p-6 text-sm text-muted-foreground">
-          {lessons.length === 0 ? 'Nessuna lezione: importane una da un audio.' : 'Nessuna lezione corrisponde ai filtri.'}
-        </Card>
-      )}
-      {filtered.length > 0 && (
-        <LessonList groups={groups} grouped={prefs.group !== 'nessuno'} prefs={prefs} onSort={sortBy} onToggleGroup={toggleGroup} />
-      )}
-    </section>
+/** Caricamento: righe grigie della forma dell'elenco, non uno spinner. */
+function LessonsSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Carico le lezioni" role="status">
+      <div className="mb-4 h-2.5 w-48 rounded-md bg-muted" />
+      {[72, 56, 64, 48].map((width) => (
+        <div key={width} className="flex min-h-14 items-center gap-3 px-2.5">
+          <span className="size-1.5 rounded-full bg-muted" />
+          <span className="h-2.5 rounded-md bg-muted" style={{ width: `${width}%` }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Dopo Avvia nel popup Nuova lezione: avanzamento finché il setup non ha creato la lezione,
+ * poi la pagina della lezione (dove l'avanzamento continua). */
+export function NewLessonPage() {
+  const jobId = useParams().jobId ?? ''
+  const job = useJob(jobId)
+  const navigate = useNavigate()
+  const lessonId = job.data?.lesson_id
+  useEffect(() => {
+    if (lessonId != null) navigate(`/lezioni/${lessonId}`, { replace: true })
+  }, [lessonId, navigate])
+  const options = ((job.data?.payload as Record<string, unknown> | undefined)?.options ?? {}) as Record<string, unknown>
+  const path = [options.materia ? subjectName(String(options.materia)) : null, options.docente ? String(options.docente) : null, options.date ? shortDate(String(options.date)) : null]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <>
+      <PageHeader title={path || 'Nuova lezione'} muted titleAs="p" back={{ to: '/', label: 'Lezioni' }} />
+      <article className="mx-auto w-full max-w-(--reading-width) px-4 pb-28 pt-7">
+        <h1 className="mb-2 text-heading font-semibold leading-tight">Nuova lezione</h1>
+        {job.isError && <Alert tone="danger">{errorMessage(job.error)}</Alert>}
+        <PhaseProgress jobId={jobId} className="my-6" onRetried={(id) => navigate(`/lezioni/nuova/${id}`, { replace: true })} />
+        <DocumentSkeleton />
+      </article>
+    </>
+  )
+}
+
+/** Il testo che ancora manca (linee guida §4, "In corso"). */
+function DocumentSkeleton() {
+  return (
+    <div aria-hidden>
+      {[['40%', 14, 0], ['100%', 10, 0], ['92%', 10, 0], ['75%', 10, 0], ['35%', 14, 22], ['100%', 10, 0], ['88%', 10, 0]].map(([width, height, top], index) => (
+        <div key={index} className="my-3 rounded-md bg-muted" style={{ width: String(width), height: Number(height), marginTop: Number(top) || undefined }} />
+      ))}
+    </div>
   )
 }
 
@@ -105,16 +198,25 @@ export function LessonPage() {
   const [panelOpen, setPanelOpen] = useSidePanel()
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
-  if (lesson.isPending) return <p className="text-sm text-muted-foreground">Carico la lezione…</p>
-  if (lesson.isError) return <Alert tone="danger">{errorMessage(lesson.error)}</Alert>
+  const back = { to: '/', label: 'Lezioni' }
+  if (lesson.isPending || lesson.isError) {
+    return (
+      <>
+        <PageHeader title="Lezione" muted titleAs="p" back={back} />
+        <PageBody>
+          {lesson.isPending ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(lesson.error)}</Alert>}
+        </PageBody>
+      </>
+    )
+  }
   const l = lesson.data
   const sections = document.data?.sections ?? []
+  const path = [l.materia ? subjectName(l.materia) : null, l.docente?.trim() || null, l.data ? shortDate(l.data) : null].filter(Boolean).join(' · ')
   return (
     <AudioProvider>
+      <PageHeader title={path || lessonTitle(l)} muted titleAs="p" back={back} />
+      <PageBody>
       <section className="flex flex-col gap-4">
-        <Link to="/" className="text-xs text-muted-foreground hover:underline">
-          ← Tutte le lezioni
-        </Link>
         <Card className="p-5">
           {/* Azioni sempre sotto il titolo: accanto finivano a destra o sotto a seconda di
               quanto era lungo il titolo. */}
@@ -151,6 +253,7 @@ export function LessonPage() {
           </dl>
           {l.error && <p className="mt-2 text-xs text-danger">{l.error}</p>}
         </Card>
+        <LessonProgress lessonId={l.id} />
         <LessonJobBanner
           lessonId={l.id}
           review={Boolean(l.phases.review && l.phases.review !== 'MISSING')}
@@ -179,8 +282,16 @@ export function LessonPage() {
           </aside>
         </div>
       </section>
+      </PageBody>
     </AudioProvider>
   )
+}
+
+/** Pipeline o fase in corso sulla lezione: le due barre con gli eventi dal vivo (schermata 03). */
+function LessonProgress({ lessonId }: { lessonId: number }) {
+  const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
+  const running = (jobs.data ?? []).find((j) => isActive(j.state))
+  return running ? <PhaseProgress jobId={running.id} /> : null
 }
 
 // L'editor (CodeMirror) si carica solo quando si entra in modifica.
