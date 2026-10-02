@@ -6,7 +6,8 @@ import { useLessons } from '@/api/hooks'
 import { useState } from 'react'
 
 import { useCancelJob, useCloseJob, useJob, useJobEvents, type StreamStatus } from '@/api/jobs'
-import { JobStateBadge, ProgressBar, RetryButton } from '@/components/jobs/JobParts'
+import { JobStateBadge, RetryButton } from '@/components/jobs/JobParts'
+import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -14,7 +15,7 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { lessonTitle } from '@/lib/format'
 import { useFollowTail } from '@/lib/followTail'
 import {
-  canCloseJob, closedJob, collapseTranscription, decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel, progressPercent,
+  canCloseJob, closedJob, collapseTranscription, decisionLabel, decisionLink, describeEvent, isActive, isTerminal, jobTypeLabel, progressLabel,
 } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
@@ -49,7 +50,6 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   if (job.isError) return <Alert tone="danger">{errorMessage(job.error)}</Alert>
   const j = job.data
   const lesson = lessons.data?.find((l) => l.id === j.lesson_id)
-  const percent = progressPercent(j.progress)
   const progress = progressLabel(j.progress)
   const link = j.state === 'waiting_for_decision' ? decisionLink(j) : null
   const canCancel = !isTerminal(j.state) && !j.cancel_requested
@@ -96,16 +96,9 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
 
       {isActive(j.state) && (
         <div className="flex flex-col gap-1">
-          {j.state === 'running' && progress.phase && (
-            <span className="text-sm font-semibold" data-testid="job-progress-title">
-              {progress.phase}
-              {progress.count && <span className="tabular-nums"> · {progress.count}</span>}
-            </span>
-          )}
-          <ProgressBar value={j.state === 'queued' ? 0 : percent} label="Avanzamento del job" />
-          <span className="text-xs text-muted-foreground">
-            {j.state === 'queued' ? 'In attesa del worker' : progress.detail || 'In lavorazione'}
-          </span>
+          {/* Le due barre del design 4.2; gli eventi sono già sotto, nel registro del job. */}
+          <PhaseProgress jobId={j.id} events={false} />
+          {j.state === 'running' && progress.detail && <span className="text-xs text-muted-foreground">{progress.detail}</span>}
         </div>
       )}
 

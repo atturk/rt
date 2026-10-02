@@ -43,11 +43,11 @@ export function JobsNavBadge() {
   )
 }
 
-/** Nella pagina lezione: pipeline in attesa ("serve la tua approvazione") o job in corso. */
+/** Nella pagina lezione: pipeline in attesa ("serve la tua approvazione") e i link alle
+ * pagine della lezione. Il job in corso lo mostra l'avanzamento (PhaseProgress). */
 export function LessonJobBanner({ lessonId, review = false, extra }: { lessonId: number; review?: boolean; extra?: ReactNode }) {
   const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
   const waiting = (jobs.data ?? []).find((j) => j.state === 'waiting_for_decision')
-  const running = (jobs.data ?? []).find((j) => isActive(j.state))
   return (
     <div className="flex flex-col gap-2" data-testid="lesson-jobs">
       {waiting && (
@@ -55,14 +55,6 @@ export function LessonJobBanner({ lessonId, review = false, extra }: { lessonId:
           <strong>Serve la tua approvazione:</strong> la pipeline è ferma finché non decidi (devi {decisionLabel(waiting.decision)}).{' '}
           <Link to={decisionLink(waiting) ?? `/job/${waiting.id}`} className="font-semibold underline">
             {waiting.decision?.kind === 'outline_approval' ? 'Rivedi la scaletta' : 'Vai alla decisione'}
-          </Link>
-        </Alert>
-      )}
-      {running && (
-        <Alert>
-          Job in corso sulla lezione.{' '}
-          <Link to={`/job/${running.id}`} className="font-semibold underline">
-            Segui l'avanzamento
           </Link>
         </Alert>
       )}

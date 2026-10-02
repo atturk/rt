@@ -56,8 +56,8 @@ describe('JobLive', () => {
       { id: 2, type: 'notice', payload: { message: 'Quota quasi finita', level: 'warning' }, created_at: '2026-09-20T10:00:01Z' },
     ]
     renderJob({ state: 'running', progress: { phase: 'review', current: 8, total: 32, unit_id: '2.1' } })
-    expect(screen.getByTestId('job-progress-title')).toHaveTextContent('Revisione · 8/32')
-    expect(screen.getByRole('progressbar', { name: 'Avanzamento del job' })).toHaveAttribute('aria-valuenow', '25')
+    expect(screen.getByTestId('phase-progress-title')).toHaveTextContent('Revisione · unità 8 di 32')
+    expect(screen.getByRole('progressbar', { name: 'Avanzamento totale' })).toHaveAttribute('aria-valuenow', '25')
     expect(screen.getByText('2.1')).toBeInTheDocument()
     const log = screen.getByRole('log', { name: 'Eventi del job' })
     expect(log).toHaveTextContent('Revisione: avviata (4/5)')
@@ -70,7 +70,7 @@ describe('JobLive', () => {
 
   it('in coda aspetta il worker; con annullamento già chiesto non offre di nuovo Annulla', () => {
     renderJob({ state: 'queued', cancel_requested: true })
-    expect(screen.getByText('In attesa del worker')).toBeInTheDocument()
+    expect(screen.getByTestId('phase-progress-title')).toHaveTextContent('In coda · in attesa del worker')
     expect(screen.getByText(/annullamento richiesto/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Annulla job' })).toBeNull()
     expect(screen.getByText('Nessun evento per ora.')).toBeInTheDocument()
