@@ -83,7 +83,8 @@ export function Tooltip({
         >
           {content}
         </div>,
-        document.body,
+        // Dentro un <dialog> modale il suggerimento sta nel dialog: il resto della pagina è sotto.
+        trigger?.closest('dialog') ?? document.body,
       )}
     </>
   )
