@@ -263,7 +263,7 @@ export function JobsPage() {
   const state = params.get('stato') ?? ''
   const lessonParam = params.get('lezione')
   const lessonId = lessonParam ? Number(lessonParam) : undefined
-  const jobs = useJobs({ state: state || undefined, lesson_id: lessonId, limit: 100 }, { poll: 5_000 })
+  const jobs = useJobs({ state: state || undefined, lesson_id: lessonId, limit: 100 })
   const lessons = useLessons()
   const byId = new Map((lessons.data ?? []).map((l) => [l.id, l]))
 
@@ -358,7 +358,7 @@ export function OutlinePage() {
   const outline = useOutline(lessonId)
   const approve = useApproveOutline(lessonId)
   const revise = useReviseOutline(lessonId)
-  const waitingJobs = useJobs({ lesson_id: lessonId, state: 'waiting_for_decision' }, { poll: 5_000 })
+  const waitingJobs = useJobs({ lesson_id: lessonId, state: 'waiting_for_decision' })
   const waiting = waitingJobs.data?.find((j) => j.decision?.kind === 'outline_approval')
   const [feedback, setFeedback] = useState('')
   const [mock, setMock] = useState(false)

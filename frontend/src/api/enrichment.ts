@@ -7,10 +7,11 @@ export type GenerateInput = Schemas['GenerateIn']
 export type EnrichmentSettings = Schemas['EnrichmentConfig']
 export const enrichmentKey = (id: number) => ['enrichment', id] as const
 
+/** Gli elementi in generazione (job enrichment_*) li aggiorna il canale live (liveUpdates.ts). */
 export function useEnrichment(id: number) {
   return useQuery({ queryKey: enrichmentKey(id), queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/enrichment', {
     params: { path: { lesson_id: id } },
-  })), refetchInterval: (query) => query.state.data?.elements.some(e => e.status === 'queued' || e.status === 'generating') ? 1500 : 10000 })
+  })) })
 }
 
 export function useEnrichmentActions(id: number) {

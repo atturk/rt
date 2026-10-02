@@ -8,6 +8,7 @@ export function useTelegramDaemon() {
   return useQuery({
     queryKey: telegramKeys.daemon,
     queryFn: () => unwrap(api.GET('/api/v1/telegram/daemon')),
+    // Polling lento voluto: il daemon del bot è un processo a parte, non un job (niente eventi live).
     refetchInterval: 10_000,
   })
 }
@@ -42,6 +43,7 @@ export function useTelegramNotifications() {
   return useQuery({
     queryKey: telegramKeys.notifications,
     queryFn: () => unwrap(api.GET('/api/v1/telegram/notifications', { params: { query: { limit: 20 } } })),
+    // Polling lento voluto: le notifiche le scrive il bot, fuori dai job (niente eventi live).
     refetchInterval: 30_000,
   })
 }

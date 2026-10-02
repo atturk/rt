@@ -160,6 +160,8 @@ export function useRecallSession(id: number) {
   return useQuery({
     queryKey: sessionKeys.lesson(id),
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/session', { params: path(id) })),
+    // Polling voluto: le richieste al bot (telegram_commands) e le risposte date su Telegram non
+    // sono job, quindi non passano dal canale live.
     refetchInterval: (query) => {
       const state = query.state.data?.command?.state
       return state === 'pending' || state === 'running' ? 1_000 : 10_000
@@ -172,6 +174,7 @@ export function useTelegramRecall() {
   return useQuery({
     queryKey: sessionKeys.telegram,
     queryFn: () => unwrap(api.GET('/api/v1/recall/telegram')),
+    // Polling lento voluto: bot e sessioni su Telegram cambiano fuori dai job (niente eventi live).
     refetchInterval: 10_000,
   })
 }
@@ -218,9 +221,7 @@ export function useSubjectsRecall() {
   return useQuery({
     queryKey: subjectKeys.list,
     queryFn: () => unwrap(api.GET('/api/v1/recall/subjects')),
-    // Finché una lezione è in classificazione il suo stato si aggiorna da solo.
-    refetchInterval: (query) =>
-      query.state.data?.some((s) => s.lessons.some((l) => l.classification?.state === 'running')) ? 3000 : false,
+    // La classificazione (job unit_relevance) la aggiorna il canale live (liveUpdates.ts).
   })
 }
 

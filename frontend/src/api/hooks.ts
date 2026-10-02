@@ -91,23 +91,21 @@ export function useWaveform(id: number, enabled: boolean) {
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/audio/waveform', { params: { path: { lesson_id: id } } })),
     enabled,
     staleTime: Infinity,
+    // Polling voluto finché non è pronta: la calcola un thread dell'API, non un job (niente eventi live).
     refetchInterval: (query) => (query.state.data && !query.state.data.ready ? 1500 : false),
   })
 }
 
-/**
- * Job della lezione. Mentre uno è attivo li aggiornano gli eventi SSE (JobsPanel); il
- * controllo lento resta solo come ripiego se lo stream non arriva.
- */
+/** Job della lezione, aggiornati dal canale live (liveUpdates.ts) a ogni evento. */
 export function useLessonJobs(id: number) {
   return useQuery({
     queryKey: lessonKeys.jobs(id),
     queryFn: () => unwrap(api.GET('/api/v1/jobs', { params: { query: { lesson_id: id, limit: 10 } } })),
-    refetchInterval: (query) => (query.state.data?.some((j) => isActiveJob(j.state)) ? 10_000 : false),
   })
 }
 
 export function useWorkers() {
+  // Polling lento voluto: i worker vivi si vedono dai loro heartbeat, che non sono eventi.
   return useQuery({ queryKey: ['workers'], queryFn: () => unwrap(api.GET('/api/v1/workers')), refetchInterval: 10_000 })
 }
 

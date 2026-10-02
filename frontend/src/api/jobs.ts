@@ -1,6 +1,7 @@
 /**
  * Hook di job, importazione e outline (RT4-F4). Lo stato dei job si rilegge sempre dall'API:
- * lo stream SSE serve a mostrare gli eventi dal vivo e a dire quando rileggere.
+ * il canale live (liveUpdates.ts) dice quando rileggere; lo stream SSE del singolo job
+ * (useJobEvents) mostra i suoi eventi dal vivo.
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
@@ -32,12 +33,12 @@ export function invalidateAfterJob(client: QueryClient, lessonId?: number | null
   }
 }
 
-export function useJobs(filters: JobFilters = {}, options: { poll?: number } = {}) {
+/** Elenchi dei job: li aggiorna il canale live (liveUpdates.ts) a ogni evento di un job. */
+export function useJobs(filters: JobFilters = {}) {
   const query = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '')) as JobFilters
   return useQuery({
     queryKey: jobKeys.list(query),
     queryFn: () => unwrap(api.GET('/api/v1/jobs', { params: { query } })),
-    refetchInterval: options.poll ?? false,
   })
 }
 
@@ -53,6 +54,7 @@ export function useWorkers() {
   return useQuery({
     queryKey: jobKeys.workers,
     queryFn: () => unwrap(api.GET('/api/v1/workers')),
+    // Polling lento voluto: i worker vivi si vedono dai loro heartbeat, che non sono eventi.
     refetchInterval: 15_000,
   })
 }

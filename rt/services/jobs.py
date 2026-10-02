@@ -22,9 +22,9 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Union
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple, Union
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from rt.db.engine import Database
@@ -321,6 +321,20 @@ class DbJobQueue:
             stmt = select(JobEvent).where(JobEvent.job_id == job_id, JobEvent.id > after_id).order_by(JobEvent.id)
             return [JobEventInfo(id=e.id, job_id=e.job_id, type=e.type, payload=dict(e.payload or {}),
                                  created_at=e.created_at) for e in s.scalars(stmt)]
+
+    def events_since(self, after_id: int, limit: int = 200) -> List[Tuple[JobEventInfo, str, Optional[str]]]:
+        """Eventi di tutti i job dopo after_id, con tipo e lezione del job: (evento, tipo, lesson_path).
+        Li segue il canale live della web app (GET /api/v1/events)."""
+        with read_scope(self.db) as s:
+            stmt = (select(JobEvent, Job.type, Job.lesson_path).join(Job, JobEvent.job_id == Job.id)
+                    .where(JobEvent.id > after_id).order_by(JobEvent.id).limit(limit))
+            return [(JobEventInfo(id=e.id, job_id=e.job_id, type=e.type, payload=dict(e.payload or {}),
+                                  created_at=e.created_at), job_type, lesson_path)
+                    for e, job_type, lesson_path in s.execute(stmt)]
+
+    def last_event_id(self) -> int:
+        with read_scope(self.db) as s:
+            return int(s.scalar(select(func.max(JobEvent.id))) or 0)
 
     def stream_events(self, job_id: str, after_id: int = 0, poll_interval: float = 0.5,
                       timeout: Optional[float] = None) -> Iterator[JobEventInfo]:

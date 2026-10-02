@@ -1,9 +1,10 @@
 import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { ApiError } from '@/api/client'
 import { useLogout, useMe } from '@/api/hooks'
+import { useLiveUpdates } from '@/api/liveUpdates'
 import { Sidebar } from '@/components/Sidebar'
 import { SubjectRail } from '@/components/SubjectRail'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,8 @@ export function Layout({ areas }: { areas: Area[] }) {
   const [menuOpen, setMenuOpen] = useState(false)
   // Da tablet in su la barra si può ridurre a una colonna di icone; su mobile resta il menu.
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
+  // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
+  useLiveUpdates(me.isSuccess)
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -144,7 +147,11 @@ export function Layout({ areas }: { areas: Area[] }) {
           </Button>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8">
-          <Outlet />
+          {/* Le pagine arrivano in chunk separati (routes/index.tsx): mentre si scarica il
+              primo si vede questo; cambiando pagina resta quella vecchia finché la nuova è pronta. */}
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Carico…</p>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  * Il testo per i lettori di schermo completa il nome del link ("Job: 2 job attivi, ...").
  */
 export function JobsNavBadge() {
-  const jobs = useJobs({ limit: 50 }, { poll: 5_000 })
+  const jobs = useJobs({ limit: 50 })
   const workers = useWorkers()
   const active = (jobs.data ?? []).filter((j) => isActive(j.state)).length
   const waiting = (jobs.data ?? []).filter((j) => j.state === 'waiting_for_decision').length
@@ -45,7 +45,7 @@ export function JobsNavBadge() {
 
 /** Nella pagina lezione: pipeline in attesa ("serve la tua approvazione") o job in corso. */
 export function LessonJobBanner({ lessonId, review = false, extra }: { lessonId: number; review?: boolean; extra?: ReactNode }) {
-  const jobs = useJobs({ lesson_id: lessonId, limit: 20 }, { poll: 5_000 })
+  const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
   const waiting = (jobs.data ?? []).find((j) => j.state === 'waiting_for_decision')
   const running = (jobs.data ?? []).find((j) => isActive(j.state))
   return (

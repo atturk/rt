@@ -49,7 +49,8 @@ def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, reset_token: bool = 
     say(f"🚀 API RT su http://{shown}:{port}/api/v1  ·  documentazione: http://{shown}:{port}/docs")
     if no_auth:
         say("⚠️  Autenticazione disattivata (--no-auth).")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Gli stream SSE (canale live della web app) restano aperti: allo stop si chiudono dopo pochi secondi.
+    uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5)
     return 0
 
 

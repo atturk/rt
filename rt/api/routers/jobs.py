@@ -1,14 +1,16 @@
 """Job: importazione audio, pipeline e fasi, immagini, prova credenziali; stato, annullamento
 ed eventi live (Server-Sent Events). I job li esegue 'rt worker'."""
+import asyncio
 import json
 import os
 import shutil
 import time
 import uuid
-from typing import Iterator, List, Optional
+from typing import AsyncIterator, Dict, Iterator, List, Optional, Tuple
 
 from fastapi import APIRouter, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
@@ -36,6 +38,9 @@ CHUNK = 1024 * 1024
 IMAGE_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic", ".gif"}
 SSE_KEEPALIVE_SECONDS = 15.0
 SSE_POLL_SECONDS = 0.5
+# Lo stream di tutti i job (GET /events) si chiude dopo questo tempo e il browser lo riapre
+# da solo con Last-Event-ID, senza perdere eventi: nessuna connessione resta aperta per sempre.
+SSE_APP_STREAM_SECONDS = 300.0
 
 
 def _max_upload_bytes() -> int:
@@ -361,6 +366,61 @@ def stream_events(job_id: str, request: Request, _actor: Actor,
     if last_event_id and last_event_id.strip().isdigit():
         start = max(start, int(last_event_id.strip()))
     return StreamingResponse(sse_stream(job_id, start, request), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _app_events(after: int, lessons: Dict[str, Optional[int]]) -> List[Tuple[int, str]]:
+    """Blocchi SSE degli eventi di tutti i job dopo after. Solo chi e cosa (job, tipo del job,
+    lezione, tipo dell'evento): la web app rilegge dall'API le query interessate."""
+    from rt.services.lesson_service import lesson_id_for_dir
+    blocks = []
+    for event, job_type, lesson_path in queue().events_since(after):
+        # in cache solo se trovata: un'importazione crea la cartella della lezione a metà job
+        if lessons.get(event.job_id) is None:
+            lessons[event.job_id] = lesson_id_for_dir(lesson_path) if lesson_path and fs.isdir(lesson_path) else None
+        data = json.dumps({"id": event.id, "job_id": event.job_id, "job_type": job_type,
+                           "lesson_id": lessons[event.job_id], "type": event.type})
+        blocks.append((event.id, f"id: {event.id}\nevent: job\ndata: {data}\n\n"))
+    return blocks
+
+
+async def app_sse_stream(after: int, keepalive: float = SSE_KEEPALIVE_SECONDS, poll: float = SSE_POLL_SECONDS,
+                         lifetime: Optional[float] = None) -> AsyncIterator[str]:
+    """Eventi di tutti i job dopo after come SSE (evento 'job'), per il canale live della web
+    app. L'id di partenza va subito al browser, così una riconnessione (Last-Event-ID) riprende
+    senza buchi. Asincrono: mentre aspetta non tiene un thread."""
+    lifetime = SSE_APP_STREAM_SECONDS if lifetime is None else lifetime
+    cursor = after
+    lessons: Dict[str, Optional[int]] = {}
+    yield f"retry: 3000\nid: {cursor}\n\n"
+    start = last_sent = time.monotonic()
+    while time.monotonic() - start < lifetime:
+        blocks = await run_in_threadpool(_app_events, cursor, lessons)
+        for cursor, block in blocks:
+            yield block
+        now = time.monotonic()
+        if blocks:
+            last_sent = now
+            continue
+        if now - last_sent >= keepalive:
+            yield ": keepalive\n\n"
+            last_sent = now
+        await asyncio.sleep(poll)
+
+
+@router.get("/events", summary="Eventi live di tutti i job (Server-Sent Events per la web app; riprende da Last-Event-ID)",
+            response_class=StreamingResponse, responses={200: {"content": {"text/event-stream": {}}}})
+async def stream_app_events(_actor: Actor,
+                            after: Optional[int] = Query(None, ge=0, description="Id dell'ultimo evento già ricevuto (senza: da adesso)"),
+                            last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")):
+    start = after
+    if last_event_id and last_event_id.strip().isdigit():
+        start = max(start or 0, int(last_event_id.strip()))
+    if start is None:
+        # Il punto di partenza si fissa prima di rispondere: quello che la pagina rilegge
+        # all'apertura dello stream (onopen) è già successivo, quindi niente buchi.
+        start = await run_in_threadpool(lambda: queue().last_event_id())
+    return StreamingResponse(app_sse_stream(start), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 

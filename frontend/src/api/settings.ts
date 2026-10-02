@@ -177,13 +177,12 @@ export function isTerminal(state: string | undefined) {
   return !!state && TERMINAL.has(state)
 }
 
-/** Stato di un job, riletto ogni secondo finché non finisce. */
+/** Stato di un job, riletto a ogni suo evento dal canale live (liveUpdates.ts). */
 export function useJob(id: string | undefined) {
   return useQuery({
     queryKey: settingsKeys.job(id ?? ''),
     queryFn: () => unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: id! } } })),
     enabled: !!id,
-    refetchInterval: (query) => (isTerminal(query.state.data?.state) ? false : 1000),
   })
 }
 
