@@ -1,4 +1,3 @@
-import { Images } from 'lucide-react'
 import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
@@ -20,11 +19,10 @@ import { PER_UNIT_MAX, PER_UNIT_MIN, parseCount } from '@/lib/count'
 import { withImageUrls } from '@/lib/images'
 import { AnalyzeLesson, AnalyzeGroup, EnrichmentPanel } from '@/components/EnrichmentPanel'
 import { EnrichmentSlots } from '@/components/lesson/Enrichment'
-import type { Area } from './types'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
 
-function ImagesIndex() {
+export function ImagesIndex() {
   return (
     <LessonPicker
       title="Arricchimento"
@@ -324,14 +322,4 @@ export function ImagesPage() {
       )}
     </section>
   )
-}
-
-export const imagesArea: Area = {
-  routes: [
-    { path: 'arricchimento', element: <ImagesIndex /> },
-    { path: 'lezioni/:lessonId/arricchimento', element: <ImagesPage /> },
-    { path: 'immagini', element: <ImagesIndex /> },
-    { path: 'lezioni/:lessonId/immagini', element: <ImagesPage /> },
-  ],
-  nav: [{ to: '/arricchimento', label: 'Arricchimento', icon: Images }],
 }

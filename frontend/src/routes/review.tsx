@@ -14,7 +14,6 @@ import { Card } from '@/components/ui/card'
 import { lessonTitle } from '@/lib/format'
 import { ISSUE_ORDERS, parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { cn } from '@/lib/utils'
-import type { Area } from './types'
 
 type IssueItem = Schemas['IssueItem']
 type Issue = {
@@ -372,8 +371,4 @@ export function ReviewPage() {
       </section>
     </AudioProvider>
   )
-}
-
-export const reviewArea: Area = {
-  routes: [{ path: 'lezioni/:lessonId/revisione', element: <ReviewPage /> }],
 }

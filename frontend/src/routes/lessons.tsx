@@ -1,4 +1,4 @@
-import { Brain, Download, Images, LayoutDashboard, PanelRightClose, PanelRightOpen, Pencil } from 'lucide-react'
+import { Brain, Download, Images, PanelRightClose, PanelRightOpen, Pencil } from 'lucide-react'
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
@@ -23,8 +23,6 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { STATE_LABELS, formatCost, lessonTitle } from '@/lib/format'
-import type { Area } from './types'
-import { RelevancePage } from './relevance'
 
 export function DashboardPage() {
   // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
@@ -368,13 +366,4 @@ function LessonActions({ lessonId, actions }: { lessonId: number; actions?: Sche
       </div>
     </div>
   )
-}
-
-export const lessonsArea: Area = {
-  routes: [
-    { index: true, element: <DashboardPage /> },
-    { path: 'lezioni/:lessonId', element: <LessonPage /> },
-    { path: 'lezioni/:lessonId/rilevanza', element: <RelevancePage /> },
-  ],
-  nav: [{ to: '/', label: 'Lezioni', icon: LayoutDashboard, end: true }],
 }

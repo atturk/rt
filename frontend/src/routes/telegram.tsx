@@ -1,4 +1,3 @@
-import { Bot } from 'lucide-react'
 import { Link } from 'react-router'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -15,11 +14,10 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { formatDateTime } from '@/lib/format'
-import type { Area } from './types'
 
 const SETTINGS_LINK = '/impostazioni#telegram'
 
-function TelegramPage() {
+export function TelegramPage() {
   const settings = useSettings()
   return (
     <section className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -199,10 +197,4 @@ function NotificationsCard() {
       )}
     </Card>
   )
-}
-
-/** Il pannello di avvio sta anche nelle impostazioni (RT4-F5); qui la pagina completa (RT4-FA6). */
-export const telegramArea: Area = {
-  routes: [{ path: 'bot', element: <TelegramPage /> }],
-  nav: [{ to: '/bot', label: 'Bot Telegram', icon: Bot }],
 }

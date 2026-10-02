@@ -1,4 +1,4 @@
-import { Activity, Upload } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -10,7 +10,6 @@ import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutli
 import { AudioOrder } from '@/components/jobs/AudioOrder'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
-import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { ZipImportCard } from '@/components/jobs/ZipImport'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +21,6 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { lessonTitle } from '@/lib/format'
 import { AUDIO_EXTENSIONS, JOB_STATE_LABELS, audioFileProblem, decisionLabel, decisionLink, formatBytes, jobTypeLabel } from '@/lib/jobs'
-import type { Area } from './types'
 
 function today(): string {
   const d = new Date()
@@ -487,17 +485,4 @@ export function OutlinePage() {
       {revisionJob && <JobLive jobId={revisionJob} compact />}
     </section>
   )
-}
-
-export const jobsArea: Area = {
-  routes: [
-    { path: 'importa', element: <ImportPage /> },
-    { path: 'job', element: <JobsPage /> },
-    { path: 'job/:jobId', element: <JobPage /> },
-    { path: 'lezioni/:lessonId/outline', element: <OutlinePage /> },
-  ],
-  nav: [
-    { to: '/importa', label: 'Importa', icon: Upload },
-    { to: '/job', label: 'Job', icon: Activity, badge: JobsNavBadge },
-  ],
 }

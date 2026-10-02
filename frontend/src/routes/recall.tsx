@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Brain, Monitor, Send, SkipForward, Square } from 'lucide-react'
+import { Monitor, Send, SkipForward, Square } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
@@ -24,10 +24,7 @@ import {
 } from '@/api/recall'
 import { ClassificationNotice } from '@/components/ClassificationNotice'
 import { JobProgress } from '@/components/JobProgress'
-import { QuestionsPage } from '@/components/recall/QuestionsPage'
 import { AnsweredQuestion, OpenAnswerForm, QuizForm, SessionSummary } from '@/components/recall/parts'
-import { RecallOverviewPage } from '@/components/recall/RecallOverview'
-import { SubjectRecallPage } from '@/components/recall/SubjectRecall'
 import { UnitSelector } from '@/components/recall/UnitSelector'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -36,7 +33,11 @@ import { Card } from '@/components/ui/card'
 import { SlideToggle, type SlideOption } from '@/components/ui/slide-toggle'
 import { lessonTitle } from '@/lib/format'
 import { RECALL_TYPES, TYPE_OPTIONS, VOTES, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
-import type { Area } from './types'
+
+// Le altre pagine del recall, nello stesso chunk di questa (routes/index.tsx).
+export { QuestionsPage } from '@/components/recall/QuestionsPage'
+export { RecallOverviewPage } from '@/components/recall/RecallOverview'
+export { SubjectRecallPage } from '@/components/recall/SubjectRecall'
 
 const PLURAL: Record<RecallType, string> = { quiz: 'quiz', mirata: 'mirate', vasta: 'vaste', caso: 'casi', esercizio: 'esercizi' }
 const STATUS_LABELS: Record<string, string> = { pending: 'Da porre', asked: 'Poste', answered: 'Risposte' }
@@ -433,15 +434,4 @@ export function RecallPage() {
       )}
     </section>
   )
-}
-
-export const recallArea: Area = {
-  routes: [
-    { path: 'recall', element: <RecallOverviewPage /> },
-    { path: 'recall/materie/:materia', element: <SubjectRecallPage /> },
-    { path: 'recall/giorno/:day', element: <SubjectRecallPage /> },
-    { path: 'lezioni/:lessonId/recall', element: <RecallPage /> },
-    { path: 'lezioni/:lessonId/recall/domande', element: <QuestionsPage /> },
-  ],
-  nav: [{ to: '/recall', label: 'Recall', icon: Brain }],
 }

@@ -1,4 +1,3 @@
-import { ClipboardCheck } from 'lucide-react'
 import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
@@ -6,7 +5,6 @@ import { useLessons } from '@/api/hooks'
 import { LessonBrowser } from '@/components/LessonBrowser'
 import { Alert } from '@/components/ui/alert'
 import { lessonTitle, type Lesson } from '@/lib/format'
-import type { Area } from './types'
 
 function ReviewCard({ lesson }: { lesson: Lesson }) {
   return (
@@ -63,9 +61,4 @@ export function ReviewsPage() {
       />
     </section>
   )
-}
-
-export const reviewsArea: Area = {
-  routes: [{ path: 'review', element: <ReviewsPage /> }],
-  nav: [{ to: '/review', label: 'Review', icon: ClipboardCheck }],
 }

@@ -1,6 +1,5 @@
-import { Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router'
+import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useSettings, type Settings } from '@/api/settings'
@@ -14,20 +13,9 @@ import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { Alert } from '@/components/ui/alert'
 import { cn } from '@/lib/utils'
-import type { Area } from './types'
+import { SETUP_PATH } from './setupGate'
 
-export const SETUP_PATH = '/impostazioni/configurazione'
-
-/** Se il backend segnala un passo obbligatorio mancante (setup_required) ogni pagina porta alla
- * configurazione guidata (le impostazioni restano raggiungibili). Mentre carica non blocca nulla. */
-export function SetupGate() {
-  const settings = useSettings()
-  const location = useLocation()
-  if (settings.data?.setup_required && !location.pathname.startsWith('/impostazioni')) {
-    return <Navigate to={SETUP_PATH} replace />
-  }
-  return <Outlet />
-}
+export { SETUP_PATH, SetupGate } from './setupGate'
 
 /** Carica le impostazioni e passa i dati salvati alla pagina. */
 function WithSettings({ children }: { children: (settings: Settings) => ReactNode }) {
@@ -47,7 +35,7 @@ const TABS = [
   { to: '/impostazioni/info', label: 'Info' },
 ]
 
-function SettingsLayout() {
+export function SettingsLayout() {
   return (
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -95,44 +83,36 @@ const page = (render: (s: Settings) => ReactNode) => (
   </WithSettings>
 )
 
-export const settingsArea: Area = {
-  routes: [
-    { path: 'impostazioni/configurazione', element: <WithSettings>{(s) => <SetupWizard settings={s} />}</WithSettings> },
-    {
-      path: 'impostazioni',
-      element: <SettingsLayout />,
-      children: [
-        {
-          index: true,
-          element: page((s) => (
-            <>
-              <DataDirSection settings={s} />
-              <WorkerSection settings={s} />
-              <TranscriptionSection settings={s} />
-              <TelegramSection settings={s} />
-              <TelegramBotPanel />
-            </>
-          )),
-        },
-        {
-          path: 'modelli',
-          element: page((s) => (
-            <>
-              <PhasesSection settings={s} />
-              <EnrichmentSettingsSection />
-              <ConnectionsSection settings={s} />
-              <NewConnectionSection />
-              <RoutesSection settings={s} />
-            </>
-          )),
-        },
-        { path: 'chiavi', element: page((s) => <SecretsSection settings={s} />) },
-        { path: 'costi', element: page((s) => <PricingSection settings={s} />) },
-        { path: 'ricerca-web', element: page((s) => <WebSearchSection settings={s} />) },
-        { path: 'decisioni', element: page(() => <><DecisionModelSection /><PromptEditorSection /></>) },
-        { path: 'info', element: <InfoSection /> },
-      ],
-    },
-  ],
-  nav: [{ to: '/impostazioni', label: 'Impostazioni', icon: SettingsIcon }],
+export function SetupWizardPage() {
+  return <WithSettings>{(s) => <SetupWizard settings={s} />}</WithSettings>
 }
+
+export function GeneralSettingsPage() {
+  return page((s) => (
+    <>
+      <DataDirSection settings={s} />
+      <WorkerSection settings={s} />
+      <TranscriptionSection settings={s} />
+      <TelegramSection settings={s} />
+      <TelegramBotPanel />
+    </>
+  ))
+}
+
+export function ModelsSettingsPage() {
+  return page((s) => (
+    <>
+      <PhasesSection settings={s} />
+      <EnrichmentSettingsSection />
+      <ConnectionsSection settings={s} />
+      <NewConnectionSection />
+      <RoutesSection settings={s} />
+    </>
+  ))
+}
+
+export const KeysSettingsPage = () => page((s) => <SecretsSection settings={s} />)
+export const CostsSettingsPage = () => page((s) => <PricingSection settings={s} />)
+export const WebSearchSettingsPage = () => page((s) => <WebSearchSection settings={s} />)
+export const DecisionsSettingsPage = () => page(() => <><DecisionModelSection /><PromptEditorSection /></>)
+export { InfoSection as InfoSettingsPage }
