@@ -1,5 +1,5 @@
 import { Activity, Bot, Brain, ClipboardCheck, Images, LayoutDashboard, Settings as SettingsIcon, Upload } from 'lucide-react'
-import type { ComponentType } from 'react'
+import { lazy, Suspense, type ComponentType } from 'react'
 import type { RouteObject } from 'react-router'
 
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
@@ -9,10 +9,11 @@ import type { Area } from './types'
 
 /**
  * Le pagine di ogni area stanno in routes/<area>.tsx e si caricano solo quando servono (un
- * chunk per area): qui restano le rotte e le voci di menu, che servono subito.
+ * chunk per area, React.lazy): qui restano le rotte e le voci di menu, che servono subito.
+ * Il layout si mostra senza aspettare il chunk: l'attesa è il Suspense attorno al suo Outlet.
  */
-function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType): RouteObject['lazy'] {
-  return async () => ({ Component: pick(await load()) })
+function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType): ComponentType {
+  return lazy(async () => ({ default: pick(await load()) }))
 }
 
 const lessons = () => import('./lessons')
@@ -23,19 +24,19 @@ const settings = () => import('./settings')
 
 const lessonsArea: Area = {
   routes: [
-    { index: true, lazy: page(lessons, (m) => m.DashboardPage) },
-    { path: 'lezioni/:lessonId', lazy: page(lessons, (m) => m.LessonPage) },
-    { path: 'lezioni/:lessonId/rilevanza', lazy: page(() => import('./relevance'), (m) => m.RelevancePage) },
+    { index: true, Component: page(lessons, (m) => m.DashboardPage) },
+    { path: 'lezioni/:lessonId', Component: page(lessons, (m) => m.LessonPage) },
+    { path: 'lezioni/:lessonId/rilevanza', Component: page(() => import('./relevance'), (m) => m.RelevancePage) },
   ],
   nav: [{ to: '/', label: 'Lezioni', icon: LayoutDashboard, end: true }],
 }
 
 const jobsArea: Area = {
   routes: [
-    { path: 'importa', lazy: page(jobs, (m) => m.ImportPage) },
-    { path: 'job', lazy: page(jobs, (m) => m.JobsPage) },
-    { path: 'job/:jobId', lazy: page(jobs, (m) => m.JobPage) },
-    { path: 'lezioni/:lessonId/outline', lazy: page(jobs, (m) => m.OutlinePage) },
+    { path: 'importa', Component: page(jobs, (m) => m.ImportPage) },
+    { path: 'job', Component: page(jobs, (m) => m.JobsPage) },
+    { path: 'job/:jobId', Component: page(jobs, (m) => m.JobPage) },
+    { path: 'lezioni/:lessonId/outline', Component: page(jobs, (m) => m.OutlinePage) },
   ],
   nav: [
     { to: '/importa', label: 'Importa', icon: Upload },
@@ -44,55 +45,55 @@ const jobsArea: Area = {
 }
 
 const reviewsArea: Area = {
-  routes: [{ path: 'review', lazy: page(() => import('./reviews'), (m) => m.ReviewsPage) }],
+  routes: [{ path: 'review', Component: page(() => import('./reviews'), (m) => m.ReviewsPage) }],
   nav: [{ to: '/review', label: 'Review', icon: ClipboardCheck }],
 }
 
 const reviewArea: Area = {
-  routes: [{ path: 'lezioni/:lessonId/revisione', lazy: page(() => import('./review'), (m) => m.ReviewPage) }],
+  routes: [{ path: 'lezioni/:lessonId/revisione', Component: page(() => import('./review'), (m) => m.ReviewPage) }],
 }
 
 const recallArea: Area = {
   routes: [
-    { path: 'recall', lazy: page(recall, (m) => m.RecallOverviewPage) },
-    { path: 'recall/materie/:materia', lazy: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'recall/giorno/:day', lazy: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'lezioni/:lessonId/recall', lazy: page(recall, (m) => m.RecallPage) },
-    { path: 'lezioni/:lessonId/recall/domande', lazy: page(recall, (m) => m.QuestionsPage) },
+    { path: 'recall', Component: page(recall, (m) => m.RecallOverviewPage) },
+    { path: 'recall/materie/:materia', Component: page(recall, (m) => m.SubjectRecallPage) },
+    { path: 'recall/giorno/:day', Component: page(recall, (m) => m.SubjectRecallPage) },
+    { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.RecallPage) },
+    { path: 'lezioni/:lessonId/recall/domande', Component: page(recall, (m) => m.QuestionsPage) },
   ],
   nav: [{ to: '/recall', label: 'Recall', icon: Brain }],
 }
 
 const imagesArea: Area = {
   routes: [
-    { path: 'arricchimento', lazy: page(images, (m) => m.ImagesIndex) },
-    { path: 'lezioni/:lessonId/arricchimento', lazy: page(images, (m) => m.ImagesPage) },
-    { path: 'immagini', lazy: page(images, (m) => m.ImagesIndex) },
-    { path: 'lezioni/:lessonId/immagini', lazy: page(images, (m) => m.ImagesPage) },
+    { path: 'arricchimento', Component: page(images, (m) => m.ImagesIndex) },
+    { path: 'lezioni/:lessonId/arricchimento', Component: page(images, (m) => m.ImagesPage) },
+    { path: 'immagini', Component: page(images, (m) => m.ImagesIndex) },
+    { path: 'lezioni/:lessonId/immagini', Component: page(images, (m) => m.ImagesPage) },
   ],
   nav: [{ to: '/arricchimento', label: 'Arricchimento', icon: Images }],
 }
 
 /** Il pannello di avvio sta anche nelle impostazioni (RT4-F5); qui la pagina completa (RT4-FA6). */
 const telegramArea: Area = {
-  routes: [{ path: 'bot', lazy: page(() => import('./telegram'), (m) => m.TelegramPage) }],
+  routes: [{ path: 'bot', Component: page(() => import('./telegram'), (m) => m.TelegramPage) }],
   nav: [{ to: '/bot', label: 'Bot Telegram', icon: Bot }],
 }
 
 const settingsArea: Area = {
   routes: [
-    { path: 'impostazioni/configurazione', lazy: page(settings, (m) => m.SetupWizardPage) },
+    { path: 'impostazioni/configurazione', Component: page(settings, (m) => m.SetupWizardPage) },
     {
       path: 'impostazioni',
-      lazy: page(settings, (m) => m.SettingsLayout),
+      Component: page(settings, (m) => m.SettingsLayout),
       children: [
-        { index: true, lazy: page(settings, (m) => m.GeneralSettingsPage) },
-        { path: 'modelli', lazy: page(settings, (m) => m.ModelsSettingsPage) },
-        { path: 'chiavi', lazy: page(settings, (m) => m.KeysSettingsPage) },
-        { path: 'costi', lazy: page(settings, (m) => m.CostsSettingsPage) },
-        { path: 'ricerca-web', lazy: page(settings, (m) => m.WebSearchSettingsPage) },
-        { path: 'decisioni', lazy: page(settings, (m) => m.DecisionsSettingsPage) },
-        { path: 'info', lazy: page(settings, (m) => m.InfoSettingsPage) },
+        { index: true, Component: page(settings, (m) => m.GeneralSettingsPage) },
+        { path: 'modelli', Component: page(settings, (m) => m.ModelsSettingsPage) },
+        { path: 'chiavi', Component: page(settings, (m) => m.KeysSettingsPage) },
+        { path: 'costi', Component: page(settings, (m) => m.CostsSettingsPage) },
+        { path: 'ricerca-web', Component: page(settings, (m) => m.WebSearchSettingsPage) },
+        { path: 'decisioni', Component: page(settings, (m) => m.DecisionsSettingsPage) },
+        { path: 'info', Component: page(settings, (m) => m.InfoSettingsPage) },
       ],
     },
   ],
@@ -101,17 +102,20 @@ const settingsArea: Area = {
 
 export const areas: Area[] = [lessonsArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, telegramArea, settingsArea]
 
-/** Mentre arriva il chunk della prima pagina: lo stesso "Carico…" del layout in attesa di /me. */
-function Loading() {
-  return <p className="p-8 text-sm text-muted-foreground">Carico…</p>
-}
+const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 
 export const routes: RouteObject[] = [
-  { path: '/login', lazy: page(() => import('./auth'), (m) => m.LoginPage), HydrateFallback: Loading },
+  {
+    path: '/login',
+    element: (
+      <Suspense fallback={<p className="p-8 text-sm text-muted-foreground">Carico…</p>}>
+        <LoginPage />
+      </Suspense>
+    ),
+  },
   {
     path: '/',
     element: <Layout areas={areas} />,
-    HydrateFallback: Loading,
     // SetupGate porta alla configurazione guidata se il backend segnala setup_required (RT4-F5).
     children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }],
   },
