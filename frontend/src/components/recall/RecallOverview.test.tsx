@@ -79,7 +79,7 @@ describe('pagina Recall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tabella' }))
     expect(screen.getByTestId('recall-table')).toBeInTheDocument()
     const row = document.querySelector('[data-testid=picker-lesson][data-lesson-id="1"]')!
-    expect(Array.from(row.querySelectorAll('td')).map((td) => td.textContent)).toEqual(['Lipidi', '2026-09-05', 'Non classificata', '4', '2', '0', '1'])
+    expect(Array.from(row.querySelectorAll('td')).map((td) => td.textContent)).toEqual(['Lipidi', '2026-09-05', 'Non classificata', '4', '2', '0', '0', '0', '1'])
     fireEvent.click(within(subject('FISIOLOGIA')).getByTestId('lesson-group-toggle'))
     expect(document.querySelector('[data-testid=picker-lesson][data-lesson-id="3"]')).toBeNull()
     expect(JSON.parse(localStorage.getItem('rt-recall-view')!)).toMatchObject({ view: 'tabella', collapsed: ['materia:FISIOLOGIA'] })

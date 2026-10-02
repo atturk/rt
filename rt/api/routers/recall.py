@@ -84,18 +84,18 @@ def select_recall_units(lesson_id: int, body: schemas.RecallUnitSelection, lesso
 @router.post("/lessons/{lesson_id}/recall/next", response_model=schemas.RecallQuestion,
              summary="Prossima domanda del tipo scelto; alla soglia accoda un job recall_refill (404 se il pool è vuoto: usa /recall/generate)")
 def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
-                  qtype: Literal["quiz", "mirata", "vasta"] = Query("quiz"),
+                  qtype: schemas.NextQuestionType = Query("quiz", description="Tipo, oppure mista (tutti a turno)"),
                   order: Literal["alternato", "sequenziale", "casuale"] = Query("alternato"),
                   exclude_id: Optional[str] = Query(None, description="Domanda appena saltata"),
-                  mock: bool = Query(False, description="Rifornimento del pool in mock")):
-    from rt.core.models import RecallQuestionType
+                  mock: bool = Query(False, description="Rifornimento del pool in mock"),
+                  unit_id: Optional[str] = Query(None, description="Solo le domande di questa unità (Leggi e ripeti)")):
     from rt.services.recall_service import next_question_for, question_view
     from rt.services.recall_sessions import TELEGRAM, list_sessions
     _require_draft(lesson_dir)
     if list_sessions(channel=TELEGRAM, lesson_dir=lesson_dir):
         raise ApiError(409, "telegram_session_active",
                        "C'è una sessione in corso su Telegram per questa lezione: interrompila per continuare qui.")
-    question = next_question_for(lesson_dir, RecallQuestionType(qtype), order=order, exclude_id=exclude_id)
+    question = next_question_for(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id)
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
     _refill_later(lesson_dir, question, mock, actor)
@@ -262,14 +262,13 @@ def subject_state(_actor: Actor, materia: str = Query(..., description="Materia,
              summary="Prossima domanda del tipo scelto fra tutte le lezioni della materia, a turno; alla soglia accoda "
                      "un job recall_refill per la lezione (404 se nessuna lezione ha domande: usa /recall/subject/generate)")
 def subject_next(actor: Actor, materia: str = Query(...),
-                 qtype: Literal["quiz", "mirata", "vasta"] = Query("quiz"),
+                 qtype: schemas.NextQuestionType = Query("quiz", description="Tipo, oppure mista (tutti a turno)"),
                  order: Literal["alternato", "sequenziale", "casuale"] = Query("alternato"),
                  exclude: Optional[str] = Query(None, description="Domanda appena saltata, come <id lezione>:<id domanda>"),
                  mock: bool = Query(False, description="Rifornimento del pool in mock")):
-    from rt.core.models import RecallQuestionType
     from rt.services.recall_service import question_view
     from rt.services.recall_subject import next_subject_question
-    picked = _subject_call(next_subject_question, materia, RecallQuestionType(qtype), order=order, exclude=exclude)
+    picked = _subject_call(next_subject_question, materia, qtype, order=order, exclude=exclude)
     if picked is None:
         raise ApiError(404, "no_questions", "Nessuna domanda di questo tipo da porre nelle lezioni della materia: generane altre.")
     _refill_later(picked["lesson_dir"], picked["question"], mock, actor)

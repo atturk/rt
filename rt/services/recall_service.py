@@ -51,6 +51,8 @@ def load_recall_session_state(lesson_dir: str) -> dict:
             "current_question_id": data.get("current_question_id"),
             "force_mock": data.get("force_mock", False),
         }
+        if "last_type" in data:
+            res["last_type"] = data["last_type"]
         if "current_question_message_id" in data:
             res["current_question_message_id"] = data["current_question_message_id"]
         if "current_post_answer_short_id" in data:
@@ -168,7 +170,8 @@ def next_question(
     return question
 
 
-DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5}
+# Casi ed esercizi: si riforniscono (con varianti dei tipi salvati) solo quando finiscono.
+DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5, "caso": 0, "esercizio": 0}
 
 
 def refill_threshold(qtype: RecallQuestionType) -> int:
@@ -293,30 +296,69 @@ def question_list(lesson_dir: str, reveal: bool = False) -> dict:
     return {"questions": questions, "unit_titles": {uid: titles[uid] for uid in titles if uid in used}}
 
 
-def next_question_for(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",
-                      exclude_id: Optional[str] = None):
+# "mista": quiz, mirate, vaste, casi ed esercizi a turno nella stessa sessione.
+MIXED = "mista"
+
+
+def resolve_types(qtype) -> List[RecallQuestionType]:
+    """I tipi da cui pescare per un tipo richiesto (un tipo, o tutti per "mista")."""
+    if isinstance(qtype, RecallQuestionType):
+        return [qtype]
+    if qtype == MIXED:
+        return list(RecallQuestionType)
+    return [RecallQuestionType(qtype)]
+
+
+def type_value(qtype) -> str:
+    return qtype.value if isinstance(qtype, RecallQuestionType) else str(qtype)
+
+
+def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None) -> int:
+    """Domande da porre del tipo (o di tutti, "mista"), eventualmente solo di un'unità."""
+    from rt.pipeline.recall import _allowed_units, _question_allowed, load_recall_bank, on_unit
+    types = set(resolve_types(qtype))
+    allowed = _allowed_units(lesson_dir)
+    return sum(1 for q in load_recall_bank(lesson_dir).questions
+               if q.type in types and q.status == RecallQuestionStatus.PENDING and _question_allowed(q, allowed)
+               and (unit_id is None or on_unit(q, unit_id)))
+
+
+def next_question_for(lesson_dir: str, qtype, order: str = "alternato",
+                      exclude_id: Optional[str] = None, unit_id: Optional[str] = None):
     """Prossima domanda pendente (la marca come posta) senza generarne di nuove; None se il
     pool del tipo è vuoto. Il cursore dell'ordine alternato è quello della sessione salvata. La
     domanda entra nella sessione web della lezione (aperta qui se non c'è, vedi
     rt.services.recall_sessions)."""
-    question = pick_pending_question(lesson_dir, qtype, order=order, exclude_id=exclude_id)
+    question = pick_pending_question(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id)
     if question is not None:
         from rt.services.recall_sessions import record_web_question
-        record_web_question(lesson_dir, question.id, qtype.value)
+        record_web_question(lesson_dir, question.id, type_value(qtype))
     return question
 
 
-def pick_pending_question(lesson_dir: str, qtype: RecallQuestionType, order: str = "alternato",
-                          exclude_id: Optional[str] = None, current: bool = True):
+def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
+                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None):
     """Prossima domanda pendente della lezione (marcata come posta) con il cursore dell'ordine
     alternato della sessione salvata, senza registrarla in una sessione. current=False non la
-    segna come domanda corrente della lezione (la sessione per materia non la occupa)."""
+    segna come domanda corrente della lezione (la sessione per materia non la occupa).
+    Con "mista" i tipi si danno il turno a partire da quello dopo l'ultimo posto; unit_id
+    limita alle domande di un'unità (Leggi e ripeti)."""
     from rt.pipeline.recall import get_next_pending_question
     state = load_recall_session_state(lesson_dir)
-    question = get_next_pending_question(lesson_dir, qtype, order=order,
-                                         unit_cursor=state.get("unit_cursor"), exclude_id=exclude_id)
+    types = resolve_types(qtype)
+    if len(types) > 1:
+        last = state.get("last_type")
+        names = [t.value for t in types]
+        start = names.index(last) + 1 if last in names else 0
+        types = types[start:] + types[:start]
+    question = None
+    for candidate in types:
+        question = get_next_pending_question(lesson_dir, candidate, order=order, unit_cursor=state.get("unit_cursor"),
+                                             exclude_id=exclude_id, unit_id=unit_id)
+        if question is not None:
+            break
     if question is not None:
-        state.update({"order": order,
+        state.update({"order": order, "last_type": question.type.value,
                       "unit_cursor": question.unit_ids[0] if order == "alternato" else state.get("unit_cursor")})
         if current:
             state["current_question_id"] = question.id

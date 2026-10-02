@@ -140,6 +140,7 @@ def get_next_pending_question(
     order: str = "alternato",
     unit_cursor: Optional[str] = None,
     exclude_id: Optional[str] = None,
+    unit_id: Optional[str] = None,
 ) -> Optional[RecallQuestion]:
     """Seleziona la prossima domanda pendente del tipo richiesto secondo l'ordine specificato.
 
@@ -152,6 +153,9 @@ def get_next_pending_question(
         così una domanda appena saltata non viene immediatamente riproposta. Se è l'unica
         pending disponibile, viene comunque restituita (fallback: meglio che bloccare).
 
+    unit_id: solo le domande su quell'unità (Leggi e ripeti); casi ed esercizi, che coprono
+        un'intera sezione, si propongono dopo l'ultima delle loro unità.
+
     Marca la domanda restituita come ASKED e salva il bank.
     """
     allowed = _allowed_units(lesson_dir)
@@ -161,6 +165,8 @@ def get_next_pending_question(
             save_recall_bank(bank, lesson_dir)
         pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
                    and _question_allowed(q, allowed)]
+        if unit_id is not None:
+            pending = [q for q in pending if on_unit(q, unit_id)]
         if not pending:
             return None
 
@@ -202,6 +208,15 @@ def get_next_pending_question(
             save_recall_bank(bank, lesson_dir)
 
         return selected
+
+def on_unit(question: RecallQuestion, unit_id: str) -> bool:
+    """La domanda appartiene al ripasso dell'unità: quiz e mirate che la citano, casi ed
+    esercizi solo sull'ultima delle loro unità (dopo averle lette tutte). Le vaste no."""
+    from rt.core.models import SPECIAL_TYPES
+    if question.type in SPECIAL_TYPES:
+        return question.unit_ids[-1] == unit_id
+    return question.type != RecallQuestionType.VASTA and unit_id in question.unit_ids
+
 
 # -----------------------------------------------------------------------
 # Answer / vote recording
@@ -402,6 +417,10 @@ def _generation_digest(lesson_dir, group, policy):
 
 def generation_available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock=False) -> bool:
     """Consulta checkpoint senza LLM: un'astensione invariata non avvia altri refill."""
+    from rt.core.models import SPECIAL_TYPES
+    if qtype in SPECIAL_TYPES:
+        from rt.pipeline.recall_special import available
+        return available(lesson_dir, qtype, force_mock=force_mock)
     from rt.services.recall_units import selected_units
     units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
@@ -461,6 +480,11 @@ def generate_recall_batch(
     from rt.services.recall_context import lesson_context, POLICY_VERSION
     from rt.services.unit_relevance import refresh, recall_assessment
     from rt.services.recall_units import selected_units
+    from rt.core.models import SPECIAL_TYPES
+    if qtype in SPECIAL_TYPES:
+        from rt.pipeline.recall_special import generate_special_batch
+        return generate_special_batch(lesson_dir, qtype, count, force_mock=force_mock, regenerate=regenerate,
+                                      shuffle=shuffle, progress=progress)
     if count is not None and count <= 0:
         return []
     label = qtype.value.capitalize()
@@ -592,6 +616,11 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     if question is None:
         raise ValueError(f"Domanda '{question_id}' non trovata nel recall bank di '{lesson_dir}'.")
 
+    from rt.core.models import SPECIAL_TYPES
+    if question.type in SPECIAL_TYPES:
+        from rt.pipeline.recall_special import evaluate
+        return evaluate(lesson_dir, question, answer_text, force_mock=force_mock)
+
     if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
         raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
 
@@ -665,9 +694,12 @@ def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = 
             removed_ids = {q.id for q in bank.questions if q.type == qtype}
             bank.questions = [q for q in bank.questions if q.type != qtype]
         bank.answers = [a for a in bank.answers if a.question_id not in removed_ids]
+        # Il reset riparte da zero anche per i casi e gli esercizi "tipo" del tipo azzerato.
+        old_templates = len(bank.templates)
+        bank.templates = [t for t in bank.templates if qtype is not None and t.kind != qtype]
         old_attempts = len(bank.generation_attempts)
         bank.generation_attempts = {k: v for k, v in bank.generation_attempts.items()
                                     if qtype is not None and not k.startswith(qtype.value + ":")}
-        if removed_ids or len(bank.generation_attempts) != old_attempts:
+        if removed_ids or len(bank.generation_attempts) != old_attempts or len(bank.templates) != old_templates:
             save_recall_bank(bank, lesson_dir)
         return len(removed_ids)

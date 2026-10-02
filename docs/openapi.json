@@ -4053,7 +4053,9 @@
                 "enum": [
                   "quiz",
                   "mirata",
-                  "vasta"
+                  "vasta",
+                  "caso",
+                  "esercizio"
                 ],
                 "type": "string"
               },
@@ -4934,6 +4936,159 @@
         "title": "SecretSaved",
         "type": "object"
       },
+      "SectionLabelOverride": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "esercizio",
+              "caso"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nuovo valore; null torna a quello del classificatore",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SectionLabelOverride",
+        "type": "object"
+      },
+      "SectionLabelRow": {
+        "properties": {
+          "caso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caso"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "esercizio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Esercizio"
+          },
+          "fresh": {
+            "description": "Classificata sul testo attuale",
+            "title": "Fresh",
+            "type": "boolean"
+          },
+          "override_caso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Caso"
+          },
+          "override_esercizio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Esercizio"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "section_id",
+          "title",
+          "unit_ids",
+          "fresh"
+        ],
+        "title": "SectionLabelRow",
+        "type": "object"
+      },
+      "SectionLabels": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "active",
+              "mock",
+              "disabled"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Options",
+            "type": "object"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionLabelRow"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "sections",
+          "options"
+        ],
+        "title": "SectionLabels",
+        "type": "object"
+      },
       "SessionInfo": {
         "properties": {
           "authenticated": {
@@ -5362,7 +5517,9 @@
             "enum": [
               "quiz",
               "mirata",
-              "vasta"
+              "vasta",
+              "caso",
+              "esercizio"
             ],
             "title": "Qtype",
             "type": "string"
@@ -11225,15 +11382,20 @@
             }
           },
           {
+            "description": "Tipo, oppure mista (tutti a turno)",
             "in": "query",
             "name": "qtype",
             "required": false,
             "schema": {
               "default": "quiz",
+              "description": "Tipo, oppure mista (tutti a turno)",
               "enum": [
                 "quiz",
                 "mirata",
-                "vasta"
+                "vasta",
+                "caso",
+                "esercizio",
+                "mista"
               ],
               "title": "Qtype",
               "type": "string"
@@ -11282,6 +11444,24 @@
               "description": "Rifornimento del pool in mock",
               "title": "Mock",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "Solo le domande di questa unità (Leggi e ripeti)",
+            "in": "query",
+            "name": "unit_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Solo le domande di questa unità (Leggi e ripeti)",
+              "title": "Unit Id"
             }
           }
         ],
@@ -12529,6 +12709,203 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/sections": {
+      "get": {
+        "operationId": "get_section_labels_api_v1_lessons__lesson_id__sections_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionLabels"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Etichette nascoste delle unità (macro-sezioni) per casi clinici ed esercizi",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/sections/{section_id}": {
+      "put": {
+        "operationId": "put_section_label_api_v1_lessons__lesson_id__sections__section_id__put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section_id",
+            "required": true,
+            "schema": {
+              "title": "Section Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectionLabelOverride"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionLabels"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
     "/api/v1/mini-app/auth": {
       "post": {
         "operationId": "authenticate_api_v1_mini_app_auth_post",
@@ -13142,6 +13519,7 @@
     },
     "/api/v1/mini-app/lessons/{lesson_id}/generate": {
       "post": {
+        "description": "Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi).",
         "operationId": "generate_api_v1_mini_app_lessons__lesson_id__generate_post",
         "parameters": [
           {
@@ -13164,7 +13542,10 @@
               "enum": [
                 "quiz",
                 "mirata",
-                "vasta"
+                "vasta",
+                "caso",
+                "esercizio",
+                "mista"
               ],
               "title": "Qtype",
               "type": "string"
@@ -13362,7 +13743,10 @@
               "enum": [
                 "quiz",
                 "mirata",
-                "vasta"
+                "vasta",
+                "caso",
+                "esercizio",
+                "mista"
               ],
               "title": "Qtype",
               "type": "string"
@@ -13382,6 +13766,22 @@
                 }
               ],
               "title": "Exclude Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unit_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit Id"
             }
           }
         ],
@@ -14233,7 +14633,10 @@
               "enum": [
                 "quiz",
                 "mirata",
-                "vasta"
+                "vasta",
+                "caso",
+                "esercizio",
+                "mista"
               ],
               "title": "Qtype",
               "type": "string"
@@ -14614,15 +15017,20 @@
             }
           },
           {
+            "description": "Tipo, oppure mista (tutti a turno)",
             "in": "query",
             "name": "qtype",
             "required": false,
             "schema": {
               "default": "quiz",
+              "description": "Tipo, oppure mista (tutti a turno)",
               "enum": [
                 "quiz",
                 "mirata",
-                "vasta"
+                "vasta",
+                "caso",
+                "esercizio",
+                "mista"
               ],
               "title": "Qtype",
               "type": "string"

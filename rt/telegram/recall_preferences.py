@@ -1,6 +1,6 @@
 """
 rt.telegram.recall_preferences
-Stile di domanda attivo globale per l'active recall (quiz | mirata | vasta),
+Stile di domanda attivo globale per l'active recall (quiz | mirata | vasta | caso | esercizio),
 persistito in <state_dir>/recall_preferences.json. Stato dinamico mutabile
 via comando bot (/recall_style), non config statica.
 """
@@ -11,7 +11,7 @@ from typing import Optional
 from rt.db.state_documents import MISSING, NO_DATABASE, read_document, write_document
 
 DEFAULT_STYLE = "quiz"
-VALID_STYLES = ("quiz", "mirata", "vasta")
+VALID_STYLES = ("quiz", "mirata", "vasta", "caso", "esercizio")
 
 
 def _path(state_dir: str) -> str:

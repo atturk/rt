@@ -275,18 +275,18 @@ def _turn_order(candidates: List[Dict[str, Any]], all_ids: List[int], last: Opti
     return sorted(candidates, key=lambda s: (all_ids.index(s["id"]) <= pos, all_ids.index(s["id"])))
 
 
-def next_subject_question(materia: str, qtype: RecallQuestionType, order: str = "alternato",
+def next_subject_question(materia: str, qtype, order: str = "alternato",
                           exclude: Optional[str] = None, channel: str = WEB) -> Optional[Dict[str, Any]]:
     """Prossima domanda della materia (marcata come posta e annotata nella sessione per materia):
     {"lesson_id", "lesson_dir", "question"}, o None se nessuna lezione ha domande da porre di
     quel tipo. exclude è la domanda appena saltata ("<id lezione>:<id domanda>"): si passa alla
-    lezione seguente e, se è l'unica con domande, non si ripropone subito la stessa."""
-    from rt.pipeline.recall import get_reserve_count
-    from rt.services.recall_service import pick_pending_question
+    lezione seguente e, se è l'unica con domande, non si ripropone subito la stessa.
+    qtype è un RecallQuestionType o "mista" (tutti i tipi a turno)."""
+    from rt.services.recall_service import pending_count, pick_pending_question, type_value
     subject = normalize_subject(materia)
     lessons = [s for s in subject_lessons(subject) if _ready(s)]
     busy = _telegram_busy() if channel == WEB else set()
-    candidates = [s for s in lessons if s["id"] not in busy and get_reserve_count(s["path"], qtype) > 0]
+    candidates = [s for s in lessons if s["id"] not in busy and pending_count(s["path"], qtype) > 0]
     skipped_lesson, skipped_id = split_question_key(exclude) if exclude else (None, None)
     last = _last_lesson(subject, channel)
     if skipped_lesson is not None:
@@ -296,6 +296,6 @@ def next_subject_question(materia: str, qtype: RecallQuestionType, order: str = 
                                          exclude_id=skipped_id if summary["id"] == skipped_lesson else None)
         if question is None:
             continue
-        record_subject_question(subject, summary["id"], question.id, qtype.value, channel=channel)
+        record_subject_question(subject, summary["id"], question.id, type_value(qtype), channel=channel)
         return {"lesson_id": summary["id"], "lesson_dir": summary["path"], "question": question}
     return None

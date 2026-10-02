@@ -256,7 +256,7 @@ class TelegramRuntimeConfig(BaseModel):
     # ------------------------------------------------------
     class RecallConfig(BaseModel):
         refill_thresholds: Dict[str, int] = Field(
-            default_factory=lambda: {"vasta": 2, "mirata": 3, "quiz": 5},
+            default_factory=lambda: {"vasta": 2, "mirata": 3, "quiz": 5, "caso": 0, "esercizio": 0},
             description="Quando le domande da porre di un tipo scendono a questa soglia (o sotto), "
                         "il recaller ne genera altre da unità selezionate scelte a caso")
         refill_batch_size: int = Field(default=4, ge=1, description="Domande cercate a ogni rifornimento")

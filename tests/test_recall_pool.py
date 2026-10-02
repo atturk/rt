@@ -126,7 +126,7 @@ def test_pool_count_and_questions_follow_the_selection(tmp_path):
 
 def test_refill_thresholds_are_inclusive_and_refill_picks_random_selected_units(tmp_path):
     path = setup_mock_lesson(tmp_path, num_units=8)
-    assert {t.value: recall_service.refill_threshold(t) for t in RecallQuestionType} == {'quiz': 5, 'mirata': 3, 'vasta': 2}
+    assert {t.value: recall_service.refill_threshold(t) for t in RecallQuestionType} == {'quiz': 5, 'mirata': 3, 'vasta': 2, 'caso': 0, 'esercizio': 0}
     recall_units.set_selection(path, ['1.2', '1.4', '1.6', '1.8'])
     recall_service.generate_pool(path, force_mock=True, qtypes=['vasta'])
     assert recall.get_pool_count(path, RecallQuestionType.VASTA) == 2  # 4 unità: un gruppo, due domande

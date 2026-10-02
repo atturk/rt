@@ -7,6 +7,8 @@ export const RECALL_TYPES: { value: RecallType; label: string; hint: string }[] 
   { value: 'quiz', label: 'Quiz', hint: 'Scelta multipla, esito immediato' },
   { value: 'mirata', label: 'Mirata', hint: 'Domanda aperta su un punto preciso' },
   { value: 'vasta', label: 'Vasta', hint: 'Domanda aperta di collegamento' },
+  { value: 'caso', label: 'Casi', hint: 'Caso clinico da ragionare, dalle unità che lo contengono' },
+  { value: 'esercizio', label: 'Esercizi', hint: 'Esercizio da svolgere, dalle unità in cui viene risolto' },
 ]
 export const TYPE_OPTIONS: SlideOption<RecallType>[] = RECALL_TYPES.map((t) => ({ value: t.value, label: t.label }))
 export const VOTES: { value: Vote; label: string; icon: typeof ThumbsUp }[] = [

@@ -1,11 +1,12 @@
 """Narrow study API. The Telegram credential never grants access to RT administration."""
-from typing import Literal, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from rt.api import schemas
+from rt.api.schemas import NextQuestionType
 from rt.api.deps import LessonDir
 from rt.api.errors import ApiError
 from rt.api.mini_auth import StudyActor, issue_session, study_actor, verify_init_data
@@ -68,6 +69,8 @@ def lesson(lesson_id: int, lesson_dir: LessonDir, _actor: StudyActor):
     ready = detail["phases"].get("rewrite") == "VALID"
     units = []
     if ready:
+        from rt.pipeline.recall import load_recall_bank, on_unit
+        pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value == "pending"]
         draft = load_resolved_draft(lesson_dir)
         sections = {s["unit_id"]: s for s in document_sections(lesson_dir)}
         edits = load_document_edits(lesson_dir)
@@ -76,9 +79,26 @@ def lesson(lesson_id: int, lesson_dir: LessonDir, _actor: StudyActor):
             content = u.content
             units.append({"id": u.unit_id, "title": unit_title(edits, u.unit_id, u.title),
                           "content": content, "html": _unit_html(content),
-                          "start": s.get("start_seconds"), "end": s.get("end_seconds")})
+                          "start": s.get("start_seconds"), "end": s.get("end_seconds"),
+                          # Domande di Leggi e ripeti per l'unità (vedi rt.pipeline.recall.on_unit).
+                          "pending": _unit_pending(pending, u.unit_id, on_unit)})
     return {"id": lesson_id, "ready": ready, "has_audio": bool(resolve_audio_path(lesson_dir)),
             "units": units, "questions": recall_overview(lesson_dir)["questions"] if ready else {}}
+
+
+def _unit_pending(pending, unit_id, on_unit):
+    counts = {}
+    for q in pending:
+        if on_unit(q, unit_id):
+            counts[q.type.value] = counts.get(q.type.value, 0) + 1
+    return counts
+
+
+def _matches(question, qtype, unit_id=None):
+    """La domanda già posta vale ancora per la richiesta (stesso tipo, o mista, e stessa unità)."""
+    from rt.pipeline.recall import on_unit
+    return ((qtype == "mista" or question.type.value == qtype)
+            and (unit_id is None or on_unit(question, unit_id)))
 
 
 def _unit(lesson_dir, unit_id):
@@ -121,16 +141,18 @@ def send_audio(lesson_id: int, unit_id: str, lesson_dir: LessonDir, _actor: Stud
 
 @router.post("/lessons/{lesson_id}/next")
 def next_question(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
-                  qtype: Literal["quiz", "mirata", "vasta"] = "quiz", exclude_id: Optional[str] = None):
+                  qtype: NextQuestionType = "quiz", exclude_id: Optional[str] = None,
+                  unit_id: Optional[str] = None):
     from rt.services.recall_sessions import TELEGRAM, WEB, list_sessions
     from rt.services.recall_service import find_question, load_recall_session_state, question_view
     recall._require_draft(lesson_dir)
     current_id = load_recall_session_state(lesson_dir).get("current_question_id")
     current = find_question(lesson_dir, current_id) if current_id else None
     if (list_sessions(channel=WEB, lesson_dir=lesson_dir) and not list_sessions(channel=TELEGRAM, lesson_dir=lesson_dir)
-            and current and current.status.value == "asked" and current.type.value == qtype):
+            and current and current.status.value == "asked" and _matches(current, qtype, unit_id)):
         return question_view(current)
-    return recall.next_question(lesson_id, lesson_dir, actor, qtype=qtype, order="alternato", exclude_id=exclude_id, mock=False)
+    return recall.next_question(lesson_id, lesson_dir, actor, qtype=qtype, order="alternato", exclude_id=exclude_id,
+                                mock=False, unit_id=unit_id)
 
 
 def _answerable(lesson_dir, question_id):
@@ -176,14 +198,17 @@ def voice(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
 
 @router.post("/lessons/{lesson_id}/generate", status_code=202)
 def generate(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
-             qtype: Literal["quiz", "mirata", "vasta"] = "quiz"):
+             qtype: NextQuestionType = "quiz"):
+    """Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi)."""
     from rt.api.jobs import queue, job_accepted
     from rt.services.jobs import ACTIVE_STATES
+    mixed = qtype == "mista"
     pending = next((j for j in queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)
-                    if j.type == "recall_batch" and j.payload.get("qtype") == qtype and j.created_by == actor), None)
+                    if j.created_by == actor and (j.type == "recall_generate" if mixed else
+                                                  j.type == "recall_batch" and j.payload.get("qtype") == qtype)), None)
     if pending:
         return job_accepted(pending.id)
-    return recall.generate(lesson_id, schemas.RecallGenerate(qtype=qtype, mock=False), lesson_dir, actor)
+    return recall.generate(lesson_id, schemas.RecallGenerate(qtype=None if mixed else qtype, mock=False), lesson_dir, actor)
 
 
 @router.post("/lessons/{lesson_id}/skip")
@@ -233,12 +258,12 @@ def end(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor):
 
 
 @router.post("/subject/next")
-def subject_next(actor: StudyActor, materia: str, qtype: Literal["quiz", "mirata", "vasta"] = "quiz",
+def subject_next(actor: StudyActor, materia: str, qtype: NextQuestionType = "quiz",
                  exclude: Optional[str] = None):
     from rt.services.recall_subject import current_subject_question
     from rt.services.recall_service import question_view
     current = recall._subject_call(current_subject_question, materia)
-    if current and current["question"].status.value == "asked" and current["question"].type.value == qtype:
+    if current and current["question"].status.value == "asked" and _matches(current["question"], qtype):
         return {"lesson_id": current["lesson_id"], "question": question_view(current["question"])}
     return recall.subject_next(actor, materia, qtype=qtype, order="alternato", exclude=exclude, mock=False)
 

@@ -1044,6 +1044,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Etichette nascoste delle unità (macro-sezioni) per casi clinici ed esercizi */
+        get: operations["get_section_labels_api_v1_lessons__lesson_id__sections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/sections/{section_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità */
+        put: operations["put_section_label_api_v1_lessons__lesson_id__sections__section_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mini-app/auth": {
         parameters: {
             query?: never;
@@ -1172,7 +1206,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate */
+        /**
+         * Generate
+         * @description Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi).
+         */
         post: operations["generate_api_v1_mini_app_lessons__lesson_id__generate_post"];
         delete?: never;
         options?: never;
@@ -4158,7 +4195,7 @@ export interface components {
              * Qtype
              * @description Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)
              */
-            qtype?: ("quiz" | "mirata" | "vasta") | null;
+            qtype?: ("quiz" | "mirata" | "vasta" | "caso" | "esercizio") | null;
         };
         /** RecallHistory */
         RecallHistory: {
@@ -4509,6 +4546,57 @@ export interface components {
              */
             stored_in: "store" | "env";
         };
+        /** SectionLabelOverride */
+        SectionLabelOverride: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "esercizio" | "caso";
+            /**
+             * Value
+             * @description Nuovo valore; null torna a quello del classificatore
+             */
+            value?: string | null;
+        };
+        /** SectionLabelRow */
+        SectionLabelRow: {
+            /** Caso */
+            caso?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Esercizio */
+            esercizio?: string | null;
+            /**
+             * Fresh
+             * @description Classificata sul testo attuale
+             */
+            fresh: boolean;
+            /** Override Caso */
+            override_caso?: string | null;
+            /** Override Esercizio */
+            override_esercizio?: string | null;
+            /** Section Id */
+            section_id: string;
+            /** Title */
+            title: string;
+            /** Unit Ids */
+            unit_ids: string[];
+        };
+        /** SectionLabels */
+        SectionLabels: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "active" | "mock" | "disabled";
+            /** Options */
+            options: {
+                [key: string]: string[];
+            };
+            /** Sections */
+            sections: components["schemas"]["SectionLabelRow"][];
+        };
         /** SessionInfo */
         SessionInfo: {
             /**
@@ -4707,7 +4795,7 @@ export interface components {
              * @default quiz
              * @enum {string}
              */
-            qtype: "quiz" | "mirata" | "vasta";
+            qtype: "quiz" | "mirata" | "vasta" | "caso" | "esercizio";
         };
         /** TelegramRecallStatus */
         TelegramRecallStatus: {
@@ -8655,12 +8743,15 @@ export interface operations {
     next_question_api_v1_lessons__lesson_id__recall_next_post: {
         parameters: {
             query?: {
-                qtype?: "quiz" | "mirata" | "vasta";
+                /** @description Tipo, oppure mista (tutti a turno) */
+                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
                 order?: "alternato" | "sequenziale" | "casuale";
                 /** @description Domanda appena saltata */
                 exclude_id?: string | null;
                 /** @description Rifornimento del pool in mock */
                 mock?: boolean;
+                /** @description Solo le domande di questa unità (Leggi e ripeti) */
+                unit_id?: string | null;
             };
             header?: never;
             path: {
@@ -9577,6 +9668,147 @@ export interface operations {
             };
         };
     };
+    get_section_labels_api_v1_lessons__lesson_id__sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionLabels"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_section_label_api_v1_lessons__lesson_id__sections__section_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                section_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionLabelOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionLabels"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     authenticate_api_v1_mini_app_auth_post: {
         parameters: {
             query?: never;
@@ -10061,7 +10293,7 @@ export interface operations {
     generate_api_v1_mini_app_lessons__lesson_id__generate_post: {
         parameters: {
             query?: {
-                qtype?: "quiz" | "mirata" | "vasta";
+                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
             };
             header?: never;
             path: {
@@ -10200,8 +10432,9 @@ export interface operations {
     next_question_api_v1_mini_app_lessons__lesson_id__next_post: {
         parameters: {
             query?: {
-                qtype?: "quiz" | "mirata" | "vasta";
+                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
                 exclude_id?: string | null;
+                unit_id?: string | null;
             };
             header?: never;
             path: {
@@ -10827,7 +11060,7 @@ export interface operations {
         parameters: {
             query: {
                 materia: string;
-                qtype?: "quiz" | "mirata" | "vasta";
+                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
                 exclude?: string | null;
             };
             header?: never;
@@ -11099,7 +11332,8 @@ export interface operations {
         parameters: {
             query: {
                 materia: string;
-                qtype?: "quiz" | "mirata" | "vasta";
+                /** @description Tipo, oppure mista (tutti a turno) */
+                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
                 order?: "alternato" | "sequenziale" | "casuale";
                 /** @description Domanda appena saltata, come <id lezione>:<id domanda> */
                 exclude?: string | null;

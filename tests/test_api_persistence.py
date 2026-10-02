@@ -231,7 +231,7 @@ def test_recall_unit_selection_and_pool(api_client, api_token, ws, worker):
     data = reread(api_token, f"/lessons/{lid}/recall/units", f"/lessons/{lid}/recall/history", f"/lessons/{lid}/recall")
     assert data[f"/lessons/{lid}/recall/units"]["custom"]
     assert {q["unit_ids"][0] for q in data[f"/lessons/{lid}/recall/history"]["questions"]} == {first}
-    assert data[f"/lessons/{lid}/recall"]["refill_thresholds"] == {"quiz": 5, "mirata": 3, "vasta": 2}
+    assert data[f"/lessons/{lid}/recall"]["refill_thresholds"] == {"quiz": 5, "mirata": 3, "vasta": 2, "caso": 0, "esercizio": 0}
     reset = ok(c.put(f"/api/v1/lessons/{lid}/recall/units", json={"unit_ids": None}))
     assert not reset["custom"]
 
