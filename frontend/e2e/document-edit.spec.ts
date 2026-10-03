@@ -55,7 +55,6 @@ test('documento modificabile in place: testo e timecode (triplo clic) salvati da
   await page.keyboard.press('Enter')
   await page.keyboard.type('Paragrafo aggiunto a mano.')
   await expect(status(page)).toHaveAttribute('data-status', 'saved')
-  await expect(status(page)).toContainText('va ricreato')
   await expect(page.getByTestId('document-edit-errors')).toHaveCount(0)
 
   // Dopo la ricarica: testo salvato, timecode spostato e funzionante, documento da ricreare.

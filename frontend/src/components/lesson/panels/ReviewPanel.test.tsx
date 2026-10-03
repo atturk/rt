@@ -60,10 +60,10 @@ it('modifica una correzione e permette di annullare l’ultima decisione', async
   fireEvent.click(screen.getByRole('button', { name: 'Salva modifica' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,35.' }))
 })
-it('chiude le issue il cui passaggio è cambiato a mano', async () => {
+it('passaggio cambiato: chiude l\'issue, ma le decisioni restano possibili', async () => {
   mount(undefined, undefined, '## 1. Sezione\n### 1.1 Unità\n00:00\nIl pH è 7.')
-  expect(screen.queryByRole('button', { name: 'Accetta' })).toBeNull()
-  expect(screen.getByText('Testo cambiato a mano')).toBeInTheDocument()
+  expect(screen.getByText('Testo cambiato')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Accetta' })).toBeEnabled()
   fireEvent.click(screen.getByRole('button', { name: "Chiudi l'issue" }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })

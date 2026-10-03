@@ -138,10 +138,10 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   const status = page.getByTestId('part-review')
   await expect(status).toBeVisible()
   await expect(status).toHaveAttribute('data-state', 'succeeded', { timeout: 45_000 })
-  await expect(status.getByRole('link', { name: 'Apri la revisione' })).toHaveAttribute('href', `/lezioni/${id}/revisione`)
+  await expect(status.getByRole('link', { name: 'Apri la verifica' })).toHaveAttribute('href', `/lezioni/${id}?panel=verifica`)
 })
 
-test('menu contestuale: Domande su questa parte apre lo Studio sulle unità della selezione', async ({ page }) => {
+test('menu contestuale: Domande su questa parte apre il pannello Domande sulle unità della selezione', async ({ page }) => {
   await loginViaLink(page)
   const id = await lessonId(page, 'BIOCHIMICA')
   await page.goto(`/lezioni/${id}`)
@@ -149,6 +149,8 @@ test('menu contestuale: Domande su questa parte apre lo Studio sulle unità dell
   const unit = (await heading.getAttribute('data-unit-id'))!
   await heading.click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Domande su questa parte' }).click()
-  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${id}\\?unita=${unit.replace('.', '\\.')}$`))
-  await expect(page.getByTestId('study-no-questions').or(page.getByTestId('study-text'))).toBeVisible()
+  const panel = page.locator('[data-testid=lesson-panel][data-view=domande]')
+  await expect(panel).toBeVisible()
+  await expect(panel).toHaveAttribute('aria-label', `Domande unità ${unit}`)
+  await expect(panel.getByText(`Nuove domande su ${unit}`)).toBeVisible()
 })

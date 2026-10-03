@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails } from './support'
+import { apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
 
 type Lesson = { id: number; materia: string }
 type PhaseReport = { phases: { phase: string; status: string; reason: string }[] }
@@ -28,10 +28,10 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
   for (const row of report.phases) {
     const li = page.locator(`[data-phase-row="${row.phase}"]`)
     await expect(li).toHaveAttribute('data-status', row.status)
-    await expect(li).toContainText(row.reason)
   }
   expect(detail.outline_approved).toBe(true)
   await expect(page.getByTestId('validation-outline')).toContainText('valida')
+  await page.getByTestId('details-panel').getByRole('button', { name: /^dettaglio/ }).click()
   await expect(page.getByTestId('cost-panel')).toContainText('Scaletta')
 
   const markdown = await exportItem(page, 'Markdown')
@@ -88,7 +88,8 @@ test('avvio di una fase: il job gira sul worker e lo stato resta dopo la ricaric
   const prepare = page.locator('[data-phase-row="prepare"]')
   await expect(prepare).not.toHaveAttribute('data-status', 'VALID')
 
-  await page.getByRole('button', { name: 'Esegui Preparazione' }).click()
+  await runPhase(page, 'Preparazione')
+  await lessonJobs(page)
   await expect(page.getByTestId('jobs-panel')).toContainText('Preparazione')
   await expect(page.getByTestId('jobs-panel').locator('[data-job-state]').first()).toHaveAttribute('data-job-state', 'succeeded', {
     timeout: 45_000,
@@ -99,7 +100,7 @@ test('avvio di una fase: il job gira sul worker e lo stato resta dopo la ricaric
   await expect(prepare).toHaveAttribute('data-status', 'VALID')
   const report = await apiGet<PhaseReport>(page.request, `/lessons/${id}/phases`)
   expect(report.phases.find((p) => p.phase === 'prepare')?.status).toBe('VALID')
-  await expect(page.getByTestId('jobs-panel')).toContainText('completato')
+  await expect(await lessonJobs(page)).toContainText('completato')
 })
 
 test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', async ({ page }) => {
@@ -140,19 +141,19 @@ test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e
   await expect(build.getByTestId('build-warnings')).toContainText('10 issue ancora da valutare')
 
   // Annulla: nessun job parte
-  await page.getByRole('button', { name: 'Esegui Documento' }).click()
+  await runPhase(page, 'Documento')
   const dialog = page.getByRole('dialog', { name: 'Creare il documento finale?' })
   await expect(dialog).toBeVisible()
   for (const w of warnings) await expect(dialog.getByTestId('build-confirm-warnings')).toContainText(w.message)
   await expect(dialog).toContainText('Revisione non aggiornata')
   await dialog.getByRole('button', { name: 'Annulla' }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.locator('[data-testid=jobs-panel] [data-job-state]')).toHaveCount(0)
+  expect((await apiGet<unknown[]>(page.request, `/jobs?lesson_id=${id}`)).length).toBe(0)
 
   // Conferma: il documento finale viene creato anche con la revisione non aggiornata
-  await page.getByRole('button', { name: 'Esegui Documento' }).click()
+  await runPhase(page, 'Documento')
   await dialog.getByRole('button', { name: 'Crea il documento comunque' }).click()
-  await expect(page.getByTestId('jobs-panel').locator('[data-job-state]').first()).toHaveAttribute('data-job-state', 'succeeded', {
+  await expect((await lessonJobs(page)).locator('[data-job-state]').first()).toHaveAttribute('data-job-state', 'succeeded', {
     timeout: 45_000,
   })
   await expect(build).toHaveAttribute('data-status', 'VALID')
@@ -222,8 +223,7 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await actions.getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${reviewed}$`))
   await page.goto(`/lezioni/${reviewed}`)
-  await openLessonDetails(page)
-  await page.getByTestId('lesson-links').getByRole('link', { name: 'Arricchimento' }).click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/arricchimento$`))
-  await expect(page.getByRole('button', { name: 'Aggiungi le immagini' })).toBeVisible()
+  await actions.getByRole('button', { name: 'Arricchimento' }).click()
+  await expect(page.getByTestId('lesson-panel')).toHaveAttribute('data-view', 'arricchimento')
+  await expect(page.getByTestId('enrichment-panel').getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' })).toBeVisible()
 })

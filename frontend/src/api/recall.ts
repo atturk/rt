@@ -301,7 +301,7 @@ function useSubjectMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
 }
 
 export function useSubjectNext(materia: string) {
-  return useSubjectMutation((vars: { qtype: RecallType; exclude?: string }) =>
+  return useSubjectMutation((vars: { qtype: RecallType | 'mista'; exclude?: string }) =>
     unwrap(api.POST('/api/v1/recall/subject/next', { params: { query: { materia, qtype: vars.qtype, exclude: vars.exclude } } })),
   )
 }

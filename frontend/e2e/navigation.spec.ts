@@ -41,56 +41,23 @@ test('la ricerca filtra sul client: nessuna richiesta all’API per tasto', asyn
   expect(q.y + q.height).toBeLessThan(52)
 })
 
-test('Recall, Immagini e Review hanno la barra della dashboard', async ({ page }) => {
+test('le pagine tolte portano a Lezioni o al pannello della lezione', async ({ page }) => {
   await loginViaLink(page)
-  const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
-  for (const url of ['/recall', '/immagini']) {
+  const [lesson] = (await apiGet<Lesson[]>(page.request, '/lessons')).filter((l) => l.pending_issues > 0)
+  for (const url of ['/recall', '/immagini', '/arricchimento', '/review', '/importa']) {
     await page.goto(url)
-    const items = page.getByTestId('picker-lesson')
-    await expect(items).toHaveCount(lessons.length)
-    await page.getByLabel('Cerca').fill('rene')
-    await expect(items).toHaveCount(1)
-    // In Recall la materia è l'intestazione del gruppo, non la riga della lezione
-    if (url === '/recall') await expect(page.locator('[data-testid=recall-subject][data-subject=FISIOLOGIA]').getByTestId('picker-lesson')).toHaveCount(1)
-    else await expect(items.first()).toContainText('FISIOLOGIA')
-    await page.reload()
-    await expect(page.getByLabel('Cerca')).toHaveValue('rene')
-    await expect(items).toHaveCount(1)
-    await page.getByLabel('Cerca').fill('')
-    // Stessa barra della dashboard: niente menu Materia/Stato, la materia arriva dall'URL.
-    await expect(page.getByLabel('Materia', { exact: true })).toHaveCount(0)
-    await expect(page.getByLabel('Raggruppa per')).toBeVisible()
-    await expect(page.getByLabel('Ordina per')).toBeVisible()
-    await page.goto(`${url}?materia=BIOCHIMICA`)
-    await expect(items).toHaveCount(lessons.filter((l) => l.materia === 'BIOCHIMICA').length)
-    await page.getByRole('button', { name: 'Tabella' }).click()
-    await expect(items).toHaveCount(lessons.filter((l) => l.materia === 'BIOCHIMICA').length)
-    await page.getByRole('button', { name: 'Schede' }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeAttached()
   }
-  await page.goto('/review')
-  await expect(page.getByLabel('Raggruppa per')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Tabella' })).toBeVisible()
-})
-
-test('la sezione Review elenca le lezioni con issue da valutare', async ({ page }) => {
-  await loginViaLink(page)
-  const toReview = (await apiGet<Lesson[]>(page.request, '/lessons')).filter((l) => l.pending_issues > 0)
-  expect(toReview.length).toBeGreaterThan(0)
-  // Le pagine di prima restano raggiungibili dall'indirizzo e dai link.
-  await page.goto('/review')
-  await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible()
-  const cards = page.getByTestId('review-lesson')
-  await expect(cards).toHaveCount(toReview.length)
-  for (const lesson of toReview) {
-    await expect(page.locator(`[data-testid=review-lesson][data-lesson-id="${lesson.id}"]`).getByTestId('review-count')).toHaveText(
-      String(lesson.pending_issues),
-    )
+  await page.goto('/recall/materie/BIOCHIMICA')
+  await expect(page).toHaveURL(/\/\?materia=BIOCHIMICA$/)
+  for (const [old, view] of [['revisione', 'verifica'], ['rilevanza', 'classificatore'], ['immagini', 'arricchimento'], ['recall/domande', 'domande']]) {
+    await page.goto(`/lezioni/${lesson.id}/${old}`)
+    await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}\\?panel=${view}$`))
+    await expect(page.locator(`[data-testid=lesson-panel][data-view=${view}]`)).toBeVisible()
   }
-  const target = toReview[0]
-  await page.getByLabel('Cerca').fill(target.materia.toLowerCase())
-  await expect(cards).toHaveCount(toReview.filter((l) => l.materia === target.materia).length)
-  await page.locator(`[data-testid=review-lesson][data-lesson-id="${target.id}"]`).click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${target.id}/revisione$`))
+  await page.goto(`/lezioni/${lesson.id}/outline`)
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}$`))
 })
 
 test('barra a icone: Nuova lezione, Lezioni, Job in corso con il badge, Impostazioni', async ({ page }) => {
@@ -115,9 +82,6 @@ test('barra a icone: Nuova lezione, Lezioni, Job in corso con il badge, Impostaz
   await nav.getByRole('link', { name: 'Impostazioni' }).focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/impostazioni$/)
-  // Le pagine di prima restano raggiungibili: Recall, Immagini, Arricchimento accendono Lezioni.
-  await page.goto('/recall')
-  await expect(lessons).toHaveAttribute('aria-current', 'page')
 })
 
 test('telefono: tre schede in basso, niente barra a sinistra', async ({ page }) => {

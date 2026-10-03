@@ -2,26 +2,27 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { apiGet, authHeaders, loginViaLink } from './support'
 
-// RT4-FA7: sessioni di recall. "Termina sessione" con riepilogo salvato, selettori a slitta
-// (luogo e tipo di domanda) da tastiera, avvio e interruzione su Telegram tramite il bot finto
-// (RT_TELEGRAM_FAKE=1: esegue le richieste dell'app sulla Bot API finta, domande in mock).
+// Sessioni di ripasso (G4): il tipo resta l'ultimo usato, "Termina" chiude la sessione sul backend
+// con il riepilogo. Il recall su Telegram dall'app non c'è più (Telegram spento di predefinito):
+// restano le API, provate dai test del backend.
 
-type Lesson = { id: number; phases: Record<string, string> }
-type Summary = { questions: number; answered: number; quiz_answered: number; correct: number }
-type SessionInfo = { id: number; lesson_id: number | null; state: string; channel: string; summary?: Summary | null }
-type SessionState = { web: SessionInfo | null; last: SessionInfo | null; telegram: SessionInfo | null }
+type Lesson = { id: number; materia: string; phases: Record<string, string> }
+type Summary = { questions: number; answered: number }
+type SessionInfo = { id: number; state: string; summary?: Summary | null }
+type SessionState = { web: SessionInfo | null; last: SessionInfo | null }
 type Overview = { questions: Record<string, Record<string, number>> }
 
-async function openRecall(page: Page) {
+async function openSession(page: Page) {
   await loginViaLink(page)
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
-  const lesson = lessons.find((l) => l.phases.build === 'VALID')!
-  await page.goto(`/lezioni/${lesson.id}/recall`)
+  const lesson = lessons.find((l) => l.materia === 'BIOCHIMICA' && l.phases.rewrite === 'VALID')!
   const overview = await apiGet<Overview>(page.request, `/lessons/${lesson.id}/recall`)
-  if (Object.keys(overview.questions).length === 0) {
-    await page.getByRole('button', { name: 'Genera il pool' }).click()
-    await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: 30_000 })
+  if (!(overview.questions.quiz?.pending ?? 0)) {
+    const res = await page.request.post(`/api/v1/lessons/${lesson.id}/recall/generate`, { headers: authHeaders(), data: { qtype: 'quiz', mock: true } })
+    expect(res.ok(), await res.text()).toBeTruthy()
+    await expect.poll(async () => (await apiGet<Overview>(page.request, `/lessons/${lesson.id}/recall`)).questions.quiz?.pending ?? 0, { timeout: 30_000 }).toBeGreaterThan(0)
   }
+  await page.goto(`/lezioni/${lesson.id}/sessione`)
   return lesson
 }
 
@@ -29,165 +30,28 @@ async function sessionState(page: Page, lessonId: number) {
   return apiGet<SessionState>(page.request, `/lessons/${lessonId}/recall/session`)
 }
 
-/** Chiude dal backend una sessione web lasciata aperta da un altro test. */
-async function endWebSession(page: Page, lessonId: number) {
-  if ((await sessionState(page, lessonId)).web) {
-    const res = await page.request.post(`/api/v1/lessons/${lessonId}/recall/session/end`, { headers: authHeaders() })
-    expect(res.ok()).toBeTruthy()
-  }
-}
-
-test('tipo di domanda: slitta dei tipi da tastiera, scelta riletta dopo la ricarica', async ({ page }) => {
-  const lesson = await openRecall(page)
-  const group = page.getByRole('radiogroup', { name: 'Tipo di domanda' })
-  const toggle = page.getByTestId('type-toggle')
-  await expect(group.getByRole('radio', { name: 'Quiz' })).toHaveAttribute('aria-checked', 'true')
-  await expect(toggle).toContainText('Quiz: Scelta multipla, esito immediato')
-
-  // un solo tab stop: l'opzione scelta
-  await expect(group.getByRole('radio', { name: 'Mirata' })).toHaveAttribute('tabindex', '-1')
-  await group.getByRole('radio', { name: 'Quiz' }).focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(group.getByRole('radio', { name: 'Mirata' })).toHaveAttribute('aria-checked', 'true')
-  await expect(group.getByRole('radio', { name: 'Mirata' })).toBeFocused()
-  await expect(toggle).toContainText('Mirata: Domanda aperta su un punto preciso')
-  await page.keyboard.press('ArrowRight')
-  await expect(group.getByRole('radio', { name: 'Vasta' })).toHaveAttribute('aria-checked', 'true')
-  await expect(toggle).toContainText('Vasta: Domanda aperta di collegamento')
-  await page.keyboard.press('ArrowRight')
-  await expect(group.getByRole('radio', { name: 'Casi' })).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('ArrowRight')
-  await expect(group.getByRole('radio', { name: 'Esercizi' })).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('ArrowRight')
-  await expect(group.getByRole('radio', { name: 'Quiz' })).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('ArrowLeft')
-  await expect(group.getByRole('radio', { name: 'Esercizi' })).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('End')
-  await expect(toggle).toHaveAttribute('data-value', 'esercizio')
-  await page.keyboard.press('Home')
-  await expect(group.getByRole('radio', { name: 'Quiz' })).toHaveAttribute('aria-checked', 'true')
-  await page.keyboard.press('ArrowLeft')
-  await expect(group.getByRole('radio', { name: 'Esercizi' })).toBeFocused()
-  await page.keyboard.press('ArrowLeft')
-  await expect(group.getByRole('radio', { name: 'Casi' })).toBeFocused()
-  await page.keyboard.press('ArrowLeft')
-  await expect(group.getByRole('radio', { name: 'Vasta' })).toBeFocused()
-  await expect(toggle).toHaveAttribute('data-value', 'vasta')
-
+test('tipo di domanda: resta l\'ultimo usato dopo la ricarica', async ({ page }) => {
+  await openSession(page)
+  const types = page.getByRole('group', { name: 'Tipo di domanda' })
+  await types.getByRole('button', { name: 'Vasta', exact: true }).click()
+  await expect(types.getByRole('button', { name: 'Vasta', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.reload()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/recall\\?.*tipo=vasta`))
-  await expect(page.getByRole('radiogroup', { name: 'Tipo di domanda' }).getByRole('radio', { name: 'Vasta' })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  )
+  await expect(page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Vasta', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Quiz', exact: true }).click()
 })
 
-test('termina sessione: riepilogo salvato dal backend e riletto dopo la ricarica', async ({ page }) => {
-  const lesson = await openRecall(page)
-  await endWebSession(page, lesson.id)
-  await page.reload()
-  await expect(page.getByRole('radiogroup', { name: 'Dove fare il recall' }).getByRole('radio', { name: 'Qui', exact: true })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  )
-  await expect(page.getByTestId('place-toggle')).toContainText('Recall qui')
-  await expect(page.getByRole('button', { name: 'Termina sessione' })).toHaveCount(0)
-
-  await page.getByRole('radio', { name: 'Quiz' }).click()
-  await page.getByRole('button', { name: 'Prossima domanda' }).click()
-  await expect(page.getByTestId('recall-question')).toBeVisible()
-  await page.getByTestId('recall-question').getByRole('radio').first().check()
+test('termina: la sessione si chiude sul backend con il riepilogo e si torna alla lezione', async ({ page }) => {
+  const lesson = await openSession(page)
+  await page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Quiz', exact: true }).click()
+  await page.getByRole('button', { name: /^A\./ }).click()
   await page.getByRole('button', { name: 'Rispondi' }).click()
-  await expect(page.getByTestId('recall-result')).toBeVisible()
-  await page.getByRole('button', { name: 'Prossima domanda' }).click()
-  await expect(page.getByTestId('web-session')).toContainText('domande poste: 2')
+  await expect(page.getByTestId('recall-result-card')).toBeVisible()
+  await expect.poll(async () => (await sessionState(page, lesson.id)).web?.state).toBe('active')
 
-  await page.getByRole('button', { name: 'Termina sessione' }).click()
-  const summary = page.getByTestId('session-summary')
-  await expect(summary).toBeVisible()
-  await expect(page.getByTestId('recall-question')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Termina sessione' })).toHaveCount(0)
-
-  await page.reload()
-  await expect(summary).toBeVisible()
+  await page.getByRole('button', { name: 'Termina' }).click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}$`))
   const state = await sessionState(page, lesson.id)
   expect(state.web).toBeNull()
   expect(state.last?.state).toBe('ended')
-  const saved = state.last!.summary!
-  expect(saved.questions).toBe(2)
-  expect(saved.answered).toBe(1)
-  await expect(summary).toHaveAttribute('data-session-id', String(state.last!.id))
-  await expect(summary.locator('[data-summary=questions]')).toHaveText('2')
-  await expect(summary.locator('[data-summary=answered]')).toHaveText('1')
-  await expect(summary.locator('[data-summary=correct]')).toHaveText(`${saved.correct} su ${saved.quiz_answered}`)
-})
-
-test('recall su Telegram: avvio dal bot e interruzione dall\'app, riletti dopo la ricarica', async ({ page }) => {
-  const lesson = await openRecall(page)
-  await endWebSession(page, lesson.id)
-  const place = page.getByRole('radiogroup', { name: 'Dove fare il recall' })
-
-  // bot fermo: l'interruttore è disabilitato e la pagina spiega perché
-  const daemon = await apiGet<{ running: boolean }>(page.request, '/telegram/daemon')
-  if (daemon.running) await page.request.post('/api/v1/telegram/daemon/stop', { headers: authHeaders() })
-  const settings = await apiGet<{ telegram: { chat_id?: string } }>(page.request, '/settings')
-  if (!settings.telegram.chat_id) {
-    await page.reload()
-    await expect(place.getByRole('radio', { name: 'Telegram' })).toBeDisabled()
-    await expect(page.getByText('Per il recall su Telegram configura il bot in')).toBeVisible()
-    const res = await page.request.put('/api/v1/settings/telegram', {
-      headers: authHeaders(),
-      data: { bot_token: '123456:e2e-bot-finto', chat_id: '1' },
-    })
-    expect(res.ok(), await res.text()).toBeTruthy()
-  }
-  await page.reload()
-  await expect(place.getByRole('radio', { name: 'Telegram' })).toBeDisabled()
-  await expect(page.getByText('Il bot Telegram è fermo')).toBeVisible()
-
-  const started = await page.request.post('/api/v1/telegram/daemon/start', { headers: authHeaders() })
-  expect(started.ok(), await started.text()).toBeTruthy()
-  await page.reload()
-  await place.getByRole('radio', { name: 'Telegram' }).click()
-  await expect(page.getByTestId('place-toggle')).toContainText('Recall su Telegram')
-  await page.getByRole('radiogroup', { name: 'Tipo di domanda' }).getByRole('radio', { name: 'Mirata' }).click()
-  await page.getByRole('button', { name: 'Avvia su Telegram' }).click()
-
-  const row = page.getByTestId('telegram-panel').getByTestId('telegram-session')
-  await expect(row).toBeVisible({ timeout: 30_000 })
-  await expect(row).toContainText('Sessione in corso su Telegram')
-  await expect(row).toContainText('Mirata')
-  await page.reload()
-  await expect(row).toBeVisible()
-  let state = await sessionState(page, lesson.id)
-  expect(state.telegram?.state).toBe('active')
-  await expect(row).toHaveAttribute('data-session-id', String(state.telegram!.id))
-  const all = await apiGet<{ sessions: SessionInfo[] }>(page.request, '/recall/telegram')
-  expect(all.sessions.map((s) => s.lesson_id)).toContain(lesson.id)
-
-  // qui la web non pone domande mentre la sessione è su Telegram
-  await place.getByRole('radio', { name: 'Qui', exact: true }).click()
-  await expect(page.getByText("C'è una sessione in corso su Telegram per questa lezione")).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Prossima domanda' })).toBeDisabled()
-
-  // la sessione si vede anche dalle altre lezioni
-  const other = (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.id !== lesson.id && l.phases.rewrite === 'VALID')
-  if (other) {
-    await page.goto(`/lezioni/${other.id}/recall`)
-    await expect(page.locator(`[data-testid=telegram-session][data-lesson-id="${lesson.id}"]`)).toContainText('In corso su Telegram')
-    await page.goto(`/lezioni/${lesson.id}/recall?luogo=telegram`)
-  } else {
-    await place.getByRole('radio', { name: 'Telegram' }).click()
-  }
-
-  await row.getByRole('button', { name: 'Interrompi' }).click()
-  await expect(row).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Avvia su Telegram' })).toBeEnabled()
-  await page.reload()
-  await expect(page.getByTestId('telegram-session')).toHaveCount(0)
-  state = await sessionState(page, lesson.id)
-  expect(state.telegram).toBeNull()
-  expect((await apiGet<{ sessions: SessionInfo[] }>(page.request, '/recall/telegram')).sessions).toEqual([])
-
-  await page.request.post('/api/v1/telegram/daemon/stop', { headers: authHeaders() })
+  expect(state.last?.summary?.answered).toBeGreaterThanOrEqual(1)
 })

@@ -6,7 +6,7 @@ tag o release. Risposte e commit in italiano. Piano e regole: `docs/REWORK_4.2.m
 
 ## Procedura per un giro
 
-1. `gh pr list --base claude/rt-4.2.0-beta-54bz3z` → le due PR del giro (`rt42/codex-N`, `rt42/antigravity-N`).
+1. `gh pr list --base claude/rt-4.2.0-beta-54bz3z` (senza `gh`: strumenti GitHub MCP) → le due PR del giro (`rt42/codex-N`, `rt42/antigravity-N`).
 2. Leggi il diff commit per commit (`git diff origin/claude/rt-4.2.0-beta-54bz3z...origin/<branch>`),
    escludendo `docs/openapi.json` e `frontend/src/api/schema.d.ts`. Confronta con task, wireframe
    (`docs/wireframes-4.2/`), "Stile comune" e "Note per il giro".
@@ -17,7 +17,10 @@ tag o release. Risposte e commit in italiano. Piano e regole: `docs/REWORK_4.2.m
    - righe di spiegazione nell'interfaccia (hint, description) → toglierle;
    - controlli dentro link (`<input>` in `<a>`), cast `as unknown as`;
    - campi raccolti in UI ma non inviati all'API;
-   - e2e non aggiornati: gli agenti non li eseguono. Vanno allineati da chi rivede.
+   - e2e non aggiornati: gli agenti non li eseguono. Vanno allineati da chi rivede;
+     nel giro 2 Antigravity ha cancellato interi spec invece di adattarli (ricontrollare i `D`);
+   - stati finti nell'interfaccia (esiti o stati scritti fissi invece di letti dall'API);
+   - parametri dell'URL: un solo `?panel=<vista>` per aprire i pannelli della lezione.
 4. Unisci prima la PR con meno conflitti (`gh pr merge N --merge`), poi porta il beta nell'altro
    branch, risolvi i conflitti tenendo entrambe le funzioni, rigenera OpenAPI/schema, applica le
    correzioni brevi in un commit "Revisione: …", push, aspetta la CI (`gh pr checks N`), unisci.
@@ -35,7 +38,5 @@ tag o release. Risposte e commit in italiano. Piano e regole: `docs/REWORK_4.2.m
 ## Stato
 
 - Giro 1: unito (#48, #49) più la revisione 8ca6a3f.
-- Giro 2: in corso. Codex: C1a, C1b, C3, B7, C5, C4 su `rt42/codex-2`. Antigravity: G1, G2, G3,
-  G5, C2, G4, A5 su `rt42/antigravity-2`. Probabili conflitti in `LessonEditor.tsx`/`DocumentMenu`
-  (C1b, C3, C5 e C2) e nei file generati.
+- Giro 2: unito (#51 Codex, #50 Antigravity) più la revisione; aperti R1–R3 per Antigravity.
 - Dopo il giro 2: e2e completi, riepilogo per la prova dal vivo, poi Attilio decide su beta/tag.

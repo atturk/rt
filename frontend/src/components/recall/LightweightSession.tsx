@@ -9,7 +9,7 @@ import {
   ThumbsUp,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
@@ -146,9 +146,11 @@ export function LightweightSession({
   const [commentModalOpen, setCommentModalOpen] = useState<boolean>(false)
   const [commentText, setCommentText] = useState<string>('')
 
-  // Richiesta prossima domanda
+  // Richiesta prossima domanda: vale solo la risposta dell'ultima richiesta (es. tipo cambiato al volo)
+  const requestSeq = useRef(0)
   const askNext = useCallback(
     async (typeToAsk: SessionType = qtype) => {
+      const seq = ++requestSeq.current
       setEmptyPoolError(false)
       setGeneralError(null)
       setSelectedChoice(null)
@@ -165,13 +167,13 @@ export function LightweightSession({
       try {
         let q: RecallQuestion
         if (isSelection) {
-          const res = await nextSubject.mutateAsync({
-            qtype: (typeToAsk === 'mista' ? 'quiz' : typeToAsk) as RecallType,
-          })
+          const res = await nextSubject.mutateAsync({ qtype: typeToAsk })
+          if (seq !== requestSeq.current) return
           q = res.question
           setQuestionLessonId(res.lesson_id)
         } else if (lessonId) {
           q = await nextLesson.mutateAsync({ qtype: typeToAsk })
+          if (seq !== requestSeq.current) return
           setQuestionLessonId(lessonId)
         } else {
           return
@@ -179,6 +181,7 @@ export function LightweightSession({
         setCurrentQuestion(q)
         setQuestionCount((c) => c + 1)
       } catch (err: unknown) {
+        if (seq !== requestSeq.current) return
         if (err instanceof ApiError && err.code === 'no_questions') {
           setEmptyPoolError(true)
           setCurrentQuestion(null)
@@ -408,9 +411,9 @@ export function LightweightSession({
         <Link to={backUrl} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
           <ChevronLeft aria-hidden /> Esci
         </Link>
-        <span className="flex-1 truncate text-meta text-muted-foreground">
+        <h1 className="flex-1 truncate text-meta font-normal text-muted-foreground">
           Recall · <strong className="font-semibold text-foreground">{title}</strong>
-        </span>
+        </h1>
         <span className="text-meta text-muted-foreground">{daPorreCount} da porre</span>
       </header>
 
@@ -466,7 +469,7 @@ export function LightweightSession({
 
           {/* Domanda corrente */}
           {currentQuestion && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4" data-testid="recall-question" data-question-id={currentQuestion.id} data-type={currentQuestion.type}>
               <div className="flex flex-col gap-1">
                 <p className="text-meta text-muted-foreground">
                   {currentQuestion.type.toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}

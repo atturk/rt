@@ -57,9 +57,9 @@ test('Telegram spento: la pagina Bot mostra solo l\'interruttore e il recall si 
     await expect(page.getByText('Topic per materia')).toHaveCount(0)
     await page.reload()
     await expect(page.getByTestId('telegram-enabled').getByLabel('Usa Telegram')).not.toBeChecked()
-    await page.goto(`/lezioni/${lesson.id}/recall`)
-    await expect(page.getByRole('heading', { name: 'Sessione', exact: true })).toBeVisible()
-    await expect(page.getByTestId('place-toggle')).toHaveCount(0)
+    await page.goto(`/lezioni/${lesson.id}/sessione`)
+    await expect(page.getByRole('group', { name: 'Tipo di domanda' })).toBeVisible()
+    await expect(page.getByText('Telegram')).toHaveCount(0)
   } finally {
     // gli altri test (stesso server) lo vogliono acceso
     await page.request.put('/api/v1/settings/telegram/enabled', { data: { enabled: true }, headers: authHeaders() })

@@ -115,11 +115,12 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
     {!paragraph && !changed && <div><h3 className="mb-1 text-meta font-semibold">Correzione proposta</h3><p className="rounded-lg bg-muted p-3">{issue.suggested_fix ?? issue.claim}</p></div>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
-    {changed ? <>
-      <Badge tone="warning">Testo cambiato a mano</Badge>
+    {changed && <>
+      <Badge tone="warning">Testo cambiato</Badge>
       <p className="text-meta text-muted-foreground line-through">{issue.claim}</p>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={onCloseIssue}>Chiudi l'issue</Button><Button size="sm" variant="outline" disabled={busy || !issue.unit_id} onClick={onRecheck}>Verifica di nuovo l'unità {issue.unit_id}</Button></div>
-    </> : item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
+    </>}
+    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
       <label htmlFor="review-edit" className="text-meta">{paragraph ? 'Testo del paragrafo' : 'Testo corretto'}</label>
       <Textarea id="review-edit" autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !text.trim()}>Salva modifica</Button><Button size="sm" variant="ghost" onClick={() => onEditing(false)}>Annulla</Button></div>

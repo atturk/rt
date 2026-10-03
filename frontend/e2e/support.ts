@@ -90,3 +90,50 @@ export async function scrollDocumentTo(page: Page, target: Locator) {
     .toBe(true)
   await target.first().scrollIntoViewIfNeeded()
 }
+
+/** Senza approvazione automatica della scaletta (B9): i test approvano o chiedono modifiche a mano. */
+export async function disableOutlineTimer(request: APIRequestContext) {
+  const res = await request.put('/api/v1/settings/preferences', { headers: authHeaders(), data: { secondi_approvazione: 0 } })
+  expect(res.ok(), await res.text()).toBeTruthy()
+}
+
+/** Importazione dell'audio dall'API, come il popup Nuova lezione; ritorna l'id del job. */
+export async function importAudioApi(
+  request: APIRequestContext,
+  audio: string,
+  fields: { materia: string; argomenti: string; date: string; run: boolean; withReview?: boolean },
+) {
+  const res = await request.post('/api/v1/lessons', {
+    headers: authHeaders(),
+    multipart: {
+      audio: { name: 'demo_lecture.wav', mimeType: 'audio/wav', buffer: readFileSync(audio) },
+      date: fields.date,
+      materia: fields.materia,
+      argomenti: fields.argomenti,
+      docente: '',
+      ora: '',
+      run: String(fields.run),
+      mock: 'true',
+      auto_accept: 'false',
+      with_review: String(fields.withReview ?? fields.run),
+    },
+  })
+  expect(res.ok(), await res.text()).toBeTruthy()
+  return ((await res.json()) as { job_id: string }).job_id
+}
+
+/** Job della lezione nel pannello Dettagli: l'elenco si apre con "ultimi 5". */
+export async function lessonJobs(page: Page) {
+  const details = await openLessonDetails(page)
+  const jobs = page.getByTestId('jobs-panel')
+  if (!(await jobs.isVisible())) await details.getByRole('button', { name: /^ultimi 5/ }).click()
+  await expect(jobs).toBeVisible()
+  return jobs
+}
+
+/** Riesegue una fase dal menu ⋯ della sua riga nel pannello Dettagli. */
+export async function runPhase(page: Page, label: string) {
+  const details = await openLessonDetails(page)
+  await details.getByRole('button', { name: `Azioni su ${label}` }).click()
+  await page.getByRole('menu', { name: `Azioni su ${label}` }).getByRole('menuitem', { name: 'Riesegui', exact: true }).click()
+}

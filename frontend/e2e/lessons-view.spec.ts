@@ -101,7 +101,7 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   if (ready.length) {
     await bar.getByRole('link', { name: 'Recall sulle lezioni selezionate' }).click()
     await expect(page).toHaveURL(new RegExp(`/recall/selezione/${ready.join(',')}$`))
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Recall della selezione')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(`Selezione (${ready.length} lezioni)`)
   }
   await page.goto('/')
   await page.getByRole('button', { name: 'Per data' }).click()

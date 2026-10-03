@@ -135,6 +135,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             <form onSubmit={handleUploadSubmit} className="flex flex-col gap-2.5">
               <Input
                 type="file"
+                aria-label="PDF o foto"
                 multiple
                 accept={ACCEPT}
                 className="h-auto py-1 text-meta"
@@ -373,7 +374,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
         {visibleIdeas.length === 0 && (
           <p className="text-meta text-muted-foreground">
-            Nessuna idea da mostrare. Clicca sull'icona per analizzare la lezione.
+            Nessuna idea.
           </p>
         )}
 
