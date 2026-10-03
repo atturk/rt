@@ -120,6 +120,46 @@ export function useRefreshLesson(id: number) {
     ])
 }
 
+export function useUpdateLessonMetadata(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: (body: Schemas['LessonMetadataUpdate']) =>
+      unwrap(api.PATCH('/api/v1/lessons/{lesson_id}/metadata', { params: { path: { lesson_id: id } }, body })),
+    onSuccess: () => {
+      void refresh()
+    },
+  })
+}
+
+export function usePipelineVersion(id: number) {
+  return useQuery({
+    queryKey: ['lesson', id, 'pipeline-version'] as const,
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/document/pipeline-version', { params: { path: { lesson_id: id } } })),
+    enabled: Number.isFinite(id),
+  })
+}
+
+export function useRestorePipeline(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: (leaseToken?: string | null) =>
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/restore-pipeline', { params: { path: { lesson_id: id } }, body: { lease_token: leaseToken } })),
+    onSuccess: () => {
+      void refresh()
+    },
+  })
+}
+
+export function useDeleteLesson(id: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: id } } })),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.allLessons })
+    },
+  })
+}
+
 export type PhaseName = 'prepare' | 'outline' | 'rewrite' | 'review' | 'build'
 
 /** Validazione manuale di una fase (Option su "Esegui"): VALID con gli input attuali, senza rieseguirla. */

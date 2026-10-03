@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType } from 'react'
-import { Navigate, type RouteObject } from 'react-router'
+import { Navigate, useParams, type RouteObject } from 'react-router'
 
 import { Layout } from '@/components/Layout'
 import { SetupGate } from './setupGate'
@@ -20,26 +20,42 @@ function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType): Co
 const lessons = () => import('./lessons')
 const jobs = () => import('./jobs')
 const recall = () => import('./recall')
-const images = () => import('./images')
 const settings = () => import('./settings')
 
 const bare = { bare: true }
 
+function RedirectSubjectRecall() {
+  const { materia } = useParams()
+  return <Navigate to={materia ? `/?materia=${encodeURIComponent(materia)}` : '/'} replace />
+}
+
+function RedirectLessonPanel({ panel }: { panel: string }) {
+  const { lessonId } = useParams()
+  return <Navigate to={`/lezioni/${lessonId}?panel=${panel}`} replace />
+}
+
+function RedirectLesson() {
+  const { lessonId } = useParams()
+  return <Navigate to={`/lezioni/${lessonId}`} replace />
+}
+
 const lessonsArea: Area = {
   routes: [
     { index: true, Component: page(lessons, (m) => m.DashboardPage), handle: bare },
+    { path: 'lezioni', element: <Navigate to="/" replace /> },
     { path: 'lezioni/nuova/:jobId', Component: page(lessons, (m) => m.NewLessonPage), handle: bare },
     { path: 'lezioni/:lessonId', Component: page(lessons, (m) => m.LessonPage), handle: bare },
-    { path: 'lezioni/:lessonId/rilevanza', Component: page(() => import('./relevance'), (m) => m.RelevancePage) },
+    { path: 'lezioni/:lessonId/rilevanza', element: <RedirectLessonPanel panel="classificatore" /> },
+    { path: 'lezioni/:lessonId/relevance', element: <RedirectLessonPanel panel="classificatore" /> },
   ],
 }
 
 const jobsArea: Area = {
   routes: [
-    { path: 'importa', Component: page(jobs, (m) => m.ImportPage) },
+    { path: 'importa', element: <Navigate to="/" replace /> },
     { path: 'job', Component: page(jobs, (m) => m.JobsPage), handle: bare },
     { path: 'job/:jobId', Component: page(jobs, (m) => m.JobPage), handle: bare },
-    { path: 'lezioni/:lessonId/outline', Component: page(jobs, (m) => m.OutlinePage) },
+    { path: 'lezioni/:lessonId/outline', element: <RedirectLesson /> },
   ],
 }
 
@@ -52,30 +68,33 @@ const studyArea: Area = {
 }
 
 const reviewsArea: Area = {
-  routes: [{ path: 'review', Component: page(() => import('./reviews'), (m) => m.ReviewsPage) }],
+  routes: [{ path: 'review', element: <Navigate to="/" replace /> }],
 }
 
 const reviewArea: Area = {
-  routes: [{ path: 'lezioni/:lessonId/revisione', Component: page(() => import('./review'), (m) => m.ReviewPage) }],
+  routes: [{ path: 'lezioni/:lessonId/revisione', element: <RedirectLessonPanel panel="verifica" /> }],
 }
 
 const recallArea: Area = {
   routes: [
-    { path: 'recall', Component: page(recall, (m) => m.RecallOverviewPage) },
-    { path: 'recall/materie/:materia', Component: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'recall/giorno/:day', Component: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.RecallPage) },
-    { path: 'lezioni/:lessonId/recall/domande', Component: page(recall, (m) => m.QuestionsPage) },
+    { path: 'recall', element: <Navigate to="/" replace /> },
+    { path: 'recall/materie', element: <Navigate to="/" replace /> },
+    { path: 'recall/materie/:materia', element: <RedirectSubjectRecall /> },
+    { path: 'recall/giorno', element: <Navigate to="/" replace /> },
+    { path: 'recall/giorno/:day', element: <Navigate to="/" replace /> },
+    { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/sessione', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/recall/domande', element: <RedirectLessonPanel panel="domande" /> },
   ],
 }
 
 const imagesArea: Area = {
   routes: [
-    { path: 'arricchimento', Component: page(images, (m) => m.ImagesIndex) },
-    { path: 'lezioni/:lessonId/arricchimento', Component: page(images, (m) => m.ImagesPage) },
-    { path: 'immagini', Component: page(images, (m) => m.ImagesIndex) },
-    { path: 'lezioni/:lessonId/immagini', Component: page(images, (m) => m.ImagesPage) },
+    { path: 'arricchimento', element: <Navigate to="/" replace /> },
+    { path: 'lezioni/:lessonId/arricchimento', element: <RedirectLessonPanel panel="arricchimento" /> },
+    { path: 'immagini', element: <Navigate to="/" replace /> },
+    { path: 'lezioni/:lessonId/immagini', element: <RedirectLessonPanel panel="arricchimento" /> },
   ],
 }
 

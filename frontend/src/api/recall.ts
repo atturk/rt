@@ -43,10 +43,23 @@ function useRecallMutation<TVars, TData>(id: number, fn: (vars: TVars) => Promis
   })
 }
 
+export type GenerateRecallOptions = {
+  qtype?: RecallType | null
+  count?: number | null
+  instructions?: string | null
+  unit_ids?: string[] | null
+  selection?: string | null
+  mock?: boolean
+}
+
 export function useGenerateRecall(id: number) {
-  return useRecallMutation(id, (qtype: RecallType | null) =>
-    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { qtype, mock: false } })),
-  )
+  return useRecallMutation(id, (options: GenerateRecallOptions | RecallType | null = null) => {
+    const body: Schemas['RecallGenerate'] =
+      typeof options === 'string' || options === null
+        ? { qtype: options ?? null, mock: false }
+        : { mock: false, ...options }
+    return unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body }))
+  })
 }
 
 export type RecallUnits = Schemas['RecallUnits']

@@ -5,13 +5,19 @@ export type PanelView = 'dettagli' | 'verifica' | 'domande' | 'classificatore' |
 
 export const PANEL_ID = 'lesson-side-panel'
 const PANEL_KEY = 'rt-lesson-side-panel'
+const VIEWS: readonly string[] = ['dettagli', 'verifica', 'domande', 'classificatore', 'arricchimento'] satisfies PanelView[]
+
+/** Evento del menu contestuale "Domande su questa parte": { units, text }. */
+export const OPEN_QUESTIONS_EVENT = 'rt-open-domande'
+
+export const isPanelView = (value: string | null | undefined): value is PanelView => !!value && VIEWS.includes(value)
 
 /** Pannello laterale aperto o chiuso: la scelta resta nel browser. Chiuso di default (il contenuto davanti). */
 export function usePanelView(): [PanelView | null, (view: PanelView | null) => void] {
   const [view, setView] = useState<PanelView | null>(() => {
     try {
       const saved = localStorage.getItem(PANEL_KEY)
-      return saved === 'dettagli' || saved === 'verifica' || saved === 'domande' || saved === 'classificatore' || saved === 'arricchimento' ? saved : null
+      return isPanelView(saved) ? saved : null
     } catch {
       return null
     }

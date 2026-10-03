@@ -10,7 +10,7 @@ import { LessonPanel } from '@/components/lesson/LessonPanel'
 import type { LessonEditorActions } from '@/components/lesson/LessonEditor'
 import { LessonOutline } from '@/components/lesson/LessonOutline'
 import { isRewriting, liveRewrite } from '@/components/lesson/lessonWorkflow'
-import { PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
+import { isPanelView, OPEN_QUESTIONS_EVENT, PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
@@ -172,15 +172,37 @@ export function LessonPage() {
   const [editingDocument, setEditingDocument] = useState(false)
   const [storedPanel, storePanel] = usePanelView()
   const [params, setParams] = useSearchParams()
-  const requestedPanel = params.get('pannello')
-  const panel = requestedPanel === 'verifica' ? 'verifica' : storedPanel
+  // ?panel=… (link da altre pagine e redirect delle pagine tolte) apre quel pannello
+  const requestedPanel = params.get('panel')
+  const panel = isPanelView(requestedPanel) ? requestedPanel : storedPanel
+  // Domande su una parte: unità (dal link ?unita= o dal menu contestuale) e testo selezionato
+  const [selectionContext, setSelectionContext] = useState<{ units: string[]; text: string } | null>(() => {
+    const units = params.get('unita')?.split(',').filter(Boolean)
+    return units?.length ? { units, text: '' } : null
+  })
   const setPanel = (next: PanelView | null) => {
     storePanel(next)
-    const query = new URLSearchParams(params)
-    query.delete('pannello')
-    query.delete('issue')
-    setParams(query, { replace: true })
+    if (next !== 'domande') setSelectionContext(null)
+    if (params.has('panel') || params.has('issue') || params.has('unita')) {
+      const query = new URLSearchParams(params)
+      query.delete('panel')
+      query.delete('issue')
+      query.delete('unita')
+      setParams(query, { replace: true })
+    }
   }
+  const openQuestions = useRef(setPanel)
+  useEffect(() => { openQuestions.current = setPanel })
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ units: string[]; text: string }>).detail
+      if (!detail) return
+      setSelectionContext(detail)
+      openQuestions.current('domande')
+    }
+    window.addEventListener(OPEN_QUESTIONS_EVENT, handler)
+    return () => window.removeEventListener(OPEN_QUESTIONS_EVENT, handler)
+  }, [])
   const [editorText, setEditorText] = useState<{ id: number; markdown: string } | null>(null)
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
@@ -227,7 +249,20 @@ export function LessonPage() {
         </article>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
-      {panel && <LessonPanel view={panel} lesson={l} sections={sections} editingDocument={editingDocument} reviewMarkdown={editorText?.id === id ? editorText.markdown : document.data?.markdown} beforeReviewAction={async () => { await editorActions.current?.flush() }} onClose={() => setPanel(null)} />}
+      {panel && (
+        <LessonPanel
+          view={panel}
+          lesson={l}
+          sections={sections}
+          editingDocument={editingDocument}
+          reviewMarkdown={editorText?.id === id ? editorText.markdown : document.data?.markdown}
+          beforeReviewAction={async () => { await editorActions.current?.flush() }}
+          onClose={() => setPanel(null)}
+          onSwitchView={(next) => setPanel(next)}
+          selectionContext={selectionContext}
+          onClearSelection={() => setSelectionContext(null)}
+        />
+      )}
     </AudioProvider>
   )
 }

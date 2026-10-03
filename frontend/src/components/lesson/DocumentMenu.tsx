@@ -1,7 +1,7 @@
-import { BarChart3, CircleHelp, Copy, Image, LayoutGrid, Play, SendHorizontal, ShieldCheck, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { BarChart3, Brain, Copy, Image, LayoutGrid, Play, SendHorizontal, ShieldCheck, Sparkles, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useEnrichmentActions } from '@/api/enrichment'
@@ -10,6 +10,7 @@ import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { blockIndex, documentBlocks, partLabel, partOfRange } from '@/lib/documentParts'
+import { OPEN_QUESTIONS_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
 
 type Point = { x: number; y: number }
@@ -39,7 +40,6 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
   const [generate, setGenerate] = useState<Part | null>(null)
   const [review, setReview] = useState<{ jobId: string; units: string[] } | null>(null)
   const [queued, setQueued] = useState<string[] | null>(null)
-  const navigate = useNavigate()
   const run = useRunJob(lessonId)
   // Il documento (l'<article> del DocumentView) sta dentro questo contenitore.
   const root = useRef<HTMLDivElement>(null)
@@ -86,7 +86,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
           <Sparkles className="size-4 shrink-0" aria-hidden />
           <span className="flex-1">
             Richiesta inviata{queued.length ? ` per ${partLabel(queued)}` : ''}: l'elemento si prepara in{' '}
-            <Link to={`/lezioni/${lessonId}/arricchimento`} className="font-semibold text-link underline-offset-2 hover:underline">Arricchimento</Link>.
+            <Link to={`/lezioni/${lessonId}?panel=arricchimento`} className="font-semibold text-link underline-offset-2 hover:underline">Arricchimento</Link>.
           </span>
           <IconButton label="Chiudi" icon={X} onClick={() => setQueued(null)} className="-my-1.5 -mr-2" />
         </div>
@@ -103,9 +103,9 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
             { label: 'Genera', icon: Sparkles, unavailable: unavailable(menu), onSelect: () => setGenerate(menu) },
             {
               label: 'Domande su questa parte',
-              icon: CircleHelp,
+              icon: Brain,
               unavailable: unavailable(menu),
-              onSelect: () => navigate(`/studio/lezione/${lessonId}?${new URLSearchParams({ unita: menu.units.join(',') })}`),
+              onSelect: () => window.dispatchEvent(new CustomEvent(OPEN_QUESTIONS_EVENT, { detail: { units: menu.units, text: menu.text } })),
             },
             {
               label: 'Verifica questa parte',
@@ -348,7 +348,7 @@ function PartReviewStatus({ lessonId, jobId, units, onDismiss }: { lessonId: num
         {!finished
           ? `Verifico ${partLabel(units)}…`
           : state === 'succeeded'
-            ? <>Verifica di {partLabel(units)} completata. <Link to={`/lezioni/${lessonId}/revisione`} className="font-semibold text-link underline-offset-2 hover:underline">Apri la revisione</Link></>
+            ? <>Verifica di {partLabel(units)} completata. <Link to={`/lezioni/${lessonId}?panel=verifica`} className="font-semibold text-link underline-offset-2 hover:underline">Apri la verifica</Link></>
             : `Verifica di ${partLabel(units)} non riuscita${job.data?.error ? `: ${job.data.error}` : '.'}`}
       </span>
       {finished && <IconButton label="Chiudi" icon={X} onClick={onDismiss} className="-my-1.5 -mr-2" />}
