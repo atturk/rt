@@ -46,6 +46,13 @@ def get_lesson(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return lesson_service.lesson_detail(lesson_id, lesson_dir)
 
 
+@router.patch("/lessons/{lesson_id}/metadata", response_model=schemas.LessonDetail,
+              summary="Modifica i metadati e rinomina la cartella; 409 con un job attivo")
+def patch_metadata(lesson_id: int, body: schemas.LessonMetadataUpdate, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.lesson_metadata_service import update_metadata
+    return update_metadata(lesson_id, lesson_dir, body.model_dump(exclude_unset=True))
+
+
 @router.get("/lessons/{lesson_id}/phases", response_model=schemas.PhaseReport,
             summary="Freschezza delle fasi e report di validazione di outline e draft")
 def get_phases(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):

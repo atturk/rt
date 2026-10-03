@@ -226,6 +226,11 @@ def compute_source_fingerprint(
             in_hashes.append("edits:" + compute_file_sha256(lesson_path(lesson_dir, DOCUMENT_EDITS_FILE)))
         if fs.isfile(lesson_path(lesson_dir, ENRICHMENT_MANIFEST)):
             in_hashes.append("enrichment:" + compute_file_sha256(lesson_path(lesson_dir, ENRICHMENT_MANIFEST)))
+        from rt.core.state import read_info_yaml
+        info_path = lesson_path(lesson_dir, "info.yaml")
+        info = read_info_yaml(info_path) if fs.isfile(info_path) else {}
+        if info.get("metadati_modificati") == "true":
+            in_hashes.append("metadata:" + str([info.get(k, "") for k in ("titolo", "materia", "data", "ora", "docente")]))
         return compute_string_sha256("|".join(in_hashes) + f"|inputs_v2|{proc_ver}")
 
     return compute_string_sha256(f"unknown_{phase_name}|{proc_ver}")
@@ -234,6 +239,10 @@ def compute_source_fingerprint(
 def _legacy_build_fingerprint(lesson_dir: str) -> Optional[str]:
     """Impronta del build nel formato precedente, valida solo senza immagini posizionate."""
     if any(fs.isfile(lesson_path(lesson_dir, name)) for name in (IMAGE_PLACEMENT_FILE, DOCUMENT_EDITS_FILE, ENRICHMENT_MANIFEST)):
+        return None
+    from rt.core.state import read_info_yaml
+    info_path = lesson_path(lesson_dir, "info.yaml")
+    if fs.isfile(info_path) and read_info_yaml(info_path).get("metadati_modificati") == "true":
         return None
     in_hashes = [compute_file_sha256(lesson_path(lesson_dir, fn)) for fn in _LEGACY_BUILD_INPUT_FILES]
     return compute_string_sha256("|".join(in_hashes) + f"|{PROCESSOR_VERSIONS['build']}")

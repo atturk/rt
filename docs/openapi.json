@@ -258,6 +258,13 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "ora": {
+            "default": "",
+            "description": "Ora della lezione (HH:MM, facoltativa)",
+            "pattern": "^(?:(?:[01]\\d|2[0-3]):[0-5]\\d)?$",
+            "title": "Ora",
+            "type": "string"
+          },
           "run": {
             "default": false,
             "description": "True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')",
@@ -2919,6 +2926,11 @@
             "title": "Materia",
             "type": "string"
           },
+          "ora": {
+            "default": "",
+            "title": "Ora",
+            "type": "string"
+          },
           "outline_approved": {
             "default": false,
             "title": "Outline Approved",
@@ -3105,6 +3117,70 @@
         "title": "LessonImages",
         "type": "object"
       },
+      "LessonMetadataUpdate": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "docente": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docente"
+          },
+          "materia": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materia"
+          },
+          "ora": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ora"
+          },
+          "titolo": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titolo"
+          }
+        },
+        "title": "LessonMetadataUpdate",
+        "type": "object"
+      },
       "LessonRecallStats": {
         "properties": {
           "answers": {
@@ -3220,6 +3296,11 @@
           "materia": {
             "default": "",
             "title": "Materia",
+            "type": "string"
+          },
+          "ora": {
+            "default": "",
+            "title": "Ora",
             "type": "string"
           },
           "path": {
@@ -10783,6 +10864,105 @@
         "summary": "Avvia la pipeline o una fase sulla lezione (come 'rt run' o 'rt <fase>')",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/metadata": {
+      "patch": {
+        "operationId": "patch_metadata_api_v1_lessons__lesson_id__metadata_patch",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonMetadataUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Modifica i metadati e rinomina la cartella; 409 con un job attivo",
+        "tags": [
+          "lezioni"
         ]
       }
     },

@@ -9,7 +9,35 @@ from typing import Any, Dict, List, Literal, Optional
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
 NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mista"]
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class LessonMetadataUpdate(BaseModel):
+    titolo: Optional[str] = Field(None, max_length=180)
+    materia: Optional[str] = Field(None, max_length=80)
+    data: Optional[str] = None
+    ora: Optional[str] = None
+    docente: Optional[str] = Field(None, max_length=180)
+
+    @field_validator('titolo', 'materia', 'data', 'ora', 'docente')
+    @classmethod
+    def validate_metadata(cls, value, info):
+        if value is None or any(ord(c) < 32 for c in value):
+            raise ValueError('Il campo deve essere una stringa su una sola riga.')
+        value = value.strip()
+        if info.field_name in ('titolo', 'materia') and not value:
+            raise ValueError('Il campo non può essere vuoto.')
+        if info.field_name == 'data':
+            from datetime import date
+            import re
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                raise ValueError('Data non valida: usa AAAA-MM-GG.')
+            date.fromisoformat(value)
+        if info.field_name == 'ora' and value:
+            import re
+            if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value):
+                raise ValueError('Ora non valida: usa HH:MM.')
+        return value.upper() if info.field_name == 'materia' else value
 
 
 class LessonSummary(BaseModel):
@@ -17,6 +45,7 @@ class LessonSummary(BaseModel):
     folder_name: str
     path: str
     data: str = ""
+    ora: str = ""
     materia: str = ""
     titolo: str = ""
     argomenti: str = ""

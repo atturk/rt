@@ -683,6 +683,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Modifica i metadati e rinomina la cartella; 409 con un job attivo */
+        patch: operations["patch_metadata_api_v1_lessons__lesson_id__metadata_patch"];
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/outline": {
         parameters: {
             query?: never;
@@ -2473,6 +2490,12 @@ export interface components {
              */
             mock: boolean;
             /**
+             * Ora
+             * @description Ora della lezione (HH:MM, facoltativa)
+             * @default
+             */
+            ora: string;
+            /**
              * Run
              * @description True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')
              * @default false
@@ -3705,6 +3728,11 @@ export interface components {
              */
             materia: string;
             /**
+             * Ora
+             * @default
+             */
+            ora: string;
+            /**
              * Outline Approved
              * @default false
              */
@@ -3822,6 +3850,19 @@ export interface components {
             /** Images */
             images: components["schemas"]["LessonImage"][];
         };
+        /** LessonMetadataUpdate */
+        LessonMetadataUpdate: {
+            /** Data */
+            data?: string | null;
+            /** Docente */
+            docente?: string | null;
+            /** Materia */
+            materia?: string | null;
+            /** Ora */
+            ora?: string | null;
+            /** Titolo */
+            titolo?: string | null;
+        };
         /** LessonRecallStats */
         LessonRecallStats: {
             /** Answers */
@@ -3886,6 +3927,11 @@ export interface components {
              * @default
              */
             materia: string;
+            /**
+             * Ora
+             * @default
+             */
+            ora: string;
             /** Path */
             path: string;
             /**
@@ -8249,6 +8295,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_metadata_api_v1_lessons__lesson_id__metadata_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonMetadataUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDetail"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
