@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 
-import { STATE_LABELS, formatCost, type Lesson } from './format'
+import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from './format'
 import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
 import { dayPath, subjectPath } from './recallView'
 
@@ -161,4 +161,16 @@ export function groupRecallPath(group: LessonGroup, grouping: LessonsGrouping): 
   if (grouping === 'data') return dayPath(group.key)
   if (grouping === 'materia') return subjectPath(group.key)
   return null
+}
+
+/** Perché il Markdown di alcune lezioni selezionate non si scarica (il download in blocco usa solo i documenti finali). */
+export function markdownExportNote(lessons: Lesson[]): { unavailable: string | null; hint: string | null } {
+  if (lessons.length === 0) return { unavailable: 'nessuna lezione selezionata', hint: null }
+  const missing = lessons.filter((l) => l.phases.build !== 'VALID')
+  if (missing.length === 0) return { unavailable: null, hint: null }
+  const why = 'il Markdown in blocco usa il documento finale, che manca o non è aggiornato (fase Documento)'
+  if (missing.length === lessons.length) {
+    return { unavailable: lessons.length === 1 ? `${why}; dalla pagina della lezione si scarica l'anteprima` : `nessuna lezione selezionata ha il documento finale: ${why}`, hint: null }
+  }
+  return { unavailable: null, hint: `${lessons.length - missing.length} di ${lessons.length}: ${missing.map(lessonTitle).join(', ')} senza documento finale` }
 }

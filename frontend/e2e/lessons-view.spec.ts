@@ -1,6 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { expect, test, type APIRequestContext } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, authHeaders, loginViaLink } from './support'
 
 // Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c): gruppi per data, materia o docente,
 // ordinamento, popup Info, selezione con lo scaricamento. Le scelte restano nel browser.
@@ -121,4 +123,59 @@ test('"/" porta nel campo di ricerca', async ({ page }) => {
   await page.locator('body').press('/')
   await expect(page.getByLabel('Cerca')).toBeFocused()
   await expect(page.getByLabel('Cerca')).toHaveValue('')
+})
+
+const AUDIO = fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url))
+
+/** Lezione nuova dall'audio (solo setup, job ingest_audio): da eliminare senza toccare quelle di prova. */
+async function newLesson(request: APIRequestContext, materia: string): Promise<number> {
+  const res = await request.post('/api/v1/lessons', {
+    headers: authHeaders(),
+    multipart: { audio: { name: 'lezione.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) }, date: '2026-01-15', materia, mock: 'true' },
+  })
+  expect(res.ok()).toBeTruthy()
+  const { job_id } = (await res.json()) as { job_id: string }
+  let lessonId: number | null = null
+  await expect.poll(async () => {
+    const job = await apiGet<{ state: string; lesson_id: number | null }>(request, `/jobs/${job_id}`)
+    lessonId = job.state === 'succeeded' ? job.lesson_id : null
+    return job.state
+  }, { timeout: 90_000 }).toBe('succeeded')
+  return lessonId!
+}
+
+test('selezione: Elimina le lezioni selezionate con la conferma scritta; il Markdown dice perché non si scarica', async ({ page }) => {
+  test.setTimeout(240_000)
+  await loginViaLink(page)
+  const first = await newLesson(page.request, 'ISTOLOGIA')
+  const second = await newLesson(page.request, 'GENETICA')
+  await page.goto('/')
+  const row = (id: number) => page.locator(`[data-testid=lesson-row][data-lesson-id="${id}"]`)
+  await expect(row(first)).toBeVisible()
+  await page.getByRole('button', { name: 'Seleziona' }).click()
+  await row(first).getByRole('checkbox').check()
+  await row(second).getByRole('checkbox').check()
+  const bar = page.getByTestId('selection-bar')
+
+  // Senza documento finale il Markdown in blocco non c'è: il suggerimento dice perché.
+  const markdown = bar.getByRole('button', { name: 'Scarica Markdown' })
+  await expect(markdown).toHaveAttribute('aria-disabled', 'true')
+  await markdown.hover()
+  await expect(page.getByRole('tooltip').filter({ hasText: 'documento finale' })).toBeVisible()
+
+  await bar.getByRole('button', { name: 'Elimina le lezioni selezionate' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Eliminare le 2 lezioni selezionate?' })
+  await expect(dialog).toBeVisible()
+  const confirm = dialog.getByRole('button', { name: 'Elimina', exact: true })
+  await expect(confirm).toBeDisabled()
+  await dialog.getByLabel(/Scrivi confermo/).fill('confermo')
+  await confirm.click()
+  await expect(dialog).toBeHidden()
+  await expect(row(first)).toHaveCount(0)
+  await expect(row(second)).toHaveCount(0)
+  await expect(bar.getByTestId('selection-count')).toHaveText('0 selezionate')
+  for (const id of [first, second]) {
+    expect((await page.request.get(`/api/v1/lessons/${id}`, { headers: authHeaders() })).status()).toBe(404)
+  }
+  await bar.getByRole('button', { name: 'Annulla' }).click()
 })

@@ -77,10 +77,13 @@ export function IconLink({ label, icon: Icon, side = 'bottom', variant, active, 
 }
 
 /** Come IconLink, per i download (href all'API, attributo download). */
-export function IconAnchor({ label, icon: Icon, side = 'bottom', variant, unavailable, className, ...props }: Omit<Common, 'active' | 'badge'> & Omit<ComponentProps<'a'>, 'children'>) {
+export function IconAnchor({ label, icon: Icon, side = 'bottom', variant, unavailable, hint, className, ...props }: Omit<Common, 'active' | 'badge'> & Omit<ComponentProps<'a'>, 'children'> & {
+  /** Nota in più nel suggerimento (collegata con aria-describedby), per esempio cosa resta fuori. */
+  hint?: string | null
+}) {
   if (unavailable) return <IconButton label={label} icon={Icon} side={side} variant={variant} unavailable={unavailable} className={className} />
   return (
-    <Tooltip content={label} side={side} describe={false}>
+    <Tooltip content={hint ? `${label}: ${hint}` : label} side={side} describe={!!hint}>
       {(trigger) => (
         <a aria-label={label} className={iconButtonClass({ variant, className })} {...props} {...trigger}>
           <Icon aria-hidden />

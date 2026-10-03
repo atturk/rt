@@ -11,7 +11,7 @@ import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
-  GROUPING_LABELS, SORT_OPTIONS, STATUS_LABELS, groupLabel, groupRecallPath, lessonInfo, lessonStatus, lessonSubtitle,
+  GROUPING_LABELS, SORT_OPTIONS, markdownExportNote, STATUS_LABELS, groupLabel, groupRecallPath, lessonInfo, lessonStatus, lessonSubtitle,
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
@@ -335,9 +335,11 @@ function exportUrl(lessons: Lesson[], format: 'markdown' | 'zip'): string {
   return `/api/v1/lesson-exports?${new URLSearchParams([...lessons.map((l) => ['ids', String(l.id)]), ['format', format], ['name', 'Lezioni selezionate']])}`
 }
 
-/** Barra in basso con le azioni sulla selezione (schermata 01b): Scarica Markdown, Scarica zip, Annulla. */
-export function SelectionBar({ lessons, onCancel }: { lessons: Lesson[]; onCancel: () => void }) {
+/** Barra in basso con le azioni sulla selezione (schermata 01b): Scarica Markdown, Scarica zip, Elimina, Annulla. */
+export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson[]; onCancel: () => void; onDeleted: (ids: number[]) => void }) {
   const finals = lessons.filter((l) => l.phases.build === 'VALID')
+  const markdown = markdownExportNote(lessons)
+  const [deleting, setDeleting] = useState(false)
   return (
     <div
       role="region"
@@ -354,10 +356,87 @@ export function SelectionBar({ lessons, onCancel }: { lessons: Lesson[]; onCance
         side="top"
         href={exportUrl(finals, 'markdown')}
         download
-        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : finals.length === 0 ? 'nessuna lezione selezionata ha il documento finale' : null}
+        unavailable={markdown.unavailable}
+        hint={markdown.hint}
       />
       <IconAnchor label="Scarica zip" icon={Archive} side="top" href={exportUrl(lessons, 'zip')} download unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
+      <IconButton
+        label="Elimina le lezioni selezionate"
+        icon={Trash2}
+        side="top"
+        aria-haspopup="dialog"
+        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+        onClick={() => setDeleting(true)}
+      />
       <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
+      {deleting && <DeleteSelection lessons={lessons} onClose={() => setDeleting(false)} onDeleted={onDeleted} />}
     </div>
+  )
+}
+
+type DeleteFailure = { lesson: Lesson; error: string }
+
+/** Conferma e eliminazione delle lezioni selezionate, una per una (DELETE /lessons/{id}); gli errori restano per lezione. */
+function DeleteSelection({ lessons, onClose, onDeleted }: { lessons: Lesson[]; onClose: () => void; onDeleted: (ids: number[]) => void }) {
+  const [targets] = useState(lessons)
+  const [typed, setTyped] = useState('')
+  const [failures, setFailures] = useState<DeleteFailure[] | null>(null)
+  const inputId = useId()
+  const client = useQueryClient()
+  const deletion = useMutation({
+    mutationFn: async () => {
+      const done: number[] = []
+      const failed: DeleteFailure[] = []
+      for (const lesson of targets) {
+        try {
+          await unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: lesson.id } } }))
+          done.push(lesson.id)
+        } catch (error) {
+          failed.push({ lesson, error: errorMessage(error) })
+        }
+      }
+      return { done, failed }
+    },
+    onSuccess: ({ done, failed }) => {
+      void client.invalidateQueries({ queryKey: ['lessons'] })
+      onDeleted(done)
+      if (failed.length) setFailures(failed)
+      else onClose()
+    },
+  })
+  const count = targets.length === 1 ? 'la lezione selezionata' : `le ${targets.length} lezioni selezionate`
+  return (
+    <Modal open onClose={onClose} title={failures ? 'Alcune lezioni non sono state eliminate' : `Eliminare ${count}?`} testId="delete-selection">
+      {failures ? (
+        <div className="mt-4 flex flex-col gap-3 text-meta">
+          <ul className="flex flex-col gap-1.5" data-testid="delete-failures">
+            {failures.map(({ lesson, error }) => (
+              <li key={lesson.id}><span className="font-semibold">{lessonTitle(lesson)}</span>: <span className="text-danger">{error}</span></li>
+            ))}
+          </ul>
+          <div className="flex justify-end"><Button size="sm" onClick={onClose}>Chiudi</Button></div>
+        </div>
+      ) : (
+        <form
+          className="mt-4 flex flex-col gap-2 text-meta"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (typed === 'confermo') deletion.mutate()
+          }}
+        >
+          <ul className="mb-1 flex max-h-40 flex-col gap-0.5 overflow-auto text-body">
+            {targets.map((lesson) => <li key={lesson.id}>{lessonTitle(lesson)}</li>)}
+          </ul>
+          <label htmlFor={inputId}>Eliminare definitivamente {targets.length === 1 ? 'la lezione e tutti i suoi file' : 'queste lezioni e tutti i loro file'}? Scrivi confermo</label>
+          <input id={inputId} className="min-h-10 rounded-md border bg-card p-2 text-body" value={typed} autoFocus onChange={(event) => setTyped(event.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>Annulla</Button>
+            <Button type="submit" variant="destructive" size="sm" disabled={typed !== 'confermo' || deletion.isPending}>
+              {deletion.isPending ? 'Elimino…' : 'Elimina'}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
   )
 }

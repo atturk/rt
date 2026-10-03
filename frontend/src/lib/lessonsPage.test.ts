@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  formatDuration, groupLabel, groupRecallPath, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, shortDate, subjectName,
+  formatDuration, groupLabel, markdownExportNote, groupRecallPath, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, shortDate, subjectName,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -96,4 +96,20 @@ it('preferenze illeggibili tornano a quelle predefinite', () => {
   expect(parseLessonsPrefs('{"group":"docente","sort":"titolo"}')).toEqual({ group: 'docente', sort: 'titolo' })
   expect(parseLessonsPrefs('{"group":"mese"}')).toEqual({ group: 'data', sort: 'recenti' })
   expect(parseLessonsPrefs('non json')).toEqual({ group: 'data', sort: 'recenti' })
+})
+
+describe('markdownExportNote', () => {
+  it('nessuna selezione o nessun documento finale: non disponibile, con il motivo', () => {
+    expect(markdownExportNote([]).unavailable).toBe('nessuna lezione selezionata')
+    expect(markdownExportNote([lesson(1, { phases: { build: 'MISSING' } })]).unavailable).toMatch(/documento finale.*anteprima/)
+    expect(markdownExportNote([lesson(1, { phases: {} }), lesson(2, { phases: {} })]).unavailable).toMatch(/^nessuna lezione selezionata ha il documento finale/)
+  })
+  it('in parte: disponibile, il suggerimento dice quali restano fuori', () => {
+    const note = markdownExportNote([lesson(1), lesson(2, { phases: { build: 'STALE' } })])
+    expect(note.unavailable).toBeNull()
+    expect(note.hint).toBe('1 di 2: Lezione 2 senza documento finale')
+  })
+  it('tutte con il documento finale: nessuna nota', () => {
+    expect(markdownExportNote([lesson(1)])).toEqual({ unavailable: null, hint: null })
+  })
 })
