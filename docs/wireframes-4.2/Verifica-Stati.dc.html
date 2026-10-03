@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Verifica: stati del pannello</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.r{font-family:system-ui,-apple-system,'Helvetica Neue',sans-serif;color:#171717;background:#ffffff;font-size:15px;line-height:1.55}
+.mono{font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.meta{font-size:12px;color:#5c5c5c}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:0;background:transparent;color:#171717;padding:0;font:inherit;cursor:pointer}
+.ib.on{background:#f1f1f1}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid #d4d4d4;background:#ffffff;color:#171717;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.btn.pri{background:#dceee7;border-color:#dceee7;color:#155f52;font-weight:600}
+.btn.sm{height:30px;padding:0 10px;font-size:13px}
+.btn.big{height:48px;font-size:15px;justify-content:center}
+.kbd{font-size:11px;opacity:.6;font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.tc{display:inline-block;border:1px solid #d4d4d4;border-radius:8px;padding:0 6px;font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:12px;color:#5c5c5c;line-height:1.6}
+.lk{color:#155f52;font-weight:600;text-decoration:none;background:none;border:0;padding:0;font:inherit;font-size:13px;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:#f1f1f1;font-size:12px;color:#171717;border:0;font-family:inherit}
+.chip.on{background:#dceee7;color:#155f52;font-weight:600}
+.sec{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#5c5c5c}
+.card{border:1px solid #d4d4d4;border-radius:8px;padding:14px}
+.claim{background:#fce9a8;border-radius:3px;color:#3c311b}
+.under{text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#b8860b;text-decoration-thickness:2px;text-underline-offset:3px}
+.sel{background:rgba(21,95,82,.16)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:999px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:#5c5c5c}
+.field input,.field select,.field textarea{height:34px;border:1px solid #d4d4d4;border-radius:8px;padding:0 10px;font:inherit;font-size:14px;color:#171717;background:#ffffff}
+.field textarea{height:72px;padding:8px 10px;resize:none}
+.row{display:flex;align-items:center;gap:8px}
+.hr{height:1px;background:#e8e8e8}
+a{color:#155f52}a:hover{color:#0e4038}
+</style>
+</helmet>
+<div class="r" style="width: 1752px; height: 900px; padding: 40px; display: flex; gap: 24px; align-items: flex-start">
+<div style="width: 400px; height: 820px; border: 1px solid #e8e8e8; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px 20px">
+<p style="margin: 0; font-size: 17px; font-weight: 600">Verifica con LLM</p>
+<button class="ib" aria-label="Chiudi il pannello"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div style="padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px">
+<p class="sec" style="margin: 0">Mai verificata</p>
+
+<p style="margin: 0">La lezione non è ancora stata verificata.</p>
+<button class="btn pri" style="align-self: flex-start"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg> Verifica tutta la lezione</button>
+
+</div>
+</div><div style="width: 400px; height: 820px; border: 1px solid #e8e8e8; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px 20px">
+<p style="margin: 0; font-size: 17px; font-weight: 600">Verifica con LLM</p>
+<button class="ib" aria-label="Chiudi il pannello"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div style="padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px">
+<p class="sec" style="margin: 0">In corso</p>
+
+<p style="margin: 0; font-weight: 600">Verifico la lezione…</p>
+<div style="height: 6px; border-radius: 8px; background: linear-gradient(to right, #155f52 45%, #f1f1f1 45%)"></div>
+<p class="meta" style="margin: 0">Unità 4 di 9 · 3 issue trovate finora</p>
+<button class="btn sm" style="align-self: flex-start">Interrompi</button>
+</div>
+</div><div style="width: 400px; height: 820px; border: 1px solid #e8e8e8; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px 20px">
+<p style="margin: 0; font-size: 17px; font-weight: 600">Verifica con LLM</p>
+<button class="ib" aria-label="Chiudi il pannello"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div style="padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px">
+<p class="sec" style="margin: 0">Tutte decise</p>
+
+<p style="margin: 0; font-weight: 600">10 issue decise: 6 accettate, 3 mantenute, 1 modificata.</p>
+<div class="card" style="background: #f7faf9; display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0; font-size: 14px">La pipeline aspettava queste decisioni: ora può creare il documento finale.</p>
+<button class="btn pri" style="align-self: flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg> Riprendi la pipeline</button>
+</div>
+<div class="row" style="gap: 6px"><button class="chip">Da decidere 0</button><button class="chip on">Decise 10</button></div>
+
+</div>
+</div><div style="width: 400px; height: 820px; border: 1px solid #e8e8e8; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px 20px">
+<p style="margin: 0; font-size: 17px; font-weight: 600">Verifica con LLM</p>
+<button class="ib" aria-label="Chiudi il pannello"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div style="padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 14px">
+<p class="sec" style="margin: 0">Testo cambiato a mano</p>
+
+<div class="card" style="display: flex; flex-direction: column; gap: 10px">
+<div class="row"><span style="font-weight: 600">Imprecisione</span><span class="chip">gravità media</span></div>
+<div style="background: #fff6d6; border-radius: 8px; padding: 8px 10px; font-size: 13px">Il passaggio a cui si riferisce è stato riscritto dopo la verifica: non lo trovo più nel testo.</div>
+<p style="margin: 0; font-size: 13px; color: #5c5c5c; text-decoration: line-through">Il gap anionico si calcola come sodio meno la somma di cloro e bicarbonato.</p>
+<div class="row" style="gap: 8px; flex-wrap: wrap">
+<button class="btn sm">Chiudi l'issue</button>
+<button class="btn sm">Verifica di nuovo l'unità 1.3</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1752, "height": 900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
