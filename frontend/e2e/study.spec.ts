@@ -94,22 +94,13 @@ test('Studio di una lezione dalla riga di Lezioni: lettura, domande generate per
   else await expect(page.getByTestId('study-done')).toContainText('Hai finito lo Studio della lezione.')
 })
 
-test('Studio di un gruppo dalla pagina Lezioni e dall\'intestazione della lezione; telefono', async ({ page }) => {
+test('Studio dall\'intestazione della lezione; telefono', async ({ page }) => {
   await loginViaLink(page)
   const l = await lesson(page, 'BIOCHIMICA')
-  await page.goto('/')
-  await page.getByRole('button', { name: 'Per materia' }).click()
-  const group = page.getByTestId('lesson-group').filter({ hasText: /Biochimica/i }).first()
-  await group.getByRole('link', { name: 'Studio su tutto il gruppo' }).click()
-  await expect(page).toHaveURL(/\/studio\/materia\/BIOCHIMICA$/)
-  await expect(page.getByTestId('study-text')).toBeVisible()
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(/unità 1 di \d+/)
-  await page.getByRole('link', { name: 'Esci' }).click()
-  await expect(page).toHaveURL(/\/$/)
 
-  // Intestazione della lezione: Studia.
+  // Intestazione della lezione: Studio (Recall accanto porta subito alle domande).
   await page.goto(`/lezioni/${l.id}`)
-  await page.getByTestId('lesson-actions').getByRole('link', { name: 'Studia' }).click()
+  await page.getByTestId('lesson-actions').getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 
   // Telefono: colonna a tutta larghezza e pulsante in basso sempre a portata.

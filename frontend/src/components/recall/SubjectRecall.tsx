@@ -28,11 +28,12 @@ import { SlideToggle } from '@/components/ui/slide-toggle'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { RECALL_TYPES, TYPE_OPTIONS, countStatus, recallTypeParam, startedAt, typeLabel } from '@/lib/recall'
 import { dayLabel } from '@/lib/lessonView'
-import { daySubject } from '@/lib/recallView'
+import { daySubject, selectionSubject } from '@/lib/recallView'
 
-/** "della materia" o "del giorno" (la sessione del giorno è una sessione per materia GIORNO:<data>). */
-const scopeNoun = (materia: string) => (dayOf(materia) ? 'del giorno' : 'della materia')
+/** "della materia", "del giorno" o "della selezione" (sessioni per materia GIORNO:<data> e LEZIONI:<id>,<id>). */
+const scopeNoun = (materia: string) => (dayOf(materia) ? 'del giorno' : isSelection(materia) ? 'della selezione' : 'della materia')
 const dayOf = (materia: string) => /^GIORNO:(\d{4}-\d{2}-\d{2})$/i.exec(materia)?.[1] ?? null
+const isSelection = (materia: string) => /^LEZIONI:\d+(,\d+)*$/i.test(materia)
 
 /** Le lezioni della materia con il loro pool; genera quello delle lezioni che non ne hanno. */
 function SubjectLessons({ materia, stats, lessons }: { materia: string; stats: LessonRecallStats[]; lessons: Map<number, Lesson> }) {
@@ -255,10 +256,11 @@ function SubjectSession({ materia, lessons }: { materia: string; lessons: Map<nu
 }
 
 /** /recall/materie/:materia: recall su tutte le lezioni di una materia; /recall/giorno/:day
- * (Recall del giorno): su tutte le lezioni di una data. */
+ * (Recall del giorno): su tutte le lezioni di una data; /recall/selezione/:ids: sulle lezioni
+ * selezionate nella pagina Lezioni. */
 export function SubjectRecallPage() {
   const params = useParams()
-  const materia = params.day ? daySubject(params.day) : (params.materia ?? '')
+  const materia = params.day ? daySubject(params.day) : params.ids ? selectionSubject(params.ids) : (params.materia ?? '')
   const day = dayOf(materia)
   const noun = scopeNoun(materia)
   const state = useSubjectRecall(materia)
@@ -271,12 +273,12 @@ export function SubjectRecallPage() {
         ← Recall: tutte le lezioni
       </Link>
       <h1 className="text-xl font-bold tracking-tight">
-        {day ? `Recall del giorno · ${dayLabel(day)}` : `Recall · ${state.data?.materia ?? materia}`}
+        {day ? `Recall del giorno · ${dayLabel(day)}` : isSelection(materia) ? `Recall della selezione · ${state.data?.lessons.length ?? '…'} lezioni` : `Recall · ${state.data?.materia ?? materia}`}
       </h1>
       {state.isPending && <p className="text-sm text-muted-foreground">Carico le lezioni…</p>}
       {state.isError && <Alert tone="danger">{errorMessage(state.error)}</Alert>}
       {state.data && state.data.lessons.length === 0 && (
-        <Alert tone="warning">{day ? 'Nessuna lezione in questo giorno.' : 'Nessuna lezione di questa materia.'}</Alert>
+        <Alert tone="warning">{day ? 'Nessuna lezione in questo giorno.' : isSelection(materia) ? 'Le lezioni selezionate non ci sono più.' : 'Nessuna lezione di questa materia.'}</Alert>
       )}
       {state.data && state.data.lessons.length > 0 && (
         <>

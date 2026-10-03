@@ -29,6 +29,23 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
   const [speed, setSpeed] = useState(loadRate)
   const [error, setError] = useState(false)
   const known = Number.isFinite(duration) && duration > 0
+  const [hover, setHover] = useState(false)
+
+  // Con il mouse sul riquadro, le frecce saltano di 5 secondi (non mentre si scrive nel testo).
+  useEffect(() => {
+    if (!hover) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return
+      const target = event.target as HTMLElement | null
+      if (target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
+      const audio = audioRef.current
+      if (!audio) return
+      event.preventDefault()
+      seek(audio.currentTime + (event.key === 'ArrowRight' ? 5 : -5), !audio.paused)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hover, audioRef, seek])
 
   // La velocità vale anche dopo un nuovo caricamento dell'audio (defaultPlaybackRate).
   useEffect(() => {
@@ -56,6 +73,8 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
       aria-label="Audio della lezione"
       data-testid="audio-player"
       data-inline={inline || undefined}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       className={cn(
         'flex items-center gap-3 rounded-lg border bg-card py-2 pl-2 pr-3',
         inline

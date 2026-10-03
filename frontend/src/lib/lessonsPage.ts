@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react'
 
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from './format'
 import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
-import { dayPath, subjectPath } from './recallView'
 
 /**
  * Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c, 04): elenco a righe raggruppato per
@@ -153,14 +152,6 @@ export function lessonInfo(lesson: Lesson, running: boolean, now = new Date()): 
     ['Costo', formatCost(lesson.cost_usd)],
     ['Stato', status || '—'],
   ]
-}
-
-/** Recall dell'intero gruppo: del giorno o della materia; per docente non c'è (ancora). */
-export function groupRecallPath(group: LessonGroup, grouping: LessonsGrouping): string | null {
-  if (!group.key) return null
-  if (grouping === 'data') return dayPath(group.key)
-  if (grouping === 'materia') return subjectPath(group.key)
-  return null
 }
 
 /** Perché il Markdown di alcune lezioni selezionate non si scarica (il download in blocco usa solo i documenti finali). */

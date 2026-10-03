@@ -72,22 +72,18 @@ describe('pagina Lezioni', () => {
     expect(within(row(1)).getByTestId('lesson-status')).toHaveAttribute('data-status', 'da-verificare')
   })
 
-  it('per materia e per docente: il sottotitolo cambia, Recall del gruppo per materia', () => {
+  it('per materia e per docente: il sottotitolo cambia; il gruppo non ha più Recall né Studio (si seleziona)', () => {
     renderDashboard()
     fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
     expect(screen.getByRole('button', { name: 'Per materia' })).toHaveAttribute('aria-pressed', 'true')
     expect(groups()).toEqual(['Biochimica', 'Patologia'])
     expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('28 set · Maria Rossi · 7 unità')
     const patologia = screen.getAllByTestId('lesson-group')[1]
-    expect(within(patologia).getByRole('link', { name: 'Recall su tutto il gruppo' })).toHaveAttribute('href', '/recall/materie/PATOLOGIA')
-    expect(within(patologia).getByRole('link', { name: 'Studio su tutto il gruppo' })).toHaveAttribute('href', '/studio/materia/PATOLOGIA')
+    expect(within(patologia).queryByRole('link', { name: /su tutto il gruppo/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Per docente' }))
     expect(groups()).toEqual(['Maria Rossi', 'Senza docente'])
     expect(within(row(3)).getByTestId('lesson-subtitle')).toHaveTextContent('5 set · Patologia · 4 unità')
-    expect(within(screen.getAllByTestId('lesson-group')[0]).getByRole('button', { name: 'Recall su tutto il gruppo' })).toHaveAttribute('aria-disabled', 'true')
-    // Lo Studio per docente c'è: le lezioni si scelgono nella web app.
-    expect(within(screen.getAllByTestId('lesson-group')[0]).getByRole('link', { name: 'Studio su tutto il gruppo' })).toHaveAttribute('href', '/studio/docente/Maria%20Rossi')
     // La scelta resta nel browser.
     expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'docente' })
   })
@@ -126,6 +122,8 @@ describe('pagina Lezioni', () => {
     // Markdown solo delle lezioni con il documento finale; zip di tutte.
     expect(within(bar).getByRole('link', { name: 'Scarica Markdown' })).toHaveAttribute('href', '/api/v1/lesson-exports?ids=1&format=markdown&name=Lezioni+selezionate')
     expect(within(bar).getByRole('link', { name: 'Scarica zip' })).toHaveAttribute('href', '/api/v1/lesson-exports?ids=1&ids=2&format=zip&name=Lezioni+selezionate')
+    // Recall sulla selezione: solo le lezioni con la rielaborazione
+    expect(within(bar).getByRole('link', { name: 'Recall sulle lezioni selezionate' })).toHaveAttribute('href', '/recall/selezione/1')
 
     fireEvent.click(within(row(2)).getByRole('checkbox'))
     expect(within(today).getByRole('checkbox', { name: /^Seleziona il gruppo/ })).toHaveProperty('indeterminate', true)

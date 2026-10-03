@@ -27,14 +27,14 @@ test('gruppi per data, materia e docente; ordinamento; le scelte restano dopo la
   const subtitle = page.locator(`[data-testid=lesson-row][data-lesson-id="${fis.id}"]`).getByTestId('lesson-subtitle')
   await expect(subtitle).toContainText('Fisiologia')
 
-  // Per materia: un gruppo per materia, la materia sparisce dal sottotitolo, Recall del gruppo.
+  // Per materia: un gruppo per materia, la materia sparisce dal sottotitolo; il recall del gruppo si fa selezionandolo.
   await page.getByRole('button', { name: 'Per materia' }).click()
   const subjects = [...new Set(lessons.map((l) => l.materia))]
   await expect(groups).toHaveCount(subjects.length)
   await expect(subtitle).not.toContainText('Fisiologia')
   const fisGroup = page.locator('[data-testid=lesson-group][data-group=FISIOLOGIA]')
   await expect(fisGroup.getByRole('heading')).toHaveText('Fisiologia')
-  await expect(fisGroup.getByRole('link', { name: 'Recall su tutto il gruppo' })).toHaveAttribute('href', '/recall/materie/FISIOLOGIA')
+  await expect(fisGroup.getByRole('link', { name: /su tutto il gruppo/ })).toHaveCount(0)
 
   // Per docente: le lezioni di prova non hanno docente, un gruppo solo.
   await page.getByRole('button', { name: 'Per docente' }).click()
@@ -91,7 +91,7 @@ test('azioni della riga sempre nello stesso ordine; popup Info si chiude con Esc
   await expect(dialog).toBeHidden()
 })
 
-test('selezione per gruppo e scaricamento zip delle lezioni scelte', async ({ page }) => {
+test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', async ({ page }) => {
   await loginViaLink(page)
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
   await page.getByRole('button', { name: 'Per materia' }).click()
@@ -114,6 +114,17 @@ test('selezione per gruppo e scaricamento zip delle lezioni scelte', async ({ pa
   await bar.getByRole('button', { name: 'Annulla' }).click()
   await expect(bar).toBeHidden()
   await expect(page.getByRole('checkbox')).toHaveCount(0)
+
+  // Recall sulla selezione: la sessione per materia sulle lezioni scelte (quelle pronte).
+  await page.getByRole('button', { name: 'Seleziona' }).click()
+  await group.getByRole('checkbox', { name: /^Seleziona il gruppo/ }).check()
+  const ready = bio.filter((l) => l.phases.rewrite === 'VALID').map((l) => l.id).sort((a, b) => a - b)
+  if (ready.length) {
+    await bar.getByRole('link', { name: 'Recall sulle lezioni selezionate' }).click()
+    await expect(page).toHaveURL(new RegExp(`/recall/selezione/${ready.join(',')}$`))
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Recall della selezione')
+  }
+  await page.goto('/')
   await page.getByRole('button', { name: 'Per data' }).click()
 })
 

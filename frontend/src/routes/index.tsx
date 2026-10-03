@@ -43,12 +43,11 @@ const jobsArea: Area = {
   ],
 }
 
-// Studio (design 4.2, schermate 05 e 06): dalle righe e dai gruppi di Lezioni e dalla lezione.
+// Studio (design 4.2, schermate 05 e 06): dalle righe di Lezioni e dalla lezione.
 const study = () => import('./study')
 const studyArea: Area = {
   routes: [
     { path: 'studio/lezione/:lessonId', Component: page(study, (m) => m.StudyLessonPage), handle: bare },
-    { path: 'studio/:kind/:value', Component: page(study, (m) => m.StudyGroupPage), handle: bare },
   ],
 }
 
@@ -65,6 +64,7 @@ const recallArea: Area = {
     { path: 'recall', Component: page(recall, (m) => m.RecallOverviewPage) },
     { path: 'recall/materie/:materia', Component: page(recall, (m) => m.SubjectRecallPage) },
     { path: 'recall/giorno/:day', Component: page(recall, (m) => m.SubjectRecallPage) },
+    { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.SubjectRecallPage) },
     { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.RecallPage) },
     { path: 'lezioni/:lessonId/recall/domande', Component: page(recall, (m) => m.QuestionsPage) },
   ],

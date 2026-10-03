@@ -61,6 +61,24 @@ describe('AudioPlayer', () => {
     expect(play).not.toHaveBeenCalled()
   })
 
+  it('con il mouse sul riquadro le frecce saltano di 5 secondi, fuori no', () => {
+    const audio = renderPlayer()
+    fireEvent.loadedMetadata(audio)
+    audio.currentTime = 30
+    const player = screen.getByTestId('audio-player')
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(30)
+    fireEvent.mouseEnter(player)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(35)
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(audio.currentTime).toBe(25)
+    fireEvent.mouseLeave(player)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(25)
+  })
+
   // Regressione: il player leggeva l'elemento audio durante il render, quando al primo render è
   // ancora null, e finché qualcosa non lo ridisegnava Riproduci non faceva nulla.
   it('Riproduci avvia l\'audio appena montato il player', () => {

@@ -11,12 +11,12 @@ import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
-  GROUPING_LABELS, SORT_OPTIONS, markdownExportNote, STATUS_LABELS, groupLabel, groupRecallPath, lessonInfo, lessonStatus, lessonSubtitle,
+  GROUPING_LABELS, SORT_OPTIONS, markdownExportNote, STATUS_LABELS, groupLabel, lessonInfo, lessonStatus, lessonSubtitle,
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
 import { useIsPhone } from '@/lib/phone'
-import { groupStudyPath } from '@/lib/study'
+import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
@@ -142,9 +142,8 @@ function Check({ label, checked, indeterminate = false, onChange }: { label: str
   )
 }
 
-/** Le colonne delle azioni: Info, Recall, Studio, Apri (riga) e gli stessi posti nell'intestazione del gruppo. */
+/** Le colonne delle azioni della riga: Info, Recall, Studio, Apri. */
 const ACTIONS = 'flex shrink-0 items-center gap-0.5'
-const SLOT = 'w-(--control-size) shrink-0 max-md:hidden'
 
 function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, onInfo }: {
   lesson: Lesson
@@ -196,10 +195,7 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
   onSelectGroup: (checked: boolean) => void
 }) {
   const label = groupLabel(group, grouping)
-  const path = groupRecallPath(group, grouping)
-  const unavailable = path ? null : grouping === 'docente' ? 'per docente non è ancora disponibile' : 'il gruppo non ha una data o una materia'
-  const study = groupStudyPath(group, grouping)
-  const ready = group.lessons.some((l) => l.phases.rewrite === 'VALID')
+  // Recall su un gruppo: si seleziona il gruppo (o le lezioni che si vogliono) e Recall nella barra in basso.
   return (
     <div className="mb-2 flex items-center gap-3 px-2.5 max-md:gap-2 max-md:px-0">
       {selecting && (
@@ -211,17 +207,6 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
         />
       )}
       <h2 className="min-w-0 flex-1 text-meta font-semibold uppercase tracking-[.045em] text-muted-foreground">{label}</h2>
-      <div className={ACTIONS}>
-        <span className={SLOT} aria-hidden />
-        <IconLink label="Recall su tutto il gruppo" icon={Brain} to={path ?? '/'} unavailable={unavailable} />
-        <IconLink
-          label="Studio su tutto il gruppo"
-          icon={BookOpen}
-          to={study ?? '/'}
-          unavailable={!study ? `il gruppo non ha ${grouping === 'docente' ? 'un docente' : grouping === 'materia' ? 'una materia' : 'una data'}` : !ready ? NOT_READY : null}
-        />
-        <span className={SLOT} aria-hidden />
-      </div>
     </div>
   )
 }
@@ -341,10 +326,11 @@ function exportUrl(lessons: Lesson[], format: 'markdown' | 'zip'): string {
   return `/api/v1/lesson-exports?${new URLSearchParams([...lessons.map((l) => ['ids', String(l.id)]), ['format', format], ['name', 'Lezioni selezionate']])}`
 }
 
-/** Barra in basso con le azioni sulla selezione (schermata 01b): Scarica Markdown, Scarica zip, Elimina, Annulla. */
+/** Barra in basso con le azioni sulla selezione (schermata 01b): Recall, Scarica Markdown, Scarica zip, Elimina, Annulla. */
 export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson[]; onCancel: () => void; onDeleted: (ids: number[]) => void }) {
   const finals = lessons.filter((l) => l.phases.build === 'VALID')
   const markdown = markdownExportNote(lessons)
+  const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
   return (
     <div
@@ -356,6 +342,13 @@ export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson
       <span className="mr-1 text-meta" aria-live="polite" data-testid="selection-count">
         {lessons.length === 1 ? '1 selezionata' : `${lessons.length} selezionate`}
       </span>
+      <IconLink
+        label="Recall sulle lezioni selezionate"
+        icon={Brain}
+        side="top"
+        to={ready.length ? selectionRecallPath(ready.map((l) => l.id)) : '/'}
+        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : ready.length === 0 ? 'nessuna lezione selezionata ha la rielaborazione' : null}
+      />
       <IconAnchor
         label="Scarica Markdown"
         icon={FileText}

@@ -34,6 +34,10 @@ NO_SUBJECT = "no_subject"
 # quelle di una materia ("GIORNO:2026-09-30" nella colonna subject).
 DAY_PREFIX = "GIORNO:"
 _DAY = re.compile(r"^GIORNO:(\d{4}-\d{2}-\d{2})$")
+# Recall sulla selezione della pagina Lezioni: le lezioni scelte, per id ("LEZIONI:3,7,12",
+# in ordine e senza doppioni, così la stessa selezione ritrova la sua sessione).
+SELECTION_PREFIX = "LEZIONI:"
+_SELECTION = re.compile(r"^LEZIONI:(\d+(?:,\d+)*)$")
 
 
 def subject_day(subject: str) -> Optional[str]:
@@ -42,11 +46,23 @@ def subject_day(subject: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def subject_selection(subject: str) -> Optional[List[int]]:
+    """Le lezioni di un recall sulla selezione ("LEZIONI:3,7" -> [3, 7]), se lo è."""
+    match = _SELECTION.match(subject or "")
+    return sorted({int(i) for i in match.group(1).split(",")}) if match else None
+
+
 def normalize_subject(materia: Optional[str]) -> str:
-    """Le materie delle lezioni sono in maiuscolo (come GET /lessons?materia=)."""
+    """Le materie delle lezioni sono in maiuscolo (come GET /lessons?materia=); una selezione
+    ha gli id in ordine e senza doppioni."""
     subject = (materia or "").strip().upper()
     if not subject:
         raise RecallSessionError(NO_SUBJECT, "Indica la materia.")
+    if subject.startswith(SELECTION_PREFIX):
+        ids = subject_selection(subject.replace(" ", ""))
+        if not ids:
+            raise RecallSessionError(NO_SUBJECT, "Indica le lezioni della selezione, per esempio LEZIONI:3,7.")
+        return SELECTION_PREFIX + ",".join(str(i) for i in ids)
     return subject
 
 
@@ -72,8 +88,13 @@ def subject_lessons(materia: str) -> List[Dict[str, Any]]:
     """Riepiloghi delle lezioni della materia (o del giorno), dalla più vecchia (l'ordine dei turni)."""
     from rt.services.lesson_service import list_lessons
     subject = normalize_subject(materia)
-    day = subject_day(subject)
-    items = [i for i in list_lessons() if i["data"] == day] if day else list_lessons(materia=subject)
+    day, selection = subject_day(subject), subject_selection(subject)
+    if day:
+        items = [i for i in list_lessons() if i["data"] == day]
+    elif selection:
+        items = [i for i in list_lessons() if i["id"] in selection]
+    else:
+        items = list_lessons(materia=subject)
     return sorted(items, key=lambda i: (i["data"] or "9999", i["folder_name"]))
 
 
@@ -122,9 +143,9 @@ def recall_by_subject() -> List[Dict[str, Any]]:
     active = {s["subject"]: s for s in _subject_sessions(state=ACTIVE)}
     out = [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
            for materia, lessons in sorted(subjects.items())]
-    # Sessioni del giorno in corso: senza lezioni proprie (sono già sotto le loro materie).
+    # Sessioni del giorno e delle selezioni in corso: senza lezioni proprie (sono già sotto le loro materie).
     return out + [{"materia": subject, "lessons": [], "session": session}
-                  for subject, session in sorted(active.items()) if subject_day(subject)]
+                  for subject, session in sorted(active.items()) if subject_day(subject) or subject_selection(subject)]
 
 
 def subject_overview(materia: str) -> Dict[str, Any]:

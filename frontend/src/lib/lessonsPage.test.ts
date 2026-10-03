@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  formatDuration, groupLabel, markdownExportNote, groupRecallPath, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, shortDate, subjectName,
+  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, shortDate, subjectName,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -59,14 +59,6 @@ describe('lessonsGroups', () => {
     const bySubject = lessonsGroups(lessons, { group: 'materia', sort: 'recenti' }, NOW)
     expect(bySubject.map((g) => groupLabel(g, 'materia'))).toEqual(['Farmacologia', 'Fisiologia'])
     expect(lessonsGroups(lessons, { group: 'docente', sort: 'recenti' }, NOW).map((g) => g.label)).toEqual(['Bianchi', 'Rossi', 'Senza docente'])
-  })
-  it('recall del gruppo: giorno o materia; per docente non c’è', () => {
-    const [day] = lessonsGroups(lessons, { group: 'data', sort: 'recenti' }, NOW)
-    expect(groupRecallPath(day, 'data')).toBe('/recall/giorno/2026-10-02')
-    const [subject] = lessonsGroups(lessons, { group: 'materia', sort: 'recenti' }, NOW)
-    expect(groupRecallPath(subject, 'materia')).toBe('/recall/materie/FARMACOLOGIA')
-    const [teacher] = lessonsGroups(lessons, { group: 'docente', sort: 'recenti' }, NOW)
-    expect(groupRecallPath(teacher, 'docente')).toBeNull()
   })
 })
 

@@ -1,12 +1,11 @@
 import { useParams, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
-import { useLesson, useLessons } from '@/api/hooks'
+import { useLesson } from '@/api/hooks'
 import { StudyFlow } from '@/components/study/Study'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { Button } from '@/components/ui/button'
 import type { Lesson } from '@/lib/format'
-import { studyLessons, type StudyScope } from '@/lib/study'
 
 /** Studio di una lezione (dalla riga di Lezioni e dall'intestazione della lezione); con ?unita= le domande di una parte. */
 export function StudyLessonPage() {
@@ -20,17 +19,6 @@ export function StudyLessonPage() {
   const ready = lesson.data.phases.rewrite === 'VALID'
   // La chiave riparte da capo se cambia la parte (un altro "Domande su questa parte").
   return <StudyFlow key={`${id}:${only?.join(',') ?? ''}`} lessons={ready ? [lesson.data as Lesson] : []} onlyUnits={only?.length ? only : null} back={back} />
-}
-
-/** Studio di un gruppo di Lezioni (giorno, materia, docente): le lezioni pronte, dalla più vecchia. */
-export function StudyGroupPage() {
-  const { kind, value } = useParams()
-  const all = useLessons()
-  const back = { to: '/', label: 'Esci' }
-  if (all.isError) return <Failure back={back} error={all.error} retry={() => void all.refetch()} />
-  if (!all.data) return <Loading back={back} />
-  const scope = { kind, value: value ?? '' } as StudyScope
-  return <StudyFlow key={`${kind}:${value}`} lessons={studyLessons(all.data, scope)} back={back} />
 }
 
 function Loading({ back }: { back: { to: string; label: string } }) {

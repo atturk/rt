@@ -67,6 +67,10 @@ export const subjectPath = (materia: string) => `/recall/materie/${encodeURIComp
 export const dayPath = (day: string) => `/recall/giorno/${encodeURIComponent(day)}`
 export const daySubject = (day: string) => `GIORNO:${day}`
 
+/** Recall sulla selezione della pagina Lezioni: la sessione per materia sulle lezioni scelte (materia LEZIONI:<id>,<id>). */
+export const selectionSubject = (ids: string) => `LEZIONI:${ids}`
+export const selectionRecallPath = (ids: number[]) => `/recall/selezione/${[...new Set(ids)].sort((a, b) => a - b).join(',')}`
+
 const STORAGE_KEY = 'rt-recall-view'
 
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
