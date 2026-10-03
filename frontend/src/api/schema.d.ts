@@ -958,6 +958,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/recall/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commenta e rigenera la domanda dalle sue unità (job recall_regenerate) */
+        post: operations["regenerate_question_api_v1_lessons__lesson_id__recall_regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/recall/session": {
         parameters: {
             query?: never;
@@ -4376,6 +4393,11 @@ export interface components {
              */
             choice?: number | null;
             /**
+             * Dont Know
+             * @default false
+             */
+            dont_know: boolean;
+            /**
              * Mock
              * @default false
              */
@@ -4389,6 +4411,11 @@ export interface components {
             answer_text: string;
             /** Answered At */
             answered_at: string;
+            /**
+             * Dont Know
+             * @default false
+             */
+            dont_know: boolean;
             /** Evaluation */
             evaluation?: string | null;
             /**
@@ -4403,6 +4430,10 @@ export interface components {
              * @description up | down | lightning
              */
             vote?: string | null;
+            /** Vote Comment */
+            vote_comment?: string | null;
+            /** Vote Reasons */
+            vote_reasons?: string[];
         };
         /** RecallDeleted */
         RecallDeleted: {
@@ -4469,8 +4500,12 @@ export interface components {
         };
         /** RecallQuestion */
         RecallQuestion: {
+            /** Comment */
+            comment?: string | null;
             /** Correct Index */
             correct_index?: number | null;
+            /** Discard Reasons */
+            discard_reasons?: string[];
             /** Explanation */
             explanation?: string | null;
             /** Id */
@@ -4495,10 +4530,14 @@ export interface components {
         RecallQuestionDetail: {
             /** Classifier Level */
             classifier_level?: number | null;
+            /** Comment */
+            comment?: string | null;
             /** Correct Index */
             correct_index?: number | null;
             /** Created At */
             created_at?: string | null;
+            /** Discard Reasons */
+            discard_reasons?: string[];
             /** Explanation */
             explanation?: string | null;
             /** Id */
@@ -4530,6 +4569,18 @@ export interface components {
             unit_titles?: {
                 [key: string]: string;
             };
+        };
+        /** RecallRegenerate */
+        RecallRegenerate: {
+            /** Comment */
+            comment: string;
+            /**
+             * Mock
+             * @default false
+             */
+            mock: boolean;
+            /** Question Id */
+            question_id: string;
         };
         /** RecallSessionInfo */
         RecallSessionInfo: {
@@ -4676,8 +4727,12 @@ export interface components {
         };
         /** RecallVote */
         RecallVote: {
+            /** Comment */
+            comment?: string | null;
             /** Question Id */
             question_id: string;
+            /** Reasons */
+            reasons?: ("sbagliata" | "ambigua" | "troppi_indizi" | "troppo_facile" | "fuori_tema" | "gia_vista")[];
             /**
              * Vote
              * @enum {string}
@@ -9491,6 +9546,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallDeleted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    regenerate_question_api_v1_lessons__lesson_id__recall_regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecallRegenerate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

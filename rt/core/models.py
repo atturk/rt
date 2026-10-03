@@ -215,6 +215,7 @@ class RecallQuestionStatus(str, Enum):
     PENDING = "pending"
     ASKED = "asked"
     ANSWERED = "answered"
+    DISCARDED = "discarded"
 
 class RecallQuestion(BaseModel):
     id: str  # e.g., recall_000001
@@ -232,6 +233,11 @@ class RecallQuestion(BaseModel):
     template_id: Optional[str] = None
     variant: Optional[int] = None
     status: RecallQuestionStatus = RecallQuestionStatus.PENDING
+    discard_reasons: List[str] = Field(default_factory=list)
+    comment: Optional[str] = None
+    discarded_from: Optional[RecallQuestionStatus] = None
+    regeneration_job_id: Optional[str] = None
+    regenerated_from: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 class GeneratedRecallQuestion(BaseModel):
@@ -350,6 +356,9 @@ class RecallAnswer(BaseModel):
     is_voice: bool = False
     evaluation: Optional[str] = None
     vote: Optional[str] = None  # up | down | lightning
+    vote_reasons: List[str] = Field(default_factory=list)
+    vote_comment: Optional[str] = None
+    dont_know: bool = False
     answered_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 class RecallBank(BaseModel):

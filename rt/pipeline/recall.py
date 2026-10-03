@@ -58,7 +58,17 @@ def load_recall_bank(lesson_dir: str) -> RecallBank:
     try:
         with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return RecallBank.model_validate(data)
+        bank = RecallBank.model_validate(data)
+        # Le banche storiche hanno il voto negativo ma nessuno stato di scarto.
+        votes = {a.question_id: a for a in bank.answers if a.vote}
+        for question in bank.questions:
+            answer = votes.get(question.id)
+            if answer and answer.vote == 'down' and question.status != RecallQuestionStatus.DISCARDED:
+                question.discarded_from = question.status
+                question.status = RecallQuestionStatus.DISCARDED
+                question.discard_reasons = answer.vote_reasons
+                question.comment = answer.vote_comment
+        return bank
     except Exception:
         return RecallBank()
 
@@ -235,14 +245,17 @@ def record_recall_answer(
         bank = load_recall_bank(lesson_dir)
         for q in bank.questions:
             if q.id == question_id:
-                q.status = RecallQuestionStatus.ANSWERED
+                if q.status != RecallQuestionStatus.DISCARDED:
+                    q.status = RecallQuestionStatus.ANSWERED
                 break
         existing = next((a for a in bank.answers if a.question_id == question_id), None)
         if existing:
             existing.answer_text = answer_text
             existing.is_voice = is_voice
             existing.evaluation = evaluation
-            existing.vote = vote
+            if vote is not None:
+                existing.vote = vote
+            existing.dont_know = answer_text.strip() == '[Non lo so]'
             existing.answered_at = datetime.now().isoformat()
             ans = existing
         else:
@@ -252,6 +265,7 @@ def record_recall_answer(
                 is_voice=is_voice,
                 evaluation=evaluation,
                 vote=vote,
+                dont_know=answer_text.strip() == '[Non lo so]',
             )
             bank.answers.append(ans)
         save_recall_bank(bank, lesson_dir)
@@ -275,7 +289,7 @@ def skip_recall_question(lesson_dir: str, question_id: str) -> None:
                 return
 
 
-def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
+def record_recall_vote(lesson_dir: str, question_id: str, vote: str, reasons=None, comment=None) -> None:
     """Aggiorna solo il campo vote della RecallAnswer.
 
     Se non esiste ancora una RecallAnswer per question_id, ne crea una parziale
@@ -290,6 +304,18 @@ def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
             bank.answers.append(answer)
         else:
             answer.vote = vote
+        answer.vote_reasons = list(dict.fromkeys(reasons or []))
+        answer.vote_comment = comment
+        question = next((q for q in bank.questions if q.id == question_id), None)
+        if question:
+            if vote == 'down':
+                if question.status != RecallQuestionStatus.DISCARDED:
+                    question.discarded_from = question.status
+                question.status = RecallQuestionStatus.DISCARDED
+                question.discard_reasons, question.comment = answer.vote_reasons, comment
+            elif question.status == RecallQuestionStatus.DISCARDED:
+                question.status = RecallQuestionStatus.ANSWERED if answer.answer_text else (question.discarded_from or RecallQuestionStatus.PENDING)
+                question.discard_reasons, question.comment, question.discarded_from = [], None, None
         save_recall_bank(bank, lesson_dir)
 
 
@@ -320,39 +346,34 @@ def _save_fewshot(data: dict, state_dir: Optional[str] = None) -> None:
     _atomic_write(path, data)
 
 
-def record_fewshot_vote(
-    qtype: RecallQuestionType,
-    question_text: str,
-    vote: str,
-    state_dir: Optional[str] = None,
-) -> None:
-    """Aggiunge un'entry al pool few-shot globale per qtype.
-
-    Mantiene al massimo 5 voci per tipo (FIFO: la piu' vecchia esce quando se ne
-    aggiunge una nuova oltre il limite). I tre pool (quiz/mirata/vasta) sono
-    completamente separati: mai iniettare esempi di un tipo nel prompt di un altro.
-    """
-    data = _load_fewshot(state_dir)
-    key = qtype.value
-    entry = {"question_text": question_text, "vote": vote, "voted_at": datetime.now().isoformat()}
-    lst: List[dict] = data.get(key, [])
-    lst.append(entry)
-    if len(lst) > 5:
-        lst = lst[-5:]
-    data[key] = lst
-    _save_fewshot(data, state_dir)
+def _fewshot_groups(value):
+    """Compatibilità con il vecchio elenco misto; cinque esempi per ciascun gruppo."""
+    rows = value if isinstance(value, list) else (value.get('good', []) + value.get('avoid', []))
+    return {'good': [row for row in rows if row.get('vote') == 'up'][-5:],
+            'avoid': [row for row in rows if row.get('vote') in ('down', 'lightning')][-5:]}
 
 
-def load_fewshot_examples(
-    qtype: RecallQuestionType,
-    state_dir: Optional[str] = None,
-) -> List[dict]:
-    """Ritorna la lista corrente di esempi few-shot per qtype.
+def record_fewshot_vote(qtype: RecallQuestionType, question_text: str, vote: str,
+                        state_dir: Optional[str] = None, reasons=None, comment=None) -> None:
+    """Esempi buoni e da evitare separati, con motivi e commento; aggiornamento del voto."""
+    from rt.core.filelock import file_lock
+    path = get_fewshot_path(state_dir)
+    with file_lock(fs.lock_path(path + '.lock')):
+        data = _load_fewshot(state_dir)
+        groups = _fewshot_groups(data.get(qtype.value, []))
+        for group in groups.values():
+            group[:] = [row for row in group if row['question_text'] != question_text]
+        entry = {'question_text': question_text, 'vote': vote, 'voted_at': datetime.now().isoformat(),
+                 'reasons': list(dict.fromkeys(reasons or [])), 'comment': comment}
+        key = 'good' if vote == 'up' else 'avoid'
+        groups[key] = (groups[key] + [entry])[-5:]
+        data[qtype.value] = groups
+        _save_fewshot(data, state_dir)
 
-    Puo' essere vuota (nessun esempio votato): in tal caso il prompt non include esempi.
-    """
-    data = _load_fewshot(state_dir)
-    return data.get(qtype.value, [])
+
+def load_fewshot_examples(qtype: RecallQuestionType, state_dir: Optional[str] = None) -> List[dict]:
+    groups = _fewshot_groups(_load_fewshot(state_dir).get(qtype.value, []))
+    return groups['good'] + groups['avoid']
 
 # -----------------------------------------------------------------------
 # ID sequenziale (same schema as asr_NNNNNN / sci_NNNNNN)

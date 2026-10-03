@@ -78,6 +78,7 @@ def summarize(lesson_dir: str, question_ids: Optional[Iterable[str]] = None,
         answers = [a for a in bank.answers
                    if (since is None or a.answered_at >= since) and (until is None or a.answered_at <= until)]
         asked = [a.question_id for a in answers]
+    answers = [a for a in answers if a.answer_text.strip()]
     quiz = correct = 0
     for a in answers:
         q = by_id.get(a.question_id)

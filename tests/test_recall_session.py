@@ -572,8 +572,9 @@ class TestRecallReactionVote:
         assert ans.answer_text == ""  # nessuna risposta ancora data
 
         examples = json.load(open(os.path.join(state_dir, "recall_fewshot.json")))
-        assert len(examples["mirata"]) == 1
-        assert examples["mirata"][0]["vote"] == "lightning"
+        assert examples["mirata"]["good"] == []
+        assert len(examples["mirata"]["avoid"]) == 1
+        assert examples["mirata"]["avoid"][0]["vote"] == "lightning"
 
     def test_unmapped_emoji_is_ignored(self, tmp_path):
         lesson_dir = str(tmp_path / "lesson")

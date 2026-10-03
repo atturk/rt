@@ -4227,6 +4227,11 @@
             "description": "Quiz: indice dell'opzione (0-3)",
             "title": "Choice"
           },
+          "dont_know": {
+            "default": false,
+            "title": "Dont Know",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -4252,6 +4257,11 @@
           "answered_at": {
             "title": "Answered At",
             "type": "string"
+          },
+          "dont_know": {
+            "default": false,
+            "title": "Dont Know",
+            "type": "boolean"
           },
           "evaluation": {
             "anyOf": [
@@ -4284,6 +4294,24 @@
             ],
             "description": "up | down | lightning",
             "title": "Vote"
+          },
+          "vote_comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vote Comment"
+          },
+          "vote_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Vote Reasons",
+            "type": "array"
           }
         },
         "required": [
@@ -4435,6 +4463,17 @@
       },
       "RecallQuestion": {
         "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
           "correct_index": {
             "anyOf": [
               {
@@ -4445,6 +4484,13 @@
               }
             ],
             "title": "Correct Index"
+          },
+          "discard_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Discard Reasons",
+            "type": "array"
           },
           "explanation": {
             "anyOf": [
@@ -4536,6 +4582,17 @@
             ],
             "title": "Classifier Level"
           },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
           "correct_index": {
             "anyOf": [
               {
@@ -4557,6 +4614,13 @@
               }
             ],
             "title": "Created At"
+          },
+          "discard_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Discard Reasons",
+            "type": "array"
           },
           "explanation": {
             "anyOf": [
@@ -4651,6 +4715,31 @@
           "questions"
         ],
         "title": "RecallQuestionList",
+        "type": "object"
+      },
+      "RecallRegenerate": {
+        "properties": {
+          "comment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Comment",
+            "type": "string"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id",
+          "comment"
+        ],
+        "title": "RecallRegenerate",
         "type": "object"
       },
       "RecallSessionInfo": {
@@ -5007,9 +5096,37 @@
       },
       "RecallVote": {
         "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
           "question_id": {
             "title": "Question Id",
             "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "sbagliata",
+                "ambigua",
+                "troppi_indizi",
+                "troppo_facile",
+                "fuori_tema",
+                "gia_vista"
+              ],
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Reasons",
+            "type": "array"
           },
           "vote": {
             "enum": [
@@ -12544,6 +12661,105 @@
           }
         ],
         "summary": "Elimina domande (e le loro risposte) dal pool; gli ID sconosciuti si ignorano",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/regenerate": {
+      "post": {
+        "operationId": "regenerate_question_api_v1_lessons__lesson_id__recall_regenerate_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRegenerate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Commenta e rigenera la domanda dalle sue unità (job recall_regenerate)",
         "tags": [
           "recall"
         ]

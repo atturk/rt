@@ -440,6 +440,8 @@ class RecallQuestion(BaseModel):
     unit_ids: List[str]
     question_text: str
     options: Optional[List[str]] = None
+    discard_reasons: List[str] = Field(default_factory=list)
+    comment: Optional[str] = None
     status: str
     correct_index: Optional[int] = None
     explanation: Optional[str] = None
@@ -519,6 +521,9 @@ class RecallAnswerRecord(BaseModel):
     is_voice: bool = False
     evaluation: Optional[str] = None
     vote: Optional[str] = Field(None, description="up | down | lightning")
+    vote_reasons: List[str] = Field(default_factory=list)
+    vote_comment: Optional[str] = None
+    dont_know: bool = False
     answered_at: str
 
 
@@ -537,6 +542,7 @@ class RecallGenerate(BaseModel):
 
 class RecallAnswer(BaseModel):
     question_id: str
+    dont_know: bool = False
     choice: Optional[int] = Field(None, description="Quiz: indice dell'opzione (0-3)")
     answer: Optional[str] = Field(None, description="Mirata/vasta: risposta scritta (valutata da un job)")
     mock: bool = False
@@ -550,6 +556,21 @@ class QuizResult(BaseModel):
 class RecallVote(BaseModel):
     question_id: str
     vote: Literal["up", "down", "lightning"]
+    reasons: List[Literal['sbagliata', 'ambigua', 'troppi_indizi', 'troppo_facile', 'fuori_tema', 'gia_vista']] = Field(default_factory=list, max_length=6)
+    comment: Optional[str] = Field(None, max_length=10000)
+
+
+class RecallRegenerate(BaseModel):
+    question_id: str
+    comment: str = Field(min_length=1, max_length=10000)
+    mock: bool = False
+
+    @field_validator('comment')
+    @classmethod
+    def nonempty_comment(cls, value):
+        if not value.strip():
+            raise ValueError('Scrivi un commento.')
+        return value.strip()
 
 
 class RecallSkip(BaseModel):

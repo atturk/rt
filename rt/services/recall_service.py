@@ -245,6 +245,7 @@ def question_view(question, reveal: bool = False) -> dict:
         "id": question.id, "type": question.type.value, "unit_ids": list(question.unit_ids),
         "question_text": question.question_text, "options": question.options,
         "status": question.status.value,
+        "discard_reasons": question.discard_reasons, "comment": question.comment,
     }
     if reveal:
         data["correct_index"] = question.correct_index
@@ -258,6 +259,8 @@ def recall_overview(lesson_dir: str) -> dict:
     bank = load_recall_bank(lesson_dir)
     counts: dict = {}
     for q in bank.questions:
+        if q.status == RecallQuestionStatus.DISCARDED:
+            continue
         by_status = counts.setdefault(q.type.value, {})
         by_status[q.status.value] = by_status.get(q.status.value, 0) + 1
     from rt.services.recall_context import POLICY_VERSION
@@ -386,19 +389,29 @@ def answer_quiz(lesson_dir: str, question_id: str, choice: int) -> dict:
             "correct": question.correct_index == choice}
 
 
-def vote_question(lesson_dir: str, question_id: str, vote: str) -> None:
+def vote_question(lesson_dir: str, question_id: str, vote: str, reasons=None, comment=None) -> None:
     """👍 / 👎 / ⚡ su una domanda: voto nella lezione e nei few-shot globali."""
     from rt.core.config import load_config
     from rt.pipeline.recall import record_fewshot_vote, record_recall_vote
     question = find_question(lesson_dir, question_id)
     if question is None:
         raise ValueError("Domanda inesistente.")
-    record_recall_vote(lesson_dir, question_id, vote)
+    record_recall_vote(lesson_dir, question_id, vote, reasons=reasons, comment=comment)
     state_dir = load_config().telegram.state_dir
     fs.makedirs(state_dir, exist_ok=True)
-    record_fewshot_vote(question.type, question.question_text, vote, state_dir=state_dir)
+    record_fewshot_vote(question.type, question.question_text, vote, state_dir=state_dir, reasons=reasons, comment=comment)
 
 
 def skip_question(lesson_dir: str, question_id: str) -> None:
     from rt.pipeline.recall import skip_recall_question
     skip_recall_question(lesson_dir, question_id)
+
+
+def answer_dont_know(lesson_dir: str, question_id: str) -> dict:
+    """Il quiz non richiede LLM; le risposte aperte passano dal valutatore."""
+    from rt.pipeline.recall import record_recall_answer
+    question = find_question(lesson_dir, question_id)
+    if question is None or question.type != RecallQuestionType.QUIZ:
+        raise ValueError('Quiz inesistente.')
+    record_recall_answer(lesson_dir, question_id, '[Non lo so]', evaluation=question.pregenerated_material)
+    return {'question': question_view(find_question(lesson_dir, question_id), reveal=True), 'correct': False}

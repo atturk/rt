@@ -220,29 +220,33 @@ Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota
 Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
 
 
+def recall_fewshot_block(examples: List[dict]) -> str:
+    """Le domande bocciate orientano cosa evitare, mai cosa imitare."""
+    parts = []
+    for votes, title in [(('up',), 'ESEMPI BUONI DA SEGUIRE'), (('down', 'lightning'), 'ESEMPI DA EVITARE')]:
+        rows = [ex for ex in examples if ex.get('vote') in votes]
+        if not rows:
+            continue
+        parts.append(title + ':')
+        for ex in rows:
+            parts.append(ex.get('question_text', ''))
+            if title == 'ESEMPI DA EVITARE':
+                reasons = list(ex.get('reasons') or [])
+                if ex.get('vote') == 'lightning' and not reasons:
+                    reasons = ['troppo facile o troppi indizi']
+                parts.append('Motivi: ' + (', '.join(reasons) or 'non specificati'))
+                if ex.get('comment'):
+                    parts.append('Commento: ' + ex['comment'])
+    return '\n'.join(parts) + '\n\n' if parts else ''
+
+
 def build_recall_quiz_user_prompt(
     unit_id: str,
     unit_title: str,
     unit_content: str,
     few_shot_examples: Optional[List[dict]] = None,
 ) -> str:
-    fewshot_block = ""
-    if few_shot_examples:
-        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
-        for ex in few_shot_examples:
-            vote = ex.get("vote", "")
-            voted_at = ex.get("voted_at", "")
-            q = ex.get("question_text", "")
-            if vote == "up":
-                label = "✅ ESEMPIO BEN FATTO"
-            elif vote == "down":
-                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
-            elif vote == "lightning":
-                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
-            else:
-                label = "❌ ESEMPIO BOCCIATO"
-            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
-        fewshot_block = "\n".join(lines) + "\n\n"
+    fewshot_block = recall_fewshot_block(few_shot_examples or [])
     return f"""{fewshot_block}Genera zero, una o più domande quiz distinte (scelta multipla, 4 opzioni) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
@@ -280,23 +284,7 @@ def build_recall_mirata_user_prompt(
     unit_content: str,
     few_shot_examples: Optional[List[dict]] = None,
 ) -> str:
-    fewshot_block = ""
-    if few_shot_examples:
-        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
-        for ex in few_shot_examples:
-            vote = ex.get("vote", "")
-            voted_at = ex.get("voted_at", "")
-            q = ex.get("question_text", "")
-            if vote == "up":
-                label = "✅ ESEMPIO BEN FATTO"
-            elif vote == "down":
-                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
-            elif vote == "lightning":
-                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
-            else:
-                label = "❌ ESEMPIO BOCCIATO"
-            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
-        fewshot_block = "\n".join(lines) + "\n\n"
+    fewshot_block = recall_fewshot_block(few_shot_examples or [])
     return f"""{fewshot_block}Genera zero, una o più domande mirate distinte (risposta aperta su concetto atomico) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
@@ -334,23 +322,7 @@ def build_recall_vasta_user_prompt(
     unit_contents: List[str],
     few_shot_examples: Optional[List[dict]] = None,
 ) -> str:
-    fewshot_block = ""
-    if few_shot_examples:
-        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
-        for ex in few_shot_examples:
-            vote = ex.get("vote", "")
-            voted_at = ex.get("voted_at", "")
-            q = ex.get("question_text", "")
-            if vote == "up":
-                label = "✅ ESEMPIO BEN FATTO"
-            elif vote == "down":
-                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
-            elif vote == "lightning":
-                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
-            else:
-                label = "❌ ESEMPIO BOCCIATO"
-            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
-        fewshot_block = "\n".join(lines) + "\n\n"
+    fewshot_block = recall_fewshot_block(few_shot_examples or [])
 
     units_block = ""
     for uid, title, content in zip(unit_ids, unit_titles, unit_contents):

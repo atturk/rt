@@ -140,7 +140,7 @@ def _info_counts(lesson_dir: str) -> Dict[str, Any]:
     return {
         "unit_count": units,
         "duration_seconds": (manifest.audio_duration_seconds if manifest else None) or None,
-        "recall_questions": len(questions),
+        "recall_questions": sum(q.status != RecallQuestionStatus.DISCARDED for q in questions),
         "recall_pending": sum(q.status == RecallQuestionStatus.PENDING for q in questions),
     }
 

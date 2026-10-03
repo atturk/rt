@@ -66,9 +66,11 @@ def _policy(qtype: RecallQuestionType, mock: bool) -> dict:
     from rt.services.recall_context import POLICY_VERSION
     from rt.services.section_labels import LABEL_VERSION
     cfg = load_config()
+    from rt.pipeline.recall import load_fewshot_examples
+    examples = load_fewshot_examples(qtype, cfg.telegram.state_dir)
     routing = cfg.jobs.get("recall") or cfg.llm.get("recall") or cfg.jobs.get("default") or cfg.llm.get("default")
     return {"version": POLICY_VERSION, "labels": LABEL_VERSION, "style": qtype.value, "system": _system(qtype),
-            "routing": routing.model_dump(mode="json") if routing else None, "mock": mock}
+            "fewshot": examples, "routing": routing.model_dump(mode="json") if routing else None, "mock": mock}
 
 
 def _digest(lesson_dir: str, group: list, policy: dict) -> str:
@@ -192,6 +194,9 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> L
             else:
                 prompt = prompts.build_recall_special_user_prompt(
                     qtype.value, group, [t.tipo.model_dump() for t in existing], context)
+                from rt.pipeline.recall import load_fewshot_examples
+                from rt.core.config import load_config
+                prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
                 generated = client.call_structured(prompt=prompt, system_prompt=_system(qtype),
                                                    response_model=RecallSpecialGenerationResult, job_name="recall",
                                                    unit_id=", ".join(all_units), lesson_dir=lesson_dir).items
@@ -233,7 +238,7 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> L
 def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = False) -> Optional[RecallQuestion]:
     """Una variante verificata del tipo, salvata nel pool; None se le verifiche falliscono."""
     from rt.llm import prompts
-    from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank
+    from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank, load_fewshot_examples
     from rt.services.recall_context import POLICY_VERSION
     mock = _mock(force_mock)
     bank = load_recall_bank(lesson_dir)
@@ -252,7 +257,7 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
         problems = ""
         for _ in range(VARIANT_ATTEMPTS):
             candidate = client.call_structured(
-                prompt=prompts.build_recall_variant_user_prompt(template.kind.value, tipo, previous, problems),
+                prompt=prompts.recall_fewshot_block(load_fewshot_examples(template.kind)) + prompts.build_recall_variant_user_prompt(template.kind.value, tipo, previous, problems),
                 system_prompt=effective_system("recall", prompts.RECALL_VARIANT_SYSTEM_PROMPT),
                 response_model=GeneratedVariant, job_name="recall", unit_id=", ".join(template.unit_ids),
                 lesson_dir=lesson_dir)

@@ -132,10 +132,10 @@ export function useGenerateForUnits(id: number) {
 
 /** Quiz: risultato subito. Risposta aperta: job di valutazione (202). */
 export function useAnswer(id: number) {
-  return useRecallMutation(id, async (vars: { questionId: string; choice?: number; answer?: string }) => {
+  return useRecallMutation(id, async (vars: { questionId: string; choice?: number; answer?: string; dontKnow?: boolean }) => {
     const res = await api.POST('/api/v1/lessons/{lesson_id}/recall/answer', {
       params: path(id),
-      body: { question_id: vars.questionId, choice: vars.choice ?? null, answer: vars.answer ?? null, mock: false },
+      body: { question_id: vars.questionId, dont_know: vars.dontKnow ?? false, choice: vars.choice ?? null, answer: vars.answer ?? null, mock: false },
     })
     const data = await unwrap(Promise.resolve(res))
     return res.response.status === 202 ? { job: data as unknown as Schemas['JobAccepted'] } : { quiz: data }
@@ -155,8 +155,14 @@ export function useAnswerVoice(id: number) {
 }
 
 export function useVote(id: number) {
-  return useRecallMutation(id, (vars: { questionId: string; vote: Vote }) =>
-    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/vote', { params: path(id), body: { question_id: vars.questionId, vote: vars.vote } })),
+  return useRecallMutation(id, (vars: { questionId: string; vote: Vote; reasons?: Schemas['RecallVote']['reasons']; comment?: string }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/vote', { params: path(id), body: { question_id: vars.questionId, vote: vars.vote, reasons: vars.reasons ?? [], comment: vars.comment ?? null } })),
+  )
+}
+
+export function useRegenerateQuestion(id: number) {
+  return useRecallMutation(id, (vars: { questionId: string; comment: string }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/regenerate', { params: path(id), body: { question_id: vars.questionId, comment: vars.comment, mock: false } })),
   )
 }
 
