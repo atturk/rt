@@ -22,7 +22,7 @@ export function useEnrichmentActions(id: number) {
     void client.invalidateQueries({ queryKey: lessonKeys.all(id) })
   }
   const analyze = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/analyze', { params, body: { mock: false } })), onSuccess: refresh })
-  const generate = useMutation({ mutationFn: (body: Partial<GenerateInput>) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/generate', { params, body: { kind: 'visualization', title: 'Elemento grafico', description: 'Generazione manuale', prompt: '', mode: 'interactive', mock: false, ...body } })), onSuccess: refresh })
+  const generate = useMutation({ mutationFn: (body: Partial<GenerateInput>) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/generate', { params, body: { kind: 'visualization', title: 'Elemento grafico', description: 'Generazione manuale', prompt: '', mode: 'interactive', request: '', selection: '', mock: false, ...body } })), onSuccess: refresh })
   const action = useMutation({ mutationFn: ({ element, action }: { element: string; action: 'dismiss' | 'restore' | 'delete' }) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/{element_id}/action', {
     params: { path: { ...params.path, element_id: element } }, body: { action },
   })), onSuccess: refresh })

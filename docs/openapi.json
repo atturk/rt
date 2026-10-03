@@ -1450,6 +1450,13 @@
             ],
             "title": "Asset Mode"
           },
+          "context_unit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Unit Ids",
+            "type": "array"
+          },
           "description": {
             "maxLength": 500,
             "minLength": 1,
@@ -1490,7 +1497,8 @@
           "kind": {
             "enum": [
               "infographic",
-              "visualization"
+              "visualization",
+              "image"
             ],
             "title": "Kind",
             "type": "string"
@@ -1514,6 +1522,28 @@
             "minLength": 1,
             "title": "Prompt",
             "type": "string"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection"
           },
           "source_hash": {
             "default": "",
@@ -1578,7 +1608,8 @@
           "kind": {
             "enum": [
               "infographic",
-              "visualization"
+              "visualization",
+              "image"
             ],
             "title": "Kind",
             "type": "string"
@@ -1861,7 +1892,8 @@
             "default": "visualization",
             "enum": [
               "infographic",
-              "visualization"
+              "visualization",
+              "image"
             ],
             "title": "Kind",
             "type": "string"
@@ -1886,6 +1918,20 @@
             "title": "Prompt",
             "type": "string"
           },
+          "request": {
+            "default": "",
+            "description": "Genera dall'editor: cosa vuole vedere lo studente (il prompt lo scrive il regista enrichment_writer)",
+            "maxLength": 2000,
+            "title": "Request",
+            "type": "string"
+          },
+          "selection": {
+            "default": "",
+            "description": "Genera dall'editor: testo selezionato",
+            "maxLength": 20000,
+            "title": "Selection",
+            "type": "string"
+          },
           "title": {
             "default": "Elemento grafico",
             "maxLength": 120,
@@ -1903,6 +1949,15 @@
               }
             ],
             "title": "Unit Id"
+          },
+          "unit_ids": {
+            "description": "Genera dall'editor: subunità toccate dalla selezione (l'elemento va dopo l'ultima)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Unit Ids",
+            "type": "array"
           }
         },
         "title": "GenerateIn",
@@ -2607,6 +2662,12 @@
             ],
             "description": "Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)",
             "title": "Mock Fail Once"
+          },
+          "parent_context": {
+            "default": false,
+            "description": "Review di unità: le altre subunità della stessa unità vanno al revisore come contesto (Verifica questa parte)",
+            "title": "Parent Context",
+            "type": "boolean"
           },
           "phase": {
             "anyOf": [
@@ -4137,6 +4198,22 @@
             ],
             "description": "Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)",
             "title": "Qtype"
+          },
+          "unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo queste unità (Domande su questa parte): quiz e mirate, anche se l'unità non è fra quelle selezionate per il recall",
+            "title": "Unit Ids"
           }
         },
         "title": "RecallGenerate",
@@ -5281,6 +5358,100 @@
           "secrets_encrypted"
         ],
         "title": "Settings",
+        "type": "object"
+      },
+      "StudyLesson": {
+        "properties": {
+          "has_audio": {
+            "title": "Has Audio",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ready": {
+            "description": "False se la lezione non ha ancora una rielaborazione valida (nessuna unità)",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/StudyUnit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "ready",
+          "has_audio",
+          "units"
+        ],
+        "title": "StudyLesson",
+        "type": "object"
+      },
+      "StudyUnit": {
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fine dell'unità nell'audio della lezione (secondi)",
+            "title": "End"
+          },
+          "html": {
+            "description": "Testo dell'unità in HTML sanificato (come il documento)",
+            "title": "Html",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pending": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Domande da porre sull'unità, per tipo",
+            "title": "Pending",
+            "type": "object"
+          },
+          "questions": {
+            "description": "Totale delle domande da porre sull'unità",
+            "title": "Questions",
+            "type": "integer"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inizio dell'unità nell'audio della lezione (secondi)",
+            "title": "Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "html",
+          "questions"
+        ],
+        "title": "StudyUnit",
         "type": "object"
       },
       "SubjectGenerateAccepted": {
@@ -13084,6 +13255,95 @@
         "summary": "Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità",
         "tags": [
           "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study": {
+      "get": {
+        "operationId": "study_api_v1_lessons__lesson_id__study_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyLesson"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna",
+        "tags": [
+          "recall"
         ]
       }
     },

@@ -1095,6 +1095,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/study": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna */
+        get: operations["study_api_v1_lessons__lesson_id__study_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mini-app/auth": {
         parameters: {
             query?: never;
@@ -2996,6 +3013,8 @@ export interface components {
             asset_image?: string | null;
             /** Asset Mode */
             asset_mode?: ("static" | "interactive") | null;
+            /** Context Unit Ids */
+            context_unit_ids?: string[];
             /** Description */
             description: string;
             /**
@@ -3013,7 +3032,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "infographic" | "visualization";
+            kind: "infographic" | "visualization" | "image";
             /**
              * Manual
              * @default false
@@ -3027,6 +3046,10 @@ export interface components {
             mode: "static" | "interactive";
             /** Prompt */
             prompt: string;
+            /** Request */
+            request?: string | null;
+            /** Selection */
+            selection?: string | null;
             /**
              * Source Hash
              * @default
@@ -3061,7 +3084,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "infographic" | "visualization";
+            kind: "infographic" | "visualization" | "image";
             /**
              * Mode
              * @default static
@@ -3189,7 +3212,7 @@ export interface components {
              * @default visualization
              * @enum {string}
              */
-            kind: "infographic" | "visualization";
+            kind: "infographic" | "visualization" | "image";
             /**
              * Mock
              * @default false
@@ -3207,12 +3230,29 @@ export interface components {
              */
             prompt: string;
             /**
+             * Request
+             * @description Genera dall'editor: cosa vuole vedere lo studente (il prompt lo scrive il regista enrichment_writer)
+             * @default
+             */
+            request: string;
+            /**
+             * Selection
+             * @description Genera dall'editor: testo selezionato
+             * @default
+             */
+            selection: string;
+            /**
              * Title
              * @default Elemento grafico
              */
             title: string;
             /** Unit Id */
             unit_id?: string | null;
+            /**
+             * Unit Ids
+             * @description Genera dall'editor: subunità toccate dalla selezione (l'elemento va dopo l'ultima)
+             */
+            unit_ids?: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3521,6 +3561,12 @@ export interface components {
              * @description Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)
              */
             mock_fail_once?: ("rewrite" | "review") | null;
+            /**
+             * Parent Context
+             * @description Review di unità: le altre subunità della stessa unità vanno al revisore come contesto (Verifica questa parte)
+             * @default false
+             */
+            parent_context: boolean;
             /**
              * Phase
              * @description Obbligatoria per run_phase
@@ -4257,6 +4303,11 @@ export interface components {
              * @description Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)
              */
             qtype?: ("quiz" | "mirata" | "vasta" | "caso" | "esercizio") | null;
+            /**
+             * Unit Ids
+             * @description Solo queste unità (Domande su questa parte): quiz e mirate, anche se l'unità non è fra quelle selezionate per il recall
+             */
+            unit_ids?: string[] | null;
         };
         /** RecallHistory */
         RecallHistory: {
@@ -4719,6 +4770,54 @@ export interface components {
             transcription: components["schemas"]["Transcription"];
             web_search: components["schemas"]["WebSearchSettings"];
             worker: components["schemas"]["WorkerSettings"];
+        };
+        /** StudyLesson */
+        StudyLesson: {
+            /** Has Audio */
+            has_audio: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Ready
+             * @description False se la lezione non ha ancora una rielaborazione valida (nessuna unità)
+             */
+            ready: boolean;
+            /** Units */
+            units: components["schemas"]["StudyUnit"][];
+        };
+        /** StudyUnit */
+        StudyUnit: {
+            /**
+             * End
+             * @description Fine dell'unità nell'audio della lezione (secondi)
+             */
+            end?: number | null;
+            /**
+             * Html
+             * @description Testo dell'unità in HTML sanificato (come il documento)
+             */
+            html: string;
+            /** Id */
+            id: string;
+            /**
+             * Pending
+             * @description Domande da porre sull'unità, per tipo
+             */
+            pending?: {
+                [key: string]: number;
+            };
+            /**
+             * Questions
+             * @description Totale delle domande da porre sull'unità
+             */
+            questions: number;
+            /**
+             * Start
+             * @description Inizio dell'unità nell'audio della lezione (secondi)
+             */
+            start?: number | null;
+            /** Title */
+            title: string;
         };
         /** SubjectGenerateAccepted */
         SubjectGenerateAccepted: {
@@ -9891,6 +9990,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SectionLabels"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    study_api_v1_lessons__lesson_id__study_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyLesson"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

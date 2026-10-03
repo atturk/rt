@@ -460,7 +460,7 @@ def _persist_generation(lesson_dir, questions, key, attempt):
 def generate_recall_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
-    progress: Optional[Callable[..., None]] = None,
+    progress: Optional[Callable[..., None]] = None, unit_ids: Optional[List[str]] = None,
 ) -> List[RecallQuestion]:
     """Zero o più domande per chiamata dalle unità selezionate; count è un obiettivo, mai una
     quota del modello, e None vuol dire tutte le unità (il pool dell'intera lezione).
@@ -482,6 +482,8 @@ def generate_recall_batch(
     from rt.services.recall_units import selected_units
     from rt.core.models import SPECIAL_TYPES
     if qtype in SPECIAL_TYPES:
+        if unit_ids is not None:
+            return []  # casi ed esercizi abbracciano più unità: non si generano per una parte
         from rt.pipeline.recall_special import generate_special_batch
         return generate_special_batch(lesson_dir, qtype, count, force_mock=force_mock, regenerate=regenerate,
                                       shuffle=shuffle, progress=progress)
@@ -495,7 +497,13 @@ def generate_recall_batch(
     report(None, None, f"{label}: aggiorno le etichette del classificatore sulle unità")
     refresh(lesson_dir, force_mock=mock, view="resolved")
     raise_if_cancelled()
-    units = selected_units(lesson_dir)
+    if unit_ids is not None:
+        # Domande su una parte della lezione: le unità chieste, anche se escluse dal recall.
+        from rt.services.recall_units import _units
+        wanted = set(unit_ids)
+        units = [u for u in _units(lesson_dir) if u.unit_id in wanted]
+    else:
+        units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
     context = lesson_context(lesson_dir)
     policy = _generation_policy(qtype, few_shot_examples or [], mock)

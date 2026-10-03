@@ -45,9 +45,24 @@ def history(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
              summary="Genera domande: aggiunge al pool domande da tutte le unità selezionate (job recall_generate) o di un tipo (job recall_batch)")
 def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir, actor: Actor):
     _require_draft(lesson_dir)
+    if body.unit_ids is not None:
+        from rt.pipeline.ledger import load_resolved_draft
+        present = {u.unit_id for u in load_resolved_draft(lesson_dir).units}
+        units = [u for u in dict.fromkeys(body.unit_ids) if u in present]
+        if not units:
+            raise ApiError(422, "validation_error", "Nessuna delle unità indicate è nella lezione.")
+        return enqueue_job("recall_generate", lesson_dir, {"force_mock": body.mock, "regenerate": True, "unit_ids": units,
+                                                           "qtypes": [body.qtype] if body.qtype else ["quiz", "mirata"]}, actor)
     if body.qtype:
         return enqueue_job("recall_batch", lesson_dir, body.model_dump(), actor)
     return enqueue_job("recall_generate", lesson_dir, {"force_mock": body.mock, "regenerate": True}, actor)
+
+
+@router.get("/lessons/{lesson_id}/study", response_model=schemas.StudyLesson,
+            summary="Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna")
+def study(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.study_service import study_lesson
+    return study_lesson(lesson_id, lesson_dir)
 
 
 @router.get("/lessons/{lesson_id}/recall/questions", response_model=schemas.RecallQuestionList,

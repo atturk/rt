@@ -199,8 +199,9 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
             units = list(dict.fromkeys(body.units or [body.unit]))
             if not units or any(not unit or not unit.strip() for unit in units):
                 raise ApiError(422, "validation_error", "Seleziona unità valide.")
+            context = {"parent_context": True} if body.parent_context and body.phase == "review" else {}
             return enqueue_job("rewrite_unit" if body.phase == "rewrite" else "review_unit", lesson_dir,
-                               {"units": units, "options": options, **prompt_payload}, actor)
+                               {"units": units, "options": options, **prompt_payload, **context}, actor)
         return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}

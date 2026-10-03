@@ -363,6 +363,8 @@ class JobRequest(BaseModel):
     with_review: bool = False
     auto_accept: bool = False
     rename: bool = True
+    parent_context: bool = Field(False, description="Review di unità: le altre subunità della stessa unità vanno al "
+                                                    "revisore come contesto (Verifica questa parte)")
     mock_fail_once: Optional[Literal["rewrite", "review"]] = Field(
         None, description="Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta "
                           "con una risposta fuori schema (poi Riprova va a buon fine)")
@@ -445,6 +447,23 @@ class RecallUnits(BaseModel):
     selected: int
 
 
+class StudyUnit(BaseModel):
+    id: str
+    title: str
+    html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
+    start: Optional[float] = Field(None, description="Inizio dell'unità nell'audio della lezione (secondi)")
+    end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
+    pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")
+    questions: int = Field(description="Totale delle domande da porre sull'unità")
+
+
+class StudyLesson(BaseModel):
+    id: int
+    ready: bool = Field(description="False se la lezione non ha ancora una rielaborazione valida (nessuna unità)")
+    has_audio: bool
+    units: List[StudyUnit]
+
+
 class RecallUnitSelection(BaseModel):
     unit_ids: Optional[List[str]] = Field(None, description="Unità selezionate; null torna alla selezione predefinita")
 
@@ -466,6 +485,8 @@ class RecallHistory(BaseModel):
 class RecallGenerate(BaseModel):
     qtype: Optional[QuestionType] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
+    unit_ids: Optional[List[str]] = Field(None, max_length=200, description="Solo queste unità (Domande su questa parte): "
+                                          "quiz e mirate, anche se l'unità non è fra quelle selezionate per il recall")
     mock: bool = False
 
 

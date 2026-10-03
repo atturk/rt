@@ -69,7 +69,8 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
                 continue
             results.append(run_review_unit(job.lesson_path, unit,
-                                           force_mock=bool((job.payload.get("options") or {}).get("mock"))))
+                                           force_mock=bool((job.payload.get("options") or {}).get("mock")),
+                                           parent_context=bool(job.payload.get("parent_context"))))
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 

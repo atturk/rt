@@ -136,7 +136,9 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     lesson_dir = _lesson_dir(job)
     with ctx.activate():
         if job.payload.get("regenerate") or not load_recall_bank(lesson_dir).questions:
+            # unit_ids: solo quelle unità (Domande su questa parte), con i tipi di qtypes.
             generated = generate_pool(lesson_dir, force_mock=bool(job.payload.get("force_mock")),
+                                      qtypes=job.payload.get("qtypes"), unit_ids=job.payload.get("unit_ids"),
                                       progress=recall_progress(ctx))
             total = sum(generated.values())
             detail = ", ".join(f"{n} {t}" for t, n in generated.items())
@@ -176,6 +178,11 @@ def enrichment_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         get_element(state, job.payload["element_id"]).job_id = job.id
         save(_lesson_dir(job), state)
     with ctx.activate():
+        if job.payload.get("write"):
+            # Richiesta dall'editor: prima il regista scrive il prompt, poi si genera.
+            from rt.services.enrichment_service import write_request_prompt
+            ctx.progress("enrichment_generate", 0, 2, "Scrivo il prompt per il generatore")
+            write_request_prompt(_lesson_dir(job), job.payload["element_id"], mock=bool(job.payload.get("mock")))
         result = generate(_lesson_dir(job), job.payload["element_id"], mock=bool(job.payload.get("mock")), ctx=ctx)
     return JobOutcome(state=JobState.SUCCEEDED, result=result)
 

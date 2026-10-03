@@ -72,12 +72,12 @@ def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     fs.replace(tmp_path, path)
 
 
-def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progress=None) -> dict:
+def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progress=None, unit_ids=None) -> dict:
     """Pool di domande dell'intera lezione: il recaller riceve tutte le unità selezionate
     (una chiamata per unità, per le vaste una per gruppo) e per ognuna genera zero, una o
     più domande nuove. Le domande già nel pool restano (il recaller le vede e non le ripete);
     quelle che non piacciono si eliminano con delete_questions. Restituisce quante domande
-    nuove per tipo."""
+    nuove per tipo. unit_ids limita la generazione a quelle unità (anche se non selezionate)."""
     from rt.core.config import load_config
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
 
@@ -87,7 +87,8 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progre
     for qtype in types:
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
         generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, None, examples,
-                                                           force_mock=force_mock, regenerate=True, progress=progress))
+                                                           force_mock=force_mock, regenerate=True, progress=progress,
+                                                           unit_ids=unit_ids))
     return generated
 
 
