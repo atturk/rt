@@ -1,3 +1,4 @@
+import { EditorState } from '@codemirror/state'
 import { Check, Pencil, Play, ShieldCheck, Undo2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -12,11 +13,13 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ISSUE_ORDERS, parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { phaseProgress } from '@/lib/progress'
+import { useIsPhone } from '@/lib/phone'
+import { issueRange } from '../lessonReview'
 import { isActive } from '@/lib/jobs'
 import { useLessonAudio } from '../audio'
 import { decisionLabels, issueLabels, issueOf, paragraphIssue, type IssueItem } from '../reviewIssues'
 
-export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }: { lesson: Schemas['LessonDetail']; beforeAction?: () => Promise<void> }) {
+export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, markdown }: { markdown?: string; lesson: Schemas['LessonDetail']; beforeAction?: () => Promise<void> }) {
   const issues = useIssues(l.id)
   const decisions = useDecisions(l.id)
   const jobs = useJobs({ lesson_id: l.id, limit: 20 })
@@ -26,6 +29,8 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
   const undo = useUndoDecision(l.id)
   const [params, setParams] = useSearchParams()
   const [group, setGroup] = useState<'pending' | 'decided'>('pending')
+  const phone = useIsPhone()
+  const [showList, setShowList] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
@@ -73,8 +78,9 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
       {waiting && <Badge tone="neutral">Pipeline in attesa</Badge>}
     </>}
     {last && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void action(async () => { await undo.mutateAsync(last.issue_id); select(last.issue_id) })}><Undo2 />Annulla l'ultima</Button>}
-    {selected && <IssueCard key={issueOf(selected).id} item={selected} busy={busy} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} />}
-    {done && <>
+    {selected && <IssueCard key={issueOf(selected).id} item={selected} busy={busy} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} changed={markdown !== undefined && !selected.decision && !issueRange(EditorState.create({ doc: markdown }), selected)} onCloseIssue={() => onDecide(paragraphIssue(issueOf(selected)) ? 'accepted' : 'rejected')} onRecheck={() => void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', unit: issueOf(selected).unit_id ?? undefined, force: true }))} />}
+    {phone && done && <Button variant="outline" size="sm" aria-expanded={showList} onClick={() => setShowList(!showList)}>Elenco ({items.length})</Button>}
+    {done && (!phone || showList) && <>
       <div className="flex gap-2">
         <Button size="sm" variant={group === 'pending' ? 'default' : 'outline'} aria-pressed={group === 'pending'} onClick={() => setGroup('pending')}>Da decidere {pending.length}</Button>
         <Button size="sm" variant={group === 'decided' ? 'default' : 'outline'} aria-pressed={group === 'decided'} onClick={() => setGroup('decided')}>Decise {decided.length}</Button>
@@ -94,7 +100,8 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
   </div>
 }
 
-function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek }: {
+function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, changed, onCloseIssue, onRecheck }: {
+  phone: boolean; changed: boolean; onCloseIssue: () => void; onRecheck: () => void
   item: IssueItem; busy: boolean; editing: boolean; onEditing: (value: boolean) => void
   onDecide: (decision: 'accepted' | 'rejected' | 'edited', text?: string) => void; onSeek?: (seconds: number) => void
 }) {
@@ -104,14 +111,19 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek }: {
   return <Card className="flex flex-col gap-3 p-3" data-testid="issue-detail">
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
     <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
-    {!paragraph && <div><h3 className="mb-1 text-meta font-semibold">Correzione proposta</h3><p className="rounded-lg bg-muted p-3">{issue.suggested_fix ?? issue.claim}</p></div>}
+    {phone && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
+    {!paragraph && !changed && <div><h3 className="mb-1 text-meta font-semibold">Correzione proposta</h3><p className="rounded-lg bg-muted p-3">{issue.suggested_fix ?? issue.claim}</p></div>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
-    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
+    {changed ? <>
+      <Badge tone="warning">Testo cambiato a mano</Badge>
+      <p className="text-meta text-muted-foreground line-through">{issue.claim}</p>
+      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={onCloseIssue}>Chiudi l'issue</Button><Button size="sm" variant="outline" disabled={busy || !issue.unit_id} onClick={onRecheck}>Verifica di nuovo l'unità {issue.unit_id}</Button></div>
+    </> : item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
       <label htmlFor="review-edit" className="text-meta">{paragraph ? 'Testo del paragrafo' : 'Testo corretto'}</label>
       <Textarea id="review-edit" autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !text.trim()}>Salva modifica</Button><Button size="sm" variant="ghost" onClick={() => onEditing(false)}>Annulla</Button></div>
-    </form> : <div className="flex flex-wrap gap-2">
+    </form> : <div className="flex flex-wrap gap-2 max-md:grid max-md:grid-cols-2 max-md:[&_button]:h-12">
       <Button size="sm" disabled={busy} onClick={() => onDecide('accepted')}><Check />Accetta</Button>
       {!paragraph && <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('rejected')}><X />Mantieni</Button>}
       <Button size="sm" variant="outline" disabled={busy} onClick={() => onEditing(true)}><Pencil />Modifica</Button>

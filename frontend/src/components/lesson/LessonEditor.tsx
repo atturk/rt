@@ -3,17 +3,20 @@ import '@atomic-editor/editor/styles.css'
 import { EditorView } from '@codemirror/view'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type MouseEvent } from 'react'
-import { useLocation } from 'react-router'
+import { useLocation, useSearchParams } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
-import { lessonKeys } from '@/api/hooks'
+import { lessonKeys, useIssues } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
+import { parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { activeUnit } from '@/lib/audio'
 import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonImages, lessonUnits, setSlots, unitRanges } from './lessonUnits'
+import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
+import { issueOf } from './reviewIssues'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 
 type Problem = Schemas['DocumentEditProblem']
@@ -45,6 +48,8 @@ function viewOf(handle: AtomicCodeMirrorEditorHandle | null): EditorView | null 
 export type LessonEditorActions = { flush: () => Promise<void> }
 
 type Props = {
+  reviewOpen?: boolean
+  onDocumentChange?: (markdown: string) => void
   actionsRef?: RefObject<LessonEditorActions | null>
   lessonId: number
   document: Schemas['LessonDocument']
@@ -63,16 +68,22 @@ type Props = {
  * si salvano da sole nella bozza dopo una breve pausa; i timecode sono bloccati (clic: ascolta,
  * triplo clic: modifica). Il documento finale va poi ricreato con la fase Documento.
  */
-export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef }: Props) {
+export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, onDocumentChange }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
   const unitIds = useMemo(() => doc.sections.map((s) => s.unit_id), [doc.sections])
+  const [params, setParams] = useSearchParams()
+  const review = useIssues(lessonId, reviewOpen)
+  const reviewItems = reviewOpen ? review.data?.items : undefined
+  const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
+  const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash } = useLocation()
   const extensions = useMemo(() => [
     timecodeLock,
     lessonUnits,
+    lessonReview,
     lessonImages(lessonId),
     EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
   ], [lessonId])
@@ -97,8 +108,9 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     saved.current = doc.markdown
     // oxlint-disable-next-line react/set-state-in-effect
     setText(doc.markdown)
+    onDocumentChange?.(doc.markdown)
     setSource((s) => ({ key: s.key + 1, markdown: doc.markdown }))
-  }, [doc.markdown, text])
+  }, [doc.markdown, text, onDocumentChange])
 
   const leaseRef = useRef<string | null>(null)
   const savingRef = useRef<Promise<void> | null>(null)
@@ -218,6 +230,27 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     viewOf(handle.current)?.dispatch({ effects: setSlots.of(slots) })
   }, [slots, source.key])
 
+  useEffect(() => {
+    const view = viewOf(handle.current)
+    if (!view) return
+    view.dispatch({ effects: setReview.of({ items: reviewItems ?? [], selected: selectedIssueId }) })
+    if (selectedIssue) {
+      const range = issueRange(view.state, selectedIssue)
+      if (range) view.dispatch({ effects: EditorView.scrollIntoView(range.from, { y: 'center' }) })
+    }
+  }, [reviewItems, selectedIssueId, selectedIssue, source.key])
+  useEffect(() => {
+    const node = surface.current
+    if (!node || !reviewOpen) return
+    const select = (event: Event) => {
+      const next = new URLSearchParams(params)
+      next.set('issue', (event as CustomEvent<string>).detail)
+      setParams(next, { replace: true })
+    }
+    node.addEventListener(ISSUE_EVENT, select)
+    return () => node.removeEventListener(ISSUE_EVENT, select)
+  }, [reviewOpen, params, setParams])
+
   // Clic su un timecode: l'audio parte da lì.
   useEffect(() => {
     const node = surface.current
@@ -319,7 +352,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
           <AtomicCodeMirrorEditor
             documentId={`lesson-${lessonId}-${source.key}`}
             markdownSource={source.markdown}
-            onMarkdownChange={setText}
+            onMarkdownChange={(markdown) => { setText(markdown); onDocumentChange?.(markdown) }}
             editorHandleRef={handle}
             extensions={extensions}
             readOnly={locked}

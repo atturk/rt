@@ -158,9 +158,10 @@ export const reviewKeys = {
   decisions: (id: number) => ['lesson', id, 'decisions'] as const,
 }
 
-export function useIssues(id: number) {
+export function useIssues(id: number, enabled = true) {
   return useQuery({
     queryKey: reviewKeys.issues(id),
+    enabled,
     queryFn: () =>
       unwrap(api.GET('/api/v1/lessons/{lesson_id}/issues', { params: { path: { lesson_id: id }, query: { status: 'all' } } })),
   })

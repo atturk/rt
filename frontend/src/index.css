@@ -447,3 +447,13 @@
   max-width: 100%;
   border-radius: 8px;
 }
+
+.rt-lesson-editor .rt-issue-selected {
+  background: var(--warning-soft);
+  border-radius: var(--radius-md);
+}
+.rt-lesson-editor .rt-issue-other {
+  text-decoration: underline dotted var(--warning) 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
