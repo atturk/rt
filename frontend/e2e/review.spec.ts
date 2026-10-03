@@ -156,40 +156,29 @@ test('review: niente "Ascolta" né "Job recenti"; il timecode dell\'unità spost
   await expect(page.getByTestId('lesson-document')).toHaveAttribute('data-active-unit', item.issue.unit_id)
 })
 
-test('player: velocità con lo slider da tastiera, uguale in lezione e revisione dopo la ricarica', async ({ page }) => {
+test('player: la velocità gira fra i valori fissi, uguale in lezione e revisione dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
   const id = await lessonId(page, 'FARMACOLOGIA')
   await page.goto(`/lezioni/${id}/revisione`)
-  const speed = page.getByRole('button', { name: /^Velocità di riproduzione/ })
+  const speed = page.getByTestId('speed-button')
   await expect(speed).toHaveText('1×')
+  await expect(speed).toHaveAccessibleName('Velocità di riproduzione: 1×')
   const before = await counter(page).textContent()
   const selected = await page.getByTestId('issue-detail').getAttribute('data-issue-id')
+  // Da tastiera: Invio sul pulsante passa al valore dopo, niente slider.
   await speed.focus()
   await page.keyboard.press('Enter')
-  const slider = page.getByRole('slider', { name: 'Velocità di riproduzione' })
-  await expect(slider).toBeFocused()
-  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight')
-  await expect(page.getByTestId('speed-value')).toHaveText('1.25×')
-  await page.keyboard.press('ArrowLeft')
-  await expect(page.getByTestId('speed-value')).toHaveText('1.2×')
-  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.playbackRate)).toBeCloseTo(1.2)
-  // Le frecce nello slider non muovono le issue né decidono.
+  await expect(speed).toHaveText('1,25×')
+  await expect(page.getByRole('slider', { name: 'Velocità di riproduzione' })).toHaveCount(0)
+  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.playbackRate)).toBeCloseTo(1.25)
+  // Il pulsante non muove le issue né decide.
   await expect(counter(page)).toHaveText(before!)
   await expect(page.getByTestId('issue-detail')).toHaveAttribute('data-issue-id', selected!)
-  await page.keyboard.press('Escape')
-  await expect(slider).toHaveCount(0)
   await expect(speed).toBeFocused()
-  await expect(speed).toHaveText('1.2×')
-
-  // Clic fuori chiude lo slider.
-  await speed.click()
-  await expect(slider).toBeVisible()
-  await page.getByRole('heading', { level: 1 }).click()
-  await expect(slider).toHaveCount(0)
 
   await page.reload()
-  await expect(speed).toHaveText('1.2×')
+  await expect(speed).toHaveText('1,25×')
   await page.goto(`/lezioni/${id}`)
-  await expect(page.getByRole('button', { name: /^Velocità di riproduzione/ })).toHaveText('1.2×')
-  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.playbackRate)).toBeCloseTo(1.2)
+  await expect(page.getByTestId('speed-button')).toHaveText('1,25×')
+  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.playbackRate)).toBeCloseTo(1.25)
 })

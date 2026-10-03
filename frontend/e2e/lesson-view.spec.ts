@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails } from './support'
 
 type Lesson = { id: number; materia: string }
 type PhaseReport = { phases: { phase: string; status: string; reason: string }[] }
@@ -24,6 +24,7 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
   await expect(doc.locator('h2').first()).toBeVisible()
   await expect(doc.locator('[data-unit-id]').first()).toBeVisible()
 
+  await openLessonDetails(page)
   for (const row of report.phases) {
     const li = page.locator(`[data-phase-row="${row.phase}"]`)
     await expect(li).toHaveAttribute('data-status', row.status)
@@ -33,7 +34,7 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
   await expect(page.getByTestId('validation-outline')).toContainText('valida')
   await expect(page.getByTestId('cost-panel')).toContainText('Scaletta')
 
-  const markdown = page.getByRole('link', { name: 'Markdown' })
+  const markdown = await exportItem(page, 'Markdown')
   await expect(markdown).toHaveAttribute('href', `/api/v1/lessons/${id}/export?format=markdown`)
   const download = page.waitForEvent('download')
   await markdown.click()
@@ -84,6 +85,7 @@ test('avvio di una fase: il job gira sul worker e lo stato resta dopo la ricaric
   await loginViaLink(page)
   const id = await lessonId(page, 'FISIOLOGIA')
   await page.goto(`/lezioni/${id}`)
+  await openLessonDetails(page)
   const prepare = page.locator('[data-phase-row="prepare"]')
   await expect(prepare).not.toHaveAttribute('data-status', 'VALID')
 
@@ -107,14 +109,14 @@ test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', a
   await page.goto(`/lezioni/${id}`)
 
   let download = page.waitForEvent('download')
-  await page.getByRole('link', { name: 'Markdown' }).click()
+  await (await exportItem(page, 'Markdown')).click()
   const markdown = readFileSync((await (await download).path())!, 'utf-8')
   const fromApi = await page.request.get(`/api/v1/lessons/${id}/export?format=markdown`, { headers: authHeaders() })
   expect(markdown).toBe(await fromApi.text())
   expect(markdown).toContain('# ')
 
   download = page.waitForEvent('download')
-  await page.getByRole('link', { name: /zip/i }).click()
+  await (await exportItem(page, /zip/i)).click()
   const zip = readFileSync((await (await download).path())!)
   expect((await download).suggestedFilename()).toMatch(/\.zip$/)
   expect(zip.subarray(0, 2).toString()).toBe('PK')
@@ -133,6 +135,7 @@ test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e
   expect(warnings.map((w) => w.code)).toEqual(['review_stale', 'pending_issues'])
 
   await page.goto(`/lezioni/${id}`)
+  await openLessonDetails(page)
   const build = page.locator('[data-phase-row="build"]')
   await expect(build).toHaveAttribute('data-status', 'MISSING')
   await expect(build.getByTestId('build-warnings')).toContainText('10 issue ancora da valutare')
@@ -164,38 +167,57 @@ test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e
   expect(doc.final).toBe(true)
 })
 
-test('intestazione: Recall, Arricchimento e download sempre nello stesso posto, disabilitati con il motivo', async ({ page }) => {
+test('intestazione: Studia, Verifica, Dettagli ed Esporta sempre nello stesso posto, non disponibili con il motivo', async ({ page }) => {
   await loginViaLink(page)
-  const labels = ['Recall', 'Arricchimento', 'Markdown', 'Tutti i dati (zip)']
+  const labels = ['Studia', 'Verifica con LLM', 'Dettagli', 'Esporta']
+  const actions = page.getByTestId('lesson-actions')
 
-  // Lezione senza rielaborazione: le quattro azioni ci sono, disabilitate con il motivo
+  // Lezione senza rielaborazione: le icone ci sono; Studia e i download non disponibili, con il motivo
   const setupOnly = await lessonId(page, 'FISIOLOGIA')
   await page.goto(`/lezioni/${setupOnly}`)
-  const actions = page.getByTestId('lesson-actions')
-  await expect(actions.locator('a, button')).toHaveText(labels)
-  for (const label of labels) {
-    const slot = actions.locator(`[data-action-disabled="${label}"]`)
-    await expect(slot.getByRole('button', { name: label })).toBeDisabled()
-    await expect(slot).toHaveAttribute('title', /rielaborazione/)
+  // Nome accessibile = testo del suggerimento, nello stesso ordine del design.
+  await expect(actions.locator('a, button')).toHaveCount(4)
+  expect(await actions.locator('a, button').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(labels)
+  await expect(actions.getByRole('button', { name: 'Studia' })).toHaveAttribute('aria-disabled', 'true')
+  await actions.getByRole('button', { name: 'Studia' }).hover()
+  await expect(page.getByRole('tooltip')).toContainText(/rielaborazione/)
+  await actions.getByRole('button', { name: 'Esporta' }).click()
+  const menu = page.getByRole('menu', { name: 'Esporta' })
+  await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^Tutti i dati \(zip\)/])
+  for (const item of await menu.getByRole('menuitem').all()) {
+    await expect(item).toHaveAttribute('aria-disabled', 'true')
+    await expect(item).toHaveAttribute('title', /rielaborazione/)
   }
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeHidden()
 
-  // Dopo il rewrite, senza documento finale: tutte disponibili; il Markdown è l'anteprima
+  // Dettagli e Verifica aprono il pannello laterale; Esc lo chiude
+  await actions.getByRole('button', { name: 'Dettagli' }).click()
+  await expect(page.getByTestId('lesson-panel')).toHaveAttribute('data-view', 'dettagli')
+  await expect(actions.getByRole('button', { name: 'Dettagli' })).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByTestId('lesson-details')).toContainText('Stato')
+  await actions.getByRole('button', { name: 'Verifica con LLM' }).click()
+  await expect(page.getByTestId('lesson-panel')).toHaveAttribute('data-view', 'verifica')
+  await expect(page.getByTestId('lesson-review-panel')).toContainText('non è ancora stata verificata')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('lesson-panel')).toHaveCount(0)
+
+  // Dopo il rewrite, senza documento finale: tutto disponibile; il Markdown è l'anteprima
   const reviewed = await lessonId(page, 'FARMACOLOGIA')
   const phases = await apiGet<Phases>(page.request, `/lessons/${reviewed}/phases`)
   expect(phases.phases.find((p) => p.phase === 'build')?.status).toBe('MISSING')
   await page.goto(`/lezioni/${reviewed}`)
-  await expect(actions.locator('a, button')).toHaveText(labels)
-  await expect(actions.locator('[data-action-disabled]')).toHaveCount(0)
+  await expect(page.getByTestId('lesson-meta')).toContainText(/unità · /)
   await expect(page.getByText(/Anteprima dalla bozza/)).toBeVisible()
   const download = page.waitForEvent('download')
-  await actions.getByRole('link', { name: 'Markdown' }).click()
+  await (await exportItem(page, 'Markdown')).click()
   expect((await download).suggestedFilename()).toMatch(/\(anteprima\)\.md$/)
 
-  await actions.getByRole('link', { name: 'Recall' }).click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/recall$`))
-  await expect(page.getByText('La lezione non ha ancora una rielaborazione valida')).toHaveCount(0)
+  await actions.getByRole('link', { name: 'Studia' }).click()
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${reviewed}$`))
   await page.goto(`/lezioni/${reviewed}`)
-  await actions.getByRole('link', { name: 'Arricchimento' }).click()
+  await openLessonDetails(page)
+  await page.getByTestId('lesson-links').getByRole('link', { name: 'Arricchimento' }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/arricchimento$`))
   await expect(page.getByRole('button', { name: 'Aggiungi le immagini' })).toBeVisible()
 })

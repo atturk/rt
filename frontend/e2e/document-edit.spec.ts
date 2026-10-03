@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, loginViaLink, openLessonDetails } from './support'
 
 // RT4-FA3: modifica dell'anteprima (beta). CHIRURGIA è una lezione completa usata solo qui,
 // perché il salvataggio rende il documento da ricreare. Gli avvisi "Non mostrare più" sono
@@ -41,6 +41,7 @@ test("modifica dell'anteprima: testo e timecode salvati, documento da ricreare, 
   const before = await apiGet<LessonDocument>(page.request, `/lessons/${chir.id}/document`)
   const oldTimecode = before.sections[0].start_formatted!
   await page.goto(`/lezioni/${chir.id}`)
+  await openLessonDetails(page)
   await expect(page.locator('[data-phase-row="build"]')).toHaveAttribute('data-status', 'VALID')
   await pencil.click()
   await expect(notice.locator('[data-notice=preview_edit_issues]')).toHaveCount(0)

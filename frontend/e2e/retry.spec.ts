@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { apiGet, authHeaders, loginViaLink, openLessonDetails } from './support'
 
 // RT4-FA1: un job fallito si riprova dalla web. Il job in mock fallisce apposta
 // (mock_fail_once: la review risponde fuori schema, come openrouter/free nel test reale); con
@@ -99,6 +99,7 @@ test('un job fallito si riprova: il nuovo job riparte dalla fase fallita e compl
 
   // Pannello job della lezione: il fallito punta al nuovo tentativo, niente più Riprova.
   await page.goto(`/lezioni/${lessonId}`)
+  await openLessonDetails(page)
   const panel = page.getByTestId('jobs-panel')
   await expect(panel.locator(`[data-job-id="${failedId}"]`)).toHaveAttribute('data-job-state', 'failed')
   await expect(panel.locator(`[data-job-id="${failedId}"]`).getByRole('link', { name: 'Nuovo tentativo' })).toBeVisible()
@@ -116,6 +117,7 @@ test('Riprova nel pannello job della lezione', async ({ page }) => {
   const failedId = ((await res.json()) as { job_id: string }).job_id
   await waitJob(page, failedId, ['failed'])
   await page.goto(`/lezioni/${lesson.id}`)
+  await openLessonDetails(page)
   const row = page.getByTestId('jobs-panel').locator(`[data-job-id="${failedId}"]`)
   await expect(row).toContainText('Rielaborazione incompleta')
   await row.getByRole('button', { name: 'Riprova' }).click()

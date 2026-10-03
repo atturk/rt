@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiGet, loginLink, loginViaLink, serverState } from './support'
+import { apiGet, loginLink, loginViaLink, openLessonDetails, serverState } from './support'
 
 type Lesson = { id: number; materia: string; titolo: string; folder_name: string; state: string | null }
 
@@ -74,7 +74,8 @@ test('dalla riga si apre la lezione', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/lezioni/${first.id}$`))
   await page.reload()
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-  await expect(page.getByLabel('Stato delle fasi').locator('[data-status=VALID]')).toHaveCount(5)
+  await openLessonDetails(page)
+  await expect(page.locator('[data-phase-row][data-status=VALID]')).toHaveCount(5)
   // Indietro torna alle Lezioni.
   await page.getByRole('link', { name: 'Lezioni' }).first().click()
   await expect(page).toHaveURL(/\/$/)

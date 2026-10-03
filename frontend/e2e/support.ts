@@ -32,6 +32,24 @@ export async function loginViaLink(page: Page) {
   await expect(page).toHaveURL(/\/$/)
 }
 
+/**
+ * Pagina della lezione: fasi, job, costi e scaletta stanno nel pannello laterale Dettagli
+ * (design 4.2). Lo apre se non è già aperto (la scelta resta nel browser).
+ */
+export async function openLessonDetails(page: Page) {
+  const panel = page.locator('[data-testid=lesson-panel][data-view=dettagli]')
+  await expect(page.getByTestId('lesson-actions')).toBeVisible()
+  if (!(await panel.isVisible())) await page.getByTestId('lesson-actions').getByRole('button', { name: 'Dettagli' }).click()
+  await expect(panel).toBeVisible()
+  return panel
+}
+
+/** Voce del menu Esporta dell'intestazione della lezione. */
+export async function exportItem(page: Page, name: string | RegExp) {
+  await page.getByTestId('lesson-actions').getByRole('button', { name: 'Esporta' }).click()
+  return page.getByRole('menu', { name: 'Esporta' }).getByRole('menuitem', { name })
+}
+
 /** PDF di una pagina, abbastanza valido per PyMuPDF. */
 export function tinyPdf(): Buffer {
   const objects = [

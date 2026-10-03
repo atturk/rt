@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink, tinyPdf } from './support'
+import { apiGet, loginViaLink, openLessonDetails, tinyPdf } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
 // 'rt run' da terminale: accesso con il link, importazione dell'audio, scaletta, review di tutte
@@ -69,7 +69,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   const { total } = await apiGet<IssueList>(page.request, `/lessons/${lessonId}/issues?status=all`)
   expect(total).toBeGreaterThan(0)
   await page.goto(`/lezioni/${lessonId}`)
-  await page.getByRole('link', { name: /issue da valutare|Rivedi/ }).first().click()
+  await page.getByTestId('lesson-waiting').getByRole('link', { name: 'Vai alla decisione' }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${lessonId}/revisione`))
   const counter = page.getByTestId('review-counter')
   await expect(counter).toHaveText(`${total} da decidere su ${total}`)
@@ -86,6 +86,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   // 5. Documento finale con l'audio: build valido, unità con timecode, player.
   await page.goto(`/lezioni/${lessonId}`)
   await page.reload()
+  await openLessonDetails(page)
   await expect(page.locator('[data-phase-row="build"]')).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).phases.build).toBe('VALID')
   await expect(page.getByTestId('lesson-document').locator('[data-unit-id]').first()).toBeVisible()
@@ -123,6 +124,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   // 8. Documento come conferma finale: Esegui Documento (con il dialogo, se ci sono avvisi) e
   //    documento aggiornato con le immagini dopo la ricarica.
   await page.goto(`/lezioni/${lessonId}`)
+  await openLessonDetails(page)
   const build = page.locator('[data-phase-row="build"]')
   await expect(build).toHaveAttribute('data-status', 'STALE')
   await page.getByRole('button', { name: 'Esegui Documento' }).click()

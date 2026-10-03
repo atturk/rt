@@ -28,6 +28,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['outline', `/lezioni/${done}/outline`],
     ['recall', `/lezioni/${done}/recall`],
     ['immagini', `/lezioni/${done}/immagini`],
+    ['studio di una materia', '/studio/materia/BIOCHIMICA'],
     ['importa', '/importa'],
     ['job', '/job'],
     ['bot', '/impostazioni/bot'],
@@ -66,11 +67,29 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByText(/^Carico/)).toHaveCount(0)
       await expectNoViolations(page, name)
     }
-    // Slider della velocità aperto nel player.
-    await page.goto(`/lezioni/${await lessonId(page, 'BIOCHIMICA')}`)
-    await page.getByRole('button', { name: /^Velocità di riproduzione/ }).click()
-    await expect(page.getByRole('slider', { name: 'Velocità di riproduzione' })).toBeVisible()
-    await expectNoViolations(page, 'velocità del player')
+    // Pagina della lezione (design 4.2): pannello Dettagli, menu Esporta, menu contestuale e Genera.
+    const done = await lessonId(page, 'BIOCHIMICA')
+    await page.goto(`/lezioni/${done}`)
+    await page.getByTestId('lesson-actions').getByRole('button', { name: 'Dettagli' }).click()
+    await expect(page.getByTestId('lesson-details')).toBeVisible()
+    await expectNoViolations(page, 'pannello Dettagli')
+    await page.keyboard.press('Escape')
+    await page.getByTestId('lesson-actions').getByRole('button', { name: 'Esporta' }).click()
+    await expect(page.getByRole('menu', { name: 'Esporta' })).toBeVisible()
+    await expectNoViolations(page, 'menu Esporta')
+    await page.keyboard.press('Escape')
+    await page.getByTestId('lesson-document').locator('[data-unit-id]').first().click({ button: 'right' })
+    await expect(page.getByTestId('document-menu')).toBeVisible()
+    await expectNoViolations(page, 'menu contestuale del documento')
+    await page.getByRole('menuitem', { name: 'Genera' }).click()
+    await expect(page.getByTestId('generate-popover')).toBeVisible()
+    await expectNoViolations(page, 'popup Genera')
+    await page.keyboard.press('Escape')
+
+    // Studio: lettura e domande.
+    await page.goto(`/studio/lezione/${done}`)
+    await expect(page.getByTestId('study-text')).toBeVisible()
+    await expectNoViolations(page, 'studio, lettura')
 
     // Anteprima in modifica (RT4-FA3) con gli avvisi prima di entrare.
     await page.goto(`/lezioni/${await lessonId(page, 'CHIRURGIA')}`)
