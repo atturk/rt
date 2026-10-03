@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.jobs import enqueue_job
 
 router = APIRouter(tags=["recall"])
@@ -207,8 +207,9 @@ def _bot_state() -> dict:
     import os
     from rt.services.settings_service import secret_is_set
     from rt.telegram.daemon_status import is_daemon_running
+    from rt.core.config import telegram_enabled
     configured = secret_is_set("RT_TELEGRAM_BOT_TOKEN") and bool((os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip())
-    return {"configured": configured, "running": is_daemon_running()}
+    return {"enabled": telegram_enabled(), "configured": configured, "running": is_daemon_running()}
 
 
 @router.get("/recall/telegram", response_model=schemas.TelegramRecallStatus,
@@ -223,6 +224,7 @@ def telegram_status(_actor: Actor):
 def telegram_start(lesson_id: int, body: schemas.TelegramRecallStart, lesson_dir: LessonDir, actor: Actor):
     from rt.services.recall_sessions import RecallSessionError, WEB, list_sessions, request_telegram_start
     _require_draft(lesson_dir)
+    require_telegram()
     bot = _bot_state()
     if not bot["configured"]:
         raise ApiError(409, "telegram_not_configured", "Configura il bot Telegram in Impostazioni.")
@@ -268,7 +270,8 @@ def subjects(_actor: Actor):
 
 @router.get("/recall/subject", response_model=schemas.SubjectRecallState,
             summary="Lezioni di una materia con il loro pool, sessione per materia in corso e ultimo riepilogo")
-def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno")):
+def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, "
+                                                                 "o LEZIONI:<id>,<id> per una selezione")):
     from rt.services.recall_subject import subject_overview
     return _subject_call(subject_overview, materia)
 

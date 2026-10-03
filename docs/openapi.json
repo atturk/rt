@@ -5498,7 +5498,7 @@
             "type": "array"
           },
           "materia": {
-            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso",
+            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione",
             "title": "Materia",
             "type": "string"
           },
@@ -5542,7 +5542,7 @@
             "type": "array"
           },
           "materia": {
-            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso",
+            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione",
             "title": "Materia",
             "type": "string"
           },
@@ -5685,6 +5685,19 @@
         "title": "TelegramCommandInfo",
         "type": "object"
       },
+      "TelegramEnabledIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "TelegramEnabledIn",
+        "type": "object"
+      },
       "TelegramIn": {
         "properties": {
           "bot_token": {
@@ -5778,6 +5791,12 @@
             "title": "Configured",
             "type": "boolean"
           },
+          "enabled": {
+            "default": false,
+            "description": "Telegram attivo (spento di predefinito: il recall si fa solo nella web app)",
+            "title": "Enabled",
+            "type": "boolean"
+          },
           "running": {
             "description": "Bot in esecuzione",
             "title": "Running",
@@ -5838,6 +5857,12 @@
           "default_channel": {
             "title": "Default Channel",
             "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "description": "Telegram attivo (spento di predefinito): bot, ripassi e decisioni su Telegram",
+            "title": "Enabled",
+            "type": "boolean"
           },
           "misc_topic_id": {
             "anyOf": [
@@ -15176,12 +15201,12 @@
         "operationId": "subject_state_api_v1_recall_subject_get",
         "parameters": [
           {
-            "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno",
+            "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, o LEZIONI:<id>,<id> per una selezione",
             "in": "query",
             "name": "materia",
             "required": true,
             "schema": {
-              "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno",
+              "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, o LEZIONI:<id>,<id> per una selezione",
               "title": "Materia",
               "type": "string"
             }
@@ -17678,6 +17703,92 @@
           }
         ],
         "summary": "Bot Telegram: token, chat, topic",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/telegram/enabled": {
+      "put": {
+        "operationId": "put_telegram_enabled_api_v1_settings_telegram_enabled_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramEnabledIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accende o spegne Telegram (spento: anche il bot si ferma)",
         "tags": [
           "impostazioni"
         ]

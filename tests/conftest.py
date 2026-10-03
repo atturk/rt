@@ -47,6 +47,9 @@ def _disable_real_telegram_notifications():
     lo apre e in che ordine i test vengono eseguiti."""
     os.environ["RT_TELEGRAM_BOT_TOKEN"] = "test-disabled-token"
     os.environ["RT_TELEGRAM_CHAT_ID"] = "0"
+    # Telegram è spento di predefinito; i test del bot lo vogliono acceso (quelli dello
+    # spento lo tolgono con monkeypatch)
+    os.environ["RT_TELEGRAM_ENABLED"] = "1"
 
 
 @pytest.fixture(autouse=True)

@@ -179,7 +179,9 @@ function Session({ lessonId }: { lessonId: number }) {
   const web = session.data?.web ?? null
   const telegram = session.data?.telegram ?? null
   const command = session.data?.command ?? null
-  const botReady = !!bot.data?.configured && !!bot.data?.running
+  // Telegram spento (il predefinito): il recall si fa solo qui, la scelta del posto non c'è
+  const telegramOn = bot.data?.enabled === true
+  const botReady = telegramOn && !!bot.data?.configured && !!bot.data?.running
   const requested = params.get('luogo')
   const place: Place = requested === 'telegram' || requested === 'qui' ? requested : telegram ? 'telegram' : 'qui'
   const placeLocked = !botReady && !telegram
@@ -251,7 +253,7 @@ function Session({ lessonId }: { lessonId: number }) {
       ))}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
+        {telegramOn && <div className="flex flex-col gap-1">
           <SlideToggle
             label="Dove fare il recall"
             options={PLACES}
@@ -262,7 +264,7 @@ function Session({ lessonId }: { lessonId: number }) {
             testId="place-toggle"
           />
           {placeLocked && placeHelp && <p className="text-xs text-warning">{placeHelp}</p>}
-        </div>
+        </div>}
         <SlideToggle
           label="Tipo di domanda"
           options={TYPE_OPTIONS}

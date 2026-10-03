@@ -223,6 +223,19 @@ def save_telegram(project_root: Path, token: str, chat_id: str,
     return "Impostazioni Telegram salvate."
 
 
+def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
+    """Accende o spegne Telegram (telegram.enabled nella configurazione generale). Spento, il
+    bot non parte e i ripassi e le decisioni restano nella web app e nel terminale."""
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    telegram = data.setdefault("telegram", {})
+    if not isinstance(telegram, dict):
+        raise ValueError("Configurazione Telegram non valida.")
+    telegram["enabled"] = bool(enabled)
+    _atomic_yaml(path, data)
+    return "Telegram attivato." if enabled else "Telegram disattivato."
+
+
 def save_transcription(project_root: Path, engine: str, base_url: str,
                        model: str, api_key: str) -> str:
     if api_key.strip():
@@ -423,6 +436,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "model": cfg.transcription.model, "api_key_set": secret_is_set("RT_STT_API_KEY"),
         },
         "telegram": {
+            "enabled": cfg.telegram.enabled,
             "bot_token_set": secret_is_set("RT_TELEGRAM_BOT_TOKEN"),
             "bot_token_preview": mask_value(telegram_value("bot_token")),
             "chat_id_set": bool(telegram_value("chat_id")),

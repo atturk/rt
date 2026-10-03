@@ -2,7 +2,7 @@ import { Eye, EyeOff, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { errorMessage } from '@/api/client'
-import { useDeleteListenMessages, useListenMessages, useRevealTelegram, type useTopicTest } from '@/api/settings'
+import { useDeleteListenMessages, useListenMessages, useRevealTelegram, useSetTelegramEnabled, type useTopicTest } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { SecretBadge } from './common'
@@ -137,6 +137,36 @@ export function ListenCleanup({ enabled }: { enabled: boolean }) {
       {!del.data && info.data?.cleaned && count > 0 && (
         <p className="text-[11px] text-muted-foreground">I messaggi dell'ultimo ascolto sono già stati cancellati.</p>
       )}
+    </div>
+  )
+}
+
+/**
+ * Interruttore di Telegram (spento di predefinito). Spento: niente bot, ripassi solo nella web
+ * app (raggiungibile da tailnet), decisioni della pipeline nel terminale o nella web app.
+ */
+export function TelegramEnabledToggle({ enabled }: { enabled: boolean }) {
+  const set = useSetTelegramEnabled()
+  // Subito al clic; se il salvataggio non riesce torna il valore delle impostazioni.
+  const shown = set.isPending ? (set.variables ?? enabled) : enabled
+  return (
+    <div className="flex flex-col gap-1" data-testid="telegram-enabled">
+      <label className="flex items-center gap-2 text-sm font-semibold">
+        <input
+          type="checkbox"
+          className="size-4"
+          checked={shown}
+          disabled={set.isPending}
+          onChange={(e) => set.mutate(e.target.checked)}
+        />
+        Usa Telegram
+      </label>
+      <p className="text-xs text-muted-foreground">
+        {shown
+          ? 'Bot, ripassi e decisioni anche su Telegram. Spegnendolo il bot si ferma.'
+          : 'Spento: i ripassi si fanno nella web app e le decisioni nel terminale o nella web app. Token e topic salvati restano.'}
+      </p>
+      {set.isError && <Alert tone="danger">{errorMessage(set.error)}</Alert>}
     </div>
   )
 }

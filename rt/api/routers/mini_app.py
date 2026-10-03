@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from rt.api import schemas
 from rt.api.schemas import NextQuestionType
 from rt.api.deps import LessonDir
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.mini_auth import StudyActor, issue_session, study_actor, verify_init_data
 from rt.api.auth import bearer_scheme
 from rt.api.routers import recall
@@ -106,6 +106,7 @@ def audio(lesson_id: int, unit_id: str, lesson_dir: LessonDir, _actor: StudyActo
 
 @router.post("/lessons/{lesson_id}/units/{unit_id}/send-audio")
 def send_audio(lesson_id: int, unit_id: str, lesson_dir: LessonDir, _actor: StudyActor):
+    require_telegram()
     from types import SimpleNamespace
     from rt.core.config import load_config
     from rt.telegram.config import resolve_topic_id

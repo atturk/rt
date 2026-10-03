@@ -107,7 +107,7 @@ def _resolve_channel(channel: Optional[str]) -> str:
     if channel:
         return channel
     from rt.core.config import load_config
-    return load_config().telegram.default_channel
+    return load_config().telegram.channel
 
 
 def _auto_accept_pending(lesson_dir: str, ctx: RunContext) -> List[Any]:

@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.jobs import enqueue_job, job_accepted, job_view, queue
 from rt.storage import fs
 
@@ -250,6 +250,7 @@ def test_credential(body: schemas.CredentialTest, actor: Actor):
 @router.post("/settings/telegram/listen-topics", response_model=schemas.JobAccepted, status_code=202, tags=["impostazioni"],
              summary="Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)")
 def telegram_listen_topics(actor: Actor):
+    require_telegram()
     from rt.telegram.daemon_status import is_daemon_running
     return enqueue_job("telegram_listen_topics", None, {"seconds": 20,
                          "existing_daemon": is_daemon_running()}, actor)

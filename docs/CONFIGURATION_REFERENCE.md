@@ -26,7 +26,8 @@ cp -r config.example config
 | `retry.idle_read_timeout_seconds` | Timeout di inattività applicativa: tempo massimo senza contenuto/reasoning reale prima di considerare la risposta bloccata. |
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
-| `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`). |
+| `telegram.enabled` | Telegram attivo (predefinito `false`): bot, ripassi e decisioni su Telegram. Spento, i ripassi si fanno nella web app e le decisioni nel terminale o nella web app; si cambia da Impostazioni › Bot Telegram. `RT_TELEGRAM_ENABLED=1`/`0` lo forza. |
+| `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`); con Telegram spento vale sempre `"terminal"`. |
 | `telegram.lessons_root` | Solo installazioni 3.x: cartella delle lezioni a cartelle da convertire (`rt db migrate-storage`) e prefisso dei loro percorsi nel database. Non si configura più: senza questa chiave il prefisso è `<cartella dati>/lessons`, che non deve esistere su disco. |
 | `telegram.topics` | Mappa da materia in maiuscolo (es. `BIOCHIMICA`) a `message_thread_id` del topic Telegram dedicato nel gruppo. |
 | `telegram.misc_topic_id` | `message_thread_id` del topic "Varie/Generale" per materie non presenti in `topics`. |

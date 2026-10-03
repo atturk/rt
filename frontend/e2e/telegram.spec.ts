@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, authHeaders, loginViaLink } from './support'
 
 // RT4-FA6: pagina Bot Telegram. Gira dopo settings.spec.ts (stesso server, in serie), che ha
 // salvato token, Chat ID e i topic BIOCHIMICA (12) e ANATOMIA (27) contro la Bot API finta.
@@ -44,3 +44,25 @@ test('pagina Bot Telegram: gruppo, topic con prova, ultime notifiche, link alle 
   await expect(page).toHaveURL(/\/impostazioni#telegram$/)
   await expect(page.getByRole('region', { name: 'Telegram', exact: true })).toBeInViewport()
 })
+
+test('Telegram spento: la pagina Bot mostra solo l\'interruttore e il recall si fa solo qui', async ({ page }) => {
+  await loginViaLink(page)
+  const [lesson] = await apiGet<{ id: number; phases: Record<string, string> }[]>(page.request, '/lessons?materia=BIOCHIMICA')
+  await page.goto('/impostazioni/bot')
+  const toggle = page.getByTestId('telegram-enabled').getByLabel('Usa Telegram')
+  await expect(toggle).toBeChecked()
+  try {
+    await toggle.click()
+    await expect(toggle).not.toBeChecked()
+    await expect(page.getByText('Topic per materia')).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByTestId('telegram-enabled').getByLabel('Usa Telegram')).not.toBeChecked()
+    await page.goto(`/lezioni/${lesson.id}/recall`)
+    await expect(page.getByRole('heading', { name: 'Sessione', exact: true })).toBeVisible()
+    await expect(page.getByTestId('place-toggle')).toHaveCount(0)
+  } finally {
+    // gli altri test (stesso server) lo vogliono acceso
+    await page.request.put('/api/v1/settings/telegram/enabled', { data: { enabled: true }, headers: authHeaders() })
+  }
+})
+

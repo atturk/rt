@@ -38,6 +38,11 @@ export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
 }
 
+/** Telegram acceso o spento (spento di predefinito: i ripassi si fanno solo nella web app). */
+export function useSetTelegramEnabled() {
+  return useSettingsMutation((enabled: boolean) => unwrap(api.PUT('/api/v1/settings/telegram/enabled', { body: { enabled } })))
+}
+
 export function useSaveTelegram() {
   return useSettingsMutation((body: Schemas['TelegramIn']) => unwrap(api.PUT('/api/v1/settings/telegram', { body })))
 }

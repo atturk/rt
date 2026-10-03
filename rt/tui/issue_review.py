@@ -593,7 +593,7 @@ def run_interactive_review(
 
     if not channel:
         from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
+        channel = _load_cfg_for_channel().telegram.channel
 
     if channel == "telegram" and history:
         print("⚠️  La modalità --history è disponibile solo da terminale. Procedo in modalità normale (solo pendenti).")

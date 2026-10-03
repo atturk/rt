@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useSettings, useTopicTest, type Settings } from '@/api/settings'
 import { useTelegramNotifications } from '@/api/telegram'
-import { RevealableValue, TopicTestButton, TopicTestResult } from '@/components/settings/telegram'
+import { RevealableValue, TelegramEnabledToggle, TopicTestButton, TopicTestResult } from '@/components/settings/telegram'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { TopicArchiveExport } from '@/components/TopicArchiveExport'
 import { Alert } from '@/components/ui/alert'
@@ -27,13 +27,22 @@ export function TelegramPage() {
           Impostazioni Telegram
         </Link>
       </div>
-      <TelegramBotPanel />
       {settings.isPending && <p className="text-sm text-muted-foreground">Carico gruppo e topic…</p>}
       {settings.isError && <Alert tone="danger">{errorMessage(settings.error)}</Alert>}
-      {settings.data && <GroupCard settings={settings.data} />}
-      <TelegramUserPanel />
-      {settings.data && <TopicsCard settings={settings.data} />}
-      <NotificationsCard />
+      {settings.data && (
+        <Card className="p-5">
+          <TelegramEnabledToggle enabled={settings.data.telegram.enabled ?? false} />
+        </Card>
+      )}
+      {settings.data?.telegram.enabled && (
+        <>
+          <TelegramBotPanel />
+          <GroupCard settings={settings.data} />
+          <TelegramUserPanel />
+          <TopicsCard settings={settings.data} />
+          <NotificationsCard />
+        </>
+      )}
     </section>
   )
 }

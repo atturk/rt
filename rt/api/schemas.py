@@ -568,7 +568,7 @@ class LessonRecallStats(BaseModel):
 
 
 class SubjectRecall(BaseModel):
-    materia: str = Field(description="Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso")
+    materia: str = Field(description="Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione")
     lessons: List[LessonRecallStats]
     session: Optional[RecallSessionInfo] = Field(None, description="Sessione per materia in corso nella web app")
 
@@ -592,6 +592,7 @@ class TelegramRecallStart(BaseModel):
 
 
 class TelegramRecallStatus(BaseModel):
+    enabled: bool = Field(False, description="Telegram attivo (spento di predefinito: il recall si fa solo nella web app)")
     configured: bool = Field(description="Token e chat del bot salvati")
     running: bool = Field(description="Bot in esecuzione")
     sessions: List[RecallSessionInfo] = Field(description="Sessioni di recall in corso su Telegram, per tutte le lezioni")

@@ -1850,6 +1850,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/telegram/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Accende o spegne Telegram (spento: anche il bot si ferma) */
+        put: operations["put_telegram_enabled_api_v1_settings_telegram_enabled_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram/listen-messages": {
         parameters: {
             query?: never;
@@ -4839,7 +4856,7 @@ export interface components {
             lessons: components["schemas"]["LessonRecallStats"][];
             /**
              * Materia
-             * @description Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso
+             * @description Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione
              */
             materia: string;
             /** @description Sessione per materia in corso nella web app */
@@ -4853,7 +4870,7 @@ export interface components {
             lessons: components["schemas"]["LessonRecallStats"][];
             /**
              * Materia
-             * @description Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso
+             * @description Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione
              */
             materia: string;
             /** @description Sessione per materia in corso nella web app */
@@ -4917,6 +4934,11 @@ export interface components {
              */
             state: "pending" | "running" | "done" | "failed";
         };
+        /** TelegramEnabledIn */
+        TelegramEnabledIn: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** TelegramIn */
         TelegramIn: {
             /**
@@ -4965,6 +4987,12 @@ export interface components {
              */
             configured: boolean;
             /**
+             * Enabled
+             * @description Telegram attivo (spento di predefinito: il recall si fa solo nella web app)
+             * @default false
+             */
+            enabled: boolean;
+            /**
              * Running
              * @description Bot in esecuzione
              */
@@ -4996,6 +5024,12 @@ export interface components {
             chat_id_set: boolean;
             /** Default Channel */
             default_channel: string;
+            /**
+             * Enabled
+             * @description Telegram attivo (spento di predefinito): bot, ripassi e decisioni su Telegram
+             * @default false
+             */
+            enabled: boolean;
             /** Misc Topic Id */
             misc_topic_id?: number | null;
             /**
@@ -11426,7 +11460,7 @@ export interface operations {
     subject_state_api_v1_recall_subject_get: {
         parameters: {
             query: {
-                /** @description Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno */
+                /** @description Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, o LEZIONI:<id>,<id> per una selezione */
                 materia: string;
             };
             header?: never;
@@ -13285,6 +13319,75 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TelegramIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_telegram_enabled_api_v1_settings_telegram_enabled_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramEnabledIn"];
             };
         };
         responses: {
