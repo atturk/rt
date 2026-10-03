@@ -31,7 +31,7 @@ async function answer(page: Page) {
   }
 }
 
-test('Studio di una lezione dalla riga di Lezioni: lettura, domande generate per la parte, unità dopo', async ({ page }) => {
+test('Studio di una lezione dalla pagina della lezione: lettura, domande generate per la parte, unità dopo', async ({ page }) => {
   test.setTimeout(150_000)
   await loginViaLink(page)
   const l = await lesson(page, 'PATOLOGIA')
@@ -39,9 +39,10 @@ test('Studio di una lezione dalla riga di Lezioni: lettura, domande generate per
   expect(study.units.length).toBeGreaterThan(0)
   const first = study.units[0]
 
-  // Dalla riga della lezione.
+  // Dalla riga si apre la lezione, Studio è nell'intestazione.
   await page.goto('/')
-  await page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`).getByRole('link', { name: 'Studio' }).click()
+  await page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`).getByRole('link').click()
+  await page.getByTestId('lesson-actions').getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 
   // Lettura (schermata 05): trattini, dove sei, testo dell'unità, audio dei suoi timecode.

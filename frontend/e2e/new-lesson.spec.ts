@@ -40,7 +40,7 @@ test('audio: materia, docente, data di oggi, Avvia e si arriva alla lezione con 
   const lessonId = Number(page.url().split('/lezioni/')[1])
   const lesson = await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)
   expect(lesson).toMatchObject({ materia: 'EMBRIOLOGIA', docente: 'Neri', data: today })
-  await expect(page.getByText('Embriologia · Neri', { exact: false })).toBeVisible()
+  await expect(page.getByTestId('lesson-path')).toContainText(/^Embriologia · .+ · Neri$/)
 
   // Avanzamento a due barre finché il job è attivo; poi il job si chiude (qui lo annulliamo).
   const [job] = (await apiGet<Job[]>(page.request, `/jobs?lesson_id=${lessonId}`)).filter((j) => ['queued', 'running', 'waiting_for_decision'].includes(j.state))
@@ -52,13 +52,10 @@ test('audio: materia, docente, data di oggi, Avvia e si arriva alla lezione con 
     await expect.poll(async () => (await apiGet<Job>(page.request, `/jobs/${job.id}`)).state, { timeout: LONG }).toBe('cancelled')
   }
 
-  // Elimina dal popup Info (prima stava sulle schede della dashboard).
+  // Elimina (il popup Info non c'è più; nel giro 2 l'eliminazione torna nel pannello Dettagli).
+  const del = await page.request.delete(`/api/v1/lessons/${lessonId}`, { headers: authHeaders() })
+  expect(del.ok()).toBeTruthy()
   await page.goto('/')
-  await page.locator(`[data-testid=lesson-row][data-lesson-id="${lessonId}"]`).getByRole('button', { name: 'Info' }).click()
-  const info = page.getByTestId('lesson-info')
-  await info.getByRole('button', { name: 'Elimina la lezione' }).click()
-  await info.getByLabel(/Scrivi confermo/).fill('confermo')
-  await info.getByRole('button', { name: 'Elimina', exact: true }).click()
   await expect(page.locator(`[data-testid=lesson-row][data-lesson-id="${lessonId}"]`)).toHaveCount(0)
   expect((await page.request.get(`/api/v1/lessons/${lessonId}`, { headers: authHeaders() })).status()).toBe(404)
 })

@@ -192,35 +192,35 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
 }) {
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
+  const titleId = useId()
+  const row = 'flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
+  const text = (
+    <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+      <span id={titleId} className="text-body">{title}</span>
+      {subtitle && (
+        <>
+          <span className="text-meta text-muted-foreground max-md:hidden"> · </span>
+          <span className="text-meta text-muted-foreground max-md:block" data-testid="lesson-subtitle">
+            {subtitle}
+          </span>
+        </>
+      )}
+    </span>
+  )
+  // In selezione la riga è un'etichetta della casella (niente controlli dentro un link).
   return (
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
-      <Link
-        to={`/lezioni/${lesson.id}`}
-        className="flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5"
-        onClick={(event) => {
-          if (selecting) {
-            event.preventDefault()
-            onSelect(!selected)
-          }
-        }}
-      >
-        {selecting ? (
+      {selecting ? (
+        <label className={cn(row, 'cursor-pointer')}>
           <Check label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
-        ) : (
+          {text}
+        </label>
+      ) : (
+        <Link to={`/lezioni/${lesson.id}`} className={row} aria-labelledby={titleId}>
           <StatusDot status={lessonStatus(lesson, running)} />
-        )}
-        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-          <span className="text-body">{title}</span>
-          {subtitle && (
-            <>
-              <span className="text-meta text-muted-foreground max-md:hidden"> · </span>
-              <span className="text-meta text-muted-foreground max-md:block" data-testid="lesson-subtitle">
-                {subtitle}
-              </span>
-            </>
-          )}
-        </span>
-      </Link>
+          {text}
+        </Link>
+      )}
     </li>
   )
 }

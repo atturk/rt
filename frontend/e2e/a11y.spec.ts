@@ -97,17 +97,13 @@ for (const theme of ['light', 'dark'] as const) {
     await expectNoViolations(page, 'documento in modifica')
     await page.keyboard.press('Escape')
 
-    // Pagina Lezioni del design 4.2: gruppi per materia con il tooltip di un'icona, popup Info,
+    // Pagina Lezioni del design 4.2: gruppi per materia con lo sfondo, il tooltip di un'icona,
     // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
     await page.getByRole('button', { name: 'Per materia' }).click()
-    const recall = page.getByTestId('lesson-row').first().getByLabel('Recall', { exact: true })
-    await recall.focus()
-    await expect(page.getByRole('tooltip', { name: 'Recall' })).toBeVisible()
+    await page.getByRole('button', { name: 'Per materia' }).focus()
+    await expect(page.getByRole('tooltip', { name: 'Per materia' })).toBeVisible()
     await expectNoViolations(page, 'lezioni per materia con un tooltip')
-    await page.getByTestId('lesson-row').first().getByRole('button', { name: 'Info' }).click()
-    await expect(page.getByTestId('lesson-info')).toBeVisible()
-    await expectNoViolations(page, 'popup Info')
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Seleziona' }).click()
     await page.getByTestId('lesson-group').first().getByRole('checkbox', { name: /^Seleziona il gruppo/ }).check()
