@@ -5,7 +5,8 @@ import os
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, Form, UploadFile
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
@@ -31,6 +32,25 @@ class LessonImage(BaseModel):
 
 class LessonImages(BaseModel):
     images: List[LessonImage]
+
+
+class EditorImage(BaseModel):
+    path: str = Field(description="Riferimento relativo da inserire nel Markdown: assets/images/…")
+    name: str
+    url: str
+    alt_text: str
+
+
+@router.post("/lessons/{lesson_id}/media/images", response_model=EditorImage, status_code=201,
+             summary="Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione")
+async def upload_editor_image(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+                              file: UploadFile = File(...), lease_token: Optional[str] = Form(None)):
+    from rt.services.editor_media_service import MAX_IMAGE_BYTES, upload_image
+    try:
+        content = await file.read(MAX_IMAGE_BYTES + 1)
+        return await run_in_threadpool(upload_image, lesson_id, lesson_dir, content, file.filename or '', lease_token)
+    finally:
+        await file.close()
 
 
 def _asset_url(lesson_id: int, name: str) -> str:

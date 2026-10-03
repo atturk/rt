@@ -313,6 +313,31 @@
         "title": "Body_import_lesson_zips_api_v1_lessons_import_zip_post",
         "type": "object"
       },
+      "Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post",
+        "type": "object"
+      },
       "Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post": {
         "properties": {
           "audio": {
@@ -1493,6 +1518,35 @@
           "end_segment_id"
         ],
         "title": "DocumentSection",
+        "type": "object"
+      },
+      "EditorImage": {
+        "properties": {
+          "alt_text": {
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "Riferimento relativo da inserire nel Markdown: assets/images/…",
+            "title": "Path",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "url",
+          "alt_text"
+        ],
+        "title": "EditorImage",
         "type": "object"
       },
       "Element": {
@@ -11409,6 +11463,105 @@
         "summary": "Avvia la pipeline o una fase sulla lezione (come 'rt run' o 'rt <fase>')",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/images": {
+      "post": {
+        "operationId": "upload_editor_image_api_v1_lessons__lesson_id__media_images_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorImage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione",
+        "tags": [
+          "immagini"
         ]
       }
     },

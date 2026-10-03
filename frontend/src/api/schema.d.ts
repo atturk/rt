@@ -717,6 +717,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/media/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione */
+        post: operations["upload_editor_image_api_v1_lessons__lesson_id__media_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/metadata": {
         parameters: {
             query?: never;
@@ -2599,6 +2616,13 @@ export interface components {
             /** Archives */
             archives: string[];
         };
+        /** Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post */
+        Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post: {
+            /** File */
+            file: string;
+            /** Lease Token */
+            lease_token?: string | null;
+        };
         /** Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post */
         Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post: {
             /** Audio */
@@ -3154,6 +3178,20 @@ export interface components {
             title: string;
             /** Unit Id */
             unit_id: string;
+        };
+        /** EditorImage */
+        EditorImage: {
+            /** Alt Text */
+            alt_text: string;
+            /** Name */
+            name: string;
+            /**
+             * Path
+             * @description Riferimento relativo da inserire nel Markdown: assets/images/…
+             */
+            path: string;
+            /** Url */
+            url: string;
         };
         /** Element */
         Element: {
@@ -8644,6 +8682,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_editor_image_api_v1_lessons__lesson_id__media_images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorImage"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
