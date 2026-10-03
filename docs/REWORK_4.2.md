@@ -40,6 +40,27 @@ Quasi tutto il rework è frontend. Il backend cambia in questi punti (tutti con 
 | Sfondo dei gruppi in Lezioni | — | preferenza UI (colori predefinito, grigi, nessuno) |
 | Pagine tolte | `/recall`, `/recall/materie`, `/recall/giorno`, `/review`, `/lezioni/:id/revisione`, `/lezioni/:id/rilevanza`, `/lezioni/:id/outline`, `/arricchimento`, `/immagini`, `/importa`, `/lezioni/:id/recall/domande` | solo frontend (redirect); **le API restano** (CLI, mini app, test) |
 
+## Stile comune (vale per entrambi gli agenti)
+
+Due modelli diversi sullo stesso frontend: per non avere stili mischiati si usano solo i pezzi già
+presenti nell'app.
+
+- **Componenti**: `frontend/src/components/ui/` (button, icon-button, menu, modal, dialog, input,
+  select, slide-toggle, tooltip, badge, alert, card) e, per i pannelli, il contenitore di F0. Se
+  manca qualcosa si aggiunge lì, non dentro la pagina.
+- **Colori**: solo i token del tema in `frontend/src/index.css` (`bg-muted`, `text-muted-foreground`,
+  `text-danger`, `bg-accent`, `border` …). Niente colori esadecimali o `rgba()` nei componenti:
+  un colore nuovo diventa una variabile in `index.css` con la sua versione scura.
+- **Testo**: `text-meta` (12 px), `text-body` (15 px), `text-heading` (22 px); niente
+  `text-[13px]` e simili.
+- **Icone**: solo `lucide-react`, 16 px nelle righe e 18 px nell'intestazione; pulsanti a sola icona con
+  `IconButton` e il suo tooltip.
+- **Misure**: le scale di Tailwind (`gap-2`, `p-3`, `rounded-lg` …); valori tra parentesi quadre
+  solo se il wireframe li richiede e non esiste un equivalente.
+- **Testi dell'interfaccia** in italiano, brevi, senza righe di spiegazione.
+- **Wireframe**: sono il riferimento per contenuto e disposizione; non si copia il loro HTML o i
+  loro stili.
+
 ## Decisioni (risposte di Attilio, 3 ottobre 2026)
 
 - **D1 — Approvazione automatica della scaletta:** la fa **il server** dopo N secondi (impostazione),
