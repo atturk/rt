@@ -129,6 +129,12 @@ class WebSearchSettings(BaseModel):
     searxng_base_url: Optional[str] = Field(None, description="URL base di SearXNG per la ricerca immagini web")
 
 
+class PreferencesSettings(BaseModel):
+    secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
+    sfondo_gruppi: Literal["colori", "grigi", "niente", "colors", "gray", "none"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
+    modalita_arricchimento: Literal["manuale", "automatica", "disattivata", "manual", "automatic", "disabled"] = Field(default="manuale", description="Modalità dell'arricchimento")
+
+
 class Settings(BaseModel):
     worker: WorkerSettings
     notices: NoticeSettings
@@ -139,6 +145,7 @@ class Settings(BaseModel):
     credentials: List[CredentialState]
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
     web_search: WebSearchSettings
+    preferences: PreferencesSettings = Field(default_factory=PreferencesSettings, description="Preferenze generali")
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
     setup_required: bool = Field(False, description="True se manca un passo obbligatorio della configurazione e la SPA "
@@ -322,6 +329,13 @@ def put_worker(body: WorkerIn, _actor: Actor):
 def put_notice(body: NoticeIn, _actor: Actor):
     from rt.services.settings_service import save_notice, snapshot
     _call(save_notice, _project_root(), body.notice, body.dismissed)
+    return snapshot(_project_root())
+
+
+@router.put("/settings/preferences", response_model=Settings, summary="Salva le preferenze generali")
+def put_preferences(body: PreferencesSettings, _actor: Actor):
+    from rt.services.settings_service import save_preferences, snapshot
+    _call(save_preferences, _project_root(), body.model_dump())
     return snapshot(_project_root())
 
 

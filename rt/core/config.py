@@ -304,6 +304,8 @@ class UiConfig(BaseModel):
     theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
     dismissed_notices: List[str] = Field(default_factory=list,
                                          description="Avvisi della web con 'Non mostrare più' (es. preview_edit_beta)")
+    group_background: Literal["colors", "gray", "none"] = Field(default="colors", description="Sfondo dei gruppi in Lezioni: colors | gray | none")
+    outline_auto_approval_seconds: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
 
 
 class JevConfig(BaseModel):

@@ -9,6 +9,7 @@ import { DataDirSection, TelegramSection, TranscriptionSection, WorkerSection } 
 import { InfoSection } from '@/components/settings/info'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
+import { PreferencesSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { SetupWizard } from '@/components/settings/wizard'
@@ -114,6 +115,7 @@ export function SetupWizardPage() {
 export function GeneralSettingsPage() {
   return page((s) => (
     <>
+      <PreferencesSection settings={s} />
       <DataDirSection settings={s} />
       <WorkerSection settings={s} />
       <TranscriptionSection settings={s} />
