@@ -159,6 +159,21 @@ def put_document_draft(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir:
                        {"errors": exc.errors})
 
 
+@router.get("/lessons/{lesson_id}/document/pipeline-version", response_model=schemas.DocumentPipelineVersion,
+            summary="Versione della pipeline disponibile e conteggio delle unità modificate")
+def get_pipeline_version(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.document_restore_service import pipeline_version
+    return pipeline_version(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/document/restore-pipeline", response_model=schemas.DocumentRestoreResult,
+             summary="Ripristina testo, titoli, timecode e immagini; mantiene le decisioni della revisione")
+def restore_pipeline(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+                     body: schemas.DocumentRestoreIn = schemas.DocumentRestoreIn()):
+    from rt.services.document_restore_service import restore_pipeline_version
+    return restore_pipeline_version(lesson_id, lesson_dir, body.lease_token)
+
+
 @router.get("/lessons/{lesson_id}/audio", summary="Audio della lezione (supporta Range)",
             response_class=FileResponse, responses={200: {"content": {"audio/*": {}}}, 206: {"description": "Contenuto parziale"}})
 def get_audio(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):

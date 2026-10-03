@@ -60,13 +60,16 @@ def load_draft(lesson_dir: str) -> Draft:
     return Draft.model_validate(cleaned_data)
 
 
-def save_draft(draft: Draft, lesson_dir: str) -> None:
+def save_draft(draft: Draft, lesson_dir: str, *, manual: bool = False) -> None:
     path = get_draft_path(lesson_dir)
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding(draft.model_dump(mode="json"))
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)
+    if not manual:
+        from rt.services.document_restore_service import forget_pipeline_version
+        forget_pipeline_version(lesson_dir)
 
 
 def extract_context_window(

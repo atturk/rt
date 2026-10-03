@@ -223,6 +223,22 @@ class DocumentEditCheck(BaseModel):
     errors: List[DocumentEditProblem] = Field(description="Errori che impedirebbero il salvataggio")
 
 
+class DocumentPipelineVersion(BaseModel):
+    available: bool
+    modified_units: int
+
+
+class DocumentRestoreIn(BaseModel):
+    lease_token: Optional[str] = None
+
+
+class DocumentRestoreResult(BaseModel):
+    modified_units: int
+    units_changed: List[str]
+    build_status: str
+    build_reason: str
+
+
 class DocumentEditResult(BaseModel):
     changed: bool = Field(description="False se il Markdown era uguale all'anteprima")
     units_changed: List[str] = Field(description="Unità il cui testo è cambiato nella bozza")

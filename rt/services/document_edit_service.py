@@ -307,11 +307,14 @@ def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
 
     plan = plan_document_edit(lesson_dir, markdown)
     changed_units = sorted(plan["content_changes"])
+    if changed_units or plan['edits_changed'] or plan['placement_changed']:
+        from rt.services.document_restore_service import preserve_pipeline_version
+        preserve_pipeline_version(lesson_dir)
     if plan["content_changes"]:
         draft = load_draft(lesson_dir)
         draft.units = [u.model_copy(update={"content": plan["content_changes"][u.unit_id]})
                        if u.unit_id in plan["content_changes"] else u for u in draft.units]
-        save_draft(draft, lesson_dir)
+        save_draft(draft, lesson_dir, manual=True)
     edits_changed = save_document_edits(lesson_dir, plan["edits"]) if plan["edits_changed"] else False
     if plan["placement_changed"]:
         save_image_placement(lesson_dir, plan["placement"], plan["carousel"])
