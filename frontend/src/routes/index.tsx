@@ -64,8 +64,9 @@ const recallArea: Area = {
     { path: 'recall', Component: page(recall, (m) => m.RecallOverviewPage) },
     { path: 'recall/materie/:materia', Component: page(recall, (m) => m.SubjectRecallPage) },
     { path: 'recall/giorno/:day', Component: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.SubjectRecallPage) },
-    { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.RecallPage) },
+    { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/sessione', Component: page(recall, (m) => m.LightweightSession), handle: bare },
     { path: 'lezioni/:lessonId/recall/domande', Component: page(recall, (m) => m.QuestionsPage) },
   ],
 }
