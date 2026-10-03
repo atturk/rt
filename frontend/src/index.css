@@ -43,6 +43,12 @@
   --warning-soft: #fff3df;
   --danger: #a04232;
   --danger-soft: #ffe9e3;
+  /* Sfondi dei gruppi in Lezioni, a rotazione (Preferenze: colori). */
+  --group-1: rgb(21 95 82 / 6%);
+  --group-2: rgb(59 111 160 / 7%);
+  --group-3: rgb(184 134 11 / 8%);
+  --group-4: rgb(150 80 110 / 6%);
+  --group-gray: color-mix(in oklch, var(--fg) 4%, transparent);
 
   --size-meta: 12px;
   --size-body: 15px;
@@ -71,6 +77,10 @@
   --warning-soft: #3a2c14;
   --danger: #ff9f8c;
   --danger-soft: #3d1d17;
+  --group-1: rgb(111 211 179 / 8%);
+  --group-2: rgb(130 175 230 / 8%);
+  --group-3: rgb(241 194 122 / 8%);
+  --group-4: rgb(230 150 185 / 8%);
 }
 
 /* Telefono: aree da toccare di 44 px (linee guida §5). */

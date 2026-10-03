@@ -72,3 +72,10 @@ describe('parseViewPrefs', () => {
     expect(parseViewPrefs(null).group).toBe('nessuno')
   })
 })
+
+ it('ordina per ora le lezioni dello stesso giorno in entrambe le direzioni', () => {
+  const base = { id: 1, folder_name: 'z', titolo: '', materia: '', data: '2026-10-03', path: '', argomenti: '', phases: {}, pending_issues: 0 } as Lesson
+  const rows = [{ ...base, ora: '08:30' }, { ...base, id: 2, folder_name: 'a', ora: '14:00' }]
+  expect(sortLessons(rows, 'data', 'asc').map((l) => l.id)).toEqual([1, 2])
+  expect(sortLessons(rows, 'data', 'desc').map((l) => l.id)).toEqual([2, 1])
+})

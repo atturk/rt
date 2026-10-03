@@ -3,7 +3,6 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
 
-import { GROUP_TINTS } from '@/lib/lessonsPage'
 import { DashboardPage } from './lessons'
 
 const LESSONS = [
@@ -95,14 +94,12 @@ describe('pagina Lezioni', () => {
     expect(screen.getByTestId('lessons-empty')).toHaveTextContent('Nessuna lezione corrisponde alla ricerca.')
   })
 
-  it('ogni gruppo ha uno sfondo a rotazione da GROUP_TINTS e angoli da 12 px', () => {
+  it('ogni gruppo ha uno sfondo a rotazione dai colori del tema', () => {
     renderDashboard()
     const groupElements = screen.getAllByTestId('lesson-group')
     expect(groupElements).toHaveLength(2)
-    expect(groupElements[0]).toHaveStyle({ background: GROUP_TINTS[0] })
-    expect(groupElements[1]).toHaveStyle({ background: GROUP_TINTS[1] })
-    expect(groupElements[0]).toHaveClass('rounded-[12px]')
-    expect(groupElements[1]).toHaveClass('rounded-[12px]')
+    expect(groupElements[0].getAttribute('style')).toContain('var(--group-1)')
+    expect(groupElements[1].getAttribute('style')).toContain('var(--group-2)')
   })
 
   it('selezione: la casella del gruppo prende tutto il gruppo, la barra scarica Markdown e zip', () => {

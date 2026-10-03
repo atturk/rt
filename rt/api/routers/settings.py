@@ -131,8 +131,8 @@ class WebSearchSettings(BaseModel):
 
 class PreferencesSettings(BaseModel):
     secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
-    sfondo_gruppi: Literal["colori", "grigi", "niente", "colors", "gray", "none"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
-    modalita_arricchimento: Literal["manuale", "automatica", "disattivata", "manual", "automatic", "disabled"] = Field(default="manuale", description="Modalità dell'arricchimento")
+    sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
+    modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
 
 
 class Settings(BaseModel):

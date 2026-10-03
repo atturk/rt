@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { api, errorMessage, unwrap } from '@/api/client'
+import { useSettings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
 
 import { IconAnchor, IconButton, IconLink } from '@/components/ui/icon-button'
@@ -11,7 +12,7 @@ import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
-  GROUPING_LABELS, GROUP_CYCLE, GROUP_TINTS, PHONE_GROUP_LABELS, PHONE_SORT_LABELS, SORT_CYCLE, SORT_OPTIONS,
+  GROUPING_LABELS, GROUP_CYCLE, groupBackground, PHONE_GROUP_LABELS, PHONE_SORT_LABELS, SORT_CYCLE, SORT_OPTIONS,
   markdownExportNote, STATUS_LABELS, groupLabel, lessonStatus, lessonSubtitle,
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
@@ -75,7 +76,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
         <>
           <button
             type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/5 md:hidden"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground md:hidden"
             aria-label={`Raggruppa: ${PHONE_GROUP_LABELS[prefs.group]} (tocca per cambiare)`}
             onClick={cycleGroup}
           >
@@ -84,7 +85,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           </button>
           <button
             type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/5 md:hidden"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground md:hidden"
             aria-label={`Ordina: ${PHONE_SORT_LABELS[prefs.sort]} (tocca per cambiare)`}
             onClick={cycleSort}
           >
@@ -195,7 +196,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       <Link
         to={`/lezioni/${lesson.id}`}
-        className="flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-black/5 dark:hover:bg-white/5 max-md:gap-3 max-md:px-2 max-md:py-2.5"
+        className="flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5"
         onClick={(event) => {
           if (selecting) {
             event.preventDefault()
@@ -208,12 +209,17 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
         ) : (
           <StatusDot status={lessonStatus(lesson, running)} />
         )}
-        <span className="text-[15px] font-normal text-foreground md:text-[16px]">{title}</span>
-        {subtitle && (
-          <span className="text-meta text-muted-foreground" data-testid="lesson-subtitle">
-            {subtitle}
-          </span>
-        )}
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          <span className="text-body">{title}</span>
+          {subtitle && (
+            <>
+              <span className="text-meta text-muted-foreground max-md:hidden"> · </span>
+              <span className="text-meta text-muted-foreground max-md:block" data-testid="lesson-subtitle">
+                {subtitle}
+              </span>
+            </>
+          )}
+        </span>
       </Link>
     </li>
   )
@@ -253,6 +259,7 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
   selected: Set<number>
   onSelected: (next: Set<number>) => void
 }) {
+  const background = useSettings().data?.preferences?.sfondo_gruppi
   const toggle = (ids: number[], on: boolean) => {
     const next = new Set(selected)
     for (const id of ids) {
@@ -267,8 +274,8 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
         <section
           key={group.key || '-'}
           aria-label={groupLabel(group, grouping)}
-          className="rounded-[12px] p-[10px_6px_6px]"
-          style={{ background: GROUP_TINTS[index % GROUP_TINTS.length] }}
+          className={cn('rounded-xl px-1.5 pt-2.5 pb-1.5', background === 'niente' && 'px-0')}
+          style={{ background: groupBackground(index, background) }}
           data-testid="lesson-group"
           data-group={group.key}
         >

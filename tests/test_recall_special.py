@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from rt.core.config import JevConfig, RTConfig
-from rt.core.models import (GeneratedVariant, RecallQuestionStatus, RecallQuestionType, RecallSpecialGenerationResult,
+from rt.core.models import (GeneratedClinicalVariant, RecallClinicalGenerationResult, RecallQuestionStatus, RecallQuestionType,
                             VariantCheck)
 from rt.llm.jev_client import JevChoiceAnswer, JevResponse
 from rt.llm.prompts import RecallEvalMirataResult
@@ -115,7 +115,7 @@ def test_generation_saves_questions_and_templates_once_per_unchanged_section(tmp
 def test_real_generation_passes_existing_templates_and_filters_unit_ids(tmp_path):
     path = lesson(tmp_path)
     section_labels.refresh(path, force_mock=True)
-    item = {'question_text': 'Paziente con pH 7,25: quale disturbo?', 'pregenerated_material': 'Acidosi respiratoria.',
+    item = {'question_text': 'Paziente con pH 7,25: quale disturbo?',
             'unit_ids': ['1.2', '9.9'], 'tipo': {'scenario': 'Paziente in PS', 'obiettivo': 'Interpretare EGA',
                                                 'procedimento': 'pH, pCO2, HCO3', 'esplicito': True,
                                                 'variabili': [{'nome': 'pH', 'valore': '7,25', 'intervallo': '7,1-7,6'}]}}
@@ -124,8 +124,10 @@ def test_real_generation_passes_existing_templates_and_filters_unit_ids(tmp_path
             patch.object(section_labels, 'refresh'), \
             patch.object(recall_special, '_mock', return_value=False), \
             patch('rt.llm.client.LLMClient.call_structured',
-                  return_value=RecallSpecialGenerationResult.model_validate({'items': [item, second]})) as call:
+                  return_value=RecallClinicalGenerationResult.model_validate({'items': [item, second]})) as call:
         questions = recall.generate_recall_batch(path, CASO, None, [])
+        assert call.call_args.kwargs['response_model'] is RecallClinicalGenerationResult
+        assert all(q.pregenerated_material is None for q in questions)
         assert [q.unit_ids for q in questions] == [['1.2'], ['1.2']]  # 9.9 non è nell'unità
         assert 'SUBUNITÀ 1.1' in call.call_args.kwargs['prompt']
         recall.generate_recall_batch(path, CASO, None, [], regenerate=True)
@@ -136,12 +138,15 @@ def test_variants_are_verified_and_discarded_when_the_solution_does_not_match(tm
     path = lesson(tmp_path)
     recall.generate_recall_batch(path, CASO, None, [], force_mock=True)
     template = recall.load_recall_bank(path).templates[0]
-    variant = GeneratedVariant(question_text='Paziente con pH 7,30 e pCO2 55', pregenerated_material='Acidosi respiratoria')
+    variant = GeneratedClinicalVariant(question_text='Paziente con pH 7,30 e pCO2 55')
     calls = [variant, VariantCheck(coerente=False, problemi='pCO2 incoerente'),
              variant.model_copy(update={'question_text': 'Paziente con pH 7,32 e pCO2 52'}), VariantCheck(coerente=True)]
     with patch.object(recall_special, '_mock', return_value=False), \
             patch('rt.llm.client.LLMClient.call_structured', side_effect=calls) as call:
         question = recall_special.generate_variant(path, template.id)
+    assert call.call_args_list[0].kwargs['response_model'] is GeneratedClinicalVariant
+    assert question.pregenerated_material is None
+    assert 'SOLUZIONE PROPOSTA' not in call.call_args_list[1].kwargs['prompt']
     assert question.question_text.endswith('pCO2 52') and question.variant == 1 and question.template_id == template.id
     assert 'pCO2 incoerente' in call.call_args_list[2].kwargs['prompt']
     with patch.object(recall_special, '_mock', return_value=False), \
@@ -201,3 +206,42 @@ def test_reset_of_a_special_type_drops_its_templates(tmp_path):
     bank = recall.load_recall_bank(path)
     assert [t.kind for t in bank.templates] == [ESERCIZIO]
     assert all(q.status == RecallQuestionStatus.PENDING for q in bank.questions)
+
+
+@pytest.mark.parametrize('kind', [CASO, ESERCIZIO])
+@pytest.mark.parametrize('dont_know', [False, True])
+def test_special_outcome_and_clinical_reference_without_historical_solution(tmp_path, kind, dont_know):
+    path = lesson(tmp_path)
+    question = recall.generate_recall_batch(path, kind, None, [], force_mock=True)[0]
+    if kind == CASO:
+        assert question.pregenerated_material is None
+        bank = recall.load_recall_bank(path)
+        bank.questions[0].pregenerated_material = 'SOLUZIONE STORICA DA IGNORARE'
+        bank.templates[0].tipo.procedimento = 'PROCEDIMENTO STORICO DA IGNORARE'
+        recall.save_recall_bank(bank, path)
+    with patch.object(recall_special, '_mock', return_value=False), \
+            patch('rt.llm.client.LLMClient.call_structured', return_value=RecallEvalMirataResult(
+                correttezza=90, completezza=90, commento='Valutazione', outcome='corretta')) as call:
+        recall_service.handle_recall_answer(path, question.id, '[Non lo so]' if dont_know else 'Risposta', force_mock=False)
+    prompt = call.call_args.kwargs['prompt']
+    if kind == CASO:
+        assert 'SOLUZIONE STORICA' not in prompt and 'PROCEDIMENTO STORICO' not in prompt
+        assert 'SOLUZIONE ATTESA' not in prompt and 'RIFERIMENTO DELLA LEZIONE' in prompt
+        assert UNITS[0][2] in prompt and UNITS[1][2] in prompt
+    else:
+        assert question.pregenerated_material in prompt and 'PROCEDIMENTO DEL TIPO' in prompt
+    assert recall.load_recall_bank(path).answers[0].outcome == ('sbagliata' if dont_know else 'corretta')
+
+
+def test_mock_special_variants_and_regeneration_do_not_save_clinical_material(tmp_path):
+    from rt.services.recall_regeneration import regenerate
+    path = lesson(tmp_path)
+    for kind in [CASO, ESERCIZIO]:
+        original = recall.generate_recall_batch(path, kind, None, [], force_mock=True)[0]
+        variant = recall_special.generate_variant(path, original.template_id, force_mock=True)
+        replacement = regenerate(path, original.id, 'Cambia i dati', job_id=f'job-{kind.value}', force_mock=True)
+        for q in [original, variant, replacement]:
+            if kind == CASO:
+                assert q.pregenerated_material is None
+            else:
+                assert q.pregenerated_material

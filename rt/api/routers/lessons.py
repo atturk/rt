@@ -46,6 +46,13 @@ def get_lesson(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return lesson_service.lesson_detail(lesson_id, lesson_dir)
 
 
+@router.patch("/lessons/{lesson_id}/metadata", response_model=schemas.LessonDetail,
+              summary="Modifica i metadati e rinomina la cartella; 409 con un job attivo")
+def patch_metadata(lesson_id: int, body: schemas.LessonMetadataUpdate, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.lesson_metadata_service import update_metadata
+    return update_metadata(lesson_id, lesson_dir, body.model_dump(exclude_unset=True))
+
+
 @router.get("/lessons/{lesson_id}/phases", response_model=schemas.PhaseReport,
             summary="Freschezza delle fasi e report di validazione di outline e draft")
 def get_phases(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
@@ -150,6 +157,21 @@ def put_document_draft(lesson_id: int, body: schemas.DocumentEditIn, lesson_dir:
     except DocumentEditError as exc:
         raise ApiError(422, "document_invalid", "L'anteprima modificata non si può salvare: " + str(exc),
                        {"errors": exc.errors})
+
+
+@router.get("/lessons/{lesson_id}/document/pipeline-version", response_model=schemas.DocumentPipelineVersion,
+            summary="Versione della pipeline disponibile e conteggio delle unità modificate")
+def get_pipeline_version(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.document_restore_service import pipeline_version
+    return pipeline_version(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/document/restore-pipeline", response_model=schemas.DocumentRestoreResult,
+             summary="Ripristina testo, titoli, timecode e immagini; mantiene le decisioni della revisione")
+def restore_pipeline(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
+                     body: schemas.DocumentRestoreIn = schemas.DocumentRestoreIn()):
+    from rt.services.document_restore_service import restore_pipeline_version
+    return restore_pipeline_version(lesson_id, lesson_dir, body.lease_token)
 
 
 @router.get("/lessons/{lesson_id}/audio", summary="Audio della lezione (supporta Range)",

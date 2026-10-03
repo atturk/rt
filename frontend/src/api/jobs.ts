@@ -97,6 +97,7 @@ export type NewLesson = {
   materia: string
   argomenti: string
   docente: string
+  ora?: string
   run: boolean
   mock: boolean
   auto_accept: boolean
@@ -116,6 +117,7 @@ export function useCreateLesson() {
       form.append('materia', input.materia)
       form.append('argomenti', input.argomenti)
       form.append('docente', input.docente)
+      form.append('ora', input.ora ?? '')
       form.append('run', String(input.run))
       form.append('mock', String(input.mock))
       form.append('auto_accept', String(input.auto_accept))
@@ -128,12 +130,13 @@ export function useCreateLesson() {
         materia: input.materia,
         argomenti: input.argomenti,
         docente: input.docente,
+        ora: input.ora ?? '',
         run: input.run,
         mock: input.mock,
         auto_accept: input.auto_accept,
         with_review: input.with_review,
         with_enrichment: input.with_enrichment,
-      } as unknown as Schemas['Body_create_lesson_api_v1_lessons_post']
+      } satisfies Schemas['Body_create_lesson_api_v1_lessons_post']
       return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
     },
     onSettled: () => invalidateAfterJob(client),

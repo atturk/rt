@@ -23,12 +23,12 @@ export const SORT_OPTIONS: Record<LessonsSort, string> = {
 export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'titolo']
 export const PHONE_SORT_LABELS: Record<LessonsSort, string> = { recenti: 'Recenti', 'meno-recenti': 'Vecchie', titolo: 'A–Z' }
 
-export const GROUP_TINTS = [
-  'rgba(21, 95, 82, 0.06)',
-  'rgba(59, 111, 160, 0.07)',
-  'rgba(184, 134, 11, 0.08)',
-  'rgba(150, 80, 110, 0.06)',
-] as const
+/** Sfondo del gruppo n-esimo secondo la preferenza (variabili --group-* in index.css). */
+export function groupBackground(index: number, mode: string | undefined): string | undefined {
+  if (mode === 'niente') return undefined
+  if (mode === 'grigi') return 'var(--group-gray)'
+  return `var(--group-${(index % 4) + 1})`
+}
 
 export type LessonsPrefs = { group: LessonsGrouping; sort: LessonsSort }
 const DEFAULT_PREFS: LessonsPrefs = { group: 'data', sort: 'recenti' }

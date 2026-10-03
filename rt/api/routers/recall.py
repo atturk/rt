@@ -136,21 +136,24 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
 def answer(lesson_id: int, body: schemas.RecallAnswer, lesson_dir: LessonDir, actor: Actor):
     from fastapi.responses import JSONResponse
     from rt.core.models import RecallQuestionType
-    from rt.services.recall_service import answer_quiz, find_question
+    from rt.services.recall_service import answer_quiz, answer_dont_know, find_question
     question = find_question(lesson_dir, body.question_id)
     if question is None:
         raise ApiError(404, "question_not_found", "Domanda inesistente.")
     if question.type == RecallQuestionType.QUIZ:
+        if body.dont_know:
+            return answer_dont_know(lesson_dir, body.question_id)
         if body.choice is None:
             raise ApiError(422, "validation_error", "Per un quiz indica l'opzione scelta (choice).")
         try:
             return answer_quiz(lesson_dir, body.question_id, body.choice)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc))
-    if not (body.answer or "").strip():
+    answer_text = "[Non lo so]" if body.dont_know else (body.answer or "").strip()
+    if not answer_text:
         raise ApiError(422, "validation_error", "Scrivi una risposta.")
     accepted = enqueue_job("recall_evaluate", lesson_dir,
-                           {"question_id": body.question_id, "answer": body.answer.strip(), "mock": body.mock}, actor)
+                           {"question_id": body.question_id, "answer": answer_text, "mock": body.mock}, actor)
     return JSONResponse(status_code=202, content=accepted)
 
 
@@ -176,10 +179,23 @@ def answer_voice(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
 def vote(lesson_id: int, body: schemas.RecallVote, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.recall_service import vote_question
     try:
-        vote_question(lesson_dir, body.question_id, body.vote)
+        vote_question(lesson_dir, body.question_id, body.vote, reasons=body.reasons, comment=body.comment)
     except ValueError as exc:
         raise ApiError(404, "question_not_found", str(exc))
     return {"message": "Voto registrato."}
+
+
+@router.post("/lessons/{lesson_id}/recall/regenerate", response_model=schemas.JobAccepted, status_code=202,
+             summary="Commenta e rigenera la domanda dalle sue unità (job recall_regenerate)")
+def regenerate_question(lesson_id: int, body: schemas.RecallRegenerate, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.recall_service import find_question, vote_question
+    _require_draft(lesson_dir)
+    question = find_question(lesson_dir, body.question_id)
+    if question is None:
+        raise ApiError(404, "question_not_found", "Domanda inesistente.")
+    accepted = enqueue_job("recall_regenerate", lesson_dir, body.model_dump(), actor)
+    vote_question(lesson_dir, question.id, 'down', reasons=question.discard_reasons, comment=body.comment)
+    return accepted
 
 
 @router.post("/lessons/{lesson_id}/recall/skip", response_model=schemas.Message, summary="Salta una domanda (torna in coda)")

@@ -110,6 +110,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
         materia: materia.trim(),
         argomenti: '',
         docente: docente.trim(),
+        ora: time,
         run: !solo,
         mock: false,
         auto_accept: false,

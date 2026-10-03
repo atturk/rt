@@ -28,9 +28,9 @@ export function PreferencesSection({ settings }: { settings: Settings }) {
   }
 
   return (
-    <Section id="preferenze" title="Preferenze" description="Preferenze generali dell'applicazione.">
+    <Section id="preferenze" title="Preferenze">
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <Field label="Secondi approvazione scaletta" htmlFor="pref-secondi" hint="Tempo di attesa prima dell'approvazione automatica della scaletta (0 per disattivare).">
+        <Field label="Secondi approvazione scaletta" htmlFor="pref-secondi">
           <Input
             id="pref-secondi"
             type="number"
@@ -43,7 +43,7 @@ export function PreferencesSection({ settings }: { settings: Settings }) {
           />
         </Field>
 
-        <Field label="Sfondo dei gruppi in Lezioni" htmlFor="pref-sfondo" hint="Stile visivo dei gruppi nella pagina Lezioni.">
+        <Field label="Sfondo dei gruppi in Lezioni" htmlFor="pref-sfondo">
           <Select
             id="pref-sfondo"
             value={sfondo}
@@ -57,7 +57,7 @@ export function PreferencesSection({ settings }: { settings: Settings }) {
           </Select>
         </Field>
 
-        <Field label="Modalità dell'arricchimento" htmlFor="pref-arricchimento" hint="Comportamento predefinito per l'analisi dei contenuti didattici.">
+        <Field label="Modalità dell'arricchimento" htmlFor="pref-arricchimento">
           <Select
             id="pref-arricchimento"
             value={arricchimento}

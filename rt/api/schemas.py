@@ -9,7 +9,35 @@ from typing import Any, Dict, List, Literal, Optional
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
 NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mista"]
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class LessonMetadataUpdate(BaseModel):
+    titolo: Optional[str] = Field(None, max_length=180)
+    materia: Optional[str] = Field(None, max_length=80)
+    data: Optional[str] = None
+    ora: Optional[str] = None
+    docente: Optional[str] = Field(None, max_length=180)
+
+    @field_validator('titolo', 'materia', 'data', 'ora', 'docente')
+    @classmethod
+    def validate_metadata(cls, value, info):
+        if value is None or any(ord(c) < 32 for c in value):
+            raise ValueError('Il campo deve essere una stringa su una sola riga.')
+        value = value.strip()
+        if info.field_name in ('titolo', 'materia') and not value:
+            raise ValueError('Il campo non può essere vuoto.')
+        if info.field_name == 'data':
+            from datetime import date
+            import re
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                raise ValueError('Data non valida: usa AAAA-MM-GG.')
+            date.fromisoformat(value)
+        if info.field_name == 'ora' and value:
+            import re
+            if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value):
+                raise ValueError('Ora non valida: usa HH:MM.')
+        return value.upper() if info.field_name == 'materia' else value
 
 
 class LessonSummary(BaseModel):
@@ -17,6 +45,7 @@ class LessonSummary(BaseModel):
     folder_name: str
     path: str
     data: str = ""
+    ora: str = ""
     materia: str = ""
     titolo: str = ""
     argomenti: str = ""
@@ -192,6 +221,22 @@ class DocumentEditProblem(BaseModel):
 class DocumentEditCheck(BaseModel):
     html: str = Field(description="HTML sanificato del Markdown in modifica")
     errors: List[DocumentEditProblem] = Field(description="Errori che impedirebbero il salvataggio")
+
+
+class DocumentPipelineVersion(BaseModel):
+    available: bool
+    modified_units: int
+
+
+class DocumentRestoreIn(BaseModel):
+    lease_token: Optional[str] = None
+
+
+class DocumentRestoreResult(BaseModel):
+    modified_units: int
+    units_changed: List[str]
+    build_status: str
+    build_reason: str
 
 
 class DocumentEditResult(BaseModel):
@@ -394,11 +439,14 @@ class CredentialTest(BaseModel):
 # ---------------------------------------------------------------- recall
 
 class RecallQuestion(BaseModel):
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
     type: str
     unit_ids: List[str]
     question_text: str
     options: Optional[List[str]] = None
+    discard_reasons: List[str] = Field(default_factory=list)
+    comment: Optional[str] = None
     status: str
     correct_index: Optional[int] = None
     explanation: Optional[str] = None
@@ -473,11 +521,15 @@ class RecallUnitSelection(BaseModel):
 
 
 class RecallAnswerRecord(BaseModel):
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     question_id: str
     answer_text: str
     is_voice: bool = False
     evaluation: Optional[str] = None
     vote: Optional[str] = Field(None, description="up | down | lightning")
+    vote_reasons: List[str] = Field(default_factory=list)
+    vote_comment: Optional[str] = None
+    dont_know: bool = False
     answered_at: str
 
 
@@ -498,6 +550,7 @@ class RecallGenerate(BaseModel):
 
 class RecallAnswer(BaseModel):
     question_id: str
+    dont_know: bool = False
     choice: Optional[int] = Field(None, description="Quiz: indice dell'opzione (0-3)")
     answer: Optional[str] = Field(None, description="Mirata/vasta: risposta scritta (valutata da un job)")
     mock: bool = False
@@ -511,6 +564,21 @@ class QuizResult(BaseModel):
 class RecallVote(BaseModel):
     question_id: str
     vote: Literal["up", "down", "lightning"]
+    reasons: List[Literal['sbagliata', 'ambigua', 'troppi_indizi', 'troppo_facile', 'fuori_tema', 'gia_vista']] = Field(default_factory=list, max_length=6)
+    comment: Optional[str] = Field(None, max_length=10000)
+
+
+class RecallRegenerate(BaseModel):
+    question_id: str
+    comment: str = Field(min_length=1, max_length=10000)
+    mock: bool = False
+
+    @field_validator('comment')
+    @classmethod
+    def nonempty_comment(cls, value):
+        if not value.strip():
+            raise ValueError('Scrivi un commento.')
+        return value.strip()
 
 
 class RecallSkip(BaseModel):

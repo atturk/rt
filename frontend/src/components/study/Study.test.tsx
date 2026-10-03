@@ -10,6 +10,7 @@ const LESSON: Lesson = {
   id: 1,
   materia: 'FISIOLOGIA',
   titolo: 'Emogasanalisi e acidosi',
+  ora: '',
   data: '2026-10-02',
   folder_name: 'a',
   phases: { build: 'VALID', rewrite: 'VALID' },

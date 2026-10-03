@@ -749,3 +749,73 @@ class TestInstructionsAndSelection:
         assert all(q.type == RecallQuestionType.QUIZ for q in questions)
 
 
+
+@pytest.mark.parametrize('qtype', [RecallQuestionType.MIRATA, RecallQuestionType.VASTA])
+@pytest.mark.parametrize('outcome', ['corretta', 'parziale', 'sbagliata', None])
+def test_evaluator_outcome_survives_recording_and_legacy_results(lesson_dir, qtype, outcome):
+    from unittest.mock import patch
+    from rt.services.recall_service import handle_recall_answer, question_list
+    q = _make_question('recall_000001', qtype, '1.1')
+    save_recall_bank(RecallBank(questions=[q]), lesson_dir)
+
+    def evaluate(_client, **kwargs):
+        data = {'commento': 'Valutazione del tentativo', 'outcome': outcome}
+        if qtype == RecallQuestionType.MIRATA:
+            data.update(correttezza=70, completezza=50)
+        assert 'outcome' in kwargs['prompt'] and 'outcome' in kwargs['system_prompt']
+        return kwargs['response_model'].model_validate(data)
+
+    with patch('rt.llm.client.LLMClient.call_structured', evaluate):
+        text = handle_recall_answer(lesson_dir, q.id, 'Tentativo', is_voice=True, force_mock=False)
+    assert isinstance(text, str) and 'Valutazione del tentativo' in text
+    answer = load_recall_bank(lesson_dir).answers[0]
+    assert answer.outcome == outcome and answer.is_voice
+    assert question_list(lesson_dir)['questions'][0]['outcome'] == outcome
+    record_recall_vote(lesson_dir, q.id, 'up')
+    assert load_recall_bank(lesson_dir).answers[0].outcome == outcome
+
+
+@pytest.mark.parametrize('qtype', [RecallQuestionType.MIRATA, RecallQuestionType.VASTA])
+def test_non_lo_so_overrides_the_evaluator_outcome(lesson_dir, qtype):
+    from unittest.mock import patch
+    from rt.services.recall_service import handle_recall_answer
+    q = _make_question('recall_000001', qtype, '1.1')
+    save_recall_bank(RecallBank(questions=[q]), lesson_dir)
+
+    def evaluate(_client, **kwargs):
+        data = {'commento': 'Spiegazione', 'outcome': 'corretta'}
+        if qtype == RecallQuestionType.MIRATA:
+            data.update(correttezza=100, completezza=100)
+        return kwargs['response_model'].model_validate(data)
+
+    with patch('rt.llm.client.LLMClient.call_structured', evaluate):
+        handle_recall_answer(lesson_dir, q.id, '[Non lo so]', force_mock=False)
+    answer = load_recall_bank(lesson_dir).answers[0]
+    assert answer.outcome == 'sbagliata' and answer.dont_know
+
+
+def test_quiz_outcome_uses_choice_and_updates_the_last_answer(lesson_dir):
+    from rt.services.recall_service import answer_quiz, answer_dont_know, question_list, recall_history
+    q = _make_question('recall_000001', RecallQuestionType.QUIZ, '1.1')
+    # Le banche storiche possono contenere opzioni uguali: il client API usa l'indice scelto.
+    q.options = ['A', 'A', 'C', '[Non lo so]']
+    save_recall_bank(RecallBank(questions=[q]), lesson_dir)
+    assert answer_quiz(lesson_dir, q.id, 1)['question']['outcome'] == 'sbagliata'
+    assert answer_quiz(lesson_dir, q.id, 0)['question']['outcome'] == 'corretta'
+    assert question_list(lesson_dir)['questions'][0]['outcome'] == 'corretta'
+    assert answer_dont_know(lesson_dir, q.id)['question']['outcome'] == 'sbagliata'
+    assert recall_history(lesson_dir)['answers'][0]['outcome'] == 'sbagliata'
+    assert len(load_recall_bank(lesson_dir).answers) == 1
+
+
+def test_outcome_contract_rejects_unknown_values_and_accepts_old_answers():
+    from pydantic import ValidationError
+    from rt.core.models import RecallAnswer
+    from rt.llm.prompts import RecallEvalMirataResult, RecallEvalVastaResult
+    assert RecallAnswer(question_id='q', answer_text='Risposta').outcome is None
+    for model, data in [(RecallAnswer, {'question_id': 'q', 'answer_text': 'Risposta'}),
+                        (RecallEvalMirataResult, {'correttezza': 80, 'completezza': 80, 'commento': 'ok'}),
+                        (RecallEvalVastaResult, {'commento': 'ok'})]:
+        assert model(**data).outcome is None
+        with pytest.raises(ValidationError):
+            model(**data, outcome='ottima')
