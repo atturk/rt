@@ -11,6 +11,13 @@ shadcn/ui (`src/components/ui`), TanStack Query, React Router. Parla solo con l'
 rt web              # API + worker + SPA su http://127.0.0.1:8765, browser già autenticato
 ```
 
+Copia di lavoro per provare un branch senza release (dati di prova isolati in `~/.rt-dev`,
+worker finto, non tocca `~/.rt` né i servizi):
+
+```bash
+scripts/dev.sh            # aggiorna il branch, avvia API :8766 + SPA :5173 e apre il browser
+```
+
 Sviluppo con ricarica a caldo:
 
 ```bash
