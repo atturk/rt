@@ -140,7 +140,7 @@ def _info_counts(lesson_dir: str) -> Dict[str, Any]:
     return {
         "unit_count": units,
         "duration_seconds": (manifest.audio_duration_seconds if manifest else None) or None,
-        "recall_questions": len(questions),
+        "recall_questions": sum(q.status != RecallQuestionStatus.DISCARDED for q in questions),
         "recall_pending": sum(q.status == RecallQuestionStatus.PENDING for q in questions),
     }
 
@@ -157,7 +157,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.cost import compute_lesson_cost
     out: Dict[str, Any] = {
         "id": lesson_id, "folder_name": os.path.basename(lesson_dir), "path": lesson_dir,
-        "data": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
+        "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
         "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
     }
@@ -166,6 +166,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         state = compute_effective_workflow_state(lesson_dir)
         out.update({
             "data": str(info.get("data") or ""),
+            "ora": str(info.get("ora") or ""),
             "materia": str(info.get("materia") or "").strip().upper(),
             "titolo": str(info.get("titolo") or ""),
             "argomenti": str(info.get("argomenti") or ""),
@@ -288,7 +289,7 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
         needle = text.casefold()
         items = [i for i in items if any(needle in str(i[k]).casefold()
                                          for k in ("folder_name", "titolo", "argomenti", "materia", "docente"))]
-    items.sort(key=lambda i: (i["data"], i["folder_name"]), reverse=True)
+    items.sort(key=lambda i: (i["data"], i["ora"], i["folder_name"]), reverse=True)
     return items
 
 

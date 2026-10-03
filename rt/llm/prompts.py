@@ -9,7 +9,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 import json
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
-from rt.core.models import ScienceIssue
+from rt.core.models import ScienceIssue, RecallOutcome
 
 
 class ScienceIssueList(BaseModel):
@@ -220,29 +220,33 @@ Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota
 Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
 
 
+def recall_fewshot_block(examples: List[dict]) -> str:
+    """Le domande bocciate orientano cosa evitare, mai cosa imitare."""
+    parts = []
+    for votes, title in [(('up',), 'ESEMPI BUONI DA SEGUIRE'), (('down', 'lightning'), 'ESEMPI DA EVITARE')]:
+        rows = [ex for ex in examples if ex.get('vote') in votes]
+        if not rows:
+            continue
+        parts.append(title + ':')
+        for ex in rows:
+            parts.append(ex.get('question_text', ''))
+            if title == 'ESEMPI DA EVITARE':
+                reasons = list(ex.get('reasons') or [])
+                if ex.get('vote') == 'lightning' and not reasons:
+                    reasons = ['troppo facile o troppi indizi']
+                parts.append('Motivi: ' + (', '.join(reasons) or 'non specificati'))
+                if ex.get('comment'):
+                    parts.append('Commento: ' + ex['comment'])
+    return '\n'.join(parts) + '\n\n' if parts else ''
+
+
 def build_recall_quiz_user_prompt(
     unit_id: str,
     unit_title: str,
     unit_content: str,
     few_shot_examples: Optional[List[dict]] = None,
 ) -> str:
-    fewshot_block = ""
-    if few_shot_examples:
-        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
-        for ex in few_shot_examples:
-            vote = ex.get("vote", "")
-            voted_at = ex.get("voted_at", "")
-            q = ex.get("question_text", "")
-            if vote == "up":
-                label = "✅ ESEMPIO BEN FATTO"
-            elif vote == "down":
-                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
-            elif vote == "lightning":
-                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
-            else:
-                label = "❌ ESEMPIO BOCCIATO"
-            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
-        fewshot_block = "\n".join(lines) + "\n\n"
+    fewshot_block = recall_fewshot_block(few_shot_examples or [])
     return f"""{fewshot_block}Genera zero, una o più domande quiz distinte (scelta multipla, 4 opzioni) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
@@ -280,23 +284,7 @@ def build_recall_mirata_user_prompt(
     unit_content: str,
     few_shot_examples: Optional[List[dict]] = None,
 ) -> str:
-    fewshot_block = ""
-    if few_shot_examples:
-        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
-        for ex in few_shot_examples:
-            vote = ex.get("vote", "")
-            voted_at = ex.get("voted_at", "")
-            q = ex.get("question_text", "")
-            if vote == "up":
-                label = "✅ ESEMPIO BEN FATTO"
-            elif vote == "down":
-                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
-            elif vote == "lightning":
-                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
-            else:
-                label = "❌ ESEMPIO BOCCIATO"
-            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
-        fewshot_block = "\n".join(lines) + "\n\n"
+    fewshot_block = recall_fewshot_block(few_shot_examples or [])
     return f"""{fewshot_block}Genera zero, una o più domande mirate distinte (risposta aperta su concetto atomico) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
@@ -334,23 +322,7 @@ def build_recall_vasta_user_prompt(
     unit_contents: List[str],
     few_shot_examples: Optional[List[dict]] = None,
 ) -> str:
-    fewshot_block = ""
-    if few_shot_examples:
-        lines = ["ESEMPI DI DOMANDE PRECEDENTI CON VALUTAZIONE (per calibrare la qualità):"]
-        for ex in few_shot_examples:
-            vote = ex.get("vote", "")
-            voted_at = ex.get("voted_at", "")
-            q = ex.get("question_text", "")
-            if vote == "up":
-                label = "✅ ESEMPIO BEN FATTO"
-            elif vote == "down":
-                label = "❌ ESEMPIO BOCCIATO (fuori programma / concettualmente sbagliato)"
-            elif vote == "lightning":
-                label = "⚡ ESEMPIO BOCCIATO (troppo facile / troppi indizi nella domanda)"
-            else:
-                label = "❌ ESEMPIO BOCCIATO"
-            lines.append(f"\n{label} (voto: {vote}, data: {voted_at}):\n{q}")
-        fewshot_block = "\n".join(lines) + "\n\n"
+    fewshot_block = recall_fewshot_block(few_shot_examples or [])
 
     units_block = ""
     for uid, title, content in zip(unit_ids, unit_titles, unit_contents):
@@ -416,6 +388,7 @@ def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, pr
 # ----------------------------------------------------------------------
 
 class RecallEvalMirataResult(BaseModel):
+    outcome: Optional[RecallOutcome] = None
     correttezza: int = Field(..., ge=0, le=100, description="Percentuale di correttezza complessiva della risposta")
     completezza: int = Field(..., ge=0, le=100, description="Percentuale di completezza complessiva della risposta")
     commento: str = Field(..., description="Breve spiegazione di cosa manca o è sbagliato nella risposta")
@@ -428,14 +401,15 @@ REGOLE CATEGORICHE:
 2. "correttezza" (0-100): quanto ciò che lo studente ha detto è corretto rispetto al riferimento.
 3. "completezza" (0-100): quanto la risposta copre tutti gli aspetti rilevanti della domanda, anche se corretta solo parzialmente.
 4. "commento": breve (2-4 frasi), evidenzia specificamente cosa manca o cosa è sbagliato. Se la risposta è ottima, dillo brevemente e basta.
-5. Tono diretto ma non punitivo: lo studente sta studiando, l'obiettivo è farlo migliorare velocemente."""
+5. Tono diretto ma non punitivo: lo studente sta studiando, l'obiettivo è farlo migliorare velocemente.
+6. "outcome": "corretta" per una risposta corretta e completa, "parziale" se contiene elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere."""
 
 
 DONT_KNOW_NOTE = (
     "\n\nNOTA: lo studente ha dichiarato esplicitamente di non sapere rispondere "
     "(non ha fornito alcun tentativo). NON scrivere che la risposta è assente, mancante o non fornita — "
     "è già noto. Fornisci direttamente e solo la spiegazione corretta e completa dell'argomento, "
-    "come se stessi semplicemente insegnando la risposta."
+    "come se stessi semplicemente insegnando la risposta. Restituisci outcome=sbagliata."
 )
 
 
@@ -452,7 +426,7 @@ RIFERIMENTO (unità didattica "{unit_title}"):
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento)."""
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
 
 
 # ----------------------------------------------------------------------
@@ -460,6 +434,7 @@ Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResul
 # ----------------------------------------------------------------------
 
 class RecallEvalVastaResult(BaseModel):
+    outcome: Optional[RecallOutcome] = None
     commento: str = Field(..., description="Valutazione breve di correttezza concettuale e qualità organizzativa rispetto alla scaletta ideale")
 
 
@@ -469,7 +444,8 @@ REGOLE CATEGORICHE:
 1. Valuta DUE aspetti insieme, in un commento unico e breve (4-6 frasi): (a) la correttezza concettuale di ciò che lo studente ha detto rispetto al riferimento fornito, (b) quanto la risposta segue o manca rispetto alla SCALETTA IDEALE già preparata per questa domanda (non generarne una nuova, usa quella fornita).
 2. Sii specifico: cita quali punti della scaletta sono stati toccati e quali no, non restare generico.
 3. Non aggiungere nozioni esterne non presenti nel riferimento o nella scaletta.
-4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente."""
+4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente.
+5. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere."""
 
 
 def build_recall_eval_vasta_user_prompt(
@@ -485,7 +461,7 @@ SCALETTA IDEALE (punti essenziali attesi in una risposta completa):
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento)."""
+Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento, outcome)."""
 
 
 # ----------------------------------------------------------------------
@@ -583,6 +559,16 @@ _SPECIAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationRe
 - tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.
 Se non trovi materiale adatto restituisci {"items": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
 
+_CLINICAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallClinicalGenerationResult):
+{"items": [{"question_text": "...", "unit_ids": ["5.1", "5.2"],
+  "tipo": {"scenario": "...", "variabili": [{"nome": "...", "valore": "...", "intervallo": "..."}],
+           "obiettivo": "...", "procedimento": "...", "esplicito": true}}]}
+- question_text: traccia completa del caso con tutti i dati necessari, senza soluzione.
+- unit_ids: subunità fornite da cui proviene il caso.
+- tipo: struttura astratta per creare varianti; variabili plausibili e procedimento generale.
+Non generare pregenerated_material né una soluzione del caso. Se non trovi materiale adatto restituisci {"items": []}.
+Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
+
 RECALL_CASO_SYSTEM_PROMPT = """Sei un docente universitario di area medica che prepara casi clinici per verificare la comprensione profonda degli studenti, non la memorizzazione di singole nozioni.
 Ricevi il testo di un'intera unità di una lezione (più subunità). Il tuo compito è restituire zero, uno o più casi clinici distinti:
 1. Se il docente presenta esplicitamente uno o più pazienti (es. più pazienti con parametri diversi che arrivano in pronto soccorso), crea un caso per ciascun paziente, fedele ai dati presentati, con esplicito=true.
@@ -591,7 +577,7 @@ Ricevi il testo di un'intera unità di una lezione (più subunità). Il tuo comp
 4. Non inventare nozioni assenti dal testo: i dati del caso devono poter essere interpretati con ciò che la lezione insegna.
 5. Non ripetere casi già presenti (te li elenco, se esistono): proponi pazienti o quesiti diversi.
 
-""" + _SPECIAL_OUTPUT
+""" + _CLINICAL_OUTPUT
 
 RECALL_ESERCIZIO_SYSTEM_PROMPT = """Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.
 Ricevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):
@@ -616,7 +602,8 @@ def build_recall_special_user_prompt(kind: str, sections: list, existing: list, 
     prompt = context_block(context) + "\n\n" + "\n\n".join(blocks)
     if existing:
         prompt += f"\n\n{what.upper()} GIÀ PRESENTI PER QUESTE UNITÀ (proponine di diversi):\n" + json.dumps(existing, ensure_ascii=False)
-    return prompt + f"\n\nRestituisci zero, uno o più {what} nel contenitore JSON items conforme a RecallSpecialGenerationResult."
+    model = "RecallClinicalGenerationResult" if kind == "caso" else "RecallSpecialGenerationResult"
+    return prompt + f"\n\nRestituisci zero, uno o più {what} nel contenitore JSON items conforme a {model}."
 
 
 RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di un caso clinico o di un esercizio già usato a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato il caso.
@@ -628,6 +615,18 @@ REGOLE:
 OUTPUT JSON (conforme a GeneratedVariant): {"question_text": "...", "pregenerated_material": "..."}"""
 
 
+RECALL_CLINICAL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario di medicina che crea una variante di un caso clinico.
+Mantieni l'obiettivo e il procedimento generale del tipo; varia i dati entro intervalli plausibili.
+La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
+Non generare pregenerated_material né una soluzione del caso.
+OUTPUT JSON (conforme a GeneratedClinicalVariant): {"question_text": "..."}"""
+
+RECALL_CLINICAL_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente un caso clinico.
+Verifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.
+Restituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descrivi eventuali problemi.
+Non restituire una soluzione pregenerata: lascia soluzione vuota."""
+
+
 def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "") -> str:
     import json
     what = "caso clinico" if kind == "caso" else "esercizio"
@@ -636,7 +635,8 @@ def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, prob
         prompt += "\n\nVERSIONI GIÀ USATE (non ripeterle):\n" + json.dumps(previous[-6:], ensure_ascii=False)
     if problems:
         prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
-    return prompt + f"\n\nCrea una nuova variante del {what} e restituisci GeneratedVariant."
+    model = "GeneratedClinicalVariant" if kind == "caso" else "GeneratedVariant"
+    return prompt + f"\n\nCrea una nuova variante del {what} e restituisci {model}."
 
 
 RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di un caso clinico o di un esercizio prima di proporla a uno studente.
@@ -646,8 +646,11 @@ RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che control
 OUTPUT JSON (conforme a VariantCheck): {"coerente": true, "soluzione": "...", "problemi": ""}"""
 
 
-def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solution: str) -> str:
+def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solution: Optional[str]) -> str:
     import json
+    if solution is None:
+        return (f"TIPO:\n{json.dumps(tipo, ensure_ascii=False)}\n\nTRACCIA:\n{question_text}\n\n"
+                "Controlla la coerenza della traccia e restituisci VariantCheck senza soluzione.")
     return (f"PROCEDIMENTO DEL TIPO:\n{json.dumps(tipo, ensure_ascii=False)}\n\nTRACCIA:\n{question_text}\n\n"
             f"SOLUZIONE PROPOSTA:\n{solution}\n\nRisolvi, confronta e restituisci VariantCheck.")
 
@@ -659,7 +662,8 @@ REGOLE CATEGORICHE:
 2. "correttezza" (0-100): quanto conclusioni, valori e passaggi dello studente sono corretti; un risultato giusto con un ragionamento sbagliato non è corretto.
 3. "completezza" (0-100): quanto la risposta copre i passaggi essenziali del ragionamento o del procedimento.
 4. "commento": breve (3-5 frasi), indica quali passaggi sono giusti, quali mancano o sono sbagliati e dove si è interrotto il ragionamento.
-5. Tono diretto ma non punitivo."""
+5. Tono diretto ma non punitivo.
+6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere."""
 
 
 def build_recall_eval_ragionamento_user_prompt(question_text: str, solution: str, procedure: str,
@@ -675,4 +679,21 @@ SOLUZIONE ATTESA:
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento)."""
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
+
+
+RECALL_EVAL_CASO_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento clinico.
+Valuta la risposta usando la traccia e il contenuto reale delle unità della lezione fornite come riferimento.
+Ricava da questi dati il ragionamento corretto senza aggiungere nozioni esterne.
+Restituisci correttezza e completezza (0-100) e un commento breve sui passaggi validi, mancanti o errati.
+Restituisci outcome: corretta se il ragionamento è corretto e completo, parziale se contiene elementi validi ma lacune o errori,
+sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo."""
+
+
+def build_recall_eval_caso_user_prompt(question_text: str, units: list, answer_text: str,
+                                      dont_know: bool = False) -> str:
+    reference = "\n\n".join(f"[{u.unit_id}] {u.title}\n{u.content}" for u in units)
+    note = DONT_KNOW_NOTE if dont_know else ""
+    return (f"TRACCIA POSTA:\n{question_text}\n\nRIFERIMENTO DELLA LEZIONE:\n{reference}\n\n"
+            f"RISPOSTA DELLO STUDENTE:\n{answer_text}{note}\n\n"
+            "Valuta e restituisci RecallEvalMirataResult (correttezza, completezza, commento, outcome).")

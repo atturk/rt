@@ -33,6 +33,7 @@ class PipelineOptions:
     materia: Optional[str] = None
     argomenti: Optional[str] = None
     docente: Optional[str] = None
+    ora: Optional[str] = None
     dest_dir: Optional[str] = None
     model: Optional[str] = None
     skip_transcribe: bool = False
@@ -250,6 +251,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         materia=options.materia,
         argomenti=options.argomenti,
         docente=options.docente,
+        ora=options.ora,
         dest_dir=options.dest_dir,
         model=options.model or DEFAULT_MODEL,
         skip_transcribe=options.skip_transcribe,

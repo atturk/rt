@@ -9,8 +9,8 @@ Casi clinici ed esercizi: domande speciali generate solo dove il classificatore 
 
 Ogni elemento restituito diventa una domanda (variante 0, dal testo della lezione) e un "tipo"
 salvato nel bank (RecallBank.templates). Quando le domande da porre finiscono, il rifornimento
-crea varianti dai tipi; ogni variante passa da una seconda chiamata che la risolve in modo
-indipendente e la scarta se la soluzione non coincide.
+crea varianti dai tipi; una seconda chiamata verifica i dati clinici o risolve gli esercizi
+in modo indipendente e scarta le varianti incoerenti.
 """
 
 import logging
@@ -20,7 +20,8 @@ from datetime import datetime
 from typing import Callable, List, Optional
 
 from rt.core.models import (RecallQuestion, RecallQuestionType, RecallSpecialGenerationResult, RecallTemplate,
-                            GeneratedVariant, VariantCheck)
+                            GeneratedVariant, GeneratedClinicalVariant, RecallClinicalGenerationResult,
+                            RecallEvaluation, VariantCheck)
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
 
@@ -66,9 +67,11 @@ def _policy(qtype: RecallQuestionType, mock: bool) -> dict:
     from rt.services.recall_context import POLICY_VERSION
     from rt.services.section_labels import LABEL_VERSION
     cfg = load_config()
+    from rt.pipeline.recall import load_fewshot_examples
+    examples = load_fewshot_examples(qtype, cfg.telegram.state_dir)
     routing = cfg.jobs.get("recall") or cfg.llm.get("recall") or cfg.jobs.get("default") or cfg.llm.get("default")
     return {"version": POLICY_VERSION, "labels": LABEL_VERSION, "style": qtype.value, "system": _system(qtype),
-            "routing": routing.model_dump(mode="json") if routing else None, "mock": mock}
+            "fewshot": examples, "routing": routing.model_dump(mode="json") if routing else None, "mock": mock}
 
 
 def _digest(lesson_dir: str, group: list, policy: dict) -> str:
@@ -106,13 +109,16 @@ def _mock_items(qtype: RecallQuestionType, group: list, existing: int) -> dict:
     units = [u.unit_id for s in group for u in s["units"]]
     n = existing + 1
     what = "Caso clinico" if qtype == RecallQuestionType.CASO else "Esercizio"
-    return {"items": [{
+    result = {"items": [{
         "question_text": f"{what} mock n. {n} per l'unità {', '.join(s['id'] for s in group)}: interpreta i dati e motiva.",
         "pregenerated_material": "Passaggi attesi: 1) lettura dei dati; 2) ragionamento; 3) conclusione.",
         "unit_ids": units,
         "tipo": {"scenario": f"{what} mock", "variabili": [{"nome": "valore", "valore": "1", "intervallo": "1-9"}],
                  "obiettivo": "Verificare il ragionamento", "procedimento": "Leggere i dati, ragionare, concludere.",
                  "esplicito": qtype == RecallQuestionType.CASO}}]}
+    if qtype == RecallQuestionType.CASO:
+        result['items'][0].pop('pregenerated_material')
+    return result
 
 
 def _persist(lesson_dir: str, pairs: list, key: Optional[str], attempt: Optional[dict]) -> List[RecallQuestion]:
@@ -187,13 +193,17 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> L
         started = time.monotonic()
         report(position, len(todo), f"{head}: chiedo {label.lower()} al recaller", **where)
         try:
+            response_model = RecallClinicalGenerationResult if qtype == RecallQuestionType.CASO else RecallSpecialGenerationResult
             if mock:
-                generated = RecallSpecialGenerationResult.model_validate(_mock_items(qtype, group, len(existing))).items
+                generated = response_model.model_validate(_mock_items(qtype, group, len(existing))).items
             else:
                 prompt = prompts.build_recall_special_user_prompt(
                     qtype.value, group, [t.tipo.model_dump() for t in existing], context)
+                from rt.pipeline.recall import load_fewshot_examples
+                from rt.core.config import load_config
+                prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
                 generated = client.call_structured(prompt=prompt, system_prompt=_system(qtype),
-                                                   response_model=RecallSpecialGenerationResult, job_name="recall",
+                                                   response_model=response_model, job_name="recall",
                                                    unit_id=", ".join(all_units), lesson_dir=lesson_dir).items
         except Exception as exc:
             if not is_unit_failure(exc):
@@ -213,7 +223,7 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> L
             template = RecallTemplate(id="temporary", kind=qtype, section_ids=ids, unit_ids=unit_ids,
                                       tipo=item.tipo, fingerprint=fingerprint)
             question = RecallQuestion(id="temporary", type=qtype, unit_ids=unit_ids, question_text=item.question_text,
-                                      pregenerated_material=item.pregenerated_material,
+                                      pregenerated_material=None if qtype == RecallQuestionType.CASO else item.pregenerated_material,
                                       content_fingerprint=_compute_units_fingerprint(lesson_dir, unit_ids),
                                       generation_version=POLICY_VERSION, generation_fingerprint=fingerprint, variant=0)
             pairs.append((question, template))
@@ -233,7 +243,7 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> L
 def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = False) -> Optional[RecallQuestion]:
     """Una variante verificata del tipo, salvata nel pool; None se le verifiche falliscono."""
     from rt.llm import prompts
-    from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank
+    from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank, load_fewshot_examples
     from rt.services.recall_context import POLICY_VERSION
     mock = _mock(force_mock)
     bank = load_recall_bank(lesson_dir)
@@ -242,24 +252,28 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
         raise KeyError(template_id)
     previous = [q.question_text for q in bank.questions if q.template_id == template.id]
     tipo = template.tipo.model_dump()
+    clinical = template.kind == RecallQuestionType.CASO
+    response_model = GeneratedClinicalVariant if clinical else GeneratedVariant
+    system = prompts.RECALL_CLINICAL_VARIANT_SYSTEM_PROMPT if clinical else prompts.RECALL_VARIANT_SYSTEM_PROMPT
     variant = None
     if mock:
-        variant = GeneratedVariant(question_text=f"Variante mock n. {template.variants + 1} di {template.id}: "
-                                                 f"{template.tipo.scenario}",
-                                   pregenerated_material=template.tipo.procedimento)
+        data = {'question_text': f"Variante mock n. {template.variants + 1} di {template.id}: {template.tipo.scenario}"}
+        if not clinical:
+            data['pregenerated_material'] = template.tipo.procedimento
+        variant = response_model.model_validate(data)
     else:
         client = LLMClient(force_mock=False)
         problems = ""
         for _ in range(VARIANT_ATTEMPTS):
             candidate = client.call_structured(
-                prompt=prompts.build_recall_variant_user_prompt(template.kind.value, tipo, previous, problems),
-                system_prompt=effective_system("recall", prompts.RECALL_VARIANT_SYSTEM_PROMPT),
-                response_model=GeneratedVariant, job_name="recall", unit_id=", ".join(template.unit_ids),
+                prompt=prompts.recall_fewshot_block(load_fewshot_examples(template.kind)) + prompts.build_recall_variant_user_prompt(template.kind.value, tipo, previous, problems),
+                system_prompt=effective_system("recall", system),
+                response_model=response_model, job_name="recall", unit_id=", ".join(template.unit_ids),
                 lesson_dir=lesson_dir)
             check = client.call_structured(
                 prompt=prompts.build_recall_variant_check_user_prompt(tipo, candidate.question_text,
-                                                                     candidate.pregenerated_material),
-                system_prompt=prompts.RECALL_VARIANT_CHECK_SYSTEM_PROMPT, response_model=VariantCheck,
+                                                                     None if clinical else candidate.pregenerated_material),
+                system_prompt=prompts.RECALL_CLINICAL_VARIANT_CHECK_SYSTEM_PROMPT if clinical else prompts.RECALL_VARIANT_CHECK_SYSTEM_PROMPT, response_model=VariantCheck,
                 job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir)
             if check.coerente:
                 variant = candidate
@@ -269,7 +283,7 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
     if variant is None:
         return None
     question = RecallQuestion(id="temporary", type=template.kind, unit_ids=template.unit_ids,
-                              question_text=variant.question_text, pregenerated_material=variant.pregenerated_material,
+                              question_text=variant.question_text, pregenerated_material=None if clinical else variant.pregenerated_material,
                               content_fingerprint=_compute_units_fingerprint(lesson_dir, template.unit_ids),
                               generation_version=POLICY_VERSION, template_id=template.id)
     saved = _persist(lesson_dir, [(question, None)], None, None)
@@ -321,17 +335,26 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
     dont_know = answer_text.strip() == "[Non lo so]"
     if _mock(force_mock):
         if dont_know:
-            return "Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Ragionamento atteso spiegato passo per passo."
-        return "Correttezza: 70%\nCompletezza: 60%\n\n[MOCK] Conclusione corretta, manca un passaggio del ragionamento."
-    template = next((t for t in load_recall_bank(lesson_dir).templates if t.id == question.template_id), None)
-    result = LLMClient(force_mock=False).call_structured(
-        prompt=prompts.build_recall_eval_ragionamento_user_prompt(
+            return RecallEvaluation("Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Ragionamento atteso spiegato passo per passo.", "sbagliata")
+        return RecallEvaluation("Correttezza: 70%\nCompletezza: 60%\n\n[MOCK] Conclusione corretta, manca un passaggio del ragionamento.", "parziale")
+    if question.type == RecallQuestionType.CASO:
+        from rt.pipeline.ledger import load_resolved_draft
+        units = [u for u in load_resolved_draft(lesson_dir).units if u.unit_id in question.unit_ids]
+        prompt = prompts.build_recall_eval_caso_user_prompt(question.question_text, units, answer_text, dont_know=dont_know)
+        system = prompts.RECALL_EVAL_CASO_SYSTEM_PROMPT
+    else:
+        template = next((t for t in load_recall_bank(lesson_dir).templates if t.id == question.template_id), None)
+        prompt = prompts.build_recall_eval_ragionamento_user_prompt(
             question.question_text, question.pregenerated_material or "",
-            template.tipo.procedimento if template else "", answer_text, dont_know=dont_know),
-        system_prompt=effective_system("recall", prompts.RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT),
+            template.tipo.procedimento if template else "", answer_text, dont_know=dont_know)
+        system = prompts.RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT
+    result = LLMClient(force_mock=False).call_structured(
+        prompt=prompt,
+        system_prompt=effective_system("recall", system),
         response_model=prompts.RecallEvalMirataResult, job_name="recall", unit_id=", ".join(question.unit_ids),
         lesson_dir=lesson_dir)
     if dont_know:
         result.correttezza = 0
         result.completezza = 0
-    return f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}"
+    return RecallEvaluation(f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}",
+                            "sbagliata" if dont_know else result.outcome)
