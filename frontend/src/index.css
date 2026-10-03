@@ -139,6 +139,11 @@
     background: var(--accent);
     color: var(--acc);
   }
+  /* La selezione resta visibile mentre si scrive nel popup Genera (DocumentMenu). */
+  ::highlight(rt-generate) {
+    background: var(--accent);
+    color: var(--acc);
+  }
   input::placeholder,
   textarea::placeholder {
     color: var(--mute);

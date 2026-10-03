@@ -13,7 +13,7 @@ import { blockIndex, documentBlocks, partLabel, partOfRange } from '@/lib/docume
 import { cn } from '@/lib/utils'
 
 type Point = { x: number; y: number }
-type Part = { text: string; units: string[]; at: Point; anchor: Point }
+type Part = { text: string; units: string[]; at: Point; anchor: Point; range?: Range }
 export type GenerateKind = 'visualization' | 'infographic' | 'image'
 
 const NO_PART = "Seleziona il testo di un'unità"
@@ -61,6 +61,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, children }: {
       units,
       at: { x: event.clientX, y: event.clientY },
       anchor: { x: rect.left, y: rect.bottom },
+      range: text.trim() && range ? range.cloneRange() : undefined,
     })
   }
 
@@ -250,6 +251,16 @@ function GeneratePopover({ lessonId, part, onClose, onQueued }: { lessonId: numb
     document.addEventListener('pointerdown', onPointer)
     return () => document.removeEventListener('pointerdown', onPointer)
   }, [onClose])
+  // Il focus passa al campo e il browser toglie la selezione: la si ridisegna (CSS Custom Highlight).
+  useEffect(() => {
+    if (!part.range || typeof Highlight === 'undefined' || typeof CSS === 'undefined' || !CSS.highlights) return
+    // HighlightRegistry è un Map (maplike), ma i tipi DOM di TypeScript non lo dicono.
+    const registry = CSS.highlights as unknown as Map<string, Highlight>
+    registry.set('rt-generate', new Highlight(part.range))
+    return () => {
+      registry.delete('rt-generate')
+    }
+  }, [part.range])
   const submit = () => {
     if (!request.trim() || generate.isPending) return
     generate.mutate({ kind, request: request.trim(), selection: part.text, unit_ids: part.units }, {
