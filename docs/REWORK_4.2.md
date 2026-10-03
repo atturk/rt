@@ -134,8 +134,8 @@ provare, e cosa guardare (pagine, flussi, wireframe di riferimento), con i coman
 - `frontend/src/components/lessons/LessonsView.tsx`: togliere le icone Info/Recall/Studio/Apri dalle
   righe (si apre con un clic sulla riga). Il popup Info sparisce: quelle informazioni stanno nel
   pannello Dettagli della lezione.
-- Ogni gruppo in un riquadro con sfondo leggero a rotazione (vedi `GROUP_TINTS` in
-  `docs/wireframes-4.2/Dashboard.dc.html`), angoli 12 px, 12 px tra i gruppi.
+- Ogni gruppo in un riquadro con sfondo leggero a rotazione (4 colori: `rgba(21,95,82,.06)`, `rgba(59,111,160,.07)`,
+  `rgba(184,134,11,.08)`, `rgba(150,80,110,.06)`), angoli 12 px, 12 px tra i gruppi.
 - Wireframe: `Dashboard.dc.html`, `Telefono-Dashboard.dc.html`. Test: `src/routes/lessons.test.tsx`,
   e2e `lessons-view`.
 
@@ -163,7 +163,8 @@ Arricchimento resta disattivato finché non c'è B6)
   riepilogo; Fasi compatte con menu ⋯ (Riesegui, Riesegui con opzioni… in linea sotto la fase con unità e
   istruzioni aggiuntive, Segna come valida — sostituisce il tasto Option), "Pipeline completa" con
   casella "con la revisione"; Job chiusi; in fondo "Ripristina la versione della pipeline…" (dopo B2)
-  ed "Elimina la lezione…".
+  ed "Elimina la lezione…" (stessa conferma scritta "confermo" del vecchio popup Info, tolto in A1:
+  recuperare `DeleteLesson` da `LessonsView.tsx` nella storia git; riusare o togliere `lessonInfo`).
 - Wireframe: `Dettagli*.dc.html`, `Telefono-Dettagli.dc.html`. Test: `PhasePanel.test.tsx` (da
   spostare), e2e `lesson-view`.
 
