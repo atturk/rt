@@ -710,3 +710,42 @@ class TestNonLoSoEvaluation:
         assert "Correttezza: 0%" in eval_res
         assert "Completezza: 0%" in eval_res
 
+
+class TestInstructionsAndSelection:
+    def test_prompt_builders_include_instructions_and_selection(self):
+        from rt.llm import prompts
+        p_quiz = prompts.build_recall_quiz_user_prompt("1.1", "Titolo", "Contenuto",
+                                                       instructions="Fai quiz difficili",
+                                                       selection="testo selezionato")
+        assert "TESTO SELEZIONATO DALL'UTENTE" in p_quiz
+        assert "testo selezionato" in p_quiz
+        assert "ISTRUZIONI AGGIUNTIVE DELL'UTENTE:" in p_quiz
+        assert "Fai quiz difficili" in p_quiz
+
+        p_mirata = prompts.build_recall_mirata_user_prompt("1.1", "Titolo", "Contenuto",
+                                                           instructions="Chiedi definizioni",
+                                                           selection="sezione x")
+        assert "TESTO SELEZIONATO DALL'UTENTE" in p_mirata
+        assert "ISTRUZIONI AGGIUNTIVE DELL'UTENTE:" in p_mirata
+
+        p_vasta = prompts.build_recall_vasta_user_prompt(["1.1", "1.2"], ["T1", "T2"], ["C1", "C2"],
+                                                         instructions="Focalizzati su x",
+                                                         selection="frammento y")
+        assert "TESTO SELEZIONATO DALL'UTENTE" in p_vasta
+        assert "ISTRUZIONI AGGIUNTIVE DELL'UTENTE:" in p_vasta
+
+        p_special = prompts.build_recall_special_user_prompt("caso", [{"id": "1", "title": "S1", "units": []}],
+                                                             [], {}, instructions="Casi pediatrici",
+                                                             selection="sintomi bambino")
+        assert "TESTO SELEZIONATO DALL'UTENTE" in p_special
+        assert "ISTRUZIONI AGGIUNTIVE DELL'UTENTE:" in p_special
+
+    def test_generate_recall_batch_with_instructions_and_selection_mock(self, lesson_dir):
+        questions = generate_recall_batch(lesson_dir, RecallQuestionType.QUIZ, 2, [],
+                                          force_mock=True, unit_ids=["1.1"],
+                                          instructions="Focus su terminologia",
+                                          selection="Terminologia speciale")
+        assert len(questions) > 0
+        assert all(q.type == RecallQuestionType.QUIZ for q in questions)
+
+

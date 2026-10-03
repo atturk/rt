@@ -51,11 +51,24 @@ def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir
         units = [u for u in dict.fromkeys(body.unit_ids) if u in present]
         if not units:
             raise ApiError(422, "validation_error", "Nessuna delle unità indicate è nella lezione.")
-        return enqueue_job("recall_generate", lesson_dir, {"force_mock": body.mock, "regenerate": True, "unit_ids": units,
-                                                           "qtypes": [body.qtype] if body.qtype else ["quiz", "mirata"]}, actor)
+        return enqueue_job("recall_generate", lesson_dir, {
+            "force_mock": body.mock,
+            "regenerate": True,
+            "unit_ids": units,
+            "qtypes": [body.qtype] if body.qtype else ["quiz", "mirata"],
+            "instructions": body.instructions,
+            "selection": body.selection,
+            "count": body.count,
+        }, actor)
     if body.qtype:
         return enqueue_job("recall_batch", lesson_dir, body.model_dump(), actor)
-    return enqueue_job("recall_generate", lesson_dir, {"force_mock": body.mock, "regenerate": True}, actor)
+    return enqueue_job("recall_generate", lesson_dir, {
+        "force_mock": body.mock,
+        "regenerate": True,
+        "instructions": body.instructions,
+        "selection": body.selection,
+        "count": body.count,
+    }, actor)
 
 
 @router.get("/lessons/{lesson_id}/study", response_model=schemas.StudyLesson,

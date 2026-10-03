@@ -139,6 +139,9 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             # unit_ids: solo quelle unità (Domande su questa parte), con i tipi di qtypes.
             generated = generate_pool(lesson_dir, force_mock=bool(job.payload.get("force_mock")),
                                       qtypes=job.payload.get("qtypes"), unit_ids=job.payload.get("unit_ids"),
+                                      instructions=job.payload.get("instructions"),
+                                      selection=job.payload.get("selection"),
+                                      count=job.payload.get("count"),
                                       progress=recall_progress(ctx))
             total = sum(generated.values())
             detail = ", ".join(f"{n} {t}" for t, n in generated.items())
