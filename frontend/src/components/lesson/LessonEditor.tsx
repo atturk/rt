@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type
 import { useLocation, useSearchParams } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
+import { useRelevance } from '@/api/relevance'
 import { lessonKeys, useIssues } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
 import { parseIssueOrder, sortIssues } from '@/lib/issueOrder'
@@ -15,6 +16,7 @@ import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonImages, lessonUnits, setSlots, unitRanges } from './lessonUnits'
+import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
@@ -48,6 +50,7 @@ function viewOf(handle: AtomicCodeMirrorEditorHandle | null): EditorView | null 
 export type LessonEditorActions = { flush: () => Promise<void> }
 
 type Props = {
+  classifierOpen?: boolean
   reviewOpen?: boolean
   onDocumentChange?: (markdown: string) => void
   actionsRef?: RefObject<LessonEditorActions | null>
@@ -68,13 +71,15 @@ type Props = {
  * si salvano da sole nella bozza dopo una breve pausa; i timecode sono bloccati (clic: ascolta,
  * triplo clic: modifica). Il documento finale va poi ricreato con la fase Documento.
  */
-export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, onDocumentChange }: Props) {
+export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
   const unitIds = useMemo(() => doc.sections.map((s) => s.unit_id), [doc.sections])
   const [params, setParams] = useSearchParams()
+  const relevance = useRelevance(lessonId, classifierOpen)
+  const classifierUnits = classifierOpen ? relevance.data?.units : undefined
   const review = useIssues(lessonId, reviewOpen)
   const reviewItems = reviewOpen ? review.data?.items : undefined
   const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
@@ -84,6 +89,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     timecodeLock,
     lessonUnits,
     lessonReview,
+    lessonClassifier,
     lessonImages(lessonId),
     EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
   ], [lessonId])
@@ -250,6 +256,10 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     node.addEventListener(ISSUE_EVENT, select)
     return () => node.removeEventListener(ISSUE_EVENT, select)
   }, [reviewOpen, params, setParams])
+
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: setClassifier.of(classifierUnits ?? []) })
+  }, [classifierUnits, source.key])
 
   // Clic su un timecode: l'audio parte da lì.
   useEffect(() => {

@@ -5,9 +5,10 @@ import { api, unwrap } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 
 /** Classificazioni della lezione (GET /lessons/{id}/relevance), condivise con la pagina Classificatore. */
-export function useRelevance(lessonId: number) {
+export function useRelevance(lessonId: number, enabled = true) {
   return useQuery({
     queryKey: ['relevance', lessonId],
+    enabled,
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/relevance', { params: { path: { lesson_id: lessonId } } })),
   })
 }

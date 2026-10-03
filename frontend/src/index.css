@@ -457,3 +457,20 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
+
+.rt-unit-classification {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-left: .5rem;
+  font-size: var(--size-meta);
+}
+.rt-unit-label {
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  padding: .125rem .5rem;
+}
+.rt-unit-score { font-variant-numeric: tabular-nums; }
+.rt-lesson-editor .rt-unit-excluded { color: var(--muted-foreground); }

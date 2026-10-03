@@ -213,7 +213,7 @@ export function LessonPage() {
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
           <LessonProgress lessonId={l.id} />
-          <DocumentCard lesson={l} actionsRef={editorActions} reviewOpen={panel === 'verifica'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />
+          <DocumentCard lesson={l} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />
         </article>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
@@ -262,7 +262,7 @@ function LessonProgress({ lessonId }: { lessonId: number }) {
 const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
 /** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
-function DocumentCard({ lesson: l, onEditingChange, actionsRef, reviewOpen, onDocumentChange }: { reviewOpen: boolean; onDocumentChange: (markdown: string) => void; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
+function DocumentCard({ lesson: l, onEditingChange, actionsRef, reviewOpen, classifierOpen, onDocumentChange }: { classifierOpen: boolean; reviewOpen: boolean; onDocumentChange: (markdown: string) => void; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const running = useJobs({ lesson_id: id, limit: 20 }).data?.some((j) => isActive(j.state)) ?? false
@@ -281,6 +281,7 @@ function DocumentCard({ lesson: l, onEditingChange, actionsRef, reviewOpen, onDo
           <Suspense fallback={<DocumentSkeleton />}>
             <LessonEditor
               key={id}
+              classifierOpen={classifierOpen}
               reviewOpen={reviewOpen}
               onDocumentChange={onDocumentChange}
               actionsRef={actionsRef}
