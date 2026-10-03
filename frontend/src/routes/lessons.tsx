@@ -1,4 +1,4 @@
-import { BookOpen, Brain, Download, Info, Plus, ShieldCheck } from 'lucide-react'
+import { BookOpen, Brain, Download, Image, Info, Plus, ShieldCheck } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
@@ -182,13 +182,13 @@ export function LessonPage() {
   }
   const l = lesson.data
   const sections = document.data?.sections ?? []
-  const path = [l.materia ? subjectName(l.materia) : null, l.docente?.trim() || null, l.data ? shortDate(l.data) : null].filter(Boolean).join(' · ')
+  const path = [l.materia ? subjectName(l.materia) : null, l.data ? shortDate(l.data) : null, l.docente?.trim() || null].filter(Boolean).join(' · ')
   const meta = [l.unit_count != null ? `${l.unit_count} unità` : null, l.duration_seconds ? formatDuration(l.duration_seconds) : null].filter(Boolean).join(' · ')
   const toggle = (view: PanelView) => setPanel(panel === view ? null : view)
   return (
     <AudioProvider>
       <PageHeader
-        title={path || lessonTitle(l)}
+        title={null}
         muted
         titleAs="p"
         back={back}
@@ -197,6 +197,7 @@ export function LessonPage() {
       <div className={cn('flex-1 px-7 max-md:px-4', panel && 'xl:pr-[calc(24rem+28px)]')}>
         <article className="mx-auto w-full max-w-(--reading-width) pb-28 pt-7 max-md:pt-3" data-testid="lesson-page">
           <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
+          {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
           <LessonProgress lessonId={l.id} />
           <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
@@ -208,17 +209,15 @@ export function LessonPage() {
   )
 }
 
-/**
- * Icone dell'intestazione (schermata 02): Recall (subito le domande), Studio (leggi un'unità e poi
- * le sue domande), Verifica con LLM, Dettagli, Esporta. Recall e Studio come nelle righe di Lezioni.
- */
+/** Azioni della lezione nell’ordine del wireframe Main. */
 function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['LessonDetail']; panel: PanelView | null; onToggle: (view: PanelView) => void }) {
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
   return (
     <div className="flex items-center gap-0.5" data-testid="lesson-actions">
-      <IconLink label="Recall" icon={Brain} to={`/lezioni/${l.id}/recall`} unavailable={reason(a.recall)} />
+      <IconButton label="Domande" icon={Brain} active={panel === 'domande'} aria-expanded={panel === 'domande'} aria-controls={PANEL_ID} onClick={() => onToggle('domande')} />
       <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
+      <IconButton label="Arricchimento" icon={Image} active={panel === 'arricchimento'} aria-expanded={panel === 'arricchimento'} aria-controls={PANEL_ID} onClick={() => onToggle('arricchimento')} />
       <IconButton label="Verifica con LLM" icon={ShieldCheck} active={panel === 'verifica'} aria-expanded={panel === 'verifica'} aria-controls={PANEL_ID} onClick={() => onToggle('verifica')} />
       <IconButton label="Dettagli" icon={Info} active={panel === 'dettagli'} aria-expanded={panel === 'dettagli'} aria-controls={PANEL_ID} onClick={() => onToggle('dettagli')} />
       <LinkMenuButton
@@ -263,7 +262,7 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
         <>
           {!document.data.final && (
             <p className="mb-2 text-meta text-muted-foreground" data-testid="document-preview-note">
-              Anteprima dalla bozza: è quello che diventerà il documento finale quando esegui la fase Documento.
+              Bozza
             </p>
           )}
           <Suspense fallback={<DocumentSkeleton />}>
