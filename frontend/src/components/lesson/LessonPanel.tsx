@@ -44,7 +44,7 @@ export function LessonPanel({ view, lesson, sections, editingDocument, onClose }
       {view === 'dettagli' && <DetailsPanel lesson={lesson} sections={sections} editingDocument={editingDocument} />}
       {view === 'verifica' && <ReviewPanel lesson={lesson} />}
       {view === 'domande' && <QuestionsPanel />}
-      {view === 'classificatore' && <ClassifierPanel />}
+      {view === 'classificatore' && <ClassifierPanel lessonId={lesson.id} />}
       {view === 'arricchimento' && <EnrichmentPanel />}
     </aside>
   )
