@@ -25,6 +25,18 @@ def approve_outline(lesson_id: int, lesson_dir: LessonDir, actor: Actor):
     return outline_service.get_outline_review(lesson_dir)
 
 
+@router.post("/lessons/{lesson_id}/outline/suspend", response_model=schemas.Outline,
+             summary="Sospende il conto alla rovescia per l'approvazione automatica della scaletta")
+def suspend_outline(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.pipeline.outline import get_outline_path
+    from rt.services import outline_service
+    ensure_no_running_job(lesson_dir)
+    if not fs.isfile(get_outline_path(lesson_dir)):
+        raise ApiError(404, "outline_not_found", "Outline non ancora generata.")
+    outline_service.suspend_outline_timer(lesson_dir)
+    return outline_service.get_outline_review(lesson_dir)
+
+
 @router.post("/lessons/{lesson_id}/outline/revise", response_model=schemas.JobAccepted, status_code=202,
              summary="Rigenera l'outline con un feedback (job)")
 def revise_outline(lesson_id: int, body: schemas.OutlineRevision, lesson_dir: LessonDir, actor: Actor):

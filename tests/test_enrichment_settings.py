@@ -20,8 +20,25 @@ def test_enrichment_settings_round_trip_and_cap_validation(api_client, tmp_path,
     isolated_workspace(tmp_path, monkeypatch)
     cfg = api_client.get("/api/v1/settings/enrichment").json()
     assert cfg["cap_mode"] == "proportional" and cfg["automatic"] is False
+    assert cfg["mode"] == "manual"
     cfg.update(cap_mode="fixed", cap_number=3, automatic=True)
     assert api_client.put("/api/v1/settings/enrichment", json=cfg).status_code == 200
-    assert api_client.get("/api/v1/settings/enrichment").json()["cap_number"] == 3
+    res = api_client.get("/api/v1/settings/enrichment").json()
+    assert res["cap_number"] == 3
+    assert res["mode"] == "automatic"
     cfg["cap_number"] = 0
     assert api_client.put("/api/v1/settings/enrichment", json=cfg).status_code == 422
+
+
+def test_automatic_enrichment_options(tmp_path, monkeypatch):
+    isolated_workspace(tmp_path, monkeypatch)
+    from rt.services.context import RunContext
+    from rt.services.pipeline_service import automatic_enrichment
+    ctx = RunContext()
+    # Default is manual: skipped
+    res = automatic_enrichment(str(tmp_path), mock=True, ctx=ctx)
+    assert res.get("skipped") == "manual"
+    # with_enrichment=True forces analysis even in manual mode
+    res2 = automatic_enrichment(str(tmp_path), mock=True, ctx=ctx, with_enrichment=True)
+    assert "skipped" not in res2
+

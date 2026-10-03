@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Archive, FileAudio, Play, Upload, X } from 'lucide-react'
+import { Archive, FileAudio, FileText, Image, Play, ShieldCheck, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 
@@ -36,10 +36,12 @@ const field = 'mt-1.5 block min-h-10 w-full rounded-md border bg-card p-2 text-b
 const labelText = 'min-w-0 flex-1 text-meta text-muted-foreground'
 
 /**
- * Popup Nuova lezione (schermate 00 e 00b): un solo riquadro per l'audio o per il pacchetto
- * .zip. Con l'audio: materia, docente, data e Avvia (importazione e pipeline, poi la pagina
- * della lezione); con lo .zip i campi spariscono e il pulsante diventa Importa
- * (POST /lessons/import-zip, nessuna pipeline).
+ * Popup Nuova lezione (wireframe Nuova-Lezione.dc.html):
+ * - Audio: materia, docente, data, ora.
+ * - In basso: Avvia (icona play) a sinistra, tre interruttori a icona a destra
+ *   (Solo trascrizione, Revisione, Arricchimento).
+ * - Frase dinamica "Dopo l'importazione: ...".
+ * - Zip: solo il pulsante Importa.
  */
 export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
@@ -54,6 +56,10 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const [materia, setMateria] = useState('')
   const [docente, setDocente] = useState('')
   const [date, setDate] = useState(today)
+  const [time, setTime] = useState('')
+  const [solo, setSolo] = useState(false)
+  const [review, setReview] = useState(false)
+  const [enrichment, setEnrichment] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
   const job = useJobStatus(zipJob)
@@ -98,7 +104,19 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     setProblem(issue)
     if (issue) return
     create.mutate(
-      { files, date, materia: materia.trim(), argomenti: '', docente: docente.trim(), run: true, mock: false, auto_accept: false, with_review: false },
+      {
+        files,
+        date,
+        materia: materia.trim(),
+        argomenti: '',
+        docente: docente.trim(),
+        ora: time,
+        run: !solo,
+        mock: false,
+        auto_accept: false,
+        with_review: !solo && review,
+        with_enrichment: !solo && enrichment,
+      },
       {
         onSuccess: (accepted) => {
           onClose()
@@ -115,6 +133,12 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     ? `${error.message} Dividi l'audio in più file più piccoli.`
     : error ? errorMessage(error) : null
   const total = files.reduce((sum, f) => sum + f.size, 0)
+
+  const steps: string[] = ['trascrizione', 'scaletta', 'rielaborazione']
+  if (!solo && review) steps.push('revisione')
+  if (!solo && enrichment) steps.push('arricchimento')
+  const stepsList = steps.length > 1 ? `${steps.slice(0, -1).join(', ')} e ${steps[steps.length - 1]}` : steps[0]
+  const sentence = solo ? "Dopo l'importazione: solo trascrizione" : `Dopo l'importazione: ${stepsList}`
 
   return (
     <Modal open={open} onClose={onClose} title="Nuova lezione" testId="new-lesson">
@@ -188,7 +212,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
         {kind !== 'zip' && (
           <>
-            <div className="mb-3 flex gap-2 max-md:flex-wrap">
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <label className={labelText}>
                 Materia
                 <input className={field} list={`${listId}-materie`} value={materia} required disabled={busy} onChange={(e) => setMateria(e.target.value)} />
@@ -197,15 +221,18 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                 Docente
                 <input className={field} list={`${listId}-docenti`} value={docente} disabled={busy} onChange={(e) => setDocente(e.target.value)} />
               </label>
-              <datalist id={`${listId}-materie`}>{subjects.map((s) => <option key={s} value={s} />)}</datalist>
-              <datalist id={`${listId}-docenti`}>{teachers.map((t) => <option key={t} value={t} />)}</datalist>
-            </div>
-            <div className="mb-3 flex gap-2">
               <label className={labelText}>
                 Data{date === today() && ' · oggi'}
                 <input className={field} type="date" value={date} required disabled={busy} onChange={(e) => setDate(e.target.value)} />
               </label>
+              <label className={labelText}>
+                Ora
+                <input className={field} type="time" value={time} disabled={busy} onChange={(e) => setTime(e.target.value)} />
+              </label>
+              <datalist id={`${listId}-materie`}>{subjects.map((s) => <option key={s} value={s} />)}</datalist>
+              <datalist id={`${listId}-docenti`}>{teachers.map((t) => <option key={t} value={t} />)}</datalist>
             </div>
+            <p className="mb-3 text-meta text-muted-foreground" data-testid="pipeline-sentence">{sentence}</p>
           </>
         )}
 
@@ -227,11 +254,45 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
             ))}
           </ul>
         )}
-        <div className="mt-1.5 flex justify-end">
-          <Button type="submit" className="h-10 px-4 font-semibold" disabled={busy}>
-            {kind === 'zip' ? <Upload aria-hidden /> : <Play aria-hidden />}
-            {kind === 'zip' ? 'Importa' : 'Avvia'}
+        <div className="mt-4 flex items-center justify-between">
+          <Button
+            type="submit"
+            className={cn(kind === 'zip' ? 'h-10 px-4 font-semibold' : 'size-11 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90')}
+            disabled={busy}
+            aria-label={kind === 'zip' ? 'Importa' : 'Avvia'}
+            title={kind === 'zip' ? 'Importa' : 'Avvia'}
+          >
+            {kind === 'zip' ? <Upload aria-hidden /> : <Play className="size-5 fill-current" aria-hidden />}
+            {kind === 'zip' && <span>Importa</span>}
           </Button>
+          {kind !== 'zip' && (
+            <div className="flex items-center gap-1.5" role="group" aria-label="Fasi dopo l'importazione">
+              <IconButton
+                label="Solo trascrizione"
+                icon={FileText}
+                aria-pressed={solo}
+                active={solo}
+                disabled={busy}
+                onClick={() => setSolo(!solo)}
+              />
+              <IconButton
+                label="Revisione"
+                icon={ShieldCheck}
+                aria-pressed={review}
+                active={review && !solo}
+                disabled={busy || solo}
+                onClick={() => setReview(!review)}
+              />
+              <IconButton
+                label="Arricchimento"
+                icon={Image}
+                aria-pressed={enrichment}
+                active={enrichment && !solo}
+                disabled={busy || solo}
+                onClick={() => setEnrichment(!enrichment)}
+              />
+            </div>
+          )}
         </div>
       </form>
     </Modal>

@@ -164,6 +164,7 @@ def create_lesson(
     run: bool = Form(False, description="True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')"),
     mock: bool = Form(False),
     with_review: bool = Form(False),
+    with_enrichment: Optional[bool] = Form(None),
     auto_accept: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
@@ -174,7 +175,8 @@ def create_lesson(
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
         options = {"date": date, "materia": materia, "argomenti": argomenti or None, "docente": docente.strip() or None, "ora": ora or None,
                    "dest_dir": lessons_root(),
-                   "mock": mock, "with_review": with_review, "auto_accept": auto_accept, "channel": "terminal"}
+                   "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
+                   "auto_accept": auto_accept, "channel": "terminal"}
         # run=true: tutta la pipeline dall'audio (come 'rt run audio'); altrimenti solo setup
         return enqueue_job("run_pipeline" if run else "ingest_audio", None,
                            {"inputs": paths, "options": options, "upload_dir": target}, actor)
@@ -205,6 +207,7 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
                                {"units": units, "options": options, **prompt_payload, **context}, actor)
         return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
+               "with_enrichment": body.with_enrichment,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}
     return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options, **extra}, actor)
 

@@ -1,12 +1,12 @@
 import { Upload } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, api, errorMessage, unwrap } from '@/api/client'
 import { useLesson, useLessons } from '@/api/hooks'
 import { useSettings } from '@/api/settings'
-import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
+import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline, useSuspendOutline } from '@/api/jobs'
 import { AudioOrder } from '@/components/jobs/AudioOrder'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
@@ -362,12 +362,39 @@ export function OutlinePage() {
   const outline = useOutline(lessonId)
   const approve = useApproveOutline(lessonId)
   const revise = useReviseOutline(lessonId)
+  const suspend = useSuspendOutline(lessonId)
   const waitingJobs = useJobs({ lesson_id: lessonId, state: 'waiting_for_decision' })
   const waiting = waitingJobs.data?.find((j) => j.decision?.kind === 'outline_approval')
   const [feedback, setFeedback] = useState('')
   const [mock, setMock] = useState(false)
   const [resumedJob, setResumedJob] = useState<string | null>(null)
   const [revisionJob, setRevisionJob] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!outline.data?.expires_at || outline.data.approved || outline.data.timer_suspended) return
+    const timer = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(timer)
+  }, [outline.data?.expires_at, outline.data?.approved, outline.data?.timer_suspended])
+
+  const expiresTime = outline.data?.expires_at ? new Date(outline.data.expires_at).getTime() : 0
+  const remainingSeconds = expiresTime && !outline.data?.timer_suspended && !outline.data?.approved
+    ? Math.max(0, Math.ceil((expiresTime - now) / 1000))
+    : 0
+  const hasActiveTimer = remainingSeconds > 0 && !outline.data?.timer_suspended && !outline.data?.approved
+
+  function handleFeedbackChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setFeedback(e.target.value)
+    if (hasActiveTimer && !suspend.isPending) {
+      suspend.mutate()
+    }
+  }
+
+  function handleFeedbackFocus() {
+    if (hasActiveTimer && !suspend.isPending) {
+      suspend.mutate()
+    }
+  }
 
   function doApprove() {
     const pending = waiting?.id ?? null
@@ -460,7 +487,11 @@ export function OutlinePage() {
           <Card className="flex flex-col gap-4 p-5">
             <div className="flex flex-wrap items-center gap-3">
               <Button onClick={doApprove} disabled={approve.isPending || outline.data.approved}>
-                {outline.data.approved ? 'Scaletta approvata' : 'Approva la scaletta'}
+                {outline.data.approved
+                  ? 'Scaletta approvata'
+                  : hasActiveTimer
+                    ? `Approva (${remainingSeconds})`
+                    : 'Approva la scaletta'}
               </Button>
               {outline.data.approval?.approved_at != null && (
                 <span className="text-xs text-muted-foreground">Approvata il {formatDateTime(String(outline.data.approval.approved_at))}</span>
@@ -472,7 +503,8 @@ export function OutlinePage() {
                 id="outline-feedback"
                 rows={3}
                 value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
+                onChange={handleFeedbackChange}
+                onFocus={handleFeedbackFocus}
                 placeholder="Es. Dividi la seconda sezione in due unità"
                 className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
               />

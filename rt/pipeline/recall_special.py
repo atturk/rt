@@ -160,14 +160,32 @@ def _persist(lesson_dir: str, pairs: list, key: Optional[str], attempt: Optional
     return persisted
 
 
-def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> List[RecallQuestion]:
+def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
+               unit_ids: Optional[List[str]] = None, instructions: Optional[str] = None,
+               selection: Optional[str] = None) -> List[RecallQuestion]:
     from rt.llm import prompts
     from rt.llm.cancel import raise_if_cancelled
     from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank
     from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
     from rt.services.recall_context import POLICY_VERSION, lesson_context
     label = "Casi clinici" if qtype == RecallQuestionType.CASO else "Esercizi"
-    todo = groups(lesson_dir, qtype)
+    if unit_ids is not None:
+        wanted_uids = set(unit_ids)
+        from rt.services import section_labels
+        all_secs = section_labels.sections(lesson_dir)
+        filtered = [s for s in all_secs if any(u.unit_id in wanted_uids for u in s.get("units", []))]
+        if filtered:
+            todo = [[s] for s in filtered]
+        else:
+            from rt.pipeline.ledger import load_resolved_draft
+            draft = load_resolved_draft(lesson_dir)
+            matched_units = [u for u in draft.units if u.unit_id in wanted_uids]
+            if matched_units:
+                todo = [[{"id": u.unit_id, "title": u.title, "units": [u]} for u in matched_units]]
+            else:
+                todo = []
+    else:
+        todo = groups(lesson_dir, qtype)
     if shuffle:
         random.shuffle(todo)
     policy = _policy(qtype, mock)
@@ -198,7 +216,8 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) -> L
                 generated = response_model.model_validate(_mock_items(qtype, group, len(existing))).items
             else:
                 prompt = prompts.build_recall_special_user_prompt(
-                    qtype.value, group, [t.tipo.model_dump() for t in existing], context)
+                    qtype.value, group, [t.tipo.model_dump() for t in existing], context,
+                    instructions=instructions, selection=selection)
                 from rt.pipeline.recall import load_fewshot_examples
                 from rt.core.config import load_config
                 prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
@@ -293,6 +312,8 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
 def generate_special_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], *, force_mock: bool = False,
     regenerate: bool = False, shuffle: bool = False, progress: Optional[Callable[..., None]] = None,
+    unit_ids: Optional[List[str]] = None, instructions: Optional[str] = None,
+    selection: Optional[str] = None,
 ) -> List[RecallQuestion]:
     """Classifica le sezioni cambiate, genera casi o esercizi dai gruppi nuovi e, se servono altre
     domande (count), crea varianti dai tipi già salvati scelti a caso."""
@@ -304,17 +325,18 @@ def generate_special_batch(
         return []
     mock = _mock(force_mock)
     label = "Casi clinici" if qtype == RecallQuestionType.CASO else "Esercizi"
-    if section_labels.mode(force_mock) == "disabled":
+    if unit_ids is None and section_labels.mode(force_mock) == "disabled":
         report(None, None, f"{label}: classificatore spento, nessuna domanda speciale")
         templates = [t for t in load_recall_bank(lesson_dir).templates if t.kind == qtype]
         if not templates:
             return []
-    else:
+    elif unit_ids is None:
         raise_if_cancelled()
         report(None, None, f"{label}: il classificatore valuta le unità")
         section_labels.refresh(lesson_dir, force_mock=mock)
-    results = _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report) \
-        if section_labels.mode(force_mock) != "disabled" else []
+    results = _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
+                         unit_ids=unit_ids, instructions=instructions, selection=selection) \
+        if (unit_ids is not None or section_labels.mode(force_mock) != "disabled") else []
     wanted = (count - len(results)) if count is not None else 0
     templates = [t for t in load_recall_bank(lesson_dir).templates if t.kind == qtype]
     if wanted > 0 and templates:

@@ -271,6 +271,9 @@ class Outline(BaseModel):
     macro_sections: List[OutlineMacro]
     approval: Optional[Dict[str, Any]] = None
     approved: bool
+    expires_at: Optional[str] = None
+    timer_seconds: Optional[int] = None
+    timer_suspended: bool = False
 
 
 class IssueContext(BaseModel):
@@ -406,6 +409,7 @@ class JobRequest(BaseModel):
     force: bool = False
     mock: bool = False
     with_review: bool = False
+    with_enrichment: Optional[bool] = Field(None, description="Esegue l'arricchimento didattico alla fine della pipeline")
     auto_accept: bool = False
     rename: bool = True
     parent_context: bool = Field(False, description="Review di unità: le altre subunità della stessa unità vanno al "
@@ -538,7 +542,9 @@ class RecallGenerate(BaseModel):
     qtype: Optional[QuestionType] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
     unit_ids: Optional[List[str]] = Field(None, max_length=200, description="Solo queste unità (Domande su questa parte): "
-                                          "quiz e mirate, anche se l'unità non è fra quelle selezionate per il recall")
+                                          "quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall")
+    instructions: Optional[str] = Field(None, max_length=2000, description="Istruzioni aggiuntive per la generazione")
+    selection: Optional[str] = Field(None, max_length=10000, description="Testo selezionato dall'utente nell'editor o nelle unità")
     mock: bool = False
 
 

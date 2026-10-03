@@ -12,10 +12,22 @@ export type LessonsGrouping = 'data' | 'materia' | 'docente'
 export type LessonsSort = 'recenti' | 'meno-recenti' | 'titolo'
 
 export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', materia: 'Per materia', docente: 'Per docente' }
+export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'materia', 'docente']
+export const PHONE_GROUP_LABELS: Record<LessonsGrouping, string> = { data: 'Data', materia: 'Materia', docente: 'Docente' }
+
 export const SORT_OPTIONS: Record<LessonsSort, string> = {
   recenti: 'Dalla più recente',
   'meno-recenti': 'Dalla meno recente',
   titolo: 'Per titolo',
+}
+export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'titolo']
+export const PHONE_SORT_LABELS: Record<LessonsSort, string> = { recenti: 'Recenti', 'meno-recenti': 'Vecchie', titolo: 'A–Z' }
+
+/** Sfondo del gruppo n-esimo secondo la preferenza (variabili --group-* in index.css). */
+export function groupBackground(index: number, mode: string | undefined): string | undefined {
+  if (mode === 'niente') return undefined
+  if (mode === 'grigi') return 'var(--group-gray)'
+  return `var(--group-${(index % 4) + 1})`
 }
 
 export type LessonsPrefs = { group: LessonsGrouping; sort: LessonsSort }

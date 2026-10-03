@@ -51,19 +51,17 @@ const groups = () => screen.getAllByTestId('lesson-group').map((g) => within(g).
 beforeEach(() => localStorage.clear())
 
 describe('pagina Lezioni', () => {
-  it('per data: gruppi per giorno, sotto il titolo materia, docente e unità', () => {
+  it('per data: gruppi per giorno, sotto il titolo materia, docente e unità; clic sulla riga apre la lezione', () => {
     renderDashboard()
     expect(screen.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeInTheDocument()
     expect(screen.getAllByTestId('lesson-group')).toHaveLength(2)
     expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('Patologia · Maria Rossi · 7 unità')
     expect(within(row(2)).getByTestId('lesson-subtitle')).toHaveTextContent(/^Biochimica$/)
-    // Azioni sempre nello stesso ordine: Info, Recall, Studio, Apri.
-    const names = Array.from(row(1).querySelectorAll('button, a')).map((el) => el.getAttribute('aria-label')).filter(Boolean)
-    expect(names).toEqual(['Info', 'Recall', 'Studio', 'Apri'])
-    expect(within(row(1)).getByRole('link', { name: 'Recall' })).toHaveAttribute('href', '/lezioni/1/recall')
-    expect(within(row(1)).getByRole('link', { name: 'Studio' })).toHaveAttribute('href', '/studio/lezione/1')
-    // Senza rielaborazione Recall e Studio restano al loro posto, non disponibili.
-    expect(within(row(2)).getByRole('button', { name: 'Recall' })).toHaveAttribute('aria-disabled', 'true')
+    // Nessuna icona di azione sulle righe (Info, Recall, Studio, Apri): si apre con un clic sulla riga.
+    expect(within(row(1)).getByRole('link', { name: /Infiammazione/ })).toHaveAttribute('href', '/lezioni/1')
+    expect(within(row(2)).getByRole('link', { name: /Lipidi/ })).toHaveAttribute('href', '/lezioni/2')
+    const names = Array.from(row(1).querySelectorAll('button, a')).map((el) => el.getAttribute('aria-label')).filter((n): n is string => Boolean(n))
+    expect(names.filter((n) => ['Info', 'Recall', 'Studio', 'Apri'].includes(n))).toEqual([])
   })
 
   it('il pallino dice lo stato: in corso, da verificare', () => {
@@ -96,18 +94,12 @@ describe('pagina Lezioni', () => {
     expect(screen.getByTestId('lessons-empty')).toHaveTextContent('Nessuna lezione corrisponde alla ricerca.')
   })
 
-  it('Info: popup con tutti i campi elisi dalla riga, si chiude con la X', () => {
+  it('ogni gruppo ha uno sfondo a rotazione dai colori del tema', () => {
     renderDashboard()
-    fireEvent.click(within(row(1)).getByRole('button', { name: 'Info' }))
-    const info = screen.getByTestId('lesson-info')
-    expect(within(info).getByRole('heading', { name: 'Infiammazione' })).toBeInTheDocument()
-    const values = Object.fromEntries(
-      within(info).getAllByRole('term').map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]),
-    )
-    expect(values).toMatchObject({ Materia: 'Patologia', Durata: '52 min', Unità: '7', Domande: '38 nel pool · 14 da fare', Costo: '$0.42' })
-    expect(values.Stato).toBe('completata · 2 da verificare')
-    fireEvent.click(within(info).getByRole('button', { name: 'Chiudi' }))
-    expect(within(info).queryByRole('term')).toBeNull()
+    const groupElements = screen.getAllByTestId('lesson-group')
+    expect(groupElements).toHaveLength(2)
+    expect(groupElements[0].getAttribute('style')).toContain('var(--group-1)')
+    expect(groupElements[1].getAttribute('style')).toContain('var(--group-2)')
   })
 
   it('selezione: la casella del gruppo prende tutto il gruppo, la barra scarica Markdown e zip', () => {
@@ -130,5 +122,38 @@ describe('pagina Lezioni', () => {
     fireEvent.click(within(bar).getByRole('button', { name: 'Annulla' }))
     expect(screen.queryByTestId('selection-bar')).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+  })
+
+  it('su telefono: i pulsanti raggruppa e ordina passano al valore successivo a ogni tocco', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('767.98px'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    renderDashboard()
+    const groupBtn = screen.getByRole('button', { name: /Raggruppa: Data/ })
+    expect(groupBtn).toBeInTheDocument()
+    fireEvent.click(groupBtn)
+    expect(screen.getByRole('button', { name: /Raggruppa: Materia/ })).toBeInTheDocument()
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Materia/ }))
+    expect(screen.getByRole('button', { name: /Raggruppa: Docente/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Docente/ }))
+    expect(screen.getByRole('button', { name: /Raggruppa: Data/ })).toBeInTheDocument()
+
+    const sortBtn = screen.getByRole('button', { name: /Ordina: Recenti/ })
+    expect(sortBtn).toBeInTheDocument()
+    fireEvent.click(sortBtn)
+    expect(screen.getByRole('button', { name: /Ordina: Vecchie/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Ordina: Vecchie/ }))
+    expect(screen.getByRole('button', { name: /Ordina: A–Z/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Ordina: A–Z/ }))
+    expect(screen.getByRole('button', { name: /Ordina: Recenti/ })).toBeInTheDocument()
   })
 })

@@ -72,7 +72,8 @@ def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     fs.replace(tmp_path, path)
 
 
-def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progress=None, unit_ids=None) -> dict:
+def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progress=None, unit_ids=None,
+                  instructions=None, selection=None, count=None) -> dict:
     """Pool di domande dell'intera lezione: il recaller riceve tutte le unità selezionate
     (una chiamata per unità, per le vaste una per gruppo) e per ognuna genera zero, una o
     più domande nuove. Le domande già nel pool restano (il recaller le vede e non le ripete);
@@ -86,9 +87,10 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progre
     generated = {}
     for qtype in types:
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, None, examples,
+        generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, count, examples,
                                                            force_mock=force_mock, regenerate=True, progress=progress,
-                                                           unit_ids=unit_ids))
+                                                           unit_ids=unit_ids,
+                                                           instructions=instructions, selection=selection))
     return generated
 
 

@@ -820,6 +820,7 @@ def cmd_run(args):
         force=getattr(args, "force", False),
         mock=mock_mode,
         with_review=with_review,
+        with_enrichment=getattr(args, "with_enrichment", None),
         auto_accept=bool(getattr(args, "auto_accept", False)),
         rename=getattr(args, "rename", True),
         channel=getattr(args, "channel", None),
@@ -1170,6 +1171,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         dest="with_review",
         help="Include anche la review nella run."
     )
+    p_run.add_argument("--with-enrichment", action="store_true", default=None,
+                       help="Esegue l'arricchimento didattico alla fine della pipeline")
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
                         help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")

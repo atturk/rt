@@ -245,15 +245,22 @@ def build_recall_quiz_user_prompt(
     unit_title: str,
     unit_content: str,
     few_shot_examples: Optional[List[dict]] = None,
+    instructions: Optional[str] = None,
+    selection: Optional[str] = None,
 ) -> str:
     fewshot_block = recall_fewshot_block(few_shot_examples or [])
+    extra = ""
+    if selection:
+        extra += f"\n\nTESTO SELEZIONATO DALL'UTENTE (concentrati in particolare su questa parte):\n{selection}"
+    if instructions:
+        extra += f"\n\nISTRUZIONI AGGIUNTIVE DELL'UTENTE:\n{instructions}"
     return f"""{fewshot_block}Genera zero, una o più domande quiz distinte (scelta multipla, 4 opzioni) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
 TITOLO: {unit_title}
 
 CONTENUTO:
-{unit_content}
+{unit_content}{extra}
 
 Restituisci il contenitore JSON questions conforme a RecallGenerationResult (type=quiz) con question_text, options (4 elementi), correct_index e pregenerated_material compilati."""
 
@@ -283,15 +290,22 @@ def build_recall_mirata_user_prompt(
     unit_title: str,
     unit_content: str,
     few_shot_examples: Optional[List[dict]] = None,
+    instructions: Optional[str] = None,
+    selection: Optional[str] = None,
 ) -> str:
     fewshot_block = recall_fewshot_block(few_shot_examples or [])
+    extra = ""
+    if selection:
+        extra += f"\n\nTESTO SELEZIONATO DALL'UTENTE (concentrati in particolare su questa parte):\n{selection}"
+    if instructions:
+        extra += f"\n\nISTRUZIONI AGGIUNTIVE DELL'UTENTE:\n{instructions}"
     return f"""{fewshot_block}Genera zero, una o più domande mirate distinte (risposta aperta su concetto atomico) per la seguente unità didattica:
 
 UNITÀ: {unit_id}
 TITOLO: {unit_title}
 
 CONTENUTO:
-{unit_content}
+{unit_content}{extra}
 
 Restituisci il contenitore JSON questions conforme a RecallGenerationResult (type=mirata) con question_text compilato per ciascuna domanda (options=null, correct_index=null, pregenerated_material=null)."""
 
@@ -321,6 +335,8 @@ def build_recall_vasta_user_prompt(
     unit_titles: List[str],
     unit_contents: List[str],
     few_shot_examples: Optional[List[dict]] = None,
+    instructions: Optional[str] = None,
+    selection: Optional[str] = None,
 ) -> str:
     fewshot_block = recall_fewshot_block(few_shot_examples or [])
 
@@ -328,8 +344,14 @@ def build_recall_vasta_user_prompt(
     for uid, title, content in zip(unit_ids, unit_titles, unit_contents):
         units_block += f"\n--- UNITÀ {uid}: {title} ---\n{content}\n"
 
+    extra = ""
+    if selection:
+        extra += f"\n\nTESTO SELEZIONATO DALL'UTENTE (concentrati in particolare su questa parte):\n{selection}"
+    if instructions:
+        extra += f"\n\nISTRUZIONI AGGIUNTIVE DELL'UTENTE:\n{instructions}"
+
     return f"""{fewshot_block}Genera zero, una o più domande vaste distinte (stile esame orale) che coprano le seguenti {len(unit_ids)} unità didattiche contigue:
-{units_block}
+{units_block}{extra}
 Restituisci il contenitore JSON questions conforme a RecallGenerationResult (type=vasta) con question_text e pregenerated_material (scaletta ideale) compilati, e unit_ids=[{', '.join(repr(u) for u in unit_ids)}]."""
 
 
@@ -590,7 +612,10 @@ Ricevi il testo di un'intera unità di una lezione (o di due unità consecutive)
 """ + _SPECIAL_OUTPUT
 
 
-def build_recall_special_user_prompt(kind: str, sections: list, existing: list, context: dict) -> str:
+def build_recall_special_user_prompt(
+    kind: str, sections: list, existing: list, context: dict,
+    instructions: Optional[str] = None, selection: Optional[str] = None,
+) -> str:
     """sections: [{"id", "title", "units": [DraftUnit]}]; existing: tipi già salvati (dict)."""
     import json
     blocks = []
@@ -600,6 +625,10 @@ def build_recall_special_user_prompt(kind: str, sections: list, existing: list, 
             blocks.append(f"--- SUBUNITÀ {u.unit_id}: {u.title} ---\n{u.content}")
     what = "casi clinici" if kind == "caso" else "esercizi"
     prompt = context_block(context) + "\n\n" + "\n\n".join(blocks)
+    if selection:
+        prompt += f"\n\nTESTO SELEZIONATO DALL'UTENTE (concentrati in particolare su questa parte):\n{selection}"
+    if instructions:
+        prompt += f"\n\nISTRUZIONI AGGIUNTIVE DELL'UTENTE:\n{instructions}"
     if existing:
         prompt += f"\n\n{what.upper()} GIÀ PRESENTI PER QUESTE UNITÀ (proponine di diversi):\n" + json.dumps(existing, ensure_ascii=False)
     model = "RecallClinicalGenerationResult" if kind == "caso" else "RecallSpecialGenerationResult"

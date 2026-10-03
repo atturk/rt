@@ -494,6 +494,7 @@ def generate_recall_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
     progress: Optional[Callable[..., None]] = None, unit_ids: Optional[List[str]] = None,
+    instructions: Optional[str] = None, selection: Optional[str] = None,
 ) -> List[RecallQuestion]:
     """Zero o più domande per chiamata dalle unità selezionate; count è un obiettivo, mai una
     quota del modello, e None vuol dire tutte le unità (il pool dell'intera lezione).
@@ -515,11 +516,10 @@ def generate_recall_batch(
     from rt.services.recall_units import selected_units
     from rt.core.models import SPECIAL_TYPES
     if qtype in SPECIAL_TYPES:
-        if unit_ids is not None:
-            return []  # casi ed esercizi abbracciano più unità: non si generano per una parte
         from rt.pipeline.recall_special import generate_special_batch
         return generate_special_batch(lesson_dir, qtype, count, force_mock=force_mock, regenerate=regenerate,
-                                      shuffle=shuffle, progress=progress)
+                                      shuffle=shuffle, progress=progress, unit_ids=unit_ids,
+                                      instructions=instructions, selection=selection)
     if count is not None and count <= 0:
         return []
     label = qtype.value.capitalize()
@@ -586,11 +586,13 @@ def generate_recall_batch(
         else:
             if qtype == RecallQuestionType.VASTA:
                 prompt = prompts.build_recall_vasta_user_prompt(ids, [u.title for u in group],
-                         [u.content for u in group], few_shot_examples or [])
+                         [u.content for u in group], few_shot_examples or [],
+                         instructions=instructions, selection=selection)
             else:
                 u = group[0]
                 builder = getattr(prompts, "build_recall_" + qtype.value + "_user_prompt")
-                prompt = builder(u.unit_id, u.title, u.content, few_shot_examples or [])
+                prompt = builder(u.unit_id, u.title, u.content, few_shot_examples or [],
+                                 instructions=instructions, selection=selection)
             prompt = prompts.contextualize_recall_prompt(prompt, context, assessment, previous)
             try:
                 generated = client.call_structured(prompt=prompt, system_prompt=effective_system("recall", system),

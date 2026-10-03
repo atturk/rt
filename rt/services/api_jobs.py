@@ -139,7 +139,10 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
     with ctx.activate():
         generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")),
-                                          regenerate=True, shuffle=True, progress=recall_progress(ctx))
+                                          regenerate=True, shuffle=True, progress=recall_progress(ctx),
+                                          unit_ids=p.get("unit_ids"),
+                                          instructions=p.get("instructions"),
+                                          selection=p.get("selection"))
         ctx.emit(Notice(message=_recall_message(f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}.",
                                                 len(generated), unit_rows(job.lesson_path))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)

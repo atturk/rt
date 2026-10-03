@@ -271,6 +271,17 @@
             "title": "Run",
             "type": "boolean"
           },
+          "with_enrichment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "With Enrichment"
+          },
           "with_review": {
             "default": false,
             "title": "With Review",
@@ -1764,6 +1775,16 @@
             "title": "Decision Timeout",
             "type": "number"
           },
+          "mode": {
+            "default": "manual",
+            "enum": [
+              "disabled",
+              "manual",
+              "automatic"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "utility_threshold": {
             "default": 0.65,
             "maximum": 1.0,
@@ -2802,6 +2823,18 @@
             "description": "Rewrite o review: unità selezionate (lista multipla)",
             "title": "Units"
           },
+          "with_enrichment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Esegue l'arricchimento didattico alla fine della pipeline",
+            "title": "With Enrichment"
+          },
           "with_review": {
             "default": false,
             "title": "With Review",
@@ -3826,6 +3859,17 @@
             "title": "Approved",
             "type": "boolean"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "lesson_title": {
             "title": "Lesson Title",
             "type": "string"
@@ -3836,6 +3880,22 @@
             },
             "title": "Macro Sections",
             "type": "array"
+          },
+          "timer_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timer Seconds"
+          },
+          "timer_suspended": {
+            "default": false,
+            "title": "Timer Suspended",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4152,6 +4212,42 @@
         "title": "PhaseWarning",
         "type": "object"
       },
+      "PreferencesSettings": {
+        "properties": {
+          "modalita_arricchimento": {
+            "default": "manuale",
+            "description": "Modalità dell'arricchimento",
+            "enum": [
+              "manuale",
+              "automatica",
+              "disattivata"
+            ],
+            "title": "Modalita Arricchimento",
+            "type": "string"
+          },
+          "secondi_approvazione": {
+            "default": 10,
+            "description": "Secondi per l'approvazione automatica della scaletta (0 = disattivata)",
+            "maximum": 3600.0,
+            "minimum": 0.0,
+            "title": "Secondi Approvazione",
+            "type": "integer"
+          },
+          "sfondo_gruppi": {
+            "default": "colori",
+            "description": "Sfondo dei gruppi in Lezioni",
+            "enum": [
+              "colori",
+              "grigi",
+              "niente"
+            ],
+            "title": "Sfondo Gruppi",
+            "type": "string"
+          }
+        },
+        "title": "PreferencesSettings",
+        "type": "object"
+      },
       "PromptOverrideIn": {
         "properties": {
           "instruction": {
@@ -4366,6 +4462,19 @@
             ],
             "title": "Count"
           },
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Istruzioni aggiuntive per la generazione",
+            "title": "Instructions"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -4390,6 +4499,19 @@
             "description": "Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)",
             "title": "Qtype"
           },
+          "selection": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Testo selezionato dall'utente nell'editor o nelle unità",
+            "title": "Selection"
+          },
           "unit_ids": {
             "anyOf": [
               {
@@ -4403,7 +4525,7 @@
                 "type": "null"
               }
             ],
-            "description": "Solo queste unità (Domande su questa parte): quiz e mirate, anche se l'unità non è fra quelle selezionate per il recall",
+            "description": "Solo queste unità (Domande su questa parte): quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall",
             "title": "Unit Ids"
           }
         },
@@ -5621,6 +5743,10 @@
             },
             "title": "Phases",
             "type": "array"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/PreferencesSettings",
+            "description": "Preferenze generali"
           },
           "pricing": {
             "additionalProperties": {
@@ -11657,6 +11783,95 @@
           }
         ],
         "summary": "Rigenera l'outline con un feedback (job)",
+        "tags": [
+          "decisioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/outline/suspend": {
+      "post": {
+        "operationId": "suspend_outline_api_v1_lessons__lesson_id__outline_suspend_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outline"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sospende il conto alla rovescia per l'approvazione automatica della scaletta",
         "tags": [
           "decisioni"
         ]
@@ -17846,6 +18061,92 @@
           }
         ],
         "summary": "Assegna connessione e modello a una fase (outline, rewrite, review, recall, immagini)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/preferences": {
+      "put": {
+        "operationId": "put_preferences_api_v1_settings_preferences_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Salva le preferenze generali",
         "tags": [
           "impostazioni"
         ]

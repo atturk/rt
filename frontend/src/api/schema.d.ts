@@ -785,6 +785,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/outline/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sospende il conto alla rovescia per l'approvazione automatica della scaletta */
+        post: operations["suspend_outline_api_v1_lessons__lesson_id__outline_suspend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/phases": {
         parameters: {
             query?: never;
@@ -1832,6 +1849,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Salva le preferenze generali */
+        put: operations["put_preferences_api_v1_settings_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/pricing": {
         parameters: {
             query?: never;
@@ -2552,6 +2586,8 @@ export interface components {
              * @default false
              */
             run: boolean;
+            /** With Enrichment */
+            with_enrichment?: boolean | null;
             /**
              * With Review
              * @default false
@@ -3249,6 +3285,12 @@ export interface components {
              */
             decision_timeout: number;
             /**
+             * Mode
+             * @default manual
+             * @enum {string}
+             */
+            mode: "disabled" | "manual" | "automatic";
+            /**
              * Utility Threshold
              * @default 0.65
              */
@@ -3707,6 +3749,11 @@ export interface components {
              * @description Rewrite o review: unità selezionate (lista multipla)
              */
             units?: string[] | null;
+            /**
+             * With Enrichment
+             * @description Esegue l'arricchimento didattico alla fine della pipeline
+             */
+            with_enrichment?: boolean | null;
             /**
              * With Review
              * @default false
@@ -4228,10 +4275,19 @@ export interface components {
             } | null;
             /** Approved */
             approved: boolean;
+            /** Expires At */
+            expires_at?: string | null;
             /** Lesson Title */
             lesson_title: string;
             /** Macro Sections */
             macro_sections: components["schemas"]["OutlineMacro"][];
+            /** Timer Seconds */
+            timer_seconds?: number | null;
+            /**
+             * Timer Suspended
+             * @default false
+             */
+            timer_suspended: boolean;
         };
         /** OutlineMacro */
         OutlineMacro: {
@@ -4362,6 +4418,29 @@ export interface components {
              */
             message: string;
         };
+        /** PreferencesSettings */
+        PreferencesSettings: {
+            /**
+             * Modalita Arricchimento
+             * @description Modalità dell'arricchimento
+             * @default manuale
+             * @enum {string}
+             */
+            modalita_arricchimento: "manuale" | "automatica" | "disattivata";
+            /**
+             * Secondi Approvazione
+             * @description Secondi per l'approvazione automatica della scaletta (0 = disattivata)
+             * @default 10
+             */
+            secondi_approvazione: number;
+            /**
+             * Sfondo Gruppi
+             * @description Sfondo dei gruppi in Lezioni
+             * @default colori
+             * @enum {string}
+             */
+            sfondo_gruppi: "colori" | "grigi" | "niente";
+        };
         /** PromptOverrideIn */
         PromptOverrideIn: {
             /** Instruction */
@@ -4447,6 +4526,11 @@ export interface components {
             /** Count */
             count?: number | null;
             /**
+             * Instructions
+             * @description Istruzioni aggiuntive per la generazione
+             */
+            instructions?: string | null;
+            /**
              * Mock
              * @default false
              */
@@ -4457,8 +4541,13 @@ export interface components {
              */
             qtype?: ("quiz" | "mirata" | "vasta" | "caso" | "esercizio") | null;
             /**
+             * Selection
+             * @description Testo selezionato dall'utente nell'editor o nelle unità
+             */
+            selection?: string | null;
+            /**
              * Unit Ids
-             * @description Solo queste unità (Domande su questa parte): quiz e mirate, anche se l'unità non è fra quelle selezionate per il recall
+             * @description Solo queste unità (Domande su questa parte): quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall
              */
             unit_ids?: string[] | null;
         };
@@ -4928,6 +5017,8 @@ export interface components {
              * @description Modello assegnato a ciascuna delle sei fasi LLM
              */
             phases: components["schemas"]["PhaseAssignment"][];
+            /** @description Preferenze generali */
+            preferences?: components["schemas"]["PreferencesSettings"];
             /** Pricing */
             pricing: {
                 [key: string]: {
@@ -8833,6 +8924,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    suspend_outline_api_v1_lessons__lesson_id__outline_suspend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Outline"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -13345,6 +13504,75 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PhaseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_preferences_api_v1_settings_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesSettings"];
             };
         };
         responses: {
