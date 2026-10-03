@@ -33,8 +33,7 @@ async function builtLesson(page: Page): Promise<Lesson> {
 async function openRecall(page: Page) {
   await loginViaLink(page)
   const lesson = await builtLesson(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Recall' }).click()
-  await expect(page).toHaveURL(/\/recall$/)
+  await page.goto('/recall')
   await page.locator(`[data-testid=picker-lesson][data-lesson-id="${lesson.id}"]`).getByRole('link').click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/recall$`))
   return lesson
@@ -132,7 +131,7 @@ test('recall del giorno: raggruppa per giorno e apre la sessione sulle lezioni d
 test('recall della materia: domande dalle lezioni della materia, risposta e riepilogo', async ({ page }) => {
   await loginViaLink(page)
   const lesson = await builtLesson(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Recall' }).click()
+  await page.goto('/recall')
   await page.locator('[data-testid=recall-subject][data-subject=BIOCHIMICA]').getByTestId('subject-recall').click()
   await expect(page).toHaveURL(/\/recall\/materie\/BIOCHIMICA$/)
   await expect(page.locator(`[data-testid=subject-lesson][data-lesson-id="${lesson.id}"]`)).toBeVisible()
@@ -217,7 +216,7 @@ test('recall: unità per il recaller e domande eliminate in blocco, rilette dopo
 test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel documento', async ({ page }) => {
   await loginViaLink(page)
   const lesson = await builtLesson(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Arricchimento' }).click()
+  await page.goto('/arricchimento')
   await page.locator(`[data-testid=picker-lesson][data-lesson-id="${lesson.id}"]`).getByRole('link').click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}/arricchimento$`))
   const before = (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images
@@ -306,8 +305,10 @@ test('immagini: N immagini per unità dal web sulle unità scelte, riletto dopo 
 
 test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Bot Telegram' }).click()
-  await expect(page).toHaveURL(/\/bot$/)
+  // Il bot sta nelle Impostazioni (design 4.2).
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
+  await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: 'Bot Telegram' }).click()
+  await expect(page).toHaveURL(/\/impostazioni\/bot$/)
   const panel = page.getByTestId('telegram-bot')
   await expect(panel).toHaveAttribute('data-running', 'false')
 

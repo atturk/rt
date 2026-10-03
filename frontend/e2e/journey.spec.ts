@@ -34,7 +34,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   // 1. Accesso con il link monouso: la sessione resta dopo la ricarica.
   await loginViaLink(page)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeAttached()
+  await expect(page.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeAttached()
 
   // 2. Importazione dell'audio con la pipeline (in prova), che si ferma sulla scaletta.
   await page.goto('/importa')

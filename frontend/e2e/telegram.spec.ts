@@ -9,8 +9,10 @@ type Notification = { kind: string; text: string; topic_id: number | null; ok: b
 
 test('pagina Bot Telegram: gruppo, topic con prova, ultime notifiche, link alle impostazioni', async ({ page }) => {
   await loginViaLink(page)
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Bot Telegram' }).click()
-  await expect(page).toHaveURL(/\/bot$/)
+  // Il bot sta nelle Impostazioni (design 4.2); /bot porta lì.
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
+  await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: 'Bot Telegram' }).click()
+  await expect(page).toHaveURL(/\/impostazioni\/bot$/)
   await expect(page.getByTestId('telegram-bot')).toBeVisible()
 
   const group = page.getByRole('region', { name: 'Gruppo' })
@@ -31,7 +33,8 @@ test('pagina Bot Telegram: gruppo, topic con prova, ultime notifiche, link alle 
   // Le prove compaiono tra le ultime notifiche, anche dopo la ricarica.
   const notifications = page.getByRole('region', { name: 'Ultime notifiche inviate' }).getByTestId('bot-notification')
   await expect(notifications.first()).toContainText('Questo è il topic di BIOCHIMICA')
-  await page.reload()
+  await page.goto('/bot')
+  await expect(page).toHaveURL(/\/impostazioni\/bot$/)
   await expect(notifications.first()).toContainText('Questo è il topic di BIOCHIMICA')
   await expect(notifications.first()).toContainText('topic 12')
   const sent = await apiGet<Notification[]>(page.request, '/telegram/notifications')

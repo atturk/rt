@@ -30,7 +30,8 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['immagini', `/lezioni/${done}/immagini`],
     ['importa', '/importa'],
     ['job', '/job'],
-    ['bot', '/bot'],
+    ['bot', '/impostazioni/bot'],
+    ['dettaglio di un job (inesistente)', '/job/non-esiste'],
     ['impostazioni', '/impostazioni'],
     ['modelli', '/impostazioni/modelli'],
     ['chiavi', '/impostazioni/chiavi'],
@@ -85,25 +86,39 @@ for (const theme of ['light', 'dark'] as const) {
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('markdown-editor')).toHaveCount(0)
 
-    // Barra laterale ridotta con il pannello di una materia aperto e il suggerimento del nome.
+    // Pagina Lezioni del design 4.2: gruppi per materia con il tooltip di un'icona, popup Info,
+    // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
-    await page.getByRole('button', { name: 'Riduci la barra laterale' }).click()
-    const subject = page.getByRole('navigation', { name: 'Materie' }).getByRole('button').first()
-    await subject.focus()
-    await expect(page.getByRole('tooltip')).toBeVisible()
-    await expectNoViolations(page, 'barra laterale ridotta')
-    await subject.click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await expectNoViolations(page, 'pannello della materia')
+    await page.getByRole('button', { name: 'Per materia' }).click()
+    const recall = page.getByTestId('lesson-group').first().getByRole('link', { name: 'Recall su tutto il gruppo' })
+    await recall.focus()
+    await expect(page.getByRole('tooltip', { name: 'Recall su tutto il gruppo' })).toBeVisible()
+    await expectNoViolations(page, 'lezioni per materia con un tooltip')
+    await page.getByTestId('lesson-row').first().getByRole('button', { name: 'Info' }).click()
+    await expect(page.getByTestId('lesson-info')).toBeVisible()
+    await expectNoViolations(page, 'popup Info')
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: 'Espandi la barra laterale' }).click()
+    await page.getByRole('button', { name: 'Seleziona' }).click()
+    await page.getByTestId('lesson-group').first().getByRole('checkbox', { name: /^Seleziona il gruppo/ }).check()
+    await expect(page.getByTestId('selection-bar')).toBeVisible()
+    await expectNoViolations(page, 'selezione delle lezioni')
+    await page.getByRole('button', { name: 'Annulla' }).click()
+    await page.getByRole('button', { name: 'Ordina' }).click()
+    await expect(page.getByRole('menu')).toBeVisible()
+    await expectNoViolations(page, 'menu Ordina')
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Per data' }).click()
+    await page.getByRole('button', { name: 'Nuova lezione' }).click()
+    await expect(page.getByTestId('drop-zone')).toBeVisible()
+    await expectNoViolations(page, 'popup Nuova lezione')
+    await page.keyboard.press('Escape')
 
-    // Elenco delle lezioni in tabella, raggruppato per materia, con un gruppo chiuso.
-    await page.getByLabel('Raggruppa per').selectOption('materia')
-    await page.getByRole('button', { name: 'Tabella' }).click()
-    await expect(page.getByTestId('lesson-table')).toBeVisible()
-    await page.getByTestId('lesson-group-toggle').first().click()
-    await expectNoViolations(page, 'tabella delle lezioni per materia')
+    // Telefono: schede in basso e ricerca aperta.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: 'Mostra la ricerca' }).click()
+    await expect(page.getByLabel('Cerca', { exact: true })).toBeVisible()
+    await expectNoViolations(page, 'lezioni sul telefono')
+    await page.setViewportSize({ width: 1280, height: 720 })
   })
 }
 

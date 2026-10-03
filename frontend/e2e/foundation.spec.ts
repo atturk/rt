@@ -14,9 +14,9 @@ test('il link monouso apre la sessione, che resta dopo la ricarica', async ({ pa
   const link = await loginLink(page.request)
   await page.goto(link)
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole('navigation', { name: 'Lezioni per materia' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('navigation', { name: 'Lezioni per materia' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
 
   // Il link è monouso: un secondo browser riceve l'avviso nella pagina di accesso.
   const other = await page.context().browser()!.newPage()
@@ -36,50 +36,53 @@ test('accesso di ripiego con il token', async ({ page }) => {
   await expect(page).toHaveURL(/\/$/)
   await page.reload()
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
-  await expect(page.getByTestId('lesson-card')).toHaveCount(lessons.length)
+  await expect(page.getByTestId('lesson-row')).toHaveCount(lessons.length)
 })
 
-test('la dashboard mostra le lezioni dell\'API, con filtri', async ({ page }) => {
+test('la pagina Lezioni mostra le lezioni dell\'API, con la ricerca', async ({ page }) => {
   await loginViaLink(page)
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
-  const cards = page.getByTestId('lesson-card')
-  await expect(cards).toHaveCount(lessons.length)
+  const rows = page.getByTestId('lesson-row')
+  await expect(rows).toHaveCount(lessons.length)
   for (const lesson of lessons) {
-    await expect(page.locator(`[data-testid=lesson-card][data-lesson-id="${lesson.id}"]`)).toBeVisible()
+    await expect(page.locator(`[data-testid=lesson-row][data-lesson-id="${lesson.id}"]`)).toBeVisible()
   }
-  const sidebar = page.getByRole('navigation', { name: 'Lezioni per materia' })
-  await expect(sidebar.getByText('BIOCHIMICA')).toBeVisible()
-  await expect(sidebar.getByText('FISIOLOGIA')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeVisible()
 
-  // Solo la ricerca (titolo, materia, docente, data), accanto al numero di lezioni.
-  await expect(page.getByText('Da rivedere', { exact: true })).toHaveCount(0)
+  // Solo la ricerca (titolo, materia, docente, data): nessun altro filtro.
   await expect(page.getByLabel('Materia', { exact: true })).toHaveCount(0)
   await page.getByLabel('Cerca').fill('rene')
-  await expect(cards).toHaveCount(1)
-  await expect(cards.first()).toContainText('Il rene')
+  await expect(rows).toHaveCount(1)
+  await expect(rows.first()).toContainText('Il rene')
   await page.reload()
   await expect(page.getByLabel('Cerca')).toHaveValue('rene')
-  await expect(cards).toHaveCount(1)
+  await expect(rows).toHaveCount(1)
 
-  // La materia dalla barra laterale (?materia=) resta un filtro, azzerabile.
+  // I link di prima con ?materia= restano un filtro, azzerabile.
   await page.goto('/?materia=BIOCHIMICA')
-  await expect(cards).toHaveCount(lessons.filter((lesson) => lesson.materia === 'BIOCHIMICA').length)
-  await page.getByRole('button', { name: 'Azzera filtri' }).click()
-  await expect(cards).toHaveCount(lessons.length)
+  await expect(rows).toHaveCount(lessons.filter((lesson) => lesson.materia === 'BIOCHIMICA').length)
+  await expect(page.getByText('Solo Biochimica.')).toBeVisible()
+  await page.getByRole('button', { name: 'Mostra tutte' }).click()
+  await expect(rows).toHaveCount(lessons.length)
 })
 
-test('dalla barra laterale si apre la lezione', async ({ page }) => {
+test('dalla riga si apre la lezione', async ({ page }) => {
   await loginViaLink(page)
   const [first] = await apiGet<Lesson[]>(page.request, '/lessons?materia=BIOCHIMICA')
-  await page.getByRole('navigation', { name: 'Lezioni per materia' }).getByRole('link').filter({ hasText: '2026-09-05' }).click()
+  const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${first.id}"]`)
+  await row.getByRole('link', { name: 'Apri' }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${first.id}$`))
   await page.reload()
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(page.getByLabel('Stato delle fasi').locator('[data-status=VALID]')).toHaveCount(5)
+  // Indietro torna alle Lezioni.
+  await page.getByRole('link', { name: 'Lezioni' }).first().click()
+  await expect(page).toHaveURL(/\/$/)
 })
 
-test('il tema scuro resta dopo la ricarica', async ({ page }) => {
+test('il tema scuro, nelle Impostazioni, resta dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
   await page.getByRole('button', { name: 'Tema scuro' }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
   await page.reload()
@@ -90,6 +93,7 @@ test('il tema scuro resta dopo la ricarica', async ({ page }) => {
 
 test('esci chiude la sessione anche sul backend', async ({ page }) => {
   await loginViaLink(page)
+  await page.goto('/impostazioni')
   await page.getByRole('button', { name: 'Esci' }).click()
   await expect(page).toHaveURL(/\/login$/)
   await page.goto('/')
