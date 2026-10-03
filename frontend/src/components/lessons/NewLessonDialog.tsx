@@ -114,6 +114,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
         mock: false,
         auto_accept: false,
         with_review: !solo && review,
+        with_enrichment: !solo && enrichment,
       },
       {
         onSuccess: (accepted) => {
@@ -286,7 +287,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                 icon={Image}
                 aria-pressed={enrichment}
                 active={enrichment && !solo}
-                disabled={true}
+                disabled={busy || solo}
                 onClick={() => setEnrichment(!enrichment)}
               />
             </div>

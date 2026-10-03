@@ -39,6 +39,7 @@ class PipelineOptions:
     force: bool = False
     mock: bool = False
     with_review: bool = False
+    with_enrichment: Optional[bool] = None
     auto_accept: bool = False
     rename: bool = True
     channel: Optional[str] = None
@@ -212,7 +213,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
             mark_ready_to_build(lesson_dir)
 
     ctx.check_cancelled()
-    result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
+    result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx, with_enrichment=options.with_enrichment)
     bld_res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
     result.phase_results["build"] = bld_res
     final_dir = bld_res.get("lesson_dir") or lesson_dir
@@ -285,12 +286,16 @@ def _wait(result: PipelineResult, ctx: RunContext, kind: str, lesson_dir: str, p
 RUNNABLE_PHASES = ("prepare", "outline", "rewrite", "review", "build")
 
 
-def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext) -> Dict[str, Any]:
+def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext,
+                         with_enrichment: Optional[bool] = None) -> Dict[str, Any]:
     """Optional analysis: failures do not prevent the lesson from being built."""
     from rt.core.config import load_config
     cfg = load_config()
-    if not cfg.enrichment.automatic:
+    if cfg.enrichment.mode == "disabled" and not with_enrichment:
         return {"skipped": "disabled"}
+    should_run = (with_enrichment is True) or (with_enrichment is None and cfg.enrichment.mode == "automatic")
+    if not should_run:
+        return {"skipped": "manual" if cfg.enrichment.mode == "manual" else "disabled"}
     route = cfg.jobs.get("enrichment_writer")
     if not mock and (not route or not route.primary.is_configured):
         ctx.emit(Notice(message="Arricchimento automatico disponibile dopo aver configurato l'Arricchitore in Modelli."))

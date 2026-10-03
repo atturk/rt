@@ -361,6 +361,7 @@ class JobRequest(BaseModel):
     force: bool = False
     mock: bool = False
     with_review: bool = False
+    with_enrichment: Optional[bool] = Field(None, description="Esegue l'arricchimento didattico alla fine della pipeline")
     auto_accept: bool = False
     rename: bool = True
     parent_context: bool = Field(False, description="Review di unità: le altre subunità della stessa unità vanno al "

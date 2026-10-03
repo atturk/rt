@@ -52,7 +52,7 @@ describe('NewLessonDialog', () => {
     )
     expect(screen.getByRole('button', { name: 'Solo trascrizione' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Revisione' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Arricchimento' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Arricchimento' })).toBeEnabled()
   })
 
   it('cambia la frase con gli interruttori Solo trascrizione e Revisione', () => {
