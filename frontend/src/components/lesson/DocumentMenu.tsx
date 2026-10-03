@@ -86,7 +86,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
           <Sparkles className="size-4 shrink-0" aria-hidden />
           <span className="flex-1">
             Richiesta inviata{queued.length ? ` per ${partLabel(queued)}` : ''}: l'elemento si prepara in{' '}
-            <Link to={`/lezioni/${lessonId}/arricchimento`} className="font-semibold text-link underline-offset-2 hover:underline">Arricchimento</Link>.
+            <Link to={`/lezioni/${lessonId}?panel=arricchimento`} className="font-semibold text-link underline-offset-2 hover:underline">Arricchimento</Link>.
           </span>
           <IconButton label="Chiudi" icon={X} onClick={() => setQueued(null)} className="-my-1.5 -mr-2" />
         </div>
@@ -351,7 +351,7 @@ function PartReviewStatus({ lessonId, jobId, units, onDismiss }: { lessonId: num
         {!finished
           ? `Verifico ${partLabel(units)}…`
           : state === 'succeeded'
-            ? <>Verifica di {partLabel(units)} completata. <Link to={`/lezioni/${lessonId}/revisione`} className="font-semibold text-link underline-offset-2 hover:underline">Apri la revisione</Link></>
+            ? <>Verifica di {partLabel(units)} completata. <Link to={`/lezioni/${lessonId}?panel=verifica`} className="font-semibold text-link underline-offset-2 hover:underline">Apri la verifica</Link></>
             : `Verifica di ${partLabel(units)} non riuscita${job.data?.error ? `: ${job.data.error}` : '.'}`}
       </span>
       {finished && <IconButton label="Chiudi" icon={X} onClick={onDismiss} className="-my-1.5 -mr-2" />}
