@@ -149,7 +149,7 @@ export function LightweightSession({
   // Richiesta prossima domanda: vale solo la risposta dell'ultima richiesta (es. tipo cambiato al volo)
   const requestSeq = useRef(0)
   const askNext = useCallback(
-    async (typeToAsk: SessionType = qtype) => {
+    async (typeToAsk: SessionType = qtype, excludeId?: string) => {
       const seq = ++requestSeq.current
       setEmptyPoolError(false)
       setGeneralError(null)
@@ -167,12 +167,12 @@ export function LightweightSession({
       try {
         let q: RecallQuestion
         if (isSelection) {
-          const res = await nextSubject.mutateAsync({ qtype: typeToAsk })
+          const res = await nextSubject.mutateAsync({ qtype: typeToAsk, exclude: excludeId })
           if (seq !== requestSeq.current) return
           q = res.question
           setQuestionLessonId(res.lesson_id)
         } else if (lessonId) {
-          q = await nextLesson.mutateAsync({ qtype: typeToAsk })
+          q = await nextLesson.mutateAsync({ qtype: typeToAsk, excludeId })
           if (seq !== requestSeq.current) return
           setQuestionLessonId(lessonId)
         } else {
@@ -301,7 +301,8 @@ export function LightweightSession({
     if (!currentQuestion || !activeLessonId) return
     try {
       await skipMutation.mutateAsync(currentQuestion.id)
-      void askNext()
+      // la saltata torna in coda: non deve essere subito la prossima
+      void askNext(qtype, currentQuestion.id)
     } catch (err) {
       setGeneralError(errorMessage(err))
     }

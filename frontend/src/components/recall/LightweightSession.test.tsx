@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -245,5 +245,7 @@ describe('LightweightSession', () => {
     fireEvent.click(saltaBtn)
 
     expect(mockSkipMutateAsync).toHaveBeenCalledWith('q100')
+    // la prossima esclude quella appena saltata
+    await waitFor(() => expect(mockNextMutateAsync).toHaveBeenLastCalledWith({ qtype: 'quiz', excludeId: 'q100' }))
   })
 })

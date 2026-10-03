@@ -54,7 +54,7 @@ test('ripasso: quiz con esito, voto e salto', async ({ page }) => {
   const askedId = await questionId(page)
   const asked = (await history(page, lesson.id)).questions.find((q) => q.id === askedId)!
   await page.getByRole('button', { name: /^B\./ }).click()
-  await page.getByRole('button', { name: 'Rispondi' }).click()
+  await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
   await expect(page.getByTestId('recall-result-card')).toBeVisible()
   await page.getByRole('button', { name: 'Buona domanda' }).click()
   await expect.poll(async () => (await history(page, lesson.id)).answers.find((a) => a.question_id === asked.id)?.vote).toBe('up')
@@ -79,7 +79,7 @@ test('ripasso: risposta aperta con la valutazione del job', async ({ page }) => 
 
   const id = await questionId(page)
   await page.getByLabel('Risposta scritta').fill('Gli acidi grassi saturi non hanno doppi legami.')
-  await page.getByRole('button', { name: 'Rispondi' }).click()
+  await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
   const card = page.getByTestId('recall-result-card')
   await expect(card).toBeVisible({ timeout: 30_000 })
   const data = await history(page, lesson.id)
