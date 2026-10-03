@@ -13,6 +13,7 @@ export const recallKeys = {
   history: (id: number) => ['recall', id, 'history'] as const,
   units: (id: number) => ['recall', id, 'units'] as const,
   questions: (id: number, reveal: boolean) => ['recall', id, 'questions', reveal] as const,
+  study: (id: number) => ['recall', id, 'study'] as const,
   all: (id: number) => ['recall', id] as const,
 }
 
@@ -101,12 +102,31 @@ export function useDeleteQuestions(id: number) {
 }
 
 export function useNextQuestion(id: number) {
-  return useRecallMutation(id, (vars: { qtype: RecallType; excludeId?: string }) =>
+  return useRecallMutation(id, (vars: { qtype: RecallType | 'mista'; excludeId?: string; unitId?: string }) =>
     unwrap(
       api.POST('/api/v1/lessons/{lesson_id}/recall/next', {
-        params: { ...path(id), query: { qtype: vars.qtype, exclude_id: vars.excludeId } },
+        params: { ...path(id), query: { qtype: vars.qtype, exclude_id: vars.excludeId, unit_id: vars.unitId } },
       }),
     ),
+  )
+}
+
+export type StudyLesson = Schemas['StudyLesson']
+export type StudyUnit = Schemas['StudyUnit']
+
+/** Studio: unità della lezione con testo, tratto d'audio e domande da porre (si rilegge dopo ogni risposta). */
+export function useStudyLesson(id: number | null) {
+  return useQuery({
+    queryKey: recallKeys.study(id ?? 0),
+    enabled: id != null,
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/study', { params: path(id!) })),
+  })
+}
+
+/** Domande (quiz e mirate) solo su alcune unità: Domande su questa parte, quando non ce ne sono. */
+export function useGenerateForUnits(id: number) {
+  return useRecallMutation(id, (unitIds: string[]) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { qtype: null, mock: false, unit_ids: unitIds } })),
   )
 }
 

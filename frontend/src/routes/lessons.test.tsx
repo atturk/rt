@@ -61,6 +61,7 @@ describe('pagina Lezioni', () => {
     const names = Array.from(row(1).querySelectorAll('button, a')).map((el) => el.getAttribute('aria-label')).filter(Boolean)
     expect(names).toEqual(['Info', 'Recall', 'Studio', 'Apri'])
     expect(within(row(1)).getByRole('link', { name: 'Recall' })).toHaveAttribute('href', '/lezioni/1/recall')
+    expect(within(row(1)).getByRole('link', { name: 'Studio' })).toHaveAttribute('href', '/studio/lezione/1')
     // Senza rielaborazione Recall e Studio restano al loro posto, non disponibili.
     expect(within(row(2)).getByRole('button', { name: 'Recall' })).toHaveAttribute('aria-disabled', 'true')
   })
@@ -79,11 +80,14 @@ describe('pagina Lezioni', () => {
     expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('28 set · Maria Rossi · 7 unità')
     const patologia = screen.getAllByTestId('lesson-group')[1]
     expect(within(patologia).getByRole('link', { name: 'Recall su tutto il gruppo' })).toHaveAttribute('href', '/recall/materie/PATOLOGIA')
+    expect(within(patologia).getByRole('link', { name: 'Studio su tutto il gruppo' })).toHaveAttribute('href', '/studio/materia/PATOLOGIA')
 
     fireEvent.click(screen.getByRole('button', { name: 'Per docente' }))
     expect(groups()).toEqual(['Maria Rossi', 'Senza docente'])
     expect(within(row(3)).getByTestId('lesson-subtitle')).toHaveTextContent('5 set · Patologia · 4 unità')
     expect(within(screen.getAllByTestId('lesson-group')[0]).getByRole('button', { name: 'Recall su tutto il gruppo' })).toHaveAttribute('aria-disabled', 'true')
+    // Lo Studio per docente c'è: le lezioni si scelgono nella web app.
+    expect(within(screen.getAllByTestId('lesson-group')[0]).getByRole('link', { name: 'Studio su tutto il gruppo' })).toHaveAttribute('href', '/studio/docente/Maria%20Rossi')
     // La scelta resta nel browser.
     expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'docente' })
   })

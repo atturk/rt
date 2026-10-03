@@ -43,6 +43,15 @@ const jobsArea: Area = {
   ],
 }
 
+// Studio (design 4.2, schermate 05 e 06): dalle righe e dai gruppi di Lezioni e dalla lezione.
+const study = () => import('./study')
+const studyArea: Area = {
+  routes: [
+    { path: 'studio/lezione/:lessonId', Component: page(study, (m) => m.StudyLessonPage), handle: bare },
+    { path: 'studio/:kind/:value', Component: page(study, (m) => m.StudyGroupPage), handle: bare },
+  ],
+}
+
 const reviewsArea: Area = {
   routes: [{ path: 'review', Component: page(() => import('./reviews'), (m) => m.ReviewsPage) }],
 }
@@ -93,7 +102,7 @@ const settingsArea: Area = {
   ],
 }
 
-export const areas: Area[] = [lessonsArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
+export const areas: Area[] = [lessonsArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 

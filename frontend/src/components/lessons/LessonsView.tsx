@@ -16,6 +16,7 @@ import {
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
 import { useIsPhone } from '@/lib/phone'
+import { groupStudyPath } from '@/lib/study'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
@@ -180,8 +181,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, o
       <div className={ACTIONS}>
         <IconButton label="Info" icon={Info} onClick={onInfo} className="max-md:hidden" aria-haspopup="dialog" />
         <IconLink label="Recall" icon={Brain} to={`/lezioni/${lesson.id}/recall`} unavailable={recall} />
-        {/* TODO(4.2b3): Studio = leggi l'unità e poi le sue domande; per ora porta al recall della lezione. */}
-        <IconLink label="Studio" icon={BookOpen} to={`/lezioni/${lesson.id}/recall`} unavailable={recall} />
+        <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${lesson.id}`} unavailable={recall} />
         <IconLink label="Apri" icon={ExternalLink} to={`/lezioni/${lesson.id}`} className="max-md:hidden" />
       </div>
     </li>
@@ -198,6 +198,8 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
   const label = groupLabel(group, grouping)
   const path = groupRecallPath(group, grouping)
   const unavailable = path ? null : grouping === 'docente' ? 'per docente non è ancora disponibile' : 'il gruppo non ha una data o una materia'
+  const study = groupStudyPath(group, grouping)
+  const ready = group.lessons.some((l) => l.phases.rewrite === 'VALID')
   return (
     <div className="mb-2 flex items-center gap-3 px-2.5 max-md:gap-2 max-md:px-0">
       {selecting && (
@@ -212,8 +214,12 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
       <div className={ACTIONS}>
         <span className={SLOT} aria-hidden />
         <IconLink label="Recall su tutto il gruppo" icon={Brain} to={path ?? '/'} unavailable={unavailable} />
-        {/* TODO(4.2b3): Studio sull'intero gruppo; per ora porta al recall del gruppo. */}
-        <IconLink label="Studio su tutto il gruppo" icon={BookOpen} to={path ?? '/'} unavailable={unavailable} />
+        <IconLink
+          label="Studio su tutto il gruppo"
+          icon={BookOpen}
+          to={study ?? '/'}
+          unavailable={!study ? `il gruppo non ha ${grouping === 'docente' ? 'un docente' : grouping === 'materia' ? 'una materia' : 'una data'}` : !ready ? NOT_READY : null}
+        />
         <span className={SLOT} aria-hidden />
       </div>
     </div>

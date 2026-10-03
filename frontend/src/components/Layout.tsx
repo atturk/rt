@@ -22,7 +22,7 @@ const LESSONS: Section = {
   to: '/',
   label: 'Lezioni',
   icon: Calendar,
-  match: (path) => path === '/' || /^\/(lezioni|recall|review|immagini|arricchimento)(\/|$)/.test(path),
+  match: (path) => path === '/' || /^\/(lezioni|studio|recall|review|immagini|arricchimento)(\/|$)/.test(path),
 }
 const JOBS: Section = { to: '/job', label: 'Job in corso', icon: Activity, match: (path) => /^\/(job|importa)(\/|$)/.test(path), badge: true }
 const SETTINGS: Section = { to: '/impostazioni', label: 'Impostazioni', icon: Settings, match: (path) => /^\/(impostazioni|bot)(\/|$)/.test(path) }
