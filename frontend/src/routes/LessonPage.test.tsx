@@ -13,6 +13,9 @@ vi.mock('@/api/hooks', () => ({
 vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: workflow.jobs }), useOutline: () => ({ data: workflow.outline }), useJob: () => ({ data: undefined }), useApproveOutline: () => ({}), useReviseOutline: () => ({}), useSuspendOutline: () => ({}) }))
 vi.mock('@/components/jobs/JobsIndicator', () => ({ LessonWaiting: () => null }))
 vi.mock('@/components/jobs/PhaseProgress', () => ({ PhaseProgress: () => null }))
+vi.mock('@/components/lesson/panels/QuestionsPanel', () => ({ QuestionsPanel: () => null }))
+vi.mock('@/components/lesson/panels/EnrichmentPanel', () => ({ EnrichmentPanel: () => null }))
+vi.mock('@/components/lesson/panels/ClassifierPanel', () => ({ ClassifierPanel: () => null }))
 vi.mock('@/components/lesson/LessonEditor', () => ({ LessonEditor: ({ document, locked, unitTasks }: { document: Schemas['LessonDocument']; locked: boolean; unitTasks?: Record<string, string> }) => <><textarea aria-label="Editor" value={document.markdown} readOnly={locked} onChange={() => undefined} /><output aria-label="Stati unità">{JSON.stringify(unitTasks)}</output></> }))
 
 beforeEach(() => { localStorage.clear(); workflow.outline = undefined; workflow.document = undefined; workflow.jobs = []; workflow.ready = false })

@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { PHASE_LABELS, PHASE_ORDER, STATE_LABELS, formatCost, formatDateTime, phaseTone } from '@/lib/format'
 import { formatDuration } from '@/lib/lessonsPage'
 import { CostPanel } from '../CostPanel'
@@ -252,18 +253,29 @@ export function DetailsPanel({
   const restorePipeline = useRestorePipeline(l.id)
   const [showRestorePrompt, setShowRestorePrompt] = useState(false)
 
-  const handleDownloadDraft = () => {
-    const url = `/api/v1/lesson-exports?${new URLSearchParams([
-      ['ids', String(l.id)],
-      ['format', 'markdown'],
-      ['name', l.titolo || l.folder_name],
-    ])}`
-    const a = document.createElement('a')
-    a.href = url
-    a.download = ''
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+  // Scarica la bozza attuale prima del ripristino: il file deve arrivare prima che cambi
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const downloadAndRestore = async () => {
+    setDownloadError(null)
+    try {
+      const url = `/api/v1/lesson-exports?${new URLSearchParams([
+        ['ids', String(l.id)],
+        ['format', 'markdown'],
+        ['name', l.titolo || l.folder_name],
+      ])}`
+      const response = await fetch(url, { credentials: 'same-origin' })
+      if (!response.ok) throw new Error(`Download non riuscito (${response.status})`)
+      const name = /filename="?([^";]+)"?/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? `${l.folder_name}.md`
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(await response.blob())
+      link.download = name
+      link.click()
+      URL.revokeObjectURL(link.href)
+    } catch (error) {
+      setDownloadError(errorMessage(error))
+      return
+    }
+    restorePipeline.mutate(null, { onSuccess: () => setShowRestorePrompt(false) })
   }
 
   // Eliminazione lezione
@@ -276,7 +288,7 @@ export function DetailsPanel({
     if (deleteTyped === 'confermo') {
       deleteLesson.mutate(undefined, {
         onSuccess: () => {
-          navigate('/lezioni')
+          navigate('/')
         },
       })
     }
@@ -585,9 +597,10 @@ export function DetailsPanel({
                       <label htmlFor={`extra-${phase}`} className="text-meta text-muted-foreground">
                         Istruzioni aggiuntive
                       </label>
-                      <textarea
+                      <Textarea
                         id={`extra-${phase}`}
-                        className="min-h-16 w-full rounded-md border bg-card p-2 text-meta"
+                        rows={3}
+                        className="p-2 text-meta"
                         value={extraPrompts[phase] ?? ''}
                         onChange={(e) => setExtraPrompts((old) => ({ ...old, [phase]: e.target.value }))}
                         placeholder="Facoltativo"
@@ -685,15 +698,13 @@ export function DetailsPanel({
               <p className="font-semibold">Modificate a mano: {pipelineVersion.data?.modified_units ?? 0} unità</p>
             </div>
             {restorePipeline.isError && <Alert tone="danger">{errorMessage(restorePipeline.error)}</Alert>}
+            {downloadError && <Alert tone="danger">{downloadError}</Alert>}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <Button
                 size="sm"
                 variant="default"
                 disabled={restorePipeline.isPending}
-                onClick={() => {
-                  handleDownloadDraft()
-                  restorePipeline.mutate(null, { onSuccess: () => setShowRestorePrompt(false) })
-                }}
+                onClick={() => void downloadAndRestore()}
               >
                 <Download className="size-3" /> Scarica e ripristina
               </Button>

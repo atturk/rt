@@ -1,9 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useParams } from 'react-router'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
-import { useRunClassifier } from '@/api/relevance'
+import { useRelevance, useRunClassifier } from '@/api/relevance'
 import { RUN_ALL, RUN_NEW } from '@/lib/classification'
 import { JobProgress } from '@/components/JobProgress'
 import { SectionLabelsCard } from '@/components/recall/SectionLabels'
@@ -53,11 +53,7 @@ export function ClassifierPanel({ lessonId }: { lessonId?: number }) {
   const id = lessonId ?? Number(params.lessonId)
   const client = useQueryClient()
 
-  const data = useQuery({
-    queryKey: ['relevance', id],
-    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/relevance', { params: { path: { lesson_id: id } } })),
-    enabled: Number.isFinite(id),
-  })
+  const data = useRelevance(id, Number.isFinite(id))
 
   const run = useRunClassifier(id)
   const [filter, setFilter] = useState<Filter>('all')

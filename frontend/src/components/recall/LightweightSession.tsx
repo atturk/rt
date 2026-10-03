@@ -12,13 +12,14 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
-import { errorMessage, type Schemas } from '@/api/client'
+import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson } from '@/api/hooks'
 import {
   useAnswer,
   useAnswerVoice,
   useEndSession,
   useNextQuestion,
+  useRecallHistory,
   useRecallOverview,
   useRegenerateQuestion,
   useSkip,
@@ -29,9 +30,11 @@ import {
   type RecallQuestion,
   type RecallType,
 } from '@/api/recall'
+import { JobProgress } from '@/components/JobProgress'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { IconButton } from '@/components/ui/icon-button'
 import { lessonTitle } from '@/lib/format'
 import { selectionSubject } from '@/lib/recallView'
@@ -86,14 +89,21 @@ export function LightweightSession({
   const overviewQuery = useRecallOverview(lessonId ?? 0)
   const subjectRecallQuery = useSubjectRecall(subjectKey)
 
+  // Lezione della domanda corrente: nella selezione arriva insieme alla domanda
+  const [questionLessonId, setQuestionLessonId] = useState<number | null>(null)
+  const activeLessonId = questionLessonId ?? lessonId ?? 0
+  // Valutazione delle risposte aperte: job in corso, poi esito letto dallo storico
+  const [evaluationJob, setEvaluationJob] = useState<string | null>(null)
+  const history = useRecallHistory(activeLessonId, false)
+
   // Hooks mutazioni
   const nextLesson = useNextQuestion(lessonId ?? 0)
   const nextSubject = useSubjectNext(subjectKey)
-  const answerMutation = useAnswer(lessonId ?? 0)
-  const voiceMutation = useAnswerVoice(lessonId ?? 0)
-  const voteMutation = useVote(lessonId ?? 0)
-  const regenerateMutation = useRegenerateQuestion(lessonId ?? 0)
-  const skipMutation = useSkip(lessonId ?? 0)
+  const answerMutation = useAnswer(activeLessonId)
+  const voiceMutation = useAnswerVoice(activeLessonId)
+  const voteMutation = useVote(activeLessonId)
+  const regenerateMutation = useRegenerateQuestion(activeLessonId)
+  const skipMutation = useSkip(activeLessonId)
   const endLessonSession = useEndSession(lessonId ?? 0)
   const endSubjectSession = useSubjectEnd(subjectKey)
 
@@ -145,6 +155,7 @@ export function LightweightSession({
       setWrittenAnswer('')
       setShowVoiceRecorder(false)
       setEvaluatedResult(null)
+      setEvaluationJob(null)
       setCurrentVote(null)
       setDiscardModalOpen(false)
       setSelectedReasons(new Set())
@@ -158,16 +169,17 @@ export function LightweightSession({
             qtype: (typeToAsk === 'mista' ? 'quiz' : typeToAsk) as RecallType,
           })
           q = res.question
+          setQuestionLessonId(res.lesson_id)
         } else if (lessonId) {
           q = await nextLesson.mutateAsync({ qtype: typeToAsk })
+          setQuestionLessonId(lessonId)
         } else {
           return
         }
         setCurrentQuestion(q)
         setQuestionCount((c) => c + 1)
       } catch (err: unknown) {
-        const error = err as { status?: number; message?: string }
-        if (error?.status === 404 || error?.message?.includes('404')) {
+        if (err instanceof ApiError && err.code === 'no_questions') {
           setEmptyPoolError(true)
           setCurrentQuestion(null)
         } else {
@@ -204,7 +216,7 @@ export function LightweightSession({
 
   // Risposta a quiz
   const handleQuizAnswer = async () => {
-    if (selectedChoice === null || !currentQuestion || !lessonId) return
+    if (selectedChoice === null || !currentQuestion || !activeLessonId) return
     try {
       await answerMutation.mutateAsync({
         questionId: currentQuestion.id,
@@ -224,16 +236,13 @@ export function LightweightSession({
 
   // Risposta aperta scritta
   const handleWrittenAnswer = async () => {
-    if (!writtenAnswer.trim() || !currentQuestion || !lessonId) return
+    if (!writtenAnswer.trim() || !currentQuestion || !activeLessonId) return
     try {
-      await answerMutation.mutateAsync({
+      const result = await answerMutation.mutateAsync({
         questionId: currentQuestion.id,
         answer: writtenAnswer.trim(),
       })
-      setEvaluatedResult({
-        outcome: 'corretta',
-        explanation: currentQuestion.explanation ?? 'Risposta registrata e in valutazione.',
-      })
+      if (result.job) setEvaluationJob(result.job.job_id)
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
@@ -241,24 +250,33 @@ export function LightweightSession({
 
   // Risposta vocale
   const handleVoiceAnswer = async (audio: File) => {
-    if (!currentQuestion || !lessonId) return
+    if (!currentQuestion || !activeLessonId) return
     try {
-      await voiceMutation.mutateAsync({
+      const job = await voiceMutation.mutateAsync({
         questionId: currentQuestion.id,
         audio,
       })
-      setEvaluatedResult({
-        outcome: 'corretta',
-        explanation: 'Risposta vocale registrata.',
-      })
+      setEvaluationJob(job.job_id)
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
   }
 
+  // Fine della valutazione: esito e commento del modello dalla risposta salvata
+  const evaluationFinished = async () => {
+    const questionId = currentQuestion?.id
+    const { data } = await history.refetch()
+    const saved = data?.answers.filter((a) => a.question_id === questionId).pop()
+    setEvaluationJob(null)
+    setEvaluatedResult({
+      outcome: saved?.outcome ?? undefined,
+      explanation: saved?.evaluation ?? currentQuestion?.explanation ?? undefined,
+    })
+  }
+
   // Non lo so
   const handleDontKnow = async () => {
-    if (!currentQuestion || !lessonId) return
+    if (!currentQuestion || !activeLessonId) return
     try {
       await answerMutation.mutateAsync({
         questionId: currentQuestion.id,
@@ -277,7 +295,7 @@ export function LightweightSession({
 
   // Salta domanda
   const handleSkip = async () => {
-    if (!currentQuestion || !lessonId) return
+    if (!currentQuestion || !activeLessonId) return
     try {
       await skipMutation.mutateAsync(currentQuestion.id)
       void askNext()
@@ -288,7 +306,7 @@ export function LightweightSession({
 
   // Voto
   const handleVote = (voteType: 'up' | 'down') => {
-    if (!currentQuestion || !lessonId) return
+    if (!currentQuestion || !activeLessonId) return
     if (voteType === 'up') {
       voteMutation.mutate({ questionId: currentQuestion.id, vote: 'up' })
       setCurrentVote('up')
@@ -300,7 +318,7 @@ export function LightweightSession({
 
   // Conferma scarto con motivi
   const handleConfirmDiscard = () => {
-    if (!currentQuestion || !lessonId) return
+    if (!currentQuestion || !activeLessonId) return
     const reasons = Array.from(selectedReasons)
     voteMutation.mutate({
       questionId: currentQuestion.id,
@@ -313,7 +331,7 @@ export function LightweightSession({
 
   // Commenta e rigenera
   const handleCommentRegenerate = async () => {
-    if (!currentQuestion || !lessonId || !commentText.trim()) return
+    if (!currentQuestion || !activeLessonId || !commentText.trim()) return
     try {
       await regenerateMutation.mutateAsync({
         questionId: currentQuestion.id,
@@ -330,7 +348,7 @@ export function LightweightSession({
   const handleEnd = async () => {
     if (isSelection) {
       await endSubjectSession.mutateAsync()
-      navigate('/lezioni')
+      navigate('/')
     } else if (lessonId) {
       await endLessonSession.mutateAsync()
       navigate(`/lezioni/${lessonId}`)
@@ -348,7 +366,7 @@ export function LightweightSession({
     return 'Lezione'
   }, [isSelection, selectionIds.length, lessonQuery.data])
 
-  const backUrl = isSelection ? '/lezioni' : `/lezioni/${lessonId ?? ''}`
+  const backUrl = isSelection ? '/' : `/lezioni/${lessonId ?? ''}`
 
   // Calcolo domande da porre
   const daPorreCount = useMemo(() => {
@@ -372,7 +390,7 @@ export function LightweightSession({
   }, [isSelection, subjectRecallQuery.data, overviewQuery.data])
 
   const isQuiz = currentQuestion?.type === 'quiz'
-  const isAnswered = evaluatedResult !== null
+  const isAnswered = evaluatedResult !== null || evaluationJob !== null
   const busy =
     answerMutation.isPending ||
     voiceMutation.isPending ||
@@ -387,11 +405,8 @@ export function LightweightSession({
     <div className="flex min-h-screen flex-col bg-background" data-testid="recall-session-page">
       {/* Header sessione */}
       <header className="flex h-14 items-center gap-3 border-b px-4">
-        <Link
-          to={backUrl}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-input bg-card px-3 text-xs font-medium hover:bg-muted"
-        >
-          <ChevronLeft className="mr-1 size-3.5" aria-hidden /> Esci
+        <Link to={backUrl} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          <ChevronLeft aria-hidden /> Esci
         </Link>
         <span className="flex-1 truncate text-meta text-muted-foreground">
           Recall · <strong className="font-semibold text-foreground">{title}</strong>
@@ -401,7 +416,7 @@ export function LightweightSession({
 
       {/* Main content */}
       <main className="flex flex-1 justify-center px-4 py-8">
-        <div className="flex w-full max-w-[640px] flex-col gap-5">
+        <div className="flex w-full max-w-(--reading-width) flex-col gap-5">
           {/* Selettore tipi (chips) */}
           <div
             role="group"
@@ -456,7 +471,7 @@ export function LightweightSession({
                 <p className="text-meta text-muted-foreground">
                   {currentQuestion.type.toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}
                 </p>
-                <h2 className="text-heading text-lg font-semibold leading-relaxed">
+                <h2 className="text-heading font-semibold leading-relaxed">
                   {currentQuestion.question_text}
                 </h2>
               </div>
@@ -588,16 +603,22 @@ export function LightweightSession({
                 </div>
               )}
 
+              {evaluationJob && (
+                <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={() => void evaluationFinished()} />
+              )}
+
               {/* Scheda Esito */}
               {isAnswered && evaluatedResult && (
                 <div
                   className={cn(
                     'rounded-lg border p-3.5 text-body',
                     evaluatedResult.outcome === 'corretta'
-                      ? 'border-primary/40 bg-primary/5'
+                      ? 'border-success/40 bg-success-soft'
                       : evaluatedResult.outcome === 'parziale'
-                        ? 'border-warning/40 bg-warning/5'
-                        : 'border-danger/30 bg-danger/5',
+                        ? 'border-warning/40 bg-warning-soft'
+                        : evaluatedResult.outcome === 'sbagliata'
+                          ? 'border-danger/30 bg-danger-soft'
+                          : 'bg-card',
                   )}
                   data-testid="recall-result-card"
                 >
@@ -605,27 +626,31 @@ export function LightweightSession({
                     className={cn(
                       'font-semibold',
                       evaluatedResult.outcome === 'corretta'
-                        ? 'text-primary'
+                        ? 'text-success'
                         : evaluatedResult.outcome === 'parziale'
                           ? 'text-warning'
-                          : 'text-danger',
+                          : evaluatedResult.outcome === 'sbagliata'
+                            ? 'text-danger'
+                            : 'text-foreground',
                     )}
                   >
                     {evaluatedResult.outcome === 'corretta'
                       ? 'Giusto.'
                       : evaluatedResult.outcome === 'parziale'
                         ? 'Risposta parziale.'
-                        : 'Sbagliata.'}
+                        : evaluatedResult.outcome === 'sbagliata'
+                          ? 'Sbagliata.'
+                          : 'Valutazione'}
                   </p>
                   {evaluatedResult.explanation && (
                     <p className="mt-1 text-meta leading-relaxed">
                       {evaluatedResult.explanation}
                     </p>
                   )}
-                  {currentQuestion.unit_ids.length > 0 && lessonId && (
+                  {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
                     <p className="mt-2 text-meta">
                       <Link
-                        to={`/lezioni/${lessonId}`}
+                        to={`/lezioni/${activeLessonId}`}
                         className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
                       >
                         Rileggi l'unità {currentQuestion.unit_ids.join(', ')}

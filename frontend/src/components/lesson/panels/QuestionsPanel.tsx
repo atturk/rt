@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useJobs } from '@/api/jobs'
+import { useRelevance } from '@/api/relevance'
 import {
   useDeleteQuestions,
   useGenerateRecall,
@@ -15,6 +16,7 @@ import {
 } from '@/api/recall'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -89,7 +91,7 @@ function QuestionRowMenu({ onDelete }: { onDelete: () => void }) {
         <div
           role="menu"
           aria-label="Azioni sulla domanda"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[120px] rounded-lg border bg-card p-1 shadow-panel"
+          className="absolute right-0 top-full z-20 mt-1 min-w-32 rounded-lg border bg-card p-1 shadow-panel"
         >
           <button
             type="button"
@@ -129,6 +131,7 @@ export function QuestionsPanel({
   const generate = useGenerateRecall(id)
   const deleteQuestions = useDeleteQuestions(id)
   const jobs = useJobs({ lesson_id: id, limit: 10 })
+  const relevance = useRelevance(id)
 
   // Filtro tipo (solo vista normale)
   const [activeFilter, setActiveFilter] = useState<RecallType | null>(null)
@@ -234,6 +237,14 @@ export function QuestionsPanel({
     deleteQuestions.mutate([questionId])
   }
 
+  const summary = relevance.data?.summary
+  const classifierStatus = !summary
+    ? null
+    : summary.errors > 0
+      ? `${summary.errors} errori`
+      : summary.missing + summary.stale > 0
+        ? `${summary.missing + summary.stale} unità da classificare`
+        : 'aggiornato'
   const unitsData = recallUnits.data
   const totalUnits = unitsData?.units?.length ?? 0
   const selectedUnitsCount = unitsData?.selected ?? unitsData?.units?.filter((u) => u.selected).length ?? 0
@@ -251,11 +262,8 @@ export function QuestionsPanel({
               <p className="text-body font-semibold">{counts.daPorre} domande da porre</p>
               <p className="text-meta text-muted-foreground">{lastRecallText}</p>
             </div>
-            <Link
-              to={`/lezioni/${id}/sessione`}
-              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
-            >
-              <Brain className="mr-1.5 size-4" aria-hidden />
+            <Link to={`/lezioni/${id}/sessione`} className={cn(buttonVariants({ size: 'sm' }), 'shrink-0')}>
+              <Brain aria-hidden />
               Ripassa
             </Link>
           </div>
@@ -282,7 +290,7 @@ export function QuestionsPanel({
                       : 'border-border bg-card text-foreground hover:bg-muted/50',
                   )}
                 >
-                  <span className="text-[17px] font-semibold leading-tight">{count}</span>
+                  <span className="text-heading font-semibold leading-tight">{count}</span>
                   <span className="text-meta text-muted-foreground">{plural}</span>
                 </button>
               )
@@ -476,7 +484,7 @@ export function QuestionsPanel({
       {!questionsQuery.isPending && filteredQuestions.length === 0 && (
         <p className="py-4 text-center text-meta text-muted-foreground" data-testid="questions-empty">
           {isSelectionMode
-            ? 'Nessuna domanda per questa parte. Puoi generarne con il modulo sopra.'
+            ? 'Nessuna domanda per questa parte.'
             : activeFilter
               ? 'Nessuna domanda di questo tipo.'
               : 'Nessuna domanda presente.'}
@@ -522,7 +530,7 @@ export function QuestionsPanel({
             )}
           </div>
           <div className="flex items-center justify-between">
-            <span>Classificatore: aggiornato</span>
+            <span>Classificatore{classifierStatus ? `: ${classifierStatus}` : ''}</span>
             {onSwitchToClassifier && (
               <button
                 type="button"

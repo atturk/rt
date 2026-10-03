@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType } from 'react'
-import { Navigate, useParams, type RouteObject } from 'react-router'
+import { Navigate, useLocation, useParams, type RouteObject } from 'react-router'
 
 import { Layout } from '@/components/Layout'
 import { SetupGate } from './setupGate'
@@ -29,14 +29,19 @@ function RedirectSubjectRecall() {
   return <Navigate to={materia ? `/?materia=${encodeURIComponent(materia)}` : '/'} replace />
 }
 
+/** Le pagine tolte della lezione aprono il pannello corrispondente; restano gli altri parametri (es. ?issue=). */
 function RedirectLessonPanel({ panel }: { panel: string }) {
   const { lessonId } = useParams()
-  return <Navigate to={`/lezioni/${lessonId}?panel=${panel}`} replace />
+  const { search, hash } = useLocation()
+  const query = new URLSearchParams(search)
+  query.set('panel', panel)
+  return <Navigate to={`/lezioni/${lessonId}?${query}${hash}`} replace />
 }
 
 function RedirectLesson() {
   const { lessonId } = useParams()
-  return <Navigate to={`/lezioni/${lessonId}`} replace />
+  const { search, hash } = useLocation()
+  return <Navigate to={`/lezioni/${lessonId}${search}${hash}`} replace />
 }
 
 const lessonsArea: Area = {

@@ -11,6 +11,13 @@ const mockVoteMutate = vi.fn()
 const mockRegenerateMutateAsync = vi.fn()
 const mockSkipMutateAsync = vi.fn()
 const mockEndMutateAsync = vi.fn()
+const mockHistoryRefetch = vi.fn()
+
+vi.mock('@/components/JobProgress', () => ({
+  JobProgress: ({ label, onFinished }: { label: string; onFinished: (state: string) => void }) => (
+    <button type="button" onClick={() => onFinished('succeeded')}>{label}</button>
+  ),
+}))
 
 vi.mock('@/api/hooks', () => ({
   useLesson: vi.fn(() => ({
@@ -32,6 +39,7 @@ vi.mock('@/api/recall', () => ({
   })),
   useRecallHistory: vi.fn(() => ({
     data: { answers: [] },
+    refetch: mockHistoryRefetch,
   })),
   useSubjectRecall: vi.fn(() => ({
     data: { lessons: [] },
@@ -116,6 +124,22 @@ describe('LightweightSession', () => {
     expect(await screen.findByText("Quale valore di bicarbonato definisce l'acidosi metabolica?")).toBeInTheDocument()
     expect(screen.getByText('A.')).toBeInTheDocument()
     expect(screen.getByText('Sotto 22 mEq/L')).toBeInTheDocument()
+  })
+
+  it('risposta aperta: aspetta la valutazione e mostra l’esito del valutatore', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q200', type: 'mirata', options: null, correct_index: null })
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'j1' } })
+    mockHistoryRefetch.mockResolvedValue({ data: { answers: [{ question_id: 'q200', outcome: 'parziale', evaluation: 'Manca il compenso respiratorio.' }] } })
+    renderSession()
+
+    fireEvent.change(await screen.findByLabelText('Risposta scritta'), { target: { value: 'Sotto 22' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rispondi' }))
+    expect(await screen.findByRole('button', { name: 'Valutazione della risposta' })).toBeInTheDocument()
+    expect(screen.queryByText('Giusto.')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Valutazione della risposta' }))
+    expect(await screen.findByText('Risposta parziale.')).toBeInTheDocument()
+    expect(screen.getByText('Manca il compenso respiratorio.')).toBeInTheDocument()
   })
 
   it('risponde a un quiz e mostra la scheda esito', async () => {

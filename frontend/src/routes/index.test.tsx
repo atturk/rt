@@ -6,7 +6,7 @@ import { areas } from './index'
 
 function LocationProbe() {
   const loc = useLocation()
-  return <div data-testid="location">{loc.pathname + loc.search}</div>
+  return <div data-testid="location">{loc.pathname + loc.search + loc.hash}</div>
 }
 
 function testRedirect(initialEntry: string, expectedLocation: string) {
@@ -61,6 +61,11 @@ describe('A5: redirect delle pagine tolte', () => {
 
   it('redirect /lezioni/:lessonId/relevance -> /lezioni/:lessonId?panel=classificatore', () => {
     testRedirect('/lezioni/12/relevance', '/lezioni/12?panel=classificatore')
+  })
+
+  it('i vecchi link conservano query e ancora', () => {
+    testRedirect('/lezioni/5/outline?from=job#unit-1.2', '/lezioni/5?from=job#unit-1.2')
+    testRedirect('/lezioni/5/revisione?issue=a', '/lezioni/5?issue=a&panel=verifica')
   })
 
   it('redirect /lezioni/:lessonId/outline -> /lezioni/:lessonId', () => {
