@@ -2,7 +2,7 @@ import { AtomicCodeMirrorEditor, type AtomicCodeMirrorEditorHandle } from '@atom
 import '@atomic-editor/editor/styles.css'
 import { EditorView } from '@codemirror/view'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type MouseEvent } from 'react'
 import { useLocation } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
@@ -42,7 +42,10 @@ function viewOf(handle: AtomicCodeMirrorEditorHandle | null): EditorView | null 
   return content ? EditorView.findFromDOM(content) : null
 }
 
+export type LessonEditorActions = { flush: () => Promise<void> }
+
 type Props = {
+  actionsRef?: RefObject<LessonEditorActions | null>
   lessonId: number
   document: Schemas['LessonDocument']
   hasAudio: boolean
@@ -60,7 +63,7 @@ type Props = {
  * si salvano da sole nella bozza dopo una breve pausa; i timecode sono bloccati (clic: ascolta,
  * triplo clic: modifica). Il documento finale va poi ricreato con la fase Documento.
  */
-export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange }: Props) {
+export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
@@ -84,15 +87,11 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const client = useQueryClient()
   // Ultimo Markdown visto dal server, e se la prossima novità è l'eco di un nostro salvataggio.
   const server = useRef(doc.markdown)
-  const echo = useRef(false)
 
   useEffect(() => {
     if (doc.markdown === server.current) return
     server.current = doc.markdown
-    if (echo.current) {
-      echo.current = false
-      return
-    }
+    if (doc.markdown === saved.current) return
     // modifiche non ancora salvate: restano quelle dell'utente
     if (text !== saved.current) return
     saved.current = doc.markdown
@@ -101,8 +100,11 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     setSource((s) => ({ key: s.key + 1, markdown: doc.markdown }))
   }, [doc.markdown, text])
 
+  const leaseRef = useRef<string | null>(null)
+  const savingRef = useRef<Promise<void> | null>(null)
   const acquire = useCallback(async (recover = false) => {
     const result = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { recover } } }))
+    leaseRef.current = result.token
     setLease(result.token)
     return result.token
   }, [lessonId])
@@ -110,12 +112,11 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const persist = useCallback(async (markdown: string, recover = false) => {
     setStatus({ kind: 'saving' })
     try {
-      const token = lease ?? (await acquire(recover))
+      const token = leaseRef.current ?? (await acquire(recover))
       const result = await unwrap(api.PUT('/api/v1/lessons/{lesson_id}/document/draft', {
         params: { path: { lesson_id: lessonId } }, body: { markdown, lease_token: token },
       }))
       saved.current = markdown
-      echo.current = true
       setStatus({ kind: 'saved', final: doc.final && result.changed })
       // rilegge documento, fasi e build da rifare
       void client.invalidateQueries({ queryKey: lessonKeys.all(lessonId) })
@@ -124,15 +125,37 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       const problems = problemsOf(error)
       if (problems) setStatus({ kind: 'invalid', problems })
       else setStatus({ kind: 'error', message: errorMessage(error), busy: error instanceof ApiError && error.code === 'document_edit_busy' })
+      throw error
     }
-  }, [lease, acquire, lessonId, doc.final, client])
+  }, [acquire, lessonId, doc.final, client])
+
+  const save = useCallback(async (markdown: string, recover = false) => {
+    if (savingRef.current) await savingRef.current.catch(() => undefined)
+    if (markdown === saved.current) return
+    const pending = persist(markdown, recover)
+    savingRef.current = pending
+    try { await pending } finally { if (savingRef.current === pending) savingRef.current = null }
+  }, [persist])
+  useEffect(() => {
+    if (!actionsRef) return
+    actionsRef.current = { flush: async () => {
+      const markdown = viewOf(handle.current)?.state.doc.toString() ?? text
+      await save(markdown)
+      if (leaseRef.current) {
+        await unwrap(api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { token: leaseRef.current } } }))
+        leaseRef.current = null
+        setLease(null)
+      }
+    } }
+    return () => { actionsRef.current = null }
+  }, [actionsRef, text, save, lessonId])
 
   // Salvataggio dopo una pausa nella scrittura.
   useEffect(() => {
     if (text === saved.current || locked) return
     // oxlint-disable-next-line react/set-state-in-effect
     setStatus({ kind: 'pending' })
-    const timer = window.setTimeout(() => void persist(text), SAVE_DELAY_MS)
+    const timer = window.setTimeout(() => void save(text).catch(() => undefined), SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
     // persist cambia con il lease: non deve far ripartire l'attesa
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,6 +170,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     }, LEASE_RENEW_MS)
     const idle = window.setTimeout(() => {
       release()
+      leaseRef.current = null
       setLease(null)
     }, LEASE_IDLE_MS)
     return () => {
@@ -270,7 +294,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         status={status}
         locked={locked}
         onGoToLine={goToLine}
-        onRecover={() => void persist(text, true)}
+        onRecover={() => void save(text, true).catch(() => undefined)}
         onRestore={restore}
         onDownloadAndRestore={downloadAndRestore}
       />

@@ -1,5 +1,5 @@
 import { BookOpen, Brain, Download, Image, Info, Plus, ShieldCheck } from 'lucide-react'
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -7,6 +7,7 @@ import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
 import { LessonPanel } from '@/components/lesson/LessonPanel'
+import type { LessonEditorActions } from '@/components/lesson/LessonEditor'
 import { PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
@@ -165,6 +166,7 @@ function useSearchShortcut(inputId: string) {
 
 export function LessonPage() {
   const id = Number(useParams().lessonId)
+  const editorActions = useRef<LessonEditorActions | null>(null)
   const [editingDocument, setEditingDocument] = useState(false)
   const [panel, setPanel] = usePanelView()
   const lesson = useLesson(id)
@@ -200,11 +202,11 @@ export function LessonPage() {
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
           <LessonProgress lessonId={l.id} />
-          <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
+          <DocumentCard lesson={l} actionsRef={editorActions} onEditingChange={setEditingDocument} />
         </article>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
-      {panel && <LessonPanel view={panel} lesson={l} sections={sections} editingDocument={editingDocument} onClose={() => setPanel(null)} />}
+      {panel && <LessonPanel view={panel} lesson={l} sections={sections} editingDocument={editingDocument} beforeReviewAction={async () => { await editorActions.current?.flush() }} onClose={() => setPanel(null)} />}
     </AudioProvider>
   )
 }
@@ -249,7 +251,7 @@ function LessonProgress({ lessonId }: { lessonId: number }) {
 const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
 /** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
-function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
+function DocumentCard({ lesson: l, onEditingChange, actionsRef }: { actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const running = useJobs({ lesson_id: id, limit: 20 }).data?.some((j) => isActive(j.state)) ?? false
@@ -267,6 +269,7 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
           )}
           <Suspense fallback={<DocumentSkeleton />}>
             <LessonEditor
+              actionsRef={actionsRef}
               lessonId={id}
               document={document.data}
               hasAudio={l.has_audio}
