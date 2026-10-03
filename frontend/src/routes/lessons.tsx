@@ -2,19 +2,21 @@ import { BookOpen, Brain, Download, Image, Info, Plus, ShieldCheck } from 'lucid
 import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { errorMessage, type Schemas } from '@/api/client'
+import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
 import { LessonPanel } from '@/components/lesson/LessonPanel'
 import type { LessonEditorActions } from '@/components/lesson/LessonEditor'
+import { LessonOutline } from '@/components/lesson/LessonOutline'
+import { isRewriting, liveRewrite } from '@/components/lesson/lessonWorkflow'
 import { PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
-import { useJob, useJobs } from '@/api/jobs'
+import { useJob, useJobs, useOutline } from '@/api/jobs'
 import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, shortDate, subjectName, useLessonsPrefs } from '@/lib/lessonsPage'
@@ -182,6 +184,9 @@ export function LessonPage() {
   const [editorText, setEditorText] = useState<{ id: number; markdown: string } | null>(null)
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
+  const outline = useOutline(id)
+  const jobs = useJobs({ lesson_id: id, limit: 20 })
+  const job = jobs.data?.find((j) => isActive(j.state)) ?? jobs.data?.find((j) => j.state === 'waiting_for_decision')
   const back = { to: '/', label: 'Lezioni' }
   if (lesson.isPending || lesson.isError) {
     return (
@@ -194,6 +199,8 @@ export function LessonPage() {
     )
   }
   const l = lesson.data
+  // Le lezioni già rielaborate (anche importate da versioni precedenti) non richiedono il gate della scaletta.
+  const pendingOutline = !!outline.data && !outline.data.approved && l.phases.rewrite !== 'VALID'
   const sections = document.data?.sections ?? []
   const path = [l.materia ? subjectName(l.materia) : null, l.data ? shortDate(l.data) : null, l.docente?.trim() || null].filter(Boolean).join(' · ')
   const meta = [l.unit_count != null ? `${l.unit_count} unità` : null, l.duration_seconds ? formatDuration(l.duration_seconds) : null].filter(Boolean).join(' · ')
@@ -212,8 +219,11 @@ export function LessonPage() {
           <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
-          <LessonProgress lessonId={l.id} />
-          <DocumentCard lesson={l} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />
+          <LessonProgress lessonId={l.id} job={job} pendingOutline={pendingOutline} />
+          {outline.isError && !(outline.error instanceof ApiError && outline.error.code === 'outline_not_found') && <Alert tone="danger" className="mt-5">{errorMessage(outline.error)}<Button size="sm" variant="outline" onClick={() => void outline.refetch()}>Riprova</Button></Alert>}
+          {outline.data && pendingOutline
+            ? <LessonOutline key={outline.data.expires_at ?? JSON.stringify(outline.data.macro_sections)} lessonId={id} outline={outline.data} busy={!!job && isActive(job.state)} mock={job?.payload.mock === true || (typeof job?.payload.options === 'object' && job.payload.options != null && 'mock' in job.payload.options && job.payload.options.mock === true)} refresh={outline.refetch} />
+            : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />}
         </article>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
@@ -246,14 +256,11 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
 }
 
 /** Pipeline o fase in corso sulla lezione: le due barre con gli eventi dal vivo (schermata 03). */
-function LessonProgress({ lessonId }: { lessonId: number }) {
-  const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
-  // Anche fermo su una decisione: l'avanzamento dice quale e porta a prenderla.
-  const running = (jobs.data ?? []).find((j) => isActive(j.state) || j.state === 'waiting_for_decision')
+function LessonProgress({ lessonId, job, pendingOutline }: { lessonId: number; job?: Schemas['Job']; pendingOutline: boolean }) {
   return (
     <>
-      <LessonWaiting lessonId={lessonId} className="mt-5" />
-      {running ? <PhaseProgress jobId={running.id} className="my-6" /> : null}
+      {!pendingOutline && <LessonWaiting lessonId={lessonId} className="mt-5" />}
+      {job && !(job.state === 'waiting_for_decision' && pendingOutline) ? <PhaseProgress jobId={job.id} className="my-6" /> : null}
     </>
   )
 }
@@ -262,18 +269,20 @@ function LessonProgress({ lessonId }: { lessonId: number }) {
 const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
 /** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
-function DocumentCard({ lesson: l, onEditingChange, actionsRef, reviewOpen, classifierOpen, onDocumentChange }: { classifierOpen: boolean; reviewOpen: boolean; onDocumentChange: (markdown: string) => void; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
+function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, reviewOpen, classifierOpen, onDocumentChange }: { outline?: Schemas['Outline']; job?: Schemas['Job']; classifierOpen: boolean; reviewOpen: boolean; onDocumentChange: (markdown: string) => void; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
-  const running = useJobs({ lesson_id: id, limit: 20 }).data?.some((j) => isActive(j.state)) ?? false
+  const running = !!job && isActive(job.state)
+  const live = outline && job && isRewriting(job, l.phases.rewrite === 'VALID') ? liveRewrite(outline, document.data, job) : null
+  const doc = live?.document ?? document.data
   return (
     <div className="mt-6">
-      {document.isPending && <DocumentSkeleton />}
+      {document.isPending && !live && <DocumentSkeleton />}
       {/* In corso: lo scheletro al posto del testo che ancora manca (linee guida §4). */}
-      {document.isError && (running ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(document.error)}</Alert>)}
-      {document.data && (
+      {document.isError && !live && (running ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(document.error)}</Alert>)}
+      {doc && (
         <>
-          {!document.data.final && (
+          {!doc.final && !live && (
             <p className="mb-2 text-meta text-muted-foreground" data-testid="document-preview-note">
               Bozza
             </p>
@@ -286,7 +295,8 @@ function DocumentCard({ lesson: l, onEditingChange, actionsRef, reviewOpen, clas
               onDocumentChange={onDocumentChange}
               actionsRef={actionsRef}
               lessonId={id}
-              document={document.data}
+              document={doc}
+              unitTasks={live?.tasks}
               hasAudio={l.has_audio}
               ready={l.phases.rewrite === 'VALID'}
               locked={running}

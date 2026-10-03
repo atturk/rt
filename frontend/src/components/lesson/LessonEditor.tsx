@@ -1,6 +1,8 @@
 import { AtomicCodeMirrorEditor, type AtomicCodeMirrorEditorHandle } from '@atomic-editor/editor'
 import '@atomic-editor/editor/styles.css'
 import { EditorView } from '@codemirror/view'
+import { Check, Circle, LoaderCircle, Lock } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type MouseEvent } from 'react'
 import { useLocation, useSearchParams } from 'react-router'
@@ -12,13 +14,15 @@ import { lessonImageUploads } from './lessonImages'
 import { useRelevance } from '@/api/relevance'
 import { lessonKeys, useIssues } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
+import { Tooltip } from '@/components/ui/tooltip'
 import { parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { activeUnit } from '@/lib/audio'
 import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
-import { lessonImages, lessonUnits, setSlots, unitRanges } from './lessonUnits'
+import { lessonImages, lessonUnits, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
+import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
@@ -53,6 +57,7 @@ function viewOf(handle: AtomicCodeMirrorEditorHandle | null): EditorView | null 
 export type LessonEditorActions = { flush: () => Promise<void> }
 
 type Props = {
+  unitTasks?: Record<string, UnitTask>
   classifierOpen?: boolean
   reviewOpen?: boolean
   onDocumentChange?: (markdown: string) => void
@@ -74,7 +79,7 @@ type Props = {
  * si salvano da sole nella bozza dopo una breve pausa; i timecode sono bloccati (clic: ascolta,
  * triplo clic: modifica). Il documento finale va poi ricreato con la fase Documento.
  */
-export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange }: Props) {
+export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
@@ -269,6 +274,15 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     viewOf(handle.current)?.dispatch({ effects: setSlots.of(slots) })
   }, [slots, source.key])
 
+  const taskSlots = useMemo(() => Object.fromEntries(Object.entries(unitTasks ?? {}).map(([id, state]) => {
+    const element = window.document.createElement('span')
+    element.className = `rt-unit-task rt-unit-task-${state}`
+    return [id, { state, element }]
+  })), [unitTasks])
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: setUnitTasks.of(taskSlots) })
+  }, [taskSlots, source.key])
+
   useEffect(() => {
     const view = viewOf(handle.current)
     if (!view) return
@@ -406,6 +420,11 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         </div>
       </DocumentMenu>
       <EnrichmentPortals slots={slots} lessonId={lessonId} />
+      {Object.entries(taskSlots).map(([id, task]) => {
+        const Icon = task.state === 'done' ? Check : task.state === 'working' ? LoaderCircle : Circle
+        const label = task.state === 'done' ? 'Fatta' : task.state === 'working' ? 'In corso' : 'Da fare'
+        return createPortal(<span role="img" aria-label={`${id}: ${label}`}><Icon size={16} aria-hidden className={task.state === 'working' ? 'animate-spin' : undefined} /></span>, task.element, id)
+      })}
     </>
   )
 }
@@ -420,7 +439,9 @@ function EditorStatus({ status, locked, onGoToLine, onRecover, onRestore, onDown
   onDownloadAndRestore: () => void
 }) {
   if (locked) {
-    return <p className="mb-3 text-meta text-muted-foreground" data-testid="editor-status">Un job sta lavorando sulla lezione: la modifica riprende quando finisce.</p>
+    return <div className="mb-3 flex justify-end text-muted-foreground" data-testid="editor-status">
+      <Tooltip content="Sola lettura">{(trigger) => <span tabIndex={0} {...trigger} role="img" aria-label="Sola lettura"><Lock size={16} aria-hidden /></span>}</Tooltip>
+    </div>
   }
   if (status.kind === 'invalid') {
     return <Incompatible problems={status.problems} onGoToLine={onGoToLine} onRestore={onRestore} onDownloadAndRestore={onDownloadAndRestore} />
@@ -442,7 +463,6 @@ function EditorStatus({ status, locked, onGoToLine, onRecover, onRestore, onDown
   return (
     <p className="mb-3 h-4 text-meta text-muted-foreground" aria-live="polite" data-testid="editor-status" data-status={status.kind}>
       {label}
-      {status.kind === 'saved' && status.final && ' · il documento finale va ricreato con la fase Documento'}
     </p>
   )
 }

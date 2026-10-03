@@ -16,11 +16,12 @@ const EVENTS_PATH = '/api/v1/events' satisfies keyof paths
 /** Evento 'job' dello stream: solo chi e cosa, il resto si rilegge dall'API. */
 export type LiveJobEvent = { id: number; job_id: string; job_type: string; lesson_id: number | null; type: string }
 
-/** Eventi frequenti durante un job: aggiornano job e avanzamento, non lezione e documento. */
+/** Eventi frequenti: il documento si rilegge solo per i job che scrivono checkpoint. */
 const PROGRESS_EVENTS = new Set(['phase_progress', 'cost_updated', 'notice', 'job_cancel_requested'])
 /** Eventi dopo cui documento, fasi e issue della lezione possono essere cambiati. */
 const LESSON_EVENTS = new Set(['phase_completed', 'phase_failed', 'job_waiting', 'job_finished', 'decision_required'])
 const RECALL_JOBS = new Set(['recall_generate', 'recall_batch', 'recall_refill', 'recall_evaluate', 'unit_relevance'])
+const DOCUMENT_JOBS = new Set(['run_pipeline', 'run_phase', 'rewrite_unit'])
 
 const isLessonJobs = (key: QueryKey) => key[0] === 'lesson' && key[2] === 'jobs'
 
@@ -32,6 +33,7 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
   if (lesson != null) keys.push(lessonKeys.jobs(lesson))
   if (event.job_type.startsWith('enrichment_')) keys.push(['enrichment'])
   if (event.type === 'cost_updated') keys.push(queryKeys.costs)
+  if (lesson != null && event.type === 'phase_progress' && DOCUMENT_JOBS.has(event.job_type)) keys.push(lessonKeys.document(lesson))
   if (PROGRESS_EVENTS.has(event.type)) return keys
 
   keys.push(queryKeys.allLessons, ['enrichment'])
@@ -52,6 +54,9 @@ function invalidateJobQueries(client: QueryClient) {
   void client.invalidateQueries({ queryKey: ['job'] })
   void client.invalidateQueries({ predicate: (query) => isLessonJobs(query.queryKey) })
   void client.invalidateQueries({ queryKey: ['enrichment'] })
+  // I checkpoint prodotti durante una disconnessione devono comparire anche senza un evento nuovo.
+  void client.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'lesson' && query.queryKey[2] === 'document' })
+  void client.invalidateQueries({ queryKey: ['outline'] })
   void client.invalidateQueries({ queryKey: ['recall-subject'] })
 }
 

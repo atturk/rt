@@ -66,7 +66,7 @@ export function LessonJobBanner({ lessonId, review = false, waiting = true, extr
       {waiting && <LessonWaiting lessonId={lessonId} />}
       <ClassificationNotice lessonId={lessonId} />
       <p className="flex flex-wrap gap-4 text-xs">
-        <Link to={`/lezioni/${lessonId}/outline`} className="underline">
+        <Link to={`/lezioni/${lessonId}`} className="underline">
           Scaletta e approvazione
         </Link>
         <Link to={`/job?lezione=${lessonId}`} className="underline">

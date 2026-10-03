@@ -79,7 +79,7 @@ describe('JobLive', () => {
   it("in attesa dell'approvazione della scaletta porta alla pagina della scaletta", () => {
     renderJob({ state: 'waiting_for_decision', decision: { kind: 'outline_approval' } })
     expect(screen.getByTestId('job-decision')).toHaveTextContent('devi approvare la scaletta')
-    expect(screen.getByRole('link', { name: 'Rivedi la scaletta' })).toHaveAttribute('href', '/lezioni/3/outline')
+    expect(screen.getByRole('link', { name: 'Rivedi la scaletta' })).toHaveAttribute('href', '/lezioni/3')
   })
 
   it('un job fallito già riprovato mostra errore e nuovo tentativo, senza Riprova né Annulla', () => {

@@ -64,7 +64,7 @@ describe('etichette dei job', () => {
   it('nomina la fase dei job run_phase e porta alla decisione giusta', () => {
     expect(jobTypeLabel({ type: 'run_phase', payload: { phase: 'review' } })).toBe('Fase: Revisione')
     expect(jobTypeLabel({ type: 'run_pipeline', payload: {} })).toBe('Pipeline completa')
-    expect(decisionLink({ lesson_id: 7, decision: { kind: 'outline_approval' } })).toBe('/lezioni/7/outline')
+    expect(decisionLink({ lesson_id: 7, decision: { kind: 'outline_approval' } })).toBe('/lezioni/7')
     expect(decisionLink({ lesson_id: 7, decision: { kind: 'science_issue' } })).toBe('/lezioni/7/revisione')
     expect(decisionLink({ lesson_id: null, decision: null })).toBeNull()
   })
@@ -75,7 +75,7 @@ describe('etichette dei job', () => {
     expect(canCloseJob({ state: 'waiting_for_decision', lesson_id: null, decision: { kind: 'setup_metadata' } })).toBe(false)
     expect(canCloseJob({ state: 'running', lesson_id: 7, decision: null })).toBe(false)
     const closed = { kind: 'outline_approval', message: 'Chiuso: la scaletta resta da approvare nella schermata Scaletta' }
-    expect(closedJob({ state: 'succeeded', lesson_id: 7, result: { closed } })).toEqual({ ...closed, link: '/lezioni/7/outline' })
+    expect(closedJob({ state: 'succeeded', lesson_id: 7, result: { closed } })).toEqual({ ...closed, link: '/lezioni/7' })
     expect(closedJob({ state: 'succeeded', lesson_id: 7, result: {} })).toBeNull()
     expect(describeEvent({ type: 'job_finished', payload: { state: 'succeeded', closed: true, message: closed.message } }))
       .toEqual({ text: closed.message, tone: 'success' })

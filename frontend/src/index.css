@@ -474,3 +474,20 @@
 }
 .rt-unit-score { font-variant-numeric: tabular-nums; }
 .rt-lesson-editor .rt-unit-excluded { color: var(--muted-foreground); }
+
+.rt-unit-task {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: .6rem;
+  vertical-align: middle;
+}
+.rt-unit-task-done { border-radius: 50%; background: var(--success); color: var(--background); }
+.rt-unit-task-working { color: var(--success); }
+.rt-unit-task-waiting, .rt-lesson-editor .rt-unit-waiting { color: var(--muted-foreground); }
+.rt-unit-pending { display: grid; gap: 6px; padding: 10px 0; }
+.rt-unit-pending > div { height: 9px; border-radius: var(--radius-md); background: var(--muted); width: 95%; }
+.rt-unit-pending > div:nth-child(2) { width: 88%; }
+.rt-unit-pending > div:nth-child(3) { width: 60%; }

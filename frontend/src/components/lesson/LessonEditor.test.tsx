@@ -44,3 +44,14 @@ it('attende la fine dei caricamenti prima di salvare e liberare il lease', async
   await act(async () => { finish(); await flushed })
   expect(calls.put).toHaveBeenCalledOnce()
 })
+
+it('blocca il testo durante la classificazione e lo sblocca alla fine del job', () => {
+  const query = new QueryClient()
+  const component = (locked: boolean) => <QueryClientProvider client={query}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Testo completo', html: '', sections: [], final: false }} hasAudio={false} ready locked={locked} /></AudioProvider></MemoryRouter></QueryClientProvider>
+  const view = render(component(true))
+  expect(screen.getByRole('img', { name: 'Sola lettura' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Editor')).toHaveAttribute('readonly')
+  view.rerender(component(false))
+  expect(screen.queryByRole('img', { name: 'Sola lettura' })).toBeNull()
+  expect(screen.getByLabelText('Editor')).not.toHaveAttribute('readonly')
+})
