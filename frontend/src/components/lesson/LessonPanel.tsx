@@ -43,7 +43,7 @@ export function LessonPanel({ view, lesson, sections, editingDocument, onClose }
       aria-label={TITLES[view]}
       data-testid="lesson-panel"
       data-view={view}
-      className="fixed bottom-0 right-0 top-(--header-height) z-20 flex w-[min(24rem,100vw)] flex-col overflow-y-auto border-l bg-background px-4 pb-6 pt-3 shadow-panel max-md:top-0 max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
+      className="fixed bottom-0 right-0 top-(--header-height) z-10 flex w-[min(24rem,100vw)] flex-col overflow-y-auto border-l bg-background px-4 pb-6 pt-3 shadow-panel max-md:top-0 max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
     >
       <div className="mb-3 flex items-center gap-2">
         <h2 className="min-w-0 flex-1 text-[15px] font-semibold">{TITLES[view]}</h2>

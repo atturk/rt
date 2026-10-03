@@ -22,7 +22,10 @@ test('review: accetta, mantieni, modifica, annulla; il ledger resta dopo la rica
   await loginViaLink(page)
   const id = await lessonId(page, 'FARMACOLOGIA')
   await page.locator(`[data-testid=lesson-row][data-lesson-id="${id}"]`).getByRole('link', { name: 'Apri' }).click()
-  await page.getByRole('link', { name: /^Rivedi/ }).click()
+  // Le issue da valutare si aprono dal pannello Verifica con LLM della lezione.
+  await page.getByTestId('lesson-actions').getByRole('button', { name: 'Verifica con LLM' }).click()
+  await expect(page.getByTestId('lesson-review-panel')).toContainText('10 issue da valutare.')
+  await page.getByTestId('lesson-review-panel').getByRole('link', { name: 'Rivedi le decisioni' }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${id}/revisione`))
   await expect(counter(page)).toHaveText('10 da decidere su 10')
   await expect(page.getByTestId('issue-suggestion')).toBeVisible()

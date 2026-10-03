@@ -199,6 +199,9 @@ test('intestazione: Studia, Verifica, Dettagli ed Esporta sempre nello stesso po
   await actions.getByRole('button', { name: 'Verifica con LLM' }).click()
   await expect(page.getByTestId('lesson-panel')).toHaveAttribute('data-view', 'verifica')
   await expect(page.getByTestId('lesson-review-panel')).toContainText('non è ancora stata verificata')
+  // Il primo Esc chiude il suggerimento del pulsante col focus, il secondo il pannello.
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('lesson-panel')).toHaveCount(0)
 

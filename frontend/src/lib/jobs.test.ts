@@ -65,7 +65,7 @@ describe('etichette dei job', () => {
     expect(jobTypeLabel({ type: 'run_phase', payload: { phase: 'review' } })).toBe('Fase: Revisione')
     expect(jobTypeLabel({ type: 'run_pipeline', payload: {} })).toBe('Pipeline completa')
     expect(decisionLink({ lesson_id: 7, decision: { kind: 'outline_approval' } })).toBe('/lezioni/7/outline')
-    expect(decisionLink({ lesson_id: 7, decision: { kind: 'science_issue' } })).toBe('/lezioni/7')
+    expect(decisionLink({ lesson_id: 7, decision: { kind: 'science_issue' } })).toBe('/lezioni/7/revisione')
     expect(decisionLink({ lesson_id: null, decision: null })).toBeNull()
   })
 

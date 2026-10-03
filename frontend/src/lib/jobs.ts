@@ -79,7 +79,9 @@ export function decisionLabel(decision: Job['decision']): string {
 /** Pagina dove prendere la decisione attesa dal job. */
 export function decisionLink(job: Pick<Job, 'decision' | 'lesson_id'>): string | null {
   if (job.lesson_id == null) return null
-  return job.decision?.kind === 'outline_approval' ? `/lezioni/${job.lesson_id}/outline` : `/lezioni/${job.lesson_id}`
+  const kind = job.decision?.kind
+  // Le issue si decidono nella revisione (la pagina della lezione la apre dal pannello Verifica).
+  return kind === 'outline_approval' ? `/lezioni/${job.lesson_id}/outline` : kind === 'science_issue' ? `/lezioni/${job.lesson_id}/revisione` : `/lezioni/${job.lesson_id}`
 }
 
 // Decisioni che hanno una loro schermata: il job che le aspetta si può chiudere e decidere dopo.

@@ -107,7 +107,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           Serve la tua approvazione: devi {decisionLabel(j.decision)}.{' '}
           {link && (
             <Link to={link} className="font-semibold underline">
-              {j.decision?.kind === 'outline_approval' ? 'Rivedi la scaletta' : 'Apri la lezione'}
+              {j.decision?.kind === 'outline_approval' ? 'Rivedi la scaletta' : j.decision?.kind === 'science_issue' ? 'Apri la revisione' : 'Apri la lezione'}
             </Link>
           )}
         </Alert>
