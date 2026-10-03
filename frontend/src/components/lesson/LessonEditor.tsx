@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type
 import { useLocation, useSearchParams } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
+import { imageKeys, uploadEditorImage } from '@/api/images'
+import { Alert } from '@/components/ui/alert'
+import { lessonImageUploads } from './lessonImages'
 import { useRelevance } from '@/api/relevance'
 import { lessonKeys, useIssues } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
@@ -85,14 +88,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
   const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash } = useLocation()
-  const extensions = useMemo(() => [
-    timecodeLock,
-    lessonUnits,
-    lessonReview,
-    lessonClassifier,
-    lessonImages(lessonId),
-    EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
-  ], [lessonId])
+
 
   // Il testo che l'editor mostra al montaggio; cambia (e l'editor riparte) solo se il documento
   // cambia sul server per altre vie (un job), non per i nostri salvataggi.
@@ -119,13 +115,49 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   }, [doc.markdown, text, onDocumentChange])
 
   const leaseRef = useRef<string | null>(null)
+  const acquiringRef = useRef<Promise<string> | null>(null)
+  const uploads = useRef(new Set<Promise<void>>())
+  const [uploadCount, setUploadCount] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const savingRef = useRef<Promise<void> | null>(null)
-  const acquire = useCallback(async (recover = false) => {
-    const result = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { recover } } }))
-    leaseRef.current = result.token
-    setLease(result.token)
-    return result.token
+  const acquire = useCallback((recover = false) => {
+    if (acquiringRef.current) return acquiringRef.current
+    const task = (async () => {
+      const result = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { recover } } }))
+      leaseRef.current = result.token
+      setLease(result.token)
+      return result.token
+    })()
+    acquiringRef.current = task
+    void task.finally(() => { acquiringRef.current = null }).catch(() => undefined)
+    return task
   }, [lessonId])
+
+  const uploadImage = useCallback(async (file: File) => {
+    const token = leaseRef.current ?? await acquire()
+    const image = await uploadEditorImage(lessonId, file, token)
+    void client.invalidateQueries({ queryKey: imageKeys.list(lessonId) })
+    void client.invalidateQueries({ queryKey: ['enrichment'] })
+    return image
+  }, [acquire, lessonId, client])
+  const uploadStarted = useCallback((task: Promise<void>) => {
+    uploads.current.add(task)
+    setUploadError(null)
+    setUploadCount((n) => n + 1)
+    void task.catch((error) => setUploadError(errorMessage(error))).finally(() => {
+      uploads.current.delete(task)
+      setUploadCount((n) => n - 1)
+    })
+  }, [])
+  const extensions = useMemo(() => [
+    timecodeLock,
+    lessonUnits,
+    lessonReview,
+    lessonClassifier,
+    lessonImages(lessonId),
+    lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
+    EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
+  ], [lessonId, uploadImage, uploadStarted])
 
   const persist = useCallback(async (markdown: string, recover = false) => {
     setStatus({ kind: 'saving' })
@@ -157,6 +189,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   useEffect(() => {
     if (!actionsRef) return
     actionsRef.current = { flush: async () => {
+      await Promise.all([...uploads.current])
       const markdown = viewOf(handle.current)?.state.doc.toString() ?? text
       await save(markdown)
       if (leaseRef.current) {
@@ -333,6 +366,8 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
 
   return (
     <>
+      {uploadCount > 0 && <p role="status" className="mb-2 text-meta text-muted-foreground">Carico immagini…</p>}
+      {uploadError && <Alert tone="danger" className="mb-2">{uploadError}</Alert>}
       <EditorStatus
         status={status}
         locked={locked}

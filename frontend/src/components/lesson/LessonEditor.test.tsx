@@ -5,6 +5,8 @@ import { createRef } from 'react'
 import { AudioProvider } from './audio'
 import { LessonEditor, type LessonEditorActions } from './LessonEditor'
 
+const upload = vi.hoisted(() => ({ started: null as null | ((task: Promise<void>) => void) }))
+vi.mock('./lessonImages', () => ({ lessonImageUploads: (options: { started: (task: Promise<void>) => void }) => { upload.started = options.started; return [] } }))
 const calls = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn(), remove: vi.fn() }))
 vi.mock('@/api/client', async (original) => ({ ...await original<typeof import('@/api/client')>(), api: { POST: calls.post, PUT: calls.put, DELETE: calls.remove } }))
 vi.mock('@atomic-editor/editor', () => ({ AtomicCodeMirrorEditor: ({ markdownSource, onMarkdownChange, readOnly }: { markdownSource: string; onMarkdownChange: (s: string) => void; readOnly: boolean }) => <textarea aria-label="Editor" defaultValue={markdownSource} readOnly={readOnly} onChange={(e) => onMarkdownChange(e.target.value)} /> }))
@@ -28,4 +30,17 @@ it('propaga gli errori del salvataggio e conserva il lease', async () => {
   fireEvent.change(screen.getByLabelText('Editor'), { target: { value: 'Dopo' } })
   await act(async () => { await expect(actions.current!.flush()).rejects.toThrow('API non raggiungibile') })
   expect(calls.remove).not.toHaveBeenCalled()
+})
+
+it('attende la fine dei caricamenti prima di salvare e liberare il lease', async () => {
+  const actions = createRef<LessonEditorActions>()
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
+  let finish!: () => void
+  act(() => upload.started!(new Promise<void>((resolve) => { finish = resolve })))
+  fireEvent.change(screen.getByLabelText('Editor'), { target: { value: 'Dopo' } })
+  let flushed!: Promise<void>
+  act(() => { flushed = actions.current!.flush() })
+  expect(calls.put).not.toHaveBeenCalled()
+  await act(async () => { finish(); await flushed })
+  expect(calls.put).toHaveBeenCalledOnce()
 })

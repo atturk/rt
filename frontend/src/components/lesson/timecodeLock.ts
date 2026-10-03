@@ -116,8 +116,10 @@ const protect = EditorState.transactionFilter.of((tr) => {
   const { unlocked, spans } = tr.startState.field(lockField)
   const locked = spans.filter((s) => unlocked == null || tr.startState.doc.lineAt(s.from).from !== unlocked)
   let touches = false
-  tr.changes.iterChangedRanges((fromA, toA) => {
-    if (locked.some((s) => fromA <= s.to && toA >= s.from)) touches = true
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    if (locked.some((s) => fromA <= s.to && toA >= s.from &&
+      // Andare a capo dopo il timecode non cambia la sua riga (anche a fine documento).
+      !(fromA === toA && fromA === s.to && inserted.toString().startsWith('\n')))) touches = true
   })
   return touches ? [] : tr
 })
