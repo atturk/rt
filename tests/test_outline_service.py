@@ -64,3 +64,44 @@ def test_pipeline_resumes_after_approval(temp_lesson_dir):
     outline_service.approve_outline(temp_lesson_dir, actor="attilio", channel="api")
     res = run_pipeline(temp_lesson_dir, opts, RunContext())
     assert res.status == PipelineStatus.COMPLETED, res.error
+
+
+def test_outline_timer_starts_and_auto_approves(temp_lesson_dir):
+    import time
+    _outline_ready(temp_lesson_dir)
+    timer = outline_service.start_outline_timer(temp_lesson_dir, seconds=1)
+    assert timer is not None
+    assert timer["seconds"] == 1
+    assert timer["suspended"] is False
+
+    review = outline_service.get_outline_review(temp_lesson_dir)
+    assert review["approved"] is False
+    assert review["expires_at"] == timer["expires_at"]
+    assert review["timer_seconds"] == 1
+    assert review["timer_suspended"] is False
+
+    # Wait for timer to fire
+    time.sleep(1.2)
+    review_after = outline_service.get_outline_review(temp_lesson_dir)
+    assert review_after["approved"] is True
+    assert review_after["approval"]["actor"] == "server"
+    assert review_after["approval"]["channel"] == "server"
+
+
+def test_outline_timer_suspend(temp_lesson_dir):
+    import time
+    _outline_ready(temp_lesson_dir)
+    outline_service.start_outline_timer(temp_lesson_dir, seconds=1)
+    suspended = outline_service.suspend_outline_timer(temp_lesson_dir)
+    assert suspended is not None
+    assert suspended["suspended"] is True
+
+    review = outline_service.get_outline_review(temp_lesson_dir)
+    assert review["approved"] is False
+    assert review["timer_suspended"] is True
+
+    # After wait, it must still not be approved
+    time.sleep(1.2)
+    review_after = outline_service.get_outline_review(temp_lesson_dir)
+    assert review_after["approved"] is False
+

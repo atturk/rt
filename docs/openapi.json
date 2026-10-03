@@ -2633,6 +2633,95 @@
         }
       }
     },
+    "/api/v1/lessons/{lesson_id}/outline/suspend": {
+      "post": {
+        "tags": [
+          "decisioni"
+        ],
+        "summary": "Sospende il conto alla rovescia per l'approvazione automatica della scaletta",
+        "operationId": "suspend_outline_api_v1_lessons__lesson_id__outline_suspend_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id"
+            },
+            "description": "Id della lezione (da GET /lessons)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outline"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticazione mancante o non valida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF non valido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto (es. job in corso sulla lezione)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Richiesta non valida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/lessons/{lesson_id}/outline/revise": {
       "post": {
         "tags": [
@@ -17052,6 +17141,33 @@
           "approved": {
             "type": "boolean",
             "title": "Approved"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "timer_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timer Seconds"
+          },
+          "timer_suspended": {
+            "type": "boolean",
+            "title": "Timer Suspended",
+            "default": false
           }
         },
         "type": "object",

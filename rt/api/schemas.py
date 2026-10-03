@@ -226,6 +226,9 @@ class Outline(BaseModel):
     macro_sections: List[OutlineMacro]
     approval: Optional[Dict[str, Any]] = None
     approved: bool
+    expires_at: Optional[str] = None
+    timer_seconds: Optional[int] = None
+    timer_suspended: bool = False
 
 
 class IssueContext(BaseModel):

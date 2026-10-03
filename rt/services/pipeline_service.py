@@ -184,6 +184,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
         elif options.auto_accept:
             outline_service.approve_outline(lesson_dir, actor="auto_accept", channel="api")
         elif not outline_service.is_outline_approved(lesson_dir):
+            outline_service.start_outline_timer(lesson_dir)
             _wait(result, ctx, "outline_approval", lesson_dir,
                   {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
             return

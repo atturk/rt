@@ -192,6 +192,15 @@ export function useReviseOutline(lessonId: number) {
   })
 }
 
+export function useSuspendOutline(lessonId: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/outline/suspend', { params: { path: { lesson_id: lessonId } } })),
+    onSettled: () => invalidateAfterJob(client, lessonId),
+  })
+}
+
 // ---------------------------------------------------------------- eventi live (SSE)
 
 const EVENTS_PATH = '/api/v1/jobs/{job_id}/events' satisfies keyof paths
