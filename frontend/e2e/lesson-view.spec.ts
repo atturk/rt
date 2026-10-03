@@ -21,7 +21,7 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
 
   const doc = page.getByTestId('lesson-document')
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
-  await expect(doc.locator('h2').first()).toBeVisible()
+  await expect(doc.locator('.cm-atomic-h2').first()).toBeVisible()
   await expect(doc.locator('[data-unit-id]').first()).toBeVisible()
 
   await openLessonDetails(page)
@@ -78,7 +78,6 @@ test('il clic su un timecode sposta l\'audio e evidenzia l\'unità', async ({ pa
     .poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime))
     .toBeGreaterThanOrEqual(2)
   await expect(page.getByTestId('lesson-document')).toHaveAttribute('data-active-unit', /.+/)
-  await expect(page.locator('.rt-unit-active').first()).toBeVisible()
 })
 
 test('avvio di una fase: il job gira sul worker e lo stato resta dopo la ricarica', async ({ page }) => {
@@ -167,19 +166,20 @@ test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e
   expect(doc.final).toBe(true)
 })
 
-test('intestazione: Studia, Verifica, Dettagli ed Esporta sempre nello stesso posto, non disponibili con il motivo', async ({ page }) => {
+test('intestazione: Recall, Studio, Verifica, Dettagli ed Esporta sempre nello stesso posto, non disponibili con il motivo', async ({ page }) => {
   await loginViaLink(page)
-  const labels = ['Studia', 'Verifica con LLM', 'Dettagli', 'Esporta']
+  const labels = ['Recall', 'Studio', 'Verifica con LLM', 'Dettagli', 'Esporta']
   const actions = page.getByTestId('lesson-actions')
 
-  // Lezione senza rielaborazione: le icone ci sono; Studia e i download non disponibili, con il motivo
+  // Lezione senza rielaborazione: le icone ci sono; Recall, Studio e i download non disponibili, con il motivo
   const setupOnly = await lessonId(page, 'FISIOLOGIA')
   await page.goto(`/lezioni/${setupOnly}`)
   // Nome accessibile = testo del suggerimento, nello stesso ordine del design.
-  await expect(actions.locator('a, button')).toHaveCount(4)
+  await expect(actions.locator('a, button')).toHaveCount(5)
   expect(await actions.locator('a, button').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(labels)
-  await expect(actions.getByRole('button', { name: 'Studia' })).toHaveAttribute('aria-disabled', 'true')
-  await actions.getByRole('button', { name: 'Studia' }).hover()
+  await expect(actions.getByRole('button', { name: 'Recall' })).toHaveAttribute('aria-disabled', 'true')
+  await expect(actions.getByRole('button', { name: 'Studio' })).toHaveAttribute('aria-disabled', 'true')
+  await actions.getByRole('button', { name: 'Studio' }).hover()
   await expect(page.getByRole('tooltip')).toContainText(/rielaborazione/)
   await actions.getByRole('button', { name: 'Esporta' }).click()
   const menu = page.getByRole('menu', { name: 'Esporta' })
@@ -216,7 +216,10 @@ test('intestazione: Studia, Verifica, Dettagli ed Esporta sempre nello stesso po
   await (await exportItem(page, 'Markdown')).click()
   expect((await download).suggestedFilename()).toMatch(/\(anteprima\)\.md$/)
 
-  await actions.getByRole('link', { name: 'Studia' }).click()
+  await actions.getByRole('link', { name: 'Recall' }).click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${reviewed}/recall$`))
+  await page.goto(`/lezioni/${reviewed}`)
+  await actions.getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${reviewed}$`))
   await page.goto(`/lezioni/${reviewed}`)
   await openLessonDetails(page)

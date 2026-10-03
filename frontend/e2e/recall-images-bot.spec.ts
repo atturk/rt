@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink, openLessonDetails, tinyPdf } from './support'
+import { apiGet, authHeaders, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
 
 // RT4-F6: recall, immagini e bot Telegram contro l'API vera. Il worker gira con --mock (LLM e
 // trascrizione delle risposte vocali finti) e il bot è finto (RT_TELEGRAM_FAKE=1), vedi
@@ -247,6 +247,7 @@ test('immagini: caricamento di un PDF, avanzamento del job e anteprima nel docum
   // Anche la pagina della lezione mostra le immagini nel documento, e porta a recall e immagini
   await page.goto(`/lezioni/${lesson.id}`)
   const docImage = page.getByTestId('lesson-document').locator(`img[src="${inDocument[0].url}"]`)
+  await scrollDocumentTo(page, docImage)
   await expect(docImage).toBeVisible()
   expect(await docImage.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth)).toBeGreaterThan(0)
   await openLessonDetails(page)

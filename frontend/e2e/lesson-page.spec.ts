@@ -58,7 +58,7 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   const unit = (await heading.getAttribute('data-unit-id'))!
 
   // Il clic destro su un testo senza selezione lascia il menu del browser.
-  const paragraph = doc.locator('p:not([data-unit-timecode])').first()
+  const paragraph = doc.locator('.cm-line:not([data-unit-id]):not(.cm-atomic-h2):not(.cm-atomic-h3)', { hasText: /\w+ \w+ \w+/ }).first()
   await paragraph.click({ button: 'right' })
   await expect(page.getByTestId('document-menu')).toHaveCount(0)
 
@@ -81,7 +81,9 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   await expect(menu).toHaveCount(0)
 
   // Copia: il testo selezionato negli appunti.
-  const text = await doc.locator(`[data-unit-id="${unit}"] ~ p:not([data-unit-timecode])`).first().evaluate((p) => {
+  // Nell'editor: la prima riga di testo dell'unità (dopo titolo e timecode).
+  const selected = paragraph
+  const text = await selected.evaluate((p) => {
     const range = document.createRange()
     range.selectNodeContents(p)
     const sel = window.getSelection()!
@@ -89,13 +91,14 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
     sel.addRange(range)
     return sel.toString()
   })
-  const selected = doc.locator(`[data-unit-id="${unit}"] ~ p:not([data-unit-timecode])`).first()
   await selected.click({ button: 'right' })
   await expect(menu).toBeVisible()
   await expect(page.getByTestId('document-menu-part')).toHaveText(`Questa parte: ${unit}`)
   await menu.getByRole('menuitem', { name: 'Copia' }).click()
   await expect(menu).toHaveCount(0)
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text)
+  // Si copia il Markdown (come in Obsidian): senza i segni è il testo che si vede.
+  const plain = (markdown: string) => markdown.replace(/[[\]*_`]/g, '')
+  await expect.poll(async () => plain(await page.evaluate(() => navigator.clipboard.readText()))).toBe(text)
 
   // Genera (schermata 02b): tipo, richiesta, invio al regista; l'elemento parte in Arricchimento.
   await selected.evaluate((p) => {
@@ -118,7 +121,8 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   await popover.getByRole('button', { name: 'Genera' }).click()
   expect((await posted).status()).toBe(202)
   const body = (await posted).request().postDataJSON() as { kind: string; request: string; selection: string; unit_ids: string[] }
-  expect(body).toMatchObject({ kind: 'infographic', request: 'Le fasi della sutura in quattro riquadri', selection: text, unit_ids: [unit] })
+  expect(body).toMatchObject({ kind: 'infographic', request: 'Le fasi della sutura in quattro riquadri', unit_ids: [unit] })
+  expect(plain(body.selection)).toBe(text)
   await expect(popover).toHaveCount(0)
   await expect(page.getByTestId('generate-queued')).toContainText(`Richiesta inviata per ${unit}`)
   const enrichment = await apiGet<Enrichment>(page.request, `/lessons/${id}/enrichment`)

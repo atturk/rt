@@ -91,27 +91,19 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByTestId('study-text')).toBeVisible()
     await expectNoViolations(page, 'studio, lettura')
 
-    // Anteprima in modifica (RT4-FA3) con gli avvisi prima di entrare.
+    // Documento modificabile in place (atomic-editor), con il cursore nel testo.
     await page.goto(`/lezioni/${await lessonId(page, 'CHIRURGIA')}`)
-    await page.getByRole('button', { name: "Modifica l'anteprima" }).click()
-    const notice = page.getByRole('dialog', { name: "Modifica dell'anteprima" })
-    if (await notice.isVisible()) {
-      await expectNoViolations(page, "avvisi della modifica dell'anteprima")
-      await notice.getByRole('button', { name: 'Modifica' }).click()
-    }
-    await expect(page.getByTestId('markdown-editor')).toBeVisible()
-    await expect(page.locator('.rt-document-edit-preview')).toHaveCount(0)
-    await expectNoViolations(page, "editor a tutta larghezza")
+    await page.getByTestId('lesson-document').locator('.cm-content').click()
+    await expectNoViolations(page, 'documento in modifica')
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('markdown-editor')).toHaveCount(0)
 
     // Pagina Lezioni del design 4.2: gruppi per materia con il tooltip di un'icona, popup Info,
     // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
     await page.getByRole('button', { name: 'Per materia' }).click()
-    const recall = page.getByTestId('lesson-group').first().getByRole('link', { name: 'Recall su tutto il gruppo' })
+    const recall = page.getByTestId('lesson-row').first().getByLabel('Recall', { exact: true })
     await recall.focus()
-    await expect(page.getByRole('tooltip', { name: 'Recall su tutto il gruppo' })).toBeVisible()
+    await expect(page.getByRole('tooltip', { name: 'Recall' })).toBeVisible()
     await expectNoViolations(page, 'lezioni per materia con un tooltip')
     await page.getByTestId('lesson-row').first().getByRole('button', { name: 'Info' }).click()
     await expect(page.getByTestId('lesson-info')).toBeVisible()

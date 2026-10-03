@@ -83,6 +83,34 @@ export function documentBlocks(article: Element, unitIds: readonly string[]): Do
   })
 }
 
+/** Blocchi del Markdown della lezione, uno per riga: `### 1.1 Titolo` apre una subunità, `## 1. Titolo` un'unità. */
+export function markdownBlocks(lines: readonly string[], unitIds: readonly string[]): DocBlock[] {
+  const known = new Set(unitIds)
+  const macros = new Set(unitIds.map(macroOf))
+  let unit: string | null = null
+  let macro: string | null = null
+  return lines.map((line) => {
+    const sub = /^###\s+(\S+)/.exec(line)
+    if (sub && known.has(sub[1])) {
+      unit = sub[1]
+      macro = macroOf(unit)
+      return { unit, macro, heading: 'unit' as const }
+    }
+    const top = /^##\s+(.*)$/.exec(line)
+    const number = top ? headingNumber(top[1]) : null
+    if (number && macros.has(number)) {
+      unit = null
+      macro = number
+      return { unit, macro, heading: 'macro' as const }
+    }
+    if (/^#\s/.test(line)) {
+      unit = null
+      macro = null
+    }
+    return { unit, macro, heading: null }
+  })
+}
+
 /** Indice del blocco (figlio diretto dell'article) che contiene il nodo; -1 se è fuori. */
 export function blockIndex(article: Element, node: Node | null): number {
   let el: Node | null = node

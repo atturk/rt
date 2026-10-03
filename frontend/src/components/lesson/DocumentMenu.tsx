@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils'
 
 type Point = { x: number; y: number }
 type Part = { text: string; units: string[]; at: Point; anchor: Point; range?: Range }
+/** La parte sotto il clic destro, per una superficie che non è l'<article> (l'editor). */
+export type PartLocator = (event: MouseEvent) => Omit<Part, 'at'> | null
 export type GenerateKind = 'visualization' | 'infographic' | 'image'
 
 const NO_PART = "Seleziona il testo di un'unità"
@@ -24,11 +26,13 @@ const NO_PART = "Seleziona il testo di un'unità"
  * parte" sono le subunità toccate dalla selezione (lib/documentParts). Fuori dal testo e senza
  * selezione resta il menu del browser.
  */
-export function DocumentMenu({ lessonId, unitIds, ready, children }: {
+export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
   lessonId: number
   unitIds: string[]
   /** Rielaborazione pronta: senza, Genera, Domande e Verifica non hanno senso. */
   ready: boolean
+  /** Al posto della lettura dell'<article>: l'editor sa da sé testo e unità della selezione. */
+  locate?: PartLocator
   children: ReactNode
 }) {
   const [menu, setMenu] = useState<Part | null>(null)
@@ -41,6 +45,13 @@ export function DocumentMenu({ lessonId, unitIds, ready, children }: {
   const root = useRef<HTMLDivElement>(null)
 
   const open = (event: MouseEvent) => {
+    if (locate) {
+      const part = locate(event)
+      if (!part) return
+      event.preventDefault()
+      setMenu({ ...part, at: { x: event.clientX, y: event.clientY } })
+      return
+    }
     const article = root.current?.querySelector('article')
     if (!article) return
     const selection = window.getSelection()

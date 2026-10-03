@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 type ServerState = { base_url: string; token: string; lessons_root: string; searxng_url: string }
 
@@ -72,4 +72,21 @@ export function tinyPdf(): Buffer {
   pdf += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
   return Buffer.from(pdf, 'latin1')
+}
+
+/** Il documento della lezione è un editor (CodeMirror): disegna solo le righe vicine alla vista. Scorre finché l'elemento c'è. */
+export async function scrollDocumentTo(page: Page, target: Locator) {
+  await expect
+    .poll(async () => {
+      if ((await target.count()) > 0) return true
+      await page.getByTestId('lesson-document').evaluate((el) => {
+        // il primo antenato che scorre (la pagina o il contenitore principale)
+        let node: HTMLElement | null = el as HTMLElement
+        while (node && node.scrollHeight <= node.clientHeight) node = node.parentElement
+        ;(node ?? document.scrollingElement)?.scrollBy(0, 600)
+      })
+      return false
+    }, { timeout: 15_000 })
+    .toBe(true)
+  await target.first().scrollIntoViewIfNeeded()
 }

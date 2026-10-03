@@ -292,35 +292,100 @@
 }
 
 /* Editor Markdown dell'anteprima (CodeMirror 6): la stessa colonna di lettura del documento. */
-.rt-md-editor .cm-editor {
-  min-height: 24rem;
-  max-height: 75vh;
+/* Documento della lezione nell'editor (atomic-editor, come Obsidian): stesso aspetto della
+   lettura (.rt-document), senza cornice; la pagina scorre, non l'editor. */
+.rt-lesson-editor .atomic-cm-editor {
+  --atomic-editor-font: var(--font-sans);
+  --atomic-editor-font-mono: var(--font-mono);
+  --atomic-editor-body-size: var(--size-body);
+  --atomic-editor-body-leading: 1.7;
+  --atomic-editor-measure: none;
+  --atomic-editor-fg: var(--fg);
+  --atomic-editor-fg-muted: var(--mute);
+  --atomic-editor-fg-faint: var(--mute);
+  --atomic-editor-bg: transparent;
+  --atomic-editor-bg-panel: var(--soft);
+  --atomic-editor-bg-surface: var(--soft);
+  --atomic-editor-border: var(--border);
+  --atomic-editor-accent: var(--acc);
+  --atomic-editor-accent-bright: var(--acc);
+  --atomic-editor-accent-soft: var(--primary);
+  --atomic-editor-link: var(--link);
+  --atomic-editor-link-hover: var(--link);
+  --atomic-editor-code-bg: var(--soft);
+  --atomic-editor-selection-bg: color-mix(in srgb, var(--acc) 18%, transparent);
+  background: transparent;
+  height: auto;
+  overflow: visible;
+}
+.rt-lesson-editor .cm-editor {
+  height: auto;
+  background: transparent;
+  color: var(--foreground);
+}
+.rt-lesson-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.rt-lesson-editor .cm-scroller {
+  overflow: visible;
+}
+.rt-lesson-editor .atomic-cm-editor .cm-content {
+  caret-color: var(--foreground);
+  padding: 0;
+}
+.rt-lesson-editor .atomic-cm-editor .cm-line {
+  padding-left: 0;
+  padding-right: 0;
+}
+.rt-lesson-editor .cm-line.cm-atomic-h2,
+.rt-lesson-editor .cm-line.cm-atomic-h3 {
+  font-weight: 600;
+  line-height: 1.4;
+  padding-bottom: 0;
+}
+/* Unità (##) più grandi delle subunità (###), spazi stretti come nella lettura. */
+.rt-lesson-editor .cm-line.cm-atomic-h2 {
+  /* fra il titolo della lezione (--size-heading) e il testo */
+  font-size: 18px;
+  padding-top: 20px;
+}
+.rt-lesson-editor .cm-line.cm-atomic-h2:first-child {
+  padding-top: 0;
+}
+.rt-lesson-editor .cm-line.cm-atomic-h3 {
+  font-size: calc(var(--size-body) + 1px);
+  padding-top: 8px;
+}
+/* Righe vuote fra titoli, timecode e paragrafi: mezza riga, non una intera (quella del cursore resta piena). */
+.rt-lesson-editor .cm-line:not(.cm-activeLine):has(> br:only-child) {
+  line-height: 0.6;
+}
+.rt-lesson-editor .cm-activeLine {
+  background: transparent;
+}
+/* Timecode bloccato: l'etichetta della lettura. Clic ascolta, triplo clic modifica. */
+.rt-lesson-editor .rt-timecode-locked {
+  display: inline-block;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--card);
-  color: var(--foreground);
-  font-size: var(--size-body);
-}
-.rt-md-editor .cm-editor.cm-focused {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-.rt-md-editor .cm-scroller {
-  font-family: var(--font-sans);
-  line-height: 1.7;
-}
-.rt-md-editor .cm-gutters {
-  background: transparent;
-  color: var(--muted-foreground);
-  border-right: 0;
+  color: var(--mute);
+  padding: 0 6px;
+  font-family: var(--font-mono);
   font-size: var(--size-meta);
+  line-height: 1.6;
+  cursor: pointer;
+  user-select: none;
 }
-.rt-md-editor .cm-activeLine,
-.rt-md-editor .cm-activeLineGutter {
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
+.rt-lesson-editor .rt-timecode-locked:hover {
+  border-color: var(--fg);
+  color: var(--fg);
 }
-.rt-md-editor .cm-content {
-  caret-color: var(--foreground);
+.rt-lesson-editor .rt-timecode-editing {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--acc) 10%, transparent);
+}
+.rt-lesson-editor .rt-enrichment-slot:empty {
+  display: none;
 }
 
 /* Barra della posizione nella barra audio (design 4.2): traccia di 4 px, parte ascoltata piena. */
@@ -362,4 +427,13 @@
 }
 .rt-reading p {
   margin-bottom: 20px;
+}
+
+/* Immagini della lezione che atomic-editor non disegna da sé (lessonImages). */
+.rt-lesson-editor .rt-editor-image {
+  padding: 8px 0;
+}
+.rt-lesson-editor .rt-editor-image img {
+  max-width: 100%;
+  border-radius: 8px;
 }

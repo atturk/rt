@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink, openLessonDetails, tinyPdf } from './support'
+import { apiGet, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
 // 'rt run' da terminale: accesso con il link, importazione dell'audio, scaletta, review di tutte
@@ -134,7 +134,9 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.reload()
   await expect(build).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<{ final: boolean }>(page.request, `/lessons/${lessonId}/document`)).final).toBe(true)
-  await expect(page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`)).toBeVisible()
+  const placedImage = page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`)
+  await scrollDocumentTo(page, placedImage)
+  await expect(placedImage).toBeVisible()
 
   // 9. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
   await page.goto('/impostazioni')

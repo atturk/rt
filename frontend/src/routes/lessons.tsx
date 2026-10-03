@@ -1,17 +1,11 @@
-import { Brain, Download, Info, Pencil, Plus, ShieldCheck } from 'lucide-react'
+import { BookOpen, Brain, Download, Info, Plus, ShieldCheck } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
-import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
-import { useDismissNotice, type Notice } from '@/api/documentEdit'
+import { errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
-import { useSettings } from '@/api/settings'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
-import { DocumentEditNotice } from '@/components/lesson/DocumentEditNotice'
-import type { DocumentSaveResult } from '@/components/lesson/DocumentEditor'
-import { DocumentMenu } from '@/components/lesson/DocumentMenu'
-import { DocumentView } from '@/components/lesson/DocumentView'
 import { LessonPanel } from '@/components/lesson/LessonPanel'
 import { PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
@@ -214,13 +208,17 @@ export function LessonPage() {
   )
 }
 
-/** Icone dell'intestazione (schermata 02): Studia, Verifica con LLM, Dettagli, Esporta. */
+/**
+ * Icone dell'intestazione (schermata 02): Recall (subito le domande), Studio (leggi un'unità e poi
+ * le sue domande), Verifica con LLM, Dettagli, Esporta. Recall e Studio come nelle righe di Lezioni.
+ */
 function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['LessonDetail']; panel: PanelView | null; onToggle: (view: PanelView) => void }) {
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
   return (
     <div className="flex items-center gap-0.5" data-testid="lesson-actions">
-      <IconLink label="Studia" icon={Brain} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
+      <IconLink label="Recall" icon={Brain} to={`/lezioni/${l.id}/recall`} unavailable={reason(a.recall)} />
+      <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
       <IconButton label="Verifica con LLM" icon={ShieldCheck} active={panel === 'verifica'} aria-expanded={panel === 'verifica'} aria-controls={PANEL_ID} onClick={() => onToggle('verifica')} />
       <IconButton label="Dettagli" icon={Info} active={panel === 'dettagli'} aria-expanded={panel === 'dettagli'} aria-controls={PANEL_ID} onClick={() => onToggle('dettagli')} />
       <LinkMenuButton
@@ -248,121 +246,37 @@ function LessonProgress({ lessonId }: { lessonId: number }) {
   )
 }
 
-// L'editor (CodeMirror) si carica solo quando si entra in modifica.
-const DocumentEditor = lazy(() => import('@/components/lesson/DocumentEditor').then((m) => ({ default: m.DocumentEditor })))
+// L'editor (CodeMirror con atomic-editor) è un pezzo a sé: si carica con la pagina della lezione.
+const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
-const LEASE_RENEW_MS = 4 * 60 * 1000
-
-/** Riquadro del documento: anteprima o documento finale, con la modifica dell'anteprima (beta). */
+/** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
 function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
-  const settings = useSettings()
-  const dismissNotice = useDismissNotice()
-  const [mode, setMode] = useState<'view' | 'notice' | 'edit'>('view')
-  const [leaseToken, setLeaseToken] = useState<string | null>(null)
-  const [leaseError, setLeaseError] = useState<string | null>(null)
-  useEffect(() => {
-    if (!leaseToken) return
-    // Il server fa scadere una sessione non rinnovata (scheda chiusa, crash): qui la teniamo viva.
-    const renew = window.setInterval(() => {
-      unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id }, query: { token: leaseToken } } }))
-        .catch((error: unknown) => setLeaseError(errorMessage(error)))
-    }, LEASE_RENEW_MS)
-    return () => {
-      window.clearInterval(renew)
-      void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
-        params: { path: { lesson_id: id }, query: { token: leaseToken } },
-      })
-    }
-  }, [leaseToken, id])
-  const [saved, setSaved] = useState<DocumentSaveResult | null>(null)
-  const dismissed = settings.data?.notices.dismissed ?? []
-  const notices = ([...(l.pending_issues > 0 ? ['preview_edit_issues'] : []), 'preview_edit_beta'] as Notice[]).filter((n) => !dismissed.includes(n))
-
-  const startEdit = () => {
-    setSaved(null)
-    if (notices.length > 0) setMode('notice')
-    else void beginEdit()
-  }
-  const beginEdit = async (recover = false) => {
-    try {
-      const lease = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: id }, query: { recover } } }))
-      setLeaseToken(lease.token)
-      setLeaseError(null)
-      setMode('edit')
-      onEditingChange(true)
-    } catch (error) { setLeaseError(errorMessage(error)) }
-  }
   const running = useJobs({ lesson_id: id, limit: 20 }).data?.some((j) => isActive(j.state)) ?? false
   return (
     <div className="mt-6">
       {document.isPending && <DocumentSkeleton />}
       {/* In corso: lo scheletro al posto del testo che ancora manca (linee guida §4). */}
       {document.isError && (running ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(document.error)}</Alert>)}
-      {leaseError && <Alert tone="danger">{leaseError}<Button size="sm" variant="outline" className="ml-2" onClick={() => void beginEdit(true)}>Recupera sessione</Button></Alert>}
-      {document.data && mode === 'edit' && (
-        <Suspense fallback={<p className="text-sm text-muted-foreground">Preparo l'editor…</p>}>
-          <DocumentEditor
-          lessonId={id}
-          markdown={document.data.markdown}
-          leaseToken={leaseToken ?? undefined}
-          onClose={(result) => {
-            const finishClose = () => {
-              setMode('view')
-              onEditingChange(false)
-              setLeaseToken(null)
-              if (result?.changed) setSaved(result)
-            }
-            if (leaseToken) {
-              void api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', {
-                params: { path: { lesson_id: id }, query: { token: leaseToken } },
-              }).finally(finishClose)
-            } else finishClose()
-          }}
-          />
-        </Suspense>
-      )}
-      {document.data && mode !== 'edit' && (
+      {document.data && (
         <>
-          <div className="sticky top-3 z-10 flex h-0 justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="-mr-3 -mt-2 size-8 bg-card p-0 text-muted-foreground hover:text-foreground"
-              aria-label="Modifica l'anteprima"
-              title="Modifica l'anteprima (beta)"
-              onClick={startEdit}
-            >
-              <Pencil aria-hidden />
-            </Button>
-          </div>
-          {saved && (
-            <Alert tone="warning" className="mb-4" data-testid="document-edit-saved">
-              Modifiche salvate nella bozza. Il documento finale va ricreato con la fase Documento.
-              {saved.orphan_issues.length > 0 &&
-                ` ${saved.orphan_issues.length === 1 ? "Un'issue è" : `${saved.orphan_issues.length} issue sono`} ora orfane: il testo a cui si riferivano non c'è più.`}
-            </Alert>
-          )}
-          {!document.data.final && !saved && (
-            <p className="mb-4 text-meta text-muted-foreground" data-testid="document-preview-note">
+          {!document.data.final && (
+            <p className="mb-2 text-meta text-muted-foreground" data-testid="document-preview-note">
               Anteprima dalla bozza: è quello che diventerà il documento finale quando esegui la fase Documento.
             </p>
           )}
-          <DocumentMenu lessonId={id} unitIds={document.data.sections.map((s) => s.unit_id)} ready={l.phases.rewrite === 'VALID'}>
-            <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
-          </DocumentMenu>
+          <Suspense fallback={<DocumentSkeleton />}>
+            <LessonEditor
+              lessonId={id}
+              document={document.data}
+              hasAudio={l.has_audio}
+              ready={l.phases.rewrite === 'VALID'}
+              locked={running}
+              onEditingChange={onEditingChange}
+            />
+          </Suspense>
         </>
-      )}
-      {mode === 'notice' && (
-        <DocumentEditNotice
-          notices={notices}
-          onCancel={() => setMode('view')}
-          onConfirm={(dismiss) => {
-            for (const n of dismiss) dismissNotice.mutate(n)
-            void beginEdit()
-          }}
-        />
       )}
     </div>
   )
