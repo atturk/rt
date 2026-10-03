@@ -9,6 +9,7 @@ import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext } from '@/components/shell/newLesson'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
+import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -56,6 +57,7 @@ export function Layout() {
   const [newLesson, setNewLesson] = useState(false)
   const openNewLesson = useCallback(() => setNewLesson(true), [])
   const closeNewLesson = useCallback(() => setNewLesson(false), [])
+  const phone = useIsPhone()
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
 
@@ -80,7 +82,7 @@ export function Layout() {
   return (
     <NewLessonContext value={openNewLesson}>
       <div className="flex min-h-dvh">
-        <nav
+        {!phone && <nav
           aria-label="Navigazione"
           className="sticky top-0 hidden h-dvh w-(--rail-width) shrink-0 flex-col items-center gap-1.5 border-r bg-background py-3 md:flex"
         >
@@ -90,7 +92,7 @@ export function Layout() {
           <div className="flex-1" aria-hidden />
           <NavItem section={JOBS} path={path} side="right" variant="rail" />
           <NavItem section={SETTINGS} path={path} side="right" variant="rail" />
-        </nav>
+        </nav>}
 
         <div className={cn('flex min-w-0 flex-1 flex-col', 'max-md:pb-[calc(64px+env(safe-area-inset-bottom))]')}>
           <main className="flex min-w-0 flex-1 flex-col">
@@ -103,14 +105,14 @@ export function Layout() {
         </div>
 
         {/* Telefono: tre schede in basso (linee guida §2). */}
-        <nav
+        {phone && <nav
           aria-label="Navigazione"
           className="fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
         >
           {[LESSONS, JOBS, SETTINGS].map((section) => (
             <NavItem key={section.to} section={section} path={path} side="top" variant="ghost" />
           ))}
-        </nav>
+        </nav>}
       </div>
       {newLesson && (
         <Suspense fallback={null}>

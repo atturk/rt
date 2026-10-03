@@ -15,6 +15,7 @@ import {
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
+import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
@@ -32,6 +33,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   onSelecting: (on: boolean) => void
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
+  const phone = useIsPhone()
   const input = useRef<HTMLInputElement>(null)
   const sortSection: MenuSection = {
     label: 'Ordina',
@@ -43,7 +45,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   }
   return (
     <>
-      <div role="group" aria-label="Raggruppa" className="flex rounded-md bg-muted p-0.5 max-md:hidden">
+      {!phone && <div role="group" aria-label="Raggruppa" className="flex rounded-md bg-muted p-0.5 max-md:hidden">
         {(Object.keys(GROUPING_LABELS) as LessonsGrouping[]).map((group) => (
           <IconButton
             key={group}
@@ -54,10 +56,10 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
             onClick={() => onPrefs({ group })}
           />
         ))}
-      </div>
-      <MenuButton label="Ordina" icon={ListFilter} sections={[sortSection]} className="max-md:hidden" />
-      <MenuButton label="Raggruppa e ordina" icon={Calendar} sections={[groupSection, sortSection]} className="md:hidden" />
-      <IconButton
+      </div>}
+      {!phone && <MenuButton label="Ordina" icon={ListFilter} sections={[sortSection]} className="max-md:hidden" />}
+      {phone && <MenuButton label="Raggruppa e ordina" icon={Calendar} sections={[groupSection, sortSection]} className="md:hidden" />}
+      {phone && <IconButton
         label="Mostra la ricerca"
         icon={Search}
         className="md:hidden"
@@ -67,10 +69,10 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           setSearchOpen(!searchOpen)
           if (!searchOpen) setTimeout(() => input.current?.focus())
         }}
-      />
+      />}
+      {/* Un solo campo "Cerca": il landmark non ha un nome suo, che lo ripeterebbe. */}
       <form
         role="search"
-        aria-label="Cerca nelle lezioni"
         onSubmit={(event) => event.preventDefault()}
         className={cn(
           'flex w-[220px] items-center gap-2 rounded-md border px-2.5 py-1.5 text-muted-foreground focus-within:border-foreground',
@@ -90,7 +92,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           className="w-full min-w-0 bg-transparent text-meta text-foreground outline-none max-md:text-body"
         />
       </form>
-      <IconButton label="Seleziona" icon={SquareCheck} aria-pressed={selecting} active={selecting} className="max-md:hidden" onClick={() => onSelecting(!selecting)} />
+      {!phone && <IconButton label="Seleziona" icon={SquareCheck} aria-pressed={selecting} active={selecting} className="max-md:hidden" onClick={() => onSelecting(!selecting)} />}
     </>
   )
 }

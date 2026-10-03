@@ -290,7 +290,8 @@ export function LessonPage() {
 /** Pipeline o fase in corso sulla lezione: le due barre con gli eventi dal vivo (schermata 03). */
 function LessonProgress({ lessonId }: { lessonId: number }) {
   const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
-  const running = (jobs.data ?? []).find((j) => isActive(j.state))
+  // Anche fermo su una decisione: l'avanzamento dice quale e porta a prenderla.
+  const running = (jobs.data ?? []).find((j) => isActive(j.state) || j.state === 'waiting_for_decision')
   return running ? <PhaseProgress jobId={running.id} /> : null
 }
 
