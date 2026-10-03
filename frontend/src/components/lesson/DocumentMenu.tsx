@@ -1,4 +1,4 @@
-import { BarChart3, CircleHelp, Copy, Image, LayoutGrid, Play, SendHorizontal, ShieldCheck, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { BarChart3, Brain, Copy, Image, LayoutGrid, Play, SendHorizontal, ShieldCheck, Sparkles, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
@@ -103,9 +103,12 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
             { label: 'Genera', icon: Sparkles, unavailable: unavailable(menu), onSelect: () => setGenerate(menu) },
             {
               label: 'Domande su questa parte',
-              icon: CircleHelp,
+              icon: Brain,
               unavailable: unavailable(menu),
-              onSelect: () => navigate(`/studio/lezione/${lessonId}?${new URLSearchParams({ unita: menu.units.join(',') })}`),
+              onSelect: () => {
+                window.dispatchEvent(new CustomEvent('rt-open-domande', { detail: { units: menu.units, text: menu.text } }))
+                navigate(`?panel=domande&unita=${menu.units.join(',')}`, { replace: true })
+              },
             },
             {
               label: 'Verifica questa parte',
