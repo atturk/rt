@@ -59,7 +59,8 @@ export function Tooltip({
     onFocus: show,
     onBlur: hide,
     onKeyDown: (e) => {
-      if (e.key === 'Escape' && open) {
+      // Solo se il suggerimento si vede: altrimenti Esc va a chi lo aspetta (menu, dialoghi).
+      if (e.key === 'Escape' && visible) {
         e.stopPropagation()
         hide()
       }

@@ -32,3 +32,17 @@ export function saveRate(rate: number, storage: Pick<Storage, 'setItem'> | undef
     /* archiviazione non disponibile: la velocità vale solo per questa pagina */
   }
 }
+
+/** Velocità del pulsante della barra audio (design 4.2): valori fissi, un clic passa al successivo. */
+export const SPEEDS = [1, 1.25, 1.5, 1.75, 2] as const
+
+/** Velocità dopo un clic: la prima dei valori fissi sopra quella attuale, dopo 2× si torna a 1×.
+ * Una velocità salvata dal vecchio slider (per esempio 1,15×) passa al valore fisso successivo. */
+export function nextSpeed(rate: number): number {
+  return SPEEDS.find((speed) => speed > rate + 0.001) ?? SPEEDS[0]
+}
+
+/** "1,25×": la virgola italiana del design. */
+export function formatSpeed(rate: number): string {
+  return `${String(clampRate(rate)).replace('.', ',')}×`
+}

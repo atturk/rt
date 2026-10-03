@@ -289,7 +289,7 @@ export function ReviewPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
           <div className="flex min-w-0 flex-col gap-4">
-            {l.has_audio && <AudioPlayer lessonId={id} sections={document.data?.sections ?? []} />}
+            {l.has_audio && <AudioPlayer lessonId={id} inline />}
             <Card className="max-h-[75vh] overflow-y-auto px-6 py-5">
               {document.data && <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} highlightText={claim} highlightUnit={unitOfClaim} />}
             </Card>
