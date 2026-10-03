@@ -5,6 +5,9 @@ import type { Schemas } from '@/api/client'
 
 vi.mock('./panels/DetailsPanel', () => ({ DetailsPanel: () => <span>Dettagli esistenti</span> }))
 vi.mock('./panels/ReviewPanel', () => ({ ReviewPanel: () => <span>Verifica esistente</span> }))
+vi.mock('./panels/QuestionsPanel', () => ({ QuestionsPanel: () => <span>Domande esistenti</span> }))
+vi.mock('./panels/ClassifierPanel', () => ({ ClassifierPanel: () => <span>Classificatore esistente</span> }))
+vi.mock('./panels/EnrichmentPanel', () => ({ EnrichmentPanel: () => <span>Arricchimento esistente</span> }))
 
 function Panels() {
   const [view, setView] = usePanelView()

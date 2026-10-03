@@ -15,12 +15,24 @@ type Section = Schemas['DocumentSection']
 const TITLES: Record<PanelView, string> = { dettagli: 'Dettagli', verifica: 'Verifica con LLM', domande: 'Domande', classificatore: 'Classificatore', arricchimento: 'Arricchimento' }
 
 /** Contenitore comune: un pannello per volta, chiusura con X o Esc. */
-export function LessonPanel({ view, lesson, sections, editingDocument, onClose }: {
+export function LessonPanel({
+  view,
+  lesson,
+  sections,
+  editingDocument,
+  onClose,
+  onSwitchView,
+  selectionContext,
+  onClearSelection,
+}: {
   view: PanelView
   lesson: Schemas['LessonDetail']
   sections: Section[]
   editingDocument: boolean
   onClose: () => void
+  onSwitchView?: (view: PanelView) => void
+  selectionContext?: { units?: string[]; text?: string } | null
+  onClearSelection?: () => void
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -29,21 +41,38 @@ export function LessonPanel({ view, lesson, sections, editingDocument, onClose }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  const isSelectionDomande = view === 'domande' && Boolean(selectionContext?.units && selectionContext.units.length > 0)
+  const unitsText = selectionContext?.units
+    ? selectionContext.units.length === 2
+      ? `${selectionContext.units[0]} e ${selectionContext.units[1]}`
+      : selectionContext.units.join(', ')
+    : ''
+  const panelTitle = isSelectionDomande ? `Domande unità ${unitsText}` : TITLES[view]
+
   return (
     <aside
       id={PANEL_ID}
-      aria-label={TITLES[view]}
+      aria-label={panelTitle}
       data-testid="lesson-panel"
       data-view={view}
       className="fixed bottom-0 right-0 top-(--header-height) z-10 flex w-[min(24rem,100vw)] flex-col overflow-y-auto border-l bg-background px-4 pb-6 pt-3 shadow-panel max-md:top-0 max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
     >
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="min-w-0 flex-1 text-[15px] font-semibold">{TITLES[view]}</h2>
+        <h2 className="min-w-0 flex-1 text-[15px] font-semibold">{panelTitle}</h2>
         <IconButton label="Chiudi il pannello" icon={X} onClick={onClose} className="-mr-2" />
       </div>
       {view === 'dettagli' && <DetailsPanel lesson={lesson} sections={sections} editingDocument={editingDocument} />}
       {view === 'verifica' && <ReviewPanel lesson={lesson} />}
-      {view === 'domande' && <QuestionsPanel />}
+      {view === 'domande' && (
+        <QuestionsPanel
+          lessonId={lesson.id}
+          selectedUnits={selectionContext?.units}
+          selectedText={selectionContext?.text}
+          onSwitchToClassifier={() => onSwitchView?.('classificatore')}
+          onClearSelection={onClearSelection}
+        />
+      )}
       {view === 'classificatore' && <ClassifierPanel lessonId={lesson.id} />}
       {view === 'arricchimento' && <EnrichmentPanel lessonId={lesson.id} />}
     </aside>

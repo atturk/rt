@@ -1,6 +1,6 @@
 import { BookOpen, Brain, Download, Image, Info, Plus, ShieldCheck } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
@@ -167,6 +167,33 @@ export function LessonPage() {
   const id = Number(useParams().lessonId)
   const [editingDocument, setEditingDocument] = useState(false)
   const [panel, setPanel] = usePanelView()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const unitaParam = searchParams.get('unita')
+  const panelParam = searchParams.get('panel') as PanelView | null
+
+  const [selectionContext, setSelectionContext] = useState<{ units: string[]; text: string } | null>(() => {
+    if (unitaParam) return { units: unitaParam.split(',').filter(Boolean), text: '' }
+    return null
+  })
+
+  useEffect(() => {
+    if (panelParam && (panelParam === 'domande' || panelParam === 'classificatore' || panelParam === 'arricchimento' || panelParam === 'dettagli' || panelParam === 'verifica')) {
+      setPanel(panelParam)
+    }
+  }, [panelParam, setPanel])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ units: string[]; text: string }>).detail
+      if (detail) {
+        setSelectionContext(detail)
+        setPanel('domande')
+      }
+    }
+    window.addEventListener('rt-open-domande', handler)
+    return () => window.removeEventListener('rt-open-domande', handler)
+  }, [setPanel])
+
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   const back = { to: '/', label: 'Lezioni' }
@@ -204,7 +231,24 @@ export function LessonPage() {
         </article>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
-      {panel && <LessonPanel view={panel} lesson={l} sections={sections} editingDocument={editingDocument} onClose={() => setPanel(null)} />}
+      {panel && (
+        <LessonPanel
+          view={panel}
+          lesson={l}
+          sections={sections}
+          editingDocument={editingDocument}
+          onClose={() => setPanel(null)}
+          onSwitchView={(next) => setPanel(next)}
+          selectionContext={selectionContext}
+          onClearSelection={() => {
+            setSelectionContext(null)
+            if (searchParams.has('unita')) {
+              searchParams.delete('unita')
+              setSearchParams(searchParams, { replace: true })
+            }
+          }}
+        />
+      )}
     </AudioProvider>
   )
 }
