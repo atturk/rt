@@ -11,7 +11,8 @@ import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
-  GROUPING_LABELS, GROUP_TINTS, SORT_OPTIONS, markdownExportNote, STATUS_LABELS, groupLabel, lessonStatus, lessonSubtitle,
+  GROUPING_LABELS, GROUP_CYCLE, GROUP_TINTS, PHONE_GROUP_LABELS, PHONE_SORT_LABELS, SORT_CYCLE, SORT_OPTIONS,
+  markdownExportNote, STATUS_LABELS, groupLabel, lessonStatus, lessonSubtitle,
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
@@ -23,7 +24,7 @@ const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
 
 // ---------------------------------------------------------------- intestazione
 
-/** Azioni dell'intestazione: raggruppa (icone), ordina, cerca, seleziona; sul telefono Raggruppa e Cerca. */
+/** Azioni dell'intestazione: raggruppa (icone), ordina, cerca, seleziona; sul telefono Raggruppa e Ordina a un tocco. */
 export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting, onSelecting }: {
   prefs: LessonsPrefs
   onPrefs: (patch: Partial<LessonsPrefs>) => void
@@ -39,37 +40,70 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
     label: 'Ordina',
     items: (Object.keys(SORT_OPTIONS) as LessonsSort[]).map((sort) => ({ label: SORT_OPTIONS[sort], checked: prefs.sort === sort, onSelect: () => onPrefs({ sort }) })),
   }
-  const groupSection: MenuSection = {
-    label: 'Raggruppa',
-    items: (Object.keys(GROUPING_LABELS) as LessonsGrouping[]).map((group) => ({ label: GROUPING_LABELS[group], checked: prefs.group === group, onSelect: () => onPrefs({ group }) })),
+
+  const cycleGroup = () => {
+    const nextIndex = (GROUP_CYCLE.indexOf(prefs.group) + 1) % GROUP_CYCLE.length
+    onPrefs({ group: GROUP_CYCLE[nextIndex] })
   }
+
+  const cycleSort = () => {
+    const nextIndex = (SORT_CYCLE.indexOf(prefs.sort) + 1) % SORT_CYCLE.length
+    onPrefs({ sort: SORT_CYCLE[nextIndex] })
+  }
+
+  const GroupIcon = GROUP_ICONS[prefs.group]
+
   return (
     <>
-      {!phone && <div role="group" aria-label="Raggruppa" className="flex rounded-md bg-muted p-0.5 max-md:hidden">
-        {(Object.keys(GROUPING_LABELS) as LessonsGrouping[]).map((group) => (
+      {!phone ? (
+        <>
+          <div role="group" aria-label="Raggruppa" className="flex rounded-md bg-muted p-0.5 max-md:hidden">
+            {(Object.keys(GROUPING_LABELS) as LessonsGrouping[]).map((group) => (
+              <IconButton
+                key={group}
+                label={GROUPING_LABELS[group]}
+                icon={GROUP_ICONS[group]}
+                aria-pressed={prefs.group === group}
+                className={cn('hover:bg-card', prefs.group === group && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+                onClick={() => onPrefs({ group })}
+              />
+            ))}
+          </div>
+          <MenuButton label="Ordina" icon={ListFilter} sections={[sortSection]} className="max-md:hidden" />
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/5 md:hidden"
+            aria-label={`Raggruppa: ${PHONE_GROUP_LABELS[prefs.group]} (tocca per cambiare)`}
+            onClick={cycleGroup}
+          >
+            <GroupIcon className="size-3.5 shrink-0" aria-hidden />
+            <span>{PHONE_GROUP_LABELS[prefs.group]}</span>
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/5 md:hidden"
+            aria-label={`Ordina: ${PHONE_SORT_LABELS[prefs.sort]} (tocca per cambiare)`}
+            onClick={cycleSort}
+          >
+            <ListFilter className="size-3.5 shrink-0" aria-hidden />
+            <span>{PHONE_SORT_LABELS[prefs.sort]}</span>
+          </button>
           <IconButton
-            key={group}
-            label={GROUPING_LABELS[group]}
-            icon={GROUP_ICONS[group]}
-            aria-pressed={prefs.group === group}
-            className={cn('hover:bg-card', prefs.group === group && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
-            onClick={() => onPrefs({ group })}
+            label="Mostra la ricerca"
+            icon={Search}
+            className="md:hidden"
+            aria-expanded={searchOpen || !!query}
+            active={searchOpen || !!query}
+            onClick={() => {
+              setSearchOpen(!searchOpen)
+              if (!searchOpen) setTimeout(() => input.current?.focus())
+            }}
           />
-        ))}
-      </div>}
-      {!phone && <MenuButton label="Ordina" icon={ListFilter} sections={[sortSection]} className="max-md:hidden" />}
-      {phone && <MenuButton label="Raggruppa e ordina" icon={Calendar} sections={[groupSection, sortSection]} className="md:hidden" />}
-      {phone && <IconButton
-        label="Mostra la ricerca"
-        icon={Search}
-        className="md:hidden"
-        aria-expanded={searchOpen || !!query}
-        active={searchOpen || !!query}
-        onClick={() => {
-          setSearchOpen(!searchOpen)
-          if (!searchOpen) setTimeout(() => input.current?.focus())
-        }}
-      />}
+        </>
+      )}
       {/* Un solo campo "Cerca": il landmark non ha un nome suo, che lo ripeterebbe. */}
       <form
         role="search"
@@ -92,7 +126,13 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           className="w-full min-w-0 bg-transparent text-meta text-foreground outline-none max-md:text-body"
         />
       </form>
-      {!phone && <IconButton label="Seleziona" icon={SquareCheck} aria-pressed={selecting} active={selecting} className="max-md:hidden" onClick={() => onSelecting(!selecting)} />}
+      <IconButton
+        label="Seleziona"
+        icon={SquareCheck}
+        aria-pressed={selecting}
+        active={selecting}
+        onClick={() => onSelecting(!selecting)}
+      />
     </>
   )
 }

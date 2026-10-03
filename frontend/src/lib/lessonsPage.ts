@@ -12,16 +12,22 @@ export type LessonsGrouping = 'data' | 'materia' | 'docente'
 export type LessonsSort = 'recenti' | 'meno-recenti' | 'titolo'
 
 export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', materia: 'Per materia', docente: 'Per docente' }
+export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'materia', 'docente']
+export const PHONE_GROUP_LABELS: Record<LessonsGrouping, string> = { data: 'Data', materia: 'Materia', docente: 'Docente' }
+
 export const SORT_OPTIONS: Record<LessonsSort, string> = {
   recenti: 'Dalla più recente',
   'meno-recenti': 'Dalla meno recente',
   titolo: 'Per titolo',
 }
+export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'titolo']
+export const PHONE_SORT_LABELS: Record<LessonsSort, string> = { recenti: 'Recenti', 'meno-recenti': 'Vecchie', titolo: 'A–Z' }
 
 export const GROUP_TINTS = [
   'rgba(21, 95, 82, 0.06)',
   'rgba(59, 111, 160, 0.07)',
   'rgba(184, 134, 11, 0.08)',
+  'rgba(150, 80, 110, 0.06)',
 ] as const
 
 export type LessonsPrefs = { group: LessonsGrouping; sort: LessonsSort }

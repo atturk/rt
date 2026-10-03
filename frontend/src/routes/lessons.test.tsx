@@ -126,4 +126,37 @@ describe('pagina Lezioni', () => {
     expect(screen.queryByTestId('selection-bar')).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
   })
+
+  it('su telefono: i pulsanti raggruppa e ordina passano al valore successivo a ogni tocco', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('767.98px'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    renderDashboard()
+    const groupBtn = screen.getByRole('button', { name: /Raggruppa: Data/ })
+    expect(groupBtn).toBeInTheDocument()
+    fireEvent.click(groupBtn)
+    expect(screen.getByRole('button', { name: /Raggruppa: Materia/ })).toBeInTheDocument()
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Materia/ }))
+    expect(screen.getByRole('button', { name: /Raggruppa: Docente/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Docente/ }))
+    expect(screen.getByRole('button', { name: /Raggruppa: Data/ })).toBeInTheDocument()
+
+    const sortBtn = screen.getByRole('button', { name: /Ordina: Recenti/ })
+    expect(sortBtn).toBeInTheDocument()
+    fireEvent.click(sortBtn)
+    expect(screen.getByRole('button', { name: /Ordina: Vecchie/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Ordina: Vecchie/ }))
+    expect(screen.getByRole('button', { name: /Ordina: A–Z/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Ordina: A–Z/ }))
+    expect(screen.getByRole('button', { name: /Ordina: Recenti/ })).toBeInTheDocument()
+  })
 })
