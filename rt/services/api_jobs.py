@@ -183,7 +183,8 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                       force_mock=bool(p.get("mock")))
     if evaluation is None:
         raise ValueError("Domanda inesistente o a scelta multipla.")
-    return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation},
+    return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation,
+                  "outcome": getattr(evaluation, "outcome", None)},
                  lesson_path=job.lesson_path)
 
 

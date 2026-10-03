@@ -35,13 +35,13 @@ def regenerate(lesson_dir, question_id, comment, *, job_id, force_mock=False):
               'GeneratedRecallQuestion. Quiz: domanda sotto 290 caratteri, quattro opzioni distinte '
               'sotto 100 caratteri, correct_index 0-3 e spiegazione in pregenerated_material. '
               'Mirata: nessun materiale pregenerato. Vasta: scaletta ideale. Esercizio: schema di risoluzione. '
-              'Caso clinico: segui il contratto JSON del tipo. Niente opzioni o indice per le domande aperte.')
+              'Caso clinico: traccia senza pregenerated_material né soluzione. Niente opzioni o indice per le domande aperte.')
     client = LLMClient(force_mock=force_mock)
     if client.force_mock:
         data = {'type': question.type, 'question_text': f'Domanda rigenerata {question.type.value} {job_id}: ragiona sui dati.'}
         if question.type == RecallQuestionType.QUIZ:
             data.update(options=['A', 'B', 'C', 'D'], correct_index=0, pregenerated_material='Spiegazione della risposta A.')
-        elif question.type != RecallQuestionType.MIRATA:
+        elif question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.CASO):
             data['pregenerated_material'] = 'Schema atteso: analizza i dati, ragiona, concludi.'
         generated = GeneratedRecallQuestion.model_validate(data)
     else:

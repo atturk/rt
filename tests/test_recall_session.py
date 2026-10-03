@@ -1534,3 +1534,26 @@ class TestTask12StaleRecallCheck:
         run_stale_recall_check(lesson_dir, state_dir=state_dir)
         out = capsys.readouterr().out
         assert "HUMAN REVIEW REQUIRED" in out
+
+
+def test_question_list_exposes_the_latest_actual_attempt_and_summary_keeps_legacy_answers(tmp_path):
+    from rt.services.recall_service import question_list, recall_history
+    from rt.services.recall_sessions import summarize
+    path = str(tmp_path)
+    _setup_lesson(path)
+    q = _make_quiz_question()
+    answers = [
+        RecallAnswer(question_id=q.id, answer_text='B', outcome='corretta', answered_at='2026-10-01T10:00:00'),
+        RecallAnswer(question_id=q.id, answer_text='', vote='up', answered_at='2026-10-01T12:00:00'),
+        RecallAnswer(question_id=q.id, answer_text='A', outcome='sbagliata', answered_at='2026-10-01T11:00:00'),
+    ]
+    save_recall_bank(RecallBank(questions=[q], answers=answers), path)
+    assert question_list(path)['questions'][0]['outcome'] == 'sbagliata'
+    assert recall_history(path)['questions'][0]['outcome'] == 'sbagliata'
+    legacy = RecallAnswer(question_id=q.id, answer_text='B')
+    save_recall_bank(RecallBank(questions=[q], answers=[legacy]), path)
+    assert summarize(path, question_ids=[q.id])['correct'] == 1
+    q.options[1] = '[Non lo so]'
+    save_recall_bank(RecallBank(questions=[q], answers=[RecallAnswer(
+        question_id=q.id, answer_text='[Non lo so]', dont_know=True, outcome='sbagliata')]), path)
+    assert summarize(path, question_ids=[q.id])['correct'] == 0

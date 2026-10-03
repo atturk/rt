@@ -435,6 +435,7 @@ class CredentialTest(BaseModel):
 # ---------------------------------------------------------------- recall
 
 class RecallQuestion(BaseModel):
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
     type: str
     unit_ids: List[str]
@@ -516,6 +517,7 @@ class RecallUnitSelection(BaseModel):
 
 
 class RecallAnswerRecord(BaseModel):
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     question_id: str
     answer_text: str
     is_voice: bool = False

@@ -4423,6 +4423,8 @@ export interface components {
              * @default false
              */
             is_voice: boolean;
+            /** Outcome */
+            outcome?: ("corretta" | "parziale" | "sbagliata") | null;
             /** Question Id */
             question_id: string;
             /**
@@ -4512,6 +4514,8 @@ export interface components {
             id: string;
             /** Options */
             options?: string[] | null;
+            /** Outcome */
+            outcome?: ("corretta" | "parziale" | "sbagliata") | null;
             /** Question Text */
             question_text: string;
             /** Status */
@@ -4544,6 +4548,8 @@ export interface components {
             id: string;
             /** Options */
             options?: string[] | null;
+            /** Outcome */
+            outcome?: ("corretta" | "parziale" | "sbagliata") | null;
             /** Question Text */
             question_text: string;
             /** Status */

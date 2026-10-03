@@ -85,8 +85,9 @@ def summarize(lesson_dir: str, question_ids: Optional[Iterable[str]] = None,
         if q is None or q.type != RecallQuestionType.QUIZ:
             continue
         quiz += 1
-        if q.options and q.correct_index is not None and 0 <= q.correct_index < len(q.options) \
-                and a.answer_text == q.options[q.correct_index]:
+        if a.outcome == 'corretta' or (a.outcome is None and not a.dont_know and q.options
+                and q.correct_index is not None and 0 <= q.correct_index < len(q.options)
+                and a.answer_text == q.options[q.correct_index]):
             correct += 1
     return {"questions": len(asked), "answered": len(answers), "quiz_answered": quiz, "correct": correct}
 

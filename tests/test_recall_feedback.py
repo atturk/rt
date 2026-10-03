@@ -88,11 +88,15 @@ def test_non_lo_so_quiz_and_open_answer(api_client, lesson, rt_db):
     res = api_client.post(url, json={'question_id': quiz.id, 'dont_know': True})
     assert res.status_code == 200 and res.json()['correct'] is False
     assert res.json()['question']['correct_index'] == quiz.correct_index
+    assert res.json()['question']['outcome'] == 'sbagliata'
     res = api_client.post(url, json={'question_id': mirata.id, 'dont_know': True, 'mock': True})
     assert res.status_code == 202, res.text
     job = DbJobQueue(rt_db).get(res.json()['job_id'])
     result = recall_evaluate_job(job, RunContext()).result
     assert 'Correttezza: 0%' in result['evaluation']
+    assert result['outcome'] == 'sbagliata'
+    questions = api_client.get(url.removesuffix('/answer') + '/questions').json()['questions']
+    assert all(q['outcome'] == 'sbagliata' for q in questions if q['id'] in [quiz.id, mirata.id])
     assert all(a.dont_know and a.answer_text == '[Non lo so]' for a in recall.load_recall_bank(lesson).answers)
 
 

@@ -265,12 +265,12 @@ class GeneratedRecallQuestion(BaseModel):
         else:
             if self.options is not None or self.correct_index is not None:
                 raise ValueError("Le domande aperte non hanno opzioni o indice")
-            if self.type == RecallQuestionType.MIRATA and self.pregenerated_material is not None:
-                raise ValueError("La mirata non ha materiale pregenerato")
+            if self.type in (RecallQuestionType.MIRATA, RecallQuestionType.CASO) and self.pregenerated_material is not None:
+                raise ValueError("Mirate e casi clinici non hanno materiale pregenerato")
             if self.type == RecallQuestionType.VASTA and not (self.pregenerated_material or "").strip():
                 raise ValueError("Vasta: scaletta obbligatoria")
-            if self.type in SPECIAL_TYPES and not (self.pregenerated_material or "").strip():
-                raise ValueError("Casi ed esercizi: soluzione attesa obbligatoria")
+            if self.type == RecallQuestionType.ESERCIZIO and not (self.pregenerated_material or "").strip():
+                raise ValueError("Esercizio: schema di risoluzione obbligatorio")
         return self
 
 
@@ -317,19 +317,29 @@ class SpecialTemplate(BaseModel):
     esplicito: bool = Field(default=False, description="Presentato a lezione (non solo adattabile)")
 
 
-class GeneratedSpecialItem(BaseModel):
+class GeneratedClinicalItem(BaseModel):
     question_text: str = Field(min_length=1, max_length=4000)
-    pregenerated_material: str = Field(min_length=1, max_length=8000, description="Soluzione o ragionamento atteso")
     unit_ids: List[str] = Field(default_factory=list, description="Subunità a cui si riferisce")
     tipo: SpecialTemplate
+
+
+class GeneratedSpecialItem(GeneratedClinicalItem):
+    pregenerated_material: str = Field(min_length=1, max_length=8000, description="Schema di risoluzione dell'esercizio")
+
+
+class RecallClinicalGenerationResult(BaseModel):
+    items: List[GeneratedClinicalItem] = Field(..., max_length=8)
 
 
 class RecallSpecialGenerationResult(BaseModel):
     items: List[GeneratedSpecialItem] = Field(..., max_length=8)
 
 
-class GeneratedVariant(BaseModel):
+class GeneratedClinicalVariant(BaseModel):
     question_text: str = Field(min_length=1, max_length=4000)
+
+
+class GeneratedVariant(GeneratedClinicalVariant):
     pregenerated_material: str = Field(min_length=1, max_length=8000)
 
 
@@ -350,11 +360,25 @@ class RecallTemplate(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+RecallOutcome = Literal["corretta", "parziale", "sbagliata"]
+
+
+class RecallEvaluation(str):
+    """Testo compatibile con CLI/bot, accompagnato dall'esito da salvare nella risposta."""
+    outcome: Optional[RecallOutcome]
+
+    def __new__(cls, text: str, outcome: Optional[RecallOutcome] = None):
+        result = super().__new__(cls, text)
+        result.outcome = outcome
+        return result
+
+
 class RecallAnswer(BaseModel):
     question_id: str
     answer_text: str
     is_voice: bool = False
     evaluation: Optional[str] = None
+    outcome: Optional[RecallOutcome] = None
     vote: Optional[str] = None  # up | down | lightning
     vote_reasons: List[str] = Field(default_factory=list)
     vote_comment: Optional[str] = None

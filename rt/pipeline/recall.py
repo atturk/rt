@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
-from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer
+from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer, RecallOutcome
 from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
@@ -239,6 +239,7 @@ def record_recall_answer(
     is_voice: bool = False,
     evaluation: Optional[str] = None,
     vote: Optional[str] = None,
+    outcome: Optional[RecallOutcome] = None,
 ) -> RecallAnswer:
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
     with recall_bank_lock(lesson_dir):
@@ -248,8 +249,18 @@ def record_recall_answer(
                 if q.status != RecallQuestionStatus.DISCARDED:
                     q.status = RecallQuestionStatus.ANSWERED
                 break
+        if answer_text.strip() == '[Non lo so]':
+            outcome = 'sbagliata'
+        elif outcome is None:
+            outcome = getattr(evaluation, 'outcome', None)
+            question = next((q for q in bank.questions if q.id == question_id), None)
+            if question and question.type == RecallQuestionType.QUIZ and question.options \
+                    and question.correct_index is not None and 0 <= question.correct_index < len(question.options) \
+                    and answer_text.strip():
+                outcome = 'corretta' if answer_text == question.options[question.correct_index] else 'sbagliata'
         existing = next((a for a in bank.answers if a.question_id == question_id), None)
         if existing:
+            existing.outcome = outcome
             existing.answer_text = answer_text
             existing.is_voice = is_voice
             existing.evaluation = evaluation
@@ -264,6 +275,7 @@ def record_recall_answer(
                 answer_text=answer_text,
                 is_voice=is_voice,
                 evaluation=evaluation,
+                outcome=outcome,
                 vote=vote,
                 dont_know=answer_text.strip() == '[Non lo so]',
             )
@@ -653,6 +665,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
         raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
 
+    from rt.core.models import RecallEvaluation
     is_dont_know = answer_text.strip() == "[Non lo so]"
 
     # Mock deterministico gestito qui direttamente (stesso pattern di generate_recall_batch):
@@ -660,11 +673,11 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     if force_mock:
         if question.type == RecallQuestionType.MIRATA:
             if is_dont_know:
-                return "Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota."
-            return "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento."
+                return RecallEvaluation("Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota.", "sbagliata")
+            return RecallEvaluation("Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento.", "parziale")
         if is_dont_know:
-            return "[MOCK] Spiegazione automatica per risposta non nota."
-        return "[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale."
+            return RecallEvaluation("[MOCK] Spiegazione automatica per risposta non nota.", "sbagliata")
+        return RecallEvaluation("[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.", "parziale")
 
     client = LLMClient(force_mock=force_mock)
 
@@ -691,7 +704,8 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         if is_dont_know:
             result.correttezza = 0
             result.completezza = 0
-        return f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}"
+        return RecallEvaluation(f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}",
+                                "sbagliata" if is_dont_know else result.outcome)
 
     elif question.type == RecallQuestionType.VASTA:
         user_prompt = build_recall_eval_vasta_user_prompt(
@@ -708,7 +722,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             unit_id=", ".join(question.unit_ids),
             lesson_dir=lesson_dir,
         )
-        return result_v.commento
+        return RecallEvaluation(result_v.commento, "sbagliata" if is_dont_know else result_v.outcome)
 
 
 def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = None) -> int:
