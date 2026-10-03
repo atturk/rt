@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
 
+import { GROUP_TINTS } from '@/lib/lessonsPage'
 import { DashboardPage } from './lessons'
 
 const LESSONS = [
@@ -51,19 +52,17 @@ const groups = () => screen.getAllByTestId('lesson-group').map((g) => within(g).
 beforeEach(() => localStorage.clear())
 
 describe('pagina Lezioni', () => {
-  it('per data: gruppi per giorno, sotto il titolo materia, docente e unità', () => {
+  it('per data: gruppi per giorno, sotto il titolo materia, docente e unità; clic sulla riga apre la lezione', () => {
     renderDashboard()
     expect(screen.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeInTheDocument()
     expect(screen.getAllByTestId('lesson-group')).toHaveLength(2)
     expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('Patologia · Maria Rossi · 7 unità')
     expect(within(row(2)).getByTestId('lesson-subtitle')).toHaveTextContent(/^Biochimica$/)
-    // Azioni sempre nello stesso ordine: Info, Recall, Studio, Apri.
-    const names = Array.from(row(1).querySelectorAll('button, a')).map((el) => el.getAttribute('aria-label')).filter(Boolean)
-    expect(names).toEqual(['Info', 'Recall', 'Studio', 'Apri'])
-    expect(within(row(1)).getByRole('link', { name: 'Recall' })).toHaveAttribute('href', '/lezioni/1/recall')
-    expect(within(row(1)).getByRole('link', { name: 'Studio' })).toHaveAttribute('href', '/studio/lezione/1')
-    // Senza rielaborazione Recall e Studio restano al loro posto, non disponibili.
-    expect(within(row(2)).getByRole('button', { name: 'Recall' })).toHaveAttribute('aria-disabled', 'true')
+    // Nessuna icona di azione sulle righe (Info, Recall, Studio, Apri): si apre con un clic sulla riga.
+    expect(within(row(1)).getByRole('link', { name: /Infiammazione/ })).toHaveAttribute('href', '/lezioni/1')
+    expect(within(row(2)).getByRole('link', { name: /Lipidi/ })).toHaveAttribute('href', '/lezioni/2')
+    const names = Array.from(row(1).querySelectorAll('button, a')).map((el) => el.getAttribute('aria-label')).filter((n): n is string => Boolean(n))
+    expect(names.filter((n) => ['Info', 'Recall', 'Studio', 'Apri'].includes(n))).toEqual([])
   })
 
   it('il pallino dice lo stato: in corso, da verificare', () => {
@@ -96,18 +95,14 @@ describe('pagina Lezioni', () => {
     expect(screen.getByTestId('lessons-empty')).toHaveTextContent('Nessuna lezione corrisponde alla ricerca.')
   })
 
-  it('Info: popup con tutti i campi elisi dalla riga, si chiude con la X', () => {
+  it('ogni gruppo ha uno sfondo a rotazione da GROUP_TINTS e angoli da 12 px', () => {
     renderDashboard()
-    fireEvent.click(within(row(1)).getByRole('button', { name: 'Info' }))
-    const info = screen.getByTestId('lesson-info')
-    expect(within(info).getByRole('heading', { name: 'Infiammazione' })).toBeInTheDocument()
-    const values = Object.fromEntries(
-      within(info).getAllByRole('term').map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]),
-    )
-    expect(values).toMatchObject({ Materia: 'Patologia', Durata: '52 min', Unità: '7', Domande: '38 nel pool · 14 da fare', Costo: '$0.42' })
-    expect(values.Stato).toBe('completata · 2 da verificare')
-    fireEvent.click(within(info).getByRole('button', { name: 'Chiudi' }))
-    expect(within(info).queryByRole('term')).toBeNull()
+    const groupElements = screen.getAllByTestId('lesson-group')
+    expect(groupElements).toHaveLength(2)
+    expect(groupElements[0]).toHaveStyle({ background: GROUP_TINTS[0] })
+    expect(groupElements[1]).toHaveStyle({ background: GROUP_TINTS[1] })
+    expect(groupElements[0]).toHaveClass('rounded-[12px]')
+    expect(groupElements[1]).toHaveClass('rounded-[12px]')
   })
 
   it('selezione: la casella del gruppo prende tutto il gruppo, la barra scarica Markdown e zip', () => {

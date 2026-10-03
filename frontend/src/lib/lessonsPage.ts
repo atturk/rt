@@ -18,6 +18,12 @@ export const SORT_OPTIONS: Record<LessonsSort, string> = {
   titolo: 'Per titolo',
 }
 
+export const GROUP_TINTS = [
+  'rgba(21, 95, 82, 0.06)',
+  'rgba(59, 111, 160, 0.07)',
+  'rgba(184, 134, 11, 0.08)',
+] as const
+
 export type LessonsPrefs = { group: LessonsGrouping; sort: LessonsSort }
 const DEFAULT_PREFS: LessonsPrefs = { group: 'data', sort: 'recenti' }
 const STORAGE_KEY = 'rt-lessons-page'

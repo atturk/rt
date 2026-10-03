@@ -59,36 +59,15 @@ test('gruppi per data, materia e docente; ordinamento; le scelte restano dopo la
   await page.getByRole('menuitemradio', { name: 'Dalla più recente' }).click()
 })
 
-test('azioni della riga sempre nello stesso ordine; popup Info si chiude con Esc, clic fuori e X', async ({ page }) => {
+test('clic sulla riga apre la lezione; nessuna icona di azione', async ({ page }) => {
   await loginViaLink(page)
   const [lesson] = await apiGet<Lesson[]>(page.request, '/lessons?materia=BIOCHIMICA')
   const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${lesson.id}"]`)
   await expect(row).toBeVisible()
+  const link = row.getByRole('link')
+  await expect(link).toHaveAttribute('href', `/lezioni/${lesson.id}`)
   const names = await row.locator('[aria-label]').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
-  expect(names.filter((n) => ['Info', 'Recall', 'Studio', 'Apri'].includes(n!))).toEqual(['Info', 'Recall', 'Studio', 'Apri'])
-
-  const info = row.getByRole('button', { name: 'Info' })
-  await info.click()
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('heading')).toBeVisible()
-  for (const term of ['Materia', 'Docente', 'Data', 'Durata', 'Unità', 'Domande', 'Costo', 'Stato']) {
-    await expect(dialog.getByRole('term').filter({ hasText: new RegExp(`^${term}$`) })).toHaveCount(1)
-  }
-  await expect(dialog).toContainText('Biochimica')
-  await expect(dialog).toContainText('nel pool')
-  await page.keyboard.press('Escape')
-  await expect(dialog).toBeHidden()
-  await expect(info).toBeFocused()
-
-  await info.click()
-  await expect(dialog).toBeVisible()
-  await page.mouse.click(300, 20) // sullo sfondo, fuori dal popup
-  await expect(dialog).toBeHidden()
-
-  await info.click()
-  await dialog.getByRole('button', { name: 'Chiudi' }).click()
-  await expect(dialog).toBeHidden()
+  expect(names.filter((n) => ['Info', 'Recall', 'Studio', 'Apri'].includes(n!))).toEqual([])
 })
 
 test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', async ({ page }) => {

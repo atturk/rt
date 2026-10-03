@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, BookOpen, Brain, Calendar, ExternalLink, FileText, Info, ListFilter, Search, SquareCheck, Tag, Trash2, User, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Archive, Brain, Calendar, FileText, ListFilter, Search, SquareCheck, Tag, Trash2, User, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { api, errorMessage, unwrap } from '@/api/client'
@@ -11,7 +11,7 @@ import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
-  GROUPING_LABELS, SORT_OPTIONS, markdownExportNote, STATUS_LABELS, groupLabel, lessonInfo, lessonStatus, lessonSubtitle,
+  GROUPING_LABELS, GROUP_TINTS, SORT_OPTIONS, markdownExportNote, STATUS_LABELS, groupLabel, lessonStatus, lessonSubtitle,
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
@@ -20,7 +20,6 @@ import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 
 const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
-const NOT_READY = 'serve prima la rielaborazione della lezione'
 
 // ---------------------------------------------------------------- intestazione
 
@@ -142,47 +141,40 @@ function Check({ label, checked, indeterminate = false, onChange }: { label: str
   )
 }
 
-/** Le colonne delle azioni della riga: Info, Recall, Studio, Apri. */
-const ACTIONS = 'flex shrink-0 items-center gap-0.5'
-
-function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, onInfo }: {
+function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
   lesson: Lesson
   grouping: LessonsGrouping
   running: boolean
   selecting: boolean
   selected: boolean
   onSelect: (checked: boolean) => void
-  onInfo: () => void
 }) {
   const title = lessonTitle(lesson)
-  const recall = lesson.phases.rewrite === 'VALID' ? null : NOT_READY
   const subtitle = lessonSubtitle(lesson, grouping)
   return (
-    <li
-      className="flex min-h-14 items-center gap-3 rounded-md px-2.5 py-3 hover:bg-muted max-md:gap-2 max-md:rounded-none max-md:border-b max-md:px-0 max-md:py-4 max-md:hover:bg-transparent"
-      data-testid="lesson-row"
-      data-lesson-id={lesson.id}
-    >
-      {selecting ? <Check label={`Seleziona ${title}`} checked={selected} onChange={onSelect} /> : <StatusDot status={lessonStatus(lesson, running)} />}
-      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-        <Link to={`/lezioni/${lesson.id}`} className="font-medium hover:underline max-md:font-semibold">
-          {title}
-        </Link>
-        {subtitle && (
-          <>
-            <span className="text-meta text-muted-foreground max-md:hidden"> · </span>
-            <span className="text-meta text-muted-foreground max-md:block" data-testid="lesson-subtitle">
-              {subtitle}
-            </span>
-          </>
+    <li data-testid="lesson-row" data-lesson-id={lesson.id}>
+      <Link
+        to={`/lezioni/${lesson.id}`}
+        className="flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-black/5 dark:hover:bg-white/5 max-md:gap-3 max-md:px-2 max-md:py-2.5"
+        onClick={(event) => {
+          if (selecting) {
+            event.preventDefault()
+            onSelect(!selected)
+          }
+        }}
+      >
+        {selecting ? (
+          <Check label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
+        ) : (
+          <StatusDot status={lessonStatus(lesson, running)} />
         )}
-      </div>
-      <div className={ACTIONS}>
-        <IconButton label="Info" icon={Info} onClick={onInfo} className="max-md:hidden" aria-haspopup="dialog" />
-        <IconLink label="Recall" icon={Brain} to={`/lezioni/${lesson.id}/recall`} unavailable={recall} />
-        <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${lesson.id}`} unavailable={recall} />
-        <IconLink label="Apri" icon={ExternalLink} to={`/lezioni/${lesson.id}`} className="max-md:hidden" />
-      </div>
+        <span className="text-[15px] font-normal text-foreground md:text-[16px]">{title}</span>
+        {subtitle && (
+          <span className="text-meta text-muted-foreground" data-testid="lesson-subtitle">
+            {subtitle}
+          </span>
+        )}
+      </Link>
     </li>
   )
 }
@@ -197,7 +189,7 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
   const label = groupLabel(group, grouping)
   // Recall su un gruppo: si seleziona il gruppo (o le lezioni che si vogliono) e Recall nella barra in basso.
   return (
-    <div className="mb-2 flex items-center gap-3 px-2.5 max-md:gap-2 max-md:px-0">
+    <div className="flex items-center gap-3 px-2.5 pt-1 pb-0.5 max-md:gap-3 max-md:px-2">
       {selecting && (
         <Check
           label={`Seleziona il gruppo ${label}`}
@@ -206,12 +198,12 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
           onChange={onSelectGroup}
         />
       )}
-      <h2 className="min-w-0 flex-1 text-meta font-semibold uppercase tracking-[.045em] text-muted-foreground">{label}</h2>
+      <h2 className="min-w-0 flex-1 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}</h2>
     </div>
   )
 }
 
-// ---------------------------------------------------------------- elenco, selezione, Info
+// ---------------------------------------------------------------- elenco e selezione
 
 export function LessonsList({ groups, grouping, running, selecting, selected, onSelected }: {
   groups: LessonGroup[]
@@ -221,7 +213,6 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
   selected: Set<number>
   onSelected: (next: Set<number>) => void
 }) {
-  const [info, setInfo] = useState<Lesson | null>(null)
   const toggle = (ids: number[], on: boolean) => {
     const next = new Set(selected)
     for (const id of ids) {
@@ -231,9 +222,16 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
     onSelected(next)
   }
   return (
-    <>
-      {groups.map((group) => (
-        <section key={group.key || '-'} aria-label={groupLabel(group, grouping)} className="mb-6" data-testid="lesson-group" data-group={group.key}>
+    <div className="flex flex-col gap-3">
+      {groups.map((group, index) => (
+        <section
+          key={group.key || '-'}
+          aria-label={groupLabel(group, grouping)}
+          className="rounded-[12px] p-[10px_6px_6px]"
+          style={{ background: GROUP_TINTS[index % GROUP_TINTS.length] }}
+          data-testid="lesson-group"
+          data-group={group.key}
+        >
           <GroupHeader
             group={group}
             grouping={grouping}
@@ -241,7 +239,7 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
             selectedCount={group.lessons.filter((l) => selected.has(l.id)).length}
             onSelectGroup={(on) => toggle(group.lessons.map((l) => l.id), on)}
           />
-          <ul>
+          <ul className="flex flex-col">
             {group.lessons.map((lesson) => (
               <LessonRow
                 key={lesson.id}
@@ -251,74 +249,12 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
                 selecting={selecting}
                 selected={selected.has(lesson.id)}
                 onSelect={(on) => toggle([lesson.id], on)}
-                onInfo={() => setInfo(lesson)}
               />
             ))}
           </ul>
         </section>
       ))}
-      <Modal open={info !== null} onClose={() => setInfo(null)} title={info ? lessonTitle(info) : ''} className="w-[min(360px,calc(100vw-32px))]" testId="lesson-info" compact>
-        {info && (
-          <dl className="mt-4 grid grid-cols-[90px_minmax(0,1fr)] gap-x-3 gap-y-2 text-body">
-            {lessonInfo(info, running.has(info.id)).map(([key, value]) => (
-              <InfoRow key={key} label={key}>{value}</InfoRow>
-            ))}
-          </dl>
-        )}
-        {info && <DeleteLesson key={info.id} lesson={info} onDeleted={() => setInfo(null)} />}
-      </Modal>
-    </>
-  )
-}
-
-/** Eliminazione (rara: sta nel popup Info), con la conferma scritta di sempre. */
-function DeleteLesson({ lesson, onDeleted }: { lesson: Lesson; onDeleted: () => void }) {
-  const [confirming, setConfirming] = useState(false)
-  const [typed, setTyped] = useState('')
-  const inputId = useId()
-  const client = useQueryClient()
-  const deletion = useMutation({
-    mutationFn: () => unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: lesson.id } } })),
-    onSuccess: () => {
-      onDeleted()
-      void client.invalidateQueries({ queryKey: ['lessons'] })
-    },
-  })
-  if (!confirming) {
-    return (
-      <div className="mt-5 flex justify-end border-t pt-3">
-        <Button variant="ghost" size="sm" className="text-danger" onClick={() => setConfirming(true)}>
-          <Trash2 aria-hidden />
-          Elimina la lezione
-        </Button>
-      </div>
-    )
-  }
-  return (
-    <form
-      className="mt-5 flex flex-col gap-2 border-t pt-3 text-meta"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (typed === 'confermo') deletion.mutate()
-      }}
-    >
-      <label htmlFor={inputId}>Eliminare definitivamente la lezione e tutti i suoi file? Scrivi confermo</label>
-      <input id={inputId} className="min-h-10 rounded-md border bg-card p-2 text-body" value={typed} autoFocus onChange={(event) => setTyped(event.target.value)} />
-      {deletion.isError && <p role="alert" className="text-danger">{errorMessage(deletion.error)}</p>}
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Annulla</Button>
-        <Button type="submit" variant="destructive" size="sm" disabled={typed !== 'confermo' || deletion.isPending}>Elimina</Button>
-      </div>
-    </form>
-  )
-}
-
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <>
-      <dt className="self-center text-meta text-muted-foreground">{label}</dt>
-      <dd className="[overflow-wrap:anywhere]">{children}</dd>
-    </>
+    </div>
   )
 }
 
