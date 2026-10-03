@@ -308,6 +308,26 @@ merge: la PR la rivede Claude.»
 Per un task correttivo `R<n>`: stesso messaggio, con «Fai la correzione **R<n>** sul branch della
 PR indicata».
 
+## Note per il giro 2 (dalla revisione del giro 1)
+
+- **API già pronte** da usare nei pannelli: `PATCH /lessons/{id}/metadata` (B1: titolo, materia, data,
+  ora, docente; 409 con job attivo o documento in modifica), `GET …/document/pipeline-version` e
+  `POST …/document/restore-pipeline` (B2), `POST …/recall/vote` con `reasons` e `comment`,
+  `POST …/recall/regenerate`, `dont_know` in `POST …/recall/answer`, `outcome` nelle domande (B4,
+  B5), `instructions`/`selection`/`count` in `POST …/recall/generate` (B3), `with_enrichment` nei
+  job (B6), `PUT /settings/preferences` (B8), `expires_at`/`timer_seconds`/`timer_suspended` nella
+  scaletta e `POST …/outline/suspend` (B9).
+- **G1**: il vecchio `DetailsPanel` di F0 è solo il contenuto di prima spostato; va rifatto come da
+  wireframe. "Elimina la lezione…" torna qui (vedi task).
+- **G5**: il pulsante Domande dell'intestazione apre già il pannello (oggi vuoto); la pagina Recall
+  non ha più un link dall'intestazione.
+- **C4**: dopo "Rigenera con queste modifiche" la nuova scaletta deve ripartire con il conto
+  alla rovescia: alla fine del job di revisione della scaletta chiamare
+  `outline_service.start_outline_timer`. Il timer gira nel processo del worker; se il worker
+  riparte, l'approvazione scatta alla prima lettura della scaletta (`get_outline_review`).
+- **Stile**: colori solo dalle variabili del tema (per i gruppi `--group-1..4`, `--group-gray`),
+  testo con `text-meta`/`text-body`/`text-heading`.
+
 ## Correzioni
 
 Task correttivi aperti dalla revisione (formato: `R<n> — task di origine — agente — cosa correggere`).
