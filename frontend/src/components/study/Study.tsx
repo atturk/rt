@@ -1,4 +1,4 @@
-import { BookOpen, Check, Mic, Pause, Play, SendHorizontal, Square, X } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, List, Mic, Pause, Play, SendHorizontal, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -21,10 +21,9 @@ import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
 
 /**
- * Studio (schermate 05, 05b, 06): si legge un'unità intera, poi le sue domande una alla volta,
- * poi l'unità dopo; con un gruppo (giorno, materia, docente) le lezioni una dopo l'altra.
- * Domande su questa parte (menu della lezione) parte dalle domande di alcune unità.
- * Le domande sono quelle del pool (POST /recall/next con unit_id, come Leggi e ripeti).
+ * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
+ * si legge un'unità intera, poi le sue domande una alla volta, poi l'unità dopo;
+ * l'indice "Unità N di M ▾" permette di saltare direttamente a qualsiasi unità.
  */
 export function StudyFlow({ lessons, onlyUnits = null, back }: {
   /** Lezioni nell'ordine dello studio (pronte: rielaborazione valida). */
@@ -37,6 +36,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [unitIndex, setUnitIndex] = useState(0)
   const [phase, setPhase] = useState<'lettura' | 'domande'>(onlyUnits ? 'domande' : 'lettura')
   const [rereading, setRereading] = useState(false)
+  const [indexOpen, setIndexOpen] = useState(false)
   const [finished, setFinished] = useState(false)
   const lesson = lessons[lessonIndex] ?? null
   const study = useStudyLesson(lesson?.id ?? null)
@@ -50,6 +50,13 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
+
+  const goToUnit = (idx: number) => {
+    setUnitIndex(idx)
+    setPhase('lettura')
+    setRereading(false)
+    window.scrollTo?.({ top: 0 })
+  }
 
   const advance = useCallback(() => {
     setRereading(false)
@@ -114,13 +121,29 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const position = `${title} · unità ${unitIndex + 1} di ${units.length}`
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
+
+  const headerActions = (
+    <div className="flex items-center gap-1.5">
+      <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
+      {units.length > 1 && (
+        <UnitIndexMenu
+          units={units}
+          unitIndex={unitIndex}
+          open={indexOpen}
+          onOpenChange={setIndexOpen}
+          onSelectUnit={goToUnit}
+        />
+      )}
+    </div>
+  )
+
   return (
     <>
       {reading && (
         <StudyShell
           title={position}
           back={back}
-          actions={<UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />}
+          actions={headerActions}
           footer={
             rereading ? (
               <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setRereading(false)}>Torna alle domande</Button>
@@ -148,6 +171,20 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             total={unit.questions || live.questions}
             back={back}
             dots={<Dots count={units.length} current={unitIndex} />}
+            actions={
+              <div className="flex items-center gap-1.5">
+                <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={() => setRereading(true)} />
+                {units.length > 1 && (
+                  <UnitIndexMenu
+                    units={units}
+                    unitIndex={unitIndex}
+                    open={indexOpen}
+                    onOpenChange={setIndexOpen}
+                    onSelectUnit={goToUnit}
+                  />
+                )}
+              </div>
+            }
             onReread={() => setRereading(true)}
             onDone={advance}
           />
@@ -295,12 +332,13 @@ type Outcome =
 const OPEN_LABEL: Record<string, string> = { mirata: 'Domanda mirata', vasta: 'Domanda vasta', caso: 'Caso clinico', esercizio: 'Esercizio' }
 
 /** Le domande dell'unità, una alla volta (schermata 06). */
-function QuestionPhase({ lessonId, unit, total, back, dots, onReread, onDone }: {
+function QuestionPhase({ lessonId, unit, total, back, dots, actions, onReread, onDone }: {
   lessonId: number
   unit: StudyUnit
   total: number
   back: { to: string; label: string }
   dots: ReactNode
+  actions?: ReactNode
   onReread: () => void
   onDone: () => void
 }) {
@@ -342,8 +380,14 @@ function QuestionPhase({ lessonId, unit, total, back, dots, onReread, onDone }: 
   const failure = next.error && !(next.error instanceof ApiError && next.error.code === 'no_questions') ? next.error : (answer.error ?? voice.error ?? skip.error)
   return (
     <div className="flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study-questions">
-      <PageHeader title={label} muted titleAs="h1" back={back} actions={<IconButton label="Rileggi l'unità" icon={BookOpen} onClick={onReread} />}
-        className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+      <PageHeader
+        title={label}
+        muted
+        titleAs="h1"
+        back={back}
+        actions={actions ?? <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={onReread} />}
+        className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta"
+      />
       <div className="flex-1 px-7 pb-8 pt-3 max-md:px-[18px]">
         <div className="mx-auto w-full max-w-[560px]">
           {dots}
@@ -516,6 +560,139 @@ function Evaluation({ jobId }: { jobId: string }) {
     <div role="status" className="mt-3 flex flex-col gap-2 text-body" data-testid="study-feedback">
       {result?.answer && <p className="whitespace-pre-wrap rounded-md bg-card px-3 py-2"><span className="text-meta text-muted-foreground">La tua risposta: </span>{result.answer}</p>}
       <p className="whitespace-pre-wrap">{result?.evaluation ?? 'Valutazione non disponibile.'}</p>
+    </div>
+  )
+}
+
+/** Indice delle unità della lezione (wireframe Studio-Indice.dc.html e Telefono-Studio-Indice.dc.html). */
+function UnitIndexMenu({
+  units,
+  unitIndex,
+  open,
+  onOpenChange,
+  onSelectUnit,
+}: {
+  units: StudyUnit[]
+  unitIndex: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelectUnit: (index: number) => void
+}) {
+  const phone = useIsPhone()
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onClick)
+    }
+  }, [open, onOpenChange])
+
+  // Raggruppamento per prefisso di sezione (1., 2., ecc.)
+  const sectionGroups: { key: string; title: string; items: { unit: StudyUnit; index: number }[] }[] = []
+  units.forEach((u, i) => {
+    const secKey = u.id.includes('.') ? u.id.split('.')[0] : ''
+    let group = sectionGroups.find((g) => g.key === secKey)
+    if (!group) {
+      group = { key: secKey, title: secKey ? `Sezione ${secKey}` : '', items: [] }
+      sectionGroups.push(group)
+    }
+    group.items.push({ unit: u, index: i })
+  })
+
+  const renderItems = () => (
+    <div className="flex flex-col gap-1">
+      {sectionGroups.map((g) => (
+        <div key={g.key || 'root'}>
+          {g.title && (
+            <p className="px-2.5 pt-2 pb-1 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">
+              {g.title}
+            </p>
+          )}
+          {g.items.map(({ unit: u, index: i }) => (
+            <button
+              key={u.id}
+              type="button"
+              role="menuitem"
+              className={cn(
+                'flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-body transition-colors hover:bg-muted',
+                i === unitIndex && 'bg-accent font-medium text-accent-foreground',
+              )}
+              onClick={() => {
+                onSelectUnit(i)
+                onOpenChange(false)
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{u.id} {u.title}</span>
+              <span className="ml-2 shrink-0 text-meta text-muted-foreground">
+                {i < unitIndex ? 'letta' : i === unitIndex ? 'qui' : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 gap-1.5 px-2.5 text-meta text-foreground"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => onOpenChange(!open)}
+        data-testid="unit-index-toggle"
+      >
+        <List className="size-3.5 shrink-0" aria-hidden />
+        <span>{phone ? `${unitIndex + 1} di ${units.length}` : `Unità ${unitIndex + 1} di ${units.length}`}</span>
+        {!phone && <ChevronDown className="size-3.5 shrink-0" aria-hidden />}
+      </Button>
+
+      {open && !phone && (
+        <div
+          role="menu"
+          aria-label="Vai a un'unità"
+          data-testid="unit-index-menu"
+          className="absolute right-0 top-10 z-30 max-h-80 w-80 overflow-y-auto rounded-lg border bg-card p-1.5 shadow-panel"
+        >
+          {renderItems()}
+        </div>
+      )}
+
+      {open && phone && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-[2px]"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) onOpenChange(false)
+          }}
+        >
+          <section
+            aria-label="Vai a un'unità"
+            data-testid="unit-index-sheet"
+            className="flex max-h-[75vh] flex-col rounded-t-[14px] bg-card p-4 shadow-panel"
+          >
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-border" />
+            <div className="flex items-center justify-between pb-2">
+              <h2 className="text-body font-semibold">Vai a un'unità</h2>
+              <IconButton label="Chiudi" icon={X} onClick={() => onOpenChange(false)} />
+            </div>
+            <div className="flex-1 overflow-y-auto pt-1">
+              {renderItems()}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }
