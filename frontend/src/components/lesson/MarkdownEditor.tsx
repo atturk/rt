@@ -1,9 +1,26 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
+
+/**
+ * Aspetto da anteprima dal vivo (design 4.2, schermata 02): titoli in grassetto, grassetto e
+ * corsivo resi, i segni del Markdown (#, **, _, `) grigi. Il Markdown resta la fonte.
+ */
+const livePreview = HighlightStyle.define([
+  { tag: tags.heading1, fontWeight: '600', fontSize: '22px' },
+  { tag: [tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], fontWeight: '600' },
+  { tag: tags.strong, fontWeight: '600' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: [tags.processingInstruction, tags.meta, tags.contentSeparator, tags.labelName], color: 'var(--mute)' },
+  { tag: [tags.link, tags.url], color: 'var(--link)', textDecoration: 'underline' },
+  { tag: tags.monospace, fontFamily: 'var(--font-mono)', backgroundColor: 'var(--soft)' },
+  { tag: tags.quote, color: 'var(--mute)' },
+])
 
 type Props = {
   value: string
@@ -36,7 +53,7 @@ export function MarkdownEditor({ value, onChange, onEscape, label, focusLine }: 
           lineNumbers(),
           history(),
           markdown(),
-          syntaxHighlighting(defaultHighlightStyle),
+          syntaxHighlighting(livePreview),
           EditorView.lineWrapping,
           keymap.of([
             {

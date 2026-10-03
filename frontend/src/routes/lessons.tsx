@@ -1,6 +1,6 @@
-import { Brain, Download, Images, PanelRightClose, PanelRightOpen, Pencil, Plus } from 'lucide-react'
-import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Brain, Download, Info, Pencil, Plus, ShieldCheck } from 'lucide-react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
 import { useDismissNotice, type Notice } from '@/api/documentEdit'
@@ -8,27 +8,27 @@ import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { useSettings } from '@/api/settings'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
-import { CostPanel } from '@/components/lesson/CostPanel'
 import { DocumentEditNotice } from '@/components/lesson/DocumentEditNotice'
 import type { DocumentSaveResult } from '@/components/lesson/DocumentEditor'
+import { DocumentMenu } from '@/components/lesson/DocumentMenu'
 import { DocumentView } from '@/components/lesson/DocumentView'
-import { JobsPanel } from '@/components/lesson/JobsPanel'
-import { PhasePanel } from '@/components/lesson/PhasePanel'
-import { PhaseBadges } from '@/components/PhaseBadges'
-import { LessonJobBanner } from '@/components/jobs/JobsIndicator'
+import { LessonPanel } from '@/components/lesson/LessonPanel'
+import { PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
+import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
-import { PageBody, PageHeader } from '@/components/shell/PageHeader'
+import { PageHeader } from '@/components/shell/PageHeader'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { useJob, useJobs } from '@/api/jobs'
 import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
-import { lessonsGroups, shortDate, subjectName, useLessonsPrefs } from '@/lib/lessonsPage'
+import { formatDuration, lessonsGroups, shortDate, subjectName, useLessonsPrefs } from '@/lib/lessonsPage'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { STATE_LABELS, formatCost, lessonTitle } from '@/lib/format'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
+import { LinkMenuButton } from '@/components/ui/menu'
+import { lessonTitle } from '@/lib/format'
 
 export function DashboardPage() {
   // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
@@ -169,33 +169,10 @@ function useSearchShortcut(inputId: string) {
   }, [inputId])
 }
 
-const SIDE_PANEL_KEY = 'rt-lesson-side-panel'
-
-/** Pannello laterale della lezione (fasi, job, costi): aperto di default, si può nascondere
- * per leggere il documento a tutta larghezza. La scelta resta nel browser. */
-function useSidePanel(): [boolean, (open: boolean) => void] {
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(SIDE_PANEL_KEY) !== 'closed'
-    } catch {
-      return true
-    }
-  })
-  const update = (next: boolean) => {
-    setOpen(next)
-    try {
-      localStorage.setItem(SIDE_PANEL_KEY, next ? 'open' : 'closed')
-    } catch {
-      /* archiviazione non disponibile: vale solo per questa pagina */
-    }
-  }
-  return [open, update]
-}
-
 export function LessonPage() {
   const id = Number(useParams().lessonId)
   const [editingDocument, setEditingDocument] = useState(false)
-  const [panelOpen, setPanelOpen] = useSidePanel()
+  const [panel, setPanel] = usePanelView()
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   const back = { to: '/', label: 'Lezioni' }
@@ -203,87 +180,58 @@ export function LessonPage() {
     return (
       <>
         <PageHeader title="Lezione" muted titleAs="p" back={back} />
-        <PageBody>
+        <article className="mx-auto w-full max-w-(--reading-width) px-4 pb-28 pt-7">
           {lesson.isPending ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(lesson.error)}</Alert>}
-        </PageBody>
+        </article>
       </>
     )
   }
   const l = lesson.data
   const sections = document.data?.sections ?? []
   const path = [l.materia ? subjectName(l.materia) : null, l.docente?.trim() || null, l.data ? shortDate(l.data) : null].filter(Boolean).join(' · ')
+  const meta = [l.unit_count != null ? `${l.unit_count} unità` : null, l.duration_seconds ? formatDuration(l.duration_seconds) : null].filter(Boolean).join(' · ')
+  const toggle = (view: PanelView) => setPanel(panel === view ? null : view)
   return (
     <AudioProvider>
-      <PageHeader title={path || lessonTitle(l)} muted titleAs="p" back={back} />
-      <PageBody>
-      <section className="flex flex-col gap-4">
-        <Card className="p-5">
-          {/* Azioni sempre sotto il titolo: accanto finivano a destra o sotto a seconda di
-              quanto era lungo il titolo. */}
-          <h1 className="text-xl font-bold tracking-tight">{lessonTitle(l)}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {[l.materia, l.data, l.argomenti, l.state ? STATE_LABELS[l.state] ?? l.state : null].filter(Boolean).join(' · ')}
-          </p>
-          <div className="mt-3">
-            <LessonActions lessonId={id} actions={l.actions} />
-          </div>
-          <div className="mt-3">
-            <PhaseBadges phases={l.phases} />
-          </div>
-          <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t pt-3 text-xs">
-            <div className="flex gap-1.5">
-              <dt className="text-muted-foreground">Segmenti</dt>
-              <dd>{l.segment_count}</dd>
-            </div>
-            <div className="flex gap-1.5">
-              <dt className="text-muted-foreground">Issue da valutare</dt>
-              <dd>
-                {l.pending_issues}
-                {l.phases.review && l.phases.review !== 'MISSING' && (
-                  <Link to={`/lezioni/${id}/revisione`} className="ml-2 font-semibold text-link hover:underline">
-                    {l.pending_issues > 0 ? 'Rivedi →' : 'Vedi la revisione'}
-                  </Link>
-                )}
-              </dd>
-            </div>
-            <div className="flex gap-1.5">
-              <dt className="text-muted-foreground">Costo</dt>
-              <dd className="tabular-nums">{formatCost(l.cost_usd)}</dd>
-            </div>
-          </dl>
-          {l.error && <p className="mt-2 text-xs text-danger">{l.error}</p>}
-        </Card>
-        <LessonProgress lessonId={l.id} />
-        <LessonJobBanner
-          lessonId={l.id}
-          review={Boolean(l.phases.review && l.phases.review !== 'MISSING')}
-          extra={
-            <button type="button" className="ml-auto inline-flex items-center gap-1 underline" aria-expanded={panelOpen}
-              aria-controls="lesson-side-panel" onClick={() => setPanelOpen(!panelOpen)}>
-              {panelOpen ? <PanelRightClose className="size-3.5" aria-hidden /> : <PanelRightOpen className="size-3.5" aria-hidden />}
-              {panelOpen ? 'Nascondi fasi e costi' : 'Mostra fasi e costi'}
-            </button>
-          }
-        />
-
-        <div className={panelOpen ? 'grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]' : 'grid grid-cols-1 gap-4'}>
-          <div className="flex min-w-0 flex-col gap-4">
-            {l.has_audio && <AudioPlayer lessonId={id} sections={sections} />}
-            <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
-          </div>
-          <aside id="lesson-side-panel" className="flex flex-col gap-4" hidden={!panelOpen} aria-label="Fasi, job e costi">
-            {panelOpen && (
-              <>
-                <PhasePanel lessonId={id} units={sections} editingDocument={editingDocument} />
-                <JobsPanel lessonId={id} />
-                <CostPanel lesson={l} />
-              </>
-            )}
-          </aside>
-        </div>
-      </section>
-      </PageBody>
+      <PageHeader
+        title={path || lessonTitle(l)}
+        muted
+        titleAs="p"
+        back={back}
+        actions={<LessonHeaderActions lesson={l} panel={panel} onToggle={toggle} />}
+      />
+      <div className={cn('flex-1 px-7 max-md:px-4', panel && 'xl:pr-[calc(24rem+28px)]')}>
+        <article className="mx-auto w-full max-w-(--reading-width) pb-28 pt-7 max-md:pt-3" data-testid="lesson-page">
+          <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
+          {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
+          <LessonProgress lessonId={l.id} />
+          <DocumentCard lesson={l} onEditingChange={setEditingDocument} />
+        </article>
+      </div>
+      {l.has_audio && <AudioPlayer lessonId={id} />}
+      {panel && <LessonPanel view={panel} lesson={l} sections={sections} editingDocument={editingDocument} onClose={() => setPanel(null)} />}
     </AudioProvider>
+  )
+}
+
+/** Icone dell'intestazione (schermata 02): Studia, Verifica con LLM, Dettagli, Esporta. */
+function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['LessonDetail']; panel: PanelView | null; onToggle: (view: PanelView) => void }) {
+  const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
+  const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
+  return (
+    <div className="flex items-center gap-0.5" data-testid="lesson-actions">
+      <IconLink label="Studia" icon={Brain} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
+      <IconButton label="Verifica con LLM" icon={ShieldCheck} active={panel === 'verifica'} aria-expanded={panel === 'verifica'} aria-controls={PANEL_ID} onClick={() => onToggle('verifica')} />
+      <IconButton label="Dettagli" icon={Info} active={panel === 'dettagli'} aria-expanded={panel === 'dettagli'} aria-controls={PANEL_ID} onClick={() => onToggle('dettagli')} />
+      <LinkMenuButton
+        label="Esporta"
+        icon={Download}
+        items={[
+          { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+        ]}
+      />
+    </div>
   )
 }
 
@@ -292,7 +240,12 @@ function LessonProgress({ lessonId }: { lessonId: number }) {
   const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
   // Anche fermo su una decisione: l'avanzamento dice quale e porta a prenderla.
   const running = (jobs.data ?? []).find((j) => isActive(j.state) || j.state === 'waiting_for_decision')
-  return running ? <PhaseProgress jobId={running.id} /> : null
+  return (
+    <>
+      <LessonWaiting lessonId={lessonId} className="mt-5" />
+      {running ? <PhaseProgress jobId={running.id} className="my-6" /> : null}
+    </>
+  )
 }
 
 // L'editor (CodeMirror) si carica solo quando si entra in modifica.
@@ -341,10 +294,12 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
       onEditingChange(true)
     } catch (error) { setLeaseError(errorMessage(error)) }
   }
+  const running = useJobs({ lesson_id: id, limit: 20 }).data?.some((j) => isActive(j.state)) ?? false
   return (
-    <Card className="px-6 py-5">
-      {document.isPending && <p className="text-sm text-muted-foreground">Carico il documento…</p>}
-      {document.isError && <Alert tone="danger">{errorMessage(document.error)}</Alert>}
+    <div className="mt-6">
+      {document.isPending && <DocumentSkeleton />}
+      {/* In corso: lo scheletro al posto del testo che ancora manca (linee guida §4). */}
+      {document.isError && (running ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(document.error)}</Alert>)}
       {leaseError && <Alert tone="danger">{leaseError}<Button size="sm" variant="outline" className="ml-2" onClick={() => void beginEdit(true)}>Recupera sessione</Button></Alert>}
       {document.data && mode === 'edit' && (
         <Suspense fallback={<p className="text-sm text-muted-foreground">Preparo l'editor…</p>}>
@@ -374,7 +329,7 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
             <Button
               variant="ghost"
               size="sm"
-              className="-mr-3 -mt-2 size-8 bg-card p-0 opacity-20 hover:opacity-100 focus-visible:opacity-100"
+              className="-mr-3 -mt-2 size-8 bg-card p-0 text-muted-foreground hover:text-foreground"
               aria-label="Modifica l'anteprima"
               title="Modifica l'anteprima (beta)"
               onClick={startEdit}
@@ -390,11 +345,13 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
             </Alert>
           )}
           {!document.data.final && !saved && (
-            <Alert className="mb-4">
+            <p className="mb-4 text-meta text-muted-foreground" data-testid="document-preview-note">
               Anteprima dalla bozza: è quello che diventerà il documento finale quando esegui la fase Documento.
-            </Alert>
+            </p>
           )}
-          <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
+          <DocumentMenu lessonId={id} unitIds={document.data.sections.map((s) => s.unit_id)} ready={l.phases.rewrite === 'VALID'}>
+            <DocumentView document={document.data} hasAudio={l.has_audio} lessonId={id} />
+          </DocumentMenu>
         </>
       )}
       {mode === 'notice' && (
@@ -407,75 +364,10 @@ function DocumentCard({ lesson: l, onEditingChange }: { lesson: Schemas['LessonD
           }}
         />
       )}
-    </Card>
+    </div>
   )
 }
-
-const linkButton =
-  'inline-flex h-8 items-center gap-2 rounded-md border border-input bg-card px-3 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring'
 
 type ActionState = Schemas['LessonAction']
 const NOT_LOADED: ActionState = { available: false, reason: 'Stato della lezione non disponibile.', preview: false }
 const PREVIEW_HINT = 'Anteprima dalla bozza: il documento finale non è ancora stato creato o non è aggiornato.'
-
-/** Un'azione dell'intestazione: sempre nello stesso posto; se non è disponibile resta
- * visibile, disabilitata, con il motivo nel tooltip (e per i lettori di schermo). */
-function ActionSlot({ action, label, icon, children }: { action: ActionState; label: string; icon: ReactNode; children: (content: ReactNode, title?: string) => ReactNode }) {
-  const reasonId = useId()
-  const content = (
-    <>
-      {icon} {label}
-    </>
-  )
-  if (action.available) return children(content, action.preview ? PREVIEW_HINT : undefined)
-  return (
-    <span title={action.reason ?? undefined} className="inline-flex" data-action-disabled={label}>
-      <button type="button" disabled aria-describedby={reasonId} className={`${linkButton} cursor-not-allowed opacity-50`}>
-        {content}
-      </button>
-      <span id={reasonId} className="sr-only">
-        {action.reason}
-      </span>
-    </span>
-  )
-}
-
-function LessonActions({ lessonId, actions }: { lessonId: number; actions?: Schemas['LessonActions'] | null }) {
-  const a = actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
-  return (
-    <div className="flex flex-wrap gap-2" data-testid="lesson-actions">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Studio">
-        <ActionSlot action={a.recall} label="Recall" icon={<Brain className="size-4" aria-hidden />}>
-          {(content) => (
-            <Link className={linkButton} to={`/lezioni/${lessonId}/recall`}>
-              {content}
-            </Link>
-          )}
-        </ActionSlot>
-        <ActionSlot action={a.images} label="Arricchimento" icon={<Images className="size-4" aria-hidden />}>
-          {(content) => (
-            <Link className={linkButton} to={`/lezioni/${lessonId}/arricchimento`}>
-              {content}
-            </Link>
-          )}
-        </ActionSlot>
-      </div>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Scarica">
-        <ActionSlot action={a.export_markdown} label="Markdown" icon={<Download className="size-4" aria-hidden />}>
-          {(content, title) => (
-            <a className={linkButton} href={`/api/v1/lessons/${lessonId}/export?format=markdown`} download title={title}>
-              {content}
-            </a>
-          )}
-        </ActionSlot>
-        <ActionSlot action={a.export_zip} label="Tutti i dati (zip)" icon={<Download className="size-4" aria-hidden />}>
-          {(content, title) => (
-            <a className={linkButton} href={`/api/v1/lessons/${lessonId}/export?format=zip&scope=all`} download title={title}>
-              {content}
-            </a>
-          )}
-        </ActionSlot>
-      </div>
-    </div>
-  )
-}

@@ -160,33 +160,33 @@
   }
 }
 
-/* Documento della lezione (HTML dall'API, stile come la web Gradio). */
+/* Documento della lezione (HTML dall'API): colonna di lettura del design 4.2 (schermata 02). */
 .rt-document {
-  font-size: 14px;
-  line-height: 1.65;
+  font-size: var(--size-body);
+  line-height: 1.7;
 }
 .rt-document h1 {
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: var(--size-heading);
+  font-weight: 600;
   margin: 0 0 1rem;
-  letter-spacing: -0.01em;
 }
 .rt-document h2 {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin: 1.6rem 0 0.6rem;
+  font-size: var(--size-body);
+  font-weight: 600;
+  margin: 32px 0 12px;
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 .rt-document h3 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin: 1.2rem 0 0.4rem;
-  scroll-margin-top: 1rem;
+  font-size: var(--size-body);
+  font-weight: 600;
+  margin: 24px 0 8px;
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 .rt-document p,
 .rt-document ul,
 .rt-document ol,
 .rt-document blockquote {
-  margin: 0 0 0.75rem;
+  margin: 0 0 16px;
 }
 .rt-document ul {
   list-style: disc;
@@ -226,39 +226,48 @@
 }
 .rt-document .rt-timecode {
   display: inline-block;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--accent-foreground);
-  padding: 1px 5px;
-  font-size: 12px;
-  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mute);
+  padding: 0 6px;
+  font: 500 var(--size-meta) / 1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 .rt-document .rt-unit-meta {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.3rem;
+  margin-left: 8px;
+  vertical-align: 1px;
 }
 .rt-document .rt-relevance-tag {
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--accent-foreground);
-  padding: 1px 5px;
-  font-size: 12px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--mute);
+  padding: 0 6px;
+  font-size: var(--size-meta);
   font-weight: 500;
 }
 .rt-document .rt-timecode:hover:not(:disabled) {
-  text-decoration: underline;
+  border-color: var(--fg);
+  color: var(--fg);
+}
+.rt-document .rt-timecode:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .rt-document .rt-timecode:disabled {
   cursor: default;
-  opacity: 0.7;
 }
+/* Unità in ascolto: una riga d'accento a sinistra, il testo resta leggibile. */
 .rt-document .rt-unit-active {
-  background: color-mix(in srgb, var(--warning-soft) 70%, transparent);
-  box-shadow: -10px 0 0 color-mix(in srgb, var(--warning-soft) 70%, transparent);
+  box-shadow: -12px 0 0 -9px var(--acc);
+}
+.dark .rt-document .rt-unit-active {
+  box-shadow: -12px 0 0 -9px var(--link);
 }
 .rt-document mark.rt-claim {
   background: #fce9a8;
@@ -277,28 +286,29 @@
   -webkit-text-security: disc;
 }
 
-/* Editor Markdown dell'anteprima (CodeMirror 6) */
+/* Editor Markdown dell'anteprima (CodeMirror 6): la stessa colonna di lettura del documento. */
 .rt-md-editor .cm-editor {
   min-height: 24rem;
   max-height: 75vh;
-  border: 1px solid var(--input);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--card);
   color: var(--foreground);
-  font-size: 13px;
+  font-size: var(--size-body);
 }
 .rt-md-editor .cm-editor.cm-focused {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
 .rt-md-editor .cm-scroller {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  line-height: 1.55;
+  font-family: var(--font-sans);
+  line-height: 1.7;
 }
 .rt-md-editor .cm-gutters {
-  background: var(--muted);
+  background: transparent;
   color: var(--muted-foreground);
-  border-right: 1px solid var(--border);
+  border-right: 0;
+  font-size: var(--size-meta);
 }
 .rt-md-editor .cm-activeLine,
 .rt-md-editor .cm-activeLineGutter {
@@ -306,4 +316,45 @@
 }
 .rt-md-editor .cm-content {
   caret-color: var(--foreground);
+}
+
+/* Barra della posizione nella barra audio (design 4.2): traccia di 4 px, parte ascoltata piena. */
+.rt-seek {
+  appearance: none;
+  background: linear-gradient(to right, var(--fg) var(--seek, 0%), var(--soft) var(--seek, 0%));
+  border-radius: 8px;
+}
+.rt-seek:disabled {
+  cursor: default;
+}
+.rt-seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg);
+  opacity: 0;
+}
+.rt-seek:hover::-webkit-slider-thumb,
+.rt-seek:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+.rt-seek::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fg);
+}
+.rt-seek:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+
+/* Studio (schermate 05/05b): lettura dell'unità intera. */
+.rt-reading {
+  line-height: 1.75;
+}
+.rt-reading p {
+  margin-bottom: 20px;
 }
