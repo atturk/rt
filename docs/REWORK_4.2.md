@@ -264,13 +264,16 @@ Arricchimento resta disattivato finché non c'è B6)
   `/immagini`, `/importa`, `/lezioni/:id/recall/domande` alle nuove posizioni; togliere i componenti
   non più usati e i relativi test/e2e (tenendo le API).
 
-## Ordine consigliato
+## Ordine: due giri per agente
 
-1. **F0** (ChatGPT) — sblocca tutti i pannelli; nel frattempo Antigravity fa A1–A4 (non dipendono da F0).
-2. Dopo F0, in parallelo: ChatGPT B1, B2, C1a → C1b, C3; Antigravity G1–G3, C2, B3 → G5, B6, B8.
-3. ChatGPT B4 → Antigravity G4; ChatGPT B5.
-4. Antigravity B8 → B9 → ChatGPT C4; ChatGPT B7 → C5.
-5. Antigravity A5 (pulizia), poi una beta.
+Ogni agente fa i task di un giro **sullo stesso branch, un commit per task** (messaggio
+`<id>: …`), con push dopo ogni commit; alla fine del giro apre **una PR** verso il beta. Claude
+rivede la PR commit per commit e la unisce.
+
+| Giro | ChatGPT (Codex) — branch `rt42/codex-1`, `rt42/codex-2` | Antigravity — branch `rt42/A1-lezioni-gruppi`, `rt42/antigravity-2` |
+|---|---|---|
+| 1 | F0, B1, B2, B4, B5 | A1, A2, A3, A4, B3, B6, B8, B9 |
+| 2 (dopo il merge di entrambi i giri 1) | C1a, C1b, C3, B7, C5, C4 | G1, G2, G3, G5, C2, G4, A5 |
 
 ## Come passare un task a un altro agente
 
