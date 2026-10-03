@@ -339,12 +339,19 @@ def test_outline_revision_job(api_client, lesson, worker):
     lesson_id, _ = lesson
     api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True})
     drain(worker)
+    suspended = api_client.post(f"/api/v1/lessons/{lesson_id}/outline/suspend")
+    assert suspended.status_code == 200
+    previous = api_client.get(f"/api/v1/lessons/{lesson_id}/outline").json()
+    assert previous["timer_suspended"] is True
     res = api_client.post(f"/api/v1/lessons/{lesson_id}/outline/revise", json={"feedback": "Dividi in due unità", "mock": True})
     assert res.status_code == 202
     drain(worker)
     done = job(api_client, res.json()["job_id"])
     assert done["state"] == "succeeded", done
     assert done["result"]["outline"]["approved"] is False
+    revised = api_client.get(f"/api/v1/lessons/{lesson_id}/outline").json()
+    assert revised["timer_suspended"] is False
+    assert revised["expires_at"] != previous["expires_at"]
 
 
 def test_recall_flow(api_client, lesson, worker):

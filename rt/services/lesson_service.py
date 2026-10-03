@@ -413,7 +413,8 @@ def load_markdown_preview(lesson_dir: str) -> str:
     1. il documento finale, se esiste ed è aggiornato (build VALID);
     2. altrimenti, con la bozza pronta (rewrite VALID), l'anteprima: lo stesso Markdown che
        il build scriverebbe ora (bozza, decisioni della revisione, immagini posizionate);
-    3. altrimenti il documento finale superato, se c'è, o un placeholder onesto."""
+    3. altrimenti la bozza parziale (checkpoint della rielaborazione);
+    4. in assenza di una bozza leggibile, il documento finale superato o un placeholder."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     if _document_is_final(lesson_dir):
         final = _read_rielaborato(lesson_dir)
@@ -425,15 +426,14 @@ def load_markdown_preview(lesson_dir: str) -> str:
             return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
         except Exception:
             pass
-    if fs.isfile(lesson_path(lesson_dir, "rielaborato.md")):
-        final = _read_rielaborato(lesson_dir)
-        if final is not None:
-            return final
     try:
         # bozza non ancora valida (es. rewrite parziale): anteprima di quello che c'è
         from rt.pipeline.build import render_lesson_documents
         return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
     except Exception:
+        final = _read_rielaborato(lesson_dir)
+        if final is not None:
+            return final
         return (
             "# Nessuna anteprima disponibile\n\n"
             "Il documento Markdown di questa lezione non è ancora stato generato.\n\n"

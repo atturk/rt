@@ -1,12 +1,12 @@
 import { Upload } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, api, errorMessage, unwrap } from '@/api/client'
-import { useLesson, useLessons } from '@/api/hooks'
+import { useLessons } from '@/api/hooks'
 import { useSettings } from '@/api/settings'
-import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline, useSuspendOutline } from '@/api/jobs'
+import { useCreateLesson, useJobs } from '@/api/jobs'
 import { AudioOrder } from '@/components/jobs/AudioOrder'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
@@ -14,7 +14,6 @@ import { ZipImportCard } from '@/components/jobs/ZipImport'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
@@ -353,172 +352,9 @@ export function JobPage() {
   )
 }
 
-// ---------------------------------------------------------------- outline
-
-/** Scaletta ad albero, approvazione e richiesta di modifiche (come la revisione da terminale). */
+// I vecchi link alla scaletta portano alla pagina della lezione.
 export function OutlinePage() {
-  const lessonId = Number(useParams().lessonId)
-  const lesson = useLesson(lessonId)
-  const outline = useOutline(lessonId)
-  const approve = useApproveOutline(lessonId)
-  const revise = useReviseOutline(lessonId)
-  const suspend = useSuspendOutline(lessonId)
-  const waitingJobs = useJobs({ lesson_id: lessonId, state: 'waiting_for_decision' })
-  const waiting = waitingJobs.data?.find((j) => j.decision?.kind === 'outline_approval')
-  const [feedback, setFeedback] = useState('')
-  const [mock, setMock] = useState(false)
-  const [resumedJob, setResumedJob] = useState<string | null>(null)
-  const [revisionJob, setRevisionJob] = useState<string | null>(null)
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!outline.data?.expires_at || outline.data.approved || outline.data.timer_suspended) return
-    const timer = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(timer)
-  }, [outline.data?.expires_at, outline.data?.approved, outline.data?.timer_suspended])
-
-  const expiresTime = outline.data?.expires_at ? new Date(outline.data.expires_at).getTime() : 0
-  const remainingSeconds = expiresTime && !outline.data?.timer_suspended && !outline.data?.approved
-    ? Math.max(0, Math.ceil((expiresTime - now) / 1000))
-    : 0
-  const hasActiveTimer = remainingSeconds > 0 && !outline.data?.timer_suspended && !outline.data?.approved
-
-  function handleFeedbackChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setFeedback(e.target.value)
-    if (hasActiveTimer && !suspend.isPending) {
-      suspend.mutate()
-    }
-  }
-
-  function handleFeedbackFocus() {
-    if (hasActiveTimer && !suspend.isPending) {
-      suspend.mutate()
-    }
-  }
-
-  function doApprove() {
-    const pending = waiting?.id ?? null
-    approve.mutate(undefined, { onSuccess: () => setResumedJob(pending) })
-  }
-
-  function doRevise(event: FormEvent) {
-    event.preventDefault()
-    if (!feedback.trim()) return
-    revise.mutate(
-      { feedback: feedback.trim(), mock },
-      {
-        onSuccess: (accepted) => {
-          setRevisionJob(accepted.job_id)
-          setFeedback('')
-        },
-      },
-    )
-  }
-
-  const notFound = outline.error instanceof ApiError && outline.error.code === 'outline_not_found'
-  const busy = [approve.error, revise.error].find((e) => e instanceof ApiError && e.code === 'lesson_busy')
-  const otherError = [approve.error, revise.error].find((e) => e && e !== busy)
-
-  return (
-    <section className="flex flex-col gap-4">
-      <Link to={`/lezioni/${lessonId}`} className="text-xs text-muted-foreground hover:underline">
-        ← {lesson.data ? lessonTitle(lesson.data) : 'Lezione'}
-      </Link>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-xl font-bold tracking-tight">Scaletta</h1>
-        {outline.data && (
-          <Badge tone={outline.data.approved ? 'success' : 'warning'} data-testid="outline-approved" data-approved={outline.data.approved}>
-            {outline.data.approved ? 'Approvata' : 'Da approvare'}
-          </Badge>
-        )}
-      </div>
-
-      {waiting && !outline.data?.approved && (
-        <Alert tone="warning" data-testid="outline-waiting">
-          <strong>Serve la tua approvazione:</strong> la pipeline è ferma finché non approvi la scaletta o chiedi modifiche.
-        </Alert>
-      )}
-      {resumedJob && (
-        <Alert data-testid="pipeline-resumed">
-          Scaletta approvata: la pipeline è ripartita.{' '}
-          <Link to={`/job/${resumedJob}`} className="font-semibold underline">
-            Segui il job
-          </Link>
-        </Alert>
-      )}
-      {busy && <Alert tone="warning">{errorMessage(busy)} Riprova quando il job in corso ha finito.</Alert>}
-      {otherError && <Alert tone="danger">{errorMessage(otherError)}</Alert>}
-
-      {outline.isPending && <p className="text-sm text-muted-foreground">Carico la scaletta…</p>}
-      {notFound && <Card className="p-6 text-sm text-muted-foreground">La scaletta non è ancora stata generata: avvia la pipeline o la fase scaletta.</Card>}
-      {outline.isError && !notFound && <Alert tone="danger">{errorMessage(outline.error)}</Alert>}
-
-      {outline.data && (
-        <>
-          <Card className="p-5">
-            <h2 className="mb-3 text-lg font-bold tracking-tight">{outline.data.lesson_title}</h2>
-            <ol className="flex flex-col gap-3" aria-label="Scaletta della lezione">
-              {outline.data.macro_sections.map((macro) => (
-                <li key={macro.id} data-testid="outline-macro">
-                  <details open>
-                    <summary className="cursor-pointer font-semibold">
-                      <span className="mr-2 text-xs text-muted-foreground">{macro.id}</span>
-                      {macro.title}
-                    </summary>
-                    <ol className="ml-5 mt-2 flex flex-col gap-2 border-l pl-4">
-                      {macro.units.map((unit) => (
-                        <li key={unit.id} data-testid="outline-unit">
-                          <p className="text-sm font-medium">
-                            <span className="mr-2 text-xs text-muted-foreground">{unit.id}</span>
-                            {unit.title}
-                          </p>
-                          {unit.key_concepts.length > 0 && (
-                            <p className="text-xs text-muted-foreground">{unit.key_concepts.join(' · ')}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  </details>
-                </li>
-              ))}
-            </ol>
-          </Card>
-
-          <Card className="flex flex-col gap-4 p-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={doApprove} disabled={approve.isPending || outline.data.approved}>
-                {outline.data.approved
-                  ? 'Scaletta approvata'
-                  : hasActiveTimer
-                    ? `Approva (${remainingSeconds})`
-                    : 'Approva la scaletta'}
-              </Button>
-              {outline.data.approval?.approved_at != null && (
-                <span className="text-xs text-muted-foreground">Approvata il {formatDateTime(String(outline.data.approval.approved_at))}</span>
-              )}
-            </div>
-            <form className="flex flex-col gap-2" onSubmit={doRevise} aria-label="Richiedi modifiche alla scaletta">
-              <Label htmlFor="outline-feedback">Richiedi modifiche</Label>
-              <textarea
-                id="outline-feedback"
-                rows={3}
-                value={feedback}
-                onChange={handleFeedbackChange}
-                onFocus={handleFeedbackFocus}
-                placeholder="Es. Dividi la seconda sezione in due unità"
-                className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-              />
-              <Checkbox id="outline-mock" label="Modalità prova (mock)" checked={mock} onChange={setMock} />
-              <div>
-                <Button type="submit" variant="outline" disabled={revise.isPending || !feedback.trim()}>
-                  Rigenera con il feedback
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </>
-      )}
-      {revisionJob && <JobLive jobId={revisionJob} compact />}
-    </section>
-  )
+  const lessonId = useParams().lessonId
+  const location = useLocation()
+  return <Navigate replace to={`/lezioni/${lessonId}${location.search}${location.hash}`} />
 }

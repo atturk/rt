@@ -222,5 +222,6 @@ def request_outline_revision(
     _cancel_in_memory_timer(lesson_dir)
     mock = ctx.force_mock if (force_mock is None and ctx is not None) else bool(force_mock)
     with phase_scope(ctx, "outline") as scope:
-        return scope.complete(run_outline_revision(lesson_dir, feedback=feedback, force_mock=mock))
-
+        result = run_outline_revision(lesson_dir, feedback=feedback, force_mock=mock)
+        start_outline_timer(lesson_dir)
+        return scope.complete(result)

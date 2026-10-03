@@ -1,19 +1,31 @@
 import { AtomicCodeMirrorEditor, type AtomicCodeMirrorEditorHandle } from '@atomic-editor/editor'
 import '@atomic-editor/editor/styles.css'
 import { EditorView } from '@codemirror/view'
+import { Check, Circle, LoaderCircle, Lock } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { useLocation } from 'react-router'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type MouseEvent } from 'react'
+import { useLocation, useSearchParams } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
-import { lessonKeys } from '@/api/hooks'
+import { imageKeys, uploadEditorImage } from '@/api/images'
+import { Alert } from '@/components/ui/alert'
+import { lessonImageUploads } from './lessonImages'
+import { useRelevance } from '@/api/relevance'
+import { lessonKeys, useIssues } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
+import { Tooltip } from '@/components/ui/tooltip'
+import { parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { activeUnit } from '@/lib/audio'
 import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
-import { lessonImages, lessonUnits, setSlots, unitRanges } from './lessonUnits'
+import { lessonImages, lessonUnits, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
+import type { UnitTask } from './lessonWorkflow'
+import { lessonClassifier, setClassifier } from './lessonClassifier'
+import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
+import { issueOf } from './reviewIssues'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 
 type Problem = Schemas['DocumentEditProblem']
@@ -42,7 +54,14 @@ function viewOf(handle: AtomicCodeMirrorEditorHandle | null): EditorView | null 
   return content ? EditorView.findFromDOM(content) : null
 }
 
+export type LessonEditorActions = { flush: () => Promise<void> }
+
 type Props = {
+  unitTasks?: Record<string, UnitTask>
+  classifierOpen?: boolean
+  reviewOpen?: boolean
+  onDocumentChange?: (markdown: string) => void
+  actionsRef?: RefObject<LessonEditorActions | null>
   lessonId: number
   document: Schemas['LessonDocument']
   hasAudio: boolean
@@ -60,19 +79,21 @@ type Props = {
  * si salvano da sole nella bozza dopo una breve pausa; i timecode sono bloccati (clic: ascolta,
  * triplo clic: modifica). Il documento finale va poi ricreato con la fase Documento.
  */
-export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange }: Props) {
+export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
   const unitIds = useMemo(() => doc.sections.map((s) => s.unit_id), [doc.sections])
+  const [params, setParams] = useSearchParams()
+  const relevance = useRelevance(lessonId, classifierOpen)
+  const classifierUnits = classifierOpen ? relevance.data?.units : undefined
+  const review = useIssues(lessonId, reviewOpen)
+  const reviewItems = reviewOpen ? review.data?.items : undefined
+  const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
+  const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash } = useLocation()
-  const extensions = useMemo(() => [
-    timecodeLock,
-    lessonUnits,
-    lessonImages(lessonId),
-    EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
-  ], [lessonId])
+
 
   // Il testo che l'editor mostra al montaggio; cambia (e l'editor riparte) solo se il documento
   // cambia sul server per altre vie (un job), non per i nostri salvataggi.
@@ -84,38 +105,73 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const client = useQueryClient()
   // Ultimo Markdown visto dal server, e se la prossima novità è l'eco di un nostro salvataggio.
   const server = useRef(doc.markdown)
-  const echo = useRef(false)
 
   useEffect(() => {
     if (doc.markdown === server.current) return
     server.current = doc.markdown
-    if (echo.current) {
-      echo.current = false
-      return
-    }
+    if (doc.markdown === saved.current) return
     // modifiche non ancora salvate: restano quelle dell'utente
     if (text !== saved.current) return
     saved.current = doc.markdown
     // oxlint-disable-next-line react/set-state-in-effect
     setText(doc.markdown)
+    onDocumentChange?.(doc.markdown)
     setSource((s) => ({ key: s.key + 1, markdown: doc.markdown }))
-  }, [doc.markdown, text])
+  }, [doc.markdown, text, onDocumentChange])
 
-  const acquire = useCallback(async (recover = false) => {
-    const result = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { recover } } }))
-    setLease(result.token)
-    return result.token
+  const leaseRef = useRef<string | null>(null)
+  const acquiringRef = useRef<Promise<string> | null>(null)
+  const uploads = useRef(new Set<Promise<void>>())
+  const [uploadCount, setUploadCount] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const savingRef = useRef<Promise<void> | null>(null)
+  const acquire = useCallback((recover = false) => {
+    if (acquiringRef.current) return acquiringRef.current
+    const task = (async () => {
+      const result = await unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { recover } } }))
+      leaseRef.current = result.token
+      setLease(result.token)
+      return result.token
+    })()
+    acquiringRef.current = task
+    void task.finally(() => { acquiringRef.current = null }).catch(() => undefined)
+    return task
   }, [lessonId])
+
+  const uploadImage = useCallback(async (file: File) => {
+    const token = leaseRef.current ?? await acquire()
+    const image = await uploadEditorImage(lessonId, file, token)
+    void client.invalidateQueries({ queryKey: imageKeys.list(lessonId) })
+    void client.invalidateQueries({ queryKey: ['enrichment'] })
+    return image
+  }, [acquire, lessonId, client])
+  const uploadStarted = useCallback((task: Promise<void>) => {
+    uploads.current.add(task)
+    setUploadError(null)
+    setUploadCount((n) => n + 1)
+    void task.catch((error) => setUploadError(errorMessage(error))).finally(() => {
+      uploads.current.delete(task)
+      setUploadCount((n) => n - 1)
+    })
+  }, [])
+  const extensions = useMemo(() => [
+    timecodeLock,
+    lessonUnits,
+    lessonReview,
+    lessonClassifier,
+    lessonImages(lessonId),
+    lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
+    EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
+  ], [lessonId, uploadImage, uploadStarted])
 
   const persist = useCallback(async (markdown: string, recover = false) => {
     setStatus({ kind: 'saving' })
     try {
-      const token = lease ?? (await acquire(recover))
+      const token = leaseRef.current ?? (await acquire(recover))
       const result = await unwrap(api.PUT('/api/v1/lessons/{lesson_id}/document/draft', {
         params: { path: { lesson_id: lessonId } }, body: { markdown, lease_token: token },
       }))
       saved.current = markdown
-      echo.current = true
       setStatus({ kind: 'saved', final: doc.final && result.changed })
       // rilegge documento, fasi e build da rifare
       void client.invalidateQueries({ queryKey: lessonKeys.all(lessonId) })
@@ -124,15 +180,38 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       const problems = problemsOf(error)
       if (problems) setStatus({ kind: 'invalid', problems })
       else setStatus({ kind: 'error', message: errorMessage(error), busy: error instanceof ApiError && error.code === 'document_edit_busy' })
+      throw error
     }
-  }, [lease, acquire, lessonId, doc.final, client])
+  }, [acquire, lessonId, doc.final, client])
+
+  const save = useCallback(async (markdown: string, recover = false) => {
+    if (savingRef.current) await savingRef.current.catch(() => undefined)
+    if (markdown === saved.current) return
+    const pending = persist(markdown, recover)
+    savingRef.current = pending
+    try { await pending } finally { if (savingRef.current === pending) savingRef.current = null }
+  }, [persist])
+  useEffect(() => {
+    if (!actionsRef) return
+    actionsRef.current = { flush: async () => {
+      await Promise.all([...uploads.current])
+      const markdown = viewOf(handle.current)?.state.doc.toString() ?? text
+      await save(markdown)
+      if (leaseRef.current) {
+        await unwrap(api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { token: leaseRef.current } } }))
+        leaseRef.current = null
+        setLease(null)
+      }
+    } }
+    return () => { actionsRef.current = null }
+  }, [actionsRef, text, save, lessonId])
 
   // Salvataggio dopo una pausa nella scrittura.
   useEffect(() => {
     if (text === saved.current || locked) return
     // oxlint-disable-next-line react/set-state-in-effect
     setStatus({ kind: 'pending' })
-    const timer = window.setTimeout(() => void persist(text), SAVE_DELAY_MS)
+    const timer = window.setTimeout(() => void save(text).catch(() => undefined), SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
     // persist cambia con il lease: non deve far ripartire l'attesa
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,6 +226,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     }, LEASE_RENEW_MS)
     const idle = window.setTimeout(() => {
       release()
+      leaseRef.current = null
       setLease(null)
     }, LEASE_IDLE_MS)
     return () => {
@@ -193,6 +273,40 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   useEffect(() => {
     viewOf(handle.current)?.dispatch({ effects: setSlots.of(slots) })
   }, [slots, source.key])
+
+  const taskSlots = useMemo(() => Object.fromEntries(Object.entries(unitTasks ?? {}).map(([id, state]) => {
+    const element = window.document.createElement('span')
+    element.className = `rt-unit-task rt-unit-task-${state}`
+    return [id, { state, element }]
+  })), [unitTasks])
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: setUnitTasks.of(taskSlots) })
+  }, [taskSlots, source.key])
+
+  useEffect(() => {
+    const view = viewOf(handle.current)
+    if (!view) return
+    view.dispatch({ effects: setReview.of({ items: reviewItems ?? [], selected: selectedIssueId }) })
+    if (selectedIssue) {
+      const range = issueRange(view.state, selectedIssue)
+      if (range) view.dispatch({ effects: EditorView.scrollIntoView(range.from, { y: 'center' }) })
+    }
+  }, [reviewItems, selectedIssueId, selectedIssue, source.key])
+  useEffect(() => {
+    const node = surface.current
+    if (!node || !reviewOpen) return
+    const select = (event: Event) => {
+      const next = new URLSearchParams(params)
+      next.set('issue', (event as CustomEvent<string>).detail)
+      setParams(next, { replace: true })
+    }
+    node.addEventListener(ISSUE_EVENT, select)
+    return () => node.removeEventListener(ISSUE_EVENT, select)
+  }, [reviewOpen, params, setParams])
+
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: setClassifier.of(classifierUnits ?? []) })
+  }, [classifierUnits, source.key])
 
   // Clic su un timecode: l'audio parte da lì.
   useEffect(() => {
@@ -266,11 +380,13 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
 
   return (
     <>
+      {uploadCount > 0 && <p role="status" className="mb-2 text-meta text-muted-foreground">Carico immagini…</p>}
+      {uploadError && <Alert tone="danger" className="mb-2">{uploadError}</Alert>}
       <EditorStatus
         status={status}
         locked={locked}
         onGoToLine={goToLine}
-        onRecover={() => void persist(text, true)}
+        onRecover={() => void save(text, true).catch(() => undefined)}
         onRestore={restore}
         onDownloadAndRestore={downloadAndRestore}
       />
@@ -295,7 +411,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
           <AtomicCodeMirrorEditor
             documentId={`lesson-${lessonId}-${source.key}`}
             markdownSource={source.markdown}
-            onMarkdownChange={setText}
+            onMarkdownChange={(markdown) => { setText(markdown); onDocumentChange?.(markdown) }}
             editorHandleRef={handle}
             extensions={extensions}
             readOnly={locked}
@@ -304,6 +420,11 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         </div>
       </DocumentMenu>
       <EnrichmentPortals slots={slots} lessonId={lessonId} />
+      {Object.entries(taskSlots).map(([id, task]) => {
+        const Icon = task.state === 'done' ? Check : task.state === 'working' ? LoaderCircle : Circle
+        const label = task.state === 'done' ? 'Fatta' : task.state === 'working' ? 'In corso' : 'Da fare'
+        return createPortal(<span role="img" aria-label={`${id}: ${label}`}><Icon size={16} aria-hidden className={task.state === 'working' ? 'animate-spin' : undefined} /></span>, task.element, id)
+      })}
     </>
   )
 }
@@ -318,7 +439,9 @@ function EditorStatus({ status, locked, onGoToLine, onRecover, onRestore, onDown
   onDownloadAndRestore: () => void
 }) {
   if (locked) {
-    return <p className="mb-3 text-meta text-muted-foreground" data-testid="editor-status">Un job sta lavorando sulla lezione: la modifica riprende quando finisce.</p>
+    return <div className="mb-3 flex justify-end text-muted-foreground" data-testid="editor-status">
+      <Tooltip content="Sola lettura">{(trigger) => <span tabIndex={0} {...trigger} role="img" aria-label="Sola lettura"><Lock size={16} aria-hidden /></span>}</Tooltip>
+    </div>
   }
   if (status.kind === 'invalid') {
     return <Incompatible problems={status.problems} onGoToLine={onGoToLine} onRestore={onRestore} onDownloadAndRestore={onDownloadAndRestore} />
@@ -340,7 +463,6 @@ function EditorStatus({ status, locked, onGoToLine, onRecover, onRestore, onDown
   return (
     <p className="mb-3 h-4 text-meta text-muted-foreground" aria-live="polite" data-testid="editor-status" data-status={status.kind}>
       {label}
-      {status.kind === 'saved' && status.final && ' · il documento finale va ricreato con la fase Documento'}
     </p>
   )
 }

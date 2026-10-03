@@ -19,6 +19,13 @@ describe('timecodeLock', () => {
     const text = DOC.indexOf('Testo')
     expect(state.update({ changes: { from: text, insert: 'Nuovo ' } }).state.doc.toString()).toContain('Nuovo Testo')
   })
+
+  it('permette un nuovo paragrafo dopo il timecode a fine documento, mantenendone il testo', () => {
+    const doc = '### 1.1 Unità\n12:30'
+    const state = EditorState.create({ doc, extensions: timecodeLock })
+    expect(state.update({ changes: { from: doc.length, insert: '\n\nTesto.' } }).state.doc.toString()).toBe(doc + '\n\nTesto.')
+    expect(state.update({ changes: { from: doc.length, insert: '0' } }).state.doc.toString()).toBe(doc)
+  })
 })
 
 describe('unitRanges', () => {

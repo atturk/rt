@@ -3,6 +3,7 @@ tests/test_outline_service.py
 RT4-A4: approvazione dell'outline come decisione (rt.services.outline_service).
 """
 import json
+import pytest
 
 from rt.pipeline.outline import run_outline
 from rt.pipeline.prepare import run_prepare
@@ -105,3 +106,43 @@ def test_outline_timer_suspend(temp_lesson_dir):
     review_after = outline_service.get_outline_review(temp_lesson_dir)
     assert review_after["approved"] is False
 
+
+def test_revision_restarts_suspended_timer(temp_lesson_dir):
+    _outline_ready(temp_lesson_dir)
+    previous = outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
+    outline_service.suspend_outline_timer(temp_lesson_dir)
+    try:
+        outline_service.request_outline_revision(temp_lesson_dir, "più dettagli", force_mock=True)
+        review = outline_service.get_outline_review(temp_lesson_dir)
+        assert review["approved"] is False
+        assert review["timer_suspended"] is False
+        assert review["expires_at"] != previous["expires_at"]
+        assert review["timer_seconds"] > 0
+    finally:
+        outline_service.suspend_outline_timer(temp_lesson_dir)
+
+
+def test_failed_revision_does_not_restart_timer(temp_lesson_dir, monkeypatch):
+    _outline_ready(temp_lesson_dir)
+    outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
+    outline_service.suspend_outline_timer(temp_lesson_dir)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("revisione fallita")
+
+    monkeypatch.setattr(outline_service, "run_outline_revision", fail)
+    with pytest.raises(RuntimeError, match="revisione fallita"):
+        outline_service.request_outline_revision(temp_lesson_dir, "più dettagli", force_mock=True)
+    assert outline_service.get_outline_review(temp_lesson_dir)["timer_suspended"] is True
+
+
+def test_expired_timer_recovers_approval_on_read(temp_lesson_dir):
+    import datetime
+    _outline_ready(temp_lesson_dir)
+    record = outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
+    outline_service._cancel_in_memory_timer(temp_lesson_dir)  # Il worker è ripartito.
+    record["expires_at"] = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)).isoformat()
+    outline_service._save_outline_timer(temp_lesson_dir, record)
+    review = outline_service.get_outline_review(temp_lesson_dir)
+    assert review["approved"] is True
+    assert review["approval"]["actor"] == "server"

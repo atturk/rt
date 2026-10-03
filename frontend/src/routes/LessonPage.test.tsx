@@ -1,15 +1,21 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { Schemas } from '@/api/client'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { LessonPage } from './lessons'
 
-vi.mock('@/api/hooks', () => ({
-  useLesson: () => ({ data: { id: 1, titolo: 'Acidosi', materia: 'FISIOLOGIA', data: '2026-10-02', docente: 'Rossi', unit_count: 9, duration_seconds: 4800, phases: {}, has_audio: false } }),
-  useLessonDocument: () => ({ data: undefined }),
-}))
-vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: [] }) }))
-vi.mock('@/components/jobs/JobsIndicator', () => ({ LessonWaiting: () => null }))
+const workflow = vi.hoisted(() => ({ outline: undefined as Schemas['Outline'] | undefined, document: undefined as Schemas['LessonDocument'] | undefined, jobs: [] as Schemas['Job'][], ready: false }))
 
-beforeEach(() => localStorage.clear())
+vi.mock('@/api/hooks', () => ({
+  useLesson: () => ({ data: { id: 1, titolo: 'Acidosi', materia: 'FISIOLOGIA', data: '2026-10-02', docente: 'Rossi', unit_count: 9, duration_seconds: 4800, phases: { rewrite: workflow.ready ? 'VALID' : 'MISSING' }, has_audio: false } }),
+  useLessonDocument: () => ({ data: workflow.document }),
+}))
+vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: workflow.jobs }), useOutline: () => ({ data: workflow.outline }), useJob: () => ({ data: undefined }), useApproveOutline: () => ({}), useReviseOutline: () => ({}), useSuspendOutline: () => ({}) }))
+vi.mock('@/components/jobs/JobsIndicator', () => ({ LessonWaiting: () => null }))
+vi.mock('@/components/jobs/PhaseProgress', () => ({ PhaseProgress: () => null }))
+vi.mock('@/components/lesson/LessonEditor', () => ({ LessonEditor: ({ document, locked, unitTasks }: { document: Schemas['LessonDocument']; locked: boolean; unitTasks?: Record<string, string> }) => <><textarea aria-label="Editor" value={document.markdown} readOnly={locked} onChange={() => undefined} /><output aria-label="Stati unità">{JSON.stringify(unitTasks)}</output></> }))
+
+beforeEach(() => { localStorage.clear(); workflow.outline = undefined; workflow.document = undefined; workflow.jobs = []; workflow.ready = false })
 
 it('mostra i metadati sotto il titolo e le azioni del wireframe Main', () => {
   render(<MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter>)
@@ -24,4 +30,39 @@ it('mostra i metadati sotto il titolo e le azioni del wireframe Main', () => {
   fireEvent.click(actions.getByRole('button', { name: 'Arricchimento' }))
   expect(screen.getAllByRole('complementary')).toHaveLength(1)
   expect(screen.getByRole('complementary', { name: 'Arricchimento' })).toBeInTheDocument()
+})
+
+it('passa dalla scaletta ai checkpoint nell’editor, poi al testo completo bloccato fino alla fine dei job', async () => {
+  workflow.outline = { lesson_title: 'Acidosi', approved: false, timer_suspended: true, macro_sections: [{ id: '1', title: 'Sezione', units: ['1.1', '1.2'].map((id) => ({ id, title: `Unità ${id}`, key_concepts: [], start_segment_id: 's1', end_segment_id: 's2' })) }] }
+  workflow.jobs = [{ id: 'j', type: 'run_pipeline', payload: {}, state: 'waiting_for_decision', decision: { kind: 'outline_approval' }, attempts: 1, cancel_requested: false }]
+  const client = new QueryClient()
+  const component = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>
+  const view = render(component())
+  expect(screen.getByTestId('outline-approval')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Editor')).toBeNull()
+  workflow.outline = { ...workflow.outline, approved: true }
+  workflow.jobs = [{ ...workflow.jobs[0], state: 'running', progress: { phase: 'rewrite', unit_id: '1.2' } }]
+  workflow.document = { markdown: '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto dal checkpoint.', html: '', final: false, sections: [{ unit_id: '1.1', title: 'Unità', start_segment_id: 's1', end_segment_id: 's2' }] }
+  view.rerender(component())
+  expect((await screen.findByLabelText<HTMLTextAreaElement>('Editor')).value).toContain('Testo dal checkpoint.')
+  expect(screen.getByLabelText('Stati unità')).toHaveTextContent('"1.1":"done","1.2":"working"')
+  workflow.ready = true
+  workflow.document = { ...workflow.document, markdown: 'Documento completo' }
+  workflow.jobs = [{ ...workflow.jobs[0], type: 'unit_relevance', progress: { phase: 'unit_relevance' } }]
+  view.rerender(component())
+  expect(screen.getByLabelText('Editor')).toHaveValue('Documento completo')
+  expect(screen.getByLabelText('Editor')).toHaveAttribute('readonly')
+  expect(screen.getByLabelText('Stati unità')).toBeEmptyDOMElement()
+  workflow.jobs = []
+  view.rerender(component())
+  expect(screen.getByLabelText('Editor')).not.toHaveAttribute('readonly')
+})
+
+it('una lezione già rielaborata resta leggibile anche senza approvazione della scaletta persistita', async () => {
+  workflow.ready = true
+  workflow.outline = { lesson_title: 'Acidosi', approved: false, timer_suspended: false, macro_sections: [] }
+  workflow.document = { markdown: 'Lezione importata', html: '', sections: [], final: true }
+  render(<MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter>)
+  expect(await screen.findByLabelText('Editor')).toHaveValue('Lezione importata')
+  expect(screen.queryByTestId('outline-approval')).toBeNull()
 })

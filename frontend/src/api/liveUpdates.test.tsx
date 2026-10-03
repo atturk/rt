@@ -44,13 +44,19 @@ const event = (over: Partial<LiveJobEvent>): LiveJobEvent => ({ id: 1, job_id: '
 const has = (keys: unknown[], key: unknown[]) => keys.some((k) => JSON.stringify(k) === JSON.stringify(key))
 
 describe('keysForEvent', () => {
-  it("l'avanzamento aggiorna solo i job", () => {
+  it("l'avanzamento rilegge il documento dai checkpoint senza ricalcolare tutta la lezione", () => {
     const keys = keysForEvent(event({}))
     expect(has(keys, ['jobs'])).toBe(true)
     expect(has(keys, ['job', 'j1'])).toBe(true)
     expect(has(keys, ['lesson', 7, 'jobs'])).toBe(true)
+    expect(has(keys, ['lesson', 7, 'document'])).toBe(true)
     expect(has(keys, ['lessons'])).toBe(false)
     expect(has(keys, ['lesson', 7])).toBe(false)
+  })
+
+  it('costi e classificazione non ricaricano il documento a ogni passo', () => {
+    expect(has(keysForEvent(event({ type: 'cost_updated' })), ['lesson', 7, 'document'])).toBe(false)
+    expect(has(keysForEvent(event({ job_type: 'unit_relevance' })), ['lesson', 7, 'document'])).toBe(false)
   })
 
   it('la fine di un job rilegge la lezione, e recall e rilevanza per i loro job', () => {
