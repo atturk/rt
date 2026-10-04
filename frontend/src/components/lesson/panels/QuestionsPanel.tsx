@@ -11,14 +11,17 @@ import {
   useRecallHistory,
   useRecallQuestions,
   useRecallUnits,
+  useSelectRecallUnits,
   type RecallQuestionDetail,
   type RecallType,
 } from '@/api/recall'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
+import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { Select } from '@/components/ui/select'
 import { isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
@@ -38,6 +41,18 @@ function formatUnits(units: string[]): string {
   if (units.length === 1) return units[0]
   if (units.length === 2) return `${units[0]} e ${units[1]}`
   return `${units.slice(0, -1).join(', ')} e ${units[units.length - 1]}`
+}
+
+function formatRecallDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const thatDay = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const diffDays = Math.round((today.getTime() - thatDay.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return 'oggi'
+  if (diffDays === 1) return 'ieri'
+  return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 }
 
 function questionMeta(q: RecallQuestionDetail, hideUnit: boolean): string {
@@ -128,10 +143,13 @@ export function QuestionsPanel({
   const questionsQuery = useRecallQuestions(id, false)
   const history = useRecallHistory(id)
   const recallUnits = useRecallUnits(id)
+  const selectUnits = useSelectRecallUnits(id)
   const generate = useGenerateRecall(id)
   const deleteQuestions = useDeleteQuestions(id)
   const jobs = useJobs({ lesson_id: id, limit: 10 })
   const relevance = useRelevance(id)
+
+  const [unitModalOpen, setUnitModalOpen] = useState(false)
 
   // Filtro tipo (solo vista normale)
   const [activeFilter, setActiveFilter] = useState<RecallType | null>(null)
@@ -193,7 +211,8 @@ export function QuestionsPanel({
     const last = answers[answers.length - 1]
     const q = questionsList?.find((item) => item.id === last.question_id)
     const typeLabel = q ? (TYPES.find((t) => t.id === q.type)?.label ?? q.type) : 'Quiz'
-    return `Ultimo ripasso · ${typeLabel}`
+    const dateText = last.answered_at ? formatRecallDate(last.answered_at) : ''
+    return dateText ? `Ultimo ripasso: ${dateText} · ${typeLabel}` : `Ultimo ripasso · ${typeLabel}`
   }, [history.data, questionsList])
 
   const handleGlobalGenerate = (e: React.FormEvent) => {
@@ -286,7 +305,7 @@ export function QuestionsPanel({
                   className={cn(
                     'flex flex-col items-center rounded-lg border p-1.5 text-center transition-colors',
                     active
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      ? 'border-primary bg-primary text-primary-foreground font-semibold'
                       : 'border-border bg-card text-foreground hover:bg-muted/50',
                   )}
                 >
@@ -382,20 +401,15 @@ export function QuestionsPanel({
               <span className="text-meta text-muted-foreground">Tipo</span>
               <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1">
                 {SELECTION_TYPES.map((t) => (
-                  <button
+                  <Chip
                     key={t}
-                    type="button"
+                    size="sm"
+                    active={partType === t}
                     aria-pressed={partType === t}
                     onClick={() => setPartType(t)}
-                    className={cn(
-                      'rounded-full px-2.5 py-0.5 text-meta transition-colors',
-                      partType === t
-                        ? 'bg-primary text-primary-foreground font-medium'
-                        : 'bg-muted text-foreground hover:bg-muted/80',
-                    )}
                   >
                     {TYPES.find((x) => x.id === t)?.label ?? t}
-                  </button>
+                  </Chip>
                 ))}
               </div>
               <div className="ml-auto flex items-center gap-1.5">
@@ -519,15 +533,13 @@ export function QuestionsPanel({
               Unità per il recaller: {selectedUnitsCount} di {totalUnits}
               {unitsData?.custom ? ' (personalizzata)' : ' (solo rilevanti)'}
             </span>
-            {onSwitchToClassifier && (
-              <button
-                type="button"
-                onClick={onSwitchToClassifier}
-                className="font-medium text-link hover:underline"
-              >
-                Scegli
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setUnitModalOpen(true)}
+              className="font-medium text-link hover:underline"
+            >
+              Scegli
+            </button>
           </div>
           <div className="flex items-center justify-between">
             <span>Classificatore{classifierStatus ? `: ${classifierStatus}` : ''}</span>
@@ -543,6 +555,85 @@ export function QuestionsPanel({
           </div>
         </div>
       )}
+
+      {/* Modal selezione unità per il recaller */}
+      <Modal
+        open={unitModalOpen}
+        onClose={() => setUnitModalOpen(false)}
+        title="Unità per il recaller"
+      >
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-meta text-muted-foreground">
+            <span>
+              {selectedUnitsCount} di {totalUnits} unità selezionate · {unitsData?.custom ? 'scelta personalizzata' : 'solo rilevanti'}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!unitsData?.custom || selectUnits.isPending}
+                onClick={() => selectUnits.mutate(null)}
+              >
+                Solo rilevanti
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={selectUnits.isPending}
+                onClick={() => selectUnits.mutate((unitsData?.units ?? []).map((u) => u.unit_id))}
+              >
+                Tutte
+              </Button>
+            </div>
+          </div>
+
+          {selectUnits.isError && <Alert tone="danger">{errorMessage(selectUnits.error)}</Alert>}
+
+          <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto divide-y divide-border/50" aria-label="Elenco unità per il recaller">
+            {(unitsData?.units ?? []).map((u) => {
+              const isChecked = u.selected
+              const handleToggle = () => {
+                const currentRows = unitsData?.units ?? []
+                const newIds = currentRows
+                  .filter((row) => (row.unit_id === u.unit_id ? !isChecked : row.selected))
+                  .map((row) => row.unit_id)
+                selectUnits.mutate(newIds)
+              }
+              return (
+                <li key={u.unit_id} className="pt-1.5 first:pt-0">
+                  <label
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-body hover:bg-muted"
+                    data-testid="recall-unit-choice"
+                    data-unit-id={u.unit_id}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={handleToggle}
+                      className="size-4 shrink-0 rounded border-input text-primary focus-visible:outline-2 focus-visible:outline-ring"
+                    />
+                    <span className="shrink-0 font-mono text-meta text-muted-foreground">{u.unit_id}</span>
+                    <span className={cn('min-w-0 flex-1 truncate text-body', !u.suggested && 'text-muted-foreground')}>
+                      {u.title || `Unità ${u.unit_id}`}
+                    </span>
+                    {u.category && u.category !== 'didactic' && (
+                      <span className="shrink-0 text-meta text-muted-foreground">
+                        {u.category === 'organizational' ? 'organizzativa' : 'senza contenuto'}
+                      </span>
+                    )}
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+
+          <div className="mt-2 flex justify-end border-t pt-3">
+            <Button variant="default" size="sm" onClick={() => setUnitModalOpen(false)}>
+              Fine
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

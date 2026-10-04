@@ -4,6 +4,7 @@ import { useParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
 import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
+import { useLessonDocument } from '@/api/hooks'
 import { useAddImages, useLessonImages, useRefreshImages, type LessonImage } from '@/api/images'
 import { useOutline } from '@/api/jobs'
 import { JobProgress } from '@/components/JobProgress'
@@ -12,15 +13,34 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
-import { kindLabel } from '@/lib/enrichment'
+import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
 
-function scrollToUnit(unitId?: string | null) {
-  if (!unitId) return
-  const el = document.getElementById(`unit-${unitId}`) || document.querySelector(`[data-unit-id="${unitId}"]`)
-  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+function findUnitForImage(imageName: string, markdown?: string): string | null {
+  if (!markdown || !imageName) return null
+  const idx = markdown.indexOf(imageName)
+  if (idx === -1) return null
+  const before = markdown.slice(0, idx)
+  const matches = [...before.matchAll(/^###\s+(\S+)/gm)]
+  if (matches.length > 0) {
+    return matches[matches.length - 1][1]
+  }
+  return null
+}
+
+function scrollToMedia(target: { imageName?: string | null; unitId?: string | null }) {
+  window.dispatchEvent(new CustomEvent('rt-editor-scroll', { detail: target }))
+  if (target.imageName) {
+    window.location.hash = `img-${encodeURIComponent(target.imageName)}`
+  } else if (target.unitId) {
+    window.location.hash = `unit-${encodeURIComponent(target.unitId)}`
+  }
+  if (target.unitId) {
+    const el = document.getElementById(`unit-${target.unitId}`) || document.querySelector(`[data-unit-id="${target.unitId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 }
 
 export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
@@ -31,6 +51,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const refreshImages = useRefreshImages(id)
   const addImages = useAddImages(id)
   const outline = useOutline(id)
+  const docQuery = useLessonDocument(id)
 
   const enrichment = useEnrichment(id)
   const { analyze, generate, action, refresh: refreshEnrichment } = useEnrichmentActions(id)
@@ -49,14 +70,20 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const imageList = images.data?.images ?? []
   const elements = enrichment.data?.elements ?? []
   const completedElements = elements.filter(
-    (e) => e.status === 'ready',
+    (e) => e.status === 'ready' || Boolean(e.asset_image),
   )
   const totalMedia = imageList.length + completedElements.length
 
   const visibleIdeas = elements.filter(
-    (e) => e.status !== 'suppressed' && (showIgnored ? true : e.status !== 'dismissed'),
+    (e) =>
+      e.status !== 'ready' &&
+      !e.asset_image &&
+      e.status !== 'suppressed' &&
+      (showIgnored ? true : e.status !== 'dismissed'),
   )
-  const ignoredCount = elements.filter((e) => e.status === 'dismissed').length
+  const ignoredCount = elements.filter(
+    (e) => e.status === 'dismissed' && !e.asset_image,
+  ).length
 
   const handleUploadSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -249,13 +276,15 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         {/* Griglia della Galleria */}
         <div className="grid grid-cols-3 gap-2.5 pt-1" role="group" aria-label="Media della lezione">
           {imageList.map((img: LessonImage) => {
+            const detectedUnit = findUnitForImage(img.name, docQuery.data?.markdown)
             const unitLabel =
-              img.in_document && (img.macro_ids ?? []).length > 0
+              detectedUnit ??
+              (img.in_document && (img.macro_ids ?? []).length > 0
                 ? (img.macro_ids ?? []).join(', ')
                 : img.source === 'pdf'
                   ? 'da PDF'
-                  : 'non assegnata'
-            const targetUnit = img.macro_ids?.[0] ?? null
+                  : 'non assegnata')
+            const targetUnit = detectedUnit ?? img.macro_ids?.[0] ?? null
 
             return (
               <button
@@ -263,7 +292,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 type="button"
                 className="group flex flex-col gap-1 text-left cursor-pointer"
                 aria-label={`Immagine ${unitLabel}: vai nel testo`}
-                onClick={() => scrollToUnit(targetUnit)}
+                onClick={() => scrollToMedia({ imageName: img.name, unitId: targetUnit })}
               >
                 <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-lg border bg-muted transition-colors group-hover:border-primary">
                   {img.url ? (
@@ -286,16 +315,31 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
           {completedElements.map((el) => {
             const kindText = kindLabel(el.kind)
+            const imgSrc = el.asset_image ? assetUrl(id, el.asset_image) : null
             return (
               <button
                 key={el.id}
                 type="button"
                 className="group flex flex-col gap-1 text-left cursor-pointer"
                 aria-label={`${kindText} ${el.unit_id}: vai nel testo`}
-                onClick={() => scrollToUnit(el.unit_id)}
+                onClick={() =>
+                  scrollToMedia({
+                    unitId: el.unit_id,
+                    imageName: el.asset_image ? el.asset_image.split('/').pop() : undefined,
+                  })
+                }
               >
                 <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-lg border bg-muted transition-colors group-hover:border-primary">
-                  <Sparkles className="size-6 text-primary" aria-hidden />
+                  {imgSrc ? (
+                    <img
+                      src={imgSrc}
+                      alt={el.title || `${kindText} ${el.unit_id}`}
+                      className="size-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Sparkles className="size-6 text-primary" aria-hidden />
+                  )}
                 </div>
                 <span className="truncate text-meta text-muted-foreground group-hover:text-foreground">
                   {kindText} · {el.unit_id}
@@ -340,14 +384,16 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
               </p>
               <p className="text-body font-medium">{e.title || e.description}</p>
               <div className="flex items-center gap-2 pt-0.5">
-                <Button
-                  size="sm"
-                  variant="default"
-                  disabled={generate.isPending}
-                  onClick={() => generate.mutate({ element_id: e.id })}
-                >
-                  <Sparkles className="size-3" /> Genera
-                </Button>
+                {e.status !== 'ready' && !e.asset_image && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={generate.isPending}
+                    onClick={() => generate.mutate({ element_id: e.id })}
+                  >
+                    <Sparkles className="size-3" /> Genera
+                  </Button>
+                )}
                 {e.status === 'dismissed' ? (
                   <Button
                     size="sm"
