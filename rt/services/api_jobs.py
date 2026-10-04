@@ -285,24 +285,43 @@ def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     import zipfile
     from rt.services.context import RunCancelled, _sanitize
     from rt.services.errors import ServiceError
-    from rt.services.lesson_import_service import import_archive
-    entries = [e for e in job.payload.get("archives") or [] if isinstance(e, dict)]
+    from rt.services.lesson_import_service import group_archive_members, import_archive, import_group_member
+    entries = []
+    for entry in job.payload.get("archives") or []:
+        if not isinstance(entry, dict):
+            continue
+        ctx.check_cancelled()
+        if entry.get("reason") or not entry.get("path") or not os.path.isfile(entry["path"]):
+            entries.append(entry)
+            continue
+        try:
+            members = group_archive_members(entry["path"])
+        except ServiceError as exc:
+            entries.append({**entry, "reason": exc.message, "code": exc.code})
+        except (zipfile.BadZipFile, ValueError):
+            entries.append({**entry, "reason": "Archivio ZIP non valido.", "code": "invalid_archive"})
+        else:
+            if members is None:
+                entries.append(entry)
+            else:
+                entries.extend({**entry, "file": member, "member": member} for member in members)
     total, results = len(entries), []
     for index, entry in enumerate(entries):
         ctx.check_cancelled()
         name = str(entry.get("file") or "")
-        ctx.progress(IMPORT_LESSON_ZIPS, index, total, message=f"Importo {name}")
+        ctx.progress(IMPORT_LESSON_ZIPS, index, total, message=f"Importo {index + 1} su {total}: {name}")
         path = entry.get("path")
         if entry.get("reason") or not path or not os.path.isfile(path):
             results.append({"file": name, "status": "rejected",
-                            "reason": entry.get("reason") or "Archivio non più disponibile: caricalo di nuovo."})
+                            "reason": entry.get("reason") or "Archivio non più disponibile: caricalo di nuovo.",
+                            "code": entry.get("code") or "invalid_archive"})
             continue
         try:
-            lesson_id = import_archive(path)
+            lesson_id = import_group_member(path, entry["member"]) if entry.get("member") else import_archive(path)
         except RunCancelled:
             raise
         except ServiceError as exc:
-            results.append({"file": name, "status": "rejected", "reason": exc.message})
+            results.append({"file": name, "status": "rejected", "reason": exc.message, "code": exc.code})
         except (zipfile.BadZipFile, ValueError):
             results.append({"file": name, "status": "rejected", "reason": "Archivio ZIP non valido."})
         except Exception as exc:  # noqa: BLE001 - l'esito del singolo archivio va nel risultato

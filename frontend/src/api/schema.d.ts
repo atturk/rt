@@ -309,7 +309,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Importa più archivi completi come nuove lezioni (job import_lesson_zips)
+         * Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)
          * @description Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
          *     Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
          *     supera finisce tra i rifiutati del risultato senza fermare gli altri.

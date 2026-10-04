@@ -62,9 +62,11 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const [enrichment, setEnrichment] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
+  const openedJob = useRef<string | null>(null)
   const job = useJobStatus(zipJob)
   const result = job.data?.state === 'succeeded' ? (job.data.result as ZipImportResult | null) : null
-  const kind = uploadKind(files)
+  const kind = zipJob ? 'zip' : uploadKind(files)
+  const zipFinished = !!zipJob && jobFinished(job.data)
   const busy = create.isPending || zips.isPending || (!!zipJob && !job.isError && !jobFinished(job.data))
   const subjects = [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
   const teachers = [...new Set((lessons.data ?? []).map((l) => l.docente?.trim()).filter(Boolean))].sort()
@@ -83,19 +85,25 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   }, [client])
 
   const imported = result?.results.filter((item) => item.status === 'imported' && item.lesson_id != null) ?? []
+  const alreadyPresent = result?.results.filter((item) => item.code === 'duplicate_lesson').length ?? 0
+  const rejected = result?.results.filter((item) => item.status === 'rejected' && item.code !== 'duplicate_lesson').length ?? 0
   const only = result && imported.length === 1 && result.rejected === 0 ? imported[0].lesson_id : null
   useEffect(() => {
     // Un solo pacchetto importato: si va dritti alla lezione.
-    if (only == null) return
+    if (only == null || !zipJob || openedJob.current === zipJob) return
+    openedJob.current = zipJob
     onClose()
     navigate(`/lezioni/${only}`)
-  }, [only, onClose, navigate])
+  }, [only, zipJob, onClose, navigate])
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (busy) return
+    if (busy || zipJob) return
     if (kind === 'zip') {
-      zips.mutate(files, { onSuccess: (accepted) => setZipJob(accepted.job_id) })
+      zips.mutate(files, { onSuccess: (accepted) => {
+        setZipJob(accepted.job_id)
+        setFiles([])
+      } })
       return
     }
     const issue = kind === 'misto'
@@ -240,31 +248,38 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
         {errorText && <Alert tone="danger">{errorText}</Alert>}
         {upload && <ProgressBar value={percent} label="Caricamento" className="my-3 h-1.5" />}
         {zipJob && <div className="my-3"><JobProgress jobId={zipJob} label="Importazione del pacchetto" onFinished={finished} /></div>}
-        {result && (imported.length !== 1 || result.rejected > 0) && (
-          <ul className="my-3 text-meta" aria-label="Esito dell'importazione">
-            {result.results.map((item, index) => (
-              <li key={index}>
-                {item.file}:{' '}
-                {item.status === 'imported' ? (
-                  <>importata{item.lesson_id != null && <> · <Link className="underline" to={`/lezioni/${item.lesson_id}`} onClick={onClose}>apri</Link></>}</>
-                ) : (
-                  `rifiutata · ${item.reason}`
-                )}
-              </li>
-            ))}
-          </ul>
+        {result && only == null && (
+          <div className="my-3">
+            <p className="text-meta font-semibold" data-testid="import-summary">
+              {result.imported} importate, {alreadyPresent} già presenti, {rejected} rifiutate
+            </p>
+            <ul className="my-3 text-meta" aria-label="Esito dell'importazione">
+              {result.results.map((item, index) => (
+                <li key={index}>
+                  {item.file}:{' '}
+                  {item.status === 'imported' ? (
+                    <>importata{item.lesson_id != null && <> · <Link className="underline" to={`/lezioni/${item.lesson_id}`} onClick={onClose}>apri</Link></>}</>
+                  ) : (
+                    `${item.code === 'duplicate_lesson' ? 'già presente' : 'rifiutata'} · ${item.reason}`
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         <div className="mt-4 flex items-center justify-between">
-          <Button
-            type="submit"
-            className={cn(kind === 'zip' ? 'h-10 px-4 font-semibold' : 'size-11 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90')}
-            disabled={busy}
-            aria-label={kind === 'zip' ? 'Importa' : 'Avvia'}
-            title={kind === 'zip' ? 'Importa' : 'Avvia'}
-          >
-            {kind === 'zip' ? <Upload aria-hidden /> : <Play className="size-5 fill-current" aria-hidden />}
-            {kind === 'zip' && <span>Importa</span>}
-          </Button>
+          {zipFinished ? <Button onClick={onClose}>Chiudi</Button> : (
+            <Button
+              type="submit"
+              className={cn(kind === 'zip' ? 'h-10 px-4 font-semibold' : 'size-11 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90')}
+              disabled={busy || !!zipJob}
+              aria-label={kind === 'zip' ? 'Importa' : 'Avvia'}
+              title={kind === 'zip' ? 'Importa' : 'Avvia'}
+            >
+              {kind === 'zip' ? <Upload aria-hidden /> : <Play className="size-5 fill-current" aria-hidden />}
+              {kind === 'zip' && <span>Importa</span>}
+            </Button>
+          )}
           {kind !== 'zip' && (
             <div className="flex items-center gap-1.5" role="group" aria-label="Fasi dopo l'importazione">
               <IconButton

@@ -145,7 +145,7 @@ export function useCreateLesson() {
 }
 
 /** Esito di un archivio nel risultato del job import_lesson_zips. */
-export type ZipImportItem = { file: string; status: 'imported' | 'rejected'; lesson_id?: number | null; reason?: string | null }
+export type ZipImportItem = { file: string; status: 'imported' | 'rejected'; lesson_id?: number | null; reason?: string | null; code?: string | null }
 export type ZipImportResult = { results: ZipImportItem[]; imported: number; rejected: number }
 
 /** POST /lessons/import-zip multipart con avanzamento dell'upload: accoda il job

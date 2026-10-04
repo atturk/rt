@@ -9041,7 +9041,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Importa più archivi completi come nuove lezioni (job import_lesson_zips)",
+        "summary": "Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)",
         "tags": [
           "job"
         ]

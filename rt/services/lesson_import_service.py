@@ -1,4 +1,4 @@
-"""Validate complete lesson archives before creating a new database lesson."""
+"""Valida gli archivi completi delle lezioni e gli ZIP di gruppo prima dell'importazione."""
 
 import hashlib
 import json
@@ -7,6 +7,7 @@ import shutil
 import stat
 import tempfile
 import zipfile
+from typing import BinaryIO, List, Optional, Union
 
 from rt.services.errors import Conflict, Invalid, TooLarge
 from rt.core.lesson_paths import lesson_path
@@ -22,28 +23,59 @@ MAX_BYTES = 2 * 1024 ** 3
 MAX_RATIO = 200
 
 
-def import_archive(archive: str) -> int:
+def _checked_files(zipped: zipfile.ZipFile) -> List[zipfile.ZipInfo]:
+    """Controlli comuni agli archivi di lezione e ai contenitori di più ZIP."""
+    files = [item for item in zipped.infolist() if not item.is_dir()]
+    if len(files) > MAX_FILES or sum(item.file_size for item in files) > MAX_BYTES:
+        raise TooLarge("archive_too_large", "Archivio troppo grande.")
+    names = [item.filename for item in files]
+    if len(names) != len({n.casefold() for n in names}):
+        raise Invalid("invalid_archive", "L'archivio contiene nomi duplicati.")
+    if any(any(s in ("", ".", "..") for s in name.split("/")) or "\\" in name or name.startswith("/")
+           for name in names):
+        raise Invalid("invalid_archive", "Percorsi non validi nell'archivio.")
+    if any(stat.S_ISLNK(item.external_attr >> 16) or item.flag_bits & 1 or
+           (item.file_size and item.file_size > MAX_RATIO * max(1, item.compress_size)) for item in files):
+        raise Invalid("invalid_archive", "L'archivio contiene link, file cifrati o compressione sospetta.")
+    return files
+
+
+def group_archive_members(archive: str) -> Optional[List[str]]:
+    """I nomi delle lezioni se l'archivio contiene solo ZIP; altrimenti è un export singolo.
+
+    Si leggono solo i metadati: il worker apre una lezione alla volta, senza estrarre il
+    gruppo intero né usare i nomi dell'archivio come percorsi sul disco.
+    """
+    with zipfile.ZipFile(archive) as zipped:
+        files = [item for item in zipped.infolist() if not item.is_dir()]
+        if not files or not all(item.filename.lower().endswith(".zip") for item in files):
+            return None
+        return [item.filename for item in _checked_files(zipped)]
+
+
+def import_group_member(archive: str, member: str) -> int:
+    """Ogni ZIP interno passa dall'importatore normale, inclusi manifesto e checksum."""
+    with zipfile.ZipFile(archive) as zipped, tempfile.TemporaryFile() as temporary:
+        with zipped.open(member) as source:
+            shutil.copyfileobj(source, temporary, length=1 << 20)
+        temporary.seek(0)
+        return import_archive(temporary)
+
+
+def import_archive(archive: Union[str, BinaryIO]) -> int:
     root = lessons_root()
     db = get_database()
     if db is None:
         raise Conflict("setup_required", "Database non disponibile: impossibile importare.")
     with zipfile.ZipFile(archive) as zipped:
-        files = [item for item in zipped.infolist() if not item.is_dir()]
-        if len(files) > MAX_FILES or sum(item.file_size for item in files) > MAX_BYTES:
-            raise TooLarge("archive_too_large", "Archivio troppo grande.")
+        files = _checked_files(zipped)
         names = [item.filename for item in files]
-        if len(names) != len({n.casefold() for n in names}):
-            raise Invalid("invalid_archive", "L'archivio contiene nomi duplicati.")
         parts = [name.split("/") for name in names]
-        if not parts or any(len(p) < 2 or any(s in ("", ".", "..") for s in p) or "\\" in name
-                            or name.startswith("/") for name, p in zip(names, parts)):
+        if not parts or any(len(p) < 2 for p in parts):
             raise Invalid("invalid_archive", "Percorsi non validi nell'archivio.")
         folder = parts[0][0]
         if any(p[0] != folder for p in parts) or folder.startswith(".") or folder.endswith(" "):
             raise Invalid("invalid_archive", "L'archivio deve contenere una sola lezione.")
-        if any(stat.S_ISLNK(item.external_attr >> 16) or item.flag_bits & 1 or
-               (item.file_size and item.file_size > MAX_RATIO * max(1, item.compress_size)) for item in files):
-            raise Invalid("invalid_archive", "L'archivio contiene link, file cifrati o compressione sospetta.")
         manifest_name = f"{folder}/rt-export.json"
         if manifest_name not in names:
             raise Invalid("invalid_archive", "Manca il manifesto di un export completo di RT.")
