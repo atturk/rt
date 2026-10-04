@@ -51,11 +51,11 @@ test('ripasso: quiz con esito, voto e salto', async ({ page }) => {
   await ensureQuestions(page, lesson.id, 'quiz')
   await openSession(page, lesson.id, 'Quiz')
 
-  const askedId = await questionId(page)
-  const asked = (await history(page, lesson.id)).questions.find((q) => q.id === askedId)!
   await page.getByRole('button', { name: /^B\./ }).click()
   await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
   await expect(page.getByTestId('recall-result-card')).toBeVisible()
+  const askedId = await questionId(page)
+  const asked = (await history(page, lesson.id)).questions.find((q) => q.id === askedId)!
   await page.getByRole('button', { name: 'Buona domanda' }).click()
   await expect.poll(async () => (await history(page, lesson.id)).answers.find((a) => a.question_id === asked.id)?.vote).toBe('up')
   const answer = (await history(page, lesson.id)).answers.find((a) => a.question_id === asked.id)!

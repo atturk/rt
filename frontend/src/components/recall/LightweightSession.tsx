@@ -208,6 +208,8 @@ export function LightweightSession({
 
   // Cambio tipo
   const handleTypeChange = (nextType: SessionType) => {
+    // lo stesso tipo non scarta la domanda che c'è già
+    if (nextType === qtype && currentQuestion) return
     setQtype(nextType)
     try {
       localStorage.setItem(LAST_TYPE_KEY, nextType)
