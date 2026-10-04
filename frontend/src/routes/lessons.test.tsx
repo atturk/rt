@@ -55,7 +55,11 @@ describe('pagina Lezioni', () => {
     renderDashboard()
     expect(screen.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeInTheDocument()
     expect(screen.getAllByTestId('lesson-group')).toHaveLength(2)
-    expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('Patologia · Maria Rossi · 7 unità')
+    const sub = within(row(1)).getByTestId('lesson-subtitle')
+    expect(sub).toHaveTextContent('Patologia · Maria Rossi · 7 unità')
+    expect(sub.className).toContain('block')
+    expect(sub.className).not.toContain('max-md')
+    expect(row(1).textContent).not.toMatch(/Infiammazione · Patologia/)
     expect(within(row(2)).getByTestId('lesson-subtitle')).toHaveTextContent(/^Biochimica$/)
     // Nessuna icona di azione sulle righe (Info, Recall, Studio, Apri): si apre con un clic sulla riga.
     expect(within(row(1)).getByRole('link', { name: /Infiammazione/ })).toHaveAttribute('href', '/lezioni/1')

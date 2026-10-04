@@ -150,7 +150,7 @@ const DOT_CLASSES: Record<LessonStatus, string> = {
 
 function StatusDot({ status }: { status: LessonStatus }) {
   return (
-    <span className="flex w-1.5 shrink-0 items-center justify-center" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
+    <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
       <span className={cn('block size-1.5 rounded-full', DOT_CLASSES[status])} aria-hidden />
       <span className="sr-only">{STATUS_LABELS[status]}</span>
     </span>
@@ -158,7 +158,7 @@ function StatusDot({ status }: { status: LessonStatus }) {
 }
 
 /** Casella del design (16 px, accento quando spuntata) con l'area da toccare più grande. */
-function Check({ label, checked, indeterminate = false, onChange }: { label: string; checked: boolean; indeterminate?: boolean; onChange: (checked: boolean) => void }) {
+function Check({ label, checked, indeterminate = false, className, onChange }: { label: string; checked: boolean; indeterminate?: boolean; className?: string; onChange: (checked: boolean) => void }) {
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate
@@ -177,6 +177,7 @@ function Check({ label, checked, indeterminate = false, onChange }: { label: str
         'after:absolute checked:after:left-[4px] checked:after:top-[1px] checked:after:h-[9px] checked:after:w-[5px] checked:after:rotate-45 checked:after:border-accent-foreground checked:after:border-b-2 checked:after:border-r-2 checked:after:content-[""]',
         'indeterminate:after:inset-x-[3px] indeterminate:after:top-[6px] indeterminate:after:h-0.5 indeterminate:after:bg-accent-foreground indeterminate:after:content-[""]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        className,
       )}
     />
   )
@@ -193,17 +194,14 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
   const titleId = useId()
-  const row = 'flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
+  const row = 'flex items-start gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
   const text = (
     <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-      <span id={titleId} className="text-body">{title}</span>
+      <span id={titleId} className="block text-body">{title}</span>
       {subtitle && (
-        <>
-          <span className="text-meta text-muted-foreground max-md:hidden"> · </span>
-          <span className="text-meta text-muted-foreground max-md:block" data-testid="lesson-subtitle">
-            {subtitle}
-          </span>
-        </>
+        <span className="block text-meta text-muted-foreground" data-testid="lesson-subtitle">
+          {subtitle}
+        </span>
       )}
     </span>
   )
@@ -212,7 +210,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       {selecting ? (
         <label className={cn(row, 'cursor-pointer')}>
-          <Check label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
+          <Check className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
