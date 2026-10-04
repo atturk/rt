@@ -5,6 +5,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, type Settings } from '@/api/settings'
+import { DeviceAccessSection } from '@/components/settings/device-access'
 import { DataDirSection, TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
 import { InfoSection } from '@/components/settings/info'
 import { PricingSection, SecretsSection } from '@/components/settings/keys'
@@ -121,6 +122,7 @@ export function GeneralSettingsPage() {
       <TranscriptionSection settings={s} />
       <TelegramSection settings={s} />
       <TelegramBotPanel />
+      <DeviceAccessSection />
     </>
   ))
 }

@@ -50,6 +50,11 @@ export function useLogin() {
   })
 }
 
+/** Link monouso per aprire una sessione da un altro browser (POST /auth/login-link). */
+export function useLoginLink() {
+  return useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/auth/login-link')) })
+}
+
 export function useLogout() {
   const client = useQueryClient()
   return useMutation({
