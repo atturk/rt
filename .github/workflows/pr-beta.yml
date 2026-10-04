@@ -6,7 +6,7 @@ name: PR beta
 # (workflow_dispatch) sul branch beta, prima di una prova dal vivo.
 on:
   pull_request:
-    branches: [claude/rt-4.2.0-beta-54bz3z]
+    branches: [claude/rt-4.2.1-beta]
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
