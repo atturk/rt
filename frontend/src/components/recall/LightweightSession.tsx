@@ -655,7 +655,7 @@ export function LightweightSession({
                     <p className="mt-2 text-meta">
                       <Link
                         to={`/lezioni/${activeLessonId}`}
-                        className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                        className="font-medium text-link underline underline-offset-2 hover:opacity-80"
                       >
                         Rileggi l'unità {currentQuestion.unit_ids.join(', ')}
                       </Link>
@@ -772,7 +772,7 @@ export function LightweightSession({
                 setDiscardModalOpen(false)
                 setCommentModalOpen(true)
               }}
-              className="inline-flex items-center gap-1.5 self-start text-meta text-primary hover:underline"
+              className="inline-flex items-center gap-1.5 self-start text-meta text-link hover:underline"
             >
               <MessageSquare className="size-3.5" aria-hidden />
               Scrivi un commento e rigenera

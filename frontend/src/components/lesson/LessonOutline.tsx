@@ -90,7 +90,7 @@ export function LessonOutline({ lessonId, outline, busy, mock = false, refresh }
       {error && <Alert tone="danger">{errorMessage(error)}</Alert>}
       {expiryError && <Alert tone="danger">{expiryError}<Button variant="outline" size="sm" onClick={() => { setExpiryError(null); void refresh() }}>Riprova</Button></Alert>}
     </Card>
-    <div className="mt-6" aria-label="Scaletta della lezione">
+    <section className="mt-6" aria-label="Scaletta della lezione">
       {outline.macro_sections.map((macro) => <section key={macro.id} className="mb-5">
         <h2 className="mb-2 text-body font-semibold">{macro.id}. {macro.title}</h2>
         {macro.units.map((unit) => <div key={unit.id} className="border-l-2 py-2 pl-4">
@@ -98,6 +98,6 @@ export function LessonOutline({ lessonId, outline, busy, mock = false, refresh }
           {unit.key_concepts.length > 0 && <p className="mt-1 text-meta text-muted-foreground">{unit.key_concepts.join(' · ')}</p>}
         </div>)}
       </section>)}
-    </div>
+    </section>
   </>
 }

@@ -247,7 +247,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         )}
 
         {/* Griglia della Galleria */}
-        <div className="grid grid-cols-3 gap-2.5 pt-1" aria-label="Media della lezione">
+        <div className="grid grid-cols-3 gap-2.5 pt-1" role="group" aria-label="Media della lezione">
           {imageList.map((img: LessonImage) => {
             const unitLabel =
               img.in_document && (img.macro_ids ?? []).length > 0

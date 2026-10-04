@@ -367,7 +367,7 @@ export function QuestionsPanel({
               <button
                 type="button"
                 onClick={onClearSelection}
-                className="text-meta font-medium text-primary hover:underline"
+                className="text-meta font-medium text-link hover:underline"
               >
                 Mostra tutte le domande
               </button>
@@ -461,7 +461,7 @@ export function QuestionsPanel({
           <button
             type="button"
             onClick={() => setActiveFilter(null)}
-            className="text-meta text-primary hover:underline"
+            className="text-meta text-link hover:underline"
           >
             Azzera filtro
           </button>
@@ -523,7 +523,7 @@ export function QuestionsPanel({
               <button
                 type="button"
                 onClick={onSwitchToClassifier}
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-link hover:underline"
               >
                 Scegli
               </button>
@@ -535,7 +535,7 @@ export function QuestionsPanel({
               <button
                 type="button"
                 onClick={onSwitchToClassifier}
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-link hover:underline"
               >
                 Rivedi le etichette
               </button>
