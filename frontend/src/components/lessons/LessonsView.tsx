@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Brain, Calendar, FileText, ListFilter, Search, SquareCheck, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Brain, Calendar, FileText, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -309,7 +309,15 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
 }
 
 /** Barra in basso con le azioni sulla selezione (schermata 01b): Recall, Scarica Markdown, Scarica zip, Elimina, Annulla. */
-export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson[]; onCancel: () => void; onDeleted: (ids: number[]) => void }) {
+export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, onDeleted }: {
+  lessons: Lesson[]
+  visibleLessons: Lesson[]
+  onSelectAll: (selected: boolean) => void
+  onCancel: () => void
+  onDeleted: (ids: number[]) => void
+}) {
+  const selectedIds = new Set(lessons.map((l) => l.id))
+  const allSelected = visibleLessons.length > 0 && visibleLessons.every((l) => selectedIds.has(l.id))
   const finals = lessons.filter((l) => l.phases.build === 'VALID')
   const markdown = markdownExportNote(lessons)
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
@@ -337,10 +345,17 @@ export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson
       data-testid="selection-bar"
       className="fixed bottom-[18px] left-1/2 z-10 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-col gap-2 rounded-lg border bg-card py-2 pl-4 pr-3 shadow-panel md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)] max-md:bottom-[calc(76px+env(safe-area-inset-bottom))]"
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
         <span className="mr-1 text-meta" aria-live="polite" data-testid="selection-count">
           {lessons.length === 1 ? '1 selezionata' : `${lessons.length} selezionate`}
         </span>
+        <IconButton
+          label={allSelected ? 'Deseleziona tutto' : 'Seleziona tutto'}
+          icon={allSelected ? SquareMinus : SquareCheck}
+          side="top"
+          unavailable={visibleLessons.length === 0 ? 'nessuna lezione visibile' : null}
+          onClick={() => onSelectAll(!allSelected)}
+        />
         <IconLink
           label="Recall sulle lezioni selezionate"
           icon={Brain}

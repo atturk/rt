@@ -124,6 +124,44 @@ describe('pagina Lezioni', () => {
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
   })
 
+  it('la barra seleziona tutte le lezioni visibili e poi le deseleziona', () => {
+    renderDashboard()
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona tutto' }))
+    for (const id of [1, 2, 3]) expect(within(row(id)).getByRole('checkbox')).toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('3 selezionate')
+    fireEvent.click(screen.getByRole('button', { name: 'Deseleziona tutto' }))
+    for (const id of [1, 2, 3]) expect(within(row(id)).getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('0 selezionate')
+    expect(screen.getByRole('button', { name: 'Seleziona tutto' })).toBeInTheDocument()
+  })
+
+  it('seleziona e deseleziona solo i risultati della ricerca, conservando le selezioni nascoste', () => {
+    renderDashboard()
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona' }))
+    fireEvent.click(within(row(2)).getByRole('checkbox'))
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'rossi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona tutto' }))
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('2 selezionate')
+    for (const id of [1, 3]) expect(within(row(id)).getByRole('checkbox')).toBeChecked()
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('3 selezionate')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'rossi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Deseleziona tutto' }))
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('0 selezionate')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(within(row(2)).getByRole('checkbox')).toBeChecked()
+    for (const id of [1, 3]) expect(within(row(id)).getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('1 selezionata')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'zzz' } })
+    const selectAll = screen.getByRole('button', { name: 'Seleziona tutto' })
+    expect(selectAll).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(selectAll)
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(within(row(2)).getByRole('checkbox')).toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('1 selezionata')
+  })
+
   it('su telefono: i pulsanti raggruppa e ordina passano al valore successivo a ogni tocco', () => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('767.98px'),

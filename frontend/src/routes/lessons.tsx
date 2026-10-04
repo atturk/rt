@@ -91,7 +91,20 @@ export function DashboardPage() {
           <LessonsList groups={groups} grouping={prefs.group} running={running} selecting={selecting} selected={selected} onSelected={setSelected} />
         )}
       </div>
-      {selecting && <SelectionBar lessons={chosen} onCancel={stopSelecting} onDeleted={() => setSelected(new Set())} />}
+      {selecting && <SelectionBar
+        lessons={chosen}
+        visibleLessons={filtered}
+        onSelectAll={(on) => setSelected((current) => {
+          const next = new Set(current)
+          for (const lesson of filtered) {
+            if (on) next.add(lesson.id)
+            else next.delete(lesson.id)
+          }
+          return next
+        })}
+        onCancel={stopSelecting}
+        onDeleted={() => setSelected(new Set())}
+      />}
     </>
   )
 }

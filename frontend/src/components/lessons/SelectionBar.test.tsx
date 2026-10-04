@@ -16,7 +16,7 @@ const ok = (data: unknown, status = 200) => ({ data, error: undefined, response:
 function renderBar(chosen = lessons) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter>
-    <SelectionBar lessons={chosen} onCancel={vi.fn()} onDeleted={vi.fn()} />
+    <SelectionBar lessons={chosen} visibleLessons={lessons} onSelectAll={vi.fn()} onCancel={vi.fn()} onDeleted={vi.fn()} />
   </MemoryRouter></QueryClientProvider>)
   return client
 }
