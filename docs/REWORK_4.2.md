@@ -332,7 +332,7 @@ PR indicata».
 
 Task correttivi aperti dalla revisione (formato: `R<n> — task di origine — agente — cosa correggere`).
 
-- **R1 — G4 — Antigravity — sessione di ripasso con i componenti comuni.**
+- **R1 — G4 — Antigravity — sessione di ripasso con i componenti comuni.** _Fatta (#52)._
   `frontend/src/components/recall/LightweightSession.tsx`: i due fogli "Domanda scartata" e
   "Commenta la domanda" sono `div` fissi con `bg-black/40` → usare `components/ui/modal` (o
   `dialog`) con focus, Esc e chiusura come gli altri; chip del tipo, motivi dello scarto e opzioni
@@ -341,12 +341,12 @@ Task correttivi aperti dalla revisione (formato: `R<n> — task di origine — a
   `text-xs` → `text-meta`. "Rileggi l'unità" deve aprire la lezione sull'unità (`#unit-<id>`).
   Dopo "Invia e rigenera" mostrare l'avanzamento del job di rigenerazione invece di passare
   subito alla prossima. Test: `LightweightSession.test.tsx`, e2e `recall-images-bot`.
-- **R2 — G5/A5 — Antigravity — unità per il recaller.** A5 ha tolto `UnitSelector` ma nessun
+- **R2 — G5/A5 — Antigravity — unità per il recaller.** _Fatta (#52)._ A5 ha tolto `UnitSelector` ma nessun
   pannello lo sostituisce: "Unità per il recaller … Scegli" porta al Classificatore, che non
   permette di sceglierle. Rimettere la scelta (elenco con caselle, "solo rilevanti"/"tutte",
   salvata con l'API `…/recall/units`) nel pannello Domande o nel Classificatore, come da
   `Domande.dc.html`. "Ultimo ripasso" con la data. Test: unit del pannello scelto.
-- **R3 — G3 — Antigravity — galleria dell'Arricchimento.** Il clic su un'immagine usa
+- **R3 — G3 — Antigravity — galleria dell'Arricchimento.** _Fatta (#52)._ Il clic su un'immagine usa
   `macro_ids[0]` (id della macro-sezione) come id dell'unità e cerca `[data-unit-id]` nel DOM,
   che nell'editor CodeMirror può non essere renderizzato: portare nel punto del testo con
   l'editor (riferimento dell'immagine nel Markdown o unità vera). Gli elementi pronti

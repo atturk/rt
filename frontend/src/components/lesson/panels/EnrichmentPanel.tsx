@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
+import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
@@ -30,17 +31,9 @@ function findUnitForImage(imageName: string, markdown?: string): string | null {
   return null
 }
 
+/** Porta l'editor sull'immagine (riferimento nel Markdown) o, se manca, sull'unità. */
 function scrollToMedia(target: { imageName?: string | null; unitId?: string | null }) {
-  window.dispatchEvent(new CustomEvent('rt-editor-scroll', { detail: target }))
-  if (target.imageName) {
-    window.location.hash = `img-${encodeURIComponent(target.imageName)}`
-  } else if (target.unitId) {
-    window.location.hash = `unit-${encodeURIComponent(target.unitId)}`
-  }
-  if (target.unitId) {
-    const el = document.getElementById(`unit-${target.unitId}`) || document.querySelector(`[data-unit-id="${target.unitId}"]`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  window.dispatchEvent(new CustomEvent(EDITOR_SCROLL_EVENT, { detail: target }))
 }
 
 export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {

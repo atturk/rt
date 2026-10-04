@@ -27,6 +27,7 @@ import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
+import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
 type Problem = Schemas['DocumentEditProblem']
 type Status =
@@ -351,8 +352,8 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       const detail = (event as CustomEvent<{ unitId?: string | null; imageName?: string | null }>).detail
       if (detail) scrollToTarget(detail)
     }
-    window.addEventListener('rt-editor-scroll', handler)
-    return () => window.removeEventListener('rt-editor-scroll', handler)
+    window.addEventListener(EDITOR_SCROLL_EVENT, handler)
+    return () => window.removeEventListener(EDITOR_SCROLL_EVENT, handler)
   }, [hash, source.key])
 
   // Il clic destro su una parola la seleziona (macOS): conta solo una selezione già fatta prima.

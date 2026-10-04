@@ -10,6 +10,9 @@ const VIEWS: readonly string[] = ['dettagli', 'verifica', 'domande', 'classifica
 /** Evento del menu contestuale "Domande su questa parte": { units, text }. */
 export const OPEN_QUESTIONS_EVENT = 'rt-open-domande'
 
+/** Evento della galleria dell'Arricchimento: { imageName?, unitId? } da mostrare nell'editor. */
+export const EDITOR_SCROLL_EVENT = 'rt-editor-scroll'
+
 export const isPanelView = (value: string | null | undefined): value is PanelView => !!value && VIEWS.includes(value)
 
 /** Pannello laterale aperto o chiuso: la scelta resta nel browser. Chiuso di default (il contenuto davanti). */
