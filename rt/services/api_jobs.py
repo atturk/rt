@@ -28,6 +28,7 @@ CREDENTIAL_TEST = "credential_test"
 TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
 IMPORT_LESSON_ZIPS = "import_lesson_zips"
 TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
+EXPORT_LESSONS = "export_lessons"
 UNIT_RELEVANCE = "unit_relevance"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
 
@@ -344,6 +345,37 @@ def sweep_stale_exports(max_age_hours: float = EXPORT_MAX_AGE_HOURS) -> int:
     return removed
 
 
+def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Lo stesso export multiplo del GET, con avanzamento e file riscaricabile per 24 ore."""
+    import shutil
+    from rt.services.lesson_service import resolve_lesson_dir
+    from rt.services.errors import NotFound
+    from rt.storage.export import ExportError, export_many_to_tempfile, many_export_filename
+    sweep_stale_exports()
+    dirs = [resolve_lesson_dir(i) for i in dict.fromkeys(job.payload["ids"])]
+
+    def progress(current: int, total: int, lesson_dir: str) -> None:
+        ctx.check_cancelled()
+        ctx.progress(EXPORT_LESSONS, current, total,
+                     message=f"Esporto {current + 1} su {total}: {os.path.basename(lesson_dir)}")
+
+    try:
+        path, included = export_many_to_tempfile(dirs, job.payload["format"], progress=progress)
+    except ExportError as exc:
+        raise NotFound("export_not_available", str(exc)) from exc
+    filename = many_export_filename(job.payload.get("name", "lezioni"), job.payload["format"])
+    target = job_export_path(job.id, filename)
+    try:
+        ctx.check_cancelled()
+        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
+        shutil.move(path, target)
+    finally:
+        if os.path.isfile(path):
+            os.unlink(path)
+    ctx.progress(EXPORT_LESSONS, len(dirs), len(dirs), message=f"Archivio pronto: {included} lezioni")
+    return _done({"file": filename, "size": os.path.getsize(target), "included": included})
+
+
 def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Esporta cronologia e media di un topic con l'account utente e lascia lo ZIP in
     exports_root()/<job_id>/: lo scarica GET /settings/telegram/user/archives/{job_id}."""
@@ -387,6 +419,7 @@ for _type, _handler in (
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),
+    (EXPORT_LESSONS, export_lessons_job),
 ):
     if _type not in _HANDLERS:
         register_handler(_type, _handler)

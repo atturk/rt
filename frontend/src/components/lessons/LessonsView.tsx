@@ -4,10 +4,13 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { api, errorMessage, unwrap } from '@/api/client'
+import { lessonExportUrl, useExportLessons } from '@/api/exports'
 import { useSettings } from '@/api/settings'
+import { JobProgress } from '@/components/JobProgress'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
-import { IconAnchor, IconButton, IconLink } from '@/components/ui/icon-button'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -305,52 +308,70 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
   )
 }
 
-function exportUrl(lessons: Lesson[], format: 'markdown' | 'zip'): string {
-  return `/api/v1/lesson-exports?${new URLSearchParams([...lessons.map((l) => ['ids', String(l.id)]), ['format', format], ['name', 'Lezioni selezionate']])}`
-}
-
 /** Barra in basso con le azioni sulla selezione (schermata 01b): Recall, Scarica Markdown, Scarica zip, Elimina, Annulla. */
 export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson[]; onCancel: () => void; onDeleted: (ids: number[]) => void }) {
   const finals = lessons.filter((l) => l.phases.build === 'VALID')
   const markdown = markdownExportNote(lessons)
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
+  const start = useExportLessons()
+  const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
+  const download = useRef<HTMLAnchorElement>(null)
+  const downloaded = useRef<string | null>(null)
+  const exporting = start.isPending || exportJob?.state === 'queued'
+  const runExport = (format: 'markdown' | 'zip') => {
+    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate' }, {
+      onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
+    })
+  }
+  useEffect(() => {
+    if (exportJob?.state === 'succeeded' && download.current && downloaded.current !== exportJob.id) {
+      downloaded.current = exportJob.id
+      download.current.click()
+    }
+  }, [exportJob])
   return (
     <div
       role="region"
       aria-label="Selezione"
       data-testid="selection-bar"
-      className="fixed bottom-[18px] left-1/2 z-10 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-1.5 rounded-lg border bg-card py-2 pl-4 pr-3 shadow-panel md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)] max-md:bottom-[calc(76px+env(safe-area-inset-bottom))]"
+      className="fixed bottom-[18px] left-1/2 z-10 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-col gap-2 rounded-lg border bg-card py-2 pl-4 pr-3 shadow-panel md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)] max-md:bottom-[calc(76px+env(safe-area-inset-bottom))]"
     >
-      <span className="mr-1 text-meta" aria-live="polite" data-testid="selection-count">
-        {lessons.length === 1 ? '1 selezionata' : `${lessons.length} selezionate`}
-      </span>
-      <IconLink
-        label="Recall sulle lezioni selezionate"
-        icon={Brain}
-        side="top"
-        to={ready.length ? selectionRecallPath(ready.map((l) => l.id)) : '/'}
-        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : ready.length === 0 ? 'nessuna lezione selezionata ha la rielaborazione' : null}
-      />
-      <IconAnchor
-        label="Scarica Markdown"
-        icon={FileText}
-        side="top"
-        href={exportUrl(finals, 'markdown')}
-        download
-        unavailable={markdown.unavailable}
-        hint={markdown.hint}
-      />
-      <IconAnchor label="Scarica zip" icon={Archive} side="top" href={exportUrl(lessons, 'zip')} download unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
-      <IconButton
-        label="Elimina le lezioni selezionate"
-        icon={Trash2}
-        side="top"
-        aria-haspopup="dialog"
-        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
-        onClick={() => setDeleting(true)}
-      />
-      <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
+      <div className="flex items-center gap-1.5">
+        <span className="mr-1 text-meta" aria-live="polite" data-testid="selection-count">
+          {lessons.length === 1 ? '1 selezionata' : `${lessons.length} selezionate`}
+        </span>
+        <IconLink
+          label="Recall sulle lezioni selezionate"
+          icon={Brain}
+          side="top"
+          to={ready.length ? selectionRecallPath(ready.map((l) => l.id)) : '/'}
+          unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : ready.length === 0 ? 'nessuna lezione selezionata ha la rielaborazione' : null}
+        />
+        <IconButton
+          label="Scarica Markdown"
+          icon={FileText}
+          side="top"
+          onClick={() => runExport('markdown')}
+          unavailable={exporting ? 'esportazione in corso' : markdown.unavailable}
+          title={markdown.hint ?? undefined}
+        />
+        <IconButton label="Scarica zip" icon={Archive} side="top" onClick={() => runExport('zip')} unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
+        <IconButton
+          label="Elimina le lezioni selezionate"
+          icon={Trash2}
+          side="top"
+          aria-haspopup="dialog"
+          unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+          onClick={() => setDeleting(true)}
+        />
+        <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
+      </div>
+      {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
+      {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
+      {exportJob?.state === 'succeeded' && (
+        <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>
+      )}
       {deleting && <DeleteSelection lessons={lessons} onClose={() => setDeleting(false)} onDeleted={onDeleted} />}
     </div>
   )

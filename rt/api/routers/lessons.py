@@ -241,7 +241,7 @@ def export_lessons(
 ):
     from urllib.parse import quote
     from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
-    from rt.storage.export import ExportError, export_many_to_tempfile
+    from rt.storage.export import ExportError, export_many_to_tempfile, many_export_filename
     try:
         dirs = [resolve_lesson_dir(i) for i in dict.fromkeys(ids)]
     except LessonNotFound as exc:
@@ -250,11 +250,41 @@ def export_lessons(
         path, _count = export_many_to_tempfile(dirs, format)
     except ExportError as exc:
         raise ApiError(404, "export_not_available", str(exc))
-    base = "".join(c for c in name if c not in '/\\:*?"<>|').strip() or "lezioni"
-    filename = f"{base}{' - archivi' if format == 'zip' else ''}.zip"
+    filename = many_export_filename(name, format)
     return FileResponse(path, media_type="application/zip", filename=filename,
                         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
                         background=BackgroundTask(os.unlink, path))
+
+
+@router.post("/lesson-exports", response_model=schemas.JobAccepted, status_code=202,
+             summary="Esporta più lezioni come job con avanzamento per lezione")
+def start_lesson_export(body: schemas.LessonExportRequest, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    from rt.services.api_jobs import EXPORT_LESSONS
+    from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
+    ids = list(dict.fromkeys(body.ids))
+    try:
+        for lesson_id in ids:
+            resolve_lesson_dir(lesson_id)
+    except LessonNotFound as exc:
+        raise ApiError(404, "lesson_not_found", str(exc))
+    return enqueue_job(EXPORT_LESSONS, None, {**body.model_dump(), "ids": ids}, actor)
+
+
+@router.get("/lesson-exports/{job_id}/file", response_class=Response,
+            summary="Scarica lo ZIP prodotto da un export di lezioni concluso",
+            responses={200: {"content": {"application/zip": {}}}})
+def download_lesson_export(job_id: str, _actor: Actor):
+    from rt.api.jobs import queue
+    from rt.services.api_jobs import EXPORT_LESSONS, job_export_path
+    info = queue().get(job_id)
+    if info is None or info.type != EXPORT_LESSONS or info.state != "succeeded":
+        raise ApiError(404, "export_not_available", "Esportazione non disponibile.")
+    filename = str((info.result or {}).get("file") or "")
+    path = job_export_path(info.id, filename) if filename else ""
+    if not path or not os.path.isfile(path):
+        raise ApiError(404, "export_not_available", "L'archivio non è più disponibile: esporta di nuovo le lezioni.")
+    return FileResponse(path, media_type="application/zip", filename=os.path.basename(path))
 
 
 @router.get("/lessons/{lesson_id}/outline", response_model=schemas.Outline,

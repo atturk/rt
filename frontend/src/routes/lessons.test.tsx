@@ -112,8 +112,8 @@ describe('pagina Lezioni', () => {
     const bar = screen.getByTestId('selection-bar')
     expect(within(bar).getByTestId('selection-count')).toHaveTextContent('2 selezionate')
     // Markdown solo delle lezioni con il documento finale; zip di tutte.
-    expect(within(bar).getByRole('link', { name: 'Scarica Markdown' })).toHaveAttribute('href', '/api/v1/lesson-exports?ids=1&format=markdown&name=Lezioni+selezionate')
-    expect(within(bar).getByRole('link', { name: 'Scarica zip' })).toHaveAttribute('href', '/api/v1/lesson-exports?ids=1&ids=2&format=zip&name=Lezioni+selezionate')
+    expect(within(bar).getByRole('button', { name: 'Scarica Markdown' })).not.toHaveAttribute('aria-disabled')
+    expect(within(bar).getByRole('button', { name: 'Scarica zip' })).not.toHaveAttribute('aria-disabled')
     // Recall sulla selezione: solo le lezioni con la rielaborazione
     expect(within(bar).getByRole('link', { name: 'Recall sulle lezioni selezionate' })).toHaveAttribute('href', '/recall/selezione/1')
 

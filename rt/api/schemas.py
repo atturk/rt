@@ -12,6 +12,12 @@ NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mist
 from pydantic import BaseModel, Field, field_validator
 
 
+class LessonExportRequest(BaseModel):
+    ids: List[int] = Field(min_length=1, description="Id delle lezioni")
+    format: Literal["markdown", "zip"] = "markdown"
+    name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
+
+
 class LessonMetadataUpdate(BaseModel):
     titolo: Optional[str] = Field(None, max_length=180)
     materia: Optional[str] = Field(None, max_length=80)
