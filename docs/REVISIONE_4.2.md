@@ -41,4 +41,6 @@ tag o release. Risposte e commit in italiano. Piano e regole: `docs/REWORK_4.2.m
 - Giro 2: unito (#51 Codex, #50 Antigravity) più la revisione; R1–R3 uniti (#52).
 - Release beta: i tag v4.2.0b2 e v4.2.0b3 non hanno prodotto release (CI e2e: a11y e una race del
   journey, corretti); prima di un tag eseguire gli e2e completi in locale.
+- Accesso da iPhone (QR con link monouso, Impostazioni > Generali; #53) provato dal vivo da Attilio:
+  incluso nella 4.2.0b5.
 - Dopo il giro 2: e2e completi, riepilogo per la prova dal vivo, poi Attilio decide su beta/tag.
