@@ -45,6 +45,21 @@ già autenticato; la sessione resta con un cookie. Se il link è scaduto, riavvi
 incolla nella pagina di accesso il token dell'API (stampato al primo avvio di `rt api`). **Esci**
 chiude la sessione anche sul backend.
 
+### Da iPhone o da un altro dispositivo
+
+RT ascolta solo su `127.0.0.1`. Il modo consigliato per raggiungerlo da iPhone è Tailscale
+Serve, che lo pubblica soltanto nella tua tailnet, in HTTPS (necessario per il recall a voce):
+
+1. Installa Tailscale sul Mac e sull'iPhone con lo stesso account; nella console di Tailscale
+   abilita MagicDNS e i certificati HTTPS.
+2. Sul Mac: `tailscale serve --bg 8765` (resta attivo ai riavvii; `tailscale serve status`
+   mostra l'indirizzo, del tipo `https://nome-mac.tailnet.ts.net`).
+3. Nella web app sul Mac: **Impostazioni > Generali > Accesso da un altro dispositivo**,
+   scrivi quell'indirizzo e premi **Crea QR di accesso**; inquadra il QR con l'iPhone.
+4. Su iPhone: Condividi > Aggiungi alla schermata Home.
+
+Non usare `tailscale funnel`: renderebbe RT pubblico su Internet.
+
 ## Cosa si fa dalla web
 
 La web fa tutto quello che si fa nel terminale; la tabella di parità, con i test che lo
