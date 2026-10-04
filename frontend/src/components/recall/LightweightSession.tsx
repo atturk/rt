@@ -35,7 +35,9 @@ import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
+import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
+import { Modal } from '@/components/ui/modal'
 import { lessonTitle } from '@/lib/format'
 import { selectionSubject } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
@@ -94,6 +96,8 @@ export function LightweightSession({
   const activeLessonId = questionLessonId ?? lessonId ?? 0
   // Valutazione delle risposte aperte: job in corso, poi esito letto dallo storico
   const [evaluationJob, setEvaluationJob] = useState<string | null>(null)
+  // Rigenerazione della domanda: job in corso
+  const [regenerationJob, setRegenerationJob] = useState<string | null>(null)
   const history = useRecallHistory(activeLessonId, false)
 
   // Hooks mutazioni
@@ -158,6 +162,7 @@ export function LightweightSession({
       setShowVoiceRecorder(false)
       setEvaluatedResult(null)
       setEvaluationJob(null)
+      setRegenerationJob(null)
       setCurrentVote(null)
       setDiscardModalOpen(false)
       setSelectedReasons(new Set())
@@ -337,15 +342,24 @@ export function LightweightSession({
   const handleCommentRegenerate = async () => {
     if (!currentQuestion || !activeLessonId || !commentText.trim()) return
     try {
-      await regenerateMutation.mutateAsync({
+      const res = await regenerateMutation.mutateAsync({
         questionId: currentQuestion.id,
         comment: commentText.trim(),
       })
       setCommentModalOpen(false)
-      void askNext()
+      if (res && typeof res === 'object' && 'job_id' in res && (res as { job_id?: string }).job_id) {
+        setRegenerationJob((res as { job_id: string }).job_id)
+      } else {
+        void askNext()
+      }
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
+  }
+
+  const regenerationFinished = () => {
+    setRegenerationJob(null)
+    void askNext()
   }
 
   // Termina sessione
@@ -400,6 +414,7 @@ export function LightweightSession({
     voiceMutation.isPending ||
     voteMutation.isPending ||
     regenerateMutation.isPending ||
+    regenerationJob !== null ||
     nextLesson.isPending ||
     nextSubject.isPending
 
@@ -430,20 +445,14 @@ export function LightweightSession({
             {SESSION_TYPES.map(({ id: typeId, label }) => {
               const active = qtype === typeId
               return (
-                <button
+                <Chip
                   key={typeId}
-                  type="button"
+                  active={active}
                   aria-pressed={active}
                   onClick={() => handleTypeChange(typeId)}
-                  className={cn(
-                    'inline-flex h-7 items-center rounded-full px-3 text-xs font-medium transition-colors',
-                    active
-                      ? 'bg-primary text-primary-foreground font-semibold'
-                      : 'bg-muted text-foreground hover:bg-muted/80',
-                  )}
                 >
                   {label}
-                </button>
+                </Chip>
               )
             })}
           </div>
@@ -490,31 +499,21 @@ export function LightweightSession({
                       const isCorrect = evaluatedResult?.correctIndex === idx
                       const isWrongSelection = isAnswered && isSelected && !isCorrect
 
-                      let buttonStyle = 'border-border bg-card hover:bg-muted/50 text-foreground'
-                      if (isAnswered) {
-                        if (isCorrect) {
-                          buttonStyle = 'border-primary bg-primary/10 text-primary font-semibold'
-                        } else if (isWrongSelection) {
-                          buttonStyle = 'border-danger bg-danger/10 text-danger font-medium'
-                        }
-                      } else if (isSelected) {
-                        buttonStyle = 'border-primary bg-primary/10 text-primary font-medium'
-                      }
-
                       return (
-                        <button
+                        <Button
                           key={idx}
-                          type="button"
+                          variant={isSelected ? 'default' : 'outline'}
                           disabled={isAnswered || busy}
                           onClick={() => setSelectedChoice(idx)}
                           className={cn(
-                            'flex min-h-12 w-full items-center justify-start rounded-lg border px-3.5 py-2.5 text-left text-body transition-colors',
-                            buttonStyle,
+                            'h-auto min-h-12 w-full justify-start whitespace-normal rounded-lg px-3.5 py-2.5 text-left text-body font-normal transition-colors',
+                            isAnswered && isCorrect && 'border-success bg-success-soft text-success font-semibold',
+                            isAnswered && isWrongSelection && 'border-danger bg-danger-soft text-danger font-medium',
                           )}
                         >
                           <span className="mr-2 font-semibold opacity-75">{letter}.</span>
-                          <span>{option}</span>
-                        </button>
+                          <span className="flex-1">{option}</span>
+                        </Button>
                       )
                     })}
                   </div>
@@ -610,6 +609,9 @@ export function LightweightSession({
               {evaluationJob && (
                 <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={() => void evaluationFinished()} />
               )}
+              {regenerationJob && (
+                <JobProgress jobId={regenerationJob} label="Rigenerazione della domanda" onFinished={regenerationFinished} />
+              )}
 
               {/* Scheda Esito */}
               {isAnswered && evaluatedResult && (
@@ -654,7 +656,7 @@ export function LightweightSession({
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
                     <p className="mt-2 text-meta">
                       <Link
-                        to={`/lezioni/${activeLessonId}`}
+                        to={`/lezioni/${activeLessonId}#unit-${currentQuestion.unit_ids[0]}`}
                         className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
                       >
                         Rileggi l'unità {currentQuestion.unit_ids.join(', ')}
@@ -717,102 +719,72 @@ export function LightweightSession({
       </main>
 
       {/* Modal Domanda Scartata (Telefono-Pollice-Giu.dc.html) */}
-      {discardModalOpen && (
-        <div
-          role="dialog"
-          aria-labelledby="discard-title"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
-        >
-          <div className="flex w-full max-w-md flex-col gap-3.5 rounded-t-xl border bg-card p-5 shadow-panel sm:rounded-xl">
-            <div className="flex items-center justify-between">
-              <h3 id="discard-title" className="text-body font-semibold">
-                Domanda scartata
-              </h3>
-              <IconButton
-                label="Chiudi"
-                icon={X}
-                onClick={() => setDiscardModalOpen(false)}
-              />
-            </div>
+      <Modal
+        open={discardModalOpen}
+        onClose={() => setDiscardModalOpen(false)}
+        title="Domanda scartata"
+      >
+        <div className="mt-3 flex flex-col gap-3.5">
+          <p className="text-meta text-muted-foreground">
+            Non te la riproporrò. Perché? <span className="opacity-75">(facoltativo)</span>
+          </p>
 
-            <p className="text-meta text-muted-foreground">
-              Non te la riproporrò. Perché? <span className="opacity-75">(facoltativo)</span>
-            </p>
+          <div role="group" aria-label="Motivo dello scarto" className="flex flex-wrap gap-2">
+            {DISCARD_REASONS.map(({ id: reasonId, label: reasonLabel }) => {
+              const checked = selectedReasons.has(reasonId)
+              return (
+                <Chip
+                  key={reasonId}
+                  active={checked}
+                  aria-pressed={checked}
+                  onClick={() => {
+                    const next = new Set(selectedReasons)
+                    if (checked) next.delete(reasonId)
+                    else next.add(reasonId)
+                    setSelectedReasons(next)
+                  }}
+                >
+                  {reasonLabel}
+                </Chip>
+              )
+            })}
+          </div>
 
-            <div role="group" aria-label="Motivo dello scarto" className="flex flex-wrap gap-2">
-              {DISCARD_REASONS.map(({ id: reasonId, label: reasonLabel }) => {
-                const checked = selectedReasons.has(reasonId)
-                return (
-                  <button
-                    key={reasonId}
-                    type="button"
-                    aria-pressed={checked}
-                    onClick={() => {
-                      const next = new Set(selectedReasons)
-                      if (checked) next.delete(reasonId)
-                      else next.add(reasonId)
-                      setSelectedReasons(next)
-                    }}
-                    className={cn(
-                      'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-                      checked
-                        ? 'bg-primary text-primary-foreground font-semibold'
-                        : 'bg-muted text-foreground hover:bg-muted/80',
-                    )}
-                  >
-                    {reasonLabel}
-                  </button>
-                )
-              })}
-            </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDiscardModalOpen(false)
+              setCommentModalOpen(true)
+            }}
+            className="inline-flex items-center gap-1.5 self-start text-meta text-primary hover:underline"
+          >
+            <MessageSquare className="size-3.5" aria-hidden />
+            Scrivi un commento e rigenera
+          </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setDiscardModalOpen(false)
-                setCommentModalOpen(true)
-              }}
-              className="inline-flex items-center gap-1.5 self-start text-meta text-primary hover:underline"
+          <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDiscardModalOpen(false)}
             >
-              <MessageSquare className="size-3.5" aria-hidden />
-              Scrivi un commento e rigenera
-            </button>
-
-            <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDiscardModalOpen(false)}
-              >
-                Annulla
-              </Button>
-              <Button variant="default" size="sm" onClick={handleConfirmDiscard}>
-                Prossima
-              </Button>
-            </div>
+              Annulla
+            </Button>
+            <Button variant="default" size="sm" onClick={handleConfirmDiscard}>
+              Prossima
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Modal Commenta e Rigenera (Telefono-Commenta.dc.html) */}
-      {commentModalOpen && currentQuestion && (
-        <div
-          role="dialog"
-          aria-labelledby="comment-title"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
-        >
-          <div className="flex w-full max-w-md flex-col gap-3.5 rounded-t-xl border bg-card p-5 shadow-panel sm:rounded-xl">
-            <div className="flex items-center justify-between">
-              <h3 id="comment-title" className="text-body font-semibold">
-                Commenta la domanda
-              </h3>
-              <IconButton
-                label="Chiudi"
-                icon={X}
-                onClick={() => setCommentModalOpen(false)}
-              />
-            </div>
-
+      <Modal
+        open={commentModalOpen && Boolean(currentQuestion)}
+        onClose={() => setCommentModalOpen(false)}
+        title="Commenta la domanda"
+      >
+        {currentQuestion && (
+          <div className="mt-3 flex flex-col gap-3.5">
             <div className="rounded-lg bg-muted/50 p-2.5 text-meta">
               <p className="text-muted-foreground">
                 {currentQuestion.type.toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')}
@@ -844,14 +816,14 @@ export function LightweightSession({
               size="sm"
               disabled={!commentText.trim() || regenerateMutation.isPending}
               onClick={handleCommentRegenerate}
-              className="mt-1"
+              className="mt-1 self-start"
             >
               <Sparkles className="mr-1.5 size-3.5" aria-hidden />
               {regenerateMutation.isPending ? 'Invio in corso…' : 'Invia e rigenera'}
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   )
 }

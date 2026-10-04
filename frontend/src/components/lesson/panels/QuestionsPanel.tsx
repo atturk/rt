@@ -17,6 +17,7 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
+import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -286,7 +287,7 @@ export function QuestionsPanel({
                   className={cn(
                     'flex flex-col items-center rounded-lg border p-1.5 text-center transition-colors',
                     active
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      ? 'border-primary bg-primary text-primary-foreground font-semibold'
                       : 'border-border bg-card text-foreground hover:bg-muted/50',
                   )}
                 >
@@ -382,20 +383,15 @@ export function QuestionsPanel({
               <span className="text-meta text-muted-foreground">Tipo</span>
               <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1">
                 {SELECTION_TYPES.map((t) => (
-                  <button
+                  <Chip
                     key={t}
-                    type="button"
+                    size="sm"
+                    active={partType === t}
                     aria-pressed={partType === t}
                     onClick={() => setPartType(t)}
-                    className={cn(
-                      'rounded-full px-2.5 py-0.5 text-meta transition-colors',
-                      partType === t
-                        ? 'bg-primary text-primary-foreground font-medium'
-                        : 'bg-muted text-foreground hover:bg-muted/80',
-                    )}
                   >
                     {TYPES.find((x) => x.id === t)?.label ?? t}
-                  </button>
+                  </Chip>
                 ))}
               </div>
               <div className="ml-auto flex items-center gap-1.5">

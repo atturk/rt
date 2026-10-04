@@ -165,6 +165,7 @@ describe('LightweightSession', () => {
     expect(await screen.findByTestId('recall-result-card')).toBeInTheDocument()
     expect(screen.getByText('Giusto.')).toBeInTheDocument()
     expect(screen.getByText("Sotto 22 mEq/L.")).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: "Rileggi l'unità 1.2" })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
   })
 
   it('invia Non lo so quando cliccato', async () => {
@@ -233,6 +234,9 @@ describe('LightweightSession', () => {
       questionId: 'q100',
       comment: 'Chiedi sui casi clinici',
     })
+
+    // Mostra l'avanzamento del job invece di passare subito alla prossima
+    expect(await screen.findByRole('button', { name: 'Rigenerazione della domanda' })).toBeInTheDocument()
   })
 
   it('salta la domanda al clic su Salta', async () => {

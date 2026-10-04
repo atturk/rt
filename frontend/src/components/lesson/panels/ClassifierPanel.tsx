@@ -11,6 +11,7 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Chip } from '@/components/ui/chip'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -138,18 +139,15 @@ export function ClassifierPanel({ lessonId }: { lessonId?: number }) {
           const count = all.filter(FILTERS[key].match).length
           const isActive = filter === key
           return (
-            <button
+            <Chip
               key={key}
-              type="button"
+              size="sm"
+              active={isActive}
               aria-pressed={isActive}
-              className={cn(
-                'inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-meta font-medium transition-colors',
-                isActive ? 'bg-primary text-primary-foreground font-semibold' : 'bg-muted text-foreground hover:bg-muted/80',
-              )}
               onClick={() => setFilter(key)}
             >
               {FILTERS[key].label} {count}
-            </button>
+            </Chip>
           )
         })}
       </div>
