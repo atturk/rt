@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.jobs import enqueue_job
 
 router = APIRouter(tags=["recall"])
@@ -45,9 +45,37 @@ def history(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
              summary="Genera domande: aggiunge al pool domande da tutte le unità selezionate (job recall_generate) o di un tipo (job recall_batch)")
 def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir, actor: Actor):
     _require_draft(lesson_dir)
+    if body.unit_ids is not None:
+        from rt.pipeline.ledger import load_resolved_draft
+        present = {u.unit_id for u in load_resolved_draft(lesson_dir).units}
+        units = [u for u in dict.fromkeys(body.unit_ids) if u in present]
+        if not units:
+            raise ApiError(422, "validation_error", "Nessuna delle unità indicate è nella lezione.")
+        return enqueue_job("recall_generate", lesson_dir, {
+            "force_mock": body.mock,
+            "regenerate": True,
+            "unit_ids": units,
+            "qtypes": [body.qtype] if body.qtype else ["quiz", "mirata"],
+            "instructions": body.instructions,
+            "selection": body.selection,
+            "count": body.count,
+        }, actor)
     if body.qtype:
         return enqueue_job("recall_batch", lesson_dir, body.model_dump(), actor)
-    return enqueue_job("recall_generate", lesson_dir, {"force_mock": body.mock, "regenerate": True}, actor)
+    return enqueue_job("recall_generate", lesson_dir, {
+        "force_mock": body.mock,
+        "regenerate": True,
+        "instructions": body.instructions,
+        "selection": body.selection,
+        "count": body.count,
+    }, actor)
+
+
+@router.get("/lessons/{lesson_id}/study", response_model=schemas.StudyLesson,
+            summary="Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna")
+def study(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.study_service import study_lesson
+    return study_lesson(lesson_id, lesson_dir)
 
 
 @router.get("/lessons/{lesson_id}/recall/questions", response_model=schemas.RecallQuestionList,
@@ -108,21 +136,24 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
 def answer(lesson_id: int, body: schemas.RecallAnswer, lesson_dir: LessonDir, actor: Actor):
     from fastapi.responses import JSONResponse
     from rt.core.models import RecallQuestionType
-    from rt.services.recall_service import answer_quiz, find_question
+    from rt.services.recall_service import answer_quiz, answer_dont_know, find_question
     question = find_question(lesson_dir, body.question_id)
     if question is None:
         raise ApiError(404, "question_not_found", "Domanda inesistente.")
     if question.type == RecallQuestionType.QUIZ:
+        if body.dont_know:
+            return answer_dont_know(lesson_dir, body.question_id)
         if body.choice is None:
             raise ApiError(422, "validation_error", "Per un quiz indica l'opzione scelta (choice).")
         try:
             return answer_quiz(lesson_dir, body.question_id, body.choice)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc))
-    if not (body.answer or "").strip():
+    answer_text = "[Non lo so]" if body.dont_know else (body.answer or "").strip()
+    if not answer_text:
         raise ApiError(422, "validation_error", "Scrivi una risposta.")
     accepted = enqueue_job("recall_evaluate", lesson_dir,
-                           {"question_id": body.question_id, "answer": body.answer.strip(), "mock": body.mock}, actor)
+                           {"question_id": body.question_id, "answer": answer_text, "mock": body.mock}, actor)
     return JSONResponse(status_code=202, content=accepted)
 
 
@@ -148,10 +179,23 @@ def answer_voice(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
 def vote(lesson_id: int, body: schemas.RecallVote, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.recall_service import vote_question
     try:
-        vote_question(lesson_dir, body.question_id, body.vote)
+        vote_question(lesson_dir, body.question_id, body.vote, reasons=body.reasons, comment=body.comment)
     except ValueError as exc:
         raise ApiError(404, "question_not_found", str(exc))
     return {"message": "Voto registrato."}
+
+
+@router.post("/lessons/{lesson_id}/recall/regenerate", response_model=schemas.JobAccepted, status_code=202,
+             summary="Commenta e rigenera la domanda dalle sue unità (job recall_regenerate)")
+def regenerate_question(lesson_id: int, body: schemas.RecallRegenerate, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.recall_service import find_question, vote_question
+    _require_draft(lesson_dir)
+    question = find_question(lesson_dir, body.question_id)
+    if question is None:
+        raise ApiError(404, "question_not_found", "Domanda inesistente.")
+    accepted = enqueue_job("recall_regenerate", lesson_dir, body.model_dump(), actor)
+    vote_question(lesson_dir, question.id, 'down', reasons=question.discard_reasons, comment=body.comment)
+    return accepted
 
 
 @router.post("/lessons/{lesson_id}/recall/skip", response_model=schemas.Message, summary="Salta una domanda (torna in coda)")
@@ -192,8 +236,9 @@ def _bot_state() -> dict:
     import os
     from rt.services.settings_service import secret_is_set
     from rt.telegram.daemon_status import is_daemon_running
+    from rt.core.config import telegram_enabled
     configured = secret_is_set("RT_TELEGRAM_BOT_TOKEN") and bool((os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip())
-    return {"configured": configured, "running": is_daemon_running()}
+    return {"enabled": telegram_enabled(), "configured": configured, "running": is_daemon_running()}
 
 
 @router.get("/recall/telegram", response_model=schemas.TelegramRecallStatus,
@@ -208,6 +253,7 @@ def telegram_status(_actor: Actor):
 def telegram_start(lesson_id: int, body: schemas.TelegramRecallStart, lesson_dir: LessonDir, actor: Actor):
     from rt.services.recall_sessions import RecallSessionError, WEB, list_sessions, request_telegram_start
     _require_draft(lesson_dir)
+    require_telegram()
     bot = _bot_state()
     if not bot["configured"]:
         raise ApiError(409, "telegram_not_configured", "Configura il bot Telegram in Impostazioni.")
@@ -253,7 +299,8 @@ def subjects(_actor: Actor):
 
 @router.get("/recall/subject", response_model=schemas.SubjectRecallState,
             summary="Lezioni di una materia con il loro pool, sessione per materia in corso e ultimo riepilogo")
-def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno")):
+def subject_state(_actor: Actor, materia: str = Query(..., description="Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, "
+                                                                 "o LEZIONI:<id>,<id> per una selezione")):
     from rt.services.recall_subject import subject_overview
     return _subject_call(subject_overview, materia)
 

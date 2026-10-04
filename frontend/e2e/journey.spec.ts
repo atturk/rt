@@ -1,12 +1,12 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink, tinyPdf } from './support'
+import { apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
-// 'rt run' da terminale: accesso con il link, importazione dell'audio, scaletta, review di tutte
-// le issue, documento, recall, immagini e documento ricreato come conferma finale (FA2), modifica
-// delle impostazioni. Dopo ogni passo la pagina si ricarica e quello che
+// 'rt run' da terminale: accesso con il link, Nuova lezione, scaletta nella pagina della lezione,
+// verifica di tutte le issue nel pannello, documento, ripasso, immagini dal pannello Arricchimento e
+// documento ricreato come conferma finale (FA2), modifica delle impostazioni. Dopo ogni passo la pagina si ricarica e quello che
 // mostra deve venire dal backend.
 
 const AUDIO = fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url))
@@ -34,51 +34,46 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   // 1. Accesso con il link monouso: la sessione resta dopo la ricarica.
   await loginViaLink(page)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeAttached()
+  await expect(page.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeAttached()
 
-  // 2. Importazione dell'audio con la pipeline (in prova), che si ferma sulla scaletta.
-  await page.goto('/importa')
-  await page.getByLabel('File audio', { exact: true }).setInputFiles(AUDIO)
-  await page.getByLabel('Data', { exact: true }).fill('2026-09-25')
-  await page.getByLabel('Materia', { exact: true }).fill('EMBRIOLOGIA')
-  await page.getByLabel('Argomenti', { exact: true }).fill('Gastrulazione')
-  await page.getByLabel('Avvia subito la pipeline').setChecked(true)
-  await page.getByLabel('Includi la review').check()
-  await page.getByText('Opzioni avanzate').click()
-  await page.getByLabel('Modalità prova (mock)').check()
-  await page.getByRole('button', { name: 'Importa', exact: true }).click()
-  await expect(page).toHaveURL(/\/job\/[0-9a-f-]+$/)
-  const jobId = page.url().split('/job/')[1]
-  await waitJob(page, jobId, (j) => j.decision?.kind === 'outline_approval')
-  await page.reload()
-  await expect(page.getByTestId('job-live').first()).toHaveAttribute('data-state', 'waiting_for_decision')
-  const lessonId = (await job(page, jobId)).lesson_id!
+  // 2. Nuova lezione dal popup con la revisione, che si ferma sulla scaletta.
+  await disableOutlineTimer(page.request)
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('button', { name: 'Nuova lezione' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Nuova lezione' })
+  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles(AUDIO)
+  await dialog.getByLabel(/^Data/).fill('2026-09-25')
+  await dialog.getByLabel('Materia').fill('EMBRIOLOGIA')
+  const review = dialog.getByRole('button', { name: 'Revisione' })
+  if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
+  await dialog.getByRole('button', { name: 'Avvia' }).click()
+  await expect(page).toHaveURL(/\/lezioni\/\d+$/, { timeout: LONG })
+  const lessonId = Number(page.url().split('/lezioni/')[1])
   expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).materia).toBe('EMBRIOLOGIA')
+  const jobId = (await apiGet<Job[]>(page.request, `/jobs?lesson_id=${lessonId}`))[0].id
+  await waitJob(page, jobId, (j) => j.decision?.kind === 'outline_approval')
 
-  // 3. Approvazione della scaletta dalla lezione.
-  await page.goto(`/lezioni/${lessonId}`)
-  await page.getByTestId('lesson-waiting').getByRole('link', { name: 'Rivedi la scaletta' }).click()
-  await page.getByRole('button', { name: 'Approva la scaletta' }).click()
-  await expect(page.getByTestId('outline-approved')).toHaveAttribute('data-approved', 'true')
+  // 3. Approvazione della scaletta nella pagina della lezione.
   await page.reload()
-  await expect(page.getByTestId('outline-approved')).toHaveAttribute('data-approved', 'true')
-  expect((await apiGet<Outline>(page.request, `/lessons/${lessonId}/outline`)).approved).toBe(true)
+  await page.getByTestId('outline-approval').getByRole('button', { name: /^Approva/ }).click()
+  await expect.poll(async () => (await apiGet<Outline>(page.request, `/lessons/${lessonId}/outline`)).approved).toBe(true)
+  await page.reload()
+  await expect(page.getByTestId('outline-approval')).toHaveCount(0)
 
-  // 4. Review di tutte le issue: la pipeline riparte da sola e arriva al build.
+  // 4. Verifica di tutte le issue nel pannello: la pipeline riparte da sola e arriva al build.
   await waitJob(page, jobId, (j) => j.decision?.kind === 'science_issue')
   const { total } = await apiGet<IssueList>(page.request, `/lessons/${lessonId}/issues?status=all`)
   expect(total).toBeGreaterThan(0)
   await page.goto(`/lezioni/${lessonId}`)
-  await page.getByRole('link', { name: /issue da valutare|Rivedi/ }).first().click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${lessonId}/revisione`))
-  const counter = page.getByTestId('review-counter')
+  await page.getByTestId('lesson-waiting').getByRole('link', { name: 'Vai alla decisione' }).click()
+  const panel = page.getByTestId('lesson-review-panel')
+  const counter = panel.getByRole('status').first()
   await expect(counter).toHaveText(`${total} da decidere su ${total}`)
   for (let left = total - 1; left >= 0; left--) {
-    await page.keyboard.press('a')
-    await expect(counter).toHaveText(`${left} da decidere su ${total}`)
+    await panel.getByTestId('issue-detail').getByRole('button', { name: 'Accetta' }).click()
+    await expect(counter).toHaveText(left ? `${left} da decidere su ${total}` : 'Tutte decise')
   }
   await page.reload()
-  await expect(counter).toHaveText(`0 da decidere su ${total}`)
+  await expect(page.getByTestId('lesson-review-panel').getByRole('status').first()).toHaveText('Tutte decise')
   const decisions = await apiGet<Decision[]>(page.request, `/lessons/${lessonId}/decisions`)
   expect(decisions.map((d) => d.decision)).toEqual(Array(total).fill('accepted'))
   await waitJob(page, jobId, (j) => j.state === 'succeeded')
@@ -86,35 +81,40 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   // 5. Documento finale con l'audio: build valido, unità con timecode, player.
   await page.goto(`/lezioni/${lessonId}`)
   await page.reload()
+  await openLessonDetails(page)
   await expect(page.locator('[data-phase-row="build"]')).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).phases.build).toBe('VALID')
   await expect(page.getByTestId('lesson-document').locator('[data-unit-id]').first()).toBeVisible()
   await expect(page.locator('audio')).toHaveCount(1)
 
-  // 6. Recall sulla lezione nuova: pool, una domanda quiz, risposta riletta dopo la ricarica.
-  await page.goto(`/lezioni/${lessonId}/recall`)
-  await page.getByRole('button', { name: 'Genera il pool' }).click()
-  await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: LONG })
-  await page.getByRole('radio', { name: 'Quiz' }).click()
-  await page.getByRole('button', { name: 'Prossima domanda' }).click()
-  const question = page.getByTestId('recall-question')
-  await expect(question).toBeVisible()
-  const questionId = (await question.getAttribute('data-question-id'))!
-  await question.getByRole('radio').first().check()
-  await page.getByRole('button', { name: 'Rispondi' }).click()
-  await expect(page.getByTestId('recall-result')).toBeVisible()
+  // 6. Ripasso sulla lezione nuova: domande dal pannello Domande, un quiz, risposta salvata.
+  await page.goto(`/lezioni/${lessonId}?panel=domande`)
+  const questions = page.getByTestId('questions-panel')
+  await questions.getByText('Genera altre domande').click()
+  await questions.getByLabel('Tipo', { exact: true }).selectOption('quiz')
+  await questions.getByRole('button', { name: 'Genera', exact: true }).click()
+  await expect.poll(async () => (await apiGet<History>(page.request, `/lessons/${lessonId}/recall/history`)).questions.length, { timeout: LONG }).toBeGreaterThan(0)
   await page.reload()
-  await expect(page.locator(`[data-testid=history-item][data-question-id="${questionId}"]`)).toBeVisible()
+  await page.getByTestId('questions-panel').getByRole('link', { name: 'Ripassa' }).click()
+  await page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Quiz', exact: true }).click()
+  await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
+  await page.getByRole('button', { name: /^A\./ }).click()
+  await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
+  await expect(page.getByTestId('recall-result-card')).toBeVisible()
+  const askedId = (await page.getByTestId('recall-question').getAttribute('data-question-id'))!
   const history = await apiGet<History>(page.request, `/lessons/${lessonId}/recall/history`)
-  expect(history.questions.find((q) => q.id === questionId)?.status).toBe('answered')
-  expect(history.answers.some((a) => a.question_id === questionId)).toBe(true)
+  const answered = history.questions.find((q) => q.id === askedId)!
+  expect(answered.status).toBe('answered')
+  expect(history.answers.some((a) => a.question_id === answered.id)).toBe(true)
 
   // 7. Immagini dopo il documento: entrano nell'anteprima e il documento diventa da ricreare.
-  await page.goto(`/lezioni/${lessonId}/immagini`)
-  await page.getByLabel('PDF o foto').setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
-  await page.getByRole('button', { name: 'Aggiungi le immagini' }).click()
-  await expect(page.getByTestId('job-progress')).toHaveAttribute('data-state', 'succeeded', { timeout: LONG })
-  await page.reload()
+  await page.goto(`/lezioni/${lessonId}?panel=arricchimento`)
+  const enrichment = page.getByTestId('enrichment-panel')
+  await enrichment.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
+  await enrichment.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  await enrichment.getByRole('button', { name: /^Carica/ }).click()
+  await expect.poll(async () => (await apiGet<{ images: unknown[] }>(page.request, `/lessons/${lessonId}/images`)).images.length, { timeout: LONG }).toBeGreaterThan(0)
+  await expect.poll(async () => (await apiGet<{ state: string }[]>(page.request, `/jobs?lesson_id=${lessonId}`)).some((j) => ['queued', 'running'].includes(j.state)), { timeout: 60_000 }).toBe(false)
   const images = (await apiGet<{ images: { url: string; in_document: boolean }[] }>(page.request, `/lessons/${lessonId}/images`)).images
   const placed = images.filter((i) => i.in_document)
   expect(placed.length).toBeGreaterThan(0)
@@ -123,16 +123,19 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   // 8. Documento come conferma finale: Esegui Documento (con il dialogo, se ci sono avvisi) e
   //    documento aggiornato con le immagini dopo la ricarica.
   await page.goto(`/lezioni/${lessonId}`)
+  await openLessonDetails(page)
   const build = page.locator('[data-phase-row="build"]')
   await expect(build).toHaveAttribute('data-status', 'STALE')
-  await page.getByRole('button', { name: 'Esegui Documento' }).click()
+  await page.getByTestId('details-panel').getByRole('button', { name: 'Ricrea' }).click()
   const confirm = page.getByRole('dialog', { name: 'Creare il documento finale?' })
   if (await confirm.isVisible()) await confirm.getByRole('button', { name: 'Crea il documento comunque' }).click()
   await expect(build).toHaveAttribute('data-status', 'VALID', { timeout: LONG })
   await page.reload()
   await expect(build).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<{ final: boolean }>(page.request, `/lessons/${lessonId}/document`)).final).toBe(true)
-  await expect(page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`)).toBeVisible()
+  const placedImage = page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`)
+  await scrollDocumentTo(page, placedImage)
+  await expect(placedImage).toBeVisible()
 
   // 9. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
   await page.goto('/impostazioni')

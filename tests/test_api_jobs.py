@@ -207,6 +207,38 @@ def test_run_phase_jobs_and_events_sse(api_client, lesson, worker):
     assert len(resumed) == 1 and json.loads(resumed[0].split("data: ", 1)[1])["type"] == "job_finished"
 
 
+def test_app_events_sse_all_jobs(api_client, lesson, worker, monkeypatch):
+    """Canale live della web app: eventi di tutti i job con lezione e tipo del job, senza
+    payload; senza after parte da adesso, con Last-Event-ID riprende da lì."""
+    from rt.api.routers import jobs as jobs_router
+    monkeypatch.setattr(jobs_router, "SSE_APP_STREAM_SECONDS", 0.05)
+    lesson_id, _ = lesson
+
+    def read(**kwargs):
+        with api_client.stream("GET", "/api/v1/events", **kwargs) as res:
+            assert res.status_code == 200 and res.headers["content-type"].startswith("text/event-stream")
+            return "".join(res.iter_text())
+
+    start = read()
+    assert start.startswith("retry: 3000\nid: ")
+    first_id = int(start.split("\n")[1][len("id: "):])
+    assert "event: job" not in start
+
+    job_id = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "prepare", "mock": True}).json()["job_id"]
+    drain(worker)
+    blocks = [b for b in read(params={"after": first_id}).split("\n\n") if "event: job" in b]
+    events = [json.loads(b.split("data: ", 1)[1]) for b in blocks]
+    assert events[0]["type"] == "job_queued" and events[-1]["type"] == "job_finished"
+    assert {(e["job_id"], e["job_type"], e["lesson_id"]) for e in events} == {(job_id, "run_phase", lesson_id)}
+    assert set(events[0]) == {"id", "job_id", "job_type", "lesson_id", "type"}
+    # da adesso: niente eventi vecchi, ma l'id da cui riprendere
+    now = read()
+    assert "event: job" not in now and f"id: {events[-1]['id']}\n" in now
+    # ripresa da Last-Event-ID
+    resumed = [b for b in read(headers={"Last-Event-ID": str(events[-2]["id"])}).split("\n\n") if "event: job" in b]
+    assert len(resumed) == 1 and json.loads(resumed[0].split("data: ", 1)[1])["type"] == "job_finished"
+
+
 def test_cancel_queued_job(api_client, lesson):
     lesson_id, _ = lesson
     job_id = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True}).json()["job_id"]
@@ -307,12 +339,19 @@ def test_outline_revision_job(api_client, lesson, worker):
     lesson_id, _ = lesson
     api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"mock": True})
     drain(worker)
+    suspended = api_client.post(f"/api/v1/lessons/{lesson_id}/outline/suspend")
+    assert suspended.status_code == 200
+    previous = api_client.get(f"/api/v1/lessons/{lesson_id}/outline").json()
+    assert previous["timer_suspended"] is True
     res = api_client.post(f"/api/v1/lessons/{lesson_id}/outline/revise", json={"feedback": "Dividi in due unità", "mock": True})
     assert res.status_code == 202
     drain(worker)
     done = job(api_client, res.json()["job_id"])
     assert done["state"] == "succeeded", done
     assert done["result"]["outline"]["approved"] is False
+    revised = api_client.get(f"/api/v1/lessons/{lesson_id}/outline").json()
+    assert revised["timer_suspended"] is False
+    assert revised["expires_at"] != previous["expires_at"]
 
 
 def test_recall_flow(api_client, lesson, worker):

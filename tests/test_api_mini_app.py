@@ -49,13 +49,18 @@ def test_signed_identity_is_scoped_and_revocable(client, monkeypatch):
     assert client.get(BASE + "/lessons").status_code == 401
 
 
-@pytest.mark.parametrize("raw,status", [
-    (init_data(age=600), 401), (init_data(age=-600), 401),
-    (init_data(uid=6789), 403), (init_data() + "&auth_date=0", 401),
-    (init_data().replace("Student", "Intruder"), 401), ("hash=bad", 401),
+# Init data is built inside the test: ids computed from time.time() at collection differ
+# between xdist workers and abort the whole run.
+@pytest.mark.parametrize("make_raw,status", [
+    pytest.param(lambda: init_data(age=600), 401, id="expired"),
+    pytest.param(lambda: init_data(age=-600), 401, id="future"),
+    pytest.param(lambda: init_data(uid=6789), 403, id="unknown-user"),
+    pytest.param(lambda: init_data() + "&auth_date=0", 401, id="duplicate-field"),
+    pytest.param(lambda: init_data().replace("Student", "Intruder"), 401, id="tampered"),
+    pytest.param(lambda: "hash=bad", 401, id="bad-hash"),
 ])
-def test_invalid_telegram_identity(client, raw, status):
-    assert client.post(BASE + "/auth", json={"init_data": raw}).status_code == status
+def test_invalid_telegram_identity(client, make_raw, status):
+    assert client.post(BASE + "/auth", json={"init_data": make_raw()}).status_code == status
 
 
 def test_access_is_disabled_until_owner_configures_ids(client, monkeypatch):

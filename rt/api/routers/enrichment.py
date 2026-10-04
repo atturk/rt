@@ -43,6 +43,11 @@ class GenerateIn(BaseModel):
     description: str = Field(default="Generazione manuale", min_length=1, max_length=500)
     prompt: str = Field(default="", max_length=12000)
     mode: service.Mode = "interactive"
+    request: str = Field(default="", max_length=2000, description="Genera dall'editor: cosa vuole vedere lo studente "
+                                                                  "(il prompt lo scrive il regista enrichment_writer)")
+    selection: str = Field(default="", max_length=20000, description="Genera dall'editor: testo selezionato")
+    unit_ids: list[str] = Field(default_factory=list, max_length=200,
+                                description="Genera dall'editor: subunità toccate dalla selezione (l'elemento va dopo l'ultima)")
     mock: bool = False
 
 
@@ -153,7 +158,12 @@ def action(lesson_id: int, element_id: str, body: Action, lesson_dir: LessonDir,
 @router.post("/lessons/{lesson_id}/enrichment/generate", status_code=202, response_model=JobAccepted)
 def generate(lesson_id: int, body: GenerateIn, lesson_dir: LessonDir, actor: Actor):
     _ready(lesson_dir)
-    if not body.element_id:
+    write = False
+    if not body.element_id and body.request.strip():
+        element = _call(service.create_request, lesson_dir, body.unit_ids or ([body.unit_id] if body.unit_id else []),
+                        body.kind, body.request, body.selection)
+        body.element_id, write = element.id, True
+    elif not body.element_id:
         if not body.unit_id or not body.prompt.strip():
             raise ApiError(422, "invalid_enrichment", "Scegli una subunità e scrivi un prompt.")
         text = service.IdeaText(title=body.title, description=body.description, prompt=body.prompt,
@@ -168,7 +178,7 @@ def generate(lesson_id: int, body: GenerateIn, lesson_dir: LessonDir, actor: Act
             if previous and not previous.finished:
                 return job_accepted(previous.id)
         accepted = enqueue_job("enrichment_generate", lesson_dir,
-                               {"element_id": element.id, "mock": body.mock}, actor=actor)
+                               {"element_id": element.id, "mock": body.mock, **({"write": True} if write else {})}, actor=actor)
         element.job_id, element.status, element.error = accepted["job_id"], "queued", None
         service.save(lesson_dir, state)
         return accepted

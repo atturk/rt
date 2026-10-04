@@ -22,9 +22,9 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Union
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple, Union
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from rt.db.engine import Database
@@ -322,6 +322,20 @@ class DbJobQueue:
             return [JobEventInfo(id=e.id, job_id=e.job_id, type=e.type, payload=dict(e.payload or {}),
                                  created_at=e.created_at) for e in s.scalars(stmt)]
 
+    def events_since(self, after_id: int, limit: int = 200) -> List[Tuple[JobEventInfo, str, Optional[str]]]:
+        """Eventi di tutti i job dopo after_id, con tipo e lezione del job: (evento, tipo, lesson_path).
+        Li segue il canale live della web app (GET /api/v1/events)."""
+        with read_scope(self.db) as s:
+            stmt = (select(JobEvent, Job.type, Job.lesson_path).join(Job, JobEvent.job_id == Job.id)
+                    .where(JobEvent.id > after_id).order_by(JobEvent.id).limit(limit))
+            return [(JobEventInfo(id=e.id, job_id=e.job_id, type=e.type, payload=dict(e.payload or {}),
+                                  created_at=e.created_at), job_type, lesson_path)
+                    for e, job_type, lesson_path in s.execute(stmt)]
+
+    def last_event_id(self) -> int:
+        with read_scope(self.db) as s:
+            return int(s.scalar(select(func.max(JobEvent.id))) or 0)
+
     def stream_events(self, job_id: str, after_id: int = 0, poll_interval: float = 0.5,
                       timeout: Optional[float] = None) -> Iterator[JobEventInfo]:
         """Eventi del job man mano che arrivano (polling sul DB). Si ferma quando il job è
@@ -344,6 +358,18 @@ class DbJobQueue:
                 time.sleep(poll_interval)
 
     # ------------------------------------------------------------ eventi e progresso
+
+    def attach_lesson(self, job_id: str, lesson_path: str) -> None:
+        """Collega alla lezione appena creata un job partito dall'audio (ancora senza lezione):
+        da qui il job compare fra quelli della lezione e la tiene occupata finché gira."""
+        path = normalize_lesson_path(lesson_path)
+        with session_scope(self.db) as s:
+            row = s.get(Job, job_id)
+            if row is None or row.lesson_path:
+                return
+            row.lesson_path = path
+            if row.state == JobState.RUNNING.value:
+                row.active_lesson = path
 
     def add_event(self, job_id: str, event_type: str, payload: Optional[Dict[str, Any]] = None,
                   progress: Optional[Dict[str, Any]] = None) -> bool:

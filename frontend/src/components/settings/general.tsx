@@ -10,7 +10,7 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { Select } from '@/components/ui/select'
 import { matchesPreview, mergeListenedTopics, parseTopicLink, rowsToTopicNames, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
-import { ListenCleanup, RevealableValue, TopicTestButton, TopicTestResult } from './telegram'
+import { ListenCleanup, RevealableValue, TelegramEnabledToggle, TopicTestButton, TopicTestResult } from './telegram'
 
 /** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
  * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
@@ -149,6 +149,8 @@ export function TelegramSection({ settings }: { settings: Settings }) {
       title="Telegram"
       description="Aggiungi il bot al gruppo e assegna un topic a ogni materia. Per trovare un topic, copia il link di un suo messaggio."
     >
+      <TelegramEnabledToggle enabled={tg.enabled ?? false} />
+      {tg.enabled && <>
       <TelegramFields
         key={JSON.stringify(tg)}
         settings={settings}
@@ -161,6 +163,7 @@ export function TelegramSection({ settings }: { settings: Settings }) {
       />
       {formError && <Alert tone="danger">{formError}</Alert>}
       <SaveFeedback mutation={save} />
+      </>}
     </Section>
   )
 }

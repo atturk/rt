@@ -316,7 +316,7 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
 def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int, seg_by_id: dict,
                  st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
                  _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool, ctx: "Optional[RunContext]" = None,
-                 jev_log: Optional[Dict[str, Any]] = None) -> None:
+                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None) -> None:
     """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
     source_texts = []
     for s_id in unit.source_segment_ids:
@@ -367,6 +367,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
             unit_id=unit.unit_id,
             rewritten_content=unit.content,
             asr_risk_context=asr_risk_context,
+            parent_context=parent_context,
         )
 
         unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
@@ -405,8 +406,20 @@ def _issue_key(issue) -> tuple:
     return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
 
 
-def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> Dict[str, Any]:
-    """Refresh just one unit, retaining other issues and their stable IDs/decisions."""
+def parent_unit_context(units, unit_id: str) -> Optional[str]:
+    """Le altre subunità della stessa unità (stesso prefisso: 2.1 → 2.x), come testo di contesto."""
+    if "." not in unit_id:
+        return None
+    parent = unit_id.rsplit(".", 1)[0]
+    siblings = [u for u in units if u.unit_id != unit_id and u.unit_id.rsplit(".", 1)[0] == parent and "." in u.unit_id]
+    if not siblings:
+        return None
+    return "\n\n".join(f"{u.unit_id} {(u.title or '').strip()}\n{u.content}" for u in siblings)
+
+
+def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False) -> Dict[str, Any]:
+    """Refresh just one unit, retaining other issues and their stable IDs/decisions. Con
+    parent_context il revisore riceve anche le altre subunità della stessa unità."""
     from rt.services.unit_relevance import refresh, included
     refresh(lesson_dir, force_mock=force_mock)
     draft = load_draft(lesson_dir)
@@ -425,7 +438,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False) -> 
     generated = []
     _review_unit(LLMClient(force_mock=force_mock), unit, 1, 1, seg_by_id,
                  {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
-                 generated, cfg, lesson_dir, False, cfg.jev.shadow)
+                 generated, cfg, lesson_dir, False, cfg.jev.shadow,
+                 parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
     used = {issue.id for issue in kept}
     # Una issue ritrovata (stesso tipo, segmento e affermazione) riprende il suo id, così la

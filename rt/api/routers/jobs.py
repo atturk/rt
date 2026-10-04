@@ -1,18 +1,20 @@
 """Job: importazione audio, pipeline e fasi, immagini, prova credenziali; stato, annullamento
 ed eventi live (Server-Sent Events). I job li esegue 'rt worker'."""
+import asyncio
 import json
 import os
 import shutil
 import time
 import uuid
-from typing import Iterator, List, Optional
+from typing import AsyncIterator, Dict, Iterator, List, Optional, Tuple
 
 from fastapi import APIRouter, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.jobs import enqueue_job, job_accepted, job_view, queue
 from rt.storage import fs
 
@@ -36,6 +38,9 @@ CHUNK = 1024 * 1024
 IMAGE_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic", ".gif"}
 SSE_KEEPALIVE_SECONDS = 15.0
 SSE_POLL_SECONDS = 0.5
+# Lo stream di tutti i job (GET /events) si chiude dopo questo tempo e il browser lo riapre
+# da solo con Last-Event-ID, senza perdere eventi: nessuna connessione resta aperta per sempre.
+SSE_APP_STREAM_SECONDS = 300.0
 
 
 def _max_upload_bytes() -> int:
@@ -155,9 +160,11 @@ def create_lesson(
     materia: str = Form(...),
     argomenti: str = Form(""),
     docente: str = Form("", description="Nome del docente (facoltativo)"),
+    ora: str = Form("", pattern=r"^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$", description="Ora della lezione (HH:MM, facoltativa)"),
     run: bool = Form(False, description="True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')"),
     mock: bool = Form(False),
     with_review: bool = Form(False),
+    with_enrichment: Optional[bool] = Form(None),
     auto_accept: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
@@ -166,9 +173,10 @@ def create_lesson(
 
     def _go():
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
-        options = {"date": date, "materia": materia, "argomenti": argomenti or None, "docente": docente.strip() or None,
+        options = {"date": date, "materia": materia, "argomenti": argomenti or None, "docente": docente.strip() or None, "ora": ora or None,
                    "dest_dir": lessons_root(),
-                   "mock": mock, "with_review": with_review, "auto_accept": auto_accept, "channel": "terminal"}
+                   "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
+                   "auto_accept": auto_accept, "channel": "terminal"}
         # run=true: tutta la pipeline dall'audio (come 'rt run audio'); altrimenti solo setup
         return enqueue_job("run_pipeline" if run else "ingest_audio", None,
                            {"inputs": paths, "options": options, "upload_dir": target}, actor)
@@ -194,10 +202,12 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
             units = list(dict.fromkeys(body.units or [body.unit]))
             if not units or any(not unit or not unit.strip() for unit in units):
                 raise ApiError(422, "validation_error", "Seleziona unità valide.")
+            context = {"parent_context": True} if body.parent_context and body.phase == "review" else {}
             return enqueue_job("rewrite_unit" if body.phase == "rewrite" else "review_unit", lesson_dir,
-                               {"units": units, "options": options, **prompt_payload}, actor)
+                               {"units": units, "options": options, **prompt_payload, **context}, actor)
         return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
+               "with_enrichment": body.with_enrichment,
                "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}
     return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options, **extra}, actor)
 
@@ -244,6 +254,7 @@ def test_credential(body: schemas.CredentialTest, actor: Actor):
 @router.post("/settings/telegram/listen-topics", response_model=schemas.JobAccepted, status_code=202, tags=["impostazioni"],
              summary="Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)")
 def telegram_listen_topics(actor: Actor):
+    require_telegram()
     from rt.telegram.daemon_status import is_daemon_running
     return enqueue_job("telegram_listen_topics", None, {"seconds": 20,
                          "existing_daemon": is_daemon_running()}, actor)
@@ -361,6 +372,61 @@ def stream_events(job_id: str, request: Request, _actor: Actor,
     if last_event_id and last_event_id.strip().isdigit():
         start = max(start, int(last_event_id.strip()))
     return StreamingResponse(sse_stream(job_id, start, request), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _app_events(after: int, lessons: Dict[str, Optional[int]]) -> List[Tuple[int, str]]:
+    """Blocchi SSE degli eventi di tutti i job dopo after. Solo chi e cosa (job, tipo del job,
+    lezione, tipo dell'evento): la web app rilegge dall'API le query interessate."""
+    from rt.services.lesson_service import lesson_id_for_dir
+    blocks = []
+    for event, job_type, lesson_path in queue().events_since(after):
+        # in cache solo se trovata: un'importazione crea la cartella della lezione a metà job
+        if lessons.get(event.job_id) is None:
+            lessons[event.job_id] = lesson_id_for_dir(lesson_path) if lesson_path and fs.isdir(lesson_path) else None
+        data = json.dumps({"id": event.id, "job_id": event.job_id, "job_type": job_type,
+                           "lesson_id": lessons[event.job_id], "type": event.type})
+        blocks.append((event.id, f"id: {event.id}\nevent: job\ndata: {data}\n\n"))
+    return blocks
+
+
+async def app_sse_stream(after: int, keepalive: float = SSE_KEEPALIVE_SECONDS, poll: float = SSE_POLL_SECONDS,
+                         lifetime: Optional[float] = None) -> AsyncIterator[str]:
+    """Eventi di tutti i job dopo after come SSE (evento 'job'), per il canale live della web
+    app. L'id di partenza va subito al browser, così una riconnessione (Last-Event-ID) riprende
+    senza buchi. Asincrono: mentre aspetta non tiene un thread."""
+    lifetime = SSE_APP_STREAM_SECONDS if lifetime is None else lifetime
+    cursor = after
+    lessons: Dict[str, Optional[int]] = {}
+    yield f"retry: 3000\nid: {cursor}\n\n"
+    start = last_sent = time.monotonic()
+    while time.monotonic() - start < lifetime:
+        blocks = await run_in_threadpool(_app_events, cursor, lessons)
+        for cursor, block in blocks:
+            yield block
+        now = time.monotonic()
+        if blocks:
+            last_sent = now
+            continue
+        if now - last_sent >= keepalive:
+            yield ": keepalive\n\n"
+            last_sent = now
+        await asyncio.sleep(poll)
+
+
+@router.get("/events", summary="Eventi live di tutti i job (Server-Sent Events per la web app; riprende da Last-Event-ID)",
+            response_class=StreamingResponse, responses={200: {"content": {"text/event-stream": {}}}})
+async def stream_app_events(_actor: Actor,
+                            after: Optional[int] = Query(None, ge=0, description="Id dell'ultimo evento già ricevuto (senza: da adesso)"),
+                            last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")):
+    start = after
+    if last_event_id and last_event_id.strip().isdigit():
+        start = max(start or 0, int(last_event_id.strip()))
+    if start is None:
+        # Il punto di partenza si fissa prima di rispondere: quello che la pagina rilegge
+        # all'apertura dello stream (onopen) è già successivo, quindi niente buchi.
+        start = await run_in_threadpool(lambda: queue().last_event_id())
+    return StreamingResponse(app_sse_stream(start), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 

@@ -71,6 +71,8 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     const root = ref.current
     if (!root) return
     void renderDelimitedMath(root)
+    // L'effetto può ripartire sullo stesso HTML (StrictMode, audio pronto): niente doppioni.
+    root.querySelectorAll('.rt-unit-meta').forEach((el) => el.remove())
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
       if (!heading) continue

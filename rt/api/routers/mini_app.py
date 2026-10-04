@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from rt.api import schemas
 from rt.api.schemas import NextQuestionType
 from rt.api.deps import LessonDir
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.mini_auth import StudyActor, issue_session, study_actor, verify_init_data
 from rt.api.auth import bearer_scheme
 from rt.api.routers import recall
@@ -61,37 +61,18 @@ def lessons(_actor: StudyActor):
 @router.get("/lessons/{lesson_id}")
 def lesson(lesson_id: int, lesson_dir: LessonDir, _actor: StudyActor):
     from rt.core.audio_clip import resolve_audio_path
-    from rt.pipeline.ledger import load_resolved_draft
-    from rt.services.lesson_service import document_sections, lesson_detail
+    from rt.services.lesson_service import lesson_detail
     from rt.services.recall_service import recall_overview
-    from rt.pipeline.document_edits import load_document_edits, unit_title
     detail = lesson_detail(lesson_id, lesson_dir)
     ready = detail["phases"].get("rewrite") == "VALID"
     units = []
     if ready:
-        from rt.pipeline.recall import load_recall_bank, on_unit
-        pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value == "pending"]
-        draft = load_resolved_draft(lesson_dir)
-        sections = {s["unit_id"]: s for s in document_sections(lesson_dir)}
-        edits = load_document_edits(lesson_dir)
-        for u in draft.units:
-            s = sections.get(u.unit_id, {})
-            content = u.content
-            units.append({"id": u.unit_id, "title": unit_title(edits, u.unit_id, u.title),
-                          "content": content, "html": _unit_html(content),
-                          "start": s.get("start_seconds"), "end": s.get("end_seconds"),
-                          # Domande di Leggi e ripeti per l'unità (vedi rt.pipeline.recall.on_unit).
-                          "pending": _unit_pending(pending, u.unit_id, on_unit)})
+        from rt.services.study_service import study_units
+        for u in study_units(lesson_dir):
+            # Domande di Leggi e ripeti per l'unità (vedi rt.pipeline.recall.on_unit).
+            units.append({**u, "html": _unit_html(u["content"])})
     return {"id": lesson_id, "ready": ready, "has_audio": bool(resolve_audio_path(lesson_dir)),
             "units": units, "questions": recall_overview(lesson_dir)["questions"] if ready else {}}
-
-
-def _unit_pending(pending, unit_id, on_unit):
-    counts = {}
-    for q in pending:
-        if on_unit(q, unit_id):
-            counts[q.type.value] = counts.get(q.type.value, 0) + 1
-    return counts
 
 
 def _matches(question, qtype, unit_id=None):
@@ -125,6 +106,7 @@ def audio(lesson_id: int, unit_id: str, lesson_dir: LessonDir, _actor: StudyActo
 
 @router.post("/lessons/{lesson_id}/units/{unit_id}/send-audio")
 def send_audio(lesson_id: int, unit_id: str, lesson_dir: LessonDir, _actor: StudyActor):
+    require_telegram()
     from types import SimpleNamespace
     from rt.core.config import load_config
     from rt.telegram.config import resolve_topic_id

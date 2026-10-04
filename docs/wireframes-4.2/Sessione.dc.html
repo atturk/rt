@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Sessione di ripasso</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.r{font-family:system-ui,-apple-system,'Helvetica Neue',sans-serif;color:#171717;background:#ffffff;font-size:15px;line-height:1.55}
+.mono{font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.meta{font-size:12px;color:#5c5c5c}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:0;background:transparent;color:#171717;padding:0;font:inherit;cursor:pointer}
+.ib.on{background:#f1f1f1}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid #d4d4d4;background:#ffffff;color:#171717;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.btn.pri{background:#dceee7;border-color:#dceee7;color:#155f52;font-weight:600}
+.btn.sm{height:30px;padding:0 10px;font-size:13px}
+.btn.big{height:48px;font-size:15px;justify-content:center}
+.kbd{font-size:11px;opacity:.6;font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.tc{display:inline-block;border:1px solid #d4d4d4;border-radius:8px;padding:0 6px;font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:12px;color:#5c5c5c;line-height:1.6}
+.lk{color:#155f52;font-weight:600;text-decoration:none;background:none;border:0;padding:0;font:inherit;font-size:13px;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:#f1f1f1;font-size:12px;color:#171717;border:0;font-family:inherit}
+.chip.on{background:#dceee7;color:#155f52;font-weight:600}
+.sec{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#5c5c5c}
+.card{border:1px solid #d4d4d4;border-radius:8px;padding:14px}
+.claim{background:#fce9a8;border-radius:3px;color:#3c311b}
+.under{text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#b8860b;text-decoration-thickness:2px;text-underline-offset:3px}
+.sel{background:rgba(21,95,82,.16)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:999px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:#5c5c5c}
+.field input,.field select,.field textarea{height:34px;border:1px solid #d4d4d4;border-radius:8px;padding:0 10px;font:inherit;font-size:14px;color:#171717;background:#ffffff}
+.field textarea{height:72px;padding:8px 10px;resize:none}
+.row{display:flex;align-items:center;gap:8px}
+.hr{height:1px;background:#e8e8e8}
+a{color:#155f52}a:hover{color:#0e4038}
+</style>
+</helmet>
+<div class="r" style="width: 1440px; height: 900px; display: flex; overflow: hidden">
+<nav aria-label="Sezioni" style="width: 56px; flex-shrink: 0; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 8px">
+<button class="ib" style="background: #dceee7; color: #155f52" aria-label="Nuova lezione"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="ib" style="background: #dceee7; color: #155f52" aria-label="Lezioni"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></button>
+<div style="flex: 1"></div>
+<button class="ib" aria-label="Job in corso"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
+<button class="ib" aria-label="Impostazioni"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+</nav>
+<div style="flex: 1; display: flex; flex-direction: column">
+<header style="height: 56px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; gap: 12px; padding: 0 16px">
+<a href="Domande.dc.html" class="btn sm" style="text-decoration: none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Esci</a>
+<span style="color: #5c5c5c; flex: 1">Recall · Emogasanalisi e acidosi</span>
+<span class="meta">23 da porre</span>
+</header>
+<main style="flex: 1; display: flex; justify-content: center; padding: 40px 24px">
+<div style="width: 640px; display: flex; flex-direction: column; gap: 20px">
+<div class="row" style="gap: 6px; flex-wrap: wrap"><button class="chip">Mista</button><button class="chip on">Quiz</button><button class="chip">Mirata</button><button class="chip">Vasta</button><button class="chip">Casi</button><button class="chip">Esercizi</button></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<p class="meta" style="margin: 0">Quiz · unità 1.2 · domanda 4</p>
+<p style="margin: 0; font-size: 20px; font-weight: 600; line-height: 1.4">Quale valore di bicarbonato plasmatico definisce l'acidosi metabolica?</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px"><button class="btn" style="height: 48px; justify-content: flex-start; border-color: #155f52; background: #dceee7; color: #155f52; font-weight: 600;">A. Sotto 22 mEq/L</button><button class="btn" style="height: 48px; justify-content: flex-start; ">B. Sotto 26 mEq/L</button><button class="btn" style="height: 48px; justify-content: flex-start; ">C. Sopra 30 mEq/L</button><button class="btn" style="height: 48px; justify-content: flex-start; ">D. Il bicarbonato non cambia</button>
+<button class="btn" style="height: 40px; justify-content: center; color: #5c5c5c">Non lo so</button></div>
+<div class="card" style="background: #f7faf9; border-color: #cfe5dc">
+<p style="margin: 0; font-weight: 600; color: #155f52">Giusto.</p>
+<p style="margin: 4px 0 0; font-size: 14px">Sotto 22 mEq/L, con pH sotto 7,35. <a href="#">Rileggi l'unità 1.2</a></p>
+</div>
+<div class="row" style="justify-content: space-between">
+<div class="row" style="gap: 4px">
+<button class="ib" aria-label="Buona domanda"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
+<button class="ib" aria-label="Domanda da scartare"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg></button>
+<button class="btn sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Commenta</button>
+<button class="btn sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/></svg> Salta</button>
+</div>
+<div class="row" style="gap: 8px">
+<button class="btn">Termina</button>
+<button class="btn pri">Prossima</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -74,7 +74,7 @@ function stateRank(state: string | null | undefined): number {
 function compareBy(key: LessonSortKey, a: Lesson, b: Lesson): number {
   switch (key) {
     case 'data':
-      return (a.data || '').localeCompare(b.data || '')
+      return (a.data || '').localeCompare(b.data || '') || (a.ora || '').localeCompare(b.ora || '')
     case 'titolo':
       return collator.compare(lessonTitle(a), lessonTitle(b))
     case 'materia':
@@ -100,6 +100,7 @@ export function sortLessons(lessons: Lesson[], key: LessonSortKey, dir: SortDir)
     return (
       sign * compareBy(key, a, b) ||
       (b.data || '').localeCompare(a.data || '') ||
+      (b.ora || '').localeCompare(a.ora || '') ||
       b.folder_name.localeCompare(a.folder_name)
     )
   })

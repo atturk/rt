@@ -69,7 +69,8 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
                 continue
             results.append(run_review_unit(job.lesson_path, unit,
-                                           force_mock=bool((job.payload.get("options") or {}).get("mock"))))
+                                           force_mock=bool((job.payload.get("options") or {}).get("mock")),
+                                           parent_context=bool(job.payload.get("parent_context"))))
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 
@@ -138,7 +139,10 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
     with ctx.activate():
         generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")),
-                                          regenerate=True, shuffle=True, progress=recall_progress(ctx))
+                                          regenerate=True, shuffle=True, progress=recall_progress(ctx),
+                                          unit_ids=p.get("unit_ids"),
+                                          instructions=p.get("instructions"),
+                                          selection=p.get("selection"))
         ctx.emit(Notice(message=_recall_message(f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}.",
                                                 len(generated), unit_rows(job.lesson_path))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
@@ -182,8 +186,18 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                       force_mock=bool(p.get("mock")))
     if evaluation is None:
         raise ValueError("Domanda inesistente o a scelta multipla.")
-    return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation},
+    return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation,
+                  "outcome": getattr(evaluation, "outcome", None)},
                  lesson_path=job.lesson_path)
+
+
+def recall_regenerate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.recall_regeneration import regenerate
+    from rt.services.recall_service import question_view
+    with ctx.activate():
+        question = regenerate(job.lesson_path, job.payload['question_id'], job.payload['comment'],
+                              job_id=job.id, force_mock=bool(job.payload.get('mock')))
+    return _done({'question': question_view(question)}, lesson_path=job.lesson_path)
 
 
 def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -369,7 +383,7 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 for _type, _handler in (
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
-    (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
+    ('recall_regenerate', recall_regenerate_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),

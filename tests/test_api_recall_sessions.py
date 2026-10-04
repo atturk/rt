@@ -98,7 +98,7 @@ def test_telegram_start_requires_configured_running_bot(api_client, lesson_id, m
     monkeypatch.delenv("RT_TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("RT_TELEGRAM_CHAT_ID", raising=False)
     status = api_client.get("/api/v1/recall/telegram").json()
-    assert status == {"configured": False, "running": False, "sessions": []}
+    assert status == {"enabled": True, "configured": False, "running": False, "sessions": []}
     res = api_client.post(f"/api/v1/lessons/{lid}/recall/telegram/start", json={"qtype": "quiz"})
     assert res.status_code == 409 and res.json()["error"]["code"] == "telegram_not_configured"
 

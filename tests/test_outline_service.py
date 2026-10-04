@@ -3,6 +3,7 @@ tests/test_outline_service.py
 RT4-A4: approvazione dell'outline come decisione (rt.services.outline_service).
 """
 import json
+import pytest
 
 from rt.pipeline.outline import run_outline
 from rt.pipeline.prepare import run_prepare
@@ -64,3 +65,84 @@ def test_pipeline_resumes_after_approval(temp_lesson_dir):
     outline_service.approve_outline(temp_lesson_dir, actor="attilio", channel="api")
     res = run_pipeline(temp_lesson_dir, opts, RunContext())
     assert res.status == PipelineStatus.COMPLETED, res.error
+
+
+def test_outline_timer_starts_and_auto_approves(temp_lesson_dir):
+    import time
+    _outline_ready(temp_lesson_dir)
+    timer = outline_service.start_outline_timer(temp_lesson_dir, seconds=1)
+    assert timer is not None
+    assert timer["seconds"] == 1
+    assert timer["suspended"] is False
+
+    review = outline_service.get_outline_review(temp_lesson_dir)
+    assert review["approved"] is False
+    assert review["expires_at"] == timer["expires_at"]
+    assert review["timer_seconds"] == 1
+    assert review["timer_suspended"] is False
+
+    # Wait for timer to fire
+    time.sleep(1.2)
+    review_after = outline_service.get_outline_review(temp_lesson_dir)
+    assert review_after["approved"] is True
+    assert review_after["approval"]["actor"] == "server"
+    assert review_after["approval"]["channel"] == "server"
+
+
+def test_outline_timer_suspend(temp_lesson_dir):
+    import time
+    _outline_ready(temp_lesson_dir)
+    outline_service.start_outline_timer(temp_lesson_dir, seconds=1)
+    suspended = outline_service.suspend_outline_timer(temp_lesson_dir)
+    assert suspended is not None
+    assert suspended["suspended"] is True
+
+    review = outline_service.get_outline_review(temp_lesson_dir)
+    assert review["approved"] is False
+    assert review["timer_suspended"] is True
+
+    # After wait, it must still not be approved
+    time.sleep(1.2)
+    review_after = outline_service.get_outline_review(temp_lesson_dir)
+    assert review_after["approved"] is False
+
+
+def test_revision_restarts_suspended_timer(temp_lesson_dir):
+    _outline_ready(temp_lesson_dir)
+    previous = outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
+    outline_service.suspend_outline_timer(temp_lesson_dir)
+    try:
+        outline_service.request_outline_revision(temp_lesson_dir, "più dettagli", force_mock=True)
+        review = outline_service.get_outline_review(temp_lesson_dir)
+        assert review["approved"] is False
+        assert review["timer_suspended"] is False
+        assert review["expires_at"] != previous["expires_at"]
+        assert review["timer_seconds"] > 0
+    finally:
+        outline_service.suspend_outline_timer(temp_lesson_dir)
+
+
+def test_failed_revision_does_not_restart_timer(temp_lesson_dir, monkeypatch):
+    _outline_ready(temp_lesson_dir)
+    outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
+    outline_service.suspend_outline_timer(temp_lesson_dir)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("revisione fallita")
+
+    monkeypatch.setattr(outline_service, "run_outline_revision", fail)
+    with pytest.raises(RuntimeError, match="revisione fallita"):
+        outline_service.request_outline_revision(temp_lesson_dir, "più dettagli", force_mock=True)
+    assert outline_service.get_outline_review(temp_lesson_dir)["timer_suspended"] is True
+
+
+def test_expired_timer_recovers_approval_on_read(temp_lesson_dir):
+    import datetime
+    _outline_ready(temp_lesson_dir)
+    record = outline_service.start_outline_timer(temp_lesson_dir, seconds=60)
+    outline_service._cancel_in_memory_timer(temp_lesson_dir)  # Il worker è ripartito.
+    record["expires_at"] = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)).isoformat()
+    outline_service._save_outline_timer(temp_lesson_dir, record)
+    review = outline_service.get_outline_review(temp_lesson_dir)
+    assert review["approved"] is True
+    assert review["approval"]["actor"] == "server"

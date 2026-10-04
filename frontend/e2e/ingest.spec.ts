@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, disableOutlineTimer, importAudioApi, loginViaLink } from './support'
 
 // RT4-F4: importazione con upload, job con eventi live (SSE), approvazione della scaletta.
 // Il worker di scripts/e2e_server.py esegue davvero i job; la modalità prova (mock) evita
@@ -15,20 +15,12 @@ type JobEvent = { id: number; type: string }
 type Outline = { approved: boolean; macro_sections: { units: unknown[] }[] }
 type Lesson = { id: number; materia: string; argomenti: string; pending_issues: number; state: string | null }
 
+/** Importazione dall'API (la pagina Importa non c'è più) e pagina del job che la segue. */
 async function importAudio(page: Page, fields: { materia: string; argomenti: string; date: string; run: boolean }) {
-  await page.goto('/importa')
-  await page.getByLabel('File audio', { exact: true }).setInputFiles(AUDIO)
-  await page.getByLabel('Data', { exact: true }).fill(fields.date)
-  await page.getByLabel('Materia', { exact: true }).fill(fields.materia)
-  await page.getByLabel('Argomenti', { exact: true }).fill(fields.argomenti)
-  await page.getByLabel('Avvia subito la pipeline').setChecked(fields.run)
-  // La review nella pipeline è facoltativa (4.1): questi test arrivano fino alle sue issue.
-  if (fields.run) await page.getByLabel('Includi la review').check()
-  await page.getByText('Opzioni avanzate').click()
-  await page.getByLabel('Modalità prova (mock)').check()
-  await page.getByRole('button', { name: 'Importa', exact: true }).click()
-  await expect(page).toHaveURL(/\/job\/[0-9a-f-]+$/)
-  return page.url().split('/job/')[1]
+  await disableOutlineTimer(page.request)
+  const jobId = await importAudioApi(page.request, AUDIO, fields)
+  await page.goto(`/job/${jobId}`)
+  return jobId
 }
 
 function jobCard(page: Page) {
@@ -61,24 +53,19 @@ test('importa un audio, segue gli eventi, approva la scaletta e arriva alla revi
   await page.reload()
   await expect(log.locator('li[data-event-type]')).toHaveCount(await eventCount(page, jobId))
 
-  // La lezione dice che serve la tua approvazione e porta alla scaletta.
+  // La lezione mostra la scaletta da approvare al posto del testo (C4).
   await page.goto(`/lezioni/${job.lesson_id}`)
-  await expect(page.getByTestId('lesson-waiting')).toContainText('Serve la tua approvazione')
-  await page.getByTestId('lesson-waiting').getByRole('link', { name: 'Rivedi la scaletta' }).click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${job.lesson_id}/outline$`))
-  await expect(page.getByTestId('outline-waiting')).toBeVisible()
-  await expect(page.getByTestId('outline-approved')).toHaveAttribute('data-approved', 'false')
+  const approval = page.getByTestId('outline-approval')
+  await expect(approval).toContainText('Scaletta da approvare')
   const outline = await apiGet<Outline>(page.request, `/lessons/${job.lesson_id}/outline`)
-  await expect(page.getByTestId('outline-macro')).toHaveCount(outline.macro_sections.length)
-  await expect(page.getByTestId('outline-unit')).toHaveCount(outline.macro_sections.flatMap((m) => m.units).length)
+  const scaletta = page.getByLabel('Scaletta della lezione')
+  await expect(scaletta.getByRole('heading', { level: 2 })).toHaveCount(outline.macro_sections.length)
+  await expect(scaletta.getByRole('heading', { level: 3 })).toHaveCount(outline.macro_sections.flatMap((m) => m.units).length)
 
-  await page.getByRole('button', { name: 'Approva la scaletta' }).click()
-  await expect(page.getByTestId('pipeline-resumed')).toBeVisible()
-  await expect(page.getByTestId('outline-approved')).toHaveAttribute('data-approved', 'true')
-  expect((await apiGet<Outline>(page.request, `/lessons/${job.lesson_id}/outline`)).approved).toBe(true)
+  await approval.getByRole('button', { name: /^Approva/ }).click()
+  await expect.poll(async () => (await apiGet<Outline>(page.request, `/lessons/${job.lesson_id}/outline`)).approved).toBe(true)
   await page.reload()
-  await expect(page.getByTestId('outline-approved')).toHaveAttribute('data-approved', 'true')
-  await expect(page.getByTestId('outline-waiting')).toHaveCount(0)
+  await expect(page.getByTestId('outline-approval')).toHaveCount(0)
 
   // Lo stesso job riparte: la pagina lo segue fino alla review e la ricarica a metà non perde eventi.
   await page.goto(`/job/${jobId}`)
@@ -109,8 +96,7 @@ test('importazione senza pipeline: solo trascrizione, come rt setup', async ({ p
   expect(job.lesson_id).not.toBeNull()
   await page.reload()
   await expect(jobCard(page)).toHaveAttribute('data-state', 'succeeded')
-  await page.getByRole('link', { name: 'Apri la lezione' }).last().click()
-  await expect(page).toHaveURL(new RegExp(`/lezioni/${job.lesson_id}$`))
+  await page.goto(`/lezioni/${job.lesson_id}`)
   const lesson = await apiGet<Lesson>(page.request, `/lessons/${job.lesson_id}`)
   expect(lesson.materia).toBe('ISTOLOGIA')
   expect(lesson.argomenti).toContain('Epiteli')
@@ -119,12 +105,13 @@ test('importazione senza pipeline: solo trascrizione, come rt setup', async ({ p
 
 test('errori leggibili su formato e campi mancanti', async ({ page }) => {
   await loginViaLink(page)
-  await page.goto('/importa')
-  await page.getByLabel('File audio', { exact: true }).setInputFiles({ name: 'appunti.txt', mimeType: 'text/plain', buffer: Buffer.from('ciao') })
-  await page.getByLabel('Materia', { exact: true }).fill('X')
-  await page.getByRole('button', { name: 'Importa', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('Formato non supportato: appunti.txt')
-  await expect(page).toHaveURL(/\/importa$/)
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('button', { name: 'Nuova lezione' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Nuova lezione' })
+  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles({ name: 'appunti.txt', mimeType: 'text/plain', buffer: Buffer.from('ciao') })
+  await dialog.getByLabel('Materia').fill('X')
+  await dialog.getByRole('button', { name: 'Avvia' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Formato non supportato: appunti.txt')
+  await expect(dialog).toBeVisible()
 })
 
 test('richiesta di modifiche alla scaletta e annullamento del job in attesa', async ({ page }) => {
@@ -134,16 +121,13 @@ test('richiesta di modifiche alla scaletta e annullamento del job in attesa', as
   await expect(jobCard(page)).toHaveAttribute('data-state', 'waiting_for_decision', { timeout: LONG })
   const { lesson_id: lessonId } = await apiGet<Job>(page.request, `/jobs/${jobId}`)
 
-  await page.goto(`/lezioni/${lessonId}/outline`)
-  await page.getByLabel('Richiedi modifiche', { exact: true }).fill('Dividi la prima sezione in due unità')
-  await page.getByLabel('Modalità prova (mock)').check()
-  await page.getByRole('button', { name: 'Rigenera con il feedback' }).click()
-  const revision = page.getByTestId('job-live')
-  await expect(revision).toHaveAttribute('data-state', 'succeeded', { timeout: LONG })
-  const revisionJobs = await apiGet<Job[]>(page.request, `/jobs?lesson_id=${lessonId}`)
-  expect(revisionJobs.find((j) => j.type === 'outline_revision')?.state).toBe('succeeded')
+  await page.goto(`/lezioni/${lessonId}`)
+  const approval = page.getByTestId('outline-approval')
+  await approval.getByLabel('Oppure chiedi modifiche').fill('Dividi la prima sezione in due unità')
+  await approval.getByRole('button', { name: 'Rigenera con queste modifiche' }).click()
+  await expect.poll(async () => (await apiGet<Job[]>(page.request, `/jobs?lesson_id=${lessonId}`)).find((j) => j.type === 'outline_revision')?.state, { timeout: LONG }).toBe('succeeded')
   await page.reload()
-  await expect(page.getByTestId('outline-approved')).toHaveAttribute('data-approved', 'false')
+  await expect(page.getByTestId('outline-approval')).toBeVisible()
   expect((await apiGet<Outline>(page.request, `/lessons/${lessonId}/outline`)).approved).toBe(false)
 
   // La pipeline in attesa si annulla dalla pagina del job e resta annullata dopo la ricarica.

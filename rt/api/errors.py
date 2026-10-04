@@ -30,6 +30,13 @@ SERVICE_ERROR_STATUS = {"not_found": 404, "conflict": 409, "invalid": 422, "too_
                         "unavailable": 503, "upstream": 502}
 
 
+def require_telegram() -> None:
+    """Le azioni su Telegram (bot, ripassi, topic) con Telegram spento: 409 telegram_disabled."""
+    from rt.core.config import telegram_enabled
+    if not telegram_enabled():
+        raise ApiError(409, "telegram_disabled", "Telegram è disattivato: si attiva in Impostazioni › Bot Telegram.")
+
+
 class ErrorBody(BaseModel):
     code: str
     message: str

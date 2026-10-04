@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 type ServerState = { base_url: string; token: string; lessons_root: string; searxng_url: string }
 
@@ -32,6 +32,24 @@ export async function loginViaLink(page: Page) {
   await expect(page).toHaveURL(/\/$/)
 }
 
+/**
+ * Pagina della lezione: fasi, job, costi e scaletta stanno nel pannello laterale Dettagli
+ * (design 4.2). Lo apre se non è già aperto (la scelta resta nel browser).
+ */
+export async function openLessonDetails(page: Page) {
+  const panel = page.locator('[data-testid=lesson-panel][data-view=dettagli]')
+  await expect(page.getByTestId('lesson-actions')).toBeVisible()
+  if (!(await panel.isVisible())) await page.getByTestId('lesson-actions').getByRole('button', { name: 'Dettagli' }).click()
+  await expect(panel).toBeVisible()
+  return panel
+}
+
+/** Voce del menu Esporta dell'intestazione della lezione. */
+export async function exportItem(page: Page, name: string | RegExp) {
+  await page.getByTestId('lesson-actions').getByRole('button', { name: 'Esporta' }).click()
+  return page.getByRole('menu', { name: 'Esporta' }).getByRole('menuitem', { name })
+}
+
 /** PDF di una pagina, abbastanza valido per PyMuPDF. */
 export function tinyPdf(): Buffer {
   const objects = [
@@ -54,4 +72,68 @@ export function tinyPdf(): Buffer {
   pdf += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
   return Buffer.from(pdf, 'latin1')
+}
+
+/** Il documento della lezione è un editor (CodeMirror): disegna solo le righe vicine alla vista. Scorre finché l'elemento c'è. */
+export async function scrollDocumentTo(page: Page, target: Locator) {
+  await expect
+    .poll(async () => {
+      if ((await target.count()) > 0) return true
+      await page.getByTestId('lesson-document').evaluate((el) => {
+        // il primo antenato che scorre (la pagina o il contenitore principale)
+        let node: HTMLElement | null = el as HTMLElement
+        while (node && node.scrollHeight <= node.clientHeight) node = node.parentElement
+        ;(node ?? document.scrollingElement)?.scrollBy(0, 600)
+      })
+      return false
+    }, { timeout: 15_000 })
+    .toBe(true)
+  await target.first().scrollIntoViewIfNeeded()
+}
+
+/** Senza approvazione automatica della scaletta (B9): i test approvano o chiedono modifiche a mano. */
+export async function disableOutlineTimer(request: APIRequestContext) {
+  const res = await request.put('/api/v1/settings/preferences', { headers: authHeaders(), data: { secondi_approvazione: 0 } })
+  expect(res.ok(), await res.text()).toBeTruthy()
+}
+
+/** Importazione dell'audio dall'API, come il popup Nuova lezione; ritorna l'id del job. */
+export async function importAudioApi(
+  request: APIRequestContext,
+  audio: string,
+  fields: { materia: string; argomenti: string; date: string; run: boolean; withReview?: boolean },
+) {
+  const res = await request.post('/api/v1/lessons', {
+    headers: authHeaders(),
+    multipart: {
+      audio: { name: 'demo_lecture.wav', mimeType: 'audio/wav', buffer: readFileSync(audio) },
+      date: fields.date,
+      materia: fields.materia,
+      argomenti: fields.argomenti,
+      docente: '',
+      ora: '',
+      run: String(fields.run),
+      mock: 'true',
+      auto_accept: 'false',
+      with_review: String(fields.withReview ?? fields.run),
+    },
+  })
+  expect(res.ok(), await res.text()).toBeTruthy()
+  return ((await res.json()) as { job_id: string }).job_id
+}
+
+/** Job della lezione nel pannello Dettagli: l'elenco si apre con "ultimi 5". */
+export async function lessonJobs(page: Page) {
+  const details = await openLessonDetails(page)
+  const jobs = page.getByTestId('jobs-panel')
+  if (!(await jobs.isVisible())) await details.getByRole('button', { name: /^ultimi 5/ }).click()
+  await expect(jobs).toBeVisible()
+  return jobs
+}
+
+/** Riesegue una fase dal menu ⋯ della sua riga nel pannello Dettagli. */
+export async function runPhase(page: Page, label: string) {
+  const details = await openLessonDetails(page)
+  await details.getByRole('button', { name: `Azioni su ${label}` }).click()
+  await page.getByRole('menu', { name: `Azioni su ${label}` }).getByRole('menuitem', { name: 'Riesegui', exact: true }).click()
 }

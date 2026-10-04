@@ -53,7 +53,12 @@ def read_info_yaml(yaml_path: str) -> Dict[str, str]:
                 continue
             if ":" in stripped:
                 k, v = stripped.split(":", 1)
-                data[k.strip()] = v.strip().strip("\"'")
+                value = v.strip()
+                if value.startswith("'") and value.endswith("'"):
+                    value = value[1:-1].replace("''", "'")
+                elif value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
+                data[k.strip()] = value
     return data
 
 

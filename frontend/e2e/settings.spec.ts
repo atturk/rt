@@ -51,7 +51,7 @@ test.describe.configure({ mode: 'serial' })
 
 test('cartella dati: solo informativa, nessuna cartella delle lezioni da scegliere', async ({ page }) => {
   await loginViaLink(page)
-  await page.getByRole('navigation', { name: 'Strumenti' }).getByRole('link', { name: 'Impostazioni' }).click()
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
   await expect(page).toHaveURL(/\/impostazioni$/)
   const card = await section(page, 'Cartella dati')
   await expect(card.getByTestId('data-dir')).toHaveText((await settings(page)).data_dir!)

@@ -30,7 +30,7 @@ export function TopicArchiveExport({ topic }: { topic: { id: number; name: strin
       {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
       {jobId && <JobProgress jobId={jobId} label={`Esportazione di «${topic.name}»`} />}
       {jobId && result && (
-        <a className="text-sm font-semibold text-accent-foreground underline" href={topicArchiveUrl(jobId)} download={result.file}>
+        <a className="text-sm font-semibold text-link underline" href={topicArchiveUrl(jobId)} download={result.file}>
           Scarica «{topic.name}» ({result.messages} messaggi, {formatBytes(result.size)}) ↧
         </a>
       )}

@@ -7,10 +7,11 @@ export type GenerateInput = Schemas['GenerateIn']
 export type EnrichmentSettings = Schemas['EnrichmentConfig']
 export const enrichmentKey = (id: number) => ['enrichment', id] as const
 
+/** Gli elementi in generazione (job enrichment_*) li aggiorna il canale live (liveUpdates.ts). */
 export function useEnrichment(id: number) {
   return useQuery({ queryKey: enrichmentKey(id), queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/enrichment', {
     params: { path: { lesson_id: id } },
-  })), refetchInterval: (query) => query.state.data?.elements.some(e => e.status === 'queued' || e.status === 'generating') ? 1500 : 10000 })
+  })) })
 }
 
 export function useEnrichmentActions(id: number) {
@@ -21,7 +22,7 @@ export function useEnrichmentActions(id: number) {
     void client.invalidateQueries({ queryKey: lessonKeys.all(id) })
   }
   const analyze = useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/analyze', { params, body: { mock: false } })), onSuccess: refresh })
-  const generate = useMutation({ mutationFn: (body: Partial<GenerateInput>) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/generate', { params, body: { kind: 'visualization', title: 'Elemento grafico', description: 'Generazione manuale', prompt: '', mode: 'interactive', mock: false, ...body } })), onSuccess: refresh })
+  const generate = useMutation({ mutationFn: (body: Partial<GenerateInput>) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/generate', { params, body: { kind: 'visualization', title: 'Elemento grafico', description: 'Generazione manuale', prompt: '', mode: 'interactive', request: '', selection: '', mock: false, ...body } })), onSuccess: refresh })
   const action = useMutation({ mutationFn: ({ element, action }: { element: string; action: 'dismiss' | 'restore' | 'delete' }) => unwrap(api.POST('/api/v1/lessons/{lesson_id}/enrichment/{element_id}/action', {
     params: { path: { ...params.path, element_id: element } }, body: { action },
   })), onSuccess: refresh })

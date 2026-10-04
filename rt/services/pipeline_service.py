@@ -33,12 +33,14 @@ class PipelineOptions:
     materia: Optional[str] = None
     argomenti: Optional[str] = None
     docente: Optional[str] = None
+    ora: Optional[str] = None
     dest_dir: Optional[str] = None
     model: Optional[str] = None
     skip_transcribe: bool = False
     force: bool = False
     mock: bool = False
     with_review: bool = False
+    with_enrichment: Optional[bool] = None
     auto_accept: bool = False
     rename: bool = True
     channel: Optional[str] = None
@@ -107,7 +109,7 @@ def _resolve_channel(channel: Optional[str]) -> str:
     if channel:
         return channel
     from rt.core.config import load_config
-    return load_config().telegram.default_channel
+    return load_config().telegram.channel
 
 
 def _auto_accept_pending(lesson_dir: str, ctx: RunContext) -> List[Any]:
@@ -183,6 +185,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
         elif options.auto_accept:
             outline_service.approve_outline(lesson_dir, actor="auto_accept", channel="api")
         elif not outline_service.is_outline_approved(lesson_dir):
+            outline_service.start_outline_timer(lesson_dir)
             _wait(result, ctx, "outline_approval", lesson_dir,
                   {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
             return
@@ -212,7 +215,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
             mark_ready_to_build(lesson_dir)
 
     ctx.check_cancelled()
-    result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
+    result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx, with_enrichment=options.with_enrichment)
     bld_res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
     result.phase_results["build"] = bld_res
     final_dir = bld_res.get("lesson_dir") or lesson_dir
@@ -250,6 +253,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         materia=options.materia,
         argomenti=options.argomenti,
         docente=options.docente,
+        ora=options.ora,
         dest_dir=options.dest_dir,
         model=options.model or DEFAULT_MODEL,
         skip_transcribe=options.skip_transcribe,
@@ -285,12 +289,16 @@ def _wait(result: PipelineResult, ctx: RunContext, kind: str, lesson_dir: str, p
 RUNNABLE_PHASES = ("prepare", "outline", "rewrite", "review", "build")
 
 
-def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext) -> Dict[str, Any]:
+def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext,
+                         with_enrichment: Optional[bool] = None) -> Dict[str, Any]:
     """Optional analysis: failures do not prevent the lesson from being built."""
     from rt.core.config import load_config
     cfg = load_config()
-    if not cfg.enrichment.automatic:
+    if cfg.enrichment.mode == "disabled" and not with_enrichment:
         return {"skipped": "disabled"}
+    should_run = (with_enrichment is True) or (with_enrichment is None and cfg.enrichment.mode == "automatic")
+    if not should_run:
+        return {"skipped": "manual" if cfg.enrichment.mode == "manual" else "disabled"}
     route = cfg.jobs.get("enrichment_writer")
     if not mock and (not route or not route.primary.is_configured):
         ctx.emit(Notice(message="Arricchimento automatico disponibile dopo aver configurato l'Arricchitore in Modelli."))

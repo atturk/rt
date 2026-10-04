@@ -19,6 +19,10 @@ class TelegramConfig:
 
 
 def load_telegram_config() -> TelegramConfig:
+    # Telegram spento (il predefinito): per chi invia è come non configurato
+    from rt.core.config import telegram_enabled
+    if not telegram_enabled():
+        raise TelegramConfigError("Telegram è disattivato: si attiva in Impostazioni › Bot Telegram.")
     token = os.environ.get("RT_TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("RT_TELEGRAM_CHAT_ID")
     if not token or not chat_id:

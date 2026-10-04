@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = os.path.join(ROOT, "frontend", "e2e", ".state", "server.json")
 
 
-def _workspace(base: str) -> str:
+def _workspace(base: str, telegram: bool = False) -> str:
     """cwd con config/ (da config.example) e lessons_root dentro base (chiave 3.x
     ancora rispettata, non più configurabile dalla SPA); HOME isolata."""
     import yaml
@@ -41,6 +41,8 @@ def _workspace(base: str) -> str:
     with open(general_path, encoding="utf-8") as f:
         general = yaml.safe_load(f) or {}
     general.setdefault("telegram", {})["lessons_root"] = lessons
+    # Telegram è spento di predefinito; gli e2e del bot finto lo accendono (e lo provano a spegnere)
+    general["telegram"]["enabled"] = telegram
     # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
     general["searxng_base_url"] = "http://127.0.0.1:9"
     # nessuna connessione nel config di esempio: senza questo ogni pagina porterebbe alla
@@ -120,12 +122,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--dir", default=os.path.join(tempfile.gettempdir(), "rt-e2e"))
+    parser.add_argument("--telegram", action="store_true",
+                        help="Telegram acceso (gli e2e del bot finto); senza, il predefinito: spento")
     args = parser.parse_args()
     sys.path.insert(0, ROOT)
 
     # realpath: su macOS la cartella temporanea è un link (/var -> /private/var) e l'API salva
     # la cartella delle lezioni risolta; i test la confrontano con quella di server.json.
-    root = _workspace(os.path.realpath(args.dir))
+    root = _workspace(os.path.realpath(args.dir), telegram=args.telegram)
     from rt.api import auth
     from rt.api.launcher import run_spa
     from rt.db.bootstrap import ensure_database

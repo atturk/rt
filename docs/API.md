@@ -132,6 +132,7 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `POST /jobs/{id}/close` | Chiude un job in attesa delle issue della review o dell'approvazione della scaletta senza annullarlo: finisce `succeeded` con `result.closed` (`kind`, `message`), le issue restano da valutare (o la scaletta da approvare) e decidere dopo non fa ripartire il job. `409 job_not_closable` se il job non è in attesa o aspetta i dati della lezione | `rt jobs close ID` |
 | `POST /jobs/{id}/retry` | Riprova un job fallito (RT4-FA1): job nuovo con lo stesso tipo e payload (senza `force` per pipeline e fasi), che riparte dalla fase fallita; `409 lesson_busy` se sulla lezione c'è un altro job attivo, `409 already_retried` (con il job nuovo) se è già stato ripreso, `409 retry_unavailable` se i file caricati non ci sono più | rilanciare lo stesso comando |
 | `GET /jobs/{id}/events` | Server-Sent Events; riprende da `Last-Event-ID` o `?after=` | output di `rt run` |
+| `GET /events` | Server-Sent Events di tutti i job per il canale live della web app: evento `job` con `id`, `job_id`, `job_type`, `lesson_id`, `type` (senza payload). Senza `?after=` parte da adesso; riprende da `Last-Event-ID`; si chiude ogni 5 minuti e il browser lo riapre | — |
 | `GET /workers` | Worker attivi | — |
 | `POST /lessons/{id}/outline/approve` | Approva l'outline; il job in attesa riparte da solo | approvazione outline |
 | `POST /lessons/{id}/outline/revise` | Job `outline_revision` con feedback | "modifica" nell'approvazione |

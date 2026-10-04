@@ -83,8 +83,8 @@ describe('JobsPanel', () => {
     expect(within(row).getByLabelText('Avanzamento')).toHaveAttribute('max', '31')
     fireEvent.click(within(row).getByRole('button', { name: 'Annulla' }))
     expect(state.cancel).toHaveBeenCalledWith('j1')
-    // Solo i job attivi seguono lo stream degli eventi.
-    expect(state.streams).toContain('j1')
+    // Nessuno stream per job: li aggiorna il canale live della pagina (liveUpdates.ts).
+    expect(state.streams).toEqual([])
   })
 
   it('un annullamento già chiesto disabilita il pulsante', () => {

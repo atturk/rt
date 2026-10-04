@@ -307,6 +307,8 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     raw_topics = info.get("argomenti")
 
     outline = load_outline(lesson_dir)
+    if info.get("titolo_personalizzato") == "true":
+        outline = outline.model_copy(update={"lesson_title": info.get("titolo") or outline.lesson_title})
     topics_replaced = False
     if (not raw_topics or not str(raw_topics).strip()) and outline.generated_topics:
         topics_val = ", ".join(outline.generated_topics)

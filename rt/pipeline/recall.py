@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
-from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer
+from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer, RecallOutcome
 from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
@@ -58,7 +58,17 @@ def load_recall_bank(lesson_dir: str) -> RecallBank:
     try:
         with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return RecallBank.model_validate(data)
+        bank = RecallBank.model_validate(data)
+        # Le banche storiche hanno il voto negativo ma nessuno stato di scarto.
+        votes = {a.question_id: a for a in bank.answers if a.vote}
+        for question in bank.questions:
+            answer = votes.get(question.id)
+            if answer and answer.vote == 'down' and question.status != RecallQuestionStatus.DISCARDED:
+                question.discarded_from = question.status
+                question.status = RecallQuestionStatus.DISCARDED
+                question.discard_reasons = answer.vote_reasons
+                question.comment = answer.vote_comment
+        return bank
     except Exception:
         return RecallBank()
 
@@ -229,20 +239,34 @@ def record_recall_answer(
     is_voice: bool = False,
     evaluation: Optional[str] = None,
     vote: Optional[str] = None,
+    outcome: Optional[RecallOutcome] = None,
 ) -> RecallAnswer:
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         for q in bank.questions:
             if q.id == question_id:
-                q.status = RecallQuestionStatus.ANSWERED
+                if q.status != RecallQuestionStatus.DISCARDED:
+                    q.status = RecallQuestionStatus.ANSWERED
                 break
+        if answer_text.strip() == '[Non lo so]':
+            outcome = 'sbagliata'
+        elif outcome is None:
+            outcome = getattr(evaluation, 'outcome', None)
+            question = next((q for q in bank.questions if q.id == question_id), None)
+            if question and question.type == RecallQuestionType.QUIZ and question.options \
+                    and question.correct_index is not None and 0 <= question.correct_index < len(question.options) \
+                    and answer_text.strip():
+                outcome = 'corretta' if answer_text == question.options[question.correct_index] else 'sbagliata'
         existing = next((a for a in bank.answers if a.question_id == question_id), None)
         if existing:
+            existing.outcome = outcome
             existing.answer_text = answer_text
             existing.is_voice = is_voice
             existing.evaluation = evaluation
-            existing.vote = vote
+            if vote is not None:
+                existing.vote = vote
+            existing.dont_know = answer_text.strip() == '[Non lo so]'
             existing.answered_at = datetime.now().isoformat()
             ans = existing
         else:
@@ -251,7 +275,9 @@ def record_recall_answer(
                 answer_text=answer_text,
                 is_voice=is_voice,
                 evaluation=evaluation,
+                outcome=outcome,
                 vote=vote,
+                dont_know=answer_text.strip() == '[Non lo so]',
             )
             bank.answers.append(ans)
         save_recall_bank(bank, lesson_dir)
@@ -275,7 +301,7 @@ def skip_recall_question(lesson_dir: str, question_id: str) -> None:
                 return
 
 
-def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
+def record_recall_vote(lesson_dir: str, question_id: str, vote: str, reasons=None, comment=None) -> None:
     """Aggiorna solo il campo vote della RecallAnswer.
 
     Se non esiste ancora una RecallAnswer per question_id, ne crea una parziale
@@ -290,6 +316,18 @@ def record_recall_vote(lesson_dir: str, question_id: str, vote: str) -> None:
             bank.answers.append(answer)
         else:
             answer.vote = vote
+        answer.vote_reasons = list(dict.fromkeys(reasons or []))
+        answer.vote_comment = comment
+        question = next((q for q in bank.questions if q.id == question_id), None)
+        if question:
+            if vote == 'down':
+                if question.status != RecallQuestionStatus.DISCARDED:
+                    question.discarded_from = question.status
+                question.status = RecallQuestionStatus.DISCARDED
+                question.discard_reasons, question.comment = answer.vote_reasons, comment
+            elif question.status == RecallQuestionStatus.DISCARDED:
+                question.status = RecallQuestionStatus.ANSWERED if answer.answer_text else (question.discarded_from or RecallQuestionStatus.PENDING)
+                question.discard_reasons, question.comment, question.discarded_from = [], None, None
         save_recall_bank(bank, lesson_dir)
 
 
@@ -320,39 +358,34 @@ def _save_fewshot(data: dict, state_dir: Optional[str] = None) -> None:
     _atomic_write(path, data)
 
 
-def record_fewshot_vote(
-    qtype: RecallQuestionType,
-    question_text: str,
-    vote: str,
-    state_dir: Optional[str] = None,
-) -> None:
-    """Aggiunge un'entry al pool few-shot globale per qtype.
-
-    Mantiene al massimo 5 voci per tipo (FIFO: la piu' vecchia esce quando se ne
-    aggiunge una nuova oltre il limite). I tre pool (quiz/mirata/vasta) sono
-    completamente separati: mai iniettare esempi di un tipo nel prompt di un altro.
-    """
-    data = _load_fewshot(state_dir)
-    key = qtype.value
-    entry = {"question_text": question_text, "vote": vote, "voted_at": datetime.now().isoformat()}
-    lst: List[dict] = data.get(key, [])
-    lst.append(entry)
-    if len(lst) > 5:
-        lst = lst[-5:]
-    data[key] = lst
-    _save_fewshot(data, state_dir)
+def _fewshot_groups(value):
+    """Compatibilità con il vecchio elenco misto; cinque esempi per ciascun gruppo."""
+    rows = value if isinstance(value, list) else (value.get('good', []) + value.get('avoid', []))
+    return {'good': [row for row in rows if row.get('vote') == 'up'][-5:],
+            'avoid': [row for row in rows if row.get('vote') in ('down', 'lightning')][-5:]}
 
 
-def load_fewshot_examples(
-    qtype: RecallQuestionType,
-    state_dir: Optional[str] = None,
-) -> List[dict]:
-    """Ritorna la lista corrente di esempi few-shot per qtype.
+def record_fewshot_vote(qtype: RecallQuestionType, question_text: str, vote: str,
+                        state_dir: Optional[str] = None, reasons=None, comment=None) -> None:
+    """Esempi buoni e da evitare separati, con motivi e commento; aggiornamento del voto."""
+    from rt.core.filelock import file_lock
+    path = get_fewshot_path(state_dir)
+    with file_lock(fs.lock_path(path + '.lock')):
+        data = _load_fewshot(state_dir)
+        groups = _fewshot_groups(data.get(qtype.value, []))
+        for group in groups.values():
+            group[:] = [row for row in group if row['question_text'] != question_text]
+        entry = {'question_text': question_text, 'vote': vote, 'voted_at': datetime.now().isoformat(),
+                 'reasons': list(dict.fromkeys(reasons or [])), 'comment': comment}
+        key = 'good' if vote == 'up' else 'avoid'
+        groups[key] = (groups[key] + [entry])[-5:]
+        data[qtype.value] = groups
+        _save_fewshot(data, state_dir)
 
-    Puo' essere vuota (nessun esempio votato): in tal caso il prompt non include esempi.
-    """
-    data = _load_fewshot(state_dir)
-    return data.get(qtype.value, [])
+
+def load_fewshot_examples(qtype: RecallQuestionType, state_dir: Optional[str] = None) -> List[dict]:
+    groups = _fewshot_groups(_load_fewshot(state_dir).get(qtype.value, []))
+    return groups['good'] + groups['avoid']
 
 # -----------------------------------------------------------------------
 # ID sequenziale (same schema as asr_NNNNNN / sci_NNNNNN)
@@ -460,7 +493,8 @@ def _persist_generation(lesson_dir, questions, key, attempt):
 def generate_recall_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
-    progress: Optional[Callable[..., None]] = None,
+    progress: Optional[Callable[..., None]] = None, unit_ids: Optional[List[str]] = None,
+    instructions: Optional[str] = None, selection: Optional[str] = None,
 ) -> List[RecallQuestion]:
     """Zero o più domande per chiamata dalle unità selezionate; count è un obiettivo, mai una
     quota del modello, e None vuol dire tutte le unità (il pool dell'intera lezione).
@@ -484,7 +518,8 @@ def generate_recall_batch(
     if qtype in SPECIAL_TYPES:
         from rt.pipeline.recall_special import generate_special_batch
         return generate_special_batch(lesson_dir, qtype, count, force_mock=force_mock, regenerate=regenerate,
-                                      shuffle=shuffle, progress=progress)
+                                      shuffle=shuffle, progress=progress, unit_ids=unit_ids,
+                                      instructions=instructions, selection=selection)
     if count is not None and count <= 0:
         return []
     label = qtype.value.capitalize()
@@ -495,7 +530,13 @@ def generate_recall_batch(
     report(None, None, f"{label}: aggiorno le etichette del classificatore sulle unità")
     refresh(lesson_dir, force_mock=mock, view="resolved")
     raise_if_cancelled()
-    units = selected_units(lesson_dir)
+    if unit_ids is not None:
+        # Domande su una parte della lezione: le unità chieste, anche se escluse dal recall.
+        from rt.services.recall_units import _units
+        wanted = set(unit_ids)
+        units = [u for u in _units(lesson_dir) if u.unit_id in wanted]
+    else:
+        units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
     context = lesson_context(lesson_dir)
     policy = _generation_policy(qtype, few_shot_examples or [], mock)
@@ -545,11 +586,13 @@ def generate_recall_batch(
         else:
             if qtype == RecallQuestionType.VASTA:
                 prompt = prompts.build_recall_vasta_user_prompt(ids, [u.title for u in group],
-                         [u.content for u in group], few_shot_examples or [])
+                         [u.content for u in group], few_shot_examples or [],
+                         instructions=instructions, selection=selection)
             else:
                 u = group[0]
                 builder = getattr(prompts, "build_recall_" + qtype.value + "_user_prompt")
-                prompt = builder(u.unit_id, u.title, u.content, few_shot_examples or [])
+                prompt = builder(u.unit_id, u.title, u.content, few_shot_examples or [],
+                                 instructions=instructions, selection=selection)
             prompt = prompts.contextualize_recall_prompt(prompt, context, assessment, previous)
             try:
                 generated = client.call_structured(prompt=prompt, system_prompt=effective_system("recall", system),
@@ -624,6 +667,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
         raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
 
+    from rt.core.models import RecallEvaluation
     is_dont_know = answer_text.strip() == "[Non lo so]"
 
     # Mock deterministico gestito qui direttamente (stesso pattern di generate_recall_batch):
@@ -631,11 +675,11 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     if force_mock:
         if question.type == RecallQuestionType.MIRATA:
             if is_dont_know:
-                return "Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota."
-            return "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento."
+                return RecallEvaluation("Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota.", "sbagliata")
+            return RecallEvaluation("Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento.", "parziale")
         if is_dont_know:
-            return "[MOCK] Spiegazione automatica per risposta non nota."
-        return "[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale."
+            return RecallEvaluation("[MOCK] Spiegazione automatica per risposta non nota.", "sbagliata")
+        return RecallEvaluation("[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.", "parziale")
 
     client = LLMClient(force_mock=force_mock)
 
@@ -662,7 +706,8 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         if is_dont_know:
             result.correttezza = 0
             result.completezza = 0
-        return f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}"
+        return RecallEvaluation(f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}",
+                                "sbagliata" if is_dont_know else result.outcome)
 
     elif question.type == RecallQuestionType.VASTA:
         user_prompt = build_recall_eval_vasta_user_prompt(
@@ -679,7 +724,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             unit_id=", ".join(question.unit_ids),
             lesson_dir=lesson_dir,
         )
-        return result_v.commento
+        return RecallEvaluation(result_v.commento, "sbagliata" if is_dont_know else result_v.outcome)
 
 
 def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = None) -> int:

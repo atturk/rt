@@ -84,6 +84,10 @@ class JobEventReporter:
             progress = {"phase": event.phase, "completed": True, "partial": event.partial, "step": event.step,
                         "total_steps": event.total_steps}
         try:
+            if isinstance(event, PhaseCompleted) and event.phase == "setup" and (event.result or {}).get("lesson_dir"):
+                # Lezione appena creata dall'audio: il job la indica subito (non solo alla fine),
+                # così la web app apre la pagina della lezione mentre la pipeline continua.
+                self.queue.attach_lesson(self.job_id, str(event.result["lesson_dir"]))
             cancel = self.queue.add_event(self.job_id, event.type, event.model_dump(mode="json"), progress=progress)
             if cancel and self.cancel_token is not None:
                 self.cancel_token.cancel()

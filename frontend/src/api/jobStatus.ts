@@ -11,16 +11,12 @@ export function jobFinished(job: Pick<Job, 'state'> | undefined): boolean {
   return !!job && FINISHED.has(job.state)
 }
 
-/** Stato di un job letto dall'API, ripetuto finché non finisce (o si ferma su una decisione). */
+/** Stato di un job letto dall'API e riletto a ogni suo evento dal canale live (liveUpdates.ts). */
 export function useJobStatus(jobId: string | null | undefined) {
   return useQuery({
     queryKey: ['job', jobId],
     queryFn: () => unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId! } } })),
     enabled: !!jobId,
-    refetchInterval: (query) => {
-      const job = query.state.data
-      return job && (jobFinished(job) || job.state === 'waiting_for_decision') ? false : 1000
-    },
   })
 }
 

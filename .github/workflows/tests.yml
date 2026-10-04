@@ -73,6 +73,10 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Budget del JavaScript iniziale
+        run: npm run check:bundle
+      - name: Build della mini app
+        run: npm run build:mini
 
   e2e:
     if: github.event.action != 'labeled'

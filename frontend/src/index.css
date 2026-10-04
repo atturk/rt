@@ -2,49 +2,92 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Palette della web Gradio (rt/web/style.css): nero, grigi, accento verde. */
+/*
+ * Design 4.2, direzione "A · Precisione" (OpenDesign, piano-4.2/opendesign-nuovo/tokens.css):
+ * scala di grigi con un solo accento (verde menta), caratteri di sistema a spaziatura fissa,
+ * angoli da 8 px. I nomi restano quelli dei componenti (background, muted, accent…); i valori
+ * sono quelli del design. Tema scuro con la classe .dark su <html> (lib/theme.ts).
+ *   --soft    = sfondo tenue (hover, gruppi di icone)      → muted
+ *   --mute    = testo secondario                           → muted-foreground
+ *   --acc     = testo sull'accento                         → accent-foreground
+ *   --link    = testo d'accento sullo sfondo della pagina (nel design "--muted")
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --muted: #f1f1f1;
-  --muted-foreground: #595959;
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --fg: #171717;
+  --soft: #f1f1f1;
+  --mute: color-mix(in oklch, var(--fg) 72%, var(--bg));
+  --acc: #155f52;
+  --link: #155f52;
+  --overlay: color-mix(in oklch, var(--bg) 78%, transparent);
+  --shadow: 0 12px 32px color-mix(in oklch, var(--fg) 9%, transparent);
+
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --muted: var(--soft);
+  --muted-foreground: var(--mute);
   --border: #d4d4d4;
-  --input: #c9c9c9;
-  --ring: #171717;
-  --card: #ffffff;
-  --sidebar: #f7f7f7;
-  --primary: #171717;
-  --primary-foreground: #ffffff;
+  --input: #d4d4d4;
+  --ring: var(--fg);
+  --card: var(--surface);
+  --sidebar: var(--bg);
+  --primary: #dceee7;
+  --primary-foreground: var(--acc);
   --accent: #dceee7;
-  --accent-foreground: #155f52;
+  --accent-foreground: var(--acc);
   --success: #147464;
   --success-soft: #e4f3ed;
   --warning: #98620c;
   --warning-soft: #fff3df;
   --danger: #a04232;
   --danger-soft: #ffe9e3;
+  /* Sfondi dei gruppi in Lezioni, a rotazione (Preferenze: colori). */
+  --group-1: rgb(21 95 82 / 6%);
+  --group-2: rgb(59 111 160 / 7%);
+  --group-3: rgb(184 134 11 / 8%);
+  --group-4: rgb(150 80 110 / 6%);
+  --group-gray: color-mix(in oklch, var(--fg) 4%, transparent);
+
+  --size-meta: 12px;
+  --size-body: 15px;
+  --size-heading: 22px;
+  --rail-width: 56px;
+  --header-height: 52px;
+  --control-size: 34px;
+  --reading-width: 720px;
 }
 
 .dark {
-  --background: #121212;
-  --foreground: #ececec;
-  --muted: #232323;
-  --muted-foreground: #a8a8a8;
-  --border: #333333;
-  --input: #444444;
-  --ring: #ececec;
-  --card: #1a1a1a;
-  --sidebar: #171717;
-  --primary: #ececec;
-  --primary-foreground: #121212;
-  --accent: #1d3a32;
-  --accent-foreground: #8fdcc4;
+  color-scheme: dark;
+  --bg: #171717;
+  --surface: #1a1a1a;
+  --fg: #ffffff;
+  --soft: color-mix(in oklch, #ffffff 7%, #171717);
+  --acc: #155f52;
+  --link: #dceee7;
+  --shadow: 0 12px 32px color-mix(in oklch, #171717 65%, transparent);
+
+  --border: color-mix(in oklch, #d4d4d4 25%, #171717);
+  --input: color-mix(in oklch, #d4d4d4 35%, #171717);
   --success: #6fd3b3;
   --success-soft: #16312a;
   --warning: #f1c27a;
   --warning-soft: #3a2c14;
   --danger: #ff9f8c;
   --danger-soft: #3d1d17;
+  --group-1: rgb(111 211 179 / 8%);
+  --group-2: rgb(130 175 230 / 8%);
+  --group-3: rgb(241 194 122 / 8%);
+  --group-4: rgb(230 150 185 / 8%);
+}
+
+/* Telefono: aree da toccare di 44 px (linee guida §5). */
+@media (max-width: 767px) {
+  :root {
+    --control-size: 44px;
+  }
 }
 
 @theme inline {
@@ -61,13 +104,24 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-link: var(--link);
+  --color-overlay: var(--overlay);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
-  --font-sans: Seravek, 'Helvetica Neue', Arial, sans-serif;
+  /* Caratteri di sistema (nessun font scaricato): SF Mono sul Mac, poi i caratteri del sistema. */
+  --font-sans: SFMono, 'SF Mono', system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: SFMono, 'SF Mono', ui-monospace, Menlo, monospace;
+  --text-meta: var(--size-meta);
+  --text-body: var(--size-body);
+  --text-heading: var(--size-heading);
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --shadow-panel: var(--shadow);
 }
 
 @layer base {
@@ -78,37 +132,76 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+    font-size: var(--size-body);
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--fg);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--acc);
+  }
+  /* La selezione resta visibile mentre si scrive nel popup Genera (DocumentMenu). */
+  ::highlight(rt-generate) {
+    background: var(--accent);
+    color: var(--acc);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--mute);
+    opacity: 1;
   }
 }
 
-/* Documento della lezione (HTML dall'API, stile come la web Gradio). */
+@keyframes rt-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Documento della lezione (HTML dall'API): colonna di lettura del design 4.2 (schermata 02). */
 .rt-document {
-  font-size: 14px;
-  line-height: 1.65;
+  font-size: var(--size-body);
+  line-height: 1.7;
 }
 .rt-document h1 {
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: var(--size-heading);
+  font-weight: 600;
   margin: 0 0 1rem;
-  letter-spacing: -0.01em;
 }
 .rt-document h2 {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin: 1.6rem 0 0.6rem;
+  font-size: var(--size-body);
+  font-weight: 600;
+  margin: 32px 0 12px;
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 .rt-document h3 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin: 1.2rem 0 0.4rem;
-  scroll-margin-top: 1rem;
+  font-size: var(--size-body);
+  font-weight: 600;
+  margin: 24px 0 8px;
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 .rt-document p,
 .rt-document ul,
 .rt-document ol,
 .rt-document blockquote {
-  margin: 0 0 0.75rem;
+  margin: 0 0 16px;
 }
 .rt-document ul {
   list-style: disc;
@@ -148,39 +241,48 @@
 }
 .rt-document .rt-timecode {
   display: inline-block;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--accent-foreground);
-  padding: 1px 5px;
-  font-size: 12px;
-  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mute);
+  padding: 0 6px;
+  font: 500 var(--size-meta) / 1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 .rt-document .rt-unit-meta {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.3rem;
+  margin-left: 8px;
+  vertical-align: 1px;
 }
 .rt-document .rt-relevance-tag {
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--accent-foreground);
-  padding: 1px 5px;
-  font-size: 12px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--mute);
+  padding: 0 6px;
+  font-size: var(--size-meta);
   font-weight: 500;
 }
 .rt-document .rt-timecode:hover:not(:disabled) {
-  text-decoration: underline;
+  border-color: var(--fg);
+  color: var(--fg);
+}
+.rt-document .rt-timecode:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .rt-document .rt-timecode:disabled {
   cursor: default;
-  opacity: 0.7;
 }
+/* Unità in ascolto: una riga d'accento a sinistra, il testo resta leggibile. */
 .rt-document .rt-unit-active {
-  background: color-mix(in srgb, var(--warning-soft) 70%, transparent);
-  box-shadow: -10px 0 0 color-mix(in srgb, var(--warning-soft) 70%, transparent);
+  box-shadow: -12px 0 0 -9px var(--acc);
+}
+.dark .rt-document .rt-unit-active {
+  box-shadow: -12px 0 0 -9px var(--link);
 }
 .rt-document mark.rt-claim {
   background: #fce9a8;
@@ -199,33 +301,193 @@
   -webkit-text-security: disc;
 }
 
-/* Editor Markdown dell'anteprima (CodeMirror 6) */
-.rt-md-editor .cm-editor {
-  min-height: 24rem;
-  max-height: 75vh;
-  border: 1px solid var(--input);
-  border-radius: 6px;
-  background: var(--card);
+/* Editor Markdown dell'anteprima (CodeMirror 6): la stessa colonna di lettura del documento. */
+/* Documento della lezione nell'editor (atomic-editor, come Obsidian): stesso aspetto della
+   lettura (.rt-document), senza cornice; la pagina scorre, non l'editor. */
+.rt-lesson-editor .atomic-cm-editor {
+  --atomic-editor-font: var(--font-sans);
+  --atomic-editor-font-mono: var(--font-mono);
+  --atomic-editor-body-size: var(--size-body);
+  --atomic-editor-body-leading: 1.7;
+  --atomic-editor-measure: none;
+  --atomic-editor-fg: var(--fg);
+  --atomic-editor-fg-muted: var(--mute);
+  --atomic-editor-fg-faint: var(--mute);
+  --atomic-editor-bg: transparent;
+  --atomic-editor-bg-panel: var(--soft);
+  --atomic-editor-bg-surface: var(--soft);
+  --atomic-editor-border: var(--border);
+  --atomic-editor-accent: var(--acc);
+  --atomic-editor-accent-bright: var(--acc);
+  --atomic-editor-accent-soft: var(--primary);
+  --atomic-editor-link: var(--link);
+  --atomic-editor-link-hover: var(--link);
+  --atomic-editor-code-bg: var(--soft);
+  --atomic-editor-selection-bg: color-mix(in srgb, var(--acc) 18%, transparent);
+  background: transparent;
+  height: auto;
+  overflow: visible;
+}
+.rt-lesson-editor .cm-editor {
+  height: auto;
+  background: transparent;
   color: var(--foreground);
-  font-size: 13px;
 }
-.rt-md-editor .cm-editor.cm-focused {
+.rt-lesson-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.rt-lesson-editor .cm-scroller {
+  overflow: visible;
+}
+.rt-lesson-editor .atomic-cm-editor .cm-content {
+  caret-color: var(--foreground);
+  padding: 0;
+}
+.rt-lesson-editor .atomic-cm-editor .cm-line {
+  padding-left: 0;
+  padding-right: 0;
+}
+.rt-lesson-editor .cm-line.cm-atomic-h2,
+.rt-lesson-editor .cm-line.cm-atomic-h3 {
+  font-weight: 600;
+  line-height: 1.4;
+  padding-bottom: 0;
+}
+/* Unità (##) più grandi delle subunità (###), spazi stretti come nella lettura. */
+.rt-lesson-editor .cm-line.cm-atomic-h2 {
+  /* fra il titolo della lezione (--size-heading) e il testo */
+  font-size: 18px;
+  padding-top: 20px;
+}
+.rt-lesson-editor .cm-line.cm-atomic-h2:first-child {
+  padding-top: 0;
+}
+.rt-lesson-editor .cm-line.cm-atomic-h3 {
+  font-size: calc(var(--size-body) + 1px);
+  padding-top: 8px;
+}
+/* Righe vuote fra titoli, timecode e paragrafi: mezza riga, non una intera (quella del cursore resta piena). */
+.rt-lesson-editor .cm-line:not(.cm-activeLine):has(> br:only-child) {
+  line-height: 0.6;
+}
+.rt-lesson-editor .cm-activeLine {
+  background: transparent;
+}
+/* Timecode bloccato: l'etichetta della lettura. Clic ascolta, triplo clic modifica. */
+.rt-lesson-editor .rt-timecode-locked {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--mute);
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--size-meta);
+  line-height: 1.6;
+  cursor: pointer;
+  user-select: none;
+}
+.rt-lesson-editor .rt-timecode-locked:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+.rt-lesson-editor .rt-timecode-editing {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--acc) 10%, transparent);
+}
+.rt-lesson-editor .rt-enrichment-slot:empty {
+  display: none;
+}
+
+/* Barra della posizione nella barra audio (design 4.2): traccia di 4 px, parte ascoltata piena. */
+.rt-seek {
+  appearance: none;
+  background: linear-gradient(to right, var(--fg) var(--seek, 0%), var(--soft) var(--seek, 0%));
+  border-radius: 8px;
+}
+.rt-seek:disabled {
+  cursor: default;
+}
+.rt-seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg);
+  opacity: 0;
+}
+.rt-seek:hover::-webkit-slider-thumb,
+.rt-seek:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+.rt-seek::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fg);
+}
+.rt-seek:focus-visible {
   outline: 2px solid var(--ring);
-  outline-offset: 1px;
+  outline-offset: 4px;
 }
-.rt-md-editor .cm-scroller {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  line-height: 1.55;
+
+/* Studio (schermate 05/05b): lettura dell'unità intera. */
+.rt-reading {
+  line-height: 1.75;
 }
-.rt-md-editor .cm-gutters {
+.rt-reading p {
+  margin-bottom: 20px;
+}
+
+/* Immagini della lezione che atomic-editor non disegna da sé (lessonImages). */
+.rt-lesson-editor .rt-editor-image {
+  padding: 8px 0;
+}
+.rt-lesson-editor .rt-editor-image img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.rt-lesson-editor .rt-issue-selected {
+  background: var(--warning-soft);
+  border-radius: var(--radius-md);
+}
+.rt-lesson-editor .rt-issue-other {
+  text-decoration: underline dotted var(--warning) 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.rt-unit-classification {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-left: .5rem;
+  font-size: var(--size-meta);
+}
+.rt-unit-label {
+  border-radius: var(--radius-md);
   background: var(--muted);
   color: var(--muted-foreground);
-  border-right: 1px solid var(--border);
+  padding: .125rem .5rem;
 }
-.rt-md-editor .cm-activeLine,
-.rt-md-editor .cm-activeLineGutter {
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
+.rt-unit-score { font-variant-numeric: tabular-nums; }
+.rt-lesson-editor .rt-unit-excluded { color: var(--muted-foreground); }
+
+.rt-unit-task {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: .6rem;
+  vertical-align: middle;
 }
-.rt-md-editor .cm-content {
-  caret-color: var(--foreground);
-}
+.rt-unit-task-done { border-radius: 50%; background: var(--success); color: var(--background); }
+.rt-unit-task-working { color: var(--success); }
+.rt-unit-task-waiting, .rt-lesson-editor .rt-unit-waiting { color: var(--muted-foreground); }
+.rt-unit-pending { display: grid; gap: 6px; padding: 10px 0; }
+.rt-unit-pending > div { height: 9px; border-radius: var(--radius-md); background: var(--muted); width: 95%; }
+.rt-unit-pending > div:nth-child(2) { width: 88%; }
+.rt-unit-pending > div:nth-child(3) { width: 60%; }

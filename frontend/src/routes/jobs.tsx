@@ -1,256 +1,18 @@
-import { Activity, Upload } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 
-import { ApiError, api, errorMessage, unwrap } from '@/api/client'
-import { useLesson, useLessons } from '@/api/hooks'
-import { useSettings } from '@/api/settings'
-import { useApproveOutline, useCreateLesson, useJobs, useOutline, useReviseOutline } from '@/api/jobs'
-import { AudioOrder } from '@/components/jobs/AudioOrder'
+import { errorMessage } from '@/api/client'
+import { useLessons } from '@/api/hooks'
+import { useJobs } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
-import { JobStateBadge, ProgressBar, WorkerWarning } from '@/components/jobs/JobParts'
-import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
-import { ZipImportCard } from '@/components/jobs/ZipImport'
+import { JobStateBadge, WorkerWarning } from '@/components/jobs/JobParts'
+import { PhaseProgress } from '@/components/jobs/PhaseProgress'
+import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { ConfirmDialog } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { lessonTitle } from '@/lib/format'
-import { AUDIO_EXTENSIONS, JOB_STATE_LABELS, audioFileProblem, decisionLabel, decisionLink, formatBytes, jobTypeLabel } from '@/lib/jobs'
-import type { Area } from './types'
-
-function today(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function Checkbox({ id, label, hint, checked, onChange }: { id: string; label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-start gap-2">
-      <input id={id} type="checkbox" className="mt-0.5 size-4 accent-current" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <label htmlFor={id} className="text-sm">
-        {label}
-        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
-      </label>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------- importazione
-
-function OrphanUploads() {
-  const client = useQueryClient()
-  const inventory = useQuery({ queryKey: ['uploads'], queryFn: () => unwrap(api.GET('/api/v1/uploads')) })
-  const [selected, setSelected] = useState<{ id: string; referenced: boolean } | null>(null)
-  const [confirmation, setConfirmation] = useState('')
-  const deletion = useMutation({
-    mutationFn: (item: { id: string; referenced: boolean }) => unwrap(api.DELETE('/api/v1/uploads/{upload_id}', {
-      params: { path: { upload_id: item.id }, query: { include_referenced: item.referenced } },
-    })),
-    onSuccess: () => { setSelected(null); setConfirmation(''); void client.invalidateQueries({ queryKey: ['uploads'] }) },
-  })
-  // Attivi (job in corso o upload appena caricato) non si toccano; quelli di job falliti o
-  // annullati servono a Riprova e si eliminano solo con una conferma che lo dice.
-  const removable = inventory.data?.filter((item) => item.state !== 'active') ?? []
-  const orphans = removable.filter((item) => item.state === 'orphan').length
-  return <Card className="p-5">
-    <h2 className="text-sm font-bold">Audio temporanei non utilizzati</h2>
-    <p className="mt-1 text-xs text-muted-foreground">Gli upload dei job in corso restano protetti. La rimozione richiede sempre conferma.</p>
-    {inventory.isError && <Alert tone="danger">{errorMessage(inventory.error)}</Alert>}
-    {inventory.isPending && <p className="text-xs">Controllo gli upload…</p>}
-    {inventory.data && <p className="mt-2 text-xs">Orfani: {orphans} · Di job falliti o annullati: {removable.length - orphans} · In uso: {inventory.data.length - removable.length}</p>}
-    <ul className="mt-2 space-y-2">{removable.map((item) => <li key={item.id} className="flex flex-wrap items-center gap-2 text-xs">
-      <span className="font-mono">{item.id.slice(0, 12)}…</span>
-      <span>{item.files} file · {new Date(item.modified_at).toLocaleString('it-IT')}</span>
-      {item.state === 'referenced' && <span className="text-muted-foreground">job non riuscito</span>}
-      <Button size="sm" variant="outline" onClick={() => { setConfirmation(''); setSelected({ id: item.id, referenced: item.state === 'referenced' }) }}>Elimina</Button>
-    </li>)}</ul>
-    <ConfirmDialog open={selected !== null} title="Elimina upload" confirmLabel="Elimina definitivamente"
-      confirmDisabled={confirmation !== 'elimina' || deletion.isPending} onCancel={() => setSelected(null)}
-      onConfirm={() => { if (selected) deletion.mutate(selected) }}>
-      <p>{selected?.referenced
-        ? 'Questo audio appartiene a un job fallito o annullato: dopo l\'eliminazione il job non si potrà più riprovare.'
-        : 'Questo audio temporaneo non è associato a un job.'} Scrivi <strong>elimina</strong> per cancellarlo definitivamente.</p>
-      <Input aria-label="Conferma eliminazione upload" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-2" />
-      {deletion.isError && <Alert tone="danger">{errorMessage(deletion.error)}</Alert>}
-    </ConfirmDialog>
-  </Card>
-}
-
-/** Importazione dell'audio: solo trascrizione (job ingest_audio) o pipeline completa (run_pipeline). */
-export function ImportPage() {
-  const navigate = useNavigate()
-  const lessons = useLessons()
-  const settings = useSettings()
-  const create = useCreateLesson()
-  const [files, setFiles] = useState<File[]>([])
-  const [date, setDate] = useState(today())
-  const [materia, setMateria] = useState('')
-  const [argomenti, setArgomenti] = useState('')
-  const [docente, setDocente] = useState('')
-  const [run, setRun] = useState(true)
-  const [withReview, setWithReview] = useState(false)
-  const [mock, setMock] = useState(false)
-  const [autoAccept, setAutoAccept] = useState(false)
-  const [problem, setProblem] = useState<string | null>(null)
-  const teachers = [...new Set((lessons.data ?? []).map((l) => l.docente).filter(Boolean))].sort()
-  const subjects = [...new Set([...(lessons.data ?? []).map((l) => l.materia), ...Object.keys(settings.data?.telegram.topics ?? {})].filter(Boolean))].sort()
-
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    const issue = audioFileProblem(files) ?? (materia.trim() ? null : 'Indica la materia.')
-    setProblem(issue)
-    if (issue) return
-    create.mutate(
-      { files, date, materia: materia.trim(), argomenti: argomenti.trim(), docente: docente.trim(), run, mock, auto_accept: autoAccept, with_review: withReview },
-      { onSuccess: (accepted) => navigate(`/job/${accepted.job_id}`) },
-    )
-  }
-
-  const total = files.reduce((sum, f) => sum + f.size, 0)
-  const progress = create.progress
-  const percent = progress?.total ? Math.round((progress.loaded / progress.total) * 100) : null
-  const uploadError = create.error instanceof ApiError && create.error.code === 'payload_too_large'
-    ? `${create.error.message} Dividi l'audio in più file più piccoli.`
-    : create.isError ? errorMessage(create.error) : null
-
-  return (
-    <section className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <h1 className="text-xl font-bold tracking-tight">Importa una lezione</h1>
-      <WorkerWarning />
-      <Card className="p-5">
-        <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Importa una lezione">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="import-audio">File audio</Label>
-            <Input
-              id="import-audio"
-              type="file"
-              multiple
-              accept={[...AUDIO_EXTENSIONS, 'audio/*'].join(',')}
-              className="h-auto py-1.5"
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-              disabled={create.isPending}
-            />
-            <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
-              event.preventDefault()
-              if (!create.isPending) setFiles((current) => [...current, ...Array.from(event.dataTransfer.files)])
-            }}>
-              Trascina qui i file audio oppure sceglili sopra.
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {files.length > 0
-                ? `${files.length} file, ${formatBytes(total)}. Più file diventano un'unica lezione, nell'ordine scelto.`
-                : `Formati: ${AUDIO_EXTENSIONS.join(', ')}.`}
-            </span>
-            {files.length > 0 && <AudioOrder files={files} onChange={setFiles} disabled={create.isPending} />}
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="import-date">Data</Label>
-              <Input id="import-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} disabled={create.isPending} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="import-materia">Materia</Label>
-              <Input
-                id="import-materia"
-                list="import-materie"
-                required
-                value={materia}
-                onChange={(e) => setMateria(e.target.value)}
-                placeholder="Es. BIOCHIMICA"
-                disabled={create.isPending}
-              />
-              <datalist id="import-materie">
-                {subjects.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="import-argomenti">Argomenti</Label>
-              <Input
-                id="import-argomenti"
-                value={argomenti}
-                onChange={(e) => setArgomenti(e.target.value)}
-                placeholder="Facoltativi: se mancano li ricava la pipeline"
-                disabled={create.isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="import-docente">Docente</Label>
-              <Input
-                id="import-docente"
-                list="import-docenti"
-                value={docente}
-                onChange={(e) => setDocente(e.target.value)}
-                placeholder="Facoltativo"
-                disabled={create.isPending}
-              />
-              <datalist id="import-docenti">
-                {teachers.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-          <Checkbox
-            id="import-run"
-            label="Avvia subito la pipeline"
-            hint="Trascrizione, preparazione, scaletta (con la tua approvazione), rielaborazione e documento. Senza, solo importazione e trascrizione."
-            checked={run}
-            onChange={setRun}
-          />
-          <Checkbox id="import-with-review" label="Includi la review" hint="Esegue la revisione scientifica prima di creare il documento." checked={withReview} onChange={setWithReview} />
-          <details className="text-sm">
-            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Opzioni avanzate</summary>
-            <div className="mt-3 flex flex-col gap-3">
-              <Checkbox
-                id="import-mock"
-                label="Modalità prova (mock)"
-                hint="Nessuna trascrizione reale né chiamata ai modelli."
-                checked={mock}
-                onChange={setMock}
-              />
-              <Checkbox
-                id="import-auto-accept"
-                label="Accetta automaticamente le correzioni della review"
-                hint="Le correzioni proposte dalla review vengono applicate senza chiederti conferma."
-                checked={autoAccept}
-                onChange={setAutoAccept}
-              />
-            </div>
-          </details>
-          {problem && <Alert tone="danger">{problem}</Alert>}
-          {uploadError && <Alert tone="danger">{uploadError}</Alert>}
-          {progress && (
-            <div className="flex flex-col gap-1">
-              <ProgressBar value={percent} label="Caricamento dell'audio" />
-              <span className="text-xs text-muted-foreground" aria-live="polite">
-                Caricamento: {formatBytes(progress.loaded)}
-                {progress.total ? ` di ${formatBytes(progress.total)} (${percent}%)` : ''}
-              </span>
-            </div>
-          )}
-          <div>
-            <Button type="submit" disabled={create.isPending}>
-              <Upload aria-hidden />
-              {create.isPending ? 'Caricamento…' : 'Importa'}
-            </Button>
-          </div>
-        </form>
-      </Card>
-      <ZipImportCard />
-      <OrphanUploads />
-    </section>
-  )
-}
+import { JOB_STATE_LABELS, decisionLabel, decisionLink, isActive, jobTypeLabel } from '@/lib/jobs'
 
 // ---------------------------------------------------------------- job
 
@@ -265,7 +27,7 @@ export function JobsPage() {
   const state = params.get('stato') ?? ''
   const lessonParam = params.get('lezione')
   const lessonId = lessonParam ? Number(lessonParam) : undefined
-  const jobs = useJobs({ state: state || undefined, lesson_id: lessonId, limit: 100 }, { poll: 5_000 })
+  const jobs = useJobs({ state: state || undefined, lesson_id: lessonId, limit: 100 })
   const lessons = useLessons()
   const byId = new Map((lessons.data ?? []).map((l) => [l.id, l]))
 
@@ -277,9 +39,11 @@ export function JobsPage() {
   }
 
   return (
+    <>
+    <PageHeader title="Job in corso" />
+    <PageBody>
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
-        <h1 className="mr-auto text-xl font-bold tracking-tight">Job</h1>
         <div className="flex flex-col gap-1">
           <Label htmlFor="jobs-stato">Stato</Label>
           <Select id="jobs-stato" value={state} onChange={(e) => setFilter('stato', e.target.value)} className="w-56">
@@ -291,10 +55,6 @@ export function JobsPage() {
             ))}
           </Select>
         </div>
-        <Link to="/importa" className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90">
-          <Upload className="size-4" aria-hidden />
-          Importa
-        </Link>
       </div>
       {lessonId != null && (
         <p className="text-xs text-muted-foreground">
@@ -328,176 +88,30 @@ export function JobsPage() {
                   )}
                   <JobStateBadge state={job.state} />
                 </span>
+                {isActive(job.state) && <PhaseProgress jobId={job.id} className="basis-full" />}
               </Card>
             </li>
           )
         })}
       </ul>
     </section>
+    </PageBody>
+    </>
   )
 }
 
 export function JobPage() {
   const jobId = useParams().jobId ?? ''
   return (
-    <section className="flex flex-col gap-4">
-      <Link to="/job" className="text-xs text-muted-foreground hover:underline">
-        ← Tutti i job
-      </Link>
-      <h1 className="sr-only">Dettaglio del job</h1>
-      <WorkerWarning />
-      <JobLive jobId={jobId} />
-    </section>
+    <>
+      <PageHeader title="Dettaglio del job" back={{ to: '/job', label: 'Tutti i job' }} />
+      <PageBody>
+        <section className="flex flex-col gap-4">
+          <WorkerWarning />
+          <JobLive jobId={jobId} />
+        </section>
+      </PageBody>
+    </>
   )
 }
 
-// ---------------------------------------------------------------- outline
-
-/** Scaletta ad albero, approvazione e richiesta di modifiche (come la revisione da terminale). */
-export function OutlinePage() {
-  const lessonId = Number(useParams().lessonId)
-  const lesson = useLesson(lessonId)
-  const outline = useOutline(lessonId)
-  const approve = useApproveOutline(lessonId)
-  const revise = useReviseOutline(lessonId)
-  const waitingJobs = useJobs({ lesson_id: lessonId, state: 'waiting_for_decision' }, { poll: 5_000 })
-  const waiting = waitingJobs.data?.find((j) => j.decision?.kind === 'outline_approval')
-  const [feedback, setFeedback] = useState('')
-  const [mock, setMock] = useState(false)
-  const [resumedJob, setResumedJob] = useState<string | null>(null)
-  const [revisionJob, setRevisionJob] = useState<string | null>(null)
-
-  function doApprove() {
-    const pending = waiting?.id ?? null
-    approve.mutate(undefined, { onSuccess: () => setResumedJob(pending) })
-  }
-
-  function doRevise(event: FormEvent) {
-    event.preventDefault()
-    if (!feedback.trim()) return
-    revise.mutate(
-      { feedback: feedback.trim(), mock },
-      {
-        onSuccess: (accepted) => {
-          setRevisionJob(accepted.job_id)
-          setFeedback('')
-        },
-      },
-    )
-  }
-
-  const notFound = outline.error instanceof ApiError && outline.error.code === 'outline_not_found'
-  const busy = [approve.error, revise.error].find((e) => e instanceof ApiError && e.code === 'lesson_busy')
-  const otherError = [approve.error, revise.error].find((e) => e && e !== busy)
-
-  return (
-    <section className="flex flex-col gap-4">
-      <Link to={`/lezioni/${lessonId}`} className="text-xs text-muted-foreground hover:underline">
-        ← {lesson.data ? lessonTitle(lesson.data) : 'Lezione'}
-      </Link>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-xl font-bold tracking-tight">Scaletta</h1>
-        {outline.data && (
-          <Badge tone={outline.data.approved ? 'success' : 'warning'} data-testid="outline-approved" data-approved={outline.data.approved}>
-            {outline.data.approved ? 'Approvata' : 'Da approvare'}
-          </Badge>
-        )}
-      </div>
-
-      {waiting && !outline.data?.approved && (
-        <Alert tone="warning" data-testid="outline-waiting">
-          <strong>Serve la tua approvazione:</strong> la pipeline è ferma finché non approvi la scaletta o chiedi modifiche.
-        </Alert>
-      )}
-      {resumedJob && (
-        <Alert data-testid="pipeline-resumed">
-          Scaletta approvata: la pipeline è ripartita.{' '}
-          <Link to={`/job/${resumedJob}`} className="font-semibold underline">
-            Segui il job
-          </Link>
-        </Alert>
-      )}
-      {busy && <Alert tone="warning">{errorMessage(busy)} Riprova quando il job in corso ha finito.</Alert>}
-      {otherError && <Alert tone="danger">{errorMessage(otherError)}</Alert>}
-
-      {outline.isPending && <p className="text-sm text-muted-foreground">Carico la scaletta…</p>}
-      {notFound && <Card className="p-6 text-sm text-muted-foreground">La scaletta non è ancora stata generata: avvia la pipeline o la fase scaletta.</Card>}
-      {outline.isError && !notFound && <Alert tone="danger">{errorMessage(outline.error)}</Alert>}
-
-      {outline.data && (
-        <>
-          <Card className="p-5">
-            <h2 className="mb-3 text-lg font-bold tracking-tight">{outline.data.lesson_title}</h2>
-            <ol className="flex flex-col gap-3" aria-label="Scaletta della lezione">
-              {outline.data.macro_sections.map((macro) => (
-                <li key={macro.id} data-testid="outline-macro">
-                  <details open>
-                    <summary className="cursor-pointer font-semibold">
-                      <span className="mr-2 text-xs text-muted-foreground">{macro.id}</span>
-                      {macro.title}
-                    </summary>
-                    <ol className="ml-5 mt-2 flex flex-col gap-2 border-l pl-4">
-                      {macro.units.map((unit) => (
-                        <li key={unit.id} data-testid="outline-unit">
-                          <p className="text-sm font-medium">
-                            <span className="mr-2 text-xs text-muted-foreground">{unit.id}</span>
-                            {unit.title}
-                          </p>
-                          {unit.key_concepts.length > 0 && (
-                            <p className="text-xs text-muted-foreground">{unit.key_concepts.join(' · ')}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  </details>
-                </li>
-              ))}
-            </ol>
-          </Card>
-
-          <Card className="flex flex-col gap-4 p-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={doApprove} disabled={approve.isPending || outline.data.approved}>
-                {outline.data.approved ? 'Scaletta approvata' : 'Approva la scaletta'}
-              </Button>
-              {outline.data.approval?.approved_at != null && (
-                <span className="text-xs text-muted-foreground">Approvata il {formatDateTime(String(outline.data.approval.approved_at))}</span>
-              )}
-            </div>
-            <form className="flex flex-col gap-2" onSubmit={doRevise} aria-label="Richiedi modifiche alla scaletta">
-              <Label htmlFor="outline-feedback">Richiedi modifiche</Label>
-              <textarea
-                id="outline-feedback"
-                rows={3}
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Es. Dividi la seconda sezione in due unità"
-                className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-              />
-              <Checkbox id="outline-mock" label="Modalità prova (mock)" checked={mock} onChange={setMock} />
-              <div>
-                <Button type="submit" variant="outline" disabled={revise.isPending || !feedback.trim()}>
-                  Rigenera con il feedback
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </>
-      )}
-      {revisionJob && <JobLive jobId={revisionJob} compact />}
-    </section>
-  )
-}
-
-export const jobsArea: Area = {
-  routes: [
-    { path: 'importa', element: <ImportPage /> },
-    { path: 'job', element: <JobsPage /> },
-    { path: 'job/:jobId', element: <JobPage /> },
-    { path: 'lezioni/:lessonId/outline', element: <OutlinePage /> },
-  ],
-  nav: [
-    { to: '/importa', label: 'Importa', icon: Upload },
-    { to: '/job', label: 'Job', icon: Activity, badge: JobsNavBadge },
-  ],
-}

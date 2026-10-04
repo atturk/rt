@@ -46,3 +46,11 @@ export function useRefreshImages(id: number) {
       client.invalidateQueries({ queryKey: lessonKeys.all(id) }),
     ])
 }
+
+/** Caricamento diretto dall'editor: nessun job LLM, il file è già un media della lezione. */
+export function uploadEditorImage(id: number, file: File, leaseToken: string) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/images', {
+    params: path(id), body: { file: file.name, lease_token: leaseToken },
+    bodySerializer: () => formData({ file, lease_token: leaseToken }),
+  }))
+}

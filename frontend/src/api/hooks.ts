@@ -50,6 +50,11 @@ export function useLogin() {
   })
 }
 
+/** Link monouso per aprire una sessione da un altro browser (POST /auth/login-link). */
+export function useLoginLink() {
+  return useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/auth/login-link')) })
+}
+
 export function useLogout() {
   const client = useQueryClient()
   return useMutation({
@@ -91,23 +96,21 @@ export function useWaveform(id: number, enabled: boolean) {
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/audio/waveform', { params: { path: { lesson_id: id } } })),
     enabled,
     staleTime: Infinity,
+    // Polling voluto finché non è pronta: la calcola un thread dell'API, non un job (niente eventi live).
     refetchInterval: (query) => (query.state.data && !query.state.data.ready ? 1500 : false),
   })
 }
 
-/**
- * Job della lezione. Mentre uno è attivo li aggiornano gli eventi SSE (JobsPanel); il
- * controllo lento resta solo come ripiego se lo stream non arriva.
- */
+/** Job della lezione, aggiornati dal canale live (liveUpdates.ts) a ogni evento. */
 export function useLessonJobs(id: number) {
   return useQuery({
     queryKey: lessonKeys.jobs(id),
     queryFn: () => unwrap(api.GET('/api/v1/jobs', { params: { query: { lesson_id: id, limit: 10 } } })),
-    refetchInterval: (query) => (query.state.data?.some((j) => isActiveJob(j.state)) ? 10_000 : false),
   })
 }
 
 export function useWorkers() {
+  // Polling lento voluto: i worker vivi si vedono dai loro heartbeat, che non sono eventi.
   return useQuery({ queryKey: ['workers'], queryFn: () => unwrap(api.GET('/api/v1/workers')), refetchInterval: 10_000 })
 }
 
@@ -120,6 +123,46 @@ export function useRefreshLesson(id: number) {
       client.invalidateQueries({ queryKey: queryKeys.allLessons }),
       client.invalidateQueries({ queryKey: queryKeys.costs }),
     ])
+}
+
+export function useUpdateLessonMetadata(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: (body: Schemas['LessonMetadataUpdate']) =>
+      unwrap(api.PATCH('/api/v1/lessons/{lesson_id}/metadata', { params: { path: { lesson_id: id } }, body })),
+    onSuccess: () => {
+      void refresh()
+    },
+  })
+}
+
+export function usePipelineVersion(id: number) {
+  return useQuery({
+    queryKey: ['lesson', id, 'pipeline-version'] as const,
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/document/pipeline-version', { params: { path: { lesson_id: id } } })),
+    enabled: Number.isFinite(id),
+  })
+}
+
+export function useRestorePipeline(id: number) {
+  const refresh = useRefreshLesson(id)
+  return useMutation({
+    mutationFn: (leaseToken?: string | null) =>
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/document/restore-pipeline', { params: { path: { lesson_id: id } }, body: { lease_token: leaseToken } })),
+    onSuccess: () => {
+      void refresh()
+    },
+  })
+}
+
+export function useDeleteLesson(id: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE('/api/v1/lessons/{lesson_id}', { params: { path: { lesson_id: id } } })),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.allLessons })
+    },
+  })
 }
 
 export type PhaseName = 'prepare' | 'outline' | 'rewrite' | 'review' | 'build'
@@ -160,9 +203,10 @@ export const reviewKeys = {
   decisions: (id: number) => ['lesson', id, 'decisions'] as const,
 }
 
-export function useIssues(id: number) {
+export function useIssues(id: number, enabled = true) {
   return useQuery({
     queryKey: reviewKeys.issues(id),
+    enabled,
     queryFn: () =>
       unwrap(api.GET('/api/v1/lessons/{lesson_id}/issues', { params: { path: { lesson_id: id }, query: { status: 'all' } } })),
   })

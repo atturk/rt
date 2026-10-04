@@ -9,7 +9,35 @@ from typing import Any, Dict, List, Literal, Optional
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
 NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mista"]
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class LessonMetadataUpdate(BaseModel):
+    titolo: Optional[str] = Field(None, max_length=180)
+    materia: Optional[str] = Field(None, max_length=80)
+    data: Optional[str] = None
+    ora: Optional[str] = None
+    docente: Optional[str] = Field(None, max_length=180)
+
+    @field_validator('titolo', 'materia', 'data', 'ora', 'docente')
+    @classmethod
+    def validate_metadata(cls, value, info):
+        if value is None or any(ord(c) < 32 for c in value):
+            raise ValueError('Il campo deve essere una stringa su una sola riga.')
+        value = value.strip()
+        if info.field_name in ('titolo', 'materia') and not value:
+            raise ValueError('Il campo non può essere vuoto.')
+        if info.field_name == 'data':
+            from datetime import date
+            import re
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                raise ValueError('Data non valida: usa AAAA-MM-GG.')
+            date.fromisoformat(value)
+        if info.field_name == 'ora' and value:
+            import re
+            if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value):
+                raise ValueError('Ora non valida: usa HH:MM.')
+        return value.upper() if info.field_name == 'materia' else value
 
 
 class LessonSummary(BaseModel):
@@ -17,6 +45,7 @@ class LessonSummary(BaseModel):
     folder_name: str
     path: str
     data: str = ""
+    ora: str = ""
     materia: str = ""
     titolo: str = ""
     argomenti: str = ""
@@ -25,6 +54,10 @@ class LessonSummary(BaseModel):
     phases: Dict[str, str] = Field(description="fase -> VALID | PARTIAL | STALE | MISSING | INVALID")
     pending_issues: int = 0
     cost_usd: Optional[float] = None
+    unit_count: Optional[int] = Field(None, description="Unità della scaletta (null se non c'è ancora)")
+    duration_seconds: Optional[float] = Field(None, description="Durata dell'audio della lezione, se nota")
+    recall_questions: int = Field(0, description="Domande di recall nel pool della lezione")
+    recall_pending: int = Field(0, description="Domande del pool non ancora poste (da fare)")
     error: Optional[str] = None
 
 
@@ -190,6 +223,22 @@ class DocumentEditCheck(BaseModel):
     errors: List[DocumentEditProblem] = Field(description="Errori che impedirebbero il salvataggio")
 
 
+class DocumentPipelineVersion(BaseModel):
+    available: bool
+    modified_units: int
+
+
+class DocumentRestoreIn(BaseModel):
+    lease_token: Optional[str] = None
+
+
+class DocumentRestoreResult(BaseModel):
+    modified_units: int
+    units_changed: List[str]
+    build_status: str
+    build_reason: str
+
+
 class DocumentEditResult(BaseModel):
     changed: bool = Field(description="False se il Markdown era uguale all'anteprima")
     units_changed: List[str] = Field(description="Unità il cui testo è cambiato nella bozza")
@@ -222,6 +271,9 @@ class Outline(BaseModel):
     macro_sections: List[OutlineMacro]
     approval: Optional[Dict[str, Any]] = None
     approved: bool
+    expires_at: Optional[str] = None
+    timer_seconds: Optional[int] = None
+    timer_suspended: bool = False
 
 
 class IssueContext(BaseModel):
@@ -357,8 +409,11 @@ class JobRequest(BaseModel):
     force: bool = False
     mock: bool = False
     with_review: bool = False
+    with_enrichment: Optional[bool] = Field(None, description="Esegue l'arricchimento didattico alla fine della pipeline")
     auto_accept: bool = False
     rename: bool = True
+    parent_context: bool = Field(False, description="Review di unità: le altre subunità della stessa unità vanno al "
+                                                    "revisore come contesto (Verifica questa parte)")
     mock_fail_once: Optional[Literal["rewrite", "review"]] = Field(
         None, description="Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta "
                           "con una risposta fuori schema (poi Riprova va a buon fine)")
@@ -384,11 +439,14 @@ class CredentialTest(BaseModel):
 # ---------------------------------------------------------------- recall
 
 class RecallQuestion(BaseModel):
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
     type: str
     unit_ids: List[str]
     question_text: str
     options: Optional[List[str]] = None
+    discard_reasons: List[str] = Field(default_factory=list)
+    comment: Optional[str] = None
     status: str
     correct_index: Optional[int] = None
     explanation: Optional[str] = None
@@ -441,16 +499,37 @@ class RecallUnits(BaseModel):
     selected: int
 
 
+class StudyUnit(BaseModel):
+    id: str
+    title: str
+    html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
+    start: Optional[float] = Field(None, description="Inizio dell'unità nell'audio della lezione (secondi)")
+    end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
+    pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")
+    questions: int = Field(description="Totale delle domande da porre sull'unità")
+
+
+class StudyLesson(BaseModel):
+    id: int
+    ready: bool = Field(description="False se la lezione non ha ancora una rielaborazione valida (nessuna unità)")
+    has_audio: bool
+    units: List[StudyUnit]
+
+
 class RecallUnitSelection(BaseModel):
     unit_ids: Optional[List[str]] = Field(None, description="Unità selezionate; null torna alla selezione predefinita")
 
 
 class RecallAnswerRecord(BaseModel):
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     question_id: str
     answer_text: str
     is_voice: bool = False
     evaluation: Optional[str] = None
     vote: Optional[str] = Field(None, description="up | down | lightning")
+    vote_reasons: List[str] = Field(default_factory=list)
+    vote_comment: Optional[str] = None
+    dont_know: bool = False
     answered_at: str
 
 
@@ -462,11 +541,16 @@ class RecallHistory(BaseModel):
 class RecallGenerate(BaseModel):
     qtype: Optional[QuestionType] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
+    unit_ids: Optional[List[str]] = Field(None, max_length=200, description="Solo queste unità (Domande su questa parte): "
+                                          "quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall")
+    instructions: Optional[str] = Field(None, max_length=2000, description="Istruzioni aggiuntive per la generazione")
+    selection: Optional[str] = Field(None, max_length=10000, description="Testo selezionato dall'utente nell'editor o nelle unità")
     mock: bool = False
 
 
 class RecallAnswer(BaseModel):
     question_id: str
+    dont_know: bool = False
     choice: Optional[int] = Field(None, description="Quiz: indice dell'opzione (0-3)")
     answer: Optional[str] = Field(None, description="Mirata/vasta: risposta scritta (valutata da un job)")
     mock: bool = False
@@ -480,6 +564,21 @@ class QuizResult(BaseModel):
 class RecallVote(BaseModel):
     question_id: str
     vote: Literal["up", "down", "lightning"]
+    reasons: List[Literal['sbagliata', 'ambigua', 'troppi_indizi', 'troppo_facile', 'fuori_tema', 'gia_vista']] = Field(default_factory=list, max_length=6)
+    comment: Optional[str] = Field(None, max_length=10000)
+
+
+class RecallRegenerate(BaseModel):
+    question_id: str
+    comment: str = Field(min_length=1, max_length=10000)
+    mock: bool = False
+
+    @field_validator('comment')
+    @classmethod
+    def nonempty_comment(cls, value):
+        if not value.strip():
+            raise ValueError('Scrivi un commento.')
+        return value.strip()
 
 
 class RecallSkip(BaseModel):
@@ -543,7 +642,7 @@ class LessonRecallStats(BaseModel):
 
 
 class SubjectRecall(BaseModel):
-    materia: str = Field(description="Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso")
+    materia: str = Field(description="Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione")
     lessons: List[LessonRecallStats]
     session: Optional[RecallSessionInfo] = Field(None, description="Sessione per materia in corso nella web app")
 
@@ -567,6 +666,7 @@ class TelegramRecallStart(BaseModel):
 
 
 class TelegramRecallStatus(BaseModel):
+    enabled: bool = Field(False, description="Telegram attivo (spento di predefinito: il recall si fa solo nella web app)")
     configured: bool = Field(description="Token e chat del bot salvati")
     running: bool = Field(description="Bot in esecuzione")
     sessions: List[RecallSessionInfo] = Field(description="Sessioni di recall in corso su Telegram, per tutte le lezioni")

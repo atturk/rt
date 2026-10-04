@@ -196,7 +196,7 @@ def cmd_review(args):
         channel = getattr(args, "channel", None)
         if not channel:
             from rt.core.config import load_config as _load_cfg_for_channel
-            channel = _load_cfg_for_channel().telegram.default_channel
+            channel = _load_cfg_for_channel().telegram.channel
         auto_accept = getattr(args, "auto_accept", None)
         history = getattr(args, "history", False)
         run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
@@ -246,7 +246,7 @@ def cmd_review(args):
     channel = getattr(args, "channel", None)
     if not channel:
         from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
+        channel = _load_cfg_for_channel().telegram.channel
 
     if not res.get("skipped") and channel == "telegram":
         from rt.telegram.notify import notify_issues_ready
@@ -285,7 +285,7 @@ def _review_units(args) -> None:
     channel = getattr(args, "channel", None)
     if not channel:
         from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
+        channel = _load_cfg_for_channel().telegram.channel
     run_interactive_review(args.lesson_dir, "science", channel=channel,
                            auto_accept=getattr(args, "auto_accept", None), history=getattr(args, "history", False))
 
@@ -348,7 +348,7 @@ def cmd_recall(args):
     channel = getattr(args, "channel", None)
     if not channel:
         from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.default_channel
+        channel = _load_cfg_for_channel().telegram.channel
 
     from rt.telegram.recall_channel import start_recall_via_telegram
     from rt.tui.recall import run_recall_terminal_session
@@ -820,6 +820,7 @@ def cmd_run(args):
         force=getattr(args, "force", False),
         mock=mock_mode,
         with_review=with_review,
+        with_enrichment=getattr(args, "with_enrichment", None),
         auto_accept=bool(getattr(args, "auto_accept", False)),
         rename=getattr(args, "rename", True),
         channel=getattr(args, "channel", None),
@@ -862,7 +863,11 @@ def cmd_telegram_daemon(args):
     if getattr(args, "service", False):
         # servizio launchd (fase G): senza token e Chat ID esce con 0, così launchd non lo
         # rilancia a vuoto; si riavvia da Impostazioni quando il bot è configurato
+        from rt.core.config import telegram_enabled
         from rt.services.settings_service import telegram_configured
+        if not telegram_enabled():
+            print("ℹ️  Telegram è disattivato: il servizio del bot resta fermo.", file=sys.stderr)
+            return
         if not telegram_configured():
             print("ℹ️  Bot Telegram non configurato: il servizio resta fermo.", file=sys.stderr)
             return
@@ -1166,6 +1171,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         dest="with_review",
         help="Include anche la review nella run."
     )
+    p_run.add_argument("--with-enrichment", action="store_true", default=None,
+                       help="Esegue l'arricchimento didattico alla fine della pipeline")
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
                         help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")

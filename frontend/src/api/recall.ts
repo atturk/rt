@@ -13,6 +13,7 @@ export const recallKeys = {
   history: (id: number) => ['recall', id, 'history'] as const,
   units: (id: number) => ['recall', id, 'units'] as const,
   questions: (id: number, reveal: boolean) => ['recall', id, 'questions', reveal] as const,
+  study: (id: number) => ['recall', id, 'study'] as const,
   all: (id: number) => ['recall', id] as const,
 }
 
@@ -42,10 +43,23 @@ function useRecallMutation<TVars, TData>(id: number, fn: (vars: TVars) => Promis
   })
 }
 
+export type GenerateRecallOptions = {
+  qtype?: RecallType | null
+  count?: number | null
+  instructions?: string | null
+  unit_ids?: string[] | null
+  selection?: string | null
+  mock?: boolean
+}
+
 export function useGenerateRecall(id: number) {
-  return useRecallMutation(id, (qtype: RecallType | null) =>
-    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { qtype, mock: false } })),
-  )
+  return useRecallMutation(id, (options: GenerateRecallOptions | RecallType | null = null) => {
+    const body: Schemas['RecallGenerate'] =
+      typeof options === 'string' || options === null
+        ? { qtype: options ?? null, mock: false }
+        : { mock: false, ...options }
+    return unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body }))
+  })
 }
 
 export type RecallUnits = Schemas['RecallUnits']
@@ -101,21 +115,40 @@ export function useDeleteQuestions(id: number) {
 }
 
 export function useNextQuestion(id: number) {
-  return useRecallMutation(id, (vars: { qtype: RecallType; excludeId?: string }) =>
+  return useRecallMutation(id, (vars: { qtype: RecallType | 'mista'; excludeId?: string; unitId?: string }) =>
     unwrap(
       api.POST('/api/v1/lessons/{lesson_id}/recall/next', {
-        params: { ...path(id), query: { qtype: vars.qtype, exclude_id: vars.excludeId } },
+        params: { ...path(id), query: { qtype: vars.qtype, exclude_id: vars.excludeId, unit_id: vars.unitId } },
       }),
     ),
   )
 }
 
+export type StudyLesson = Schemas['StudyLesson']
+export type StudyUnit = Schemas['StudyUnit']
+
+/** Studio: unità della lezione con testo, tratto d'audio e domande da porre (si rilegge dopo ogni risposta). */
+export function useStudyLesson(id: number | null) {
+  return useQuery({
+    queryKey: recallKeys.study(id ?? 0),
+    enabled: id != null,
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/study', { params: path(id!) })),
+  })
+}
+
+/** Domande (quiz e mirate) solo su alcune unità: Domande su questa parte, quando non ce ne sono. */
+export function useGenerateForUnits(id: number) {
+  return useRecallMutation(id, (unitIds: string[]) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { qtype: null, mock: false, unit_ids: unitIds } })),
+  )
+}
+
 /** Quiz: risultato subito. Risposta aperta: job di valutazione (202). */
 export function useAnswer(id: number) {
-  return useRecallMutation(id, async (vars: { questionId: string; choice?: number; answer?: string }) => {
+  return useRecallMutation(id, async (vars: { questionId: string; choice?: number; answer?: string; dontKnow?: boolean }) => {
     const res = await api.POST('/api/v1/lessons/{lesson_id}/recall/answer', {
       params: path(id),
-      body: { question_id: vars.questionId, choice: vars.choice ?? null, answer: vars.answer ?? null, mock: false },
+      body: { question_id: vars.questionId, dont_know: vars.dontKnow ?? false, choice: vars.choice ?? null, answer: vars.answer ?? null, mock: false },
     })
     const data = await unwrap(Promise.resolve(res))
     return res.response.status === 202 ? { job: data as unknown as Schemas['JobAccepted'] } : { quiz: data }
@@ -135,8 +168,14 @@ export function useAnswerVoice(id: number) {
 }
 
 export function useVote(id: number) {
-  return useRecallMutation(id, (vars: { questionId: string; vote: Vote }) =>
-    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/vote', { params: path(id), body: { question_id: vars.questionId, vote: vars.vote } })),
+  return useRecallMutation(id, (vars: { questionId: string; vote: Vote; reasons?: Schemas['RecallVote']['reasons']; comment?: string }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/vote', { params: path(id), body: { question_id: vars.questionId, vote: vars.vote, reasons: vars.reasons ?? [], comment: vars.comment ?? null } })),
+  )
+}
+
+export function useRegenerateQuestion(id: number) {
+  return useRecallMutation(id, (vars: { questionId: string; comment: string }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/regenerate', { params: path(id), body: { question_id: vars.questionId, comment: vars.comment, mock: false } })),
   )
 }
 
@@ -160,6 +199,8 @@ export function useRecallSession(id: number) {
   return useQuery({
     queryKey: sessionKeys.lesson(id),
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/session', { params: path(id) })),
+    // Polling voluto: le richieste al bot (telegram_commands) e le risposte date su Telegram non
+    // sono job, quindi non passano dal canale live.
     refetchInterval: (query) => {
       const state = query.state.data?.command?.state
       return state === 'pending' || state === 'running' ? 1_000 : 10_000
@@ -172,6 +213,7 @@ export function useTelegramRecall() {
   return useQuery({
     queryKey: sessionKeys.telegram,
     queryFn: () => unwrap(api.GET('/api/v1/recall/telegram')),
+    // Polling lento voluto: bot e sessioni su Telegram cambiano fuori dai job (niente eventi live).
     refetchInterval: 10_000,
   })
 }
@@ -218,9 +260,7 @@ export function useSubjectsRecall() {
   return useQuery({
     queryKey: subjectKeys.list,
     queryFn: () => unwrap(api.GET('/api/v1/recall/subjects')),
-    // Finché una lezione è in classificazione il suo stato si aggiorna da solo.
-    refetchInterval: (query) =>
-      query.state.data?.some((s) => s.lessons.some((l) => l.classification?.state === 'running')) ? 3000 : false,
+    // La classificazione (job unit_relevance) la aggiorna il canale live (liveUpdates.ts).
   })
 }
 
@@ -261,7 +301,7 @@ function useSubjectMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
 }
 
 export function useSubjectNext(materia: string) {
-  return useSubjectMutation((vars: { qtype: RecallType; exclude?: string }) =>
+  return useSubjectMutation((vars: { qtype: RecallType | 'mista'; exclude?: string }) =>
     unwrap(api.POST('/api/v1/recall/subject/next', { params: { query: { materia, qtype: vars.qtype, exclude: vars.exclude } } })),
   )
 }

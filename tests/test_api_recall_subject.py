@@ -138,3 +138,24 @@ def test_queued_classifier_shows_running_until_the_job_ends(api_client, lessons,
     assert states() == {lessons[0]: "running", lessons[1]: "stale"}
     _drain(rt_db)
     assert set(states().values()) == {"stale"}
+
+
+def test_selection_session_uses_the_chosen_lessons(api_client, lessons, rt_db):
+    """Recall sulla selezione della pagina Lezioni: LEZIONI:<id>,<id>, in qualsiasi ordine."""
+    items = api_client.get("/api/v1/lessons").json()
+    chosen = sorted(i["id"] for i in items)[:2]
+    subject = "LEZIONI:" + ",".join(str(i) for i in chosen)
+    state = api_client.get("/api/v1/recall/subject", params={"materia": f"LEZIONI:{chosen[1]},{chosen[0]},{chosen[1]}"}).json()
+    assert state["materia"] == subject and sorted(l["lesson_id"] for l in state["lessons"]) == chosen
+
+    api_client.post("/api/v1/recall/subject/generate", params={"materia": subject, "mock": True})
+    _drain(rt_db)
+    res = api_client.post("/api/v1/recall/subject/next", params={"materia": subject, "qtype": "quiz", "mock": True})
+    assert res.status_code == 200, res.text
+    assert res.json()["lesson_id"] in chosen
+    subjects = {s["materia"]: s for s in api_client.get("/api/v1/recall/subjects").json()}
+    assert subjects[subject]["session"] is not None and subjects[subject]["lessons"] == []
+    assert api_client.post("/api/v1/recall/subject/end", params={"materia": subject}).status_code == 200
+
+    bad = api_client.get("/api/v1/recall/subject", params={"materia": "LEZIONI:"})
+    assert bad.status_code == 422

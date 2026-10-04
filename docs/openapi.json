@@ -258,11 +258,29 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "ora": {
+            "default": "",
+            "description": "Ora della lezione (HH:MM, facoltativa)",
+            "pattern": "^(?:(?:[01]\\d|2[0-3]):[0-5]\\d)?$",
+            "title": "Ora",
+            "type": "string"
+          },
           "run": {
             "default": false,
             "description": "True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')",
             "title": "Run",
             "type": "boolean"
+          },
+          "with_enrichment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "With Enrichment"
           },
           "with_review": {
             "default": false,
@@ -293,6 +311,31 @@
           "archives"
         ],
         "title": "Body_import_lesson_zips_api_v1_lessons_import_zip_post",
+        "type": "object"
+      },
+      "Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post",
         "type": "object"
       },
       "Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post": {
@@ -1335,6 +1378,72 @@
         "title": "DocumentEditResult",
         "type": "object"
       },
+      "DocumentPipelineVersion": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "modified_units": {
+            "title": "Modified Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "modified_units"
+        ],
+        "title": "DocumentPipelineVersion",
+        "type": "object"
+      },
+      "DocumentRestoreIn": {
+        "properties": {
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          }
+        },
+        "title": "DocumentRestoreIn",
+        "type": "object"
+      },
+      "DocumentRestoreResult": {
+        "properties": {
+          "build_reason": {
+            "title": "Build Reason",
+            "type": "string"
+          },
+          "build_status": {
+            "title": "Build Status",
+            "type": "string"
+          },
+          "modified_units": {
+            "title": "Modified Units",
+            "type": "integer"
+          },
+          "units_changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Units Changed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "modified_units",
+          "units_changed",
+          "build_status",
+          "build_reason"
+        ],
+        "title": "DocumentRestoreResult",
+        "type": "object"
+      },
       "DocumentSection": {
         "properties": {
           "end_seconds": {
@@ -1411,6 +1520,35 @@
         "title": "DocumentSection",
         "type": "object"
       },
+      "EditorImage": {
+        "properties": {
+          "alt_text": {
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "Riferimento relativo da inserire nel Markdown: assets/images/…",
+            "title": "Path",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "url",
+          "alt_text"
+        ],
+        "title": "EditorImage",
+        "type": "object"
+      },
       "Element": {
         "properties": {
           "asset_html": {
@@ -1449,6 +1587,13 @@
               }
             ],
             "title": "Asset Mode"
+          },
+          "context_unit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context Unit Ids",
+            "type": "array"
           },
           "description": {
             "maxLength": 500,
@@ -1490,7 +1635,8 @@
           "kind": {
             "enum": [
               "infographic",
-              "visualization"
+              "visualization",
+              "image"
             ],
             "title": "Kind",
             "type": "string"
@@ -1514,6 +1660,28 @@
             "minLength": 1,
             "title": "Prompt",
             "type": "string"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection"
           },
           "source_hash": {
             "default": "",
@@ -1578,7 +1746,8 @@
           "kind": {
             "enum": [
               "infographic",
-              "visualization"
+              "visualization",
+              "image"
             ],
             "title": "Kind",
             "type": "string"
@@ -1659,6 +1828,16 @@
             "minimum": 1.0,
             "title": "Decision Timeout",
             "type": "number"
+          },
+          "mode": {
+            "default": "manual",
+            "enum": [
+              "disabled",
+              "manual",
+              "automatic"
+            ],
+            "title": "Mode",
+            "type": "string"
           },
           "utility_threshold": {
             "default": 0.65,
@@ -1861,7 +2040,8 @@
             "default": "visualization",
             "enum": [
               "infographic",
-              "visualization"
+              "visualization",
+              "image"
             ],
             "title": "Kind",
             "type": "string"
@@ -1886,6 +2066,20 @@
             "title": "Prompt",
             "type": "string"
           },
+          "request": {
+            "default": "",
+            "description": "Genera dall'editor: cosa vuole vedere lo studente (il prompt lo scrive il regista enrichment_writer)",
+            "maxLength": 2000,
+            "title": "Request",
+            "type": "string"
+          },
+          "selection": {
+            "default": "",
+            "description": "Genera dall'editor: testo selezionato",
+            "maxLength": 20000,
+            "title": "Selection",
+            "type": "string"
+          },
           "title": {
             "default": "Elemento grafico",
             "maxLength": 120,
@@ -1903,6 +2097,15 @@
               }
             ],
             "title": "Unit Id"
+          },
+          "unit_ids": {
+            "description": "Genera dall'editor: subunità toccate dalla selezione (l'elemento va dopo l'ultima)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Unit Ids",
+            "type": "array"
           }
         },
         "title": "GenerateIn",
@@ -2608,6 +2811,12 @@
             "description": "Solo con mock=true, per i test: la prima unità di questa fase fallisce una volta con una risposta fuori schema (poi Riprova va a buon fine)",
             "title": "Mock Fail Once"
           },
+          "parent_context": {
+            "default": false,
+            "description": "Review di unità: le altre subunità della stessa unità vanno al revisore come contesto (Verifica questa parte)",
+            "title": "Parent Context",
+            "type": "boolean"
+          },
           "phase": {
             "anyOf": [
               {
@@ -2667,6 +2876,18 @@
             ],
             "description": "Rewrite o review: unità selezionate (lista multipla)",
             "title": "Units"
+          },
+          "with_enrichment": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Esegue l'arricchimento didattico alla fine della pipeline",
+            "title": "With Enrichment"
           },
           "with_review": {
             "default": false,
@@ -2817,6 +3038,18 @@
             "title": "Docente",
             "type": "string"
           },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durata dell'audio della lezione, se nota",
+            "title": "Duration Seconds"
+          },
           "error": {
             "anyOf": [
               {
@@ -2844,6 +3077,11 @@
           "materia": {
             "default": "",
             "title": "Materia",
+            "type": "string"
+          },
+          "ora": {
+            "default": "",
+            "title": "Ora",
             "type": "string"
           },
           "outline_approved": {
@@ -2875,6 +3113,18 @@
             "title": "Phases",
             "type": "object"
           },
+          "recall_pending": {
+            "default": 0,
+            "description": "Domande del pool non ancora poste (da fare)",
+            "title": "Recall Pending",
+            "type": "integer"
+          },
+          "recall_questions": {
+            "default": 0,
+            "description": "Domande di recall nel pool della lezione",
+            "title": "Recall Questions",
+            "type": "integer"
+          },
           "segment_count": {
             "default": 0,
             "title": "Segment Count",
@@ -2896,6 +3146,18 @@
             "default": "",
             "title": "Titolo",
             "type": "string"
+          },
+          "unit_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità della scaletta (null se non c'è ancora)",
+            "title": "Unit Count"
           }
         },
         "required": [
@@ -3008,6 +3270,70 @@
         "title": "LessonImages",
         "type": "object"
       },
+      "LessonMetadataUpdate": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "docente": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docente"
+          },
+          "materia": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materia"
+          },
+          "ora": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ora"
+          },
+          "titolo": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titolo"
+          }
+        },
+        "title": "LessonMetadataUpdate",
+        "type": "object"
+      },
       "LessonRecallStats": {
         "properties": {
           "answers": {
@@ -3089,6 +3415,18 @@
             "title": "Docente",
             "type": "string"
           },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durata dell'audio della lezione, se nota",
+            "title": "Duration Seconds"
+          },
           "error": {
             "anyOf": [
               {
@@ -3113,6 +3451,11 @@
             "title": "Materia",
             "type": "string"
           },
+          "ora": {
+            "default": "",
+            "title": "Ora",
+            "type": "string"
+          },
           "path": {
             "title": "Path",
             "type": "string"
@@ -3130,6 +3473,18 @@
             "title": "Phases",
             "type": "object"
           },
+          "recall_pending": {
+            "default": 0,
+            "description": "Domande del pool non ancora poste (da fare)",
+            "title": "Recall Pending",
+            "type": "integer"
+          },
+          "recall_questions": {
+            "default": 0,
+            "description": "Domande di recall nel pool della lezione",
+            "title": "Recall Questions",
+            "type": "integer"
+          },
           "state": {
             "anyOf": [
               {
@@ -3146,6 +3501,18 @@
             "default": "",
             "title": "Titolo",
             "type": "string"
+          },
+          "unit_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unità della scaletta (null se non c'è ancora)",
+            "title": "Unit Count"
           }
         },
         "required": [
@@ -3546,6 +3913,17 @@
             "title": "Approved",
             "type": "boolean"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "lesson_title": {
             "title": "Lesson Title",
             "type": "string"
@@ -3556,6 +3934,22 @@
             },
             "title": "Macro Sections",
             "type": "array"
+          },
+          "timer_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timer Seconds"
+          },
+          "timer_suspended": {
+            "default": false,
+            "title": "Timer Suspended",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3872,6 +4266,42 @@
         "title": "PhaseWarning",
         "type": "object"
       },
+      "PreferencesSettings": {
+        "properties": {
+          "modalita_arricchimento": {
+            "default": "manuale",
+            "description": "Modalità dell'arricchimento",
+            "enum": [
+              "manuale",
+              "automatica",
+              "disattivata"
+            ],
+            "title": "Modalita Arricchimento",
+            "type": "string"
+          },
+          "secondi_approvazione": {
+            "default": 10,
+            "description": "Secondi per l'approvazione automatica della scaletta (0 = disattivata)",
+            "maximum": 3600.0,
+            "minimum": 0.0,
+            "title": "Secondi Approvazione",
+            "type": "integer"
+          },
+          "sfondo_gruppi": {
+            "default": "colori",
+            "description": "Sfondo dei gruppi in Lezioni",
+            "enum": [
+              "colori",
+              "grigi",
+              "niente"
+            ],
+            "title": "Sfondo Gruppi",
+            "type": "string"
+          }
+        },
+        "title": "PreferencesSettings",
+        "type": "object"
+      },
       "PromptOverrideIn": {
         "properties": {
           "instruction": {
@@ -3947,6 +4377,11 @@
             "description": "Quiz: indice dell'opzione (0-3)",
             "title": "Choice"
           },
+          "dont_know": {
+            "default": false,
+            "title": "Dont Know",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -3973,6 +4408,11 @@
             "title": "Answered At",
             "type": "string"
           },
+          "dont_know": {
+            "default": false,
+            "title": "Dont Know",
+            "type": "boolean"
+          },
           "evaluation": {
             "anyOf": [
               {
@@ -3989,6 +4429,22 @@
             "title": "Is Voice",
             "type": "boolean"
           },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "corretta",
+                  "parziale",
+                  "sbagliata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
           "question_id": {
             "title": "Question Id",
             "type": "string"
@@ -4004,6 +4460,24 @@
             ],
             "description": "up | down | lightning",
             "title": "Vote"
+          },
+          "vote_comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vote Comment"
+          },
+          "vote_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Vote Reasons",
+            "type": "array"
           }
         },
         "required": [
@@ -4042,6 +4516,19 @@
             ],
             "title": "Count"
           },
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Istruzioni aggiuntive per la generazione",
+            "title": "Instructions"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -4065,6 +4552,35 @@
             ],
             "description": "Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)",
             "title": "Qtype"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Testo selezionato dall'utente nell'editor o nelle unità",
+            "title": "Selection"
+          },
+          "unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo queste unità (Domande su questa parte): quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall",
+            "title": "Unit Ids"
           }
         },
         "title": "RecallGenerate",
@@ -4139,6 +4655,17 @@
       },
       "RecallQuestion": {
         "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
           "correct_index": {
             "anyOf": [
               {
@@ -4149,6 +4676,13 @@
               }
             ],
             "title": "Correct Index"
+          },
+          "discard_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Discard Reasons",
+            "type": "array"
           },
           "explanation": {
             "anyOf": [
@@ -4178,6 +4712,22 @@
               }
             ],
             "title": "Options"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "corretta",
+                  "parziale",
+                  "sbagliata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
           },
           "question_text": {
             "title": "Question Text",
@@ -4240,6 +4790,17 @@
             ],
             "title": "Classifier Level"
           },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
           "correct_index": {
             "anyOf": [
               {
@@ -4261,6 +4822,13 @@
               }
             ],
             "title": "Created At"
+          },
+          "discard_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Discard Reasons",
+            "type": "array"
           },
           "explanation": {
             "anyOf": [
@@ -4290,6 +4858,22 @@
               }
             ],
             "title": "Options"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "corretta",
+                  "parziale",
+                  "sbagliata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
           },
           "question_text": {
             "title": "Question Text",
@@ -4355,6 +4939,31 @@
           "questions"
         ],
         "title": "RecallQuestionList",
+        "type": "object"
+      },
+      "RecallRegenerate": {
+        "properties": {
+          "comment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Comment",
+            "type": "string"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "question_id": {
+            "title": "Question Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id",
+          "comment"
+        ],
+        "title": "RecallRegenerate",
         "type": "object"
       },
       "RecallSessionInfo": {
@@ -4711,9 +5320,37 @@
       },
       "RecallVote": {
         "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
           "question_id": {
             "title": "Question Id",
             "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "sbagliata",
+                "ambigua",
+                "troppi_indizi",
+                "troppo_facile",
+                "fuori_tema",
+                "gia_vista"
+              ],
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Reasons",
+            "type": "array"
           },
           "vote": {
             "enum": [
@@ -5161,6 +5798,10 @@
             "title": "Phases",
             "type": "array"
           },
+          "preferences": {
+            "$ref": "#/components/schemas/PreferencesSettings",
+            "description": "Preferenze generali"
+          },
           "pricing": {
             "additionalProperties": {
               "additionalProperties": {
@@ -5211,6 +5852,100 @@
         "title": "Settings",
         "type": "object"
       },
+      "StudyLesson": {
+        "properties": {
+          "has_audio": {
+            "title": "Has Audio",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ready": {
+            "description": "False se la lezione non ha ancora una rielaborazione valida (nessuna unità)",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/StudyUnit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "ready",
+          "has_audio",
+          "units"
+        ],
+        "title": "StudyLesson",
+        "type": "object"
+      },
+      "StudyUnit": {
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fine dell'unità nell'audio della lezione (secondi)",
+            "title": "End"
+          },
+          "html": {
+            "description": "Testo dell'unità in HTML sanificato (come il documento)",
+            "title": "Html",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pending": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Domande da porre sull'unità, per tipo",
+            "title": "Pending",
+            "type": "object"
+          },
+          "questions": {
+            "description": "Totale delle domande da porre sull'unità",
+            "title": "Questions",
+            "type": "integer"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inizio dell'unità nell'audio della lezione (secondi)",
+            "title": "Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "html",
+          "questions"
+        ],
+        "title": "StudyUnit",
+        "type": "object"
+      },
       "SubjectGenerateAccepted": {
         "properties": {
           "jobs": {
@@ -5255,7 +5990,7 @@
             "type": "array"
           },
           "materia": {
-            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso",
+            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione",
             "title": "Materia",
             "type": "string"
           },
@@ -5299,7 +6034,7 @@
             "type": "array"
           },
           "materia": {
-            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso",
+            "description": "Vuota per le lezioni senza materia; GIORNO:<data> per una sessione del giorno in corso, LEZIONI:<id>,<id> per una selezione",
             "title": "Materia",
             "type": "string"
           },
@@ -5442,6 +6177,19 @@
         "title": "TelegramCommandInfo",
         "type": "object"
       },
+      "TelegramEnabledIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "TelegramEnabledIn",
+        "type": "object"
+      },
       "TelegramIn": {
         "properties": {
           "bot_token": {
@@ -5535,6 +6283,12 @@
             "title": "Configured",
             "type": "boolean"
           },
+          "enabled": {
+            "default": false,
+            "description": "Telegram attivo (spento di predefinito: il recall si fa solo nella web app)",
+            "title": "Enabled",
+            "type": "boolean"
+          },
           "running": {
             "description": "Bot in esecuzione",
             "title": "Running",
@@ -5595,6 +6349,12 @@
           "default_channel": {
             "title": "Default Channel",
             "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "description": "Telegram attivo (spento di predefinito): bot, ripassi e decisioni su Telegram",
+            "title": "Enabled",
+            "type": "boolean"
           },
           "misc_topic_id": {
             "anyOf": [
@@ -6837,6 +7597,115 @@
         "summary": "Batch",
         "tags": [
           "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "operationId": "stream_app_events_api_v1_events_get",
+        "parameters": [
+          {
+            "description": "Id dell'ultimo evento già ricevuto (senza: da adesso)",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Id dell'ultimo evento già ricevuto (senza: da adesso)",
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Eventi live di tutti i job (Server-Sent Events per la web app; riprende da Last-Event-ID)",
+        "tags": [
+          "job"
         ]
       }
     },
@@ -9191,6 +10060,194 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/document/pipeline-version": {
+      "get": {
+        "operationId": "get_pipeline_version_api_v1_lessons__lesson_id__document_pipeline_version_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPipelineVersion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Versione della pipeline disponibile e conteggio delle unità modificate",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/document/restore-pipeline": {
+      "post": {
+        "operationId": "restore_pipeline_api_v1_lessons__lesson_id__document_restore_pipeline_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentRestoreIn",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentRestoreResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ripristina testo, titoli, timecode e immagini; mantiene le decisioni della revisione",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/enrichment": {
       "get": {
         "operationId": "enrichment_api_v1_lessons__lesson_id__enrichment_get",
@@ -10409,6 +11466,204 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/media/images": {
+      "post": {
+        "operationId": "upload_editor_image_api_v1_lessons__lesson_id__media_images_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorImage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/metadata": {
+      "patch": {
+        "operationId": "patch_metadata_api_v1_lessons__lesson_id__metadata_patch",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonMetadataUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Modifica i metadati e rinomina la cartella; 409 con un job attivo",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/outline": {
       "get": {
         "operationId": "get_outline_api_v1_lessons__lesson_id__outline_get",
@@ -10681,6 +11936,95 @@
           }
         ],
         "summary": "Rigenera l'outline con un feedback (job)",
+        "tags": [
+          "decisioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/outline/suspend": {
+      "post": {
+        "operationId": "suspend_outline_api_v1_lessons__lesson_id__outline_suspend_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outline"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sospende il conto alla rovescia per l'approvazione automatica della scaletta",
         "tags": [
           "decisioni"
         ]
@@ -11733,6 +13077,105 @@
           }
         ],
         "summary": "Elimina domande (e le loro risposte) dal pool; gli ID sconosciuti si ignorano",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/regenerate": {
+      "post": {
+        "operationId": "regenerate_question_api_v1_lessons__lesson_id__recall_regenerate_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRegenerate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Commenta e rigenera la domanda dalle sue unità (job recall_regenerate)",
         "tags": [
           "recall"
         ]
@@ -12903,6 +14346,95 @@
         "summary": "Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità",
         "tags": [
           "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study": {
+      "get": {
+        "operationId": "study_api_v1_lessons__lesson_id__study_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyLesson"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna",
+        "tags": [
+          "recall"
         ]
       }
     },
@@ -14735,12 +16267,12 @@
         "operationId": "subject_state_api_v1_recall_subject_get",
         "parameters": [
           {
-            "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno",
+            "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, o LEZIONI:<id>,<id> per una selezione",
             "in": "query",
             "name": "materia",
             "required": true,
             "schema": {
-              "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno",
+              "description": "Materia, come nelle lezioni, oppure GIORNO:<AAAA-MM-GG> per le lezioni di un giorno, o LEZIONI:<id>,<id> per una selezione",
               "title": "Materia",
               "type": "string"
             }
@@ -16687,6 +18219,92 @@
         ]
       }
     },
+    "/api/v1/settings/preferences": {
+      "put": {
+        "operationId": "put_preferences_api_v1_settings_preferences_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Salva le preferenze generali",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/pricing": {
       "put": {
         "operationId": "put_pricing_api_v1_settings_pricing_put",
@@ -17237,6 +18855,92 @@
           }
         ],
         "summary": "Bot Telegram: token, chat, topic",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/telegram/enabled": {
+      "put": {
+        "operationId": "put_telegram_enabled_api_v1_settings_telegram_enabled_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramEnabledIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accende o spegne Telegram (spento: anche il bot si ferma)",
         "tags": [
           "impostazioni"
         ]

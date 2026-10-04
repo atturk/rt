@@ -4,23 +4,8 @@ import { vi } from 'vitest'
 import { AudioPlayer } from './AudioPlayer'
 import { AudioProvider } from './audio'
 
-vi.mock('@/api/hooks', () => ({ useWaveform: () => ({ data: { ready: true, peaks: [10, 20, 30] } }) }))
-
 const play = vi.fn(() => Promise.resolve())
 const pause = vi.fn()
-
-beforeAll(() => {
-  // jsdom non ha ResizeObserver, canvas e riproduzione: bastano stub che non fanno nulla.
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  )
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
-})
-afterAll(() => vi.restoreAllMocks())
 
 beforeEach(() => {
   localStorage.clear()
@@ -48,33 +33,50 @@ describe('AudioPlayer', () => {
     localStorage.setItem('rt-playback-rate', '1.25')
     const audio = renderPlayer()
     expect(audio).toHaveAttribute('src', '/api/v1/lessons/4/audio')
-    expect(screen.getByRole('button', { name: 'Velocità di riproduzione: 1.25×' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Velocità di riproduzione: 1,25×' })).toBeInTheDocument()
     expect(audio.playbackRate).toBe(1.25)
   })
 
-  it('la velocità si cambia dallo slider, si salva e il popover si chiude con Esc', () => {
+  it('il pulsante velocità gira fra i valori fissi, applica e salva la scelta', () => {
     const audio = renderPlayer()
-    const toggle = screen.getByRole('button', { name: /Velocità di riproduzione/ })
-    fireEvent.click(toggle)
-    fireEvent.change(screen.getByLabelText('Velocità di riproduzione'), { target: { value: '1.5' } })
-    expect(screen.getByTestId('speed-value')).toHaveTextContent('1.5×')
-    expect(audio.playbackRate).toBe(1.5)
-    expect(localStorage.getItem('rt-playback-rate')).toBe('1.5')
-    fireEvent.keyDown(screen.getByTestId('speed-popover'), { key: 'Escape' })
-    expect(screen.queryByTestId('speed-popover')).toBeNull()
-    expect(toggle).toHaveFocus()
+    const speed = screen.getByTestId('speed-button')
+    expect(speed).toHaveTextContent('1×')
+    for (const [label, rate] of [['1,25×', 1.25], ['1,5×', 1.5], ['1,75×', 1.75], ['2×', 2], ['1×', 1]] as const) {
+      fireEvent.click(speed)
+      expect(speed).toHaveTextContent(label)
+      expect(audio.playbackRate).toBe(rate)
+      expect(localStorage.getItem('rt-playback-rate')).toBe(String(rate))
+    }
   })
 
-  it("i pulsanti di unità saltano all'inizio della successiva e della precedente", () => {
+  it('la barra della posizione sposta l\'audio; le frecce di 5 secondi', () => {
     const audio = renderPlayer()
-    fireEvent.click(screen.getByRole('button', { name: 'Unità successiva' }))
+    fireEvent.loadedMetadata(audio)
+    const seek = screen.getByRole('slider', { name: "Posizione nell'audio" })
+    fireEvent.change(seek, { target: { value: '60' } })
     expect(audio.currentTime).toBe(60)
     expect(screen.getByTestId('audio-current')).toHaveTextContent('1:00')
-    expect(play).toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Unità successiva' }))
-    expect(audio.currentTime).toBe(120)
-    fireEvent.click(screen.getByRole('button', { name: 'Unità precedente' }))
-    expect(audio.currentTime).toBe(60)
+    fireEvent.keyDown(seek, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(65)
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  it('con il mouse sul riquadro le frecce saltano di 5 secondi, fuori no', () => {
+    const audio = renderPlayer()
+    fireEvent.loadedMetadata(audio)
+    audio.currentTime = 30
+    const player = screen.getByTestId('audio-player')
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(30)
+    fireEvent.mouseEnter(player)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(35)
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(audio.currentTime).toBe(25)
+    fireEvent.mouseLeave(player)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(audio.currentTime).toBe(25)
   })
 
   // Regressione: il player leggeva l'elemento audio durante il render, quando al primo render è
@@ -83,13 +85,6 @@ describe('AudioPlayer', () => {
     renderPlayer()
     fireEvent.click(screen.getByRole('button', { name: 'Riproduci' }))
     expect(play).toHaveBeenCalledTimes(1)
-  })
-
-  it('da fermo, i salti di 15 secondi spostano la posizione senza avviare la riproduzione', () => {
-    const audio = renderPlayer()
-    fireEvent.click(screen.getByRole('button', { name: 'Avanti di 15 secondi' }))
-    expect(audio.currentTime).toBe(15)
-    expect(play).not.toHaveBeenCalled()
   })
 
   it('se il browser non riesce a riprodurre lo dice', () => {

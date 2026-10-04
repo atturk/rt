@@ -12,12 +12,13 @@ from rt.pipeline.setup import _run_transcribe_with_spinner, run_setup
 def test_docente_is_saved_in_info_yaml_and_not_in_folder_name(tmp_path):
     audio = tmp_path / "lezione.m4a"
     audio.write_bytes(b"audio")
-    res = run_setup(str(audio), date="2026-09-30", materia="PGSS", docente="  Prof.ssa  Maria Rossi ",
+    res = run_setup(str(audio), date="2026-09-30", materia="PGSS", docente="  Prof.ssa  Maria Rossi ", ora="09:30",
                     dest_dir=str(tmp_path), mock_asr=True, interactive=False)
-    assert res["docente"] == "Prof.ssa Maria Rossi"
+    assert res["docente"] == "Prof.ssa Maria Rossi" and res["ora"] == "09:30"
     assert "Rossi" not in res["folder_name"]
     with open(lesson_path(res["lesson_dir"], "info.yaml"), encoding="utf-8") as f:
         info = yaml.safe_load(f)
+    assert info["ora"] == "09:30"
     assert info["docente"] == "Prof.ssa Maria Rossi" and info["materia"] == "PGSS"
 
 
@@ -59,3 +60,12 @@ def test_pipeline_emits_transcription_progress(tmp_path):
     progress = [e for e in events if e.type == "phase_progress"]
     assert [(p.phase, p.current, p.total) for p in progress] == [("setup", 42, 100)]
     assert "42%" in progress[0].message
+
+
+def test_ora_non_valida_non_crea_la_lezione(tmp_path):
+    import pytest
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"audio")
+    with pytest.raises(ValueError, match="Ora non valida"):
+        run_setup(str(audio), date="2026-09-30", materia="PGSS", ora="25:00", dest_dir=str(tmp_path), mock_asr=True, interactive=False)
+    assert list(tmp_path.iterdir()) == [audio]

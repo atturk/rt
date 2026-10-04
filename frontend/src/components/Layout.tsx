@@ -1,26 +1,65 @@
-import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react'
-import { useState } from 'react'
-import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
+import { Activity, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
+import { lazy, Suspense, useCallback, useState } from 'react'
+import { Navigate, Outlet, useLocation, useMatches } from 'react-router'
 
 import { ApiError } from '@/api/client'
-import { useLogout, useMe } from '@/api/hooks'
-import { Sidebar } from '@/components/Sidebar'
-import { SubjectRail } from '@/components/SubjectRail'
-import { Button } from '@/components/ui/button'
-import { useSidebarCollapsed } from '@/lib/sidebar'
-import { useTheme } from '@/lib/theme'
+import { useMe } from '@/api/hooks'
+import { useLiveUpdates } from '@/api/liveUpdates'
+import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
+import { PageBody } from '@/components/shell/PageHeader'
+import { NewLessonContext } from '@/components/shell/newLesson'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
+import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import type { Area } from '@/routes/types'
 
-export function Layout({ areas }: { areas: Area[] }) {
+// Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
+const NewLessonDialog = lazy(() => import('@/components/lessons/NewLessonDialog').then((m) => ({ default: m.NewLessonDialog })))
+
+type Section = { to: string; label: string; icon: LucideIcon; match: (path: string) => boolean; badge?: boolean }
+
+/** Le tre voci del design 4.2 (linee guida §2); le pagine di prima restano raggiungibili dai link. */
+const LESSONS: Section = {
+  to: '/',
+  label: 'Lezioni',
+  icon: Calendar,
+  match: (path) => path === '/' || /^\/(lezioni|studio|recall|review|immagini|arricchimento)(\/|$)/.test(path),
+}
+const JOBS: Section = { to: '/job', label: 'Job in corso', icon: Activity, match: (path) => /^\/(job|importa)(\/|$)/.test(path), badge: true }
+const SETTINGS: Section = { to: '/impostazioni', label: 'Impostazioni', icon: Settings, match: (path) => /^\/(impostazioni|bot)(\/|$)/.test(path) }
+
+function Badge() {
+  return (
+    <span className="pointer-events-none absolute -right-1 -top-1">
+      <JobsNavBadge />
+    </span>
+  )
+}
+
+function NavItem({ section, path, side, variant }: { section: Section; path: string; side: 'right' | 'top'; variant: 'rail' | 'ghost' }) {
+  const active = section.match(path)
+  return (
+    <IconLink
+      to={section.to}
+      label={section.label}
+      icon={section.icon}
+      side={side}
+      variant={variant}
+      active={active}
+      badge={section.badge ? <Badge /> : undefined}
+    />
+  )
+}
+
+export function Layout() {
   const me = useMe()
   const location = useLocation()
-  const navigate = useNavigate()
-  const logout = useLogout()
-  const [theme, toggleTheme] = useTheme()
-  const [menuOpen, setMenuOpen] = useState(false)
-  // Da tablet in su la barra si può ridurre a una colonna di icone; su mobile resta il menu.
-  const [collapsed, toggleCollapsed] = useSidebarCollapsed()
+  const matches = useMatches()
+  const [newLesson, setNewLesson] = useState(false)
+  const openNewLesson = useCallback(() => setNewLesson(true), [])
+  const closeNewLesson = useCallback(() => setNewLesson(false), [])
+  const phone = useIsPhone()
+  // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
+  useLiveUpdates(me.isSuccess)
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -36,117 +75,50 @@ export function Layout({ areas }: { areas: Area[] }) {
     )
   }
 
-  const nav = areas.flatMap((a) => a.nav ?? [])
-  const primary = nav.filter((item) => item.to !== '/job' && item.to !== '/impostazioni')
-  const utilities = nav.filter((item) => item.to === '/job' || item.to === '/impostazioni')
-  const activeArea = (to: string) =>
-    (to === '/review' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/revisione')) ||
-    (to === '/recall' && location.pathname.startsWith('/lezioni/') && location.pathname.endsWith('/recall')) ||
-    (to === '/arricchimento' && location.pathname.startsWith('/lezioni/') && (location.pathname.endsWith('/arricchimento') || location.pathname.endsWith('/immagini')))
+  // Le pagine del design 4.2 hanno la loro intestazione e vanno a tutta larghezza (handle.bare);
+  // le altre restano nei margini di prima.
+  const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
+  const path = location.pathname
   return (
-    <div className="flex min-h-dvh">
-      <aside
-        id="rt-sidebar"
-        data-collapsed={collapsed}
-        className={cn(
-          'fixed inset-y-0 left-0 z-40 w-72 shrink-0 overflow-y-auto overflow-x-hidden border-r bg-sidebar p-4 transition-[translate,width,padding] duration-200 ease-out motion-reduce:transition-none md:sticky md:top-0 md:h-dvh md:translate-none',
-          collapsed && 'md:w-16 md:px-2',
-          menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
-        )}
-      >
-        <div className="mb-4 flex items-center justify-between md:hidden">
-          <span className="text-sm font-semibold">Lezioni</span>
-          <Button variant="ghost" size="icon" aria-label="Chiudi il menu" onClick={() => setMenuOpen(false)}>
-            <X />
-          </Button>
-        </div>
-        <div className={cn('mb-3 hidden md:flex', collapsed ? 'justify-center' : 'justify-end')}>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={collapsed ? 'Espandi la barra laterale' : 'Riduci la barra laterale'}
-            title={collapsed ? 'Espandi la barra laterale' : 'Riduci la barra laterale'}
-            aria-expanded={!collapsed}
-            aria-controls="rt-sidebar-lessons"
-            onClick={toggleCollapsed}
-          >
-            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          </Button>
-        </div>
-        {/* L'elenco completo resta montato (nascosto) anche da ridotta: le materie aperte o chiuse
-            e la selezione restano come erano quando si riespande. */}
-        <div id="rt-sidebar-lessons" className={cn('min-w-64', collapsed && 'md:hidden')}>
-          <Sidebar onNavigate={() => setMenuOpen(false)} />
-        </div>
-        {collapsed && (
-          <div className="hidden md:block">
-            <SubjectRail />
-          </div>
-        )}
-      </aside>
-      {menuOpen && <div className="fixed inset-0 z-30 bg-black/25 md:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
+    <NewLessonContext value={openNewLesson}>
+      <div className="flex min-h-dvh">
+        {!phone && <nav
+          aria-label="Navigazione"
+          className="sticky top-0 hidden h-dvh w-(--rail-width) shrink-0 flex-col items-center gap-1.5 border-r bg-background py-3 md:flex"
+        >
+          <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={openNewLesson} aria-haspopup="dialog" />
+          <div className="h-2" aria-hidden />
+          <NavItem section={LESSONS} path={path} side="right" variant="rail" />
+          <div className="flex-1" aria-hidden />
+          <NavItem section={JOBS} path={path} side="right" variant="rail" />
+          <NavItem section={SETTINGS} path={path} side="right" variant="rail" />
+        </nav>}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b px-4 py-3 md:px-8">
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Apri il menu" onClick={() => setMenuOpen(true)}>
-            <Menu />
-          </Button>
-          <Link to="/" className="mr-auto leading-none">
-            <span className="text-3xl font-bold tracking-tighter">
-              rt<span className="text-success">.</span>
-            </span>
-            <span className="ml-3 hidden text-xs text-muted-foreground sm:inline">Rielaborazione trascritti e active recall</span>
-          </Link>
-          <nav aria-label="Navigazione" className="flex items-center gap-1">
-            {primary.map(({ to, label, icon: Icon, end, badge: Badge }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                title={label}
-                aria-current={activeArea(to) ? 'page' : undefined}
-                className={({ isActive }) =>
-                  cn('inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm hover:bg-muted', (isActive || activeArea(to)) && 'bg-muted font-semibold')
-                }
-              >
-                <Icon className="size-4" aria-hidden />
-                <span className="sr-only lg:not-sr-only">{label}</span>
-                {Badge && <Badge />}
-              </NavLink>
-            ))}
-          </nav>
-          <nav aria-label="Strumenti" className="flex items-center gap-1">
-            {utilities.map(({ to, label, icon: Icon, badge: Badge }) => (
-              <NavLink key={to} to={to} title={label} aria-label={label}
-                className={({ isActive }) => cn('inline-flex size-9 items-center justify-center gap-1 rounded-md hover:bg-muted', isActive && 'bg-muted font-semibold')}>
-                <Icon className="size-4" aria-hidden />{Badge && <Badge />}
-              </NavLink>
-            ))}
-          </nav>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
-            title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
-          >
-            {theme === 'dark' ? <Sun /> : <Moon />}
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Esci"
-            title="Esci"
-            disabled={logout.isPending}
-            onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })}
-          >
-            <LogOut />
-          </Button>
-        </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8">
-          <Outlet />
-        </main>
+        <div className={cn('flex min-w-0 flex-1 flex-col', 'max-md:pb-[calc(64px+env(safe-area-inset-bottom))]')}>
+          <main className="flex min-w-0 flex-1 flex-col">
+            {/* Le pagine arrivano in chunk separati (routes/index.tsx): mentre si scarica il
+                primo si vede questo; cambiando pagina resta quella vecchia finché la nuova è pronta. */}
+            <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Carico…</p>}>
+              {bare ? <Outlet /> : <PageBody><Outlet /></PageBody>}
+            </Suspense>
+          </main>
+        </div>
+
+        {/* Telefono: tre schede in basso (linee guida §2). */}
+        {phone && <nav
+          aria-label="Navigazione"
+          className="fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
+        >
+          {[LESSONS, JOBS, SETTINGS].map((section) => (
+            <NavItem key={section.to} section={section} path={path} side="top" variant="ghost" />
+          ))}
+        </nav>}
       </div>
-    </div>
+      {newLesson && (
+        <Suspense fallback={null}>
+          <NewLessonDialog open onClose={closeNewLesson} />
+        </Suspense>
+      )}
+    </NewLessonContext>
   )
 }

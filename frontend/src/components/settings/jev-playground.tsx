@@ -146,7 +146,7 @@ export function DecisionTestResult({ phase, result }: { phase: Phase; result: De
     {Object.keys(probabilities).length > 0 && <table className="w-full text-left text-xs"><caption className="text-left font-medium">Probabilità per {answer.type === 'score' ? 'livello' : 'etichetta'}</caption>
       <tbody>{Object.entries(probabilities).map(([key, value]) => <tr key={key} className={key === chosen ? 'font-semibold' : undefined}>
         <th className="pr-2 font-normal">{key}{legend[key] ? ` · ${legend[key]}` : ''}</th>
-        <td className="w-1/2"><div className="h-2 rounded bg-muted"><div className="h-2 rounded bg-primary" style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div></td>
+        <td className="w-1/2"><div className="h-2 rounded bg-muted"><div className="h-2 rounded bg-link" style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div></td>
         <td className="pl-2 text-right">{pct(value)}</td>
       </tr>)}</tbody></table>}
     {Object.keys(legend).length > 0 && Object.keys(probabilities).length === 0 && <ul className="text-xs">

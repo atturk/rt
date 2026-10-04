@@ -18,19 +18,17 @@ async function pages(page: Page): Promise<[string, string][]> {
   const review = await lessonId(page, 'FARMACOLOGIA')
   return [
     ['dashboard', '/'],
-    ['review (elenco)', '/review'],
-    ['recall (elenco)', '/recall'],
-    ['recall della materia', '/recall/materie/BIOCHIMICA'],
-    ['immagini (elenco)', '/immagini'],
     ['lezione', `/lezioni/${done}`],
-    ['revisione', `/lezioni/${review}/revisione`],
-    ['revisione per gravità', `/lezioni/${review}/revisione?ordine=gravita`],
-    ['outline', `/lezioni/${done}/outline`],
-    ['recall', `/lezioni/${done}/recall`],
-    ['immagini', `/lezioni/${done}/immagini`],
-    ['importa', '/importa'],
+    ['pannello Verifica', `/lezioni/${review}?panel=verifica`],
+    ['pannello Dettagli', `/lezioni/${done}?panel=dettagli`],
+    ['pannello Domande', `/lezioni/${done}?panel=domande`],
+    ['pannello Classificatore', `/lezioni/${done}?panel=classificatore`],
+    ['pannello Arricchimento', `/lezioni/${done}?panel=arricchimento`],
+    ['sessione di ripasso', `/lezioni/${done}/sessione`],
+    ['studio di una materia', '/studio/materia/BIOCHIMICA'],
     ['job', '/job'],
-    ['bot', '/bot'],
+    ['bot', '/impostazioni/bot'],
+    ['dettaglio di un job (inesistente)', '/job/non-esiste'],
     ['impostazioni', '/impostazioni'],
     ['modelli', '/impostazioni/modelli'],
     ['chiavi', '/impostazioni/chiavi'],
@@ -65,45 +63,65 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByText(/^Carico/)).toHaveCount(0)
       await expectNoViolations(page, name)
     }
-    // Slider della velocità aperto nel player.
-    await page.goto(`/lezioni/${await lessonId(page, 'BIOCHIMICA')}`)
-    await page.getByRole('button', { name: /^Velocità di riproduzione/ }).click()
-    await expect(page.getByRole('slider', { name: 'Velocità di riproduzione' })).toBeVisible()
-    await expectNoViolations(page, 'velocità del player')
+    // Pagina della lezione (design 4.2): pannello Dettagli, menu Esporta, menu contestuale e Genera.
+    const done = await lessonId(page, 'BIOCHIMICA')
+    await page.goto(`/lezioni/${done}`)
+    await page.getByTestId('lesson-actions').getByRole('button', { name: 'Dettagli' }).click()
+    await expect(page.getByTestId('lesson-details')).toBeVisible()
+    await expectNoViolations(page, 'pannello Dettagli')
+    await page.keyboard.press('Escape')
+    await page.getByTestId('lesson-actions').getByRole('button', { name: 'Esporta' }).click()
+    await expect(page.getByRole('menu', { name: 'Esporta' })).toBeVisible()
+    await expectNoViolations(page, 'menu Esporta')
+    await page.keyboard.press('Escape')
+    await page.getByTestId('lesson-document').locator('[data-unit-id]').first().click({ button: 'right' })
+    await expect(page.getByTestId('document-menu')).toBeVisible()
+    await expectNoViolations(page, 'menu contestuale del documento')
+    await page.getByRole('menuitem', { name: 'Genera' }).click()
+    await expect(page.getByTestId('generate-popover')).toBeVisible()
+    await expectNoViolations(page, 'popup Genera')
+    await page.keyboard.press('Escape')
 
-    // Anteprima in modifica (RT4-FA3) con gli avvisi prima di entrare.
+    // Studio: lettura e domande.
+    await page.goto(`/studio/lezione/${done}`)
+    await expect(page.getByTestId('study-text')).toBeVisible()
+    await expectNoViolations(page, 'studio, lettura')
+
+    // Documento modificabile in place (atomic-editor), con il cursore nel testo.
     await page.goto(`/lezioni/${await lessonId(page, 'CHIRURGIA')}`)
-    await page.getByRole('button', { name: "Modifica l'anteprima" }).click()
-    const notice = page.getByRole('dialog', { name: "Modifica dell'anteprima" })
-    if (await notice.isVisible()) {
-      await expectNoViolations(page, "avvisi della modifica dell'anteprima")
-      await notice.getByRole('button', { name: 'Modifica' }).click()
-    }
-    await expect(page.getByTestId('markdown-editor')).toBeVisible()
-    await expect(page.locator('.rt-document-edit-preview')).toHaveCount(0)
-    await expectNoViolations(page, "editor a tutta larghezza")
+    await page.getByTestId('lesson-document').locator('.cm-content').click()
+    await expectNoViolations(page, 'documento in modifica')
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('markdown-editor')).toHaveCount(0)
 
-    // Barra laterale ridotta con il pannello di una materia aperto e il suggerimento del nome.
+    // Pagina Lezioni del design 4.2: gruppi per materia con lo sfondo, il tooltip di un'icona,
+    // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
-    await page.getByRole('button', { name: 'Riduci la barra laterale' }).click()
-    const subject = page.getByRole('navigation', { name: 'Materie' }).getByRole('button').first()
-    await subject.focus()
-    await expect(page.getByRole('tooltip')).toBeVisible()
-    await expectNoViolations(page, 'barra laterale ridotta')
-    await subject.click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await expectNoViolations(page, 'pannello della materia')
+    await page.getByRole('button', { name: 'Per materia' }).click()
+    await page.getByRole('button', { name: 'Per materia' }).focus()
+    await expect(page.getByRole('tooltip', { name: 'Per materia' })).toBeVisible()
+    await expectNoViolations(page, 'lezioni per materia con un tooltip')
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: 'Espandi la barra laterale' }).click()
+    await page.getByRole('button', { name: 'Seleziona' }).click()
+    await page.getByTestId('lesson-group').first().getByRole('checkbox', { name: /^Seleziona il gruppo/ }).check()
+    await expect(page.getByTestId('selection-bar')).toBeVisible()
+    await expectNoViolations(page, 'selezione delle lezioni')
+    await page.getByRole('button', { name: 'Annulla' }).click()
+    await page.getByRole('button', { name: 'Ordina' }).click()
+    await expect(page.getByRole('menu')).toBeVisible()
+    await expectNoViolations(page, 'menu Ordina')
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Per data' }).click()
+    await page.getByRole('button', { name: 'Nuova lezione' }).click()
+    await expect(page.getByTestId('drop-zone')).toBeVisible()
+    await expectNoViolations(page, 'popup Nuova lezione')
+    await page.keyboard.press('Escape')
 
-    // Elenco delle lezioni in tabella, raggruppato per materia, con un gruppo chiuso.
-    await page.getByLabel('Raggruppa per').selectOption('materia')
-    await page.getByRole('button', { name: 'Tabella' }).click()
-    await expect(page.getByTestId('lesson-table')).toBeVisible()
-    await page.getByTestId('lesson-group-toggle').first().click()
-    await expectNoViolations(page, 'tabella delle lezioni per materia')
+    // Telefono: schede in basso e ricerca aperta.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: 'Mostra la ricerca' }).click()
+    await expect(page.getByLabel('Cerca', { exact: true })).toBeVisible()
+    await expectNoViolations(page, 'lezioni sul telefono')
+    await page.setViewportSize({ width: 1280, height: 720 })
   })
 }
 

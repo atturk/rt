@@ -59,7 +59,8 @@ export function Tooltip({
     onFocus: show,
     onBlur: hide,
     onKeyDown: (e) => {
-      if (e.key === 'Escape' && open) {
+      // Solo se il suggerimento si vede: altrimenti Esc va a chi lo aspetta (menu, dialoghi).
+      if (e.key === 'Escape' && visible) {
         e.stopPropagation()
         hide()
       }
@@ -78,12 +79,13 @@ export function Tooltip({
           hidden={!visible}
           style={pos ? { top: pos.top, left: pos.left, transform } : undefined}
           className={cn(
-            'pointer-events-none fixed z-[60] max-w-72 rounded-md bg-primary px-2.5 py-1.5 text-xs leading-snug text-primary-foreground shadow-lg',
+            'pointer-events-none fixed z-[60] max-w-72 rounded-md bg-foreground px-2 py-1 text-xs leading-snug text-background shadow-lg',
           )}
         >
           {content}
         </div>,
-        document.body,
+        // Dentro un <dialog> modale il suggerimento sta nel dialog: il resto della pagina è sotto.
+        trigger?.closest('dialog') ?? document.body,
       )}
     </>
   )

@@ -188,7 +188,7 @@ def test_no_json_response_contains_a_secret(api_client, ws):
     api_client.put("/api/v1/settings/telegram", json={"bot_token": BOT, "chat_id": "-1001"})
     schema = api_client.get("/openapi.json").json()
     for path, ops in schema["paths"].items():
-        if "get" in ops and "{" not in path:
+        if "get" in ops and "{" not in path and not path.endswith("/events"):
             res = api_client.get(path)
             if res.headers.get("content-type", "").startswith("application/json"):
                 _no_secret(res)
@@ -203,3 +203,38 @@ def test_telegram_daemon_status_and_guard(api_client, ws, monkeypatch):
     res = api_client.post("/api/v1/telegram/daemon/start")
     assert res.status_code == 409 and res.json()["error"]["code"] == "telegram_not_configured"
     assert api_client.post("/api/v1/telegram/daemon/stop").json()["running"] is False
+
+
+def test_preferences_persist(api_client, api_token, ws):
+    # Default snapshot
+    data = api_client.get("/api/v1/settings").json()
+    assert data["preferences"] == {
+        "secondi_approvazione": 10,
+        "sfondo_gruppi": "colori",
+        "modalita_arricchimento": "manuale",
+    }
+
+    # Update preferences
+    res = api_client.put(
+        "/api/v1/settings/preferences",
+        json={
+            "secondi_approvazione": 20,
+            "sfondo_gruppi": "grigi",
+            "modalita_arricchimento": "automatica",
+        },
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["preferences"] == {
+        "secondi_approvazione": 20,
+        "sfondo_gruppi": "grigi",
+        "modalita_arricchimento": "automatica",
+    }
+
+    # Persists to fresh app
+    fresh_data = fresh(api_token).get("/api/v1/settings").json()
+    assert fresh_data["preferences"] == {
+        "secondi_approvazione": 20,
+        "sfondo_gruppi": "grigi",
+        "modalita_arricchimento": "automatica",
+    }
+

@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  * Il testo per i lettori di schermo completa il nome del link ("Job: 2 job attivi, ...").
  */
 export function JobsNavBadge() {
-  const jobs = useJobs({ limit: 50 }, { poll: 5_000 })
+  const jobs = useJobs({ limit: 50 })
   const workers = useWorkers()
   const active = (jobs.data ?? []).filter((j) => isActive(j.state)).length
   const waiting = (jobs.data ?? []).filter((j) => j.state === 'waiting_for_decision').length
@@ -43,32 +43,30 @@ export function JobsNavBadge() {
   )
 }
 
-/** Nella pagina lezione: pipeline in attesa ("serve la tua approvazione") o job in corso. */
-export function LessonJobBanner({ lessonId, review = false, extra }: { lessonId: number; review?: boolean; extra?: ReactNode }) {
-  const jobs = useJobs({ lesson_id: lessonId, limit: 20 }, { poll: 5_000 })
+/** Pipeline ferma su una tua decisione ("serve la tua approvazione"), con il link per prenderla. */
+export function LessonWaiting({ lessonId, className }: { lessonId: number; className?: string }) {
+  const jobs = useJobs({ lesson_id: lessonId, limit: 20 })
   const waiting = (jobs.data ?? []).find((j) => j.state === 'waiting_for_decision')
-  const running = (jobs.data ?? []).find((j) => isActive(j.state))
+  if (!waiting) return null
+  return (
+    <Alert tone="warning" data-testid="lesson-waiting" className={className}>
+      <strong>Serve la tua approvazione:</strong> la pipeline è ferma finché non decidi (devi {decisionLabel(waiting.decision)}).{' '}
+      <Link to={decisionLink(waiting) ?? `/job/${waiting.id}`} className="font-semibold underline">
+        {waiting.decision?.kind === 'outline_approval' ? 'Rivedi la scaletta' : 'Vai alla decisione'}
+      </Link>
+    </Alert>
+  )
+}
+
+/** Nella pagina lezione: pipeline in attesa (se `waiting`) e i link alle pagine della lezione.
+ * Il job in corso lo mostra l'avanzamento (PhaseProgress). */
+export function LessonJobBanner({ lessonId, review = false, waiting = true, extra }: { lessonId: number; review?: boolean; waiting?: boolean; extra?: ReactNode }) {
   return (
     <div className="flex flex-col gap-2" data-testid="lesson-jobs">
-      {waiting && (
-        <Alert tone="warning" data-testid="lesson-waiting">
-          <strong>Serve la tua approvazione:</strong> la pipeline è ferma finché non decidi (devi {decisionLabel(waiting.decision)}).{' '}
-          <Link to={decisionLink(waiting) ?? `/job/${waiting.id}`} className="font-semibold underline">
-            {waiting.decision?.kind === 'outline_approval' ? 'Rivedi la scaletta' : 'Vai alla decisione'}
-          </Link>
-        </Alert>
-      )}
-      {running && (
-        <Alert>
-          Job in corso sulla lezione.{' '}
-          <Link to={`/job/${running.id}`} className="font-semibold underline">
-            Segui l'avanzamento
-          </Link>
-        </Alert>
-      )}
+      {waiting && <LessonWaiting lessonId={lessonId} />}
       <ClassificationNotice lessonId={lessonId} />
       <p className="flex flex-wrap gap-4 text-xs">
-        <Link to={`/lezioni/${lessonId}/outline`} className="underline">
+        <Link to={`/lezioni/${lessonId}`} className="underline">
           Scaletta e approvazione
         </Link>
         <Link to={`/job?lezione=${lessonId}`} className="underline">

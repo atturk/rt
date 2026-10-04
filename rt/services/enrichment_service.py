@@ -17,7 +17,8 @@ from rt.llm.cancel import raise_if_cancelled
 from rt.storage import fs
 from rt.services.review_service import lesson_lock
 
-Kind = Literal["infographic", "visualization"]
+# image: illustrazione dal modello di immagini, solo su richiesta dall'editor (Genera).
+Kind = Literal["infographic", "visualization", "image"]
 Mode = Literal["static", "interactive"]
 MANIFEST = "assets/enrichment/manifest.json"
 
@@ -49,6 +50,11 @@ class Element(IdeaText):
     asset_image: Optional[str] = None
     asset_html: Optional[str] = None
     asset_mode: Optional[Mode] = None
+    # Richiesta dall'editor (Genera): testo dello studente, selezione e subunità toccate. Il
+    # regista (enrichment_writer) ne ricava il prompt, che resta salvato qui per rigenerare.
+    request: Optional[str] = None
+    selection: Optional[str] = None
+    context_unit_ids: list[str] = Field(default_factory=list)
 
 
 class EnrichmentState(BaseModel):
@@ -269,6 +275,83 @@ def create_manual(lesson_dir, unit_id, kind, text):
         state.elements.append(element)
         save(lesson_dir, state)
     return element
+
+
+REQUEST_WRITER_SYSTEM = WRITER_SYSTEM + """
+Questa volta l'elemento lo chiede lo studente dall'editor: ricevi la sua richiesta, il testo che
+ha selezionato e, come contesto, l'unità madre con tutte le sue subunità. La richiesta decide
+cosa rappresentare; la selezione indica il punto; il contesto serve a capire e a non sbagliare,
+non va rappresentato tutto. Tipo image: un'illustrazione didattica (static) dal modello di immagini.
+"""
+REQUEST_KINDS = {"visualization": "grafico o visualizzazione HTML/SVG", "infographic": "infografica",
+                 "image": "immagine illustrativa dal modello di immagini"}
+
+
+def create_request(lesson_dir, unit_ids, kind, request, selection=""):
+    """Elemento chiesto dall'editor (Genera): va dopo l'ultima subunità toccata; il prompt lo
+    scrive il job (write_request_prompt) prima di generare."""
+    rows = {u["id"]: u for u in units(lesson_dir)}
+    touched = [u for u in dict.fromkeys(unit_ids) if u in rows]
+    if not touched:
+        raise ValueError("Subunità inesistente")
+    request = request.strip()
+    if not request:
+        raise ValueError("Scrivi cosa vuoi vedere")
+    anchor = rows[touched[-1]]
+    text = IdeaText(title=request[:120], description="Richiesta dall'editor", prompt=request,
+                    mode="interactive" if kind == "visualization" else "static")
+    with lesson_lock(lesson_dir):
+        state = load(lesson_dir)
+        element = Element(**text.model_dump(), id=uuid.uuid4().hex, unit_id=anchor["id"], kind=kind,
+                          source_hash=source_hash(anchor), manual=True, request=request,
+                          selection=(selection or "").strip()[:4000] or None, context_unit_ids=touched)
+        state.elements.append(element)
+        save(lesson_dir, state)
+    return element
+
+
+def request_context(lesson_dir, element) -> str:
+    """Testo per il regista: richiesta, selezione e unità madre delle subunità toccate (tutte
+    le sue subunità; le toccate sono segnate)."""
+    rows = units(lesson_dir)
+    touched = set(element.context_unit_ids or [element.unit_id])
+    macros = list(dict.fromkeys(u["macro_id"] for u in rows if u["id"] in touched))
+    parts = [f"Tipo: {element.kind} ({REQUEST_KINDS.get(element.kind, element.kind)})",
+             f"Richiesta dello studente: {element.request or element.prompt}"]
+    if element.selection:
+        parts.append(f"Testo selezionato:\n{element.selection}")
+    for macro in macros:
+        parts.append(f"Unità madre {macro} (contesto):")
+        for u in rows:
+            if u["macro_id"] == macro:
+                mark = " [toccata dalla selezione]" if u["id"] in touched else ""
+                parts.append(f"Subunità {u['id']}: {u['title']}{mark}\n{u['content']}")
+    return "\n\n".join(parts)
+
+
+def write_request_prompt(lesson_dir, element_id, *, mock=False):
+    """Il regista (fase enrichment_writer) scrive titolo, descrizione e prompt dell'elemento
+    chiesto dall'editor; il risultato si salva con l'elemento (Rigenera lo riusa)."""
+    from rt.llm.client import LLMClient
+    element = get_element(load(lesson_dir), element_id)
+    if mock:
+        prepared = IdeaText(title=(element.request or element.title)[:120], description="Richiesta dall'editor.",
+                            prompt=f"Rappresenta fedelmente: {element.request or element.prompt}",
+                            mode="interactive" if element.kind == "visualization" else "static")
+    else:
+        prepared = LLMClient().call_structured(prompt=request_context(lesson_dir, element),
+                                               system_prompt=REQUEST_WRITER_SYSTEM, response_model=IdeaText,
+                                               job_name="enrichment_writer", unit_id=element.unit_id,
+                                               lesson_dir=lesson_dir)
+    if element.kind != "visualization":
+        prepared.mode = "static"
+    raise_if_cancelled()
+    with lesson_lock(lesson_dir):
+        state = load(lesson_dir)
+        current = get_element(state, element_id)
+        for key, value in prepared.model_dump().items():
+            setattr(current, key, value)
+        save(lesson_dir, state)
 
 
 def generate(lesson_dir, element_id, *, mock=False, ctx=None):

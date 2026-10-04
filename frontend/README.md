@@ -11,6 +11,13 @@ shadcn/ui (`src/components/ui`), TanStack Query, React Router. Parla solo con l'
 rt web              # API + worker + SPA su http://127.0.0.1:8765, browser già autenticato
 ```
 
+Copia di lavoro per provare un branch senza release (dati di prova isolati in `~/.rt-dev`,
+worker finto, non tocca `~/.rt` né i servizi):
+
+```bash
+scripts/dev.sh            # aggiorna il branch, avvia API :8766 + SPA :5173 e apre il browser
+```
+
 Sviluppo con ricarica a caldo:
 
 ```bash
@@ -44,11 +51,19 @@ sostituisci l'host con `localhost:5173`.
   dati o un `ApiError` con `code` e `message` dell'API. L'header `X-CSRF-Token` si aggiunge da
   solo alle scritture leggendo il cookie `rt_csrf`. Serve un endpoint nuovo? Aggiungilo in
   `rt/api` con i suoi test, riesporta lo schema e rigenera il client.
-- **Una area, un file di rotte.** `src/routes/<area>.tsx` esporta un `Area` (rotte sotto il
-  layout autenticato e voci di menu); `src/routes/index.tsx` li elenca. Così le schermate
-  delle fasi F2-F6 si sviluppano in parallelo senza toccare gli stessi file.
+- **Una area, un file di pagine.** `src/routes/<area>.tsx` esporta le pagine dell'area;
+  `src/routes/index.tsx` definisce gli `Area` (rotte sotto il layout autenticato e voci di
+  menu) e carica ogni area come chunk a parte (`lazy` di react-router), così il JavaScript
+  iniziale resta piccolo: `npm run check:bundle` (in CI dopo la build) fallisce oltre il budget
+  di `scripts/check-bundle-size.mjs`. Una pagina nuova si importa solo da `index.tsx` con
+  `page(() => import('./area'), …)`, mai staticamente.
+- **Canale live.** `src/api/liveUpdates.ts`: il layout apre un solo `EventSource` su
+  `GET /events` (eventi di tutti i job) e a ogni evento invalida le query interessate
+  (`keysForEvent`); si riconnette con attesa crescente e, mentre è giù, rilegge i job ogni 10
+  secondi. Niente `refetchInterval` per dati che cambiano con i job: restano solo quelli
+  commentati (worker, bot Telegram, sessioni di recall, forma d'onda).
 - **Job ed eventi live.** `src/api/jobs.ts`: `useJobEvents` apre `GET /jobs/{id}/events`
-  con `EventSource` (unica eccezione al client generato: openapi-fetch non fa streaming; il
+  con `EventSource` (eccezione al client generato, come il canale live: openapi-fetch non fa streaming; il
   percorso resta tipizzato). Il browser riprende da solo con `Last-Event-ID`; ogni evento fa
   rileggere il job dall'API, la fine anche lezioni e scaletta. Chi mostra l'avanzamento di un
   job (es. la vista lezione) usa `<JobLive jobId=… />` invece del polling. Gli upload passano da

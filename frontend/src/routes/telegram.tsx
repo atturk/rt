@@ -1,4 +1,3 @@
-import { Bot } from 'lucide-react'
 import { Link } from 'react-router'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -8,34 +7,42 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useSettings, useTopicTest, type Settings } from '@/api/settings'
 import { useTelegramNotifications } from '@/api/telegram'
-import { RevealableValue, TopicTestButton, TopicTestResult } from '@/components/settings/telegram'
+import { RevealableValue, TelegramEnabledToggle, TopicTestButton, TopicTestResult } from '@/components/settings/telegram'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { TopicArchiveExport } from '@/components/TopicArchiveExport'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { formatDateTime } from '@/lib/format'
-import type { Area } from './types'
 
 const SETTINGS_LINK = '/impostazioni#telegram'
 
-function TelegramPage() {
+export function TelegramPage() {
   const settings = useSettings()
   return (
     <section className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold tracking-tight">Bot Telegram</h1>
+        <h2 className="text-lg font-bold tracking-tight">Bot Telegram</h2>
         <Link to={SETTINGS_LINK} className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
           Impostazioni Telegram
         </Link>
       </div>
-      <TelegramBotPanel />
       {settings.isPending && <p className="text-sm text-muted-foreground">Carico gruppo e topic…</p>}
       {settings.isError && <Alert tone="danger">{errorMessage(settings.error)}</Alert>}
-      {settings.data && <GroupCard settings={settings.data} />}
-      <TelegramUserPanel />
-      {settings.data && <TopicsCard settings={settings.data} />}
-      <NotificationsCard />
+      {settings.data && (
+        <Card className="p-5">
+          <TelegramEnabledToggle enabled={settings.data.telegram.enabled ?? false} />
+        </Card>
+      )}
+      {settings.data?.telegram.enabled && (
+        <>
+          <TelegramBotPanel />
+          <GroupCard settings={settings.data} />
+          <TelegramUserPanel />
+          <TopicsCard settings={settings.data} />
+          <NotificationsCard />
+        </>
+      )}
     </section>
   )
 }
@@ -199,10 +206,4 @@ function NotificationsCard() {
       )}
     </Card>
   )
-}
-
-/** Il pannello di avvio sta anche nelle impostazioni (RT4-F5); qui la pagina completa (RT4-FA6). */
-export const telegramArea: Area = {
-  routes: [{ path: 'bot', element: <TelegramPage /> }],
-  nav: [{ to: '/bot', label: 'Bot Telegram', icon: Bot }],
 }

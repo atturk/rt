@@ -79,7 +79,9 @@ export function decisionLabel(decision: Job['decision']): string {
 /** Pagina dove prendere la decisione attesa dal job. */
 export function decisionLink(job: Pick<Job, 'decision' | 'lesson_id'>): string | null {
   if (job.lesson_id == null) return null
-  return job.decision?.kind === 'outline_approval' ? `/lezioni/${job.lesson_id}/outline` : `/lezioni/${job.lesson_id}`
+  const kind = job.decision?.kind
+  // Le issue si decidono nella revisione (la pagina della lezione la apre dal pannello Verifica).
+  return kind === 'science_issue' ? `/lezioni/${job.lesson_id}/revisione` : `/lezioni/${job.lesson_id}`
 }
 
 // Decisioni che hanno una loro schermata: il job che le aspetta si può chiudere e decidere dopo.
@@ -95,7 +97,7 @@ export function closedJob(job: Pick<Job, 'state' | 'result' | 'lesson_id'>): { m
   const closed = (job.result as Record<string, unknown> | null | undefined)?.closed as Record<string, unknown> | undefined
   if (job.state !== 'succeeded' || !closed) return null
   const kind = String(closed.kind ?? '')
-  const page = kind === 'outline_approval' ? 'outline' : kind === 'science_issue' ? 'revisione' : ''
+  const page = kind === 'science_issue' ? 'revisione' : ''
   const link = job.lesson_id == null ? null : `/lezioni/${job.lesson_id}${page ? `/${page}` : ''}`
   return { message: String(closed.message ?? 'Chiuso'), link, kind }
 }

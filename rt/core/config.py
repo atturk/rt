@@ -227,6 +227,9 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
 
 
 class TelegramRuntimeConfig(BaseModel):
+    enabled: bool = Field(default=False, description="Telegram attivo: bot, ripassi e decisioni su Telegram. Spento (il "
+                                                     "predefinito) i ripassi si fanno nella web app e le decisioni nel "
+                                                     "terminale o nella web app; RT_TELEGRAM_ENABLED=1/0 lo forza.")
     default_channel: str = Field(default="terminal", description="'terminal' | 'telegram', usato quando --channel non è passato a 'rt run'")
     wait_timeout_seconds: int = Field(default=0, description="0 = nessun timeout, attende indefinitamente (Ctrl+C per uscire)")
     state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram, relativa alla cwd da cui gira 'rt'")
@@ -263,6 +266,21 @@ class TelegramRuntimeConfig(BaseModel):
         stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'custom' (il vecchio 'api' resta non implementato)")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 
+    @model_validator(mode="after")
+    def _forced_by_env(self) -> "TelegramRuntimeConfig":
+        # RT_TELEGRAM_ENABLED (1/0, true/false) vince sulla configurazione
+        forced = (os.environ.get("RT_TELEGRAM_ENABLED") or "").strip().lower()
+        if forced in ("1", "true", "yes", "on"):
+            self.enabled = True
+        elif forced in ("0", "false", "no", "off"):
+            self.enabled = False
+        return self
+
+    @property
+    def channel(self) -> str:
+        """Il canale delle decisioni da usare davvero: con Telegram spento sempre il terminale."""
+        return self.default_channel if self.enabled else "terminal"
+
 
 class TranscriptionConfig(BaseModel):
     """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale."""
@@ -286,6 +304,8 @@ class UiConfig(BaseModel):
     theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
     dismissed_notices: List[str] = Field(default_factory=list,
                                          description="Avvisi della web con 'Non mostrare più' (es. preview_edit_beta)")
+    group_background: Literal["colors", "gray", "none"] = Field(default="colors", description="Sfondo dei gruppi in Lezioni: colors | gray | none")
+    outline_auto_approval_seconds: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
 
 
 class JevConfig(BaseModel):
@@ -327,7 +347,8 @@ class JevConfig(BaseModel):
 
 
 class EnrichmentConfig(BaseModel):
-    # Analisi dentro la pipeline: spenta per default, si avvia dalla pagina Arricchimento.
+    # Analisi dentro la pipeline: disattivata, manuale (predefinita) o automatica.
+    mode: Literal["disabled", "manual", "automatic"] = "manual"
     automatic: bool = False
     cap_mode: Literal["off", "fixed", "proportional"] = "proportional"
     cap_number: int = Field(default=5, ge=1, le=1000)
@@ -336,6 +357,27 @@ class EnrichmentConfig(BaseModel):
     decision_credential: str = "openrouter"
     decision_base_url: str = "https://openrouter.ai/api/alpha/decisions"
     decision_timeout: float = Field(default=30, ge=1, le=300)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sync_mode_and_automatic(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            values = dict(values)
+            if "mode" in values and "automatic" not in values:
+                values["automatic"] = (values["mode"] == "automatic")
+            elif "automatic" in values and "mode" not in values:
+                values["mode"] = "automatic" if values["automatic"] else "manual"
+            elif "automatic" in values and "mode" in values:
+                if values["automatic"] and values["mode"] != "automatic":
+                    values["mode"] = "automatic"
+                elif not values["automatic"] and values["mode"] == "automatic":
+                    values["mode"] = "manual"
+                else:
+                    values["automatic"] = (values["mode"] == "automatic")
+            else:
+                values["mode"] = "manual"
+                values["automatic"] = False
+        return values
 
 
 class RTConfig(BaseModel):
@@ -461,6 +503,11 @@ def _resolve_telegram_state_dir(cfg: RTConfig, anchor_dir: str) -> RTConfig:
     if not os.path.isabs(cfg.telegram.state_dir):
         cfg.telegram.state_dir = os.path.join(anchor_dir, cfg.telegram.state_dir)
     return cfg
+
+
+def telegram_enabled() -> bool:
+    """Telegram attivo (configurazione telegram.enabled o RT_TELEGRAM_ENABLED); spento di predefinito."""
+    return load_config().telegram.enabled
 
 
 def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> None:

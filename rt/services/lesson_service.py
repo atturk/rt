@@ -122,6 +122,29 @@ def _pending_count(lesson_dir: str) -> int:
     return sum(1 for i in load_science_issues(lesson_dir) if i.id not in decided)
 
 
+def _info_counts(lesson_dir: str) -> Dict[str, Any]:
+    """Numeri del popup Info della pagina Lezioni: unità della scaletta, durata dell'audio,
+    domande nel pool e da fare. Ognuno manca (None o 0) se il suo file non c'è ancora."""
+    from rt.core.manifest import load_manifest
+    from rt.core.models import RecallQuestionStatus
+    from rt.pipeline.outline import get_outline_path, load_outline
+    from rt.pipeline.recall import load_recall_bank
+    units = None
+    if fs.isfile(get_outline_path(lesson_dir)):
+        try:
+            units = sum(len(macro.units) for macro in load_outline(lesson_dir).macro_sections)
+        except Exception:
+            units = None
+    manifest = load_manifest(lesson_dir)
+    questions = load_recall_bank(lesson_dir).questions
+    return {
+        "unit_count": units,
+        "duration_seconds": (manifest.audio_duration_seconds if manifest else None) or None,
+        "recall_questions": sum(q.status != RecallQuestionStatus.DISCARDED for q in questions),
+        "recall_pending": sum(q.status == RecallQuestionStatus.PENDING for q in questions),
+    }
+
+
 def lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     """Stessi dati della dashboard (rt/tui/data.py) in forma JSON."""
     with fs.read_snapshot():
@@ -134,14 +157,16 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.cost import compute_lesson_cost
     out: Dict[str, Any] = {
         "id": lesson_id, "folder_name": os.path.basename(lesson_dir), "path": lesson_dir,
-        "data": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
+        "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
+        "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
     }
     try:
         info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
         state = compute_effective_workflow_state(lesson_dir)
         out.update({
             "data": str(info.get("data") or ""),
+            "ora": str(info.get("ora") or ""),
             "materia": str(info.get("materia") or "").strip().upper(),
             "titolo": str(info.get("titolo") or ""),
             "argomenti": str(info.get("argomenti") or ""),
@@ -150,6 +175,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
             "phases": {ph: check_phase_status(lesson_dir, ph)[0].value for ph in PHASES},
             "pending_issues": _pending_count(lesson_dir),
             "cost_usd": (compute_lesson_cost(lesson_dir) or {}).get("total_estimated_cost_usd"),
+            **_info_counts(lesson_dir),
         })
     except Exception as exc:  # una lezione illeggibile non blocca l'elenco
         out["error"] = str(exc)
@@ -263,7 +289,7 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
         needle = text.casefold()
         items = [i for i in items if any(needle in str(i[k]).casefold()
                                          for k in ("folder_name", "titolo", "argomenti", "materia", "docente"))]
-    items.sort(key=lambda i: (i["data"], i["folder_name"]), reverse=True)
+    items.sort(key=lambda i: (i["data"], i["ora"], i["folder_name"]), reverse=True)
     return items
 
 
@@ -387,7 +413,8 @@ def load_markdown_preview(lesson_dir: str) -> str:
     1. il documento finale, se esiste ed è aggiornato (build VALID);
     2. altrimenti, con la bozza pronta (rewrite VALID), l'anteprima: lo stesso Markdown che
        il build scriverebbe ora (bozza, decisioni della revisione, immagini posizionate);
-    3. altrimenti il documento finale superato, se c'è, o un placeholder onesto."""
+    3. altrimenti la bozza parziale (checkpoint della rielaborazione);
+    4. in assenza di una bozza leggibile, il documento finale superato o un placeholder."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     if _document_is_final(lesson_dir):
         final = _read_rielaborato(lesson_dir)
@@ -399,15 +426,14 @@ def load_markdown_preview(lesson_dir: str) -> str:
             return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
         except Exception:
             pass
-    if fs.isfile(lesson_path(lesson_dir, "rielaborato.md")):
-        final = _read_rielaborato(lesson_dir)
-        if final is not None:
-            return final
     try:
         # bozza non ancora valida (es. rewrite parziale): anteprima di quello che c'è
         from rt.pipeline.build import render_lesson_documents
         return strip_yaml_frontmatter(render_lesson_documents(lesson_dir)["rielaborato"])
     except Exception:
+        final = _read_rielaborato(lesson_dir)
+        if final is not None:
+            return final
         return (
             "# Nessuna anteprima disponibile\n\n"
             "Il documento Markdown di questa lezione non è ancora stato generato.\n\n"

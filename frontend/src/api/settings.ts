@@ -34,8 +34,19 @@ export function useSaveWorker() {
   return useSettingsMutation((concurrency: number) => unwrap(api.PUT('/api/v1/settings/worker', { body: { concurrency } })))
 }
 
+export function useSavePreferences() {
+  return useSettingsMutation((body: Schemas['PreferencesSettings']) =>
+    unwrap(api.PUT('/api/v1/settings/preferences', { body })),
+  )
+}
+
 export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
+}
+
+/** Telegram acceso o spento (spento di predefinito: i ripassi si fanno solo nella web app). */
+export function useSetTelegramEnabled() {
+  return useSettingsMutation((enabled: boolean) => unwrap(api.PUT('/api/v1/settings/telegram/enabled', { body: { enabled } })))
 }
 
 export function useSaveTelegram() {
@@ -177,13 +188,12 @@ export function isTerminal(state: string | undefined) {
   return !!state && TERMINAL.has(state)
 }
 
-/** Stato di un job, riletto ogni secondo finché non finisce. */
+/** Stato di un job, riletto a ogni suo evento dal canale live (liveUpdates.ts). */
 export function useJob(id: string | undefined) {
   return useQuery({
     queryKey: settingsKeys.job(id ?? ''),
     queryFn: () => unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: id! } } })),
     enabled: !!id,
-    refetchInterval: (query) => (isTerminal(query.state.data?.state) ? false : 1000),
   })
 }
 

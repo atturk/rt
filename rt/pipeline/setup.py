@@ -100,6 +100,7 @@ class SetupRequest(BaseModel):
     materia: str
     argomenti: str = ""
     docente: str = ""
+    ora: str = ""
 
 
 def is_audio_file(path: str) -> bool:
@@ -356,6 +357,7 @@ def resolve_setup_request(
     prompter: Optional[SetupPrompter] = None,
     strict: bool = False,
     docente: Optional[str] = None,
+    ora: Optional[str] = None,
 ) -> SetupRequest:
     """Raccoglie e valida i metadati di setup senza mai leggere da stdin.
 
@@ -412,6 +414,8 @@ def resolve_setup_request(
     if missing:
         raise MissingSetupFields(missing)
 
+    if ora and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", ora.strip()):
+        raise ValueError("Ora non valida: usa HH:MM.")
     return SetupRequest(
         audio=cleaned_audios,
         date=date_val,
@@ -420,6 +424,7 @@ def resolve_setup_request(
         argomenti=sanitize_filename_part(argomenti.strip()) if argomenti and argomenti.strip() else "",
         # Il docente non entra nel nome della cartella: resta com'è scritto (una riga).
         docente=" ".join((docente or "").split()),
+        ora=(ora or "").strip(),
     )
 
 
@@ -438,6 +443,7 @@ def run_setup(
     prompter: Optional[SetupPrompter] = None,
     strict: bool = False,
     docente: Optional[str] = None,
+    ora: Optional[str] = None,
     on_transcription_progress: Optional[Callable[[int], None]] = None,
 ) -> Dict[str, Any]:
     """
@@ -454,7 +460,7 @@ def run_setup(
         model = DEFAULT_MODEL
     request = resolve_setup_request(
         audio, date=date, materia=materia, argomenti=argomenti,
-        prompter=prompter if interactive else None, strict=strict, docente=docente,
+        prompter=prompter if interactive else None, strict=strict, docente=docente, ora=ora,
     )
     cleaned_audios = request.audio
     primary_audio = cleaned_audios[0]
@@ -464,6 +470,7 @@ def run_setup(
     materia_val = request.materia
     argomenti_val = request.argomenti
     docente_val = request.docente
+    ora_val = request.ora
 
     # 3. Risoluzione cartella di destinazione
     if dest_dir:
@@ -726,6 +733,8 @@ creato_il: '{now_iso}'
 fase_corrente: {current_state}
 stato: {current_status}
 """
+    if ora_val:
+        info_content += yaml.safe_dump({"ora": ora_val}, allow_unicode=True, default_flow_style=False)
     if docente_val:
         info_content += yaml.safe_dump({"docente": docente_val}, allow_unicode=True, default_flow_style=False)
     tmp_info = info_yaml_path + ".tmp"
@@ -744,6 +753,7 @@ stato: {current_status}
         "materia": materia_val,
         "argomenti": argomenti_val,
         "docente": docente_val,
+        "ora": ora_val,
         "audio_files": [os.path.join(target_folder_path, os.path.basename(a)) for a in cleaned_audios],
         "info_yaml": info_yaml_path,
         "trascritto_json": json_path if fs.isfile(json_path) else None,

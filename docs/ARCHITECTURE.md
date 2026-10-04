@@ -422,7 +422,8 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
   `rt build` rinomina o sposta la cartella.
 - **Lavori lunghi**: l'endpoint accoda un job (risposta 202) e `rt worker` lo esegue; gli
   eventi arrivano in Server-Sent Events da `/jobs/{id}/events` e riprendono da
-  `Last-Event-ID`. Le decisioni (outline, issue) registrano `channel=api`; la ripresa dei job
+  `Last-Event-ID`; `/events` li manda tutti (solo job, lezione e tipo) alla web app, che
+  invalida le query interessate. Le decisioni (outline, issue) registrano `channel=api`; la ripresa dei job
   in attesa la fanno i servizi. Con un job in esecuzione sulla lezione le decisioni
   rispondono 409. I tipi di job solo API stanno in `rt/services/api_jobs.py`.
 - **Parità**: `docs/RT4_PARITY.md` e i test `tests/test_api_parity.py` e

@@ -31,7 +31,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `${PYTHON} ../scripts/e2e_server.py --port ${PORT}`,
+    // --telegram: gli e2e del bot finto lo vogliono acceso (dev.sh no: vale il predefinito, spento)
+    command: `${PYTHON} ../scripts/e2e_server.py --port ${PORT} --telegram`,
     url: `http://127.0.0.1:${PORT}/api/v1/health`,
     reuseExistingServer: false,
     timeout: 180_000,

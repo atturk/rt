@@ -1,6 +1,7 @@
 /**
  * Hook di job, importazione e outline (RT4-F4). Lo stato dei job si rilegge sempre dall'API:
- * lo stream SSE serve a mostrare gli eventi dal vivo e a dire quando rileggere.
+ * il canale live (liveUpdates.ts) dice quando rileggere; lo stream SSE del singolo job
+ * (useJobEvents) mostra i suoi eventi dal vivo.
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
@@ -32,12 +33,12 @@ export function invalidateAfterJob(client: QueryClient, lessonId?: number | null
   }
 }
 
-export function useJobs(filters: JobFilters = {}, options: { poll?: number } = {}) {
+/** Elenchi dei job: li aggiorna il canale live (liveUpdates.ts) a ogni evento di un job. */
+export function useJobs(filters: JobFilters = {}) {
   const query = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '')) as JobFilters
   return useQuery({
     queryKey: jobKeys.list(query),
     queryFn: () => unwrap(api.GET('/api/v1/jobs', { params: { query } })),
-    refetchInterval: options.poll ?? false,
   })
 }
 
@@ -53,6 +54,7 @@ export function useWorkers() {
   return useQuery({
     queryKey: jobKeys.workers,
     queryFn: () => unwrap(api.GET('/api/v1/workers')),
+    // Polling lento voluto: i worker vivi si vedono dai loro heartbeat, che non sono eventi.
     refetchInterval: 15_000,
   })
 }
@@ -95,10 +97,12 @@ export type NewLesson = {
   materia: string
   argomenti: string
   docente: string
+  ora?: string
   run: boolean
   mock: boolean
   auto_accept: boolean
   with_review: boolean
+  with_enrichment?: boolean
 }
 
 /** POST /lessons multipart con avanzamento dell'upload. */
@@ -113,10 +117,12 @@ export function useCreateLesson() {
       form.append('materia', input.materia)
       form.append('argomenti', input.argomenti)
       form.append('docente', input.docente)
+      form.append('ora', input.ora ?? '')
       form.append('run', String(input.run))
       form.append('mock', String(input.mock))
       form.append('auto_accept', String(input.auto_accept))
       form.append('with_review', String(input.with_review))
+      if (input.with_enrichment !== undefined) form.append('with_enrichment', String(input.with_enrichment))
       setProgress({ loaded: 0, total: input.files.reduce((sum, f) => sum + f.size, 0) })
       const body = {
         audio: input.files.map((f) => f.name),
@@ -124,10 +130,12 @@ export function useCreateLesson() {
         materia: input.materia,
         argomenti: input.argomenti,
         docente: input.docente,
+        ora: input.ora ?? '',
         run: input.run,
         mock: input.mock,
         auto_accept: input.auto_accept,
         with_review: input.with_review,
+        with_enrichment: input.with_enrichment,
       } satisfies Schemas['Body_create_lesson_api_v1_lessons_post']
       return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
     },
@@ -183,6 +191,15 @@ export function useReviseOutline(lessonId: number) {
   return useMutation({
     mutationFn: (body: Schemas['OutlineRevision']) =>
       unwrap(api.POST('/api/v1/lessons/{lesson_id}/outline/revise', { params: { path: { lesson_id: lessonId } }, body })),
+    onSettled: () => invalidateAfterJob(client, lessonId),
+  })
+}
+
+export function useSuspendOutline(lessonId: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.POST('/api/v1/lessons/{lesson_id}/outline/suspend', { params: { path: { lesson_id: lessonId } } })),
     onSettled: () => invalidateAfterJob(client, lessonId),
   })
 }

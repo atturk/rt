@@ -223,6 +223,19 @@ def save_telegram(project_root: Path, token: str, chat_id: str,
     return "Impostazioni Telegram salvate."
 
 
+def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
+    """Accende o spegne Telegram (telegram.enabled nella configurazione generale). Spento, il
+    bot non parte e i ripassi e le decisioni restano nella web app e nel terminale."""
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    telegram = data.setdefault("telegram", {})
+    if not isinstance(telegram, dict):
+        raise ValueError("Configurazione Telegram non valida.")
+    telegram["enabled"] = bool(enabled)
+    _atomic_yaml(path, data)
+    return "Telegram attivato." if enabled else "Telegram disattivato."
+
+
 def save_transcription(project_root: Path, engine: str, base_url: str,
                        model: str, api_key: str) -> str:
     if api_key.strip():
@@ -423,6 +436,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "model": cfg.transcription.model, "api_key_set": secret_is_set("RT_STT_API_KEY"),
         },
         "telegram": {
+            "enabled": cfg.telegram.enabled,
             "bot_token_set": secret_is_set("RT_TELEGRAM_BOT_TOKEN"),
             "bot_token_preview": mask_value(telegram_value("bot_token")),
             "chat_id_set": bool(telegram_value("chat_id")),
@@ -440,6 +454,11 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "credentials": credentials,
         "pricing": general.get("pricing") or {},
         "web_search": {"searxng_base_url": cfg.searxng_base_url or None},
+        "preferences": {
+            "secondi_approvazione": cfg.ui.outline_auto_approval_seconds,
+            "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
+            "modalita_arricchimento": {"disabled": "disattivata", "manual": "manuale", "automatic": "automatica"}.get(cfg.enrichment.mode, cfg.enrichment.mode),
+        },
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
         # Primo avvio: senza connessioni non gira niente, la SPA porta alla configurazione
@@ -519,3 +538,28 @@ def delete_secret_by_name(project_root: Path, name: str) -> list[str]:
     if name not in secret_names_from_config(general_config_path(project_root)):
         raise KeyError(name)
     return config_service.unset_secret(name, path=_env_path(project_root))
+
+
+def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[str, Any]:
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    ui_data = data.setdefault("ui", {})
+    bg_val = preferences.get("sfondo_gruppi", "colori")
+    bg_canonical = {"niente": "none", "grigi": "gray", "colori": "colors"}.get(bg_val, bg_val)
+    ui_data["group_background"] = bg_canonical
+
+    secs = int(preferences.get("secondi_approvazione", 10))
+    ui_data["outline_auto_approval_seconds"] = secs
+
+    enr_val = preferences.get("modalita_arricchimento", "manuale")
+    enr_canonical = {"disattivata": "disabled", "manuale": "manual", "automatica": "automatic"}.get(enr_val, enr_val)
+    enr_data = data.setdefault("enrichment", {})
+    enr_data["mode"] = enr_canonical
+    enr_data["automatic"] = (enr_canonical == "automatic")
+
+    _atomic_yaml(path, data)
+    return {
+        "secondi_approvazione": secs,
+        "sfondo_gruppi": bg_val,
+        "modalita_arricchimento": enr_val,
+    }

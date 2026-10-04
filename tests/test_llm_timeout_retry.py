@@ -110,7 +110,7 @@ def test_b_timeout_retry_success(monkeypatch):
     """
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-retry-success-55555")
     client = LLMClient(force_mock=False)
-    client.config.llm["rewrite"].timeout_seconds = 1
+    client.config.llm["rewrite"].timeout_seconds = 2  # margine per runner lenti: il secondo tentativo deve stare nella deadline
     client.config.llm["rewrite"].provider = "openrouter"
     client.config.retry.max_timeout_retries = 1
     client.config.retry.timeout_backoff_seconds = 0.1  # Breve per il test

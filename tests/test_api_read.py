@@ -33,6 +33,26 @@ def test_list_and_filters(api_client, lesson):
     assert api_client.get("/api/v1/lessons", params={"q": "zzz"}).json() == []
 
 
+def test_list_has_the_info_popup_numbers(api_client, lesson):
+    """4.2, popup Info della pagina Lezioni: unità, durata, domande nel pool e da fare."""
+    from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus
+    from rt.pipeline.outline import load_outline
+    from rt.pipeline.recall import save_recall_bank
+    item = _only_lesson(api_client)
+    assert item["unit_count"] == sum(len(m.units) for m in load_outline(lesson).macro_sections) > 0
+    assert item["recall_questions"] == item["recall_pending"] == 0
+    assert item["duration_seconds"] is None or item["duration_seconds"] > 0
+    unit = load_outline(lesson).macro_sections[0].units[0].id
+    save_recall_bank(RecallBank(questions=[
+        RecallQuestion(id=f"recall_00000{i}", type="mirata", unit_ids=[unit], question_text="Perché?", status=status)
+        for i, status in enumerate((RecallQuestionStatus.PENDING, RecallQuestionStatus.PENDING, RecallQuestionStatus.ASKED))
+    ]), lesson)
+    item = _only_lesson(api_client)  # il pool cambia un file: il riepilogo in cache si ricalcola
+    assert (item["recall_questions"], item["recall_pending"]) == (3, 2)
+    detail = api_client.get(f"/api/v1/lessons/{item['id']}").json()
+    assert (detail["unit_count"], detail["recall_pending"]) == (item["unit_count"], 2)
+
+
 def test_lesson_id_is_stable(api_client, lesson):
     first = _only_lesson(api_client)["id"]
     assert _only_lesson(api_client)["id"] == first

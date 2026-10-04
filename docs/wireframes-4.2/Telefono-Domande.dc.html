@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Telefono: Domande</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+.r{font-family:system-ui,-apple-system,'Helvetica Neue',sans-serif;color:#171717;background:#ffffff;font-size:15px;line-height:1.55}
+.mono{font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.meta{font-size:12px;color:#5c5c5c}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:0;background:transparent;color:#171717;padding:0;font:inherit;cursor:pointer}
+.ib.on{background:#f1f1f1}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid #d4d4d4;background:#ffffff;color:#171717;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.btn.pri{background:#dceee7;border-color:#dceee7;color:#155f52;font-weight:600}
+.btn.sm{height:30px;padding:0 10px;font-size:13px}
+.btn.big{height:48px;font-size:15px;justify-content:center}
+.kbd{font-size:11px;opacity:.6;font-family:'SF Mono',ui-monospace,Menlo,monospace}
+.tc{display:inline-block;border:1px solid #d4d4d4;border-radius:8px;padding:0 6px;font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:12px;color:#5c5c5c;line-height:1.6}
+.lk{color:#155f52;font-weight:600;text-decoration:none;background:none;border:0;padding:0;font:inherit;font-size:13px;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:#f1f1f1;font-size:12px;color:#171717;border:0;font-family:inherit}
+.chip.on{background:#dceee7;color:#155f52;font-weight:600}
+.sec{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#5c5c5c}
+.card{border:1px solid #d4d4d4;border-radius:8px;padding:14px}
+.claim{background:#fce9a8;border-radius:3px;color:#3c311b}
+.under{text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#b8860b;text-decoration-thickness:2px;text-underline-offset:3px}
+.sel{background:rgba(21,95,82,.16)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:999px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:#5c5c5c}
+.field input,.field select,.field textarea{height:34px;border:1px solid #d4d4d4;border-radius:8px;padding:0 10px;font:inherit;font-size:14px;color:#171717;background:#ffffff}
+.field textarea{height:72px;padding:8px 10px;resize:none}
+.row{display:flex;align-items:center;gap:8px}
+.hr{height:1px;background:#e8e8e8}
+a{color:#155f52}a:hover{color:#0e4038}
+</style>
+</helmet>
+<div class="r" style="width: 390px; height: 844px; position: relative; overflow: hidden">
+<header style="height: 52px; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; gap: 2px; padding: 0 6px">
+<a href="Telefono-Dashboard.dc.html" class="ib" aria-label="Torna alle lezioni"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+<span style="flex: 1"></span>
+<button class="ib on" aria-label="Domande e recall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/></svg></button>
+<button class="ib" aria-label="Studio"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></button>
+<button class="ib" aria-label="Arricchimento"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></button>
+<button class="ib" aria-label="Verifica con LLM"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></button>
+<button class="ib" aria-label="Dettagli"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></button>
+<button class="ib" aria-label="Esporta"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button>
+</header>
+<div style="padding: 0 4px; opacity: .45"><div style="max-width: 680px; margin: 0 auto; padding: 32px 24px 120px">
+<p style="margin: 0; font-size: 22px; font-weight: 600; line-height: 1.3">Emogasanalisi e acidosi</p>
+<p class="meta" style="margin: 6px 0 0">Fisiologia · giovedì 2 ottobre · Rossi</p>
+<p class="meta" style="margin: 2px 0 0">9 unità · 1 h 20 min</p>
+<p class="meta" style="margin: 14px 0 0">Salvato nella bozza</p>
+<p style="margin: 22px 0 2px; font-size: 18px; font-weight: 600; line-height: 1.4">1. Inquadramento degli squilibri acido-base</p>
+<p style="margin: 12px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4">1.1 Continuità didattica e relazione tra fisiopatologia e clinica</p><p style="margin: 2px 0 6px; display: flex; gap: 6px; align-items: center"><span class="tc">00:00</span></p>
+<p style="margin: 0 0 10px">La lezione riprende il filo della precedente: dalla fisiopatologia dei sistemi tampone alle manifestazioni cliniche che il medico riconosce al letto del paziente.</p>
+<p style="margin: 12px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4">1.2 Acidosi metabolica: definizione e compensazione</p><p style="margin: 2px 0 6px; display: flex; gap: 6px; align-items: center"><span class="tc">03:00</span></p>
+<p style="margin: 0 0 10px">Nell'acidosi metabolica il bicarbonato plasmatico scende sotto 22 mEq/L e il pH arterioso sotto 7,35. La compensazione respiratoria è rapida: l'iperventilazione abbassa la PaCO₂ entro pochi minuti.</p>
+<p style="margin: 12px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4">1.3 Il gap anionico</p><p style="margin: 2px 0 6px; display: flex; gap: 6px; align-items: center"><span class="tc">07:40</span></p>
+<p style="margin: 0 0 10px">Il gap anionico si calcola come sodio meno la somma di cloro e bicarbonato. Un gap aumentato orienta verso chetoacidosi, acidosi lattica, insufficienza renale o intossicazioni.</p>
+<p style="margin: 22px 0 2px; font-size: 18px; font-weight: 600; line-height: 1.4">2. Emogasanalisi in pratica</p>
+<p style="margin: 12px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4">2.1 Prelievo arterioso e valori di riferimento</p><p style="margin: 2px 0 6px; display: flex; gap: 6px; align-items: center"><span class="tc">12:10</span></p>
+<p style="margin: 0 0 10px">Il prelievo si esegue di norma dall’arteria radiale, dopo il test di Allen; il campione va analizzato entro pochi minuti.</p>
+</div></div>
+<section aria-label="Domande" style="position: absolute; left: 0; right: 0; bottom: 0; height: 640px; background: #ffffff; border-top-left-radius: 14px; border-top-right-radius: 14px; box-shadow: 0 -10px 30px rgba(0,0,0,.12); display: flex; flex-direction: column">
+<div style="width: 40px; height: 4px; border-radius: 4px; background: #d4d4d4; margin: 8px auto 0"></div>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 4px 16px">
+<p style="margin: 0; font-size: 16px; font-weight: 600">Domande</p>
+<button class="ib" aria-label="Chiudi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div style="flex: 1; overflow: hidden; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+<a href="Telefono-Sessione.dc.html" class="btn pri big" style="text-decoration: none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/></svg> Ripassa · 23 da porre</a>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px"><sc-for list="{{ types }}" as="t" hint-placeholder-count="5"><button aria-pressed="{{ t.pressed }}" onClick="{{ t.pick }}" style="{{ t.style }}" aria-label="Mostra solo {{ t.label }}"><span style="font-size: 17px; font-weight: 600">{{ t.n }}</span><span class="meta">{{ t.label }}</span></button></sc-for></div>
+<button class="btn" style="justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></svg> Genera altre domande</button>
+<ul style="margin: 0; padding: 0"><sc-for list="{{ questions }}" as="q" hint-placeholder-count="5"><li style="list-style: none; padding: 10px 0; border-bottom: 1px solid #efefef"><p class="meta" style="margin: 0">{{ q.meta }}</p><p style="margin: 2px 0 0; font-size: 14px">{{ q.text }}</p></li></sc-for></ul></div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 390, "height": 844}}'>
+class Component extends DCLogic {
+renderVals() {
+const all = [
+{ t: 'quiz', text: "Quale valore di bicarbonato definisce l'acidosi metabolica?", meta: 'Quiz · unità 1.2 · risposta corretta' },
+{ t: 'mirata', text: 'Come si calcola il gap anionico e cosa indica un valore aumentato?', meta: 'Mirata · unità 1.3 · da porre' },
+{ t: 'vasta', text: "Descrivi i meccanismi di compenso di un'acidosi metabolica.", meta: 'Vasta · unità 1.2 · da porre' },
+{ t: 'casi', text: 'Paziente di 62 anni, pH 7,28, HCO3- 15: come procedi?', meta: 'Caso · unità 2.1 · posta, sbagliata' },
+{ t: 'quiz', text: 'Quale sistema tampone è il principale nel plasma?', meta: 'Quiz · unità 1.1 · da porre' },
+{ t: 'mirata', text: 'Quali valori di riferimento ha il pH arterioso?', meta: 'Mirata · unità 2.1 · da porre' },
+];
+const types = [['quiz', 'quiz', 12], ['mirata', 'mirate', 6], ['vasta', 'vaste', 3], ['casi', 'casi', 2], ['esercizi', 'esercizi', 0]];
+const f = (this.state && this.state.f) || null;
+const base = 'display: flex; flex-direction: column; align-items: center; padding: 6px 0; border-radius: 8px; font: inherit; cursor: pointer; ';
+return {
+types: types.map(([id, label, n]) => ({
+label, n, pressed: f === id ? 'true' : 'false',
+style: base + (f === id ? 'border: 1px solid #155f52; background: #dceee7; color: #155f52' : 'border: 1px solid #e8e8e8; background: #ffffff; color: #171717'),
+pick: () => this.setState({ f: f === id ? null : id }),
+})),
+questions: all.filter((q) => !f || q.t === f),
+};
+}
+}
+</script>
+</body>
+</html>

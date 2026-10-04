@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, Field
 
 from rt.api.deps import Actor
-from rt.api.errors import ApiError
+from rt.api.errors import ApiError, require_telegram
 from rt.api.schemas import JobAccepted
 from rt.core.jev_decision import JevDecisionConfig
 
@@ -94,6 +94,7 @@ class Transcription(BaseModel):
 
 
 class TelegramSettings(BaseModel):
+    enabled: bool = Field(False, description="Telegram attivo (spento di predefinito): bot, ripassi e decisioni su Telegram")
     bot_token_set: bool
     bot_token_preview: Optional[str] = Field(None, description="Primi e ultimi caratteri del token (es. 1234…wXyZ); "
                                                                "il valore completo solo con POST /settings/telegram/reveal")
@@ -128,6 +129,12 @@ class WebSearchSettings(BaseModel):
     searxng_base_url: Optional[str] = Field(None, description="URL base di SearXNG per la ricerca immagini web")
 
 
+class PreferencesSettings(BaseModel):
+    secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
+    sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
+    modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
+
+
 class Settings(BaseModel):
     worker: WorkerSettings
     notices: NoticeSettings
@@ -138,6 +145,7 @@ class Settings(BaseModel):
     credentials: List[CredentialState]
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
     web_search: WebSearchSettings
+    preferences: PreferencesSettings = Field(default_factory=PreferencesSettings, description="Preferenze generali")
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
     setup_required: bool = Field(False, description="True se manca un passo obbligatorio della configurazione e la SPA "
@@ -324,10 +332,30 @@ def put_notice(body: NoticeIn, _actor: Actor):
     return snapshot(_project_root())
 
 
+@router.put("/settings/preferences", response_model=Settings, summary="Salva le preferenze generali")
+def put_preferences(body: PreferencesSettings, _actor: Actor):
+    from rt.services.settings_service import save_preferences, snapshot
+    _call(save_preferences, _project_root(), body.model_dump())
+    return snapshot(_project_root())
+
+
 @router.put("/settings/transcription", response_model=Settings, summary="Motore di trascrizione")
 def put_transcription(body: TranscriptionIn, _actor: Actor):
     from rt.services.settings_service import save_transcription, snapshot
     _call(save_transcription, _project_root(), body.engine, body.base_url, body.model, body.api_key or "")
+    return snapshot(_project_root())
+
+
+class TelegramEnabledIn(BaseModel):
+    enabled: bool
+
+
+@router.put("/settings/telegram/enabled", response_model=Settings, summary="Accende o spegne Telegram (spento: anche il bot si ferma)")
+def put_telegram_enabled(body: TelegramEnabledIn, _actor: Actor):
+    from rt.services.settings_service import set_telegram_enabled, snapshot
+    _call(set_telegram_enabled, _project_root(), body.enabled)
+    if not body.enabled:
+        daemon_stop(_actor)
     return snapshot(_project_root())
 
 
@@ -392,6 +420,7 @@ async def revoke_telegram_user(_actor: Actor):
 
 @router.post("/settings/telegram/user/start", summary="Invia un codice Telegram all'account utente")
 async def start_telegram_user(body: TelegramUserStartIn, _actor: Actor):
+    require_telegram()
     from rt.services.telegram_user_archive import request_code
     await request_code(body.api_id, body.api_hash, body.phone)
     return {"sent": True}
@@ -399,6 +428,7 @@ async def start_telegram_user(body: TelegramUserStartIn, _actor: Actor):
 
 @router.post("/settings/telegram/user/complete", summary="Completa l'accesso utente con codice e 2FA")
 async def complete_telegram_user(body: TelegramUserCompleteIn, _actor: Actor):
+    require_telegram()
     from rt.services.telegram_user_archive import complete_login
     await complete_login(body.code, body.password)
     return {"authorized": True}
@@ -414,6 +444,7 @@ async def get_telegram_user_topics(_actor: Actor):
 @router.post("/settings/telegram/user/topics/{topic_id}/archive", response_model=JobAccepted, status_code=202,
              summary="Esporta cronologia e media del topic (job telegram_topic_export; si scarica da /settings/telegram/user/archives/{job_id})")
 def start_telegram_topic_archive(topic_id: int, actor: Actor):
+    require_telegram()
     from rt.api.jobs import enqueue_job
     from rt.services.telegram_topics import TopicListenError, _chat_id
     from rt.services.telegram_user_archive import check_export_ready
@@ -447,6 +478,7 @@ def download_telegram_topic_archive(job_id: str, _actor: Actor):
 
 @router.post("/settings/telegram/recreate-topic", summary="Elimina tutti i messaggi del topic e lo ricrea vuoto")
 def recreate_telegram_topic(body: TopicRecreateIn, _actor: Actor):
+    require_telegram()
     from rt.services.telegram_topics import TopicListenError, recreate_topic
     try:
         new_id = recreate_topic(body.topic_id, body.name, body.confirmation)
@@ -466,6 +498,7 @@ def reveal_telegram(body: RevealIn, response: Response, _actor: Actor):
 @router.post("/settings/telegram/test-topic", response_model=TopicTestOut,
              summary="Invia nel topic il messaggio di prova 'Questo è il topic di <materia>'")
 def test_topic(body: TopicTestIn, _actor: Actor):
+    require_telegram()
     from rt.services.telegram_topics import TopicListenError, send_topic_test
     from rt.telegram.notify_log import record_notification
     try:
@@ -831,6 +864,7 @@ def daemon_status(_actor: Actor):
 @router.post("/telegram/daemon/start", response_model=DaemonStatus,
              summary="Avvia il bot Telegram come processo indipendente dall'API")
 def daemon_start(_actor: Actor):
+    require_telegram()
     import os
     from rt.services.settings_service import general_config_path, secret_is_set
     from rt.telegram.daemon_status import get_default_pid_path, start_daemon_detached
