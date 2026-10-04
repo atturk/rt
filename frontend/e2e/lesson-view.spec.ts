@@ -56,10 +56,10 @@ test('dall\'elenco si scaricano i Markdown finali senza aprire la lezione (barra
   await row(notBuilt.id).getByRole('checkbox').uncheck()
 
   await row(built.id).getByRole('checkbox').check()
-  const download = page.waitForEvent('download')
-  await bar.getByRole('link', { name: 'Scarica Markdown' }).click()
+  const download = page.waitForEvent('download', { timeout: 50_000 })
+  await bar.getByRole('button', { name: 'Scarica Markdown' }).click()
   const file = await download
-  // Uno ZIP con i documenti finali aggiornati (GET /lesson-exports?format=markdown).
+  // Uno ZIP con i documenti finali aggiornati (job export_lessons, download automatico a job finito).
   expect(file.suggestedFilename()).toBe('Lezioni selezionate.zip')
   expect(readFileSync((await file.path())!).subarray(0, 2).toString()).toBe('PK')
   await expect(page).toHaveURL(/\/$/)
