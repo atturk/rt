@@ -40,7 +40,7 @@ le unisce nel branch beta e pubblica la beta.
   successiva.
 - **Raggruppamento per mese**: nel selettore del desktop, un secondo clic su "Per data" alterna
   giorno e mese; sul telefono il pulsante unico gira su data, mese, materia, docente.
-- **Scorciatoie**: le più comuni, prese da Obsidian.
+- **Scorciatoie**: quelle predefinite di Obsidian, più simile è meglio.
 - **Sezioni richiudibili**: nell'editor, sotto i titoli, come in Obsidian.
 
 ## Task
@@ -136,10 +136,27 @@ solo le scorciatoie di base di CodeMirror (annulla, cerca, liste, Tab): niente g
 
 - Estensione nuova accanto alle altre (`frontend/src/components/lesson/markdownShortcuts.ts`),
   aggiunta in `extensions` di `LessonEditor.tsx`, con `Prec.high` sopra le scorciatoie di base.
-- Scorciatoie come in Obsidian (`Mod` = ⌘ su Mac, Ctrl altrove): `Mod-b` grassetto `**`,
-  `Mod-i` corsivo `*`, `Mod-k` link `[testo](url)`, `Mod-Shift-x` barrato `~~`, `Mod-e` codice
-  in linea `` ` ``. Con testo selezionato lo avvolgono; se è già avvolto lo tolgono; senza
-  selezione inseriscono la coppia con il cursore in mezzo.
+- Scorciatoie predefinite di Obsidian (`Mod` = ⌘ su Mac, Ctrl altrove). Dove Obsidian e
+  CodeMirror usano lo stesso tasto per cose diverse, vince Obsidian.
+  - `Mod-b` grassetto `**`, `Mod-i` corsivo `*`: con testo selezionato lo avvolgono, se è già
+    avvolto lo tolgono, senza selezione inseriscono la coppia con il cursore in mezzo (senza
+    selezione e dentro una parola, come Obsidian, agiscono sulla parola).
+  - `Mod-k` link: avvolge la selezione in `[testo]()` con il cursore tra le parentesi tonde;
+    se la selezione è un URL, `[](url)` con il cursore tra le quadre.
+  - `Mod-Enter` spunta o toglie la spunta di `- [ ]` / `- [x]` (sulla riga di un elenco senza
+    casella la aggiunge).
+  - `Mod-]` / `Mod-[` rientra / riduce il rientro delle righe selezionate (anche fuori dagli elenchi).
+  - `Mod-d` elimina il paragrafo (la riga, o le righe della selezione), al posto di "seleziona
+    l'occorrenza successiva" di CodeMirror.
+  - Già presenti da CodeMirror e da tenere: `Mod-z` / `Mod-Shift-z` annulla e ripeti, `Mod-f`
+    cerca, `Alt-↑` / `Alt-↓` sposta la riga, `Shift-Alt-↑` / `Shift-Alt-↓` duplica la riga,
+    `Mod-a`, Invio che continua gli elenchi, Tab e Shift-Tab negli elenchi.
+  - Senza scorciatoia predefinita in Obsidian, aggiunte come comodità: `Mod-Shift-x` barrato `~~`,
+    `Mod-Shift-c` codice in linea `` ` ``, `Mod-Shift-h` evidenziato `==` solo se l'anteprima di RT
+    lo mostra (altrimenti si salta e si dice nella PR).
+  - Non si usano: `Mod-e` (in Obsidian cambia vista), `Mod-/` (commenti `%%`, che l'anteprima di RT
+    non conosce), `Mod-1…6` per i livelli dei titoli (i titoli nell'editor di RT danno struttura a
+    sezioni e unità: cambiarli da tastiera è troppo facile da sbagliare).
 - **Non rompere l'anteprima di RT**: le scorciatoie non devono agire dentro i timecode bloccati
   (`timecodeLock`), i blocchi immagine e le tabelle; con la lezione in sola lettura non fanno
   niente. Verificare che l'anteprima in linea di atomic-editor mostri il risultato.
@@ -154,7 +171,10 @@ solo le scorciatoie di base di CodeMirror (annulla, cerca, liste, Tab): niente g
   (`foldService` / `foldNodeProp`); si usano `codeFolding` e `foldGutter` o un widget sul titolo
   di `@codemirror/language`, con lo stile dell'app (token del tema, icona `lucide-react` se è un
   widget).
-- Scorciatoie: `Mod-Alt-[` chiude, `Mod-Alt-]` riapre la sezione del cursore (`foldKeymap`).
+- Come in Obsidian, la freccia si vede al passaggio del mouse e una sezione chiusa mostra `…` alla
+  fine del titolo; clic sul titolo o sulla freccia la riapre. Scorciatoie (Obsidian non ne ha di
+  predefinite): quelle di `foldKeymap` di CodeMirror, `Mod-Alt-[` chiude e `Mod-Alt-]` riapre la
+  sezione del cursore, `Ctrl-Alt-[` chiude tutto e `Ctrl-Alt-]` riapre tutto.
 - Le sezioni chiuse **si riaprono da sole** quando l'app porta il cursore o lo scorrimento dentro
   (salto a un'unità, a un problema della revisione, a un timecode, ricerca), cioè dove
   `LessonEditor.tsx` usa `EditorView.scrollIntoView`.
