@@ -26,6 +26,7 @@ import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
+import { lessonFolding } from './lessonFolding'
 import { markdownShortcuts } from './markdownShortcuts'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
@@ -158,6 +159,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   }, [])
   const extensions = useMemo(() => [
     markdownShortcuts,
+    lessonFolding,
     timecodeLock,
     lessonUnits,
     lessonReview,

@@ -491,3 +491,63 @@
 .rt-unit-pending > div { height: 9px; border-radius: var(--radius-md); background: var(--muted); width: 95%; }
 .rt-unit-pending > div:nth-child(2) { width: 88%; }
 .rt-unit-pending > div:nth-child(3) { width: 60%; }
+
+/* Sezioni richiudibili (folding) come in Obsidian (K2) */
+.cm-foldGutter {
+  width: 20px;
+  background: transparent;
+  border-right: none;
+}
+.cm-foldGutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  transition: color 0.15s ease;
+}
+.cm-foldGutter .cm-gutterElement:hover {
+  color: var(--foreground);
+}
+.cm-foldGutter .cm-gutterElement .rt-fold-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+/* Freccia aperta: trasparente finché non si passa il mouse sull'editor o sulla riga; sempre visibile su telefono */
+.cm-foldGutter .cm-gutterElement .rt-fold-open {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.cm-editor:hover .cm-foldGutter .cm-gutterElement .rt-fold-open,
+.cm-foldGutter .cm-gutterElement:hover .rt-fold-open {
+  opacity: 1;
+}
+@media (max-width: 767px) {
+  .cm-foldGutter .cm-gutterElement .rt-fold-open {
+    opacity: 1;
+  }
+}
+/* Freccia chiusa: sempre visibile */
+.cm-foldGutter .cm-gutterElement .rt-fold-closed {
+  opacity: 1;
+}
+
+.cm-foldPlaceholder {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 4px;
+  margin-left: 6px;
+  cursor: pointer;
+  font-weight: normal;
+  font-size: var(--size-meta);
+  line-height: 1.2;
+}
+.cm-foldPlaceholder:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
