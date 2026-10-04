@@ -7,6 +7,7 @@ import { QuestionsPanel } from './QuestionsPanel'
 
 const mockGenerateMutate = vi.fn()
 const mockDeleteMutate = vi.fn()
+const mockSelectUnitsMutate = vi.fn()
 
 vi.mock('@/api/recall', () => ({
   useRecallOverview: vi.fn(() => ({
@@ -77,6 +78,11 @@ vi.mock('@/api/recall', () => ({
       custom: false,
     },
   })),
+  useSelectRecallUnits: vi.fn(() => ({
+    mutate: mockSelectUnitsMutate,
+    isPending: false,
+    isError: false,
+  })),
   useGenerateRecall: vi.fn(() => ({
     mutate: mockGenerateMutate,
     isPending: false,
@@ -117,6 +123,7 @@ describe('QuestionsPanel', () => {
     renderPanel()
 
     expect(screen.getByText(/2 domande da porre/i)).toBeInTheDocument()
+    expect(screen.getByText(/Ultimo ripasso/i)).toHaveTextContent(/Ultimo ripasso: .+ · Mirata/)
     expect(screen.getByRole('link', { name: /Ripassa/i })).toHaveAttribute('href', '/lezioni/1/sessione')
 
     // 5 tipi nel grid
@@ -215,14 +222,27 @@ describe('QuestionsPanel', () => {
     expect(onClearSelection).toHaveBeenCalledTimes(1)
   })
 
-  it('collega i pulsanti del footer al classificatore', () => {
+  it('apre la modale per scegliere le unità del recaller e ne salva la selezione', () => {
     const onSwitchToClassifier = vi.fn()
     renderPanel({ lessonId: 1, onSwitchToClassifier })
 
     fireEvent.click(screen.getByRole('button', { name: 'Scegli' }))
-    expect(onSwitchToClassifier).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog', { name: 'Unità per il recaller' })).toBeInTheDocument()
 
+    // Clic su una casella
+    const checkboxes = screen.getAllByRole('checkbox')
+    fireEvent.click(checkboxes[2])
+    expect(mockSelectUnitsMutate).toHaveBeenCalledWith(['1.1', '1.2', '1.3'])
+
+    // Clic su Tutte
+    fireEvent.click(screen.getByRole('button', { name: 'Tutte' }))
+    expect(mockSelectUnitsMutate).toHaveBeenCalledWith(['1.1', '1.2', '1.3'])
+
+    // Chiudi con Fine
+    fireEvent.click(screen.getByRole('button', { name: 'Fine' }))
+
+    // Rivedi le etichette chiama onSwitchToClassifier
     fireEvent.click(screen.getByRole('button', { name: 'Rivedi le etichette' }))
-    expect(onSwitchToClassifier).toHaveBeenCalledTimes(2)
+    expect(onSwitchToClassifier).toHaveBeenCalledTimes(1)
   })
 })
