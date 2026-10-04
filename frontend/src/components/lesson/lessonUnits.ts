@@ -9,7 +9,9 @@ import type { UnitTask } from './lessonWorkflow'
  */
 
 const UNIT_RE = /^###\s+(\S+)\s/
-const HEADING_RE = /^#{1,3}\s/
+// Solo i titoli numerati di RT ("## 2. …", "### 2.1 …") e l'H1 chiudono un'unità: un titolo senza numero
+// scritto dentro un'unità ("### Approfondimento") è testo dell'unità, come per il server.
+const HEADING_RE = /^(#\s|##\s+\d+\.\s|###\s+\d+(\.\d+)+\.?\s)/
 
 export type UnitRange = { id: string; from: number; to: number; endLine: number }
 

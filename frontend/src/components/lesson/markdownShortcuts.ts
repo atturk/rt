@@ -1,5 +1,6 @@
 import { syntaxTree } from '@codemirror/language'
-import { type EditorState, type Extension, Prec } from '@codemirror/state'
+import { EditorSelection, type EditorState, type Extension, Prec } from '@codemirror/state'
+import type { SyntaxNode } from '@lezer/common'
 import { EditorView, keymap } from '@codemirror/view'
 
 import { timecodeSpans } from './timecodeLock'
@@ -71,11 +72,50 @@ function isItalicDelim(delim: string): boolean {
   return delim === '*'
 }
 
+// Nodo del parser Markdown che corrisponde a ciascun delimitatore.
+const WRAP_NODES: Record<string, string> = { '**': 'StrongEmphasis', '*': 'Emphasis', '~~': 'Strikethrough', '`': 'InlineCode', '==': 'Highlight' }
+
+/** Il nodo (grassetto, corsivo…) che contiene tutta la selezione, anche se la selezione prende
+ * solo una parte dei delimitatori (nell'anteprima in linea sono nascosti) o un cursore dentro
+ * una frase di più parole. */
+function enclosingWrap(state: EditorState, from: number, to: number, name: string) {
+  for (const [pos, side] of [[from, 1], [to, -1]] as const) {
+    for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, side); node; node = node.parent) {
+      if (node.name === name && node.from <= from && node.to >= to) return node
+    }
+  }
+  return null
+}
+
+/** Toglie i delimitatori di un nodo già presente; la selezione resta sul testo. */
+function unwrapNode(view: EditorView, node: SyntaxNode): boolean {
+  const open = node.firstChild
+  const close = node.lastChild
+  if (!open || !close || open === close || !open.name.endsWith('Mark') || !close.name.endsWith('Mark')) return false
+  const changes = view.state.changes([{ from: open.from, to: open.to }, { from: close.from, to: close.to }])
+  view.dispatch({ changes, selection: view.state.selection.map(changes), scrollIntoView: true })
+  return true
+}
+
 function toggleWrap(view: EditorView, delim: string): boolean {
   const { state } = view
-  const { main } = state.selection
+  let { main } = state.selection
   // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
   if (isRangeBlocked(state, main.from, main.to)) return true
+
+  // Già formattato (secondo il parser, come Obsidian): si toglie la formattazione.
+  const node = enclosingWrap(state, main.from, main.to, WRAP_NODES[delim])
+  if (node && unwrapNode(view, node)) return true
+  // Gli spazi ai bordi della selezione restano fuori dai delimitatori ("**testo** ", non "**testo **").
+  if (!main.empty) {
+    let from = main.from
+    let to = main.to
+    while (from < to && /\s/.test(state.sliceDoc(from, from + 1))) from++
+    while (to > from && /\s/.test(state.sliceDoc(to - 1, to))) to--
+    if (from < to && (from !== main.from || to !== main.to)) {
+      main = EditorSelection.range(from, to)
+    }
+  }
 
   const dLen = delim.length
 

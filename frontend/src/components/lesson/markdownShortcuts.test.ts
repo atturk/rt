@@ -1,3 +1,4 @@
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -29,6 +30,8 @@ const views: EditorView[] = []
 
 function createView(doc: string, options: { readOnly?: boolean; extensions?: any[] } = {}) {
   const extensions = [
+    // come nell'editor: il parser Markdown (con barrato) dice dove sono grassetto, corsivo…
+    markdown({ base: markdownLanguage }),
     markdownShortcuts,
     timecodeLock,
     ...(options.readOnly ? [EditorState.readOnly.of(true)] : []),
@@ -263,5 +266,41 @@ describe('markdownShortcuts - Protezioni e anteprima di RT (il tasto si consuma 
     expect(indentMoreLines(view)).toBe(true)
     expect(deleteLineOrParagraph(view)).toBe(true)
     expect(view.state.doc.toString()).toBe('testo in sola lettura')
+  })
+})
+
+describe('markdownShortcuts - testo già formattato (come Obsidian)', () => {
+  const DOC = 'correlandole **sistematicamente con i quadri** riscontro'
+  const at = (text: string, offset = 0) => DOC.indexOf(text) + offset
+
+  it.each([
+    ['solo il testo', at('sist'), at('quadri', 6)],
+    ['testo con lo spazio dopo', at('sist'), at('quadri', 8)],
+    ['testo con i delimitatori', at('**'), at('quadri', 8)],
+    ['metà dei delimitatori (anteprima in linea)', at('**', 1), at('quadri', 7)],
+    ['cursore in una parola in mezzo', at('con', 1), at('con', 1)],
+    ['cursore nella prima parola', at('sist', 3), at('sist', 3)],
+    ['selezione all\'indietro', at('quadri', 6), at('sist')],
+  ])('Mod-b toglie il grassetto: %s', (_name, anchor, head) => {
+    const view = createView(DOC)
+    view.dispatch({ selection: { anchor, head } })
+    expect(toggleBold(view)).toBe(true)
+    expect(view.state.doc.toString()).toBe('correlandole sistematicamente con i quadri riscontro')
+  })
+
+  it('Mod-i toglie il corsivo e lascia il grassetto', () => {
+    const doc = 'a ***parola*** b'
+    const view = createView(doc)
+    view.dispatch({ selection: { anchor: doc.indexOf('parola') + 2 } })
+    toggleItalic(view)
+    expect(view.state.doc.toString()).toBe('a **parola** b')
+  })
+
+  it('gli spazi ai bordi della selezione restano fuori dai delimitatori', () => {
+    const doc = 'uno due tre'
+    const view = createView(doc)
+    view.dispatch({ selection: { anchor: 3, head: 8 } })
+    toggleBold(view)
+    expect(view.state.doc.toString()).toBe('uno **due** tre')
   })
 })

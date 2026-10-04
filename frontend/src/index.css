@@ -551,3 +551,16 @@
   background: var(--accent);
   color: var(--accent-foreground);
 }
+/* atomic-editor nasconde le gutter (.cm-gutters display:none): nell'editor della lezione serve
+   quella delle frecce delle sezioni, senza sfondo né bordo, nel margine a sinistra del testo
+   (come in Obsidian: il testo resta allineato al titolo della pagina). */
+[data-testid="lesson-document"] .cm-gutters {
+  display: flex;
+  background: transparent;
+  border-right: none;
+  margin-left: -20px;
+}
+@media (max-width: 767px) {
+  /* sul telefono il margine della pagina è stretto: la freccia sta accanto al testo */
+  [data-testid="lesson-document"] .cm-gutters { margin-left: 0; }
+}

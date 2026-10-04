@@ -32,6 +32,10 @@ from rt.core.lesson_paths import lesson_path
 TIMECODE_RE = re.compile(r"^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$")
 MACRO_RE = re.compile(r"^##\s+(\S+?)\.\s+(.+?)\s*$")
 UNIT_RE = re.compile(r"^###\s+(\S+)\s+(.+?)\s*$")
+# Solo i titoli numerati come li scrive RT ("## 2. …", "### 2.1 …") sono sezioni e unità: dentro
+# un'unità un titolo senza numero ("### Approfondimento", "## Nota") è testo dell'unità.
+NUMBERED_MACRO_RE = re.compile(r"^##\s+\d+\.\s")
+NUMBERED_UNIT_RE = re.compile(r"^###\s+\d+(?:\.\d+)+\.?\s")
 IMAGE_LINE_RE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)\s*$")
 IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)")
 LOCAL_IMAGE_PREFIX = "assets/images/"
@@ -91,6 +95,10 @@ def _parse_structure(markdown: str) -> Tuple[List[_Macro], List[Dict[str, Any]]]
             if macros:
                 errors.append({"line": n, "message": "Niente titoli di primo livello (#): il titolo della "
                                                      "lezione non fa parte del documento."})
+            continue
+        if unit is not None and line.startswith(("## ", "### ")) and not (
+                NUMBERED_MACRO_RE.match(line) or NUMBERED_UNIT_RE.match(line)):
+            unit.content_lines.append((n, line))
             continue
         if line.startswith("## "):
             m = MACRO_RE.match(line)
