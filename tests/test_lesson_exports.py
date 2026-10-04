@@ -53,11 +53,24 @@ def test_export_job_progress_download_and_compatibility(api_client, workspace, r
                 assert any(n.endswith("/rt-export.json") for n in inner.namelist())
     assert api_client.get(url).content == download.content  # il download non consuma lo ZIP
     legacy = api_client.get("/api/v1/lesson-exports", params={"ids": ids, "format": fmt})
-    with zipfile.ZipFile(io.BytesIO(legacy.content)) as archive:
-        with zipfile.ZipFile(io.BytesIO(download.content)) as result:
-            assert {n: archive.read(n) for n in archive.namelist()} == {n: result.read(n) for n in result.namelist()}
+    assert _contents(legacy.content) == _contents(download.content)
     os.unlink(job_export_path(accepted["job_id"], job["result"]["file"]))
     assert api_client.get(url).status_code == 404
+
+
+
+def _contents(data: bytes) -> dict:
+    """Contenuto dello ZIP di gruppo, aprendo anche gli ZIP interni: i byte degli archivi
+    interni cambiano con l'orario di creazione delle voci, il loro contenuto no."""
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        out = {}
+        for name in archive.namelist():
+            payload = archive.read(name)
+            if name.endswith(".zip"):
+                with zipfile.ZipFile(io.BytesIO(payload)) as inner:
+                    payload = {n: inner.read(n) for n in inner.namelist()}
+            out[name] = payload
+        return out
 
 
 def test_export_validation_failed_and_wrong_job(api_client, workspace, rt_db):

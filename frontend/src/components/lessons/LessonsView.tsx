@@ -406,7 +406,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           side="top"
           onClick={() => runExport('markdown')}
           unavailable={exporting ? 'esportazione in corso' : markdown.unavailable}
-          title={markdown.hint ?? undefined}
+          hint={markdown.hint}
         />
         <IconButton label="Scarica zip" icon={Archive} side="top" onClick={() => runExport('zip')} unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
         <IconButton

@@ -74,7 +74,8 @@ function isItalicDelim(delim: string): boolean {
 function toggleWrap(view: EditorView, delim: string): boolean {
   const { state } = view
   const { main } = state.selection
-  if (isRangeBlocked(state, main.from, main.to)) return false
+  // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
+  if (isRangeBlocked(state, main.from, main.to)) return true
 
   const dLen = delim.length
 
@@ -214,7 +215,8 @@ export function toggleHighlight(view: EditorView): boolean {
 export function toggleLink(view: EditorView): boolean {
   const { state } = view
   const { main } = state.selection
-  if (isRangeBlocked(state, main.from, main.to)) return false
+  // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
+  if (isRangeBlocked(state, main.from, main.to)) return true
 
   if (main.empty) {
     view.dispatch({
@@ -247,7 +249,8 @@ export function toggleLink(view: EditorView): boolean {
 export function toggleCheckbox(view: EditorView): boolean {
   const { state } = view
   const { main } = state.selection
-  if (isRangeBlocked(state, main.from, main.to)) return false
+  // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
+  if (isRangeBlocked(state, main.from, main.to)) return true
 
   const startLine = state.doc.lineAt(main.from).number
   const endLine = state.doc.lineAt(main.to).number
@@ -300,7 +303,8 @@ export function toggleCheckbox(view: EditorView): boolean {
 export function indentMoreLines(view: EditorView): boolean {
   const { state } = view
   const { main } = state.selection
-  if (isRangeBlocked(state, main.from, main.to)) return false
+  // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
+  if (isRangeBlocked(state, main.from, main.to)) return true
 
   const startLine = state.doc.lineAt(main.from).number
   const endLine = state.doc.lineAt(main.to).number
@@ -318,7 +322,8 @@ export function indentMoreLines(view: EditorView): boolean {
 export function indentLessLines(view: EditorView): boolean {
   const { state } = view
   const { main } = state.selection
-  if (isRangeBlocked(state, main.from, main.to)) return false
+  // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
+  if (isRangeBlocked(state, main.from, main.to)) return true
 
   const startLine = state.doc.lineAt(main.from).number
   const endLine = state.doc.lineAt(main.to).number
@@ -341,7 +346,8 @@ export function indentLessLines(view: EditorView): boolean {
 export function deleteLineOrParagraph(view: EditorView): boolean {
   const { state } = view
   const { main } = state.selection
-  if (isRangeBlocked(state, main.from, main.to)) return false
+  // bloccata: il tasto si consuma lo stesso (niente ricerca del browser con Mod-k, niente selectNextOccurrence con Mod-d)
+  if (isRangeBlocked(state, main.from, main.to)) return true
 
   const startLine = state.doc.lineAt(main.from)
   const endLine = state.doc.lineAt(main.to)

@@ -216,7 +216,7 @@ describe('markdownShortcuts - Elimina paragrafo/riga (Mod-d)', () => {
   })
 })
 
-describe('markdownShortcuts - Protezioni e anteprima di RT', () => {
+describe('markdownShortcuts - Protezioni e anteprima di RT (il tasto si consuma senza modifiche)', () => {
   const DOC_WITH_LOCK = '### 1.1 Unità\n\n12:30\n\nTesto normale sotto.\n\n![Foto](assets/images/fig1.png)\n\n| Col A | Col B |\n| --- | --- |\n'
 
   it('non fa modifiche dentro un timecode bloccato', () => {
@@ -224,11 +224,11 @@ describe('markdownShortcuts - Protezioni e anteprima di RT', () => {
     const pos = DOC_WITH_LOCK.indexOf('12:30') + 1
     view.dispatch({ selection: { anchor: pos, head: pos } })
 
-    expect(toggleBold(view)).toBe(false)
-    expect(toggleItalic(view)).toBe(false)
-    expect(toggleLink(view)).toBe(false)
-    expect(toggleCheckbox(view)).toBe(false)
-    expect(deleteLineOrParagraph(view)).toBe(false)
+    expect(toggleBold(view)).toBe(true)
+    expect(toggleItalic(view)).toBe(true)
+    expect(toggleLink(view)).toBe(true)
+    expect(toggleCheckbox(view)).toBe(true)
+    expect(deleteLineOrParagraph(view)).toBe(true)
     expect(view.state.doc.toString()).toBe(DOC_WITH_LOCK)
   })
 
@@ -237,8 +237,8 @@ describe('markdownShortcuts - Protezioni e anteprima di RT', () => {
     const pos = DOC_WITH_LOCK.indexOf('assets/images')
     view.dispatch({ selection: { anchor: pos, head: pos } })
 
-    expect(toggleBold(view)).toBe(false)
-    expect(toggleCheckbox(view)).toBe(false)
+    expect(toggleBold(view)).toBe(true)
+    expect(toggleCheckbox(view)).toBe(true)
     expect(view.state.doc.toString()).toBe(DOC_WITH_LOCK)
   })
 
@@ -247,8 +247,8 @@ describe('markdownShortcuts - Protezioni e anteprima di RT', () => {
     const pos = DOC_WITH_LOCK.indexOf('Col A')
     view.dispatch({ selection: { anchor: pos, head: pos } })
 
-    expect(toggleBold(view)).toBe(false)
-    expect(toggleCheckbox(view)).toBe(false)
+    expect(toggleBold(view)).toBe(true)
+    expect(toggleCheckbox(view)).toBe(true)
     expect(view.state.doc.toString()).toBe(DOC_WITH_LOCK)
   })
 
@@ -256,12 +256,12 @@ describe('markdownShortcuts - Protezioni e anteprima di RT', () => {
     const view = createView('testo in sola lettura', { readOnly: true })
     view.dispatch({ selection: { anchor: 0, head: 5 } })
 
-    expect(toggleBold(view)).toBe(false)
-    expect(toggleItalic(view)).toBe(false)
-    expect(toggleLink(view)).toBe(false)
-    expect(toggleCheckbox(view)).toBe(false)
-    expect(indentMoreLines(view)).toBe(false)
-    expect(deleteLineOrParagraph(view)).toBe(false)
+    expect(toggleBold(view)).toBe(true)
+    expect(toggleItalic(view)).toBe(true)
+    expect(toggleLink(view)).toBe(true)
+    expect(toggleCheckbox(view)).toBe(true)
+    expect(indentMoreLines(view)).toBe(true)
+    expect(deleteLineOrParagraph(view)).toBe(true)
     expect(view.state.doc.toString()).toBe('testo in sola lettura')
   })
 })

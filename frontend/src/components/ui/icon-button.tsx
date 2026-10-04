@@ -41,9 +41,13 @@ type Common = {
   badge?: ReactNode
 }
 
-export function IconButton({ label, icon: Icon, side = 'bottom', variant, active, unavailable, badge, className, onClick, ...props }: Common & Omit<ComponentProps<'button'>, 'children'>) {
+export function IconButton({ label, icon: Icon, side = 'bottom', variant, active, unavailable, hint, badge, className, onClick, ...props }: Common & Omit<ComponentProps<'button'>, 'children'> & {
+  /** Nota in più nel suggerimento quando il pulsante è disponibile (come in IconAnchor). */
+  hint?: string | null
+}) {
+  const note = unavailable ?? hint
   return (
-    <Tooltip content={unavailable ? `${label}: ${unavailable}` : label} side={side} describe={!!unavailable}>
+    <Tooltip content={note ? `${label}: ${note}` : label} side={side} describe={!!note}>
       {(trigger) => (
         <button
           type="button"
