@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Brain, Calendar, FileText, ListFilter, Search, SquareCheck, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Brain, Calendar, CalendarRange, FileText, ListFilter, Search, SquareCheck, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -21,7 +21,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 
-const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
+const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User } as const
 
 // ---------------------------------------------------------------- intestazione
 
@@ -35,6 +35,31 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   onSelecting: (on: boolean) => void
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
+  const [savedDateChoice, setSavedDateChoice] = useState<'data' | 'mese'>(() => (prefs.group === 'mese' ? 'mese' : 'data'))
+  const dateChoice = prefs.group === 'data' || prefs.group === 'mese' ? prefs.group : savedDateChoice
+  const DateIcon = dateChoice === 'mese' ? CalendarRange : Calendar
+  const dateLabel = dateChoice === 'mese' ? 'Per mese' : 'Per data'
+  const isDateActive = prefs.group === 'data' || prefs.group === 'mese'
+
+  const handleDateClick = () => {
+    if (prefs.group === 'data') {
+      setSavedDateChoice('mese')
+      onPrefs({ group: 'mese' })
+    } else if (prefs.group === 'mese') {
+      setSavedDateChoice('data')
+      onPrefs({ group: 'data' })
+    } else {
+      onPrefs({ group: savedDateChoice })
+    }
+  }
+
+  const selectGroup = (group: LessonsGrouping) => {
+    if (prefs.group === 'data' || prefs.group === 'mese') {
+      setSavedDateChoice(prefs.group)
+    }
+    onPrefs({ group })
+  }
+
   const phone = useIsPhone()
   const input = useRef<HTMLInputElement>(null)
   const sortSection: MenuSection = {
@@ -43,6 +68,9 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   }
 
   const cycleGroup = () => {
+    if (prefs.group === 'data' || prefs.group === 'mese') {
+      setSavedDateChoice(prefs.group)
+    }
     const nextIndex = (GROUP_CYCLE.indexOf(prefs.group) + 1) % GROUP_CYCLE.length
     onPrefs({ group: GROUP_CYCLE[nextIndex] })
   }
@@ -59,16 +87,27 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
       {!phone ? (
         <>
           <div role="group" aria-label="Raggruppa" className="flex rounded-md bg-muted p-0.5 max-md:hidden">
-            {(Object.keys(GROUPING_LABELS) as LessonsGrouping[]).map((group) => (
-              <IconButton
-                key={group}
-                label={GROUPING_LABELS[group]}
-                icon={GROUP_ICONS[group]}
-                aria-pressed={prefs.group === group}
-                className={cn('hover:bg-card', prefs.group === group && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
-                onClick={() => onPrefs({ group })}
-              />
-            ))}
+            <IconButton
+              label={dateLabel}
+              icon={DateIcon}
+              aria-pressed={isDateActive}
+              className={cn('hover:bg-card', isDateActive && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+              onClick={handleDateClick}
+            />
+            <IconButton
+              label={GROUPING_LABELS.materia}
+              icon={GROUP_ICONS.materia}
+              aria-pressed={prefs.group === 'materia'}
+              className={cn('hover:bg-card', prefs.group === 'materia' && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+              onClick={() => selectGroup('materia')}
+            />
+            <IconButton
+              label={GROUPING_LABELS.docente}
+              icon={GROUP_ICONS.docente}
+              aria-pressed={prefs.group === 'docente'}
+              className={cn('hover:bg-card', prefs.group === 'docente' && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+              onClick={() => selectGroup('docente')}
+            />
           </div>
           <MenuButton label="Ordina" icon={ListFilter} sections={[sortSection]} className="max-md:hidden" />
         </>

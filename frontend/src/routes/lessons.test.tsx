@@ -128,6 +128,39 @@ describe('pagina Lezioni', () => {
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
   })
 
+  it('desktop: secondo clic su "Per data" alterna giorno e mese; clic su materia e poi di nuovo sul calendario torna all\'ultima scelta', () => {
+    renderDashboard()
+    const dateBtn = screen.getByRole('button', { name: 'Per data' })
+    expect(dateBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Secondo clic su Per data -> passa a Per mese
+    fireEvent.click(dateBtn)
+    const monthBtn = screen.getByRole('button', { name: 'Per mese' })
+    expect(monthBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'mese' })
+
+    // Nel raggruppamento per mese il sottotitolo mostra anche la data
+    expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('28 set · Patologia · Maria Rossi · 7 unità')
+
+    // Terzo clic -> torna a Per data
+    fireEvent.click(monthBtn)
+    expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'true')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'data' })
+
+    // Clic su Per data -> Per mese, poi Clic su Per materia
+    fireEvent.click(screen.getByRole('button', { name: 'Per data' }))
+    expect(screen.getByRole('button', { name: 'Per mese' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(screen.getByRole('button', { name: 'Per materia' })).toHaveAttribute('aria-pressed', 'true')
+    const inactiveMonthBtn = screen.getByRole('button', { name: 'Per mese' })
+    expect(inactiveMonthBtn).toHaveAttribute('aria-pressed', 'false')
+
+    // Clic sul pulsante calendario: torna a Per mese
+    fireEvent.click(inactiveMonthBtn)
+    expect(screen.getByRole('button', { name: 'Per mese' })).toHaveAttribute('aria-pressed', 'true')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'mese' })
+  })
+
   it('su telefono: i pulsanti raggruppa e ordina passano al valore successivo a ogni tocco', () => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('767.98px'),
@@ -144,6 +177,8 @@ describe('pagina Lezioni', () => {
     const groupBtn = screen.getByRole('button', { name: /Raggruppa: Data/ })
     expect(groupBtn).toBeInTheDocument()
     fireEvent.click(groupBtn)
+    expect(screen.getByRole('button', { name: /Raggruppa: Mese/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Mese/ }))
     expect(screen.getByRole('button', { name: /Raggruppa: Materia/ })).toBeInTheDocument()
     expect(groups()).toEqual(['Biochimica', 'Patologia'])
     fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Materia/ }))

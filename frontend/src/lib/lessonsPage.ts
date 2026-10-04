@@ -8,12 +8,12 @@ import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
  * data, materia o docente. Sotto il titolo solo i campi che il gruppo non dice già; il resto
  * sta nel popup Info.
  */
-export type LessonsGrouping = 'data' | 'materia' | 'docente'
+export type LessonsGrouping = 'data' | 'mese' | 'materia' | 'docente'
 export type LessonsSort = 'recenti' | 'meno-recenti' | 'titolo'
 
-export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', materia: 'Per materia', docente: 'Per docente' }
-export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'materia', 'docente']
-export const PHONE_GROUP_LABELS: Record<LessonsGrouping, string> = { data: 'Data', materia: 'Materia', docente: 'Docente' }
+export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', mese: 'Per mese', materia: 'Per materia', docente: 'Per docente' }
+export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'mese', 'materia', 'docente']
+export const PHONE_GROUP_LABELS: Record<LessonsGrouping, string> = { data: 'Data', mese: 'Mese', materia: 'Materia', docente: 'Docente' }
 
 export const SORT_OPTIONS: Record<LessonsSort, string> = {
   recenti: 'Dalla più recente',
@@ -111,7 +111,14 @@ export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new
   const date = lesson.data ? shortDate(lesson.data, now) : null
   const subject = lesson.materia ? subjectName(lesson.materia) : null
   const teacher = lesson.docente?.trim() || null
-  const fields = group === 'data' ? [subject, teacher] : group === 'materia' ? [date, teacher] : [date, subject]
+  const fields =
+    group === 'data'
+      ? [subject, teacher]
+      : group === 'mese'
+        ? [date, subject, teacher]
+        : group === 'materia'
+          ? [date, teacher]
+          : [date, subject]
   return [...fields, unitsText(lesson)].filter(Boolean).join(' · ')
 }
 
