@@ -317,12 +317,42 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     return () => node.removeEventListener(SEEK_EVENT, onSeek)
   }, [seek, hasAudio])
 
-  // "Vai all'unità" (#unit-<id>): l'unità in cima.
+  // "Vai all'unità" (#unit-<id>) o all'immagine (#img-<name>), o tramite evento rt-editor-scroll
   useEffect(() => {
-    const view = viewOf(handle.current)
-    const unitId = hash.startsWith('#unit-') ? decodeURIComponent(hash.slice('#unit-'.length)) : ''
-    const unit = view && unitId ? unitRanges(view.state).find((u) => u.id === unitId) : null
-    if (view && unit) view.dispatch({ effects: EditorView.scrollIntoView(unit.from, { y: 'start', yMargin: 80 }) })
+    const scrollToTarget = (target: { unitId?: string | null; imageName?: string | null }) => {
+      const view = viewOf(handle.current)
+      if (!view) return
+      const docText = view.state.doc.toString()
+      if (target.imageName) {
+        let pos = docText.indexOf(target.imageName)
+        if (pos === -1) pos = docText.indexOf(`assets/images/${target.imageName}`)
+        if (pos !== -1) {
+          view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
+          return
+        }
+      }
+      if (target.unitId) {
+        const unit = unitRanges(view.state).find((u) => u.id === target.unitId)
+        if (unit) {
+          view.dispatch({ effects: EditorView.scrollIntoView(unit.from, { y: 'start', yMargin: 80 }) })
+        }
+      }
+    }
+
+    if (hash.startsWith('#unit-')) {
+      const unitId = decodeURIComponent(hash.slice('#unit-'.length))
+      scrollToTarget({ unitId })
+    } else if (hash.startsWith('#img-')) {
+      const imageName = decodeURIComponent(hash.slice('#img-'.length))
+      scrollToTarget({ imageName })
+    }
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ unitId?: string | null; imageName?: string | null }>).detail
+      if (detail) scrollToTarget(detail)
+    }
+    window.addEventListener('rt-editor-scroll', handler)
+    return () => window.removeEventListener('rt-editor-scroll', handler)
   }, [hash, source.key])
 
   // Il clic destro su una parola la seleziona (macOS): conta solo una selezione già fatta prima.
