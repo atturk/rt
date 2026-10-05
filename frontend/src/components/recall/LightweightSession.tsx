@@ -22,6 +22,8 @@ import {
   useRecallHistory,
   useRecallOverview,
   useRegenerateQuestion,
+  useRestorable,
+  useRestoreQuestions,
   useSkip,
   useSubjectEnd,
   useSubjectNext,
@@ -35,6 +37,7 @@ import { PageHeader } from '@/components/shell/PageHeader'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
@@ -123,6 +126,10 @@ export function LightweightSession({
   const skipMutation = useSkip(activeLessonId)
   const endLessonSession = useEndSession(lessonId ?? 0)
   const endSubjectSession = useSubjectEnd(subjectKey)
+  const restorable = useRestorable(lessonId ?? 0, Boolean(lessonId && !isSelection))
+  const restore = useRestoreQuestions(lessonId ?? 0)
+  const askedCount = restorable.data?.asked ?? 0
+  const wrongCount = restorable.data?.wrong ?? 0
 
   // Tipo di recall (persiste l'ultimo usato)
   const [qtype, setQtype] = useState<SessionType>(() => {
@@ -239,6 +246,14 @@ export function LightweightSession({
       }
     }
     void askNext(nextType)
+  }
+
+  const handleRestore = (scope: 'asked' | 'wrong') => {
+    restore.mutate(scope, {
+      onSuccess: () => {
+        void askNext(qtype)
+      },
+    })
   }
 
   // Risposta a quiz: il clic sull'alternativa è già la risposta (come nello Studio).
@@ -518,24 +533,76 @@ export function LightweightSession({
             <div className="rounded-lg border bg-card p-6 text-center" data-testid="recall-empty">
               <Brain className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden />
               <p className="text-body font-semibold">
-                {unit ? (qtype === 'mista' ? 'Hai finito le domande di questa unità' : 'Nessuna domanda di questo tipo') : 'Nessuna domanda disponibile'}
+                {unit
+                  ? qtype === 'mista'
+                    ? 'Hai finito le domande di questa unità'
+                    : 'Nessuna domanda di questo tipo'
+                  : 'Nessuna domanda disponibile'}
               </p>
               <p className="mt-1 text-meta text-muted-foreground">
                 {unit
                   ? qtype === 'mista'
                     ? 'Puoi tornare al testo dell’unità o andare avanti.'
                     : 'Scegli un altro tipo o prova mista.'
-                  : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o rigenera il pool nel pannello Domande.'}
+                  : isSelection
+                    ? daPorreCount === 0
+                      ? 'Non ci sono domande da porre. Puoi generare nuove domande dai pannelli delle rispettive lezioni.'
+                      : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o prova mista.'
+                    : daPorreCount === 0
+                      ? 'Non ci sono domande da porre in questa lezione. Puoi generarne di nuove o riproporre quelle già poste.'
+                      : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o prova mista.'}
               </p>
+              {restore.isError && <Alert tone="danger" className="mt-3">{errorMessage(restore.error)}</Alert>}
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                {(!unit || qtype !== 'mista') && (
-                  <Button variant="outline" size="sm" onClick={() => handleTypeChange('mista')}>Prova mista</Button>
+                {/* Prova mista: solo quando serve davvero (tipo diverso da mista e domande da porre > 0) */}
+                {qtype !== 'mista' && (unit ? unitPending > 0 : daPorreCount > 0) && (
+                  <Button variant="outline" size="sm" onClick={() => handleTypeChange('mista')}>
+                    Prova mista
+                  </Button>
                 )}
+
+                {/* Una lezione sola, zero da porre: Genera domande */}
+                {!unit && !isSelection && daPorreCount === 0 && lessonId && (
+                  <Link
+                    to={`/lezioni/${lessonId}?panel=domande`}
+                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                  >
+                    Genera domande
+                  </Link>
+                )}
+
+                {/* Ripescaggio: solo se una lezione sola o modo unità, e conteggio > 0 */}
+                {!isSelection && lessonId && wrongCount > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={restore.isPending}
+                    onClick={() => handleRestore('wrong')}
+                  >
+                    Riproponi le sbagliate ({wrongCount})
+                  </Button>
+                )}
+                {!isSelection && lessonId && askedCount > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={restore.isPending}
+                    onClick={() => handleRestore('asked')}
+                  >
+                    Riproponi le poste ({askedCount})
+                  </Button>
+                )}
+
+                {/* Modo unità: Torna allo studio e Unità successiva */}
                 {unit && (
-                  <Button variant="outline" size="sm" onClick={unit.onBack}>Torna allo studio</Button>
+                  <Button variant="outline" size="sm" onClick={unit.onBack}>
+                    Torna allo studio
+                  </Button>
                 )}
                 {unit?.onDone && (
-                  <Button size="sm" onClick={unit.onDone} data-testid="recall-unit-done">{unit.doneLabel ?? 'Avanti'}</Button>
+                  <Button size="sm" onClick={unit.onDone} data-testid="recall-unit-done">
+                    {unit.doneLabel ?? 'Avanti'}
+                  </Button>
                 )}
               </div>
             </div>

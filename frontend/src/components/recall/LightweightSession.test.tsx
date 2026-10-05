@@ -8,12 +8,21 @@ import { ApiError } from '@/api/client'
 import { LightweightSession } from './LightweightSession'
 
 const mockNextMutateAsync = vi.fn()
+const mockSubjectNextMutateAsync = vi.fn()
 const mockAnswerMutateAsync = vi.fn()
 const mockVoteMutate = vi.fn()
 const mockRegenerateMutateAsync = vi.fn()
 const mockSkipMutateAsync = vi.fn()
 const mockEndMutateAsync = vi.fn()
 const mockHistoryRefetch = vi.fn()
+const mockRestoreMutate = vi.fn()
+let mockRestorableData = { asked: 0, wrong: 0 }
+let mockOverviewData: { questions: Record<string, { pending: number }> } = {
+  questions: {
+    quiz: { pending: 15 },
+    mirata: { pending: 8 },
+  },
+}
 
 vi.mock('@/components/JobProgress', () => ({
   JobProgress: ({ label, onFinished }: { label: string; onFinished: (state: string) => void }) => (
@@ -32,12 +41,7 @@ vi.mock('@/api/hooks', () => ({
 
 vi.mock('@/api/recall', () => ({
   useRecallOverview: vi.fn(() => ({
-    data: {
-      questions: {
-        quiz: { pending: 15 },
-        mirata: { pending: 8 },
-      },
-    },
+    data: mockOverviewData,
   })),
   useRecallHistory: vi.fn(() => ({
     data: { answers: [] },
@@ -51,7 +55,7 @@ vi.mock('@/api/recall', () => ({
     isPending: false,
   })),
   useSubjectNext: vi.fn(() => ({
-    mutateAsync: vi.fn(),
+    mutateAsync: mockSubjectNextMutateAsync,
     isPending: false,
   })),
   useAnswer: vi.fn(() => ({
@@ -82,6 +86,14 @@ vi.mock('@/api/recall', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   })),
+  useRestorable: vi.fn(() => ({
+    data: mockRestorableData,
+  })),
+  useRestoreQuestions: vi.fn(() => ({
+    mutate: mockRestoreMutate,
+    isPending: false,
+    isError: false,
+  })),
 }))
 
 const sampleQuestion = {
@@ -111,14 +123,14 @@ function renderUnitSession(onBack = vi.fn(), onDone = vi.fn(), pending: Record<s
   return { onBack, onDone }
 }
 
-function renderSession(lessonId = 1) {
+function renderSession(lessonId: number | undefined = 1, selectionIds?: number[]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
       <BrowserRouter>
-        <LightweightSession lessonId={lessonId} />
+        <LightweightSession lessonId={lessonId} selectionIds={selectionIds} />
       </BrowserRouter>
     </QueryClientProvider>,
   )
@@ -127,6 +139,13 @@ function renderSession(lessonId = 1) {
 describe('LightweightSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockRestorableData = { asked: 0, wrong: 0 }
+    mockOverviewData = {
+      questions: {
+        quiz: { pending: 15 },
+        mirata: { pending: 8 },
+      },
+    }
     mockNextMutateAsync.mockResolvedValue(sampleQuestion)
   })
 
@@ -299,5 +318,72 @@ describe('LightweightSession', () => {
     expect(done).toHaveTextContent('Unità successiva')
     fireEvent.click(done)
     expect(onDone).toHaveBeenCalled()
+  })
+
+  it('pool vuoto: tipo già mista non mostra "Prova mista" (4.2.2b4 F3)', async () => {
+    localStorage.setItem('rt-recall-last-type', 'mista')
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Prova mista' })).not.toBeInTheDocument()
+    localStorage.clear()
+  })
+
+  it('pool vuoto: tipo diverso da mista e domande da porre > 0 mostra "Prova mista" (4.2.2b4 F3)', async () => {
+    localStorage.setItem('rt-recall-last-type', 'quiz')
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    const provalink = screen.getByRole('button', { name: 'Prova mista' })
+    expect(provalink).toBeInTheDocument()
+    fireEvent.click(provalink)
+    expect(mockNextMutateAsync).toHaveBeenCalledWith({ qtype: 'mista', excludeId: undefined, unitId: undefined })
+    localStorage.clear()
+  })
+
+  it('pool vuoto con una lezione e zero da porre: Genera domande e ripescaggio che riparte (4.2.2b4 F3)', async () => {
+    mockOverviewData = { questions: {} }
+    mockRestorableData = { asked: 4, wrong: 2 }
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    // Nessun "Prova mista" perché zero da porre
+    expect(screen.queryByRole('button', { name: 'Prova mista' })).not.toBeInTheDocument()
+
+    // Pulsante "Genera domande"
+    const generaLink = screen.getByRole('link', { name: 'Genera domande' })
+    expect(generaLink).toHaveAttribute('href', '/lezioni/1?panel=domande')
+
+    // Pulsanti ripescaggio con conteggio
+    const wrongBtn = screen.getByRole('button', { name: 'Riproponi le sbagliate (2)' })
+    const askedBtn = screen.getByRole('button', { name: 'Riproponi le poste (4)' })
+    expect(wrongBtn).toBeInTheDocument()
+    expect(askedBtn).toBeInTheDocument()
+
+    // Clic sul ripescaggio: chiama restore.mutate e riparte la sessione
+    fireEvent.click(wrongBtn)
+    expect(mockRestoreMutate).toHaveBeenCalledWith('wrong', expect.objectContaining({ onSuccess: expect.any(Function) }))
+
+    // Callback onSuccess chiama askNext
+    const { onSuccess } = mockRestoreMutate.mock.calls[0][1]
+    mockNextMutateAsync.mockResolvedValueOnce(sampleQuestion)
+    onSuccess()
+    expect(mockNextMutateAsync).toHaveBeenCalled()
+  })
+
+  it('selezione su più lezioni con pool vuoto: nessun pulsante genera né ripescaggio, solo testo (4.2.2b4 F3)', async () => {
+    mockSubjectNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(undefined, [1, 2])
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    // Nessun link/pulsante Genera domande
+    expect(screen.queryByRole('link', { name: 'Genera domande' })).not.toBeInTheDocument()
+    // Nessun ripescaggio
+    expect(screen.queryByRole('button', { name: /Riproponi/ })).not.toBeInTheDocument()
+    // Testo che dice di generare dai rispettivi pannelli
+    expect(screen.getByText(/Non ci sono domande da porre\. Puoi generare nuove domande dai pannelli delle rispettive lezioni\./)).toBeInTheDocument()
   })
 })
