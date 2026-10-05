@@ -564,3 +564,20 @@
   /* sul telefono il margine della pagina è stretto: la freccia sta accanto al testo */
   [data-testid="lesson-document"] .cm-gutters { margin-left: 0; }
 }
+
+/* Barra degli strumenti dell'editor (T1). */
+.rt-editor-toolbar {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-block: 0.25rem;
+  margin-bottom: 0.75rem;
+  background: var(--background);
+}
+@media (max-width: 767.98px) {
+  .rt-editor-toolbar { top: 64px; }
+}

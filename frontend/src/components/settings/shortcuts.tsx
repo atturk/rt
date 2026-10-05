@@ -32,6 +32,7 @@ export function EditorShortcutsSection() {
   const [message, setMessage] = useState<string | null>(null)
   const [conflict, setConflict] = useState<Conflict | null>(null)
   const commands = editorCommands.filter(command => {
+    if (command.personalizzabile === false) return false
     const key = commandShortcut(command, preferences)
     const text = [command.etichetta, command.gruppo, key, shortcutLabel(key)].join(' ').toLocaleLowerCase('it')
     return text.includes(search.toLocaleLowerCase('it').trim())

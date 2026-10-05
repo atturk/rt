@@ -308,7 +308,7 @@ describe('markdownShortcuts - testo già formattato (come Obsidian)', () => {
 
 describe('registro dei comandi e keymap personale', () => {
   it('conserva tutte le predefinite della 4.2.1, incluse le sezioni', () => {
-    expect(Object.fromEntries(editorCommands.map(c => [c.id, c.predefinita]))).toEqual({
+    expect(Object.fromEntries(editorCommands.filter(c => c.personalizzabile !== false && c.predefinita).map(c => [c.id, c.predefinita]))).toEqual({
       bold: 'Mod-b', italic: 'Mod-i', strike: 'Mod-Shift-x', code: 'Mod-Shift-c', highlight: 'Mod-Shift-h', link: 'Mod-k',
       checkbox: 'Mod-Enter', indent: 'Mod-]', unindent: 'Mod-[', 'delete-paragraph': 'Mod-d',
       fold: 'Mod-Alt-[', unfold: 'Mod-Alt-]', 'fold-all': 'Ctrl-Alt-[', 'unfold-all': 'Ctrl-Alt-]',

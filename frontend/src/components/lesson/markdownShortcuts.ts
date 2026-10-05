@@ -3,6 +3,9 @@ import { EditorSelection, type EditorState, type Extension, Prec } from '@codemi
 import type { SyntaxNode } from '@lezer/common'
 import { EditorView, keymap } from '@codemirror/view'
 
+import { undo, redo } from '@codemirror/commands'
+import { openSearchPanel } from '@codemirror/search'
+
 import { timecodeSpans } from './timecodeLock'
 
 /**
@@ -408,10 +411,49 @@ export function deleteLineOrParagraph(view: EditorView): boolean {
   return true
 }
 
+/** Cambia il prefisso delle righe senza toccare titoli, timecode o blocchi protetti. */
+function toggleList(view: EditorView, ordered: boolean): boolean {
+  const { state } = view
+  const { main } = state.selection
+  const first = state.doc.lineAt(main.from).number
+  const last = state.doc.lineAt(main.to > main.from && state.doc.lineAt(main.to).from === main.to ? main.to - 1 : main.to).number
+  const lines = Array.from({ length: last - first + 1 }, (_, i) => state.doc.line(first + i))
+  if (lines.some(line => isRangeBlocked(state, line.from, line.to) || /^#{1,6}\s/.test(line.text.trimStart()))) return true
+  const pattern = ordered ? /^(\s*)\d+\.\s+/ : /^(\s*)[-+*]\s+(?!\[[ xX]\])/
+  const remove = lines.every(line => pattern.test(line.text))
+  const changes = state.changes(lines.map((line, i) => {
+    const existing = /^(\s*)(?:(?:[-+*]|\d+\.)\s+(?:\[[ xX]\]\s+)?)/.exec(line.text)
+    const indent = existing?.[1] ?? /^\s*/.exec(line.text)![0]
+    return { from: line.from, to: line.from + (existing?.[0].length ?? indent.length), insert: indent + (remove ? '' : ordered ? `${i + 1}. ` : '- ') }
+  }))
+  view.dispatch({ changes, selection: state.selection.map(changes), scrollIntoView: true })
+  return true
+}
+function protectedCommand(run: (view: EditorView) => boolean) {
+  return (view: EditorView) => isRangeBlocked(view.state, view.state.selection.main.from, view.state.selection.main.to) || run(view)
+}
+
+/** Stato della formattazione usato sia dai toggle sia dalla barra. */
+export function commandActive(state: EditorState, id: string): boolean {
+  const { from, to } = state.selection.main
+  const names: Record<string, string> = { bold: 'StrongEmphasis', italic: 'Emphasis', strike: 'Strikethrough', code: 'InlineCode', highlight: 'Highlight', link: 'Link' }
+  if (names[id] && enclosingWrap(state, from, to, names[id])) return true
+  const text = state.doc.lineAt(from).text
+  if (id === 'checkbox') return /^\s*(?:[-+*]|\d+\.)\s+\[[ xX]\]/.test(text)
+  if (id === 'bullet-list') return /^\s*[-+*]\s+(?!\[[ xX]\])/.test(text)
+  if (id === 'numbered-list') return /^\s*\d+\.\s+/.test(text)
+  return false
+}
+
 export type ShortcutPreferences = Record<string, string | null>
-export type EditorCommand = { id: string; etichetta: string; gruppo: string; predefinita: string | null; run: (view: EditorView) => boolean }
+export type EditorCommand = { id: string; etichetta: string; gruppo: string; predefinita: string | null; run: (view: EditorView) => boolean; personalizzabile?: boolean }
 
 export const editorCommands: readonly EditorCommand[] = [
+  { id: 'undo', etichetta: 'Annulla', gruppo: 'Modifica', predefinita: 'Mod-z', run: protectedCommand(undo), personalizzabile: false },
+  { id: 'redo', etichetta: 'Ripeti', gruppo: 'Modifica', predefinita: 'Mod-Shift-z', run: protectedCommand(redo), personalizzabile: false },
+  { id: 'bullet-list', etichetta: 'Elenco puntato', gruppo: 'Paragrafi', predefinita: null, run: view => toggleList(view, false) },
+  { id: 'numbered-list', etichetta: 'Elenco numerato', gruppo: 'Paragrafi', predefinita: null, run: view => toggleList(view, true) },
+  { id: 'search', etichetta: 'Cerca', gruppo: 'Modifica', predefinita: 'Mod-f', run: openSearchPanel, personalizzabile: false },
   { id: 'bold', etichetta: 'Grassetto', gruppo: 'Formattazione', predefinita: 'Mod-b', run: toggleBold },
   { id: 'italic', etichetta: 'Corsivo', gruppo: 'Formattazione', predefinita: 'Mod-i', run: toggleItalic },
   { id: 'strike', etichetta: 'Barrato', gruppo: 'Formattazione', predefinita: 'Mod-Shift-x', run: toggleStrikethrough },
@@ -442,6 +484,7 @@ export function isReservedShortcut(key: string): boolean {
   return RESERVED_SHORTCUTS.some(value => normalizeShortcut(value) === normalizeShortcut(key))
 }
 export function commandShortcut(command: EditorCommand, preferences: ShortcutPreferences): string | null {
+  if (command.personalizzabile === false) return command.predefinita
   const custom = preferences[command.id]
   return custom === null ? null : typeof custom === 'string' ? custom : command.predefinita
 }
@@ -465,7 +508,7 @@ export function editorKeymap(preferences: ShortcutPreferences): Extension {
   return Prec.high(keymap.of(editorCommands.flatMap(command => {
     const key = commandShortcut(command, preferences)
     // Le preferenze arrivano da JSON: una combinazione riservata o malformata non blocca l'editor.
-    if (!key || isReservedShortcut(key) || !/^(?:(?:Mod|Meta|Ctrl|Alt|Shift)-)*(?:-|[^-]+)$/.test(key)) return []
+    if (command.personalizzabile === false || !key || isReservedShortcut(key) || !/^(?:(?:Mod|Meta|Ctrl|Alt|Shift)-)*(?:-|[^-]+)$/.test(key)) return []
     return [{ key, run: command.run }]
   })))
 }
