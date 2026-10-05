@@ -11,11 +11,13 @@ import array
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import threading
 from typing import Dict, List, Optional
 
+CACHE_KINDS = ("audio", "waveform")
 WAVEFORM_BARS = 300
 _computing: Dict[str, threading.Thread] = {}
 _lock = threading.Lock()
@@ -26,6 +28,47 @@ def _cache_dir(kind: str) -> str:
     path = os.path.join(fs.data_dir(), "cache", kind)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def _cache_usage(remove: bool = False) -> Dict[str, Dict[str, int]]:
+    from rt.storage import fs
+    root = os.path.join(fs.data_dir(), "cache")
+    usage = {kind: {"entries": 0, "bytes": 0} for kind in (*CACHE_KINDS, "total")}
+    if os.path.islink(root):
+        return usage
+    for kind in CACHE_KINDS:
+        directory = os.path.join(root, kind)
+        if os.path.islink(directory):
+            continue
+        for current, dirs, files in os.walk(directory, followlinks=False):
+            dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(current, name))]
+            for name in files:
+                path = os.path.join(current, name)
+                try:
+                    file_stat = os.stat(path, follow_symlinks=False)
+                    if not stat.S_ISREG(file_stat.st_mode):
+                        continue
+                    if remove:
+                        os.remove(path)
+                except FileNotFoundError:
+                    # Un altro processo può aver già svuotato o rigenerato questa voce.
+                    continue
+                usage[kind]["entries"] += 1
+                usage[kind]["bytes"] += file_stat.st_size
+        for key in ("entries", "bytes"):
+            usage["total"][key] += usage[kind][key]
+    return usage
+
+
+def cache_info() -> Dict[str, Dict[str, int]]:
+    """Voci e byte dei soli tipi di cache rigenerabili, senza creare cartelle."""
+    return _cache_usage()
+
+
+def clear_cache() -> Dict[str, Dict[str, int]]:
+    """Svuota i tipi noti e restituisce lo spazio liberato; conserva le cartelle per i worker."""
+    with _lock:
+        return _cache_usage(remove=True)
 
 
 def _key(path: str) -> str:
@@ -105,12 +148,15 @@ def waveform(path: str) -> Optional[List[int]]:
 
     def _run() -> None:
         peaks = compute_waveform(path)
-        tmp = target + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(peaks, f)
-        os.replace(tmp, target)
+        # La scrittura atomica e lo svuotamento non si interrompono a vicenda.
         with _lock:
-            _computing.pop(target, None)
+            try:
+                tmp = target + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(peaks, f)
+                os.replace(tmp, target)
+            finally:
+                _computing.pop(target, None)
 
     with _lock:
         if target not in _computing:

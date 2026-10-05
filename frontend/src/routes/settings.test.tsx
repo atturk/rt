@@ -62,7 +62,8 @@ describe('SetupGate', () => {
 function realSettings(path: string, phone = false) {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: phone && query.includes('max-width'), addEventListener: vi.fn(), removeEventListener: vi.fn() }))
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve({
-    data: path === '/api/v1/settings' ? testSettings : path === '/api/v1/settings/enrichment' ? enrichmentSettings : {},
+    data: path === '/api/v1/settings' ? testSettings : path === '/api/v1/settings/enrichment' ? enrichmentSettings
+      : path === '/api/v1/system/cache' ? { audio: { entries: 0, bytes: 0 }, waveform: { entries: 0, bytes: 0 }, total: { entries: 0, bytes: 0 } } : {},
     response: new Response('{}', { status: 200 }),
   })) as never)
   const settings = areas.flatMap(a => a.routes).filter(r => r.path === 'impostazioni' || Object.keys(SETTINGS_REDIRECTS).includes(r.path ?? ''))

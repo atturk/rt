@@ -2466,6 +2466,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Spazio occupato dalla cache audio e dalle forme d’onda */
+        get: operations["system_cache_api_v1_system_cache_get"];
+        put?: never;
+        post?: never;
+        /** Svuota la cache e restituisce lo spazio liberato */
+        delete: operations["clear_system_cache_api_v1_system_cache_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/choose-folder": {
         parameters: {
             query?: never;
@@ -2803,6 +2821,25 @@ export interface components {
             audio: string;
             /** Question Id */
             question_id: string;
+        };
+        /** CacheInfo */
+        CacheInfo: {
+            audio: components["schemas"]["CacheUsage"];
+            total: components["schemas"]["CacheUsage"];
+            waveform: components["schemas"]["CacheUsage"];
+        };
+        /** CacheUsage */
+        CacheUsage: {
+            /**
+             * Bytes
+             * @description Dimensione dei file in byte
+             */
+            bytes: number;
+            /**
+             * Entries
+             * @description Numero di file nella cache
+             */
+            entries: number;
         };
         /** Cap */
         Cap: {
@@ -16715,6 +16752,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    system_cache_api_v1_system_cache_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheInfo"];
+                };
+            };
+        };
+    };
+    clear_system_cache_api_v1_system_cache_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheInfo"];
                 };
             };
         };

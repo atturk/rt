@@ -34,6 +34,29 @@ class SystemInfo(BaseModel):
     platform: str
 
 
+class CacheUsage(BaseModel):
+    entries: int = Field(ge=0, description="Numero di file nella cache")
+    bytes: int = Field(ge=0, description="Dimensione dei file in byte")
+
+
+class CacheInfo(BaseModel):
+    audio: CacheUsage
+    waveform: CacheUsage
+    total: CacheUsage
+
+
+@router.get("/system/cache", response_model=CacheInfo, summary="Spazio occupato dalla cache audio e dalle forme d’onda")
+def system_cache(_actor: Actor) -> CacheInfo:
+    from rt.services.audio_service import cache_info
+    return CacheInfo(**cache_info())
+
+
+@router.delete("/system/cache", response_model=CacheInfo, summary="Svuota la cache e restituisce lo spazio liberato")
+def clear_system_cache(_actor: Actor) -> CacheInfo:
+    from rt.services.audio_service import clear_cache
+    return CacheInfo(**clear_cache())
+
+
 @router.get("/system/info", response_model=SystemInfo, summary="Versione, canale di aggiornamento e cartelle di RT")
 def system_info(_actor: Actor) -> SystemInfo:
     import platform
