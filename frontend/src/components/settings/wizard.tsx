@@ -4,17 +4,15 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useDismissNotice } from '@/api/documentEdit'
-import { useAssignAllPhases, useSaveTelegram, type Settings } from '@/api/settings'
+import { useAssignAllPhases, type Settings } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { SecretInput } from '@/components/ui/secret-input'
-import { Select } from '@/components/ui/select'
+import { SettingsSelect as Select } from './common'
 import { cn } from '@/lib/utils'
 import { Field } from './common'
 import { ModelTest, NewConnectionForm, PhaseRows } from './models'
-import { RevealableValue } from './telegram'
 
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
@@ -49,10 +47,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
     <section className="mx-auto flex max-w-2xl flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Configurazione guidata</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Pochi passi per iniziare. Puoi cambiare tutto in seguito dalle impostazioni.
-          </p>
+          <h1 className="text-heading font-bold tracking-tight">Configurazione guidata</h1>
         </div>
         {settings.setup_required && (
           <Button variant="outline" size="sm" onClick={later} disabled={dismiss.isPending}>
@@ -60,7 +55,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
           </Button>
         )}
       </div>
-      <ol className="flex flex-wrap gap-2 text-xs" aria-label="Passi">
+      <ol className="flex flex-wrap gap-2 text-meta" aria-label="Passi">
         {STEPS.map((label, i) => (
           <li key={label}>
             <button
@@ -80,12 +75,12 @@ export function SetupWizard({ settings }: { settings: Settings }) {
       </ol>
 
       <Card className="p-5">
-        <h2 className="mb-3 text-base font-bold">{STEPS[step - 1]}</h2>
+        <h2 className="mb-3 text-body font-bold">{STEPS[step - 1]}</h2>
         {step === 1 && (
           <div className="flex flex-col gap-3">
             {settings.connections.length > 0 ? (
               <>
-                <p className="text-sm">
+                <p className="text-body">
                   Connessioni già configurate: <strong>{settings.connections.map((c) => c.name).join(', ')}</strong>. Puoi aggiungerne
                   un'altra o continuare.
                 </p>
@@ -93,7 +88,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
                   <Button onClick={next}>Continua</Button>
                 </div>
                 <details>
-                  <summary className="cursor-pointer text-sm">Aggiungi un'altra connessione</summary>
+                  <summary className="cursor-pointer text-body">Aggiungi un'altra connessione</summary>
                   <div className="mt-3">
                     <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
                   </div>
@@ -101,7 +96,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
               </>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-body text-muted-foreground">
                   Una connessione è un provider LLM (OpenRouter, Google AI Studio, DeepSeek o un server compatibile) con la tua chiave API.
                 </p>
                 <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
@@ -112,21 +107,21 @@ export function SetupWizard({ settings }: { settings: Settings }) {
         {step === 2 && <ModelsStep settings={settings} onDone={next} />}
         {step === 3 && <TelegramStep settings={settings} onDone={next} />}
         {step === 4 && (
-          <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-3 text-body">
             <ul className="flex flex-col gap-1">
               {STEPS.slice(0, 3).map((label, i) => (
                 <li key={label} className="flex items-center gap-2">
                   {stepDone(settings, i) ? <Check className="size-4 text-success" aria-hidden /> : <span className="size-4 text-center">–</span>}
                   {label}
-                  {!stepDone(settings, i) && <span className="text-xs text-muted-foreground">{i === 2 ? '(facoltativo)' : 'da completare'}</span>}
+                  {!stepDone(settings, i) && <span className="text-meta text-muted-foreground">{i === 2 ? '(facoltativo)' : 'da completare'}</span>}
                 </li>
               ))}
             </ul>
             <div className="flex gap-2">
-              <Link to="/" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+              <Link to="/" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-body font-medium text-primary-foreground">
                 Vai alle lezioni
               </Link>
-              <Link to="/impostazioni" className="inline-flex h-9 items-center rounded-md border px-4 text-sm">
+              <Link to="/impostazioni" className="inline-flex h-9 items-center rounded-md border px-4 text-body">
                 Tutte le impostazioni
               </Link>
             </div>
@@ -137,7 +132,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
   )
 }
 
-/** Modelli: di norma uno solo per tutte le sei fasi; "Scegli per ogni fase" mostra le righe
+/** Modelli: di norma uno solo per le fasi testuali; "Scegli per ogni fase" mostra le righe
  * della pagina Modelli. La scelta sta nell'URL (?modelli=per-fase), così resta dopo la ricarica. */
 function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => void }) {
   const [params, setParams] = useSearchParams()
@@ -156,29 +151,29 @@ function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => vo
     <div className="flex flex-col gap-4">
       <fieldset className="flex flex-col gap-1.5">
         <legend className="sr-only">Come scegliere i modelli</legend>
-        <label className="inline-flex items-center gap-2 text-sm">
+        <label className="inline-flex items-center gap-2 text-body">
           <input type="radio" name="wizard-models-mode" className="size-4 accent-current" checked={!perPhase} onChange={() => setMode(false)} />
           Usa lo stesso modello per tutte le fasi
         </label>
-        <label className="inline-flex items-center gap-2 text-sm">
+        <label className="inline-flex items-center gap-2 text-body">
           <input type="radio" name="wizard-models-mode" className="size-4 accent-current" checked={perPhase} onChange={() => setMode(true)} />
           Scegli per ogni fase
         </label>
       </fieldset>
       {perPhase ? (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">Ogni fase si salva con il suo pulsante; Prova fa una chiamata minima prima di salvare.</p>
+          <p className="text-body text-muted-foreground">Ogni fase si salva con il suo pulsante; Prova fa una chiamata minima prima di salvare.</p>
           <PhaseRows settings={settings} />
           {stepDone(settings, 1) ? (
             <div>
               <Button onClick={onDone}>Continua</Button>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Assegna un modello a tutte le fasi per continuare.</p>
+            <p className="text-meta text-muted-foreground">Assegna un modello a tutte le fasi per continuare.</p>
           )}
         </div>
       ) : (
-        <SameModelForm settings={settings} onDone={onDone} />
+        <div className="flex flex-col gap-4"><SameModelForm settings={settings} onDone={onDone} /><PhaseRows settings={{ ...settings, phases: settings.phases.filter(p => ['image_description', 'enrichment_image'].includes(p.job)) }} /></div>
       )}
     </div>
   )
@@ -195,12 +190,12 @@ function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () =>
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    assign.mutate({ jobs: settings.phases.map((p) => p.job), connection, model: model.trim() }, { onSuccess: onDone })
+    assign.mutate({ jobs: settings.phases.filter(p => !['image_description', 'enrichment_image'].includes(p.job)).map(p => p.job), connection, model: model.trim() })
   }
 
   return (
     <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Stesso modello per tutte le fasi">
-      <p className="text-sm text-muted-foreground">Il modello scelto viene usato per outline, rewrite, review, recall e immagini.</p>
+      <p className="text-body text-muted-foreground">Descrizione immagini e generazione immagini richiedono modelli dedicati: sceglili a parte.</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Connessione" htmlFor="wizard-connection">
           <Select id="wizard-connection" value={connection} onChange={(e) => setConnection(e.target.value)}>
@@ -220,13 +215,6 @@ function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () =>
           </datalist>
         </Field>
       </div>
-      <ul className="text-xs text-muted-foreground" aria-label="Modelli salvati">
-        {settings.phases.map((p) => (
-          <li key={p.job}>
-            {p.label}: {p.model ? `${p.connection} · ${p.model}` : 'non assegnato'}
-          </li>
-        ))}
-      </ul>
       {error && <Alert tone="danger">{error}</Alert>}
       <div className="flex flex-wrap items-start gap-2">
         <Button type="submit" disabled={pending || !connection || !model.trim()}>
@@ -243,45 +231,9 @@ function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () =>
   )
 }
 
-function TelegramStep({ settings, onDone }: { settings: Settings; onDone: () => void }) {
-  const save = useSaveTelegram()
-  const tg = settings.telegram
-  const [token, setToken] = useState('')
-  const [chatId, setChatId] = useState('')
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    save.mutate(
-      { bot_token: token.trim() || null, chat_id: chatId.trim() || null, topics: tg.topics, misc_topic_id: tg.misc_topic_id ?? null },
-      { onSuccess: onDone },
-    )
-  }
-  return (
-    <form className="flex flex-col gap-3" onSubmit={submit}>
-      <p className="text-sm text-muted-foreground">
-        Facoltativo: il bot manda i documenti e le domande di recall nel gruppo Telegram. I topic per materia si assegnano dalle impostazioni.
-      </p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Token del bot" htmlFor="wizard-tg-token" hint={<>Token salvato: <RevealableValue field="bot_token" preview={tg.bot_token_preview} /></>}>
-          <SecretInput id="wizard-tg-token" value={token} onChange={(e) => setToken(e.target.value)} />
-        </Field>
-        <Field label="Chat ID del gruppo" htmlFor="wizard-tg-chat" hint={<>Chat ID salvato: <RevealableValue field="chat_id" preview={tg.chat_id_preview} /></>}>
-          <Input
-            id="wizard-tg-chat"
-            value={chatId}
-            onChange={(e) => setChatId(e.target.value)}
-            placeholder={tg.chat_id_set ? 'Lascia vuoto per mantenere quello salvato' : '-1001234567890'}
-          />
-        </Field>
-      </div>
-      {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
-      <div className="flex gap-2">
-        <Button type="submit" disabled={save.isPending || (!token.trim() && !chatId.trim())}>
-          Salva e continua
-        </Button>
-        <Button variant="outline" onClick={onDone}>
-          Salta
-        </Button>
-      </div>
-    </form>
-  )
+function TelegramStep({ onDone }: { settings: Settings; onDone: () => void }) {
+  return <div className="flex flex-col gap-3">
+    <Link to="/impostazioni/telegram" className="text-body underline">Apri Telegram</Link>
+    <Button onClick={onDone}>Continua</Button>
+  </div>
 }

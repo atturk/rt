@@ -3,17 +3,18 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, errorMessage, unwrap } from '@/api/client'
+import { useSettings } from '@/api/settings'
 import { useLessons } from '@/api/hooks'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { SettingsSelect as Select } from './common'
 import {
   FALLBACK, OPERATORS, OUTCOMES, PHASES, TEXT_OPERATORS, TYPES, answerFields, defaultCondition, percent as pct,
   type Condition, type Decision, type DecisionTest, type Phase, type QuestionType, type Rule,
 } from '@/lib/jev'
-import { Field, Section } from './common'
+import { Checkbox, Field, Section } from './common'
 
 /** Editor della domanda (tipo, testo, opzioni o livelli) e della mappatura verso le etichette RT. */
 export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
@@ -32,14 +33,14 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
       {Object.entries(TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
     </Select></Field>
     <Field label="Domanda" htmlFor="jev-question" hint="Lo stato inviato al classificatore è l’unità di lezione: il testo qui descrive cosa decidere.">
-      <textarea id="jev-question" className="w-full rounded border bg-background p-2 text-sm" rows={5} value={decision.question}
+      <textarea id="jev-question" className="w-full rounded border bg-background p-2 text-body" rows={5} value={decision.question}
         onChange={(e) => onChange({ ...decision, question: e.target.value })} /></Field>
 
-    {decision.type === 'choice' && <fieldset className="flex flex-col gap-2"><legend className="text-sm font-medium">Opzioni</legend>
+    {decision.type === 'choice' && <fieldset className="flex flex-col gap-2"><legend className="text-body font-medium">Opzioni</legend>
       {options.map((option, i) => <div key={i} className="grid gap-2 rounded border p-2 sm:grid-cols-[12rem_1fr_auto]" data-testid="jev-option">
         <Input aria-label={`Restituita come (opzione ${i + 1})`} value={option.label} placeholder="etichetta"
           onChange={(e) => onChange({ ...decision, options: options.map((o, j) => (j === i ? { ...o, label: e.target.value } : o)) })} />
-        <textarea aria-label={`Scegli quando (opzione ${i + 1})`} className="w-full rounded border bg-background p-2 text-sm" rows={2} value={option.description}
+        <textarea aria-label={`Scegli quando (opzione ${i + 1})`} className="w-full rounded border bg-background p-2 text-body" rows={2} value={option.description}
           placeholder="Scegli quando…" onChange={(e) => onChange({ ...decision, options: options.map((o, j) => (j === i ? { ...o, description: e.target.value } : o)) })} />
         <Button variant="ghost" size="icon" aria-label={`Rimuovi opzione ${i + 1}`} disabled={options.length <= 2}
           onClick={() => onChange({ ...decision, options: options.filter((_, j) => j !== i) })}><Trash2 /></Button>
@@ -47,9 +48,9 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
       <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ ...decision, options: [...options, { label: '', description: '' }] })}><Plus />Aggiungi opzione</Button>
     </fieldset>}
 
-    {decision.type === 'score' && <fieldset className="flex flex-col gap-2"><legend className="text-sm font-medium">Livelli (dal più basso al più alto)</legend>
+    {decision.type === 'score' && <fieldset className="flex flex-col gap-2"><legend className="text-body font-medium">Livelli (dal più basso al più alto)</legend>
       {levels.map((level, i) => <div key={i} className="flex gap-2" data-testid="jev-level">
-        <textarea aria-label={`Livello ${i + 1}`} className="w-full rounded border bg-background p-2 text-sm" rows={2} value={level}
+        <textarea aria-label={`Livello ${i + 1}`} className="w-full rounded border bg-background p-2 text-body" rows={2} value={level}
           onChange={(e) => onChange({ ...decision, levels: levels.map((l, j) => (j === i ? e.target.value : l)) })} />
         <Button variant="ghost" size="icon" aria-label={`Rimuovi livello ${i + 1}`} disabled={levels.length <= 1}
           onClick={() => onChange({ ...decision, levels: levels.filter((_, j) => j !== i), recall_richness: false })}><Trash2 /></Button>
@@ -57,15 +58,12 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
       <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ ...decision, levels: [...levels, ''], recall_richness: false })}><Plus />Aggiungi livello</Button>
     </fieldset>}
 
-    {phase === 'relevance' && decision.type === 'score' && levels.length === 3 && <label className="flex items-center gap-2 text-sm">
-      <input type="checkbox" checked={decision.recall_richness ?? false} onChange={(e) => onChange({ ...decision, recall_richness: e.target.checked })} />
-      Usa questi tre livelli per orientare il recall
-    </label>}
+    {phase === 'relevance' && decision.type === 'score' && levels.length === 3 && <Checkbox id="jev-richness" label="Usa questi tre livelli per orientare il recall" checked={decision.recall_richness ?? false} onChange={recall_richness => onChange({ ...decision, recall_richness })} />}
 
-    <fieldset className="flex flex-col gap-2 border-t pt-3"><legend className="text-sm font-medium">Mappatura verso le etichette RT</legend>
-      <p className="text-xs text-muted-foreground">Le regole sono valutate in ordine: vale la prima vera. Se nessuna è vera l’unità {phase === 'relevance' ? 'resta inclusa' : 'va comunque in review'}.</p>
+    <fieldset className="flex flex-col gap-2 border-t pt-3"><legend className="text-body font-medium">Mappatura verso le etichette RT</legend>
+      <p className="text-meta text-muted-foreground">Le regole sono valutate in ordine: vale la prima vera. Se nessuna è vera l’unità {phase === 'relevance' ? 'resta inclusa' : 'va comunque in review'}.</p>
       {rules.map((rule, ri) => <div key={ri} className="flex flex-col gap-2 rounded border p-2" data-testid="jev-rule">
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-body">
           <span>Etichetta</span>
           <Input aria-label={`Etichetta (regola ${ri + 1})`} className="w-44" value={rule.label} onChange={(e) => setRule(ri, { ...rule, label: e.target.value })} />
           <span>→</span>
@@ -80,7 +78,7 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
         {rule.conditions.map((condition, ci) => {
           const kind = fields.find((f) => f.value === condition.field)
           const text = kind?.text ?? false
-          return <div key={ci} className="flex flex-wrap items-center gap-2 pl-4 text-sm" data-testid="jev-condition">
+          return <div key={ci} className="flex flex-wrap items-center gap-2 pl-4 text-body" data-testid="jev-condition">
             <span>{ci === 0 ? 'quando' : rule.match === 'any' ? 'oppure' : 'e'}</span>
             <Select aria-label={`Campo (regola ${ri + 1}, condizione ${ci + 1})`} className="w-48" value={condition.field}
               onChange={(e) => {
@@ -114,7 +112,7 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
       <Button variant="outline" size="sm" className="self-start"
         onClick={() => setRules([...rules, { label: '', outcome: Object.keys(OUTCOMES[phase]).find((o) => o !== FALLBACK[phase]) ?? FALLBACK[phase], match: 'all', conditions: [defaultCondition(decision)] }])}>
         <Plus />Aggiungi etichetta</Button>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-body">
         <span>Se nessuna regola è vera: etichetta</span>
         <Input aria-label="Etichetta se nessuna regola è vera" className="w-44" value={decision.fallback_label}
           onChange={(e) => onChange({ ...decision, fallback_label: e.target.value })} />
@@ -130,29 +128,29 @@ export function DecisionTestResult({ phase, result }: { phase: Phase; result: De
   const probabilities = (answer.probabilities ?? {}) as Record<string, number>
   const legend = (answer.legend ?? {}) as Record<string, string>
   const chosen = answer.type === 'choice' ? String(answer.choice) : answer.type === 'score' ? String(answer.score) : null
-  return <div className="flex flex-col gap-2 rounded border p-3 text-sm" data-testid="jev-result">
+  return <div className="flex flex-col gap-2 rounded border p-3 text-body" data-testid="jev-result">
     <div className="flex flex-wrap items-center gap-2">
       <span>Etichetta RT:</span>
       <Badge tone={result.outcome === FALLBACK[phase] ? 'neutral' : 'warning'}>{result.label}</Badge>
       <span className="text-muted-foreground">{OUTCOMES[phase][result.outcome] ?? result.outcome}{result.rule == null ? ' · nessuna regola vera' : ` · regola ${result.rule + 1}`}</span>
     </div>
-    <p className="text-xs text-muted-foreground">Unità: {result.unit_id ? `${result.unit_id} · ` : ''}{result.unit_title}</p>
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+    <p className="text-meta text-muted-foreground">Unità: {result.unit_id ? `${result.unit_id} · ` : ''}{result.unit_title}</p>
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
       {answer.type === 'choice' && <><dt>Scelta</dt><dd className="font-medium">{String(answer.choice)}</dd></>}
       {answer.type === 'score' && <><dt>Punteggio</dt><dd className="font-medium">{String(answer.score)}</dd></>}
       {answer.type === 'noul' && <><dt>Probabilità (noul)</dt><dd className="font-medium">{pct(answer.noul)}</dd></>}
       {answer.confidence != null && <><dt>Confidenza</dt><dd>{pct(answer.confidence)}</dd></>}
     </dl>
-    {Object.keys(probabilities).length > 0 && <table className="w-full text-left text-xs"><caption className="text-left font-medium">Probabilità per {answer.type === 'score' ? 'livello' : 'etichetta'}</caption>
+    {Object.keys(probabilities).length > 0 && <table className="w-full text-left text-meta"><caption className="text-left font-medium">Probabilità per {answer.type === 'score' ? 'livello' : 'etichetta'}</caption>
       <tbody>{Object.entries(probabilities).map(([key, value]) => <tr key={key} className={key === chosen ? 'font-semibold' : undefined}>
         <th className="pr-2 font-normal">{key}{legend[key] ? ` · ${legend[key]}` : ''}</th>
         <td className="w-1/2"><div className="h-2 rounded bg-muted"><div className="h-2 rounded bg-link" style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div></td>
         <td className="pl-2 text-right">{pct(value)}</td>
       </tr>)}</tbody></table>}
-    {Object.keys(legend).length > 0 && Object.keys(probabilities).length === 0 && <ul className="text-xs">
+    {Object.keys(legend).length > 0 && Object.keys(probabilities).length === 0 && <ul className="text-meta">
       {Object.entries(legend).map(([key, text]) => <li key={key}><strong>{key}</strong>: {text}</li>)}</ul>}
-    <details><summary className="cursor-pointer text-xs">JSON del classificatore</summary>
-      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-[11px]">{JSON.stringify(result.response, null, 2)}</pre>
+    <details><summary className="cursor-pointer text-meta">JSON del classificatore</summary>
+      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-meta">{JSON.stringify(result.response, null, 2)}</pre>
     </details>
   </div>
 }
@@ -180,6 +178,7 @@ function UnitPicker({ lessonId, unitId, onChange }: { lessonId: number | null; u
 type Drafts = Partial<Record<Phase, Decision>>
 
 export function DecisionModelSection() {
+  const settings = useSettings()
   const client = useQueryClient()
   const configured = useQuery({ queryKey: ['decision-model'], queryFn: () => unwrap(api.GET('/api/v1/settings/decision-model')) })
   const [phase, setPhase] = useState<Phase>('relevance')
@@ -228,7 +227,7 @@ export function DecisionModelSection() {
       <Field label="Fase" htmlFor="jev-phase"><Select id="jev-phase" value={phase} onChange={(e) => { setPhase(e.target.value as Phase); test.reset() }}>
         {Object.entries(PHASES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select></Field>
-      <Field label="Credenziale" htmlFor="decision-model-credential"><Input id="decision-model-credential" value={credential} onChange={(e) => setCredential(e.target.value)} /></Field>
+      <Field label="Credenziale" htmlFor="decision-model-credential"><Select id="decision-model-credential" value={credential} onChange={(e) => setCredential(e.target.value)}><option value="">Scegli…</option>{settings.data?.credentials?.map(c => <option key={c.name} value={c.name}>{c.name}{c.set ? '' : ' (mancante)'}</option>)}</Select></Field>
     </div>
     {phase === 'relevance'
       ? <div className="grid gap-2 sm:grid-cols-2">
@@ -241,11 +240,11 @@ export function DecisionModelSection() {
         </div>
       : <div className="flex flex-col gap-2">
           <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello classificatore" /></Field>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Abilita il prefiltro errori</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={shadow} onChange={(e) => setShadow(e.target.checked)} />Prefiltro in ombra (non salta la review)</label>
+          <Checkbox id="jev-enabled" label="Abilita il prefiltro errori" checked={enabled} onChange={setEnabled} />
+          <Checkbox id="jev-shadow" label="Prefiltro in ombra (non salta la review)" checked={shadow} onChange={setShadow} />
         </div>}
     {decision && data && <>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-meta">
         <Badge tone={customized || drafts[phase] ? 'warning' : 'neutral'}>{drafts[phase] ? 'Modifiche non salvate' : customized ? 'Domanda personalizzata' : 'Domanda predefinita'}</Badge>
       </div>
       <DecisionEditor phase={phase} decision={decision} onChange={setDecision}
@@ -257,10 +256,10 @@ export function DecisionModelSection() {
       <Button variant="ghost" disabled={!data} onClick={() => data && setDecision(data.templates[phase][phase === 'relevance' ? 'score' : data.prefilter_type])}>Ripristina predefinita</Button>
       <Button disabled={save.isPending || (enabled && !model.trim())} onClick={() => save.mutate()}>Salva</Button>
     </div>
-    {!phaseModel.trim() && <p className="text-xs text-muted-foreground">Indica il modello della fase per provare la configurazione.</p>}
+    {!phaseModel.trim() && <p className="text-meta text-muted-foreground">Indica il modello della fase per provare la configurazione.</p>}
     {test.isError && <Alert tone="danger">{errorMessage(test.error)}</Alert>}
     {test.isSuccess && <DecisionTestResult phase={phase} result={test.data} />}
     {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
-    {save.isSuccess && <p role="status" className="text-xs text-success">Salvato.</p>}
+    {save.isSuccess && <p role="status" className="text-meta text-success">Salvato.</p>}
   </Section>
 }

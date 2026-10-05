@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/api/client'
-import type { Decision } from '@/lib/jev'
+import { TYPES, PHASES, type Decision } from '@/lib/jev'
 import { DecisionEditor, DecisionModelSection } from './jev-playground'
 
 const relevanceChoice: Decision = {
@@ -51,6 +51,7 @@ const ok = (data: unknown) => ({ data, error: undefined, response: new Response(
 function mockGet() {
   return vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
     if (path === '/api/v1/settings/decision-model') return Promise.resolve(ok(settings))
+    if (path === '/api/v1/settings') return Promise.resolve(ok({ credentials: [{ name: 'openrouter', set: true }] }))
     if (path === '/api/v1/lessons') return Promise.resolve(ok([{ id: 7, titolo: 'Lipidi', folder_name: 'lipidi' }]))
     return Promise.resolve(ok({ mode: 'shadow', units: [{ unit_id: '1.2', title: 'Trigliceridi', content: 'Testo', effective: 'didactic' }] }))
   }) as never)
@@ -63,35 +64,44 @@ function renderSection() {
 
 afterEach(() => vi.restoreAllMocks())
 
+async function choose(label: string, option: string | RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: label }))
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: option }))
+}
+async function options(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: label }))
+  const values = screen.getAllByRole('menuitemradio')
+  await userEvent.keyboard('{Escape}')
+  return values
+}
+
+
 describe('DecisionModelSection', () => {
   it('sceglie la fase e mostra domanda, opzioni e mappatura predefinite', async () => {
     mockGet()
     renderSection()
-    const user = userEvent.setup()
     expect(await screen.findByLabelText('Domanda')).toHaveValue('Classifica l’unità.')
-    expect(screen.getByLabelText('Fase')).toHaveValue('relevance')
-    expect(screen.getByLabelText('Comportamento del classificatore')).toHaveValue('shadow')
+    expect(screen.getByTestId('jev-phase')).toHaveAttribute('data-value', 'relevance')
+    expect(screen.getByTestId('relevance-mode')).toHaveAttribute('data-value', 'shadow')
     expect(screen.getAllByTestId('jev-option')).toHaveLength(3)
     expect(screen.getAllByTestId('jev-rule')).toHaveLength(2)
     expect(screen.getByText('Domanda predefinita')).toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('Fase'), 'prefilter')
+    await choose('Fase', PHASES.prefilter)
     expect(screen.getByLabelText('Domanda')).toHaveValue('Gravità degli errori.')
     expect(screen.getByLabelText('Abilita il prefiltro errori')).toBeInTheDocument()
-    expect(screen.getByLabelText('Esito RT (regola 1)')).toHaveValue('skip_review')
-    expect(screen.getByLabelText('Operatore (regola 1, condizione 1)')).toHaveValue('ne')
+    expect(screen.getByTestId('Esito RT (regola 1)')).toHaveAttribute('data-value', 'skip_review')
+    expect(screen.getByTestId('Operatore (regola 1, condizione 1)')).toHaveAttribute('data-value', 'ne')
   })
 
   it('cambiando tipo carica il modello della fase: noul ha solo la probabilità', async () => {
     mockGet()
     renderSection()
-    const user = userEvent.setup()
-    await user.selectOptions(await screen.findByLabelText('Tipo di domanda'), 'noul')
+    await choose('Tipo di domanda', TYPES.noul)
     expect(screen.queryAllByTestId('jev-option')).toHaveLength(0)
-    const field = screen.getByLabelText('Campo (regola 1, condizione 1)')
-    expect(within(field).getAllByRole('option').map((o) => o.textContent)).toEqual(['probabilità (noul)'])
+    expect((await options('Campo (regola 1, condizione 1)')).map(o => o.textContent)).toEqual(['probabilità (noul)'])
     expect(screen.getByText('Modifiche non salvate')).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Tipo di domanda'), 'score')
+    await choose('Tipo di domanda', TYPES.score)
     expect(screen.getAllByTestId('jev-level')).toHaveLength(1)
   })
 
@@ -105,8 +115,8 @@ describe('DecisionModelSection', () => {
     }))
     renderSection()
     const user = userEvent.setup()
-    await user.selectOptions(await screen.findByLabelText('Lezione di prova'), await screen.findByRole('option', { name: 'Lipidi' }))
-    await user.selectOptions(await screen.findByLabelText('Unità'), await screen.findByRole('option', { name: /1\.2 · Trigliceridi/ }))
+    await choose('Lezione di prova', 'Lipidi')
+    await choose('Unità', /1\.2 · Trigliceridi/)
     await user.clear(screen.getByLabelText('Etichetta (regola 1)'))
     await user.type(screen.getByLabelText('Etichetta (regola 1)'), 'Logistica')
     await user.click(screen.getByRole('button', { name: 'Prova configurazione' }))
@@ -151,16 +161,16 @@ describe('DecisionEditor', () => {
 
     // Scelta: valore da un elenco delle opzioni, solo uguale/diverso.
     const value = screen.getByLabelText('Valore (regola 1, condizione 1)')
-    expect(value.tagName).toBe('SELECT')
-    expect(within(screen.getByLabelText('Operatore (regola 1, condizione 1)')).getAllByRole('option')).toHaveLength(2)
+    expect(value.tagName).toBe('BUTTON')
+    expect(await options('Operatore (regola 1, condizione 1)')).toHaveLength(2)
     // Campo numerico: input numerico e tutti gli operatori.
-    await user.selectOptions(screen.getByLabelText('Campo (regola 1, condizione 1)'), 'p:organizational')
+    await choose('Campo (regola 1, condizione 1)', 'probabilità di organizational')
     expect(screen.getByLabelText('Valore (regola 1, condizione 1)')).toHaveAttribute('type', 'number')
-    expect(within(screen.getByLabelText('Operatore (regola 1, condizione 1)')).getAllByRole('option')).toHaveLength(6)
+    expect(await options('Operatore (regola 1, condizione 1)')).toHaveLength(6)
 
     await user.click(screen.getByRole('button', { name: 'Aggiungi condizione (regola 1)' }))
     expect(within(screen.getAllByTestId('jev-rule')[0]).getAllByTestId('jev-condition')).toHaveLength(3)
-    await user.selectOptions(screen.getByLabelText('Combina condizioni (regola 1)'), 'any')
+    await choose('Combina condizioni (regola 1)', 'Almeno una')
     expect(within(screen.getAllByTestId('jev-rule')[0]).getAllByText('oppure')).toHaveLength(2)
     await user.click(screen.getByRole('button', { name: 'Rimuovi regola 2' }))
     expect(screen.getAllByTestId('jev-rule')).toHaveLength(1)

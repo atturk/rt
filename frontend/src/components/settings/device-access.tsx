@@ -80,13 +80,13 @@ function LinkQr({ url, expiresAt }: { url: string; expiresAt: number }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
-  if (secondsLeft <= 0) return <p className="text-sm text-muted-foreground">Il QR è scaduto: creane uno nuovo.</p>
+  if (secondsLeft <= 0) return <p className="text-body text-muted-foreground">Il QR è scaduto: creane uno nuovo.</p>
   return (
     <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
       <QrCode value={url} />
-      <div className="flex min-w-0 flex-col gap-1 text-sm">
+      <div className="flex min-w-0 flex-col gap-1 text-body">
         <p>Inquadralo con la fotocamera dell'iPhone. Scade tra {formatSeconds(secondsLeft)}.</p>
-        <code className="break-all text-xs text-muted-foreground" data-testid="device-login-url">{url}</code>
+        <code className="break-all text-meta text-muted-foreground" data-testid="device-login-url">{url}</code>
       </div>
     </div>
   )

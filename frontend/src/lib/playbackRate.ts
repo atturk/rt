@@ -1,9 +1,9 @@
-/** Velocità del player: preferenza dell'interfaccia salvata nel browser, uguale in lezione e revisione. */
+/** Velocità del player: preferenza dell'interfaccia con copia locale delle preferenze RT, uguale in lezione e revisione. */
 
 export const RATE_MIN = 0.5
 export const RATE_MAX = 3
 export const RATE_STEP = 0.05
-const KEY = 'rt-playback-rate'
+const KEY = 'rt-pref:audio.rate'
 
 /** Porta un valore qualsiasi nell'intervallo, a passi di 0.05 (1 se non è un numero). */
 export function clampRate(value: number): number {
@@ -19,7 +19,7 @@ export function formatRate(rate: number): string {
 export function loadRate(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): number {
   try {
     const raw = storage?.getItem(KEY)
-    return raw == null ? 1 : clampRate(Number(raw))
+    return raw == null ? 1 : clampRate(Number(JSON.parse(raw)))
   } catch {
     return 1
   }

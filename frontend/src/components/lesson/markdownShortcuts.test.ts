@@ -1,9 +1,10 @@
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { EditorState } from '@codemirror/state'
+import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  editorCommands, editorKeymap, shortcutLabel, normalizeShortcut, isReservedShortcut,
   deleteLineOrParagraph,
   indentLessLines,
   indentMoreLines,
@@ -302,5 +303,36 @@ describe('markdownShortcuts - testo già formattato (come Obsidian)', () => {
     view.dispatch({ selection: { anchor: 3, head: 8 } })
     toggleBold(view)
     expect(view.state.doc.toString()).toBe('uno **due** tre')
+  })
+})
+
+describe('registro dei comandi e keymap personale', () => {
+  it('conserva tutte le predefinite della 4.2.1, incluse le sezioni', () => {
+    expect(Object.fromEntries(editorCommands.filter(c => c.personalizzabile !== false && c.predefinita).map(c => [c.id, c.predefinita]))).toEqual({
+      bold: 'Mod-b', italic: 'Mod-i', strike: 'Mod-Shift-x', code: 'Mod-Shift-c', highlight: 'Mod-Shift-h', link: 'Mod-k',
+      checkbox: 'Mod-Enter', indent: 'Mod-]', unindent: 'Mod-[', 'delete-paragraph': 'Mod-d',
+      fold: 'Mod-Alt-[', unfold: 'Mod-Alt-]', 'fold-all': 'Ctrl-Alt-[', 'unfold-all': 'Ctrl-Alt-]',
+    })
+    expect(new Set(editorCommands.map(c => c.id)).size).toBe(editorCommands.length)
+  })
+  it('riconfigura una scorciatoia senza cambiare documento, selezione o EditorView', () => {
+    const compartment = new Compartment()
+    const view = new EditorView({ parent: window.document.body, state: EditorState.create({ doc: 'testo', extensions: [markdown(), compartment.of(editorKeymap({}))] }) })
+    views.push(view)
+    view.dispatch({ selection: { anchor: 0, head: 5 }, effects: compartment.reconfigure(editorKeymap({ bold: 'Mod-Shift-j' })) })
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', ctrlKey: true, bubbles: true }))
+    expect(view.state.doc.toString()).toBe('testo')
+    expect(view.state.selection.main.to).toBe(5)
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', code: 'KeyJ', keyCode: 74, ctrlKey: true, shiftKey: true, bubbles: true }))
+    expect(view.state.doc.toString()).toBe('**testo**')
+    view.dispatch({ effects: compartment.reconfigure(editorKeymap({ bold: null })) })
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', code: 'KeyJ', keyCode: 74, ctrlKey: true, shiftKey: true, bubbles: true }))
+    expect(view.state.doc.toString()).toBe('**testo**')
+  })
+  it('mostra i simboli Mac e riconosce le riservate anche con Ctrl e ordine diverso', () => {
+    expect(shortcutLabel('Mod-Alt-Shift-b', true)).toBe('⌘⌥⇧B')
+    expect(shortcutLabel('Mod-Alt-b', false)).toBe('Ctrl+Alt+B')
+    expect(normalizeShortcut('Shift-Mod-Z', false)).toBe(normalizeShortcut('Ctrl-Shift-z', false))
+    for (const key of ['Mod-z', 'Mod-Shift-z', 'Mod-c', 'Mod-v', 'Mod-x', 'Mod-a', 'Mod-f']) expect(isReservedShortcut(key)).toBe(true)
   })
 })

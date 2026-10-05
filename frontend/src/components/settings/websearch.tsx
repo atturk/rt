@@ -41,7 +41,7 @@ function WebSearchForm({ saved, save }: { saved: string; save: ReturnType<typeof
   let outcome = null
   if (current && test.isPending) {
     outcome = (
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-meta text-muted-foreground">
         Ricerca di prova in corso…
       </p>
     )
@@ -49,7 +49,7 @@ function WebSearchForm({ saved, save }: { saved: string; save: ReturnType<typeof
     outcome = <Alert tone="danger">{errorMessage(test.error)}</Alert>
   } else if (current && test.data) {
     outcome = test.data.ok ? (
-      <p role="status" className="text-xs text-success" data-testid="searxng-test-result">
+      <p role="status" className="text-meta text-success" data-testid="searxng-test-result">
         {test.data.message}
         {test.data.latency_ms != null && ` (${test.data.latency_ms} ms)`}
       </p>

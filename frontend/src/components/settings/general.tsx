@@ -7,29 +7,16 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
-import { Select } from '@/components/ui/select'
+import { SettingsSelect as Select } from './common'
 import { matchesPreview, mergeListenedTopics, parseTopicLink, rowsToTopicNames, rowsToTopics, topicsToRows, type TopicRow } from '@/lib/settings'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
 import { ListenCleanup, RevealableValue, TelegramEnabledToggle, TopicTestButton, TopicTestResult } from './telegram'
 
+import { ExtraSecretDelete } from './keys'
+import { TopicResetButton } from '@/routes/telegram'
+
 /** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
  * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
-
-/** Cartella dati: solo informativa. Le lezioni stanno nel database e i media in media/ della
- * cartella dati, quindi non c'è una cartella delle lezioni da scegliere. */
-export function DataDirSection({ settings }: { settings: Settings }) {
-  return (
-    <Section id="cartella" title="Cartella dati" description="Dove RT tiene il database con le lezioni e i file audio e immagini.">
-      {settings.data_dir ? (
-        <p className="text-sm">
-          Database e media in uso: <code className="rounded bg-muted px-1 text-xs" data-testid="data-dir">{settings.data_dir}</code>
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">Database non disponibile.</p>
-      )}
-    </Section>
-  )
-}
 
 const WORKER_CONCURRENCY_OPTIONS = [1, 2, 3, 4]
 
@@ -41,9 +28,8 @@ export function WorkerSection({ settings }: { settings: Settings }) {
   return (
     <Section id="job-paralleli" title="Job">
       <WorkerFields key={saved} saved={saved} pending={save.isPending} onSubmit={(n) => save.mutate(n)} />
-      <p className="text-xs text-muted-foreground">
-        Quanti lavori (pipeline, immagini, recall…) RT esegue insieme, sempre su lezioni diverse: due lavori sulla stessa
-        lezione aspettano il proprio turno. La modifica vale dal prossimo avvio di RT.
+      <p className="text-meta text-muted-foreground">
+        Vale dal prossimo avvio di RT.
         {running > 0 && running !== saved && ` Ora ne esegue fino a ${running} insieme.`}
       </p>
       <SaveFeedback mutation={save} success="Salvato: vale dal prossimo avvio di RT." />
@@ -61,10 +47,10 @@ function WorkerFields({ saved, pending, onSubmit }: { saved: number; pending: bo
         onSubmit(value)
       }}
     >
-      <label htmlFor="worker-concurrency" className="text-sm font-medium">
+      <label htmlFor="worker-concurrency" className="text-body font-medium">
         Job in parallelo
       </label>
-      <Select id="worker-concurrency" className="w-20" value={value} onChange={(e) => setValue(Number(e.target.value))}>
+      <Select aria-label="Job in parallelo" id="worker-concurrency" className="w-20" value={value} onChange={(e) => setValue(Number(e.target.value))}>
         {WORKER_CONCURRENCY_OPTIONS.map((n) => (
           <option key={n} value={n}>
             {n}
@@ -122,7 +108,7 @@ function TranscriptionFields({
       <Field label="Modello" htmlFor="stt-model">
         <Input id="stt-model" value={model} disabled={!custom} onChange={(e) => setModel(e.target.value)} placeholder="whisper-1" />
       </Field>
-      <Field label="Chiave API (facoltativa)" htmlFor="stt-key" hint={<>Chiave: <SecretBadge set={t.api_key_set} /></>}>
+      <Field label="Chiave API (facoltativa)" htmlFor="stt-key" hint={<>Chiave: <SecretBadge set={t.api_key_set} /><ExtraSecretDelete name="RT_STT_API_KEY" label="chiave STT" set={t.api_key_set} /></>}>
         <SecretInput
           id="stt-key"
           value={apiKey}
@@ -249,7 +235,7 @@ function TelegramFields({
   return (
     <form className="flex flex-col gap-3" onSubmit={submit}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Token del bot" htmlFor="tg-token" hint={<>Token salvato: <RevealableValue field="bot_token" preview={tg.bot_token_preview} /></>}>
+        <Field label="Token del bot" htmlFor="tg-token" hint={<>Token salvato: <RevealableValue field="bot_token" preview={tg.bot_token_preview} /><ExtraSecretDelete name="RT_TELEGRAM_BOT_TOKEN" label="token del bot" set={tg.bot_token_set} /></>}>
           <SecretInput
             id="tg-token"
             value={token}
@@ -268,7 +254,7 @@ function TelegramFields({
       </div>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-xs font-semibold text-muted-foreground">Topic per materia</legend>
+        <legend className="mb-1 text-meta font-semibold text-muted-foreground">Topic per materia</legend>
         {rows.map((row, i) => (
           <TopicRowFields
             key={i}
@@ -301,20 +287,20 @@ function TelegramFields({
           </Button>
           <ListenCleanup enabled={tg.bot_token_set} />
         </div>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-meta text-muted-foreground">
           {tg.bot_token_set
             ? 'Poi scrivi un messaggio in ogni topic dal telefono. Finito, puoi cancellare dal gruppo i messaggi usati per il rilevamento.'
             : 'Salva prima il token del bot.'}
         </span>
         {listen.isPending && (
-          <p role="status" className="text-xs text-muted-foreground">
+          <p role="status" className="text-meta text-muted-foreground">
             In ascolto…
           </p>
         )}
         {listen.isError && <Alert tone="danger">{errorMessage(listen.error)}</Alert>}
         {listen.data &&
           (listen.data.ok ? (
-            <p role="status" className="text-xs text-success" data-testid="listen-result">
+            <p role="status" className="text-meta text-success" data-testid="listen-result">
               {listen.data.message}
             </p>
           ) : (
@@ -349,9 +335,10 @@ function TopicRowFields({ index, row, onChange, onRemove }: { index: number; row
           <Trash2 />
         </Button>
         <TopicTestButton state={test} label={`topic ${n}`} />
+        {row.name && /^\d+$/.test(row.topic) && <TopicResetButton id={Number(row.topic)} name={row.name} />}
       </div>
       {row.name && (
-        <p className="text-[11px] text-muted-foreground" data-testid="topic-name">
+        <p className="text-meta text-muted-foreground" data-testid="topic-name">
           Nome su Telegram: <strong>{row.name}</strong>
         </p>
       )}
