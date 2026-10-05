@@ -261,6 +261,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         mock_asr=options.mock,
         interactive=prompter is not None,
         on_progress=lambda msg: ctx.emit(Notice(message=msg)),
+        on_lesson_created=lambda d: ctx.progress("setup", message="Lezione creata", lesson_dir=d),
         # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
         on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
         prompter=prompter,

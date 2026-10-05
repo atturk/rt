@@ -445,6 +445,7 @@ def run_setup(
     docente: Optional[str] = None,
     ora: Optional[str] = None,
     on_transcription_progress: Optional[Callable[[int], None]] = None,
+    on_lesson_created: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """
     Esegue l'ingest audio e il setup strutturato della lezione.
@@ -508,11 +509,19 @@ def run_setup(
                 cli_hint="Usa il flag --force per confermare la ripreparazione.",
             )
         elif fs.isfile(existing_info) and not force:
-            raise SetupError(
-                f"La cartella '{target_folder_path}' è già inizializzata come lezione RT: apri la lezione "
-                f"esistente o importa con argomenti diversi.",
-                cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
-            )
+            from rt.core.state import read_info_yaml
+            info = read_info_yaml(existing_info)
+            has_transcript = any(fs.isfile(lesson_path(target_folder_path, name))
+                                 for name in ("trascritto grezzo.json", "trascritto grezzo.md"))
+            if info.get("stato") == "in_attesa_di_trascrizione" and not has_transcript:
+                # Solo metadati provvisori: un import interrotto si può riprendere.
+                pass
+            else:
+                raise SetupError(
+                    f"La cartella '{target_folder_path}' è già inizializzata come lezione RT: apri la lezione "
+                    f"esistente o importa con argomenti diversi.",
+                    cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
+                )
 
     if fs.is_db_lesson(target_folder_path) or (not os.path.isdir(target_folder_path) and fs.new_lessons_use_db()):
         # Lezione nel database: nessuna cartella, i media vanno nella cartella media di RT.
@@ -527,6 +536,18 @@ def run_setup(
         if on_progress:
             on_progress(f"✔ Cartella lezione: {target_folder_path}")
     now_iso = datetime.datetime.now().isoformat()
+    provisional_info = {
+        "data": date_val, "ora": ora_val, "materia": materia_val,
+        "argomenti": argomenti_val, "docente": docente_val, "cartella": folder_name,
+        "creato_il": now_iso, "fase_corrente": "metadata_only",
+        "stato": "in_attesa_di_trascrizione",
+    }
+    info_yaml_path = os.path.join(target_folder_path, "info.yaml")
+    with fs.open(info_yaml_path + ".tmp", "w", encoding="utf-8") as f:
+        yaml.safe_dump(provisional_info, f, allow_unicode=True, sort_keys=False)
+    fs.replace(info_yaml_path + ".tmp", info_yaml_path)
+    if on_lesson_created:
+        on_lesson_created(target_folder_path)
 
     # 5. ESECUZIONE TRASCRIZIONE ASR
     json_path = os.path.join(target_folder_path, "trascritto grezzo.json")
