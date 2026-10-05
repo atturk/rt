@@ -75,6 +75,9 @@ stato: setup_completato
 
 _ISO_TS = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2}|Z)?")
 _SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
+# L'import a un file solo converte l'audio in m4a dove c'è ffmpeg e lo lascia com'è dove non
+# c'è (4.2.2b4, task B2): nel confronto il nome convertito torna quello del fixture.
+_CONVERTED_AUDIO = re.compile(r"demo_lecture\.m4a")
 
 
 def normalize_text(text: str, root: str) -> str:
@@ -84,6 +87,7 @@ def normalize_text(text: str, root: str) -> str:
     text = text.replace("\\", "/") if os.name == "nt" else text
     text = _ISO_TS.sub("<TS>", text)
     text = _SHA256.sub("<SHA256>", text)
+    text = _CONVERTED_AUDIO.sub("demo_lecture.wav", text)
     return text
 
 
