@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wireframe RT 4.2.2b3</title>
+<style>
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --ok:#147464; --ok-soft:#e4f3ed; --bad:#a04232; --bad-soft:#ffe9e3;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#6fd3b3; --ok-soft:#16312a; --bad:#e49181; --bad-soft:#3a1f1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#6fd3b3; --ok-soft:#16312a; --bad:#e49181; --bad-soft:#3a1f1a; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 6px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:6px}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg)}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 auto;position:relative;width:1000px;height:620px;display:flex;flex-direction:column}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 14px;flex:none}
+.hdr .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mute);font-size:15px}
+.ib{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ib:hover{background:var(--soft)}
+.ib svg{width:18px;height:18px}
+.ib.on{background:var(--acc-soft);color:var(--acc)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--border);border-radius:999px;font-size:13px;background:var(--bg);color:var(--fg);white-space:nowrap;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc);font-weight:600}
+.chip[disabled]{opacity:.45;cursor:not-allowed}
+.btn{height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.btn.pri{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc);font-weight:600}
+.btn.ghost{border-color:transparent;color:var(--mute)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.body{flex:1;overflow:auto;padding:18px 28px;min-height:0}
+.dots{display:flex;gap:4px;justify-content:center;padding:10px 0 2px}
+.dots i{width:28px;height:3px;border-radius:2px;background:var(--border)}
+.dots i.on{background:var(--fg)}
+.q-card{max-width:720px;margin:0 auto;display:grid;gap:14px}
+.q-meta{color:var(--mute);font-size:13px}
+.q-text{font-size:19px;font-weight:600;line-height:1.45;margin:0}
+.opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:1px solid var(--border);border-radius:10px;padding:11px 14px;background:var(--bg);color:var(--fg);font:inherit;font-size:15px;cursor:pointer}
+.opt:hover{border-color:var(--fg)}
+.opt .l{font-weight:600;opacity:.7}
+.opt.ok{border-color:var(--ok);background:var(--ok-soft);color:var(--ok);font-weight:600}
+.opt.no{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bar .sp{flex:1}
+.foot{border-top:1px solid var(--border);padding:10px 16px;flex:none}
+.expl{border-left:3px solid var(--ok);padding:2px 0 2px 12px;font-size:14px;color:var(--mute);display:grid;gap:4px}
+.expl b{color:var(--fg)}
+/* popup */
+.scrim{position:absolute;inset:0;background:rgb(0 0 0/.42);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--bg);border:1px solid var(--border);border-radius:14px;width:min(560px,100%);max-height:100%;overflow:auto;padding:18px 20px;display:grid;gap:14px;box-shadow:0 12px 32px rgb(0 0 0/.18)}
+.modal h3{margin:0;font-size:16px}
+.lbl{font-size:13px;color:var(--mute);display:grid;gap:5px}
+.inp,textarea.inp{width:100%;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;padding:8px 10px}
+textarea.inp{min-height:62px;resize:vertical}
+.num{width:84px}
+.prog{height:4px;border-radius:3px;background:var(--soft);overflow:hidden}
+.prog i{display:block;height:100%;width:38%;background:var(--acc)}
+/* pannello */
+.panel{position:absolute;top:0;right:0;bottom:0;width:380px;border-left:1px solid var(--border);background:var(--bg);display:flex;flex-direction:column}
+.panel .ph{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.panel .pb{flex:1;overflow:auto;padding:12px 14px;display:grid;gap:12px;align-content:start}
+.box{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:grid;gap:8px}
+.sec{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--fg);font:inherit;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);cursor:pointer;padding:0}
+.sec .car{transition:transform .15s ease}
+.sec[aria-expanded="false"] .car{transform:rotate(-90deg)}
+.qrow{border-top:1px solid var(--border);padding:9px 0;display:grid;gap:3px;position:relative}
+.qrow .m{font-size:12px;color:var(--mute)}
+.qrow .x{font-size:14px;padding-right:28px}
+.qrow .ib{position:absolute;right:-4px;top:4px;width:28px;height:28px}
+.menu{position:absolute;right:0;top:34px;z-index:5;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:5px;display:grid;gap:2px;min-width:210px;box-shadow:0 10px 24px rgb(0 0 0/.16)}
+.menu button{display:flex;gap:9px;align-items:center;border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:7px 9px;border-radius:7px;cursor:pointer;text-align:left}
+.menu button:hover{background:var(--soft)}
+.menu hr{border:0;border-top:1px solid var(--border);margin:3px 0}
+.seg2{display:inline-flex;background:var(--soft);border-radius:8px;padding:2px}
+.seg2 button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:13px;padding:4px 10px;border-radius:6px;cursor:pointer}
+.seg2 button[aria-pressed="true"]{background:var(--bg);font-weight:600;box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.study{display:grid;gap:14px;max-width:720px;margin:0 auto}
+.study p{margin:0;color:var(--mute);font-size:14px}
+.study h3{margin:0;font-size:18px}
+svg{display:block}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Wireframe RT 4.2.2b3</h1>
+  <span class="meta">domande dallo studio · ripasso di un'unità · pannello e modifica</span>
+  <div class="tabs" role="group" aria-label="Schermata">
+    <button id="t-gen" aria-pressed="true">Genera dallo studio</button>
+    <button id="t-ses" aria-pressed="false">Sessione dell'unità</button>
+    <button id="t-pan" aria-pressed="false">Pannello domande</button>
+    <button id="t-mod" aria-pressed="false">Modifica domanda</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ 1. GENERA DALLO STUDIO ============ -->
+  <section id="n-gen" class="notes">
+    <h2>Studio senza domande: "Genera ora"</h2>
+    <ul>
+      <li>Il pulsante in fondo diventa <b>"Nessuna domanda · genera ora"</b>. Si apre il popup con tipo, quante e istruzioni: gli stessi campi del pannello, quindi lo stesso job <span class="kbd">recall_generate</span> con <span class="kbd">unit_ids</span> dell'unità aperta.</li>
+      <li>Il tipo è uno fra Quiz, Mirata, Caso ed Esercizio. Le <b>vaste</b> non ci sono: una domanda vasta non è mai legata a una sola unità, quindi non comparirebbe comunque nella sessione dell'unità.</li>
+      <li>Dato il via, il popup si chiude e si continua a leggere: in fondo resta la riga con l'avanzamento. Quando il job finisce, il pulsante diventa "Mettimi alla prova · N domande".</li>
+      <li class="q">Da decidere: a job finito la sessione parte <b>da sola</b> (come hai chiesto) o aspetta un clic? Se nel frattempo hai cambiato unità, partire da sola ti porterebbe via dalla pagina: la proposta è partire da sola solo se sei ancora sull'unità, altrimenti cambiare solo il pulsante.</li>
+    </ul>
+  </section>
+  <div class="stage" id="s-gen">
+    <div class="frame">
+      <div class="hdr">
+        <button class="ib" aria-label="Indietro">&#8249;</button>
+        <span class="t">1.1 Presentazione della lezione e rilevanza della comprensione degli attributi</span>
+        <button class="ib" aria-label="Evidenziatore">&#9998;</button>
+        <button class="ib" aria-label="Lettura veloce">&#9655;</button>
+        <span class="chip">Unità 1 di 20</span>
+      </div>
+      <div class="body">
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="study">
+          <h3>1.1 Presentazione della lezione e rilevanza della comprensione degli attributi</h3>
+          <p>L'avvio delle attività didattiche e dei progetti d'esame prevede una fase preliminare di coordinamento logistico. Sulla piattaforma di riferimento sono stati condivisi i materiali didattici aggiornati e il collegamento per la definizione dei progetti individuali o di gruppo.</p>
+          <p>Dal punto di vista prettamente scientifico, lo studio della tipologia degli attributi rappresenta un pilastro fondamentale dell'intero percorso metodologico del data mining. La corretta comprensione e la caratterizzazione dei dati costituiscono i prerequisiti indispensabili per l'applicazione di qualsiasi algoritmo analitico.</p>
+        </div>
+      </div>
+      <div class="foot" id="gen-foot">
+        <button class="btn pri" style="width:100%;justify-content:center" id="gen-open">Nessuna domanda · genera ora</button>
+      </div>
+
+      <div class="scrim" id="gen-modal" hidden>
+        <div class="modal" role="dialog" aria-label="Genera domande su 1.1">
+          <h3>Genera domande su 1.1</h3>
+          <div class="bar" role="group" aria-label="Tipo">
+            <button class="chip" aria-pressed="true">Quiz</button>
+            <button class="chip" aria-pressed="false">Mirata</button>
+            <button class="chip" aria-pressed="false">Caso</button>
+            <button class="chip" aria-pressed="false">Esercizio</button>
+          </div>
+          <label class="lbl" style="justify-self:start">Quante
+            <input class="inp num" type="number" value="3" min="1" max="20">
+          </label>
+          <label class="lbl">Istruzioni aggiuntive (facoltative)
+            <textarea class="inp" placeholder="Es. concentrati sulla differenza fra nominale e ordinale"></textarea>
+          </label>
+          <div class="bar">
+            <span class="sp"></span>
+            <button class="btn ghost" id="gen-cancel">Annulla</button>
+            <button class="btn pri" id="gen-go">Genera</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. SESSIONE DELL'UNITÀ ============ -->
+  <section id="n-ses" class="notes" hidden>
+    <h2>Sessione di domande dell'unità: come il ripasso normale</h2>
+    <ul>
+      <li>È la schermata del ripasso classico, limitata alle domande dell'unità appena letta: stesse voci, stessi tasti.</li>
+      <li>I tipi in alto si spengono se l'unità non ha domande di quel tipo: il conto per tipo l'API lo manda già (<span class="kbd">StudyUnit.pending</span>).</li>
+      <li>In alto a destra l'icona del libro torna allo studio, sull'unità da cui sei partito; anche <b>Termina</b> torna lì invece di uscire.</li>
+      <li><b>Quiz:</b> il clic sull'opzione è la risposta, come già nello studio: niente più "Rispondi". Resta "Non lo so".</li>
+      <li class="q">Oggi, nel ripasso classico, <b>Salta</b> rimette la domanda fra quelle da porre e ne serve un'altra, mentre <b>Prossima</b> non registra niente e lascia la domanda segnata "posta" per sempre. Proposta: prima di rispondere c'è solo "Salta"; "Prossima" compare dopo la risposta. E "Termina" rimette fra le "da porre" la domanda lasciata a metà.</li>
+    </ul>
+  </section>
+  <div class="stage" id="s-ses" hidden>
+    <div class="frame">
+      <div class="hdr">
+        <button class="ib" aria-label="Indietro">&#8249;</button>
+        <span class="t">1.1 Presentazione della lezione · domanda 2 di 5</span>
+        <button class="ib on" aria-label="Torna allo studio" title="Torna allo studio">&#128214;</button>
+        <span class="chip">Unità 1 di 20</span>
+      </div>
+      <div class="body">
+        <div class="bar" style="justify-content:center;margin-bottom:14px">
+          <button class="chip" aria-pressed="true">Mista</button>
+          <button class="chip" aria-pressed="false">Quiz <small style="opacity:.7">3</small></button>
+          <button class="chip" aria-pressed="false">Mirata <small style="opacity:.7">2</small></button>
+          <button class="chip" disabled>Vasta</button>
+          <button class="chip" disabled>Casi</button>
+          <button class="chip" disabled>Esercizi</button>
+        </div>
+        <div class="q-card">
+          <p class="q-meta">QUIZ · unità 1.1 · domanda 2 di 5</p>
+          <h2 class="q-text">Quale misura statistica è ammissibile per gli attributi categorici nominali?</h2>
+          <button class="opt ok"><span class="l">A.</span><span>Moda</span><span style="margin-left:auto">&#10003;</span></button>
+          <button class="opt no"><span class="l">B.</span><span>Mediana</span></button>
+          <button class="opt"><span class="l">C.</span><span>Media aritmetica</span></button>
+          <button class="opt"><span class="l">D.</span><span>Varianza</span></button>
+          <div class="expl"><b>Non c'è.</b><span>Sui nominali si può solo contare: la moda è l'unica misura di centro ammessa, mediana e media richiedono un ordine o una scala.</span></div>
+        </div>
+      </div>
+      <div class="foot">
+        <div class="bar">
+          <button class="ib" aria-label="Mi piace">&#128077;</button>
+          <button class="ib" aria-label="Non mi piace">&#128078;</button>
+          <button class="btn ghost">&#128172; Commenta</button>
+          <button class="btn ghost">&#8677; Salta</button>
+          <span class="sp"></span>
+          <button class="btn">Termina</button>
+          <button class="btn pri">Prossima</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 3. PANNELLO ============ -->
+  <section id="n-pan" class="notes" hidden>
+    <h2>Pannello Domande: sezione richiudibile, filtro e riproponi</h2>
+    <ul>
+      <li>"Domande della lezione" diventa richiudibile e ricorda com'era (come le altre sezioni).</li>
+      <li>Filtro a tre posizioni: <b>Tutte</b>, <b>Da porre</b>, <b>Poste</b>. Il numero accanto al titolo segue il filtro.</li>
+      <li>Sotto la lista, <b>Riproponi le domande poste</b>: le rimette tutte fra quelle da porre.</li>
+      <li>Nei tre puntini di ogni riga: <b>Modifica</b>, <b>Segna come da porre</b> (o "come posta"), <b>Elimina</b>.</li>
+      <li class="q">Da decidere: "riproponi" riguarda tutte quelle già poste, o solo quelle a cui hai risposto <b>male</b>? E le domande scartate restano fuori, giusto?</li>
+    </ul>
+  </section>
+  <div class="stage" id="s-pan" hidden>
+    <div class="frame">
+      <div class="hdr"><span class="t">Data mining: tipologie di attributi</span></div>
+      <div class="body" style="padding-right:400px"><div class="study"><h3>3.2 Distanza di Hamming</h3><p>La formulazione standard tratta tutte le differenze come equivalenti…</p></div></div>
+      <aside class="panel">
+        <div class="ph"><b style="flex:1">Domande</b><button class="ib" aria-label="Chiudi">&#10005;</button></div>
+        <div class="pb">
+          <div class="box">
+            <div class="bar"><b style="flex:1">31 domande da porre</b><button class="btn pri">&#129504; Ripassa</button></div>
+            <div class="bar" style="gap:6px">
+              <span class="chip" aria-pressed="true">36 quiz</span><span class="chip">0 mirate</span><span class="chip">0 vaste</span>
+            </div>
+          </div>
+          <div class="box"><div class="bar"><b style="flex:1">Genera altre domande</b><span>&#8964;</span></div></div>
+
+          <div>
+            <button class="sec" id="sec-btn" aria-expanded="true">
+              <span class="car">&#9662;</span><span>Domande della lezione (31)</span>
+            </button>
+            <div class="bar" style="margin:8px 0 2px">
+              <span class="seg2" role="group" aria-label="Filtro">
+                <button aria-pressed="false">Tutte</button>
+                <button aria-pressed="true">Da porre</button>
+                <button aria-pressed="false">Poste</button>
+              </span>
+            </div>
+            <div id="sec-list">
+              <div class="qrow">
+                <span class="m">Quiz · unità 3.2 · da porre</span>
+                <span class="x">Qual è la principale limitazione teorica della formulazione standard della distanza di Hamming?</span>
+                <button class="ib" aria-label="Azioni sulla domanda" id="row-menu-btn">&#8943;</button>
+                <div class="menu" id="row-menu" hidden>
+                  <button id="open-edit">&#9998; Modifica</button>
+                  <button>&#10003; Segna come posta</button>
+                  <hr>
+                  <button style="color:var(--bad)">&#128465; Elimina</button>
+                </div>
+              </div>
+              <div class="qrow">
+                <span class="m">Quiz · unità 3.2 · posta, sbagliata</span>
+                <span class="x">In cosa consiste l'approccio data-driven per la determinazione dei pesi nella distanza ponderata?</span>
+                <button class="ib" aria-label="Azioni sulla domanda">&#8943;</button>
+              </div>
+              <div class="qrow">
+                <span class="m">Mirata · unità 5.3 · da porre</span>
+                <span class="x">Quale metrica di distanza è ideale per i dati binari asimmetrici?</span>
+                <button class="ib" aria-label="Azioni sulla domanda">&#8943;</button>
+              </div>
+            </div>
+            <button class="btn" style="width:100%;justify-content:center;margin-top:10px">&#8635; Riproponi le domande poste</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ============ 4. MODIFICA ============ -->
+  <section id="n-mod" class="notes" hidden>
+    <h2>Popup di modifica di una domanda</h2>
+    <ul>
+      <li>Quiz: testo, quattro alternative e quale è giusta (il modello ne vuole esattamente quattro e una corretta).</li>
+      <li>Mirata, vasta, caso, esercizio: solo il testo.</li>
+      <li>Il commento dell'IA c'è solo dove il modello lo prevede: quiz, vasta ed esercizio. Si modifica a mano o si rifà con <b>Rigenera</b> (un job che riscrive solo il commento, lasciando la domanda com'è).</li>
+      <li class="q">Da decidere: se modifichi una domanda <b>già posta e con risposta</b>, la rimettiamo fra quelle da porre? La proposta è sì, tenendo la risposta vecchia nello storico.</li>
+    </ul>
+  </section>
+  <div class="stage" id="s-mod" hidden>
+    <div class="frame">
+      <div class="hdr"><span class="t">Data mining: tipologie di attributi</span></div>
+      <div class="body"></div>
+      <div class="scrim">
+        <div class="modal" role="dialog" aria-label="Modifica domanda">
+          <h3>Modifica domanda · Quiz · unità 3.2</h3>
+          <label class="lbl">Domanda
+            <textarea class="inp">Qual è la principale limitazione teorica della formulazione standard della distanza di Hamming?</textarea>
+          </label>
+          <div class="lbl">Alternative (la spunta è quella giusta)
+            <div style="display:grid;gap:6px">
+              <div class="bar" style="flex-wrap:nowrap"><input type="radio" name="ok" aria-label="A è la risposta giusta" checked><input class="inp" value="Tratta tutte le differenze come equivalenti"></div>
+              <div class="bar" style="flex-wrap:nowrap"><input type="radio" name="ok" aria-label="B è la risposta giusta"><input class="inp" value="Richiede attributi numerici"></div>
+              <div class="bar" style="flex-wrap:nowrap"><input type="radio" name="ok" aria-label="C è la risposta giusta"><input class="inp" value="Non è definita per stringhe di lunghezza diversa"></div>
+              <div class="bar" style="flex-wrap:nowrap"><input type="radio" name="ok" aria-label="D è la risposta giusta"><input class="inp" value="Dipende dall'ordine delle colonne"></div>
+            </div>
+          </div>
+          <label class="lbl">Commento dell'IA
+            <textarea class="inp">La formulazione standard pesa allo stesso modo ogni differenza, quindi non distingue attributi più o meno importanti.</textarea>
+          </label>
+          <div class="bar">
+            <button class="btn ghost">&#10227; Rigenera il commento</button>
+            <span class="sp"></span>
+            <button class="btn ghost">Annulla</button>
+            <button class="btn pri">Salva</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const $=(id)=>document.getElementById(id)
+const TABS=[['gen','t-gen'],['ses','t-ses'],['pan','t-pan'],['mod','t-mod']]
+function show(k){
+  for(const [id,tab] of TABS){
+    $('s-'+id).hidden=id!==k; $('n-'+id).hidden=id!==k
+    $(tab).setAttribute('aria-pressed',String(id===k))
+  }
+  try{localStorage.setItem('wf422b3',k)}catch(e){}
+}
+for(const [id,tab] of TABS) $(tab).onclick=()=>show(id)
+/* popup di generazione */
+$('gen-open').onclick=()=>{$('gen-modal').hidden=false}
+$('gen-cancel').onclick=()=>{$('gen-modal').hidden=true}
+$('gen-go').onclick=()=>{
+  $('gen-modal').hidden=true
+  $('gen-foot').innerHTML='<div class="bar"><span style="font-size:14px;color:var(--mute);flex:1">Genero 3 domande su 1.1…</span></div><div class="prog" style="margin-top:8px"><i></i></div>'
+  setTimeout(()=>{$('gen-foot').innerHTML='<button class="btn pri" style="width:100%;justify-content:center">Mettimi alla prova · 3 domande</button>'},2200)
+}
+/* menu dei tre puntini */
+$('row-menu-btn').onclick=(e)=>{e.stopPropagation();$('row-menu').hidden=!$('row-menu').hidden}
+document.addEventListener('click',()=>{$('row-menu').hidden=true})
+$('open-edit').onclick=()=>show('mod')
+/* sezione richiudibile */
+$('sec-btn').onclick=()=>{
+  const open=$('sec-btn').getAttribute('aria-expanded')==='true'
+  $('sec-btn').setAttribute('aria-expanded',String(!open))
+  $('sec-list').hidden=open
+}
+try{const v=localStorage.getItem('wf422b3');if(v)show(v)}catch(e){}
+</script>
+</body>
+</html>
