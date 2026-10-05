@@ -150,7 +150,7 @@ describe('StudyFlow unit navigation', () => {
     localStorage.clear()
   })
 
-  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità (4.2.2b3)', () => {
+  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità, niente study-next (4.2.2b3, 4.2.2b4)', () => {
     localStorage.clear()
     renderStudy()
     // L'unità 2.1 non ha domande.
@@ -158,7 +158,7 @@ describe('StudyFlow unit navigation', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
     const generate = screen.getByTestId('study-generate')
     expect(generate).toHaveTextContent('Nessuna domanda · genera ora')
-    expect(screen.getByTestId('study-next')).toHaveTextContent('Fine')
+    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
 
     fireEvent.click(generate)
     fireEvent.click(screen.getByRole('button', { name: 'Caso clinico' }))
@@ -170,6 +170,20 @@ describe('StudyFlow unit navigation', () => {
       { unitIds: ['2.1'], qtype: 'caso', count: 2, instructions: 'solo sui valori soglia' },
       expect.anything(),
     )
+  })
+
+  it('con domande mostra entrambi i pulsanti e il secondo apre il popup di generazione (4.2.2b4 F2)', () => {
+    localStorage.clear()
+    renderStudy()
+    // L'unità 1.1 ha 2 domande
+    expect(screen.getByTestId('study-quiz')).toHaveTextContent('Mettimi alla prova · 2')
+    const generateBtn = screen.getByTestId('study-generate')
+    expect(generateBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+
+    // Il secondo pulsante apre il popup di generazione
+    fireEvent.click(generateBtn)
+    expect(screen.getByTestId('study-generate-modal')).toBeInTheDocument()
   })
 
   it('nessun effetto delle frecce nella fase domande', () => {

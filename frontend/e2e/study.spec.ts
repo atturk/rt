@@ -57,10 +57,9 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
     .poll(() => page.getByTestId('study-audio').evaluate((a: HTMLAudioElement) => a.currentTime))
     .toBeGreaterThanOrEqual(first.start ?? 0)
   await page.getByRole('button', { name: "Ferma l'audio dell'unità" }).click()
-  // Senza domande sull'unità si generano sul posto (4.2.2b3), o si va avanti.
+  // Senza domande sull'unità si generano sul posto (4.2.2b3).
   if (first.questions === 0) {
     await expect(page.getByTestId('study-generate')).toContainText('Nessuna domanda · genera ora')
-    await expect(page.getByTestId('study-next')).toBeVisible()
   }
 
   // "Domande su questa parte": lo Studio della prima unità, con le domande da generare.
@@ -74,11 +73,12 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await expect(page.getByRole('heading', { level: 1 })).toContainText(first.title)
   expect((await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions).toBeGreaterThan(0)
 
-  // Lo Studio della lezione intera: lettura e poi "Mettimi alla prova · N domande" (schermata 06).
+  // Lo Studio della lezione intera: lettura e poi "Mettimi alla prova · N" (4.2.2b4 F2).
   await page.goto(`/studio/lezione/${l.id}`)
   const quiz = page.getByTestId('study-quiz')
-  await expect(quiz).toHaveText(/^Mettimi alla prova · \d+ domand[ae]$/)
-  const total = Number((await quiz.textContent())!.match(/(\d+) domand/)![1])
+  await expect(quiz).toHaveText(/^Mettimi alla prova · \d+$/)
+  await expect(page.getByTestId('study-generate')).toBeVisible()
+  const total = Number((await quiz.textContent())!.match(/(\d+)/)![1])
   const pending = (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions
   expect(total).toBe(pending)
   await quiz.click()
@@ -121,11 +121,11 @@ test('Studio dall\'intestazione della lezione; telefono', async ({ page }) => {
   // Telefono: colonna a tutta larghezza e pulsante in basso sempre a portata.
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByTestId('study-text')).toBeVisible()
-  const footer = page.getByTestId('study-quiz').or(page.getByTestId('study-generate'))
+  const footer = page.getByTestId('study-quiz').or(page.getByTestId('study-generate')).first()
   await expect(footer).toBeInViewport()
   const box = (await footer.boundingBox())!
   expect(box.height).toBeGreaterThanOrEqual(44)
-  expect(box.width).toBeGreaterThan(300)
+  expect(box.width).toBeGreaterThan(250)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
 

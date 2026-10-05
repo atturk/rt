@@ -247,21 +247,26 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             rereading ? (
               <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setRereading(false)}>Torna alle domande</Button>
             ) : live.questions > 0 ? (
-              <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
-                Mettimi alla prova · {live.questions === 1 ? '1 domanda' : `${live.questions} domande`}
-              </Button>
-            ) : (
-              // Unità senza domande: si generano sul posto, poi il pulsante diventa
-              // "Mettimi alla prova" (il ripasso parte solo con un clic).
-              <div className="flex w-full max-w-(--reading-width) flex-col gap-1.5">
-                <Button className="w-full justify-center" onClick={() => setGenerateOpen(true)} data-testid="study-generate">
-                  <Sparkles aria-hidden />
-                  Nessuna domanda · genera ora
+              <div className="flex w-full max-w-(--reading-width) items-center gap-2">
+                <Button className="flex-1 justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
+                  Mettimi alla prova · {live.questions}
                 </Button>
-                <Button variant="ghost" className="w-full justify-center" onClick={advance} data-testid="study-next">
-                  {unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine'}
+                <Button
+                  variant="outline"
+                  onClick={() => setGenerateOpen(true)}
+                  aria-label="Genera altre domande"
+                  data-testid="study-generate"
+                  className="shrink-0"
+                >
+                  <Sparkles aria-hidden />
+                  <span className="max-sm:hidden">Genera altre</span>
                 </Button>
               </div>
+            ) : (
+              <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setGenerateOpen(true)} data-testid="study-generate">
+                <Sparkles aria-hidden />
+                Nessuna domanda · genera ora
+              </Button>
             )
           }
         >
