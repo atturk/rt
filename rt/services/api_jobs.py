@@ -28,6 +28,7 @@ CREDENTIAL_TEST = "credential_test"
 TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
 IMPORT_LESSON_ZIPS = "import_lesson_zips"
 TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
+EXPORT_LESSONS = "export_lessons"
 UNIT_RELEVANCE = "unit_relevance"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
 
@@ -284,24 +285,43 @@ def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     import zipfile
     from rt.services.context import RunCancelled, _sanitize
     from rt.services.errors import ServiceError
-    from rt.services.lesson_import_service import import_archive
-    entries = [e for e in job.payload.get("archives") or [] if isinstance(e, dict)]
+    from rt.services.lesson_import_service import group_archive_members, import_archive, import_group_member
+    entries = []
+    for entry in job.payload.get("archives") or []:
+        if not isinstance(entry, dict):
+            continue
+        ctx.check_cancelled()
+        if entry.get("reason") or not entry.get("path") or not os.path.isfile(entry["path"]):
+            entries.append(entry)
+            continue
+        try:
+            members = group_archive_members(entry["path"])
+        except ServiceError as exc:
+            entries.append({**entry, "reason": exc.message, "code": exc.code})
+        except (zipfile.BadZipFile, ValueError):
+            entries.append({**entry, "reason": "Archivio ZIP non valido.", "code": "invalid_archive"})
+        else:
+            if members is None:
+                entries.append(entry)
+            else:
+                entries.extend({**entry, "file": member, "member": member} for member in members)
     total, results = len(entries), []
     for index, entry in enumerate(entries):
         ctx.check_cancelled()
         name = str(entry.get("file") or "")
-        ctx.progress(IMPORT_LESSON_ZIPS, index, total, message=f"Importo {name}")
+        ctx.progress(IMPORT_LESSON_ZIPS, index, total, message=f"Importo {index + 1} su {total}: {name}")
         path = entry.get("path")
         if entry.get("reason") or not path or not os.path.isfile(path):
             results.append({"file": name, "status": "rejected",
-                            "reason": entry.get("reason") or "Archivio non più disponibile: caricalo di nuovo."})
+                            "reason": entry.get("reason") or "Archivio non più disponibile: caricalo di nuovo.",
+                            "code": entry.get("code") or "invalid_archive"})
             continue
         try:
-            lesson_id = import_archive(path)
+            lesson_id = import_group_member(path, entry["member"]) if entry.get("member") else import_archive(path)
         except RunCancelled:
             raise
         except ServiceError as exc:
-            results.append({"file": name, "status": "rejected", "reason": exc.message})
+            results.append({"file": name, "status": "rejected", "reason": exc.message, "code": exc.code})
         except (zipfile.BadZipFile, ValueError):
             results.append({"file": name, "status": "rejected", "reason": "Archivio ZIP non valido."})
         except Exception as exc:  # noqa: BLE001 - l'esito del singolo archivio va nel risultato
@@ -342,6 +362,37 @@ def sweep_stale_exports(max_age_hours: float = EXPORT_MAX_AGE_HOURS) -> int:
             fs.rmtree(path, ignore_errors=True)
             removed += 1
     return removed
+
+
+def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Lo stesso export multiplo del GET, con avanzamento e file riscaricabile per 24 ore."""
+    import shutil
+    from rt.services.lesson_service import resolve_lesson_dir
+    from rt.services.errors import NotFound
+    from rt.storage.export import ExportError, export_many_to_tempfile, many_export_filename
+    sweep_stale_exports()
+    dirs = [resolve_lesson_dir(i) for i in dict.fromkeys(job.payload["ids"])]
+
+    def progress(current: int, total: int, lesson_dir: str) -> None:
+        ctx.check_cancelled()
+        ctx.progress(EXPORT_LESSONS, current, total,
+                     message=f"Esporto {current + 1} su {total}: {os.path.basename(lesson_dir)}")
+
+    try:
+        path, included = export_many_to_tempfile(dirs, job.payload["format"], progress=progress)
+    except ExportError as exc:
+        raise NotFound("export_not_available", str(exc)) from exc
+    filename = many_export_filename(job.payload.get("name", "lezioni"), job.payload["format"])
+    target = job_export_path(job.id, filename)
+    try:
+        ctx.check_cancelled()
+        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
+        shutil.move(path, target)
+    finally:
+        if os.path.isfile(path):
+            os.unlink(path)
+    ctx.progress(EXPORT_LESSONS, len(dirs), len(dirs), message=f"Archivio pronto: {included} lezioni")
+    return _done({"file": filename, "size": os.path.getsize(target), "included": included})
 
 
 def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -387,6 +438,7 @@ for _type, _handler in (
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),
+    (EXPORT_LESSONS, export_lessons_job),
 ):
     if _type not in _HANDLERS:
         register_handler(_type, _handler)

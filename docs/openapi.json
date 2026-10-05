@@ -3204,6 +3204,40 @@
         "title": "LessonDocument",
         "type": "object"
       },
+      "LessonExportRequest": {
+        "properties": {
+          "format": {
+            "default": "markdown",
+            "enum": [
+              "markdown",
+              "zip"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "ids": {
+            "description": "Id delle lezioni",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "name": {
+            "default": "lezioni",
+            "description": "Nome del file scaricato (senza estensione)",
+            "maxLength": 120,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "LessonExportRequest",
+        "type": "object"
+      },
       "LessonImage": {
         "properties": {
           "alt_text": {
@@ -8537,6 +8571,173 @@
         "tags": [
           "lezioni"
         ]
+      },
+      "post": {
+        "operationId": "start_lesson_export_api_v1_lesson_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Esporta più lezioni come job con avanzamento per lezione",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lesson-exports/{job_id}/file": {
+      "get": {
+        "operationId": "download_lesson_export_api_v1_lesson_exports__job_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scarica lo ZIP prodotto da un export di lezioni concluso",
+        "tags": [
+          "lezioni"
+        ]
       }
     },
     "/api/v1/lessons": {
@@ -8840,7 +9041,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Importa più archivi completi come nuove lezioni (job import_lesson_zips)",
+        "summary": "Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)",
         "tags": [
           "job"
         ]

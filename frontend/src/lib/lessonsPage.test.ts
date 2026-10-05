@@ -17,6 +17,9 @@ describe('lessonSubtitle', () => {
   it('per data: materia, docente e unità (la data la dice il gruppo)', () => {
     expect(lessonSubtitle(l, 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità')
   })
+  it('per mese: data, materia, docente e unità', () => {
+    expect(lessonSubtitle(l, 'mese', NOW)).toBe('2 ott · Fisiologia · Rossi · 9 unità')
+  })
   it('per materia: data, docente e unità', () => {
     expect(lessonSubtitle(l, 'materia', NOW)).toBe('2 ott · Rossi · 9 unità')
   })
@@ -60,6 +63,11 @@ describe('lessonsGroups', () => {
     expect(bySubject.map((g) => groupLabel(g, 'materia'))).toEqual(['Farmacologia', 'Fisiologia'])
     expect(lessonsGroups(lessons, { group: 'docente', sort: 'recenti' }, NOW).map((g) => g.label)).toEqual(['Bianchi', 'Rossi', 'Senza docente'])
   })
+  it('per mese: gruppi per mese con etichetta monthLabel', () => {
+    const groups = lessonsGroups(lessons, { group: 'mese', sort: 'recenti' }, NOW)
+    expect(groups.map((g) => g.label)).toEqual(['Ottobre 2026'])
+    expect(groups[0].lessons).toHaveLength(3)
+  })
 })
 
 describe('stato e Info', () => {
@@ -84,9 +92,11 @@ describe('stato e Info', () => {
   })
 })
 
-it('preferenze illeggibili tornano a quelle predefinite', () => {
+it('preferenze salvate e preferenze illeggibili', () => {
   expect(parseLessonsPrefs('{"group":"docente","sort":"titolo"}')).toEqual({ group: 'docente', sort: 'titolo' })
-  expect(parseLessonsPrefs('{"group":"mese"}')).toEqual({ group: 'data', sort: 'recenti' })
+  expect(parseLessonsPrefs('{"group":"mese"}')).toEqual({ group: 'mese', sort: 'recenti' })
+  expect(parseLessonsPrefs('{"group":"data"}')).toEqual({ group: 'data', sort: 'recenti' })
+  expect(parseLessonsPrefs('{"group":"sconosciuto"}')).toEqual({ group: 'data', sort: 'recenti' })
   expect(parseLessonsPrefs('non json')).toEqual({ group: 'data', sort: 'recenti' })
 })
 

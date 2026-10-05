@@ -31,8 +31,9 @@ def _built_lesson(root, with_review=False):
     return lesson_dir
 
 
-def _synthetic_lesson(root):
-    """Tre unità in due sezioni su sei segmenti di 10 s, con il documento finale creato."""
+def _synthetic_lesson(root, contents=None):
+    """Tre unità in due sezioni su sei segmenti di 10 s, con il documento finale creato.
+    contents: testo di alcune unità al posto di quello predefinito."""
     import os
     from rt.core.idempotency import compute_source_fingerprint, record_phase_fingerprint
     from rt.core.lesson_paths import lesson_path
@@ -62,7 +63,7 @@ def _synthetic_lesson(root):
     ]), lesson_dir)
     save_draft(Draft(schema_version="1.0", units=[
         DraftUnit(unit_id=uid, title=title, start_segment_id=f"seg_{a:06d}", end_segment_id=f"seg_{b:06d}",
-                  source_segment_ids=[f"seg_{i:06d}" for i in range(a, b + 1)], content=f"Testo dell'unità {uid}.")
+                  source_segment_ids=[f"seg_{i:06d}" for i in range(a, b + 1)], content=(contents or {}).get(uid, f"Testo dell'unità {uid}."))
         for uid, title, (a, b) in [("1.1", "Acidi grassi", spans["1.1"]), ("1.2", "Trigliceridi", spans["1.2"]),
                                    ("2.1", "Riserva energetica", spans["2.1"])]
     ]), lesson_dir)
@@ -105,6 +106,20 @@ def test_unchanged_markdown_roundtrips_and_changes_nothing(root):
     assert result["build_status"] == "VALID"
     assert _preview(lesson_dir) == before
     assert load_draft(lesson_dir).model_dump() == draft_before
+
+
+@pytest.mark.parametrize("heading", ["### Approfondimento clinico", "## Nota bene", "### Caso: diabete", "#### Dettaglio"])
+def test_headings_written_inside_a_unit_are_text_not_structure(root, heading):
+    """Il testo di un'unità può avere titoli suoi (scritti dal modello o a mano): non sono
+    sezioni né unità, quindi né il documento intatto né una modifica al testo vanno rifiutati."""
+    lesson_dir = _synthetic_lesson(root, {"1.2": f"Primo paragrafo.\n\n{heading}\n\nSecondo paragrafo."})
+    before = _preview(lesson_dir)
+    assert heading in before
+    assert save_document_edit(lesson_dir, before)["changed"] is False
+    edited = before.replace("Secondo paragrafo.", "**Secondo** paragrafo.").replace("Testo dell'unità 2.1.", "*Testo* dell'unità 2.1.")
+    result = save_document_edit(lesson_dir, edited)
+    assert sorted(result["units_changed"]) == ["1.2", "2.1"]
+    assert heading in _preview(lesson_dir) and "**Secondo** paragrafo." in _preview(lesson_dir)
 
 
 def test_text_title_and_timecode_are_saved_and_the_build_goes_stale(root):

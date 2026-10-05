@@ -56,10 +56,10 @@ test('dall\'elenco si scaricano i Markdown finali senza aprire la lezione (barra
   await row(notBuilt.id).getByRole('checkbox').uncheck()
 
   await row(built.id).getByRole('checkbox').check()
-  const download = page.waitForEvent('download')
-  await bar.getByRole('link', { name: 'Scarica Markdown' }).click()
+  const download = page.waitForEvent('download', { timeout: 50_000 })
+  await bar.getByRole('button', { name: 'Scarica Markdown' }).click()
   const file = await download
-  // Uno ZIP con i documenti finali aggiornati (GET /lesson-exports?format=markdown).
+  // Uno ZIP con i documenti finali aggiornati (job export_lessons, download automatico a job finito).
   expect(file.suggestedFilename()).toBe('Lezioni selezionate.zip')
   expect(readFileSync((await file.path())!).subarray(0, 2).toString()).toBe('PK')
   await expect(page).toHaveURL(/\/$/)
@@ -226,4 +226,24 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await actions.getByRole('button', { name: 'Arricchimento' }).click()
   await expect(page.getByTestId('lesson-panel')).toHaveAttribute('data-view', 'arricchimento')
   await expect(page.getByTestId('enrichment-panel').getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' })).toBeVisible()
+})
+
+test('sezioni richiudibili: la freccia accanto al titolo chiude e riapre la sezione', async ({ page }) => {
+  await loginViaLink(page)
+  const id = await lessonId(page, 'BIOCHIMICA')
+  await page.goto(`/lezioni/${id}`)
+  const doc = page.getByTestId('lesson-document')
+  await expect(doc.locator('.cm-content')).toBeVisible()
+  const gutter = doc.locator('.cm-foldGutter')
+  await expect(gutter).toBeVisible()
+  await doc.locator('.cm-content').hover()
+  const arrow = gutter.locator('.rt-fold-open').first()
+  await expect(arrow).toBeVisible()
+  if (process.env.RT_E2E_SHOT) await page.screenshot({ path: `${process.env.RT_E2E_SHOT}/fold-open.png` })
+  await arrow.click()
+  const placeholder = doc.locator('.cm-foldPlaceholder')
+  await expect(placeholder).toHaveCount(1)
+  if (process.env.RT_E2E_SHOT) await page.screenshot({ path: `${process.env.RT_E2E_SHOT}/fold-closed.png` })
+  await placeholder.click()
+  await expect(placeholder).toHaveCount(0)
 })

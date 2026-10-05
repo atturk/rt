@@ -77,8 +77,12 @@ test('zip: niente campi, Importa usa /lessons/import-zip', async ({ page }) => {
   const posted = page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/api/v1/lessons/import-zip'))
   await dialog.getByRole('button', { name: 'Importa' }).click()
   await posted
-  // La lezione c'è già: il pacchetto viene rifiutato e il popup lo dice.
-  await expect(dialog.getByRole('list', { name: "Esito dell'importazione" })).toContainText('rifiutata', { timeout: LONG })
+  // Lo ZIP di gruppo (anche di una sola lezione) si espande; la lezione c'è già e il popup lo dice.
+  await expect(dialog.getByRole('list', { name: "Esito dell'importazione" })).toContainText('già presente', { timeout: LONG })
+  await expect(dialog.getByTestId('import-summary')).toHaveText('0 importate, 1 già presenti, 0 rifiutate')
+  // A job finito niente reimport: "Importa" lascia il posto a "Chiudi".
+  await expect(dialog.getByRole('button', { name: 'Importa' })).toHaveCount(0)
+  await expect(dialog.getByRole('form', { name: 'Nuova lezione' }).getByRole('button', { name: 'Chiudi' })).toBeVisible()
 
   // Esc chiude.
   await page.keyboard.press('Escape')

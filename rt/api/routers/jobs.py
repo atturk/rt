@@ -107,13 +107,13 @@ def _zip_signature_ok(path: str) -> bool:
 
 
 @router.post("/lessons/import-zip", response_model=schemas.JobAccepted, status_code=202,
-             summary="Importa più archivi completi come nuove lezioni (job import_lesson_zips)")
+             summary="Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)")
 def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
     """Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
     Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
     supera finisce tra i rifiutati del risultato senza fermare gli altri."""
     if len(archives) > MAX_ZIP_ARCHIVES:
-        raise ApiError(413, "too_many_archives", f"Importa al massimo {MAX_ZIP_ARCHIVES} archivi alla volta.")
+        raise ApiError(413, "too_many_archives", f"Carica al massimo {MAX_ZIP_ARCHIVES} archivi alla volta.")
     target = _upload_dir()
 
     def _go():

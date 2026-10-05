@@ -82,11 +82,13 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   const bar = page.getByTestId('selection-bar')
   await expect(bar.getByTestId('selection-count')).toHaveText(`${bio.length} ${bio.length === 1 ? 'selezionata' : 'selezionate'}`)
 
-  const download = page.waitForEvent('download')
-  await bar.getByRole('link', { name: 'Scarica zip' }).click()
+  // L'export è un job: avanzamento nella barra, poi il download parte da solo e resta "Scarica di nuovo".
+  const download = page.waitForEvent('download', { timeout: 50_000 })
+  await bar.getByRole('button', { name: 'Scarica zip' }).click()
   const file = await download
   expect(file.suggestedFilename()).toMatch(/\.zip$/)
-  const response = await page.request.get(await bar.getByRole('link', { name: 'Scarica zip' }).getAttribute('href') as string)
+  const again = bar.getByRole('link', { name: 'Scarica di nuovo' })
+  const response = await page.request.get(await again.getAttribute('href') as string)
   expect(response.status()).toBe(200)
   expect((await response.body()).subarray(0, 2).toString()).toBe('PK')
 

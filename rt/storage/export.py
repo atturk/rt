@@ -25,7 +25,7 @@ import os
 import re
 import zipfile
 import tempfile
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from rt.storage import fs
 
@@ -230,7 +230,14 @@ def _export_zip_into(lesson_dir: str, scope: str, buf) -> None:
                 "scope": "all", "files": entries}, ensure_ascii=False))
 
 
-def export_many_to_tempfile(lesson_dirs: List[str], fmt: str) -> Tuple[str, int]:
+def many_export_filename(name: str, fmt: str) -> str:
+    """Nome del download di gruppo, senza separatori o caratteri riservati."""
+    base = "".join(c for c in name if c not in '/\\:*?"<>|').strip() or "lezioni"
+    return f"{base}{' - archivi' if fmt == 'zip' else ''}.zip"
+
+
+def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
+                            progress: Optional[Callable[[int, int, str], None]] = None) -> Tuple[str, int]:
     """Un gruppo di lezioni in un solo ZIP (percorso, lezioni incluse).
 
     markdown: il documento finale di ogni lezione che ne ha uno aggiornato (le altre si
@@ -255,7 +262,9 @@ def export_many_to_tempfile(lesson_dirs: List[str], fmt: str) -> Tuple[str, int]
     try:
         # Gli archivi delle lezioni sono già compressi: dentro l'archivio del gruppo si salvano così.
         with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED if fmt == "zip" else zipfile.ZIP_DEFLATED) as zf:
-            for lesson_dir in lesson_dirs:
+            for index, lesson_dir in enumerate(lesson_dirs):
+                if progress:
+                    progress(index, len(lesson_dirs), lesson_dir)
                 if fmt == "markdown":
                     names = lesson_file_names(lesson_dir)
                     if export_mode(lesson_dir, names) != "final":

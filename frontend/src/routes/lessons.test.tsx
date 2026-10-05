@@ -55,7 +55,11 @@ describe('pagina Lezioni', () => {
     renderDashboard()
     expect(screen.getByRole('heading', { level: 1, name: 'Lezioni' })).toBeInTheDocument()
     expect(screen.getAllByTestId('lesson-group')).toHaveLength(2)
-    expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('Patologia · Maria Rossi · 7 unità')
+    const sub = within(row(1)).getByTestId('lesson-subtitle')
+    expect(sub).toHaveTextContent('Patologia · Maria Rossi · 7 unità')
+    expect(sub.className).toContain('block')
+    expect(sub.className).not.toContain('max-md')
+    expect(row(1).textContent).not.toMatch(/Infiammazione · Patologia/)
     expect(within(row(2)).getByTestId('lesson-subtitle')).toHaveTextContent(/^Biochimica$/)
     // Nessuna icona di azione sulle righe (Info, Recall, Studio, Apri): si apre con un clic sulla riga.
     expect(within(row(1)).getByRole('link', { name: /Infiammazione/ })).toHaveAttribute('href', '/lezioni/1')
@@ -112,8 +116,8 @@ describe('pagina Lezioni', () => {
     const bar = screen.getByTestId('selection-bar')
     expect(within(bar).getByTestId('selection-count')).toHaveTextContent('2 selezionate')
     // Markdown solo delle lezioni con il documento finale; zip di tutte.
-    expect(within(bar).getByRole('link', { name: 'Scarica Markdown' })).toHaveAttribute('href', '/api/v1/lesson-exports?ids=1&format=markdown&name=Lezioni+selezionate')
-    expect(within(bar).getByRole('link', { name: 'Scarica zip' })).toHaveAttribute('href', '/api/v1/lesson-exports?ids=1&ids=2&format=zip&name=Lezioni+selezionate')
+    expect(within(bar).getByRole('button', { name: 'Scarica Markdown' })).not.toHaveAttribute('aria-disabled')
+    expect(within(bar).getByRole('button', { name: 'Scarica zip' })).not.toHaveAttribute('aria-disabled')
     // Recall sulla selezione: solo le lezioni con la rielaborazione
     expect(within(bar).getByRole('link', { name: 'Recall sulle lezioni selezionate' })).toHaveAttribute('href', '/recall/selezione/1')
 
@@ -122,6 +126,77 @@ describe('pagina Lezioni', () => {
     fireEvent.click(within(bar).getByRole('button', { name: 'Annulla' }))
     expect(screen.queryByTestId('selection-bar')).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+  })
+
+  it('la barra seleziona tutte le lezioni visibili e poi le deseleziona', () => {
+    renderDashboard()
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona tutto' }))
+    for (const id of [1, 2, 3]) expect(within(row(id)).getByRole('checkbox')).toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('3 selezionate')
+    fireEvent.click(screen.getByRole('button', { name: 'Deseleziona tutto' }))
+    for (const id of [1, 2, 3]) expect(within(row(id)).getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('0 selezionate')
+    expect(screen.getByRole('button', { name: 'Seleziona tutto' })).toBeInTheDocument()
+  })
+
+  it('seleziona e deseleziona solo i risultati della ricerca, conservando le selezioni nascoste', () => {
+    renderDashboard()
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona' }))
+    fireEvent.click(within(row(2)).getByRole('checkbox'))
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'rossi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Seleziona tutto' }))
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('2 selezionate')
+    for (const id of [1, 3]) expect(within(row(id)).getByRole('checkbox')).toBeChecked()
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('3 selezionate')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'rossi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Deseleziona tutto' }))
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('0 selezionate')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(within(row(2)).getByRole('checkbox')).toBeChecked()
+    for (const id of [1, 3]) expect(within(row(id)).getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('1 selezionata')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'zzz' } })
+    const selectAll = screen.getByRole('button', { name: 'Seleziona tutto' })
+    expect(selectAll).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(selectAll)
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(within(row(2)).getByRole('checkbox')).toBeChecked()
+    expect(screen.getByTestId('selection-count')).toHaveTextContent('1 selezionata')
+  })
+
+  it('desktop: secondo clic su "Per data" alterna giorno e mese; clic su materia e poi di nuovo sul calendario torna all\'ultima scelta', () => {
+    renderDashboard()
+    const dateBtn = screen.getByRole('button', { name: 'Per data' })
+    expect(dateBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Secondo clic su Per data -> passa a Per mese
+    fireEvent.click(dateBtn)
+    const monthBtn = screen.getByRole('button', { name: 'Per mese' })
+    expect(monthBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'mese' })
+
+    // Nel raggruppamento per mese il sottotitolo mostra anche la data
+    expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('28 set · Patologia · Maria Rossi · 7 unità')
+
+    // Terzo clic -> torna a Per data
+    fireEvent.click(monthBtn)
+    expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'true')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'data' })
+
+    // Clic su Per data -> Per mese, poi Clic su Per materia
+    fireEvent.click(screen.getByRole('button', { name: 'Per data' }))
+    expect(screen.getByRole('button', { name: 'Per mese' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(screen.getByRole('button', { name: 'Per materia' })).toHaveAttribute('aria-pressed', 'true')
+    const inactiveMonthBtn = screen.getByRole('button', { name: 'Per mese' })
+    expect(inactiveMonthBtn).toHaveAttribute('aria-pressed', 'false')
+
+    // Clic sul pulsante calendario: torna a Per mese
+    fireEvent.click(inactiveMonthBtn)
+    expect(screen.getByRole('button', { name: 'Per mese' })).toHaveAttribute('aria-pressed', 'true')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'mese' })
   })
 
   it('su telefono: i pulsanti raggruppa e ordina passano al valore successivo a ogni tocco', () => {
@@ -140,6 +215,8 @@ describe('pagina Lezioni', () => {
     const groupBtn = screen.getByRole('button', { name: /Raggruppa: Data/ })
     expect(groupBtn).toBeInTheDocument()
     fireEvent.click(groupBtn)
+    expect(screen.getByRole('button', { name: /Raggruppa: Mese/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Mese/ }))
     expect(screen.getByRole('button', { name: /Raggruppa: Materia/ })).toBeInTheDocument()
     expect(groups()).toEqual(['Biochimica', 'Patologia'])
     fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Materia/ }))

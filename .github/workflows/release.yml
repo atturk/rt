@@ -1,9 +1,15 @@
 name: Release
 
+# Due modi per pubblicare:
+# - push di un tag vX.Y.Z[bN] (da terminale);
+# - "Run workflow" dalla pagina Actions sul branch da rilasciare (senza terminale): il tag è
+#   v<VERSION> e lo crea la release stessa sul commit scelto, dopo i test. Il commit deve
+#   discendere da main (l'aggiornamento di rt avanza solo in avanti) e il tag non deve esistere.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,12 +24,34 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Release tag
+        id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT" == "push" ]]; then
+            tag="$REF_NAME"
+          else
+            tag="v$(tr -d '[:space:]' < VERSION)"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::Il tag $tag esiste già: aggiorna VERSION prima di pubblicare."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              echo "::error::Il commit non discende da main: unisci main nel branch prima di pubblicare."
+              exit 1
+            fi
+          fi
+          echo "name=$tag" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
       - name: Check version and distribution contents
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
         run: python scripts/check_release.py --tag "$RELEASE_TAG" --output dist
       - uses: actions/setup-node@v4
         with:
@@ -37,7 +65,7 @@ jobs:
           npm run build
       - name: Package SPA
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
         run: |
           archive="rt-spa-${RELEASE_TAG#v}.tar.gz"
           tar -C frontend/dist -czf "dist/$archive" .
@@ -45,7 +73,7 @@ jobs:
       - name: Release kind
         id: kind
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
         run: |
           # 4.1.0b1, 4.1.0rc1...: prerelease, visibile solo a chi usa 'rt -u --beta'
           if [[ "${RELEASE_TAG#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -56,6 +84,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
           prerelease: ${{ steps.kind.outputs.prerelease }}
           make_latest: ${{ steps.kind.outputs.prerelease == 'true' && 'false' || 'true' }}
           generate_release_notes: true

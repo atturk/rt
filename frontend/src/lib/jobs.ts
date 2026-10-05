@@ -20,6 +20,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   credential_test: 'Prova credenziale',
   telegram_listen_topics: 'Ascolto dei topic Telegram',
   import_lesson_zips: 'Importazione da ZIP',
+  export_lessons: 'Esportazione di lezioni',
   telegram_topic_export: 'Esportazione di un topic Telegram',
 }
 

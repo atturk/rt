@@ -1,13 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Brain, Calendar, FileText, ListFilter, Search, SquareCheck, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Brain, Calendar, CalendarRange, FileText, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { api, errorMessage, unwrap } from '@/api/client'
+import { lessonExportUrl, useExportLessons } from '@/api/exports'
 import { useSettings } from '@/api/settings'
+import { JobProgress } from '@/components/JobProgress'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
-import { IconAnchor, IconButton, IconLink } from '@/components/ui/icon-button'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -21,7 +24,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 
-const GROUP_ICONS = { data: Calendar, materia: Tag, docente: User } as const
+const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User } as const
 
 // ---------------------------------------------------------------- intestazione
 
@@ -35,6 +38,31 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   onSelecting: (on: boolean) => void
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
+  const [savedDateChoice, setSavedDateChoice] = useState<'data' | 'mese'>(() => (prefs.group === 'mese' ? 'mese' : 'data'))
+  const dateChoice = prefs.group === 'data' || prefs.group === 'mese' ? prefs.group : savedDateChoice
+  const DateIcon = dateChoice === 'mese' ? CalendarRange : Calendar
+  const dateLabel = dateChoice === 'mese' ? 'Per mese' : 'Per data'
+  const isDateActive = prefs.group === 'data' || prefs.group === 'mese'
+
+  const handleDateClick = () => {
+    if (prefs.group === 'data') {
+      setSavedDateChoice('mese')
+      onPrefs({ group: 'mese' })
+    } else if (prefs.group === 'mese') {
+      setSavedDateChoice('data')
+      onPrefs({ group: 'data' })
+    } else {
+      onPrefs({ group: savedDateChoice })
+    }
+  }
+
+  const selectGroup = (group: LessonsGrouping) => {
+    if (prefs.group === 'data' || prefs.group === 'mese') {
+      setSavedDateChoice(prefs.group)
+    }
+    onPrefs({ group })
+  }
+
   const phone = useIsPhone()
   const input = useRef<HTMLInputElement>(null)
   const sortSection: MenuSection = {
@@ -43,6 +71,9 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   }
 
   const cycleGroup = () => {
+    if (prefs.group === 'data' || prefs.group === 'mese') {
+      setSavedDateChoice(prefs.group)
+    }
     const nextIndex = (GROUP_CYCLE.indexOf(prefs.group) + 1) % GROUP_CYCLE.length
     onPrefs({ group: GROUP_CYCLE[nextIndex] })
   }
@@ -59,16 +90,27 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
       {!phone ? (
         <>
           <div role="group" aria-label="Raggruppa" className="flex rounded-md bg-muted p-0.5 max-md:hidden">
-            {(Object.keys(GROUPING_LABELS) as LessonsGrouping[]).map((group) => (
-              <IconButton
-                key={group}
-                label={GROUPING_LABELS[group]}
-                icon={GROUP_ICONS[group]}
-                aria-pressed={prefs.group === group}
-                className={cn('hover:bg-card', prefs.group === group && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
-                onClick={() => onPrefs({ group })}
-              />
-            ))}
+            <IconButton
+              label={dateLabel}
+              icon={DateIcon}
+              aria-pressed={isDateActive}
+              className={cn('hover:bg-card', isDateActive && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+              onClick={handleDateClick}
+            />
+            <IconButton
+              label={GROUPING_LABELS.materia}
+              icon={GROUP_ICONS.materia}
+              aria-pressed={prefs.group === 'materia'}
+              className={cn('hover:bg-card', prefs.group === 'materia' && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+              onClick={() => selectGroup('materia')}
+            />
+            <IconButton
+              label={GROUPING_LABELS.docente}
+              icon={GROUP_ICONS.docente}
+              aria-pressed={prefs.group === 'docente'}
+              className={cn('hover:bg-card', prefs.group === 'docente' && 'bg-card shadow-[0_1px_3px_color-mix(in_oklch,var(--fg)_10%,transparent)]')}
+              onClick={() => selectGroup('docente')}
+            />
           </div>
           <MenuButton label="Ordina" icon={ListFilter} sections={[sortSection]} className="max-md:hidden" />
         </>
@@ -150,7 +192,7 @@ const DOT_CLASSES: Record<LessonStatus, string> = {
 
 function StatusDot({ status }: { status: LessonStatus }) {
   return (
-    <span className="flex w-1.5 shrink-0 items-center justify-center" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
+    <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
       <span className={cn('block size-1.5 rounded-full', DOT_CLASSES[status])} aria-hidden />
       <span className="sr-only">{STATUS_LABELS[status]}</span>
     </span>
@@ -158,7 +200,7 @@ function StatusDot({ status }: { status: LessonStatus }) {
 }
 
 /** Casella del design (16 px, accento quando spuntata) con l'area da toccare più grande. */
-function Check({ label, checked, indeterminate = false, onChange }: { label: string; checked: boolean; indeterminate?: boolean; onChange: (checked: boolean) => void }) {
+function Check({ label, checked, indeterminate = false, className, onChange }: { label: string; checked: boolean; indeterminate?: boolean; className?: string; onChange: (checked: boolean) => void }) {
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate
@@ -177,6 +219,7 @@ function Check({ label, checked, indeterminate = false, onChange }: { label: str
         'after:absolute checked:after:left-[4px] checked:after:top-[1px] checked:after:h-[9px] checked:after:w-[5px] checked:after:rotate-45 checked:after:border-accent-foreground checked:after:border-b-2 checked:after:border-r-2 checked:after:content-[""]',
         'indeterminate:after:inset-x-[3px] indeterminate:after:top-[6px] indeterminate:after:h-0.5 indeterminate:after:bg-accent-foreground indeterminate:after:content-[""]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        className,
       )}
     />
   )
@@ -193,17 +236,14 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
   const titleId = useId()
-  const row = 'flex items-center gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
+  const row = 'flex items-start gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
   const text = (
     <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-      <span id={titleId} className="text-body">{title}</span>
+      <span id={titleId} className="block text-body">{title}</span>
       {subtitle && (
-        <>
-          <span className="text-meta text-muted-foreground max-md:hidden"> · </span>
-          <span className="text-meta text-muted-foreground max-md:block" data-testid="lesson-subtitle">
-            {subtitle}
-          </span>
-        </>
+        <span className="block text-meta text-muted-foreground" data-testid="lesson-subtitle">
+          {subtitle}
+        </span>
       )}
     </span>
   )
@@ -212,7 +252,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       {selecting ? (
         <label className={cn(row, 'cursor-pointer')}>
-          <Check label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
+          <Check className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
@@ -305,52 +345,85 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
   )
 }
 
-function exportUrl(lessons: Lesson[], format: 'markdown' | 'zip'): string {
-  return `/api/v1/lesson-exports?${new URLSearchParams([...lessons.map((l) => ['ids', String(l.id)]), ['format', format], ['name', 'Lezioni selezionate']])}`
-}
-
 /** Barra in basso con le azioni sulla selezione (schermata 01b): Recall, Scarica Markdown, Scarica zip, Elimina, Annulla. */
-export function SelectionBar({ lessons, onCancel, onDeleted }: { lessons: Lesson[]; onCancel: () => void; onDeleted: (ids: number[]) => void }) {
+export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, onDeleted }: {
+  lessons: Lesson[]
+  visibleLessons: Lesson[]
+  onSelectAll: (selected: boolean) => void
+  onCancel: () => void
+  onDeleted: (ids: number[]) => void
+}) {
+  const selectedIds = new Set(lessons.map((l) => l.id))
+  const allSelected = visibleLessons.length > 0 && visibleLessons.every((l) => selectedIds.has(l.id))
   const finals = lessons.filter((l) => l.phases.build === 'VALID')
   const markdown = markdownExportNote(lessons)
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
+  const start = useExportLessons()
+  const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
+  const download = useRef<HTMLAnchorElement>(null)
+  const downloaded = useRef<string | null>(null)
+  const exporting = start.isPending || exportJob?.state === 'queued'
+  const runExport = (format: 'markdown' | 'zip') => {
+    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate' }, {
+      onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
+    })
+  }
+  useEffect(() => {
+    if (exportJob?.state === 'succeeded' && download.current && downloaded.current !== exportJob.id) {
+      downloaded.current = exportJob.id
+      download.current.click()
+    }
+  }, [exportJob])
   return (
     <div
       role="region"
       aria-label="Selezione"
       data-testid="selection-bar"
-      className="fixed bottom-[18px] left-1/2 z-10 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-1.5 rounded-lg border bg-card py-2 pl-4 pr-3 shadow-panel md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)] max-md:bottom-[calc(76px+env(safe-area-inset-bottom))]"
+      className="fixed bottom-[18px] left-1/2 z-10 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-col gap-2 rounded-lg border bg-card py-2 pl-4 pr-3 shadow-panel md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)] max-md:bottom-[calc(76px+env(safe-area-inset-bottom))]"
     >
-      <span className="mr-1 text-meta" aria-live="polite" data-testid="selection-count">
-        {lessons.length === 1 ? '1 selezionata' : `${lessons.length} selezionate`}
-      </span>
-      <IconLink
-        label="Recall sulle lezioni selezionate"
-        icon={Brain}
-        side="top"
-        to={ready.length ? selectionRecallPath(ready.map((l) => l.id)) : '/'}
-        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : ready.length === 0 ? 'nessuna lezione selezionata ha la rielaborazione' : null}
-      />
-      <IconAnchor
-        label="Scarica Markdown"
-        icon={FileText}
-        side="top"
-        href={exportUrl(finals, 'markdown')}
-        download
-        unavailable={markdown.unavailable}
-        hint={markdown.hint}
-      />
-      <IconAnchor label="Scarica zip" icon={Archive} side="top" href={exportUrl(lessons, 'zip')} download unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
-      <IconButton
-        label="Elimina le lezioni selezionate"
-        icon={Trash2}
-        side="top"
-        aria-haspopup="dialog"
-        unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
-        onClick={() => setDeleting(true)}
-      />
-      <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
+        <span className="mr-1 text-meta" aria-live="polite" data-testid="selection-count">
+          {lessons.length === 1 ? '1 selezionata' : `${lessons.length} selezionate`}
+        </span>
+        <IconButton
+          label={allSelected ? 'Deseleziona tutto' : 'Seleziona tutto'}
+          icon={allSelected ? SquareMinus : SquareCheck}
+          side="top"
+          unavailable={visibleLessons.length === 0 ? 'nessuna lezione visibile' : null}
+          onClick={() => onSelectAll(!allSelected)}
+        />
+        <IconLink
+          label="Recall sulle lezioni selezionate"
+          icon={Brain}
+          side="top"
+          to={ready.length ? selectionRecallPath(ready.map((l) => l.id)) : '/'}
+          unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : ready.length === 0 ? 'nessuna lezione selezionata ha la rielaborazione' : null}
+        />
+        <IconButton
+          label="Scarica Markdown"
+          icon={FileText}
+          side="top"
+          onClick={() => runExport('markdown')}
+          unavailable={exporting ? 'esportazione in corso' : markdown.unavailable}
+          hint={markdown.hint}
+        />
+        <IconButton label="Scarica zip" icon={Archive} side="top" onClick={() => runExport('zip')} unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
+        <IconButton
+          label="Elimina le lezioni selezionate"
+          icon={Trash2}
+          side="top"
+          aria-haspopup="dialog"
+          unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+          onClick={() => setDeleting(true)}
+        />
+        <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
+      </div>
+      {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
+      {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
+      {exportJob?.state === 'succeeded' && (
+        <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>
+      )}
       {deleting && <DeleteSelection lessons={lessons} onClose={() => setDeleting(false)} onDeleted={onDeleted} />}
     </div>
   )

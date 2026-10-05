@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { lessonUnits, setUnitTasks } from './lessonUnits'
+import { lessonUnits, setUnitTasks, unitRanges } from './lessonUnits'
 import { timecodeLock } from './timecodeLock'
 
 it('affianca gli stati ai titoli e lo scheletro all’unità corrente senza modificare il Markdown', () => {
@@ -21,4 +21,11 @@ it('affianca gli stati ai titoli e lo scheletro all’unità corrente senza modi
   expect(parent.querySelector('.rt-unit-pending')).toBeNull()
   expect(parent.querySelector('[data-task]')).toBeNull()
   view.destroy()
+})
+
+it('un titolo senza numero dentro un\'unità non la chiude (come per il server)', () => {
+  const doc = '## 1. Sezione\n\n### 1.1 Prima\n\n00:00\n\nTesto.\n\n### Approfondimento\n\nAncora 1.1.\n\n### 1.2 Seconda\n\n00:10\n\nAltro.'
+  const ranges = unitRanges(EditorState.create({ doc }))
+  expect(ranges.map((r) => r.id)).toEqual(['1.1', '1.2'])
+  expect(doc.slice(ranges[0].from, ranges[0].to)).toContain('Ancora 1.1.')
 })
