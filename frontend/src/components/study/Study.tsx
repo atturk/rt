@@ -198,7 +198,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 function StudyShell({ title, back, actions, footer, children }: { title: string; back: { to: string; label: string }; actions?: ReactNode; footer?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
-      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
       <div className="flex-1 px-7 max-md:px-[18px]">
         <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3">{children}</div>
       </div>
@@ -386,7 +386,7 @@ function QuestionPhase({ lessonId, unit, total, back, dots, actions, onReread, o
         titleAs="h1"
         back={back}
         actions={actions ?? <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={onReread} />}
-        className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta"
+        className="max-md:flex-nowrap [&_h1]:max-md:text-meta"
       />
       <div className="flex-1 px-7 pb-8 pt-3 max-md:px-[18px]">
         <div className="mx-auto w-full max-w-[560px]">

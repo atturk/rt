@@ -1,6 +1,5 @@
 import {
   Brain,
-  ChevronLeft,
   MessageSquare,
   Mic,
   SkipForward,
@@ -31,10 +30,10 @@ import {
   type RecallType,
 } from '@/api/recall'
 import { JobProgress } from '@/components/JobProgress'
+import { PageHeader } from '@/components/shell/PageHeader'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button-variants'
 import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
@@ -425,15 +424,17 @@ export function LightweightSession({
   return (
     <div className="flex min-h-screen flex-col bg-background" data-testid="recall-session-page">
       {/* Header sessione */}
-      <header className="flex h-14 items-center gap-3 border-b px-4">
-        <Link to={backUrl} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          <ChevronLeft aria-hidden /> Esci
-        </Link>
-        <h1 className="flex-1 truncate text-meta font-normal text-muted-foreground">
-          Recall · <strong className="font-semibold text-foreground">{title}</strong>
-        </h1>
-        <span className="text-meta text-muted-foreground">{daPorreCount} da porre</span>
-      </header>
+      <PageHeader
+        back={{ to: backUrl, label: 'Esci' }}
+        title={
+          <>
+            Recall · <strong className="font-semibold text-foreground">{title}</strong>
+          </>
+        }
+        muted
+        titleAs="h1"
+        actions={<span className="text-meta text-muted-foreground">{daPorreCount} da porre</span>}
+      />
 
       {/* Main content */}
       <main className="flex flex-1 justify-center px-4 py-8">

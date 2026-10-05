@@ -192,7 +192,7 @@ const DOT_CLASSES: Record<LessonStatus, string> = {
 
 function StatusDot({ status }: { status: LessonStatus }) {
   return (
-    <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
+    <span className="flex h-lh w-1.5 shrink-0 items-center justify-center text-body" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
       <span className={cn('block size-1.5 rounded-full', DOT_CLASSES[status])} aria-hidden />
       <span className="sr-only">{STATUS_LABELS[status]}</span>
     </span>
