@@ -211,12 +211,14 @@ describe('QuestionsPanel', () => {
     expect(screen.getByTestId('questions-list-body')).not.toBeVisible()
   })
 
-  it('riproponi le poste e solo quelle sbagliate (4.2.2b3)', () => {
+  it('riproponi le poste e solo quelle sbagliate (4.2.2b3, icone 4.2.2b4)', () => {
     renderPanel()
     const restore = screen.getByTestId('questions-restore')
-    fireEvent.click(within(restore).getByRole('button', { name: /Riproponi le poste \(2\)/ }))
+    expect(within(restore).getByText('2')).toBeInTheDocument()
+    expect(within(restore).getByText('1')).toBeInTheDocument()
+    fireEvent.click(within(restore).getByRole('button', { name: /Riproponi le poste/ }))
     expect(mockRestoreMutate).toHaveBeenCalledWith('asked')
-    fireEvent.click(within(restore).getByRole('button', { name: /Solo quelle sbagliate \(1\)/ }))
+    fireEvent.click(within(restore).getByRole('button', { name: /Solo quelle sbagliate/ }))
     expect(mockRestoreMutate).toHaveBeenCalledWith('wrong')
   })
 
