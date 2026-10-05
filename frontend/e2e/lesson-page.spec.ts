@@ -131,9 +131,14 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   expect(element?.context_unit_ids).toEqual([unit])
 
   // Verifica questa parte: review_unit con il contesto dell'unità madre, avanzamento dal vivo.
-  await heading.click({ button: 'right' })
+  // L'elemento generato arriva mentre si clicca e sposta il documento: si riapre il menu finché non c'è.
+  const verifica = menu.getByRole('menuitem', { name: 'Verifica questa parte' })
+  await expect(async () => {
+    await heading.click({ button: 'right' })
+    await expect(verifica).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout: 30_000 })
   const review = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${id}/jobs`))
-  await menu.getByRole('menuitem', { name: 'Verifica questa parte' }).click()
+  await verifica.click()
   expect((await review).postDataJSON()).toMatchObject({ type: 'run_phase', phase: 'review', units: [unit], parent_context: true })
   const status = page.getByTestId('part-review')
   await expect(status).toBeVisible()
