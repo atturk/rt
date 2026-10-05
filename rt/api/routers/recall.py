@@ -93,6 +93,65 @@ def delete_questions(lesson_id: int, body: schemas.RecallQuestionDelete, lesson_
     return {"deleted": delete(lesson_dir, body.question_ids)}
 
 
+@router.post("/lessons/{lesson_id}/recall/questions/{question_id}/edit", response_model=schemas.RecallQuestionDetail,
+             summary="Corregge a mano testo, alternative e commento dell'IA; la domanda torna fra quelle da porre")
+def edit_question(lesson_id: int, question_id: str, body: schemas.RecallQuestionEdit,
+                  lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_editing import edit_question as edit
+    from rt.services.recall_service import question_view
+    try:
+        question = edit(lesson_dir, question_id, question_text=body.question_text, options=body.options,
+                        correct_index=body.correct_index, explanation=body.explanation)
+    except ValueError as exc:
+        raise ApiError(422, "validation_error", str(exc))
+    return question_view(question, reveal=True)
+
+
+@router.post("/lessons/{lesson_id}/recall/questions/{question_id}/status", response_model=schemas.RecallQuestionDetail,
+             summary="Segna una domanda come posta o da porre, senza toccare le risposte già date")
+def set_question_status(lesson_id: int, question_id: str, body: schemas.RecallQuestionStatusIn,
+                        lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_editing import set_question_status as set_status
+    from rt.services.recall_service import question_view
+    try:
+        question = set_status(lesson_dir, question_id, body.status)
+    except ValueError as exc:
+        raise ApiError(422, "validation_error", str(exc))
+    return question_view(question, reveal=True)
+
+
+@router.post("/lessons/{lesson_id}/recall/questions/{question_id}/comment", response_model=schemas.JobAccepted,
+             status_code=202, summary="Riscrive con l'IA solo il commento della domanda (quiz, vaste ed esercizi)")
+def regenerate_question_comment(lesson_id: int, question_id: str, lesson_dir: LessonDir, actor: Actor,
+                                mock: bool = Query(False, description="Rigenerazione in mock")):
+    from rt.api.jobs import enqueue_job
+    from rt.services.recall_editing import TYPES_WITH_COMMENT
+    from rt.services.recall_service import find_question
+    question = find_question(lesson_dir, question_id)
+    if question is None:
+        raise ApiError(404, "question_not_found", "Domanda inesistente.")
+    if question.type not in TYPES_WITH_COMMENT:
+        raise ApiError(409, "comment_not_supported", "Questo tipo di domanda non ha un commento dell'IA.")
+    return enqueue_job("recall_comment", lesson_dir, {"question_id": question_id, "mock": mock}, actor)
+
+
+@router.get("/lessons/{lesson_id}/recall/questions/restorable", response_model=schemas.RecallRestorable,
+            summary="Quante domande poste (e quante sbagliate) si possono rimettere fra quelle da porre")
+def restorable_questions(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_editing import restorable
+    return restorable(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/recall/questions/restore", response_model=schemas.RecallRestored,
+             summary="Rimette fra quelle da porre le domande già poste (tutte o solo quelle sbagliate)")
+def restore_questions(lesson_id: int, body: schemas.RecallRestore, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_editing import restore_questions as restore
+    try:
+        return {"restored": restore(lesson_dir, body.scope)}
+    except ValueError as exc:
+        raise ApiError(422, "validation_error", str(exc))
+
+
 @router.get("/lessons/{lesson_id}/recall/units", response_model=schemas.RecallUnits,
             summary="Unità della lezione per il recaller: giudizio del classificatore e selezione")
 def recall_units(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):

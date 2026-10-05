@@ -99,7 +99,6 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Quiz', exact: true }).click()
   await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
   await page.getByRole('button', { name: /^A\./ }).click()
-  await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
   await expect(page.getByTestId('recall-result-card')).toBeVisible()
   const askedId = (await page.getByTestId('recall-question').getAttribute('data-question-id'))!
   const history = await apiGet<History>(page.request, `/lessons/${lessonId}/recall/history`)

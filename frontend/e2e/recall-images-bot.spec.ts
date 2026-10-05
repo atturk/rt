@@ -51,8 +51,8 @@ test('ripasso: quiz con esito, voto e salto', async ({ page }) => {
   await ensureQuestions(page, lesson.id, 'quiz')
   await openSession(page, lesson.id, 'Quiz')
 
+  // Il clic sull'alternativa è già la risposta (4.2.2b3).
   await page.getByRole('button', { name: /^B\./ }).click()
-  await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
   await expect(page.getByTestId('recall-result-card')).toBeVisible()
   const askedId = await questionId(page)
   const asked = (await history(page, lesson.id)).questions.find((q) => q.id === askedId)!

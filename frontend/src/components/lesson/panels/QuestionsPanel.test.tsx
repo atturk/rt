@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -8,6 +8,9 @@ import { QuestionsPanel } from './QuestionsPanel'
 const mockGenerateMutate = vi.fn()
 const mockDeleteMutate = vi.fn()
 const mockSelectUnitsMutate = vi.fn()
+const mockStatusMutate = vi.fn()
+const mockRestoreMutate = vi.fn()
+const mockEditMutate = vi.fn()
 
 vi.mock('@/api/recall', () => ({
   useRecallOverview: vi.fn(() => ({
@@ -93,6 +96,11 @@ vi.mock('@/api/recall', () => ({
     isPending: false,
     isError: false,
   })),
+  useQuestionStatus: vi.fn(() => ({ mutate: mockStatusMutate, isPending: false, isError: false })),
+  useRestoreQuestions: vi.fn(() => ({ mutate: mockRestoreMutate, isPending: false, isError: false })),
+  useRestorable: vi.fn(() => ({ data: { asked: 2, wrong: 1 } })),
+  useEditQuestion: vi.fn(() => ({ mutate: mockEditMutate, isPending: false, isError: false })),
+  useRegenerateComment: vi.fn(() => ({ mutate: vi.fn(), isPending: false, isError: false })),
 }))
 
 vi.mock('@/api/jobs', () => ({
@@ -186,6 +194,44 @@ describe('QuestionsPanel', () => {
     expect(mockDeleteMutate).toHaveBeenCalledWith(['q1'])
   })
 
+  it('filtra per stato e contrae l’elenco delle domande della lezione (4.2.2b3)', () => {
+    renderPanel()
+    const toggle = screen.getByTestId('questions-list-toggle')
+    expect(toggle).toHaveTextContent('Domande della lezione (3)')
+    expect(screen.getByTestId('questions-list')).toBeInTheDocument()
+
+    // Solo quelle poste: resta la mirata già risposta.
+    fireEvent.click(within(screen.getByRole('group', { name: 'Filtra per stato' })).getByRole('button', { name: 'Poste' }))
+    expect(screen.getByTestId('questions-list')).toHaveTextContent('Come si calcola il gap anionico?')
+    expect(screen.getByTestId('questions-list')).not.toHaveTextContent('Quale valore definisce acidosi?')
+    expect(toggle).toHaveTextContent('Domande della lezione (1)')
+
+    // Contratta: l'elenco non si vede più.
+    fireEvent.click(toggle)
+    expect(screen.getByTestId('questions-list-body')).not.toBeVisible()
+  })
+
+  it('riproponi le poste e solo quelle sbagliate (4.2.2b3)', () => {
+    renderPanel()
+    const restore = screen.getByTestId('questions-restore')
+    fireEvent.click(within(restore).getByRole('button', { name: /Riproponi le poste \(2\)/ }))
+    expect(mockRestoreMutate).toHaveBeenCalledWith('asked')
+    fireEvent.click(within(restore).getByRole('button', { name: /Solo quelle sbagliate \(1\)/ }))
+    expect(mockRestoreMutate).toHaveBeenCalledWith('wrong')
+  })
+
+  it('segna una domanda come posta dal menu della riga (4.2.2b3)', () => {
+    renderPanel()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Azioni sulla domanda' })[0])
+    fireEvent.click(screen.getByRole('menuitem', { name: /Segna come posta/ }))
+    expect(mockStatusMutate).toHaveBeenCalledWith({ questionId: 'q1', status: 'asked' })
+
+    // La domanda già posta offre invece di rimetterla fra quelle da porre.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Azioni sulla domanda' })[1])
+    fireEvent.click(screen.getByRole('menuitem', { name: /Segna da porre/ }))
+    expect(mockStatusMutate).toHaveBeenCalledWith({ questionId: 'q2', status: 'pending' })
+  })
+
   it('gestisce la variante su selezione (Domande-Parte)', () => {
     const onClearSelection = vi.fn()
     renderPanel({
@@ -234,8 +280,8 @@ describe('QuestionsPanel', () => {
     fireEvent.click(checkboxes[2])
     expect(mockSelectUnitsMutate).toHaveBeenCalledWith(['1.1', '1.2', '1.3'])
 
-    // Clic su Tutte
-    fireEvent.click(screen.getByRole('button', { name: 'Tutte' }))
+    // Clic su Tutte (quello della modale: "Tutte" è anche un filtro di stato dell'elenco)
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Unità per il recaller' })).getByRole('button', { name: 'Tutte' }))
     expect(mockSelectUnitsMutate).toHaveBeenCalledWith(['1.1', '1.2', '1.3'])
 
     // Chiudi con Fine

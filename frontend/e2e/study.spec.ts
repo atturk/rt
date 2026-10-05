@@ -14,24 +14,23 @@ async function lesson(page: Page, materia: string) {
   return l
 }
 
-/** Risponde alla domanda mostrata: la prima risposta del quiz, o un testo per le aperte. */
+/** Risponde alla domanda mostrata: la prima alternativa del quiz, o un testo per le aperte.
+ *  Dalla 4.2.2b3 le domande dello Studio sono la sessione di ripasso vera e propria. */
 async function answer(page: Page) {
-  const question = page.getByTestId('study-question')
+  const question = page.getByTestId('recall-question')
   await expect(question).toBeVisible()
   if ((await question.getAttribute('data-type')) === 'quiz') {
-    // Il microfono c'è solo nelle domande aperte.
+    // Il clic sull'alternativa è già la risposta, e il microfono c'è solo nelle aperte.
     await expect(page.getByRole('button', { name: 'Rispondi a voce' })).toHaveCount(0)
-    await question.getByRole('group', { name: 'Risposte' }).getByRole('button').first().click()
-    await expect(page.getByTestId('study-feedback')).toContainText(/Giusto|Sbagliato/)
-    await expect(question.locator('[data-state=correct]')).toHaveCount(1)
+    await question.getByRole('button', { name: /^A\./ }).click()
   } else {
-    await question.getByLabel('La tua risposta').fill('Risposta di prova scritta nello Studio.')
-    await question.getByRole('button', { name: 'Invia la risposta' }).click()
-    await expect(page.getByTestId('study-feedback')).toBeVisible({ timeout: 45_000 })
+    await question.getByLabel('Risposta scritta').fill('Risposta di prova scritta nello Studio.')
+    await question.getByRole('button', { name: 'Rispondi', exact: true }).click()
   }
+  await expect(page.getByTestId('recall-result-card')).toBeVisible({ timeout: 45_000 })
 }
 
-test('Studio di una lezione dalla pagina della lezione: lettura, domande generate per la parte, unità dopo', async ({ page }) => {
+test('Studio di una lezione dalla pagina della lezione: lettura, domande generate per la parte, ripasso dell’unità', async ({ page }) => {
   test.setTimeout(150_000)
   await loginViaLink(page)
   const l = await lesson(page, 'PATOLOGIA')
@@ -58,8 +57,11 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
     .poll(() => page.getByTestId('study-audio').evaluate((a: HTMLAudioElement) => a.currentTime))
     .toBeGreaterThanOrEqual(first.start ?? 0)
   await page.getByRole('button', { name: "Ferma l'audio dell'unità" }).click()
-  // Senza domande sull'unità si va avanti.
-  if (first.questions === 0) await expect(page.getByTestId('study-next')).toContainText('Nessuna domanda')
+  // Senza domande sull'unità si generano sul posto (4.2.2b3), o si va avanti.
+  if (first.questions === 0) {
+    await expect(page.getByTestId('study-generate')).toContainText('Nessuna domanda · genera ora')
+    await expect(page.getByTestId('study-next')).toBeVisible()
+  }
 
   // "Domande su questa parte": lo Studio della prima unità, con le domande da generare.
   await page.goto(`/studio/lezione/${l.id}?unita=${first.id}`)
@@ -67,9 +69,9 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   const generated = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
   await page.getByRole('button', { name: 'Genera le domande' }).click()
   expect((await generated).postDataJSON()).toMatchObject({ unit_ids: [first.id] })
-  // Generate le domande, la parte parte subito dalle domande (una alla volta).
-  await expect(page.getByTestId('study-questions')).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(/domanda 1 di \d+/)
+  // Generate le domande, la parte parte subito dal ripasso dell'unità.
+  await expect(page.getByTestId('recall-session-page')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(first.title)
   expect((await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions).toBeGreaterThan(0)
 
   // Lo Studio della lezione intera: lettura e poi "Mettimi alla prova · N domande" (schermata 06).
@@ -80,20 +82,31 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   const pending = (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions
   expect(total).toBe(pending)
   await quiz.click()
-  await expect(page.getByTestId('study-questions')).toBeVisible()
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(`domanda 1 di ${total}`)
-  await page.getByRole('button', { name: "Rileggi l'unità" }).click()
+  // La sessione dell'unità: chip per tipo, ritorno al testo dall'icona in alto a destra.
+  await expect(page.getByTestId('recall-session-page')).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Vasta', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Torna allo studio' }).first().click()
   await expect(page.getByTestId('study-text')).toBeVisible()
-  await page.getByRole('button', { name: 'Torna alle domande' }).click()
-  await expect(page.getByTestId('study-question')).toBeVisible()
-  for (let i = 0; i < total; i++) {
+  await page.getByTestId('study-quiz').click()
+  await expect(page.getByTestId('recall-question')).toBeVisible()
+  // Due risposte, poi "Termina" riporta al testo dell'unità con le domande rimaste.
+  const answers = Math.min(2, total)
+  const answered: string[] = []
+  for (let i = 0; i < answers; i++) {
+    const current = (await page.getByTestId('recall-question').getAttribute('data-question-id'))!
+    answered.push(current)
     await answer(page)
-    await page.getByTestId('study-continue').click()
-    if (i + 1 < total) await expect(page.getByRole('heading', { level: 1 })).toContainText(`domanda ${i + 2} di ${total}`)
+    if (i + 1 < answers) {
+      await page.getByRole('button', { name: 'Prossima' }).click()
+      await expect(page.getByTestId('recall-question')).not.toHaveAttribute('data-question-id', current)
+    }
   }
-  // Poi l'unità dopo, o la fine dello Studio.
-  if (study.units.length > 1) await expect(page.getByTestId('unit-index-toggle')).toContainText(`Unità 2 di ${study.units.length}`)
-  else await expect(page.getByTestId('study-done')).toContainText('Hai finito lo Studio della lezione.')
+  // Le risposte sono registrate e "Termina" riporta al testo dell'unità.
+  const history = await apiGet<{ answers: { question_id: string }[] }>(page.request, `/lessons/${l.id}/recall/history`)
+  for (const id of answered) expect(history.answers.map((a) => a.question_id)).toContain(id)
+  await page.getByRole('button', { name: 'Termina' }).click()
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await expect(page.getByTestId('study-quiz')).toContainText('Mettimi alla prova')
 })
 
 test('Studio dall\'intestazione della lezione; telefono', async ({ page }) => {
@@ -108,7 +121,7 @@ test('Studio dall\'intestazione della lezione; telefono', async ({ page }) => {
   // Telefono: colonna a tutta larghezza e pulsante in basso sempre a portata.
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByTestId('study-text')).toBeVisible()
-  const footer = page.getByTestId('study-quiz').or(page.getByTestId('study-next'))
+  const footer = page.getByTestId('study-quiz').or(page.getByTestId('study-generate'))
   await expect(footer).toBeInViewport()
   const box = (await footer.boundingBox())!
   expect(box.height).toBeGreaterThanOrEqual(44)

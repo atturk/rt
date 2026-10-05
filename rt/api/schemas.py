@@ -593,6 +593,33 @@ class RecallSkip(BaseModel):
     question_id: str
 
 
+class RecallQuestionEdit(BaseModel):
+    """Domanda corretta a mano: valgono le stesse regole della generazione."""
+    question_text: str = Field(min_length=1, max_length=2000)
+    options: Optional[List[str]] = Field(None, max_length=4, description="Solo quiz: quattro alternative")
+    correct_index: Optional[int] = Field(None, ge=0, le=3, description="Solo quiz")
+    explanation: Optional[str] = Field(None, max_length=10000,
+                                       description="Commento dell'IA: solo quiz, vaste ed esercizi")
+
+
+class RecallQuestionStatusIn(BaseModel):
+    status: Literal["pending", "asked"] = Field(description="pending: da porre; asked: posta")
+
+
+class RecallRestore(BaseModel):
+    scope: Literal["asked", "wrong"] = Field(
+        description="asked: tutte quelle già poste; wrong: solo quelle con esito sbagliata")
+
+
+class RecallRestored(BaseModel):
+    restored: int = Field(description="Domande rimesse fra quelle da porre")
+
+
+class RecallRestorable(BaseModel):
+    asked: int = Field(description="Domande già poste")
+    wrong: int = Field(description="Domande già poste con esito sbagliata")
+
+
 class RecallSummary(BaseModel):
     questions: int = Field(description="Domande poste nella sessione")
     answered: int = Field(description="Risposte date")

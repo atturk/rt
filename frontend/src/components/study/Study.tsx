@@ -1,23 +1,26 @@
-import { BookOpen, Check, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Mic, Pause, Play, SendHorizontal, Square, Trash2, X } from 'lucide-react'
+import { ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { ApiError, errorMessage, type Schemas } from '@/api/client'
+import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import {
-  recallKeys, useAnswer, useAnswerVoice, useGenerateForUnits, useNextQuestion, useSkip, useStudyLesson,
-  type RecallQuestion, type StudyUnit,
+  recallKeys, useGenerateForUnits, useStudyLesson,
+  type RecallType, type StudyUnit,
 } from '@/api/recall'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shell/PageHeader'
+import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
-import { recordingFormat } from '@/lib/recording'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs } from '@/lib/studyPrefs'
 import { cn } from '@/lib/utils'
@@ -41,6 +44,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [phase, setPhase] = useState<'lettura' | 'domande'>(onlyUnits ? 'domande' : 'lettura')
   const [rereading, setRereading] = useState(false)
   const [indexOpen, setIndexOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const closeGenerate = useCallback(() => setGenerateOpen(false), [])
   const [finished, setFinished] = useState(false)
   const lesson = lessons[lessonIndex] ?? null
   const study = useStudyLesson(lesson?.id ?? null)
@@ -219,7 +224,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           back={back}
           actions={headerActions}
           popup={
-            lesson && (
+            <>
+              <GenerateUnitQuestions
+                open={generateOpen}
+                onClose={closeGenerate}
+                lessonId={lesson!.id}
+                unit={unit}
+              />
+              {lesson && (
               <LessonDetailsPopup
                 lesson={lesson}
                 unitCount={units.length}
@@ -228,7 +240,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                 onClose={() => setDetailsOpen(false)}
                 anchorRef={titleButtonRef}
               />
-            )
+              )}
+            </>
           }
           footer={
             rereading ? (
@@ -238,9 +251,17 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                 Mettimi alla prova · {live.questions === 1 ? '1 domanda' : `${live.questions} domande`}
               </Button>
             ) : (
-              <Button className="w-full max-w-(--reading-width) justify-center" onClick={advance} data-testid="study-next">
-                {unitIndex + 1 < units.length ? 'Nessuna domanda · unità successiva' : lessonIndex + 1 < lessons.length ? 'Nessuna domanda · lezione successiva' : 'Nessuna domanda · fine'}
-              </Button>
+              // Unità senza domande: si generano sul posto, poi il pulsante diventa
+              // "Mettimi alla prova" (il ripasso parte solo con un clic).
+              <div className="flex w-full max-w-(--reading-width) flex-col gap-1.5">
+                <Button className="w-full justify-center" onClick={() => setGenerateOpen(true)} data-testid="study-generate">
+                  <Sparkles aria-hidden />
+                  Nessuna domanda · genera ora
+                </Button>
+                <Button variant="ghost" className="w-full justify-center" onClick={advance} data-testid="study-next">
+                  {unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine'}
+                </Button>
+              </div>
             )
           }
         >
@@ -253,29 +274,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       )}
       {phase === 'domande' && (
         <div hidden={rereading}>
-          <QuestionPhase
+          {/* Ripasso dell'unità appena letta: la sessione di ripasso vera e propria, con
+              "non lo so", voto, commento, chip per tipo e ritorno allo studio (4.2.2b3). */}
+          <LightweightSession
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
-            unit={live}
-            total={unit.questions || live.questions}
-            back={back}
-            dots={<Dots count={units.length} current={unitIndex} />}
-            actions={
-              <div className="flex items-center gap-1.5">
-                <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={() => setRereading(true)} />
-                {units.length > 1 && (
-                  <UnitIndexMenu
-                    units={units}
-                    unitIndex={unitIndex}
-                    open={indexOpen}
-                    onOpenChange={setIndexOpen}
-                    onSelectUnit={goToUnit}
-                  />
-                )}
-              </div>
-            }
-            onReread={() => setRereading(true)}
-            onDone={advance}
+            unit={{
+              id: unit.id,
+              title: unit.title,
+              pending: (live.pending ?? {}) as Record<string, number>,
+              onBack: () => setPhase('lettura'),
+              onDone: advance,
+              doneLabel: unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine',
+            }}
           />
         </div>
       )}
@@ -500,6 +511,14 @@ function UnitAudio({ clip }: { clip: { lessonId: number; start: number; end: num
   )
 }
 
+/** I tipi di domanda che si attaccano a una singola unità (le vaste no). */
+const UNIT_TYPES: { id: RecallType; label: string }[] = [
+  { id: 'quiz', label: 'Quiz' },
+  { id: 'mirata', label: 'Mirata' },
+  { id: 'caso', label: 'Caso clinico' },
+  { id: 'esercizio', label: 'Esercizio' },
+]
+
 /** Domande su una parte che non ne ha ancora: si generano solo su quelle unità (quiz e mirate). */
 function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units: string[]; onReady: () => void }) {
   const generate = useGenerateForUnits(lessonId)
@@ -517,7 +536,7 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
       {jobId && !done ? (
         <p role="status" className="text-meta text-muted-foreground">Genero le domande…</p>
       ) : (
-        <Button onClick={() => generate.mutate(units, { onSuccess: (accepted) => setJobId(accepted.job_id) })} disabled={generate.isPending}>
+        <Button onClick={() => generate.mutate({ unitIds: units }, { onSuccess: (accepted) => setJobId(accepted.job_id) })} disabled={generate.isPending}>
           Genera le domande
         </Button>
       )}
@@ -527,244 +546,96 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
   )
 }
 
-type QuizResult = Schemas['QuizResult']
-
-type Outcome =
-  | { kind: 'quiz'; question: RecallQuestion; choice: number; correct: boolean }
-  | { kind: 'open'; jobId: string; answer: string | null }
-
-const OPEN_LABEL: Record<string, string> = { mirata: 'Domanda mirata', vasta: 'Domanda vasta', caso: 'Caso clinico', esercizio: 'Esercizio' }
-
-/** Le domande dell'unità, una alla volta (schermata 06). */
-function QuestionPhase({ lessonId, unit, total, back, dots, actions, onReread, onDone }: {
+/** Popup "genera ora": tipo, quante e istruzioni, poi il job di recall sull'unità (4.2.2b3). */
+function GenerateUnitQuestions({ open, onClose, lessonId, unit }: {
+  open: boolean
+  onClose: () => void
   lessonId: number
   unit: StudyUnit
-  total: number
-  back: { to: string; label: string }
-  dots: ReactNode
-  actions?: ReactNode
-  onReread: () => void
-  onDone: () => void
 }) {
-  const next = useNextQuestion(lessonId)
-  const answer = useAnswer(lessonId)
-  const voice = useAnswerVoice(lessonId)
-  const skip = useSkip(lessonId)
-  const [question, setQuestion] = useState<RecallQuestion | null>(null)
-  const [asked, setAsked] = useState(0)
-  const [outcome, setOutcome] = useState<Outcome | null>(null)
-  const requested = useRef(false)
-
-  const ask = useCallback((excludeId?: string) => {
-    setOutcome(null)
-    next.mutate({ qtype: 'mista', unitId: unit.id, excludeId }, {
-      onSuccess: (q) => {
-        setQuestion(q)
-        setAsked((n) => n + 1)
-      },
-      onError: (error) => {
-        if (error instanceof ApiError && error.code === 'no_questions') onDone()
-      },
-    })
-  }, [next, unit.id, onDone])
-
-  useEffect(() => {
-    if (requested.current) return
-    requested.current = true
-    ask()
-  }, [ask])
-
-  const proceed = () => {
-    if (asked >= total) onDone()
-    else ask()
-  }
-  const busy = answer.isPending || voice.isPending || next.isPending || skip.isPending
-  const count = Math.max(total, asked)
-  const label = `${unit.title} · domanda ${Math.max(asked, 1)} di ${count}`
-  const failure = next.error && !(next.error instanceof ApiError && next.error.code === 'no_questions') ? next.error : (answer.error ?? voice.error ?? skip.error)
-  return (
-    <div className="flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study-questions">
-      <PageHeader
-        title={label}
-        muted
-        titleAs="h1"
-        back={back}
-        actions={actions ?? <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={onReread} />}
-        className="max-md:flex-nowrap [&_h1]:max-md:text-meta"
-      />
-      <div className="flex-1 px-7 pb-8 pt-3 max-md:px-[18px]">
-        <div className="mx-auto w-full max-w-[560px]">
-          {dots}
-          {failure && <Alert tone="danger" className="mb-4">{errorMessage(failure)}</Alert>}
-          {!question ? (
-            <div className="h-48 rounded-lg bg-muted" aria-busy="true" aria-label="Carico la domanda" role="status" />
-          ) : (
-            <article className="rounded-lg bg-muted p-4" data-testid="study-question" data-type={question.type} data-question-id={question.id}>
-              {question.type !== 'quiz' && <p className="mb-1 text-meta text-muted-foreground">{OPEN_LABEL[question.type] ?? 'Domanda aperta'}</p>}
-              <h2 className="mb-0.5 text-[15px] font-semibold leading-relaxed">{question.question_text}</h2>
-              {question.type === 'quiz' ? (
-                <QuizAnswers
-                  question={outcome?.kind === 'quiz' ? outcome.question : question}
-                  outcome={outcome?.kind === 'quiz' ? outcome : null}
-                  disabled={busy || !!outcome}
-                  onAnswer={(choice) => answer.mutate({ questionId: question.id, choice }, {
-                    onSuccess: (r) => {
-                      const quiz = r.quiz as QuizResult | undefined
-                      if (quiz) setOutcome({ kind: 'quiz', question: quiz.question, choice, correct: quiz.correct })
-                    },
-                  })}
-                />
-              ) : outcome?.kind === 'open' ? (
-                <Evaluation jobId={outcome.jobId} />
-              ) : (
-                <OpenAnswer
-                  disabled={busy}
-                  onWritten={(text) => answer.mutate({ questionId: question.id, answer: text }, { onSuccess: (r) => r.job && setOutcome({ kind: 'open', jobId: r.job.job_id, answer: text }) })}
-                  onVoice={(audio) => voice.mutate({ questionId: question.id, audio }, { onSuccess: (job) => setOutcome({ kind: 'open', jobId: job.job_id, answer: null }) })}
-                />
-              )}
-            </article>
-          )}
-          {question && (
-            <div className="mt-4 flex items-center justify-end gap-2">
-              {!outcome && (
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => skip.mutate(question.id, { onSuccess: () => (asked >= total ? onDone() : ask(question.id)) })}>
-                  Salta
-                </Button>
-              )}
-              {outcome && (
-                <Button onClick={proceed} disabled={busy} data-testid="study-continue">
-                  {asked >= total ? 'Avanti' : 'Prossima domanda'}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** Risposte del quiz come righe grandi; dopo la scelta, giusta e sbagliata e la spiegazione. */
-function QuizAnswers({ question, outcome, disabled, onAnswer }: {
-  question: RecallQuestion
-  outcome: { choice: number; correct: boolean } | null
-  disabled: boolean
-  onAnswer: (choice: number) => void
-}) {
-  return (
-    <>
-      <div role="group" aria-label="Risposte">
-        {question.options?.map((option, i) => {
-          const right = outcome && question.correct_index === i
-          const wrong = outcome && outcome.choice === i && !outcome.correct
-          return (
-            <button
-              key={i}
-              type="button"
-              aria-pressed={outcome ? outcome.choice === i : false}
-              disabled={disabled}
-              onClick={() => onAnswer(i)}
-              data-state={right ? 'correct' : wrong ? 'wrong' : undefined}
-              className={cn(
-                'mt-3 flex min-h-[52px] w-full items-start gap-2 rounded-md border bg-card p-3.5 text-left text-[15px] leading-normal text-foreground',
-                'enabled:hover:border-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default',
-                right && 'border-success bg-success-soft text-success',
-                wrong && 'border-danger bg-danger-soft text-danger',
-              )}
-            >
-              <span className="flex-1">{option}</span>
-              {right && <Check className="mt-0.5 size-[18px] shrink-0" aria-label="Risposta giusta" />}
-              {wrong && <X className="mt-0.5 size-[18px] shrink-0" aria-label="Risposta sbagliata" />}
-            </button>
-          )
-        })}
-      </div>
-      {outcome && (
-        <div role="status" className="mt-4 text-body" data-testid="study-feedback">
-          <p className="font-semibold">{outcome.correct ? 'Giusto.' : 'Sbagliato.'}</p>
-          {question.explanation && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{question.explanation}</p>}
-        </div>
-      )}
-    </>
-  )
-}
-
-/** Risposta aperta: scritta o a voce (il microfono c'è solo qui, non nel quiz). */
-function OpenAnswer({ disabled, onWritten, onVoice }: { disabled: boolean; onWritten: (text: string) => void; onVoice: (audio: File) => void }) {
-  const [text, setText] = useState('')
-  const [recording, setRecording] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const recorder = useRef<MediaRecorder | null>(null)
-  const phone = useIsPhone()
-  const supported = typeof window !== 'undefined' && 'MediaRecorder' in window && !!navigator.mediaDevices?.getUserMedia
-  useEffect(() => () => recorder.current?.stream.getTracks().forEach((t) => t.stop()), [])
-  const start = async () => {
-    setError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const format = recordingFormat((t) => MediaRecorder.isTypeSupported(t))
-      const rec = new MediaRecorder(stream, format.mimeType ? { mimeType: format.mimeType } : undefined)
-      const chunks: Blob[] = []
-      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-      rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop())
-        onVoice(new File(chunks, `risposta.${format.extension}`, { type: rec.mimeType || format.mimeType || 'audio/webm' }))
-      }
-      rec.start()
-      recorder.current = rec
-      setRecording(true)
-    } catch (err) {
-      setError(err instanceof Error && err.name === 'NotAllowedError' ? 'Il browser non ha il permesso di usare il microfono.' : 'Microfono non disponibile.')
-    }
-  }
-  const stop = () => {
-    recorder.current?.stop()
-    recorder.current = null
-    setRecording(false)
-  }
-  return (
-    <form
-      className="mt-3"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (text.trim()) onWritten(text.trim())
-      }}
-    >
-      <textarea
-        aria-label="La tua risposta"
-        placeholder="Scrivi la risposta, o rispondi a voce"
-        rows={phone ? 4 : 5}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        className="block w-full rounded-md border bg-card px-3 py-2.5 text-[15px] text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-      />
-      <div className="mt-2 flex items-center gap-1">
-        {recording ? (
-          <IconButton label="Ferma e invia la risposta a voce" icon={Square} onClick={stop} className="text-danger" />
-        ) : (
-          <IconButton label="Rispondi a voce" icon={Mic} onClick={() => void start()} unavailable={!supported ? 'microfono non disponibile in questo browser' : disabled ? 'attendi' : null} />
-        )}
-        {recording && <span role="status" className="text-meta text-danger">Registrazione in corso…</span>}
-        <span className="flex-1" />
-        <IconButton label="Invia la risposta" icon={SendHorizontal} variant="solid" type="submit" unavailable={!text.trim() ? 'scrivi una risposta' : disabled ? 'attendi' : null} />
-      </div>
-      {error && <p role="alert" className="mt-2 text-meta text-danger">{error}</p>}
-    </form>
-  )
-}
-
-/** Valutazione della risposta aperta (job recall_evaluate), dal canale live. */
-function Evaluation({ jobId }: { jobId: string }) {
+  const generate = useGenerateForUnits(lessonId)
+  const client = useQueryClient()
+  const [jobId, setJobId] = useState<string | null>(null)
   const job = useJobStatus(jobId)
-  const result = job.data?.result as { evaluation?: string; answer?: string } | null | undefined
-  if (!jobFinished(job.data)) return <p role="status" className="mt-3 text-meta text-muted-foreground" data-testid="study-evaluating">Valuto la risposta…</p>
-  if (job.data?.state !== 'succeeded') return <Alert tone="danger" className="mt-3">{job.data?.error ?? 'Valutazione non riuscita.'}</Alert>
+  const [qtype, setQtype] = useState<RecallType>('quiz')
+  const [count, setCount] = useState('3')
+  const [instructions, setInstructions] = useState('')
+  const failed = job.data?.state === 'failed'
+  const done = jobFinished(job.data)
+  const running = jobId !== null && !done
+
+  // Finito il job le domande ci sono: si aggiorna lo Studio e si chiude, senza partire
+  // col ripasso (il pulsante "Mettimi alla prova" aspetta un clic).
+  useEffect(() => {
+    if (!done || failed) return
+    void client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }).then(onClose)
+  }, [done, failed, client, lessonId, onClose])
+
   return (
-    <div role="status" className="mt-3 flex flex-col gap-2 text-body" data-testid="study-feedback">
-      {result?.answer && <p className="whitespace-pre-wrap rounded-md bg-card px-3 py-2"><span className="text-meta text-muted-foreground">La tua risposta: </span>{result.answer}</p>}
-      <p className="whitespace-pre-wrap">{result?.evaluation ?? 'Valutazione non disponibile.'}</p>
-    </div>
+    <Modal open={open} onClose={running ? () => undefined : onClose} title={`Genera domande · ${unit.title}`} testId="study-generate-modal">
+      <div className="mt-3 flex flex-col gap-3">
+        <div>
+          <span className="mb-1.5 block text-meta text-muted-foreground">Tipo</span>
+          <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1.5">
+            {UNIT_TYPES.map(({ id, label }) => (
+              <Chip key={id} size="sm" active={qtype === id} aria-pressed={qtype === id} disabled={running} onClick={() => setQtype(id)}>
+                {label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Quante</label>
+          <Input
+            id="study-gen-count"
+            type="number"
+            min="1"
+            max="20"
+            disabled={running}
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+            className="h-8 w-16 px-2 py-0 text-center"
+          />
+        </div>
+        <div>
+          <label htmlFor="study-gen-instructions" className="mb-1 block text-meta text-muted-foreground">
+            Istruzioni aggiuntive (facoltative)
+          </label>
+          <textarea
+            id="study-gen-instructions"
+            rows={2}
+            disabled={running}
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="Per esempio: concentrati sui valori soglia"
+            className="block w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-meta placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          />
+        </div>
+        {failed && <Alert tone="danger">{job.data?.error ?? 'Generazione non riuscita.'}</Alert>}
+        {generate.isError && <Alert tone="danger">{errorMessage(generate.error)}</Alert>}
+        <div className="mt-1 flex items-center justify-end gap-2">
+          {running ? (
+            <p role="status" className="flex-1 text-meta text-muted-foreground">Genero le domande su {unit.id}…</p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={onClose}>Annulla</Button>
+          )}
+          <Button
+            size="sm"
+            disabled={running || generate.isPending}
+            data-testid="study-generate-start"
+            onClick={() =>
+              generate.mutate(
+                { unitIds: [unit.id], qtype, count: Math.min(20, Math.max(1, parseInt(count, 10) || 3)), instructions },
+                { onSuccess: (accepted) => setJobId(accepted.job_id) },
+              )
+            }
+          >
+            <Sparkles aria-hidden />
+            {running ? 'Generazione…' : 'Genera'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

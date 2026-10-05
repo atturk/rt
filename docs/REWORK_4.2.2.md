@@ -344,3 +344,52 @@ preferenze di P1. Gli errori grossi diventano task `R<n>` in fondo, per lo stess
   animate al posto del testo del segnaposto.
 - **Righe vuote animate**: un riflesso le attraversa (`.rt-skeleton` e `.rt-unit-pending`),
   fermo con `prefers-reduced-motion`.
+
+## 4.2.2b3 (richiesta del 5 ottobre, fatta da Claude)
+
+Studio e ripasso diventano la stessa cosa, e le domande del pool si possono correggere a mano.
+
+### Studio
+
+- **"Nessuna domanda · genera ora"** al posto di "unità successiva": apre un popup con tipo
+  (quiz, mirata, caso clinico, esercizio: le vaste non si attaccano a una singola unità), quante
+  e istruzioni aggiuntive, e lancia `POST /recall/generate` con `unit_ids` su quell'unità.
+  Finito il job il pulsante diventa "Mettimi alla prova · N domande": il ripasso parte con un
+  clic, non da solo. Sotto resta "Unità successiva" per andare avanti senza generare niente.
+- **Le domande dell'unità sono la sessione di ripasso vera e propria**: al posto della vecchia
+  `QuestionPhase` (scarna) c'è `LightweightSession` nel modo "unità", quindi "Non lo so", voto,
+  commento, scarto, rigenerazione e chip per tipo, limitata alle domande di quell'unità.
+  I chip mostrano quante domande da porre ci sono per tipo e sono spenti se è zero; si torna al
+  testo dall'icona in alto a destra, dalla freccia indietro o da "Termina" (che rimette fra
+  quelle da porre la domanda lasciata a metà). Finite le domande, un pulsante porta all'unità
+  successiva.
+
+### Sessione di ripasso
+
+- **Il clic sull'alternativa è la risposta** (non c'è più "Rispondi" nel quiz), come nello Studio.
+- **Esito giusto**: l'esito, la risposta corretta e la spiegazione li dice ora il server
+  (`QuizResult`). Prima si leggevano da `correct_index` della domanda, che `/recall/next` non
+  rivela mai: ogni quiz risultava sbagliato e senza spiegazione, mentre il backend registrava
+  l'esito giusto.
+- **"Salta" e "Prossima"**: "Salta" c'è solo prima di rispondere (la domanda torna fra quelle da
+  porre), "Prossima" solo dopo (non lascia niente a metà).
+
+### Pannello Domande
+
+- **"Domande della lezione" contraibile**, con il numero di domande mostrate.
+- **Filtro per stato**: Tutte / Da porre / Poste.
+- **Riproponi**: un pulsante per tutte quelle già poste e un altro per le sole sbagliate
+  (ci stanno anche i "Non lo so", che il backend registra come sbagliate; le "parziali" no).
+- **Menu "..." su ogni domanda**: Modifica, Segna come posta / da porre, Elimina.
+- **Popup di modifica**: il testo sempre; nei quiz anche le quattro alternative e quale è la
+  giusta; dove il tipo lo prevede (quiz, vasta, esercizio) il commento pregenerato dell'IA, a
+  mano o riscritto dall'IA ("Rigenera con l'IA", job `recall_comment`). Le regole sono quelle
+  della generazione (`GeneratedRecallQuestion`), così una modifica a mano non può produrre una
+  domanda che l'IA non avrebbe potuto scrivere. Salvata, la domanda torna fra quelle da porre.
+
+### Backend
+
+- `rt/services/recall_editing.py` e cinque rotte sotto `/lessons/{id}/recall`:
+  `POST questions/{qid}/edit`, `POST questions/{qid}/status`, `POST questions/{qid}/comment`
+  (202, job), `GET questions/restorable`, `POST questions/restore`.
+- Wireframe: `docs/wireframes-4.2.2/RT-4.2.2b3.html`.

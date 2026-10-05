@@ -136,10 +136,17 @@ export function useStudyLesson(id: number | null) {
   })
 }
 
-/** Domande (quiz e mirate) solo su alcune unità: Domande su questa parte, quando non ce ne sono. */
+/** Domande solo su alcune unità: Domande su questa parte e "genera ora" dallo Studio.
+ *  Senza `qtype` genera di tutti i tipi, come prima. */
 export function useGenerateForUnits(id: number) {
-  return useRecallMutation(id, (unitIds: string[]) =>
-    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', { params: path(id), body: { qtype: null, mock: false, unit_ids: unitIds } })),
+  return useRecallMutation(id, (vars: { unitIds: string[]; qtype?: RecallType | null; count?: number | null; instructions?: string | null }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', {
+      params: path(id),
+      body: {
+        qtype: vars.qtype ?? null, count: vars.count ?? null,
+        instructions: vars.instructions?.trim() || null, mock: false, unit_ids: vars.unitIds,
+      },
+    })),
   )
 }
 
@@ -176,6 +183,49 @@ export function useVote(id: number) {
 export function useRegenerateQuestion(id: number) {
   return useRecallMutation(id, (vars: { questionId: string; comment: string }) =>
     unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/regenerate', { params: path(id), body: { question_id: vars.questionId, comment: vars.comment, mock: false } })),
+  )
+}
+
+/** Modifica a mano di una domanda: torna fra quelle da porre (4.2.2b3). */
+export function useEditQuestion(id: number) {
+  return useRecallMutation(id, (vars: { questionId: string; body: Schemas['RecallQuestionEdit'] }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/questions/{question_id}/edit', {
+      params: { path: { lesson_id: id, question_id: vars.questionId } }, body: vars.body,
+    })),
+  )
+}
+
+/** Segna una domanda come posta o da porre. */
+export function useQuestionStatus(id: number) {
+  return useRecallMutation(id, (vars: { questionId: string; status: 'pending' | 'asked' }) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/questions/{question_id}/status', {
+      params: { path: { lesson_id: id, question_id: vars.questionId } }, body: { status: vars.status },
+    })),
+  )
+}
+
+/** Riscrive con l'IA il solo commento della domanda (job). */
+export function useRegenerateComment(id: number) {
+  return useRecallMutation(id, (questionId: string) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/questions/{question_id}/comment', {
+      params: { path: { lesson_id: id, question_id: questionId }, query: { mock: false } },
+    })),
+  )
+}
+
+/** Quante domande poste (e quante sbagliate) si possono riproporre. */
+export function useRestorable(id: number, enabled = true) {
+  return useQuery({
+    queryKey: [...recallKeys.all(id), 'restorable'] as const,
+    enabled,
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/questions/restorable', { params: path(id) })),
+  })
+}
+
+/** Rimette fra quelle da porre le domande già poste (tutte o solo quelle sbagliate). */
+export function useRestoreQuestions(id: number) {
+  return useRecallMutation(id, (scope: 'asked' | 'wrong') =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/questions/restore', { params: path(id), body: { scope } })),
   )
 }
 

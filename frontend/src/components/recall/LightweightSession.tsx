@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Brain,
   MessageSquare,
   Mic,
@@ -68,9 +69,22 @@ const LAST_TYPE_KEY = 'rt-recall-last-type'
 export function LightweightSession({
   lessonId: propLessonId,
   selectionIds: propSelectionIds,
+  unit,
 }: {
   lessonId?: number
   selectionIds?: number[]
+  /** Ripasso di una sola unità (dallo Studio): domande filtrate e ritorno alla lettura. */
+  unit?: {
+    id: string
+    title: string
+    /** Domande da porre per tipo: i tipi vuoti restano spenti. */
+    pending: Record<string, number>
+    onBack: () => void
+    /** Finite le domande dell'unità: avanti nello Studio (unità o lezione successiva). */
+    onDone?: () => void
+    /** Etichetta del pulsante di `onDone` ("Unità successiva", "Fine"…). */
+    doneLabel?: string
+  }
 }) {
   const params = useParams()
   const navigate = useNavigate()
@@ -112,6 +126,8 @@ export function LightweightSession({
 
   // Tipo di recall (persiste l'ultimo usato)
   const [qtype, setQtype] = useState<SessionType>(() => {
+    // Ripasso di un'unità: si parte sempre da tutti i tipi, l'ultimo usato altrove non c'entra.
+    if (unit) return 'mista'
     try {
       const saved = localStorage.getItem(LAST_TYPE_KEY)
       if (saved && SESSION_TYPES.some((t) => t.id === saved)) {
@@ -176,7 +192,7 @@ export function LightweightSession({
           q = res.question
           setQuestionLessonId(res.lesson_id)
         } else if (lessonId) {
-          q = await nextLesson.mutateAsync({ qtype: typeToAsk, excludeId })
+          q = await nextLesson.mutateAsync({ qtype: typeToAsk, excludeId, unitId: unit?.id })
           if (seq !== requestSeq.current) return
           setQuestionLessonId(lessonId)
         } else {
@@ -194,7 +210,7 @@ export function LightweightSession({
         }
       }
     },
-    [isSelection, lessonId, nextLesson, nextSubject, qtype],
+    [isSelection, lessonId, nextLesson, nextSubject, qtype, unit],
   )
 
   // Caricamento iniziale
@@ -215,30 +231,32 @@ export function LightweightSession({
     // lo stesso tipo non scarta la domanda che c'è già
     if (nextType === qtype && currentQuestion) return
     setQtype(nextType)
-    try {
-      localStorage.setItem(LAST_TYPE_KEY, nextType)
-    } catch {
-      // Ignora errori localStorage
+    if (!unit) {
+      try {
+        localStorage.setItem(LAST_TYPE_KEY, nextType)
+      } catch {
+        // Ignora errori localStorage
+      }
     }
     void askNext(nextType)
   }
 
-  // Risposta a quiz
-  const handleQuizAnswer = async () => {
-    if (selectedChoice === null || !currentQuestion || !activeLessonId) return
+  // Risposta a quiz: il clic sull'alternativa è già la risposta (come nello Studio).
+  // L'esito, la risposta giusta e la spiegazione li dice il server: /recall/next non li manda.
+  const handleQuizAnswer = async (choice: number) => {
+    if (!currentQuestion || !activeLessonId || isAnswered || busy) return
+    setSelectedChoice(choice)
     try {
-      await answerMutation.mutateAsync({
-        questionId: currentQuestion.id,
-        choice: selectedChoice,
-      })
-      const isCorrect = currentQuestion.correct_index === selectedChoice
+      const res = await answerMutation.mutateAsync({ questionId: currentQuestion.id, choice })
+      const quiz = 'quiz' in res ? (res.quiz as Schemas['QuizResult']) : null
       setEvaluatedResult({
-        correct: isCorrect,
-        outcome: isCorrect ? 'corretta' : 'sbagliata',
-        explanation: currentQuestion.explanation ?? undefined,
-        correctIndex: currentQuestion.correct_index ?? undefined,
+        correct: quiz?.correct ?? false,
+        outcome: quiz?.correct ? 'corretta' : 'sbagliata',
+        explanation: quiz?.question.explanation ?? undefined,
+        correctIndex: quiz?.question.correct_index ?? undefined,
       })
     } catch (err) {
+      setSelectedChoice(null)
       setGeneralError(errorMessage(err))
     }
   }
@@ -287,15 +305,13 @@ export function LightweightSession({
   const handleDontKnow = async () => {
     if (!currentQuestion || !activeLessonId) return
     try {
-      await answerMutation.mutateAsync({
-        questionId: currentQuestion.id,
-        dontKnow: true,
-      })
+      const res = await answerMutation.mutateAsync({ questionId: currentQuestion.id, dontKnow: true })
+      const quiz = 'quiz' in res ? (res.quiz as Schemas['QuizResult']) : null
       setEvaluatedResult({
         correct: false,
         outcome: 'sbagliata',
-        explanation: currentQuestion.explanation ?? undefined,
-        correctIndex: currentQuestion.correct_index ?? undefined,
+        explanation: quiz?.question.explanation ?? currentQuestion.explanation ?? undefined,
+        correctIndex: quiz?.question.correct_index ?? undefined,
       })
     } catch (err) {
       setGeneralError(errorMessage(err))
@@ -363,8 +379,27 @@ export function LightweightSession({
     void askNext()
   }
 
-  // Termina sessione
+  // Termina sessione. La domanda lasciata a metà torna fra quelle da porre: /recall/next l'ha
+  // già segnata come posta, e senza questo resterebbe tale per sempre.
   const handleEnd = async () => {
+    if (currentQuestion && !isAnswered) {
+      try {
+        await skipMutation.mutateAsync(currentQuestion.id)
+      } catch {
+        // se non si riesce a rimetterla in coda, la sessione finisce comunque
+      }
+    }
+    if (unit) {
+      if (lessonId) {
+        try {
+          await endLessonSession.mutateAsync()
+        } catch {
+          // la sessione dell'unità finisce comunque: si torna allo studio
+        }
+      }
+      unit.onBack()
+      return
+    }
     if (isSelection) {
       await endSubjectSession.mutateAsync()
       navigate('/')
@@ -408,6 +443,9 @@ export function LightweightSession({
     return total
   }, [isSelection, subjectRecallQuery.data, overviewQuery.data])
 
+  const unitPending = unit ? Object.values(unit.pending).reduce((a, b) => a + b, 0) : 0
+  // Le domande vaste non si attaccano a una singola unità: nel ripasso dell'unità non ci sono.
+  const sessionTypes = unit ? SESSION_TYPES.filter((t) => t.id !== 'vasta') : SESSION_TYPES
   const isQuiz = currentQuestion?.type === 'quiz'
   const isAnswered = evaluatedResult !== null || evaluationJob !== null
   const busy =
@@ -425,15 +463,27 @@ export function LightweightSession({
     <div className="flex min-h-screen flex-col bg-background" data-testid="recall-session-page">
       {/* Header sessione */}
       <PageHeader
-        back={{ to: backUrl, label: 'Esci' }}
+        back={unit ? { onClick: unit.onBack, label: 'Torna allo studio' } : { to: backUrl, label: 'Esci' }}
         title={
-          <>
-            Recall · <strong className="font-semibold text-foreground">{title}</strong>
-          </>
+          unit ? (
+            <>
+              Ripasso · <strong className="font-semibold text-foreground">{unit.title}</strong>
+            </>
+          ) : (
+            <>
+              Recall · <strong className="font-semibold text-foreground">{title}</strong>
+            </>
+          )
         }
         muted
         titleAs="h1"
-        actions={<span className="text-meta text-muted-foreground">{daPorreCount} da porre</span>}
+        actions={
+          unit ? (
+            <IconButton label="Torna allo studio" icon={BookOpen} onClick={unit.onBack} />
+          ) : (
+            <span className="text-meta text-muted-foreground">{daPorreCount} da porre</span>
+          )
+        }
       />
 
       {/* Main content */}
@@ -445,16 +495,18 @@ export function LightweightSession({
             aria-label="Tipo di domanda"
             className="flex flex-wrap gap-1.5"
           >
-            {SESSION_TYPES.map(({ id: typeId, label }) => {
+            {sessionTypes.map(({ id: typeId, label }) => {
               const active = qtype === typeId
+              const count = unit ? (typeId === 'mista' ? unitPending : unit.pending[typeId] ?? 0) : null
               return (
                 <Chip
                   key={typeId}
                   active={active}
                   aria-pressed={active}
+                  disabled={count === 0}
                   onClick={() => handleTypeChange(typeId)}
                 >
-                  {label}
+                  {label}{count ? ` ${count}` : ''}
                 </Chip>
               )
             })}
@@ -463,20 +515,29 @@ export function LightweightSession({
           {generalError && <Alert tone="danger">{generalError}</Alert>}
 
           {emptyPoolError && (
-            <div className="rounded-lg border bg-card p-6 text-center">
+            <div className="rounded-lg border bg-card p-6 text-center" data-testid="recall-empty">
               <Brain className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden />
-              <p className="text-body font-semibold">Nessuna domanda disponibile</p>
-              <p className="mt-1 text-meta text-muted-foreground">
-                Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o rigenera il pool nel pannello Domande.
+              <p className="text-body font-semibold">
+                {unit ? (qtype === 'mista' ? 'Hai finito le domande di questa unità' : 'Nessuna domanda di questo tipo') : 'Nessuna domanda disponibile'}
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => handleTypeChange('mista')}
-              >
-                Prova mista
-              </Button>
+              <p className="mt-1 text-meta text-muted-foreground">
+                {unit
+                  ? qtype === 'mista'
+                    ? 'Puoi tornare al testo dell’unità o andare avanti.'
+                    : 'Scegli un altro tipo o prova mista.'
+                  : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o rigenera il pool nel pannello Domande.'}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                {(!unit || qtype !== 'mista') && (
+                  <Button variant="outline" size="sm" onClick={() => handleTypeChange('mista')}>Prova mista</Button>
+                )}
+                {unit && (
+                  <Button variant="outline" size="sm" onClick={unit.onBack}>Torna allo studio</Button>
+                )}
+                {unit?.onDone && (
+                  <Button size="sm" onClick={unit.onDone} data-testid="recall-unit-done">{unit.doneLabel ?? 'Avanti'}</Button>
+                )}
+              </div>
             </div>
           )}
 
@@ -507,7 +568,7 @@ export function LightweightSession({
                           key={idx}
                           variant={isSelected ? 'default' : 'outline'}
                           disabled={isAnswered || busy}
-                          onClick={() => setSelectedChoice(idx)}
+                          onClick={() => void handleQuizAnswer(idx)}
                           className={cn(
                             'h-auto min-h-12 w-full justify-start whitespace-normal rounded-lg px-3.5 py-2.5 text-left text-body font-normal transition-colors',
                             isAnswered && isCorrect && 'border-success bg-success-soft text-success font-semibold',
@@ -532,13 +593,7 @@ export function LightweightSession({
                       >
                         Non lo so
                       </Button>
-                      <Button
-                        variant="default"
-                        disabled={selectedChoice === null || busy}
-                        onClick={handleQuizAnswer}
-                      >
-                        Rispondi
-                      </Button>
+                      <span className="text-meta text-muted-foreground">Tocca l’alternativa per rispondere</span>
                     </div>
                   )}
                 </div>
@@ -692,28 +747,34 @@ export function LightweightSession({
                     <MessageSquare className="mr-1.5 size-3.5" aria-hidden />
                     Commenta
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={handleSkip}
-                  >
-                    <SkipForward className="mr-1.5 size-3.5" aria-hidden />
-                    Salta
-                  </Button>
+                  {/* Prima di rispondere si salta (la domanda torna fra quelle da porre); "Prossima"
+                      compare dopo la risposta, quando non lascia niente a metà. */}
+                  {!isAnswered && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={handleSkip}
+                    >
+                      <SkipForward className="mr-1.5 size-3.5" aria-hidden />
+                      Salta
+                    </Button>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Button variant="outline" onClick={handleEnd} disabled={busy}>
                     Termina
                   </Button>
-                  <Button
-                    variant="default"
-                    disabled={busy}
-                    onClick={() => askNext()}
-                  >
-                    Prossima
-                  </Button>
+                  {isAnswered && (
+                    <Button
+                      variant="default"
+                      disabled={busy}
+                      onClick={() => askNext()}
+                    >
+                      Prossima
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

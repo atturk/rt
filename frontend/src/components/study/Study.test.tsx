@@ -30,6 +30,8 @@ const UNITS = [
   { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', questions: 0, pending: {} },
 ]
 
+const mockGenerate = vi.fn()
+
 vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
   return {
@@ -39,6 +41,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
       isPending: false,
       isError: false,
     }),
+    useGenerateForUnits: () => ({ mutate: mockGenerate, isPending: false, isError: false }),
   }
 })
 
@@ -147,17 +150,39 @@ describe('StudyFlow unit navigation', () => {
     localStorage.clear()
   })
 
+  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità (4.2.2b3)', () => {
+    localStorage.clear()
+    renderStudy()
+    // L'unità 2.1 non ha domande.
+    fireEvent.click(screen.getByTestId('unit-index-toggle'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
+    const generate = screen.getByTestId('study-generate')
+    expect(generate).toHaveTextContent('Nessuna domanda · genera ora')
+    expect(screen.getByTestId('study-next')).toHaveTextContent('Fine')
+
+    fireEvent.click(generate)
+    fireEvent.click(screen.getByRole('button', { name: 'Caso clinico' }))
+    fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
+    fireEvent.click(screen.getByTestId('study-generate-start'))
+
+    expect(mockGenerate).toHaveBeenCalledWith(
+      { unitIds: ['2.1'], qtype: 'caso', count: 2, instructions: 'solo sui valori soglia' },
+      expect.anything(),
+    )
+  })
+
   it('nessun effetto delle frecce nella fase domande', () => {
     localStorage.clear()
     renderStudy()
     // Passa alla fase domande
     const quizBtn = screen.getByTestId('study-quiz')
     fireEvent.click(quizBtn)
-    expect(screen.getByTestId('study-questions')).toBeInTheDocument()
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
 
     // Premi freccia destra
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     // Resta nella fase domande
-    expect(screen.getByTestId('study-questions')).toBeInTheDocument()
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
   })
 })
