@@ -5825,7 +5825,7 @@
             "$ref": "#/components/schemas/NoticeSettings"
           },
           "phases": {
-            "description": "Modello assegnato a ciascuna delle sei fasi LLM",
+            "description": "Modello assegnato a ciascuna fase LLM",
             "items": {
               "$ref": "#/components/schemas/PhaseAssignment"
             },

@@ -144,7 +144,7 @@ class Settings(BaseModel):
     notices: NoticeSettings
     transcription: Transcription
     telegram: TelegramSettings
-    phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna delle sei fasi LLM")
+    phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna fase LLM")
     connections: List[Connection]
     credentials: List[CredentialState]
     pricing: Dict[str, Dict[str, Dict[str, Any]]]

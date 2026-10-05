@@ -12,10 +12,10 @@ export function InfoSection() {
   const info = useSystemInfo()
   return (
     <Section id="info" title="Info" description="Versione di RT, canale di aggiornamento e cartelle in uso: utili da allegare a una segnalazione.">
-      {info.isPending && <p className="text-sm text-muted-foreground">Carico le informazioni…</p>}
+      {info.isPending && <p className="text-body text-muted-foreground">Carico le informazioni…</p>}
       {info.isError && <Alert tone="danger">{errorMessage(info.error)}</Alert>}
       {info.data && (
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]" data-testid="system-info">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-body sm:grid-cols-[10rem_1fr]" data-testid="system-info">
           <Row label="Versione">
             <span className="inline-flex items-center gap-2">
               <span className="font-semibold tabular-nums">{info.data.version}</span>
@@ -39,12 +39,12 @@ export function InfoSection() {
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <dt className="text-xs font-semibold text-muted-foreground sm:pt-0.5">{label}</dt>
+      <dt className="text-meta font-semibold text-muted-foreground sm:pt-0.5">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </>
   )
 }
 
 function Path({ value }: { value: string }) {
-  return <code className="break-all text-xs">{value}</code>
+  return <code className="break-all text-meta">{value}</code>
 }

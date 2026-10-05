@@ -5125,7 +5125,7 @@ export interface components {
             notices: components["schemas"]["NoticeSettings"];
             /**
              * Phases
-             * @description Modello assegnato a ciascuna delle sei fasi LLM
+             * @description Modello assegnato a ciascuna fase LLM
              */
             phases: components["schemas"]["PhaseAssignment"][];
             /** @description Preferenze generali */

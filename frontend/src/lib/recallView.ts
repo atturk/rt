@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from 'react'
-
 import type { LessonRecallStats } from '@/api/recall'
 import type { Lesson } from './format'
 import { groupLessons, sortLessons, type LessonGroup, type LessonViewMode, type SortDir } from './lessonView'
@@ -71,7 +69,6 @@ export const daySubject = (day: string) => `GIORNO:${day}`
 export const selectionSubject = (ids: string) => `LEZIONI:${ids}`
 export const selectionRecallPath = (ids: number[]) => `/recall/selezione/${[...new Set(ids)].sort((a, b) => a - b).join(',')}`
 
-const STORAGE_KEY = 'rt-recall-view'
 
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback
@@ -93,35 +90,4 @@ export function parseRecallPrefs(raw: string | null): RecallViewPrefs {
     group: pick(data.group, Object.keys(RECALL_GROUP_LABELS) as RecallGroupBy[], d.group),
     collapsed: Array.isArray(data.collapsed) ? data.collapsed.filter((c): c is string => typeof c === 'string').slice(-200) : [],
   }
-}
-
-function load(): RecallViewPrefs {
-  try {
-    return parseRecallPrefs(localStorage.getItem(STORAGE_KEY))
-  } catch {
-    return DEFAULT_RECALL_PREFS
-  }
-}
-
-export function useRecallViewPrefs() {
-  const [prefs, setPrefs] = useState(load)
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
-    } catch {
-      /* archiviazione non disponibile: vale solo per questa pagina */
-    }
-  }, [prefs])
-  const update = useCallback((patch: Partial<RecallViewPrefs>) => setPrefs((p) => ({ ...p, ...patch })), [])
-  const sortBy = useCallback(
-    (key: RecallSortKey) =>
-      setPrefs((p) => ({ ...p, sort: key, dir: p.sort === key ? (p.dir === 'asc' ? 'desc' : 'asc') : RECALL_DEFAULT_DIR[key] })),
-    [],
-  )
-  const toggleGroup = useCallback(
-    (id: string) =>
-      setPrefs((p) => ({ ...p, collapsed: p.collapsed.includes(id) ? p.collapsed.filter((c) => c !== id) : [...p.collapsed, id] })),
-    [],
-  )
-  return { prefs, update, sortBy, toggleGroup }
 }

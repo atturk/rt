@@ -23,6 +23,7 @@ const SETTINGS = {
   phases: [],
   telegram: { bot_token_set: true },
   transcription: { api_key_set: false },
+  pricing: {},
   secrets_encrypted: true,
 } as unknown as Settings
 
@@ -68,7 +69,7 @@ describe('Chiavi: Prova diventa Elimina con Option', () => {
   it('solo per le chiavi impostate, con conferma', async () => {
     const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok({ name: 'OPENROUTER_API_KEY', set: false, removed_from: ['store'] }))
     vi.spyOn(api, 'GET').mockResolvedValue(ok(SETTINGS))
-    renderWith(<SecretsSection settings={SETTINGS} />)
+    renderWith(<><SecretsSection settings={SETTINGS} connection={SETTINGS.connections[0]} /><SecretsSection settings={SETTINGS} connection={SETTINGS.connections[1]} /></>)
     const user = userEvent.setup()
     const row = (name: string) => screen.getAllByTestId('secret-row').find((r) => r.dataset.name === name)!
     expect(within(row('OPENROUTER_API_KEY')).getByRole('button', { name: 'Prova' })).toBeInTheDocument()
@@ -78,8 +79,8 @@ describe('Chiavi: Prova diventa Elimina con Option', () => {
     const openrouter = row('OPENROUTER_API_KEY')
     expect(within(openrouter).queryByRole('button', { name: 'Prova' })).toBeNull()
     expect(within(row('RT_GOOGLE_1_API_KEY')).getByRole('button', { name: 'Prova' })).toBeInTheDocument() // mancante
-    expect(within(row('RT_TELEGRAM_BOT_TOKEN')).getByRole('button', { name: /^Elimina/ })).toBeInTheDocument()
-    expect(within(row('RT_STT_API_KEY')).queryByRole('button', { name: /^Elimina/ })).toBeNull()
+    expect(screen.queryByText('Token del bot Telegram')).toBeNull()
+    expect(screen.queryByText('Chiave del server di trascrizione')).toBeNull()
 
     await user.click(within(openrouter).getByRole('button', { name: /^Elimina openrouter/ }))
     fireEvent.keyUp(window, { key: 'Alt' })
