@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { errorMessage } from '@/api/client'
-import { useSystemInfo } from '@/api/settings'
+import { useSettings, useSystemInfo } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Section } from './common'
@@ -10,6 +10,8 @@ import { Section } from './common'
  * 'rt -u --beta' / '--stable'), cartelle e runtime. Utile da copiare in una segnalazione. */
 export function InfoSection() {
   const info = useSystemInfo()
+  // Database e media del processo: di solito la cartella dati, ma con una lessons_root 3.x è un'altra.
+  const inUse = useSettings().data?.data_dir
   return (
     <Section id="info" title="Info" description="Versione di RT, canale di aggiornamento e cartelle in uso: utili da allegare a una segnalazione.">
       {info.isPending && <p className="text-body text-muted-foreground">Carico le informazioni…</p>}
@@ -26,6 +28,7 @@ export function InfoSection() {
             {info.data.update_channel === 'beta' ? 'Beta (anche le versioni di prova)' : 'Stabile'}
           </Row>
           <Row label="Cartella dati"><Path value={info.data.data_dir} /></Row>
+          {inUse && inUse !== info.data.data_dir && <Row label="Database e media in uso"><Path value={inUse} /></Row>}
           <Row label="Configurazione"><Path value={info.data.config_dir} /></Row>
           <Row label="Installazione"><Path value={info.data.install_dir} /></Row>
           <Row label="Python">{info.data.python_version}</Row>

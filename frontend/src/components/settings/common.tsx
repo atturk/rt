@@ -24,9 +24,12 @@ export function Section({ title, children, id }: { title: string; description?: 
 export function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <FieldLabel value={label}>
-      <div className="grid items-start gap-2 border-b py-3 last:border-0 sm:grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)]">
-        <div><Label htmlFor={htmlFor} className="text-body">{label}</Label>{hint && <div className="mt-1 text-meta text-muted-foreground">{hint}</div>}</div>
-        <div className="flex min-w-0 flex-col gap-1">{children}</div>
+      {/* Etichetta accanto al controllo solo se c'è spazio: dentro le righe a più colonne va sopra. */}
+      <div className="@container min-w-0 border-b py-3 last:border-0">
+        <div className="grid items-start gap-2 @lg:grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)]">
+          <div><Label htmlFor={htmlFor} className="text-body">{label}</Label>{hint && <div className="mt-1 text-meta text-muted-foreground">{hint}</div>}</div>
+          <div className="flex min-w-0 flex-col gap-1">{children}</div>
+        </div>
       </div>
     </FieldLabel>
   )
