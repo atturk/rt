@@ -30,6 +30,9 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 DEFAULT_MODEL = "parakeet-v3"
+EFFICIENT_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".aac", ".ogg"}
+AAC_OUTPUT_OPTIONS = ["-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]
+AUDIO_NORMALIZATION_FILTER = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono"
 SUPPORTED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4b", ".wma"}
 
 
@@ -42,16 +45,32 @@ def merge_audio_for_transcription(audios: List[str], output: str) -> None:
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
     for audio in audios:
         command.extend(["-i", os.path.abspath(audio)])
-    filters = ";".join(f"[{i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono[a{i}]"
+    filters = ";".join(f"[{i}:a]{AUDIO_NORMALIZATION_FILTER}[a{i}]"
                        for i in range(len(audios)))
     filters += ";" + "".join(f"[a{i}]" for i in range(len(audios))) + f"concat=n={len(audios)}:v=0:a=1[out]"
     # AAC in MP4 (.m4a): ~45 MB per ora invece dei ~345 di un WAV a 48 kHz, riproducibile nei
     # browser (faststart per lo streaming) e letto da macparakeet come gli .m4a registrati.
-    command.extend(["-filter_complex", filters, "-map", "[out]", "-c:a", "aac", "-b:a", "96k",
-                    "-movflags", "+faststart", output])
+    command.extend(["-filter_complex", filters, "-map", "[out]", *AAC_OUTPUT_OPTIONS, output])
     result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
     if result.returncode or not os.path.isfile(output) or os.path.getsize(output) == 0:
         raise SetupError("Impossibile unire i file audio: controlla che siano leggibili e riprova.")
+
+
+def transcode_audio_for_storage(audio: str, output: str) -> bool:
+    """Riduce l'audio singolo; se ffmpeg non riesce l'import conserva l'originale."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+             "-i", os.path.abspath(audio), "-af", AUDIO_NORMALIZATION_FILTER,
+             *AAC_OUTPUT_OPTIONS, output],
+            capture_output=True, text=True, timeout=3600,
+        )
+        return result.returncode == 0 and os.path.isfile(output) and os.path.getsize(output) > 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 class SetupError(Exception):
@@ -445,6 +464,7 @@ def run_setup(
     docente: Optional[str] = None,
     ora: Optional[str] = None,
     on_transcription_progress: Optional[Callable[[int], None]] = None,
+    on_lesson_created: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """
     Esegue l'ingest audio e il setup strutturato della lezione.
@@ -508,11 +528,19 @@ def run_setup(
                 cli_hint="Usa il flag --force per confermare la ripreparazione.",
             )
         elif fs.isfile(existing_info) and not force:
-            raise SetupError(
-                f"La cartella '{target_folder_path}' è già inizializzata come lezione RT: apri la lezione "
-                f"esistente o importa con argomenti diversi.",
-                cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
-            )
+            from rt.core.state import read_info_yaml
+            info = read_info_yaml(existing_info)
+            has_transcript = any(fs.isfile(lesson_path(target_folder_path, name))
+                                 for name in ("trascritto grezzo.json", "trascritto grezzo.md"))
+            if info.get("stato") == "in_attesa_di_trascrizione" and not has_transcript:
+                # Solo metadati provvisori: un import interrotto si può riprendere.
+                pass
+            else:
+                raise SetupError(
+                    f"La cartella '{target_folder_path}' è già inizializzata come lezione RT: apri la lezione "
+                    f"esistente o importa con argomenti diversi.",
+                    cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
+                )
 
     if fs.is_db_lesson(target_folder_path) or (not os.path.isdir(target_folder_path) and fs.new_lessons_use_db()):
         # Lezione nel database: nessuna cartella, i media vanno nella cartella media di RT.
@@ -527,6 +555,30 @@ def run_setup(
         if on_progress:
             on_progress(f"✔ Cartella lezione: {target_folder_path}")
     now_iso = datetime.datetime.now().isoformat()
+    provisional_info = {
+        "data": date_val, "ora": ora_val, "materia": materia_val,
+        "argomenti": argomenti_val, "docente": docente_val, "cartella": folder_name,
+        "creato_il": now_iso, "fase_corrente": "metadata_only",
+        "stato": "in_attesa_di_trascrizione",
+    }
+    info_yaml_path = os.path.join(target_folder_path, "info.yaml")
+    with fs.open(info_yaml_path + ".tmp", "w", encoding="utf-8") as f:
+        yaml.safe_dump(provisional_info, f, allow_unicode=True, sort_keys=False)
+    fs.replace(info_yaml_path + ".tmp", info_yaml_path)
+    if on_lesson_created:
+        on_lesson_created(target_folder_path)
+
+    # La conversione è opzionale e non modifica mai il file sorgente. Il nome definitivo
+    # serve anche nei metadati del trascritto, compresi i rami mock e skip-transcribe.
+    transcoded_audio = False
+    if len(cleaned_audios) == 1 and os.path.splitext(primary_audio_name)[1].lower() not in EFFICIENT_AUDIO_EXTENSIONS:
+        with tempfile.TemporaryDirectory(prefix="rt_audio_") as audio_temp_dir:
+            converted_name = os.path.splitext(primary_audio_name)[0] + ".m4a"
+            converted_path = os.path.join(audio_temp_dir, converted_name)
+            if transcode_audio_for_storage(primary_audio, converted_path):
+                fs.copy2(converted_path, os.path.join(target_folder_path, converted_name))
+                primary_audio_name = converted_name
+                transcoded_audio = True
 
     # 5. ESECUZIONE TRASCRIZIONE ASR
     json_path = os.path.join(target_folder_path, "trascritto grezzo.json")
@@ -536,7 +588,7 @@ def run_setup(
     if mock_asr:
         # Mock ASR deterministico offline
         json_path, md_path = generate_deterministic_mock_asr(
-            audio_path=primary_audio,
+            audio_path=primary_audio_name,
             date_val=date_val,
             materia_val=materia_val,
             argomenti_val=argomenti_val,
@@ -717,7 +769,7 @@ stato: in_attesa_di_trascrizione
         current_status = "in_attesa_di_trascrizione"
 
     # 6. Copia protetta dei file audio nella cartella della lezione
-    for aud_file in cleaned_audios:
+    for aud_file in ([] if merged_audio or transcoded_audio else cleaned_audios):
         dest_audio = os.path.join(target_folder_path, os.path.basename(aud_file))
         if os.path.abspath(aud_file) != os.path.abspath(dest_audio):
             fs.copy2(aud_file, dest_audio)
@@ -754,7 +806,8 @@ stato: {current_status}
         "argomenti": argomenti_val,
         "docente": docente_val,
         "ora": ora_val,
-        "audio_files": [os.path.join(target_folder_path, os.path.basename(a)) for a in cleaned_audios],
+        "audio_files": [os.path.join(target_folder_path, primary_audio_name)] if merged_audio or transcoded_audio
+                       else [os.path.join(target_folder_path, os.path.basename(a)) for a in cleaned_audios],
         "info_yaml": info_yaml_path,
         "trascritto_json": json_path if fs.isfile(json_path) else None,
         "trascritto_md": md_path

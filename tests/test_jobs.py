@@ -338,7 +338,7 @@ def test_stopped_worker_puts_job_back_in_queue(queue):
 
 def test_audio_job_points_to_the_lesson_as_soon_as_setup_creates_it(queue, tmp_path):
     """4.2: la web app apre la pagina della lezione mentre la pipeline continua: il job partito
-    dall'audio indica la lezione dal termine del setup, non solo alla fine."""
+    dall'audio indica la lezione prima della trascrizione."""
     from rt.db.repositories import normalize_lesson_path
     from rt.services.events import PhaseCompleted
     from rt.services.worker import JobEventReporter
@@ -348,11 +348,12 @@ def test_audio_job_points_to_the_lesson_as_soon_as_setup_creates_it(queue, tmp_p
     reporter = JobEventReporter(queue, job_id)
     reporter.emit(PhaseCompleted(phase="prepare", result={"lesson_dir": "/altrove"}))
     assert queue.get(job_id).lesson_path is None  # solo il setup crea la lezione
-    reporter.emit(PhaseCompleted(phase="setup", result={"lesson_dir": lesson_dir}))
+    reporter.emit(PhaseProgress(phase="setup", message="Lezione creata", lesson_dir=lesson_dir))
     info = queue.get(job_id)
     assert info.lesson_path == normalize_lesson_path(lesson_dir)
     assert queue.list(state=JobState.RUNNING.value, lesson_id=lesson_dir)[0].id == job_id
     with session_scope(queue.db) as s:
         assert s.get(Job, job_id).active_lesson == normalize_lesson_path(lesson_dir)  # lezione occupata
+    reporter.emit(PhaseCompleted(phase="setup", result={"lesson_dir": lesson_dir}))
     reporter.emit(PhaseCompleted(phase="setup", result={"lesson_dir": "/altrove"}))
     assert queue.get(job_id).lesson_path == normalize_lesson_path(lesson_dir)  # non si sposta più

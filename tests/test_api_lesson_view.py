@@ -67,6 +67,16 @@ def test_waveform_is_computed_in_background(api_client, lesson, monkeypatch):
         time.sleep(0.05)
         res = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
     assert res == {"ready": True, "peaks": [3, 40, 72]}
+    cleared = api_client.delete("/api/v1/system/cache")
+    assert cleared.status_code == 200 and cleared.json()["waveform"]["entries"] == 1
+    assert api_client.get("/api/v1/system/cache").json()["total"]["entries"] == 0
+    # La forma d'onda torna disponibile alla richiesta successiva allo svuotamento.
+    res = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
+    deadline = time.monotonic() + 5
+    while not res["ready"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+        res = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
+    assert res == {"ready": True, "peaks": [3, 40, 72]}
 
 
 def test_levels_from_samples_normalizes():
@@ -109,3 +119,6 @@ def test_playable_audio_remuxes_adts_once(tmp_path, rt_db, monkeypatch):
     assert first != str(adts) and open(first, "rb").read().endswith(b"remuxed")
     assert audio_service.playable_audio(str(adts)) == first and len(calls) == 1
     assert not os.path.exists(first + ".tmp.m4a")
+    assert audio_service.clear_cache()["audio"]["entries"] == 1
+    assert os.path.isfile(adts) and not os.path.exists(first)
+    assert audio_service.playable_audio(str(adts)) == first and len(calls) == 2

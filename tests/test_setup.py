@@ -420,3 +420,208 @@ def test_full_pipeline_with_empty_argomenti_e2e_mock(tmp_path):
     assert os.path.isfile(lesson_path(lesson_dir, "rielaborato.md"))
 
 
+
+
+@pytest.mark.parametrize("mode", ["real", "mock", "skip"])
+@pytest.mark.parametrize("storage", ["folders", "database"])
+def test_setup_metadata_available_before_transcription(tmp_path, monkeypatch, request, mode, storage):
+    """Metadati e callback esistono prima di qualunque ramo della trascrizione."""
+    from rt.pipeline import setup
+    from rt.storage import fs
+    import yaml
+
+    if storage == "database":
+        request.getfixturevalue("rt_db")
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"audio")
+    created = []
+
+    def on_created(lesson_dir):
+        with fs.open(os.path.join(lesson_dir, "info.yaml"), encoding="utf-8") as f:
+            info = yaml.safe_load(f)
+        assert info["data"] == "2026-10-05"
+        assert info["materia"] == "BIOCHIMICA"
+        assert info["ora"] == "09:30"
+        assert info["docente"] == "Rossi"
+        assert info["argomenti"] == "Lipidi"
+        assert info["cartella"] == "[2026-10-05] BIOCHIMICA - Lipidi"
+        assert info["creato_il"]
+        assert info["fase_corrente"] == "metadata_only"
+        assert info["stato"] == "in_attesa_di_trascrizione"
+        assert not fs.isfile(os.path.join(lesson_dir, "trascritto grezzo.md"))
+        created.append(lesson_dir)
+
+    def transcribe(cmd, label):
+        assert len(created) == 1
+        out = os.path.join(cmd[cmd.index("--output-dir") + 1], "asr.json")
+        with fs.open(out, "w", encoding="utf-8") as f:
+            json.dump({"segments": [{"start": 0, "end": 1000, "text": "Test"}]}, f)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "macparakeet-cli")
+    monkeypatch.setattr(setup, "_run_transcribe_with_spinner", transcribe)
+    result = setup.run_setup(str(audio), date="2026-10-05", materia="Biochimica",
+                             ora="09:30", docente="Rossi", argomenti="Lipidi",
+                             dest_dir=str(tmp_path / "lessons"), interactive=False,
+                             mock_asr=mode == "mock", skip_transcribe=mode == "skip",
+                             on_lesson_created=on_created)
+    assert created == [result["lesson_dir"]]
+
+
+@pytest.mark.parametrize("storage", ["folders", "database"])
+def test_setup_resume_interrupted_import(tmp_path, request, storage):
+    from rt.pipeline.setup import run_setup
+
+    if storage == "database":
+        request.getfixturevalue("rt_db")
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"audio")
+    kwargs = dict(audio=str(audio), date="2026-10-05", materia="BIOCHIMICA",
+                  dest_dir=str(tmp_path / "lessons"), interactive=False, mock_asr=True)
+
+    def interrupted(lesson_dir):
+        raise RuntimeError("Import interrotto")
+
+    with pytest.raises(RuntimeError, match="Import interrotto"):
+        run_setup(**kwargs, on_lesson_created=interrupted)
+    assert run_setup(**kwargs)["status"] == "setup_completato"
+    with pytest.raises(Exception, match="già inizializzata"):
+        run_setup(**kwargs)
+
+
+@pytest.mark.parametrize("artifact", ["trascritto grezzo.json", "trascritto grezzo.md",
+                                      "review_decisions.json", "draft.json", "rielaborato.md"])
+def test_provisional_info_does_not_bypass_existing_work(tmp_path, artifact):
+    from rt.pipeline.setup import run_setup, SetupError
+
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"audio")
+    lesson = tmp_path / "[2026-10-05] BIOCHIMICA"
+    lesson.mkdir()
+    (lesson / "info.yaml").write_text("stato: in_attesa_di_trascrizione\n")
+    (lesson / artifact).write_text("{}")
+    with pytest.raises(SetupError):
+        run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA",
+                  dest_dir=str(tmp_path), interactive=False, mock_asr=True)
+
+
+@pytest.mark.parametrize("mode", ["real", "mock", "skip"])
+@pytest.mark.parametrize("storage", ["folders", "database"])
+def test_single_wav_is_stored_as_m4a(tmp_path, monkeypatch, request, mode, storage):
+    from pathlib import Path
+    from rt.pipeline import setup
+    from rt.core.state import read_info_yaml
+    from rt.storage import fs
+
+    if storage == "database":
+        request.getfixturevalue("rt_db")
+    audio = tmp_path / "lezione.wav"
+    original = b"audio originale"
+    audio.write_bytes(original)
+    commands = []
+
+    def convert(cmd, **kwargs):
+        commands.append(cmd)
+        Path(cmd[-1]).write_bytes(b"audio AAC")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    def transcribe(cmd, label):
+        out = Path(cmd[cmd.index("--output-dir") + 1]) / "asr.json"
+        out.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "Test"}]}))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(setup.shutil, "which", lambda name: name)
+    monkeypatch.setattr(setup.subprocess, "run", convert)
+    monkeypatch.setattr(setup, "_run_transcribe_with_spinner", transcribe)
+    result = setup.run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA",
+                             dest_dir=str(tmp_path / "lessons"), interactive=False,
+                             mock_asr=mode == "mock", skip_transcribe=mode == "skip")
+    lesson = result["lesson_dir"]
+    assert read_info_yaml(os.path.join(lesson, "info.yaml"))["file_audio"] == "lezione.m4a"
+    assert fs.isfile(os.path.join(lesson, "lezione.m4a"))
+    assert not fs.isfile(os.path.join(lesson, "lezione.wav"))
+    assert result["audio_files"] == [os.path.join(lesson, "lezione.m4a")]
+    assert audio.read_bytes() == original
+    with fs.open(result["trascritto_md"], encoding="utf-8") as f:
+        assert "file_audio: 'lezione.m4a'" in f.read()
+    assert len(commands) == 1
+    assert commands[0][commands[0].index("-af") + 1] == setup.AUDIO_NORMALIZATION_FILTER
+    assert commands[0][-7:-1] == setup.AAC_OUTPUT_OPTIONS
+
+
+@pytest.mark.parametrize("failure", ["missing", "exit", "timeout", "empty"])
+def test_single_wav_conversion_falls_back_to_original(tmp_path, monkeypatch, failure):
+    from pathlib import Path
+    from rt.pipeline import setup
+    from rt.core.state import read_info_yaml
+
+    audio = tmp_path / "lezione.wav"
+    audio.write_bytes(b"originale")
+    monkeypatch.setattr(setup.shutil, "which", lambda _: None if failure == "missing" else "ffmpeg")
+
+    def failed(cmd, **kwargs):
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(cmd, 3600)
+        Path(cmd[-1]).write_bytes(b"")
+        return subprocess.CompletedProcess(cmd, 1 if failure == "exit" else 0)
+
+    monkeypatch.setattr(setup.subprocess, "run", failed)
+    result = setup.run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA",
+                             dest_dir=str(tmp_path / "lessons"), skip_transcribe=True, interactive=False)
+    lesson = Path(result["lesson_dir"])
+    assert read_info_yaml(str(lesson / "info.yaml"))["file_audio"] == "lezione.wav"
+    assert (lesson / "lezione.wav").read_bytes() == audio.read_bytes() == b"originale"
+    assert not (lesson / "lezione.m4a").exists()
+
+
+def test_single_m4a_is_copied_unchanged(tmp_path, monkeypatch):
+    from pathlib import Path
+    from rt.pipeline import setup
+
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"originale")
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Un m4a non deve essere convertito")
+
+    monkeypatch.setattr(setup, "transcode_audio_for_storage", unexpected)
+    result = setup.run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA",
+                             dest_dir=str(tmp_path / "lessons"), skip_transcribe=True, interactive=False)
+    assert (Path(result["lesson_dir"]) / audio.name).read_bytes() == audio.read_bytes()
+
+
+@pytest.mark.parametrize("storage", ["folders", "database"])
+def test_merged_import_stores_only_combined_audio(tmp_path, monkeypatch, request, storage):
+    from pathlib import Path
+    from rt.pipeline import setup
+    from rt.core.state import read_info_yaml
+    from rt.storage import fs
+
+    if storage == "database":
+        request.getfixturevalue("rt_db")
+    clips = [tmp_path / "prima.wav", tmp_path / "seconda.wav"]
+    for clip in clips:
+        clip.write_bytes(b"originale")
+
+    def merge(audios, output):
+        assert audios == [str(clip) for clip in clips]
+        Path(output).write_bytes(b"audio unito")
+
+    def transcribe(cmd, label):
+        assert Path(cmd[-1]).name == "audio completo.m4a"
+        (Path(cmd[cmd.index("--output-dir") + 1]) / "asr.json").write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "Test"}]}))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "macparakeet-cli")
+    monkeypatch.setattr(setup, "merge_audio_for_transcription", merge)
+    monkeypatch.setattr(setup, "_run_transcribe_with_spinner", transcribe)
+    result = setup.run_setup([str(clip) for clip in clips], date="2026-10-05", materia="BIOCHIMICA",
+                             dest_dir=str(tmp_path / "lessons"), interactive=False)
+    lesson = result["lesson_dir"]
+    assert read_info_yaml(os.path.join(lesson, "info.yaml"))["file_audio"] == "audio completo.m4a"
+    assert fs.isfile(os.path.join(lesson, "audio completo.m4a"))
+    assert result["audio_files"] == [os.path.join(lesson, "audio completo.m4a")]
+    for clip in clips:
+        assert not fs.isfile(os.path.join(lesson, clip.name))
+        assert clip.read_bytes() == b"originale"

@@ -357,6 +357,48 @@
         "title": "Body_voice_api_v1_mini_app_lessons__lesson_id__answer_voice_post",
         "type": "object"
       },
+      "CacheInfo": {
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/CacheUsage"
+          },
+          "total": {
+            "$ref": "#/components/schemas/CacheUsage"
+          },
+          "waveform": {
+            "$ref": "#/components/schemas/CacheUsage"
+          }
+        },
+        "required": [
+          "audio",
+          "waveform",
+          "total"
+        ],
+        "title": "CacheInfo",
+        "type": "object"
+      },
+      "CacheUsage": {
+        "properties": {
+          "bytes": {
+            "description": "Dimensione dei file in byte",
+            "minimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "entries": {
+            "description": "Numero di file nella cache",
+            "minimum": 0.0,
+            "title": "Entries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "bytes"
+        ],
+        "title": "CacheUsage",
+        "type": "object"
+      },
       "Cap": {
         "properties": {
           "mode": {
@@ -21974,6 +22016,56 @@
         "summary": "Job in parallelo del worker avviato con la web (vale dal prossimo avvio)",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/system/cache": {
+      "delete": {
+        "operationId": "clear_system_cache_api_v1_system_cache_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Svuota la cache e restituisce lo spazio liberato",
+        "tags": [
+          "sistema"
+        ]
+      },
+      "get": {
+        "operationId": "system_cache_api_v1_system_cache_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Spazio occupato dalla cache audio e dalle forme d’onda",
+        "tags": [
+          "sistema"
         ]
       }
     },
