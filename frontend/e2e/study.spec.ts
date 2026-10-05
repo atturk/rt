@@ -78,9 +78,17 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   const quiz = page.getByTestId('study-quiz')
   await expect(quiz).toHaveText(/^Mettimi alla prova · \d+$/)
   await expect(page.getByTestId('study-generate')).toBeVisible()
+  await expect.poll(async () => {
+    const text = await quiz.textContent()
+    const current = Number(text?.match(/(\d+)/)?.[1] ?? -1)
+    const pending = (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions
+    if (current !== pending) {
+      await page.reload()
+      return -1
+    }
+    return current
+  }).toBeGreaterThan(0)
   const total = Number((await quiz.textContent())!.match(/(\d+)/)![1])
-  const pending = (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions
-  expect(total).toBe(pending)
   await quiz.click()
   // La sessione dell'unità: chip per tipo, ritorno al testo dall'icona in alto a destra.
   await expect(page.getByTestId('recall-session-page')).toBeVisible()
@@ -233,3 +241,58 @@ test('Lettura veloce dallo Studio: parola con la lettera di fuoco, pausa con il 
   await expect(reader).toHaveCount(0)
   await expect(page.getByTestId('study-text')).toBeVisible()
 })
+
+test('Swipe touch fra le unità dello Studio sul telefono (4.2.2b4 F1)', async ({ browser }) => {
+  const context = await browser.newContext({
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  })
+  const page = await context.newPage()
+  await loginViaLink(page)
+  const l = await lesson(page, 'BIOCHIMICA')
+
+  await page.route(`**/api/v1/lessons/${l.id}/study`, async (route) => {
+    const response = await route.fetch()
+    const json = await response.json()
+    if (json.units && json.units.length === 1) {
+      json.units.push({
+        ...json.units[0],
+        id: 'mock-unit-2',
+        title: 'Seconda Unità Mock',
+        html: '<p>Testo della seconda unità.</p>',
+      })
+    }
+    await route.fulfill({ response, json })
+  })
+
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toBeVisible()
+
+  const unitHeading = page.getByRole('heading', { level: 2 })
+  await expect(unitHeading).toBeVisible()
+  const initialTitle = (await unitHeading.textContent()) ?? ''
+
+  const cdp = await page.context().newCDPSession(page)
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', x: number, y: number) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x, y }] })
+
+  // Swipe da destra a sinistra (next unit): da (300, 300) a (100, 305)
+  await touch('touchStart', 300, 300)
+  await page.waitForTimeout(50)
+  await touch('touchMove', 200, 302)
+  await page.waitForTimeout(50)
+  await touch('touchEnd', 100, 305)
+
+  await expect(page.getByRole('heading', { level: 2 })).toContainText('Seconda Unità Mock')
+
+  // Swipe da sinistra a destra (prev unit): da (100, 300) a (300, 305)
+  await touch('touchStart', 100, 300)
+  await page.waitForTimeout(50)
+  await touch('touchMove', 200, 302)
+  await page.waitForTimeout(50)
+  await touch('touchEnd', 300, 305)
+
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(initialTitle)
+  await context.close()
+})
+
