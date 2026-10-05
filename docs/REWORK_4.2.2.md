@@ -325,4 +325,6 @@ preferenze di P1. Gli errori grossi diventano task `R<n>` in fondo, per lo stess
 
 ## Correzioni
 
-(vuoto)
+- 5 ottobre: Antigravity si è fermato dopo A2 e S1 (H1 lasciato a metà, recuperato dal Mac in
+  `rt422/antigravity-wip`). Su richiesta di Attilio H1 e V1 li ha completati Claude, e
+  `studyPrefs.ts` usa direttamente le preferenze su RT di P1.

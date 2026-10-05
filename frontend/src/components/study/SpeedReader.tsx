@@ -64,10 +64,12 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
     return () => clearTimeout(timer)
   }, [playing, index, words, sound])
 
+  // Il rumore suona durante la lettura; in pausa solo l'anteprima di 2 s delle impostazioni.
   useEffect(() => {
-    if (playing && prefs.noise) sound.noise(prefs.noise, prefs.noiseVolume)
-    else sound.stopNoise()
-  }, [playing, prefs.noise, sound]) // oxlint-disable-line react-hooks/exhaustive-deps -- il volume cambia sotto
+    if (!playing || !prefs.noise) return
+    sound.noise(prefs.noise, prefsRef.current.noiseVolume)
+    return () => sound.stopNoise()
+  }, [playing, prefs.noise, sound])
   useEffect(() => sound.volume(prefs.noiseVolume), [prefs.noiseVolume, sound])
   useEffect(() => () => sound.dispose(), [sound])
 
@@ -210,7 +212,7 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
 
       {settings && (
         <SettingsPanel phone={phone} prefs={prefs} update={update} onDone={() => setSettings(false)}
-          onPreviewNoise={(kind, volume) => { if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch)} />
+          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch)} />
       )}
     </div>
   )
@@ -266,7 +268,7 @@ function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }
   prefs: RsvpPreference
   update: (change: Partial<RsvpPreference>) => void
   onDone: () => void
-  onPreviewNoise: (kind: NonNullable<RsvpPreference['noise']>, volume: number) => void
+  onPreviewNoise: (kind: RsvpPreference['noise'], volume: number) => void
   onPitch: (pitch: number) => void
 }) {
   const head = (text: string, hint: string, control: ReactNode) => (
@@ -292,7 +294,7 @@ function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }
       </Row>
       <Row>
         {head('Rumore di fondo', 'copre i rumori intorno', <Toggle label="Rumore di fondo" checked={prefs.noise !== null}
-          onChange={(on) => { update({ noise: on ? 'rosa' : null }); if (on) onPreviewNoise('rosa', prefs.noiseVolume) }} />)}
+          onChange={(on) => { update({ noise: on ? 'rosa' : null }); onPreviewNoise(on ? 'rosa' : null, prefs.noiseVolume) }} />)}
         {prefs.noise && <>
           <Segments label="Tipo di rumore" value={prefs.noise} options={NOISE_KINDS} onChange={(noise) => { update({ noise }); onPreviewNoise(noise, prefs.noiseVolume) }} />
           <input type="range" min={0} max={0.6} step={0.02} value={prefs.noiseVolume} aria-label="Volume del rumore"
