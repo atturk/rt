@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { apiGet, loginViaLink, serverState } from './support'
+import { apiGet, authHeaders, loginViaLink, scrollDocumentTo, serverState } from './support'
 
 const CONNECTION = 'Server locale 422'
 const KEY = 'sk-e2e-chiave-422-0123456789abcdef'
@@ -246,4 +246,52 @@ test('barra editor: comandi sul testo e una riga scorrevole sul telefono', async
   expect(geometry.scroll).toBeGreaterThan(geometry.width)
   expect(new Set(geometry.rows).size).toBe(1)
   expect(geometry.sticky).toBe('sticky')
+})
+
+test('allineamenti editor: frecce sulla prima riga e testo allineato al titolo a 1280 e 390 px', async ({ page }) => {
+  await loginViaLink(page)
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=CHIRURGIA')
+  const original = await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)
+  const title = 'Titolo lungo con parole che proseguono sulla riga successiva e richiedono una freccia centrata sulla prima riga anche quando cambia la larghezza della pagina'
+  const markdown = original.markdown.replace(/^(## \d+\. ).+$/m, `$1${title}`).replace(/^(### \d+\.\d+ ).+$/m, `$1${title}`)
+    + `\n\n## Approfondimento ${title}\n\nTesto dell’approfondimento.\n\n### Dettagli ${title}\n\nUn altro paragrafo.\n`
+  const lease = await page.request.post(`/api/v1/lessons/${lesson.id}/document/lease`, { headers: authHeaders() })
+  expect(lease.ok()).toBeTruthy()
+  const { token } = await lease.json()
+  const save = await page.request.put(`/api/v1/lessons/${lesson.id}/document/draft`, { headers: authHeaders(), data: { markdown, lease_token: token } })
+  expect(save.ok(), await save.text()).toBeTruthy()
+  await page.request.delete(`/api/v1/lessons/${lesson.id}/document/lease?token=${encodeURIComponent(token)}`, { headers: authHeaders() })
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto(`/lezioni/${lesson.id}`)
+    const editor = page.getByTestId('lesson-document')
+    await expect(editor.locator('.cm-foldGutter .rt-fold-marker').first()).toBeAttached()
+    const headings = editor.locator('.cm-line.cm-atomic-h2, .cm-line.cm-atomic-h3')
+    await expect(headings).toHaveCount(4)
+    for (let index = 0; index < 4; index++) {
+      const heading = headings.nth(index)
+      await scrollDocumentTo(page, heading)
+      await expect.poll(async () => heading.evaluate(line => {
+        const box = line.getBoundingClientRect()
+        const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=lesson-document] .cm-foldGutter .cm-gutterElement')).filter(row => row.querySelector('.rt-fold-marker'))
+        const row = rows.sort((a, b) => Math.abs(a.getBoundingClientRect().top - box.top) - Math.abs(b.getBoundingClientRect().top - box.top))[0]
+        const marker = row.querySelector('.rt-fold-marker')!.getBoundingClientRect()
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
+        let node: Node | null
+        while ((node = walker.nextNode())) {
+          if (!node.textContent?.trim()) continue
+          const range = document.createRange()
+          range.setStart(node, 0); range.setEnd(node, 1)
+          const first = range.getBoundingClientRect()
+          if (first.width > 0 && first.height > 0) return Math.abs(marker.top + marker.height / 2 - first.top - first.height / 2)
+        }
+        return Infinity
+      })).toBeLessThanOrEqual(2)
+      const dimensions = await heading.evaluate(line => { const style = getComputedStyle(line); return { height: line.getBoundingClientRect().height - parseFloat(style.paddingTop), lineHeight: parseFloat(style.lineHeight) } })
+      expect(dimensions.height).toBeGreaterThan(dimensions.lineHeight * 1.5)
+    }
+    const left = await editor.locator('.cm-line').first().evaluate(line => line.getBoundingClientRect().left)
+    const pageTitle = await page.getByTestId('lesson-page').locator('h1').boundingBox()
+    expect(Math.abs(left - pageTitle!.x)).toBeLessThanOrEqual(2)
+  }
 })

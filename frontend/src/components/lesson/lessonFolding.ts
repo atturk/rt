@@ -6,7 +6,7 @@ import {
   unfoldEffect,
 } from '@codemirror/language'
 import { EditorState, type Extension } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 /**
  * Sezioni richiudibili (folding) come in Obsidian per l'editor delle lezioni (K2):
@@ -101,6 +101,34 @@ const headingClickUnfold = EditorView.domEventHandlers({
   },
 })
 
+/** La gutter non eredita il padding del titolo: centra la freccia sulla sua prima riga. */
+const alignFoldMarkers = ViewPlugin.fromClass(class {
+  constructor(view: EditorView) { this.measure(view) }
+  update(update: ViewUpdate) {
+    if (update.geometryChanged || update.viewportChanged || update.docChanged) this.measure(update.view)
+  }
+  measure(view: EditorView) {
+    view.requestMeasure({
+      key: this,
+      read: current => Array.from(current.dom.querySelectorAll<HTMLElement>('.cm-foldGutter .cm-gutterElement')).flatMap(row => {
+        const marker = row.querySelector<HTMLElement>('.rt-fold-marker')
+        if (!marker) return []
+        const rowTop = row.getBoundingClientRect().top
+        const block = current.lineBlockAtHeight(rowTop - current.documentTop + 1)
+        const node = current.domAtPos(block.from).node
+        const line = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.cm-line')
+        if (!line) return []
+        const style = getComputedStyle(line)
+        const lineHeight = Number.parseFloat(style.lineHeight)
+        if (!Number.isFinite(lineHeight)) return []
+        const center = line.getBoundingClientRect().top + Number.parseFloat(style.paddingTop || '0') + lineHeight / 2
+        return [{ marker, offset: center - rowTop - marker.getBoundingClientRect().height / 2 }]
+      }),
+      write: positions => { for (const { marker, offset } of positions) marker.style.transform = `translateY(${offset}px)` },
+    })
+  }
+})
+
 export const lessonFolding: Extension = [
   codeFolding({
     placeholderText: '…',
@@ -108,6 +136,7 @@ export const lessonFolding: Extension = [
   foldGutter({
     markerDOM: createFoldMarker,
   }),
+  alignFoldMarkers,
   autoUnfoldOnJump,
   headingClickUnfold,
 ]
