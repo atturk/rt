@@ -1,4 +1,4 @@
-import { Brain, ChevronDown, CircleCheck, CircleDashed, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
+import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -605,17 +605,27 @@ export function QuestionsPanel({
         </ul>
       )}
 
-      {/* Riproponi le domande già poste (4.2.2b3) */}
+      {/* Riproponi le domande già poste (4.2.2b3, icone 4.2.2b4 F4) */}
       {!isSelectionMode && (askedCount > 0 || wrongCount > 0) && (
-        <div className="flex flex-wrap gap-2" data-testid="questions-restore">
-          <Button variant="outline" size="sm" disabled={askedCount === 0 || restore.isPending} onClick={() => restore.mutate('asked')}>
-            <RotateCcw className="mr-1.5 size-3.5" aria-hidden />
-            Riproponi le poste ({askedCount})
-          </Button>
-          <Button variant="outline" size="sm" disabled={wrongCount === 0 || restore.isPending} onClick={() => restore.mutate('wrong')}>
-            <RotateCcw className="mr-1.5 size-3.5" aria-hidden />
-            Solo quelle sbagliate ({wrongCount})
-          </Button>
+        <div className="flex items-center gap-3" data-testid="questions-restore">
+          <div className="flex items-center gap-1.5">
+            <IconButton
+              label="Riproponi le poste"
+              icon={RotateCcw}
+              disabled={askedCount === 0 || restore.isPending}
+              onClick={() => restore.mutate('asked')}
+            />
+            <span className="text-meta text-muted-foreground">{askedCount}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <IconButton
+              label="Solo quelle sbagliate"
+              icon={CircleX}
+              disabled={wrongCount === 0 || restore.isPending}
+              onClick={() => restore.mutate('wrong')}
+            />
+            <span className="text-meta text-muted-foreground">{wrongCount}</span>
+          </div>
         </div>
       )}
       {restore.isError && <Alert tone="danger">{errorMessage(restore.error)}</Alert>}

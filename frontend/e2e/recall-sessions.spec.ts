@@ -102,6 +102,7 @@ test('pannello Domande: elenco contraibile, filtro per stato, modifica a mano e 
 
   const restore = panel.getByTestId('questions-restore')
   await expect(restore).toBeVisible()
+  await expect(restore.getByRole('button', { name: /Riproponi le poste/ })).toBeVisible()
   await restore.getByRole('button', { name: /Riproponi le poste/ }).click()
   await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.id === edited.id)?.status).toBe('pending')
 })

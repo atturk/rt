@@ -150,7 +150,7 @@ describe('StudyFlow unit navigation', () => {
     localStorage.clear()
   })
 
-  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità (4.2.2b3)', () => {
+  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità, niente study-next (4.2.2b3, 4.2.2b4)', () => {
     localStorage.clear()
     renderStudy()
     // L'unità 2.1 non ha domande.
@@ -158,7 +158,7 @@ describe('StudyFlow unit navigation', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
     const generate = screen.getByTestId('study-generate')
     expect(generate).toHaveTextContent('Nessuna domanda · genera ora')
-    expect(screen.getByTestId('study-next')).toHaveTextContent('Fine')
+    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
 
     fireEvent.click(generate)
     fireEvent.click(screen.getByRole('button', { name: 'Caso clinico' }))
@@ -170,6 +170,20 @@ describe('StudyFlow unit navigation', () => {
       { unitIds: ['2.1'], qtype: 'caso', count: 2, instructions: 'solo sui valori soglia' },
       expect.anything(),
     )
+  })
+
+  it('con domande mostra entrambi i pulsanti e il secondo apre il popup di generazione (4.2.2b4 F2)', () => {
+    localStorage.clear()
+    renderStudy()
+    // L'unità 1.1 ha 2 domande
+    expect(screen.getByTestId('study-quiz')).toHaveTextContent('Mettimi alla prova · 2')
+    const generateBtn = screen.getByTestId('study-generate')
+    expect(generateBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+
+    // Il secondo pulsante apre il popup di generazione
+    fireEvent.click(generateBtn)
+    expect(screen.getByTestId('study-generate-modal')).toBeInTheDocument()
   })
 
   it('nessun effetto delle frecce nella fase domande', () => {
@@ -184,5 +198,46 @@ describe('StudyFlow unit navigation', () => {
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     // Resta nella fase domande
     expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+  })
+
+  it('swipe touch cambia unità nella fase di lettura (4.2.2b4 F1)', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    const column = screen.getByTestId('study-reading-column')
+
+    // Swipe destra -> sinistra: da x=200 a x=80 (|dx| = 120 >= 60, dy = 5)
+    fireEvent.pointerDown(column, { pointerType: 'touch', pointerId: 1, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'touch', pointerId: 1, clientX: 80, clientY: 105 })
+
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    // Swipe sinistra -> destra: da x=80 a x=200 (|dx| = 120 >= 60, dy = 5)
+    fireEvent.pointerDown(column, { pointerType: 'touch', pointerId: 2, clientX: 80, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'touch', pointerId: 2, clientX: 200, clientY: 105 })
+
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+  })
+
+  it('swipe touch ignorato con mouse o se disattivato da preferenza (4.2.2b4 F1)', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    const column = screen.getByTestId('study-reading-column')
+
+    // Ignorato se pointerType === 'mouse'
+    fireEvent.pointerDown(column, { pointerType: 'mouse', pointerId: 1, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'mouse', pointerId: 1, clientX: 80, clientY: 105 })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Ignorato se arrows disattivate
+    localStorage.setItem('rt-pref:study.highlighter', JSON.stringify({ color: 0, arrows: false }))
+    renderStudy()
+    fireEvent.pointerDown(column, { pointerType: 'touch', pointerId: 2, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'touch', pointerId: 2, clientX: 80, clientY: 105 })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    localStorage.clear()
   })
 })

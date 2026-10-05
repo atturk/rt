@@ -1,6 +1,8 @@
 import { ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
+
+import { detectSwipe, isElementScrollableX } from './swipe'
 
 import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
@@ -120,6 +122,59 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [phase, unitIndex, units, speedReading, arrows]) // oxlint-disable-line react-hooks/exhaustive-deps
 
+  // Gestione swipe touch fra le unità nella fase di lettura (F1)
+  const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (phase !== 'lettura' || rereading || speedReading || !arrows) return
+    if (e.pointerType !== 'touch') return
+    if (e.clientX <= 25) return
+    if (window.getSelection()?.toString()) return
+    if (isElementScrollableX(e.target as Element, e.currentTarget)) return
+
+    swipeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now(),
+      id: e.pointerId,
+    }
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!swipeStartRef.current || e.pointerId !== swipeStartRef.current.id) return
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!swipeStartRef.current || e.pointerId !== swipeStartRef.current.id) return
+    const start = swipeStartRef.current
+    swipeStartRef.current = null
+
+    if (window.getSelection()?.toString()) return
+
+    const swipe = detectSwipe({
+      startX: start.x,
+      startY: start.y,
+      startTime: start.time,
+      endX: e.clientX,
+      endY: e.clientY,
+      endTime: Date.now(),
+    })
+
+    if (swipe === 'next') {
+      if (units && unitIndex + 1 < units.length) {
+        goToUnit(unitIndex + 1)
+      }
+    } else if (swipe === 'prev') {
+      if (unitIndex > 0) {
+        goToUnit(unitIndex - 1)
+      }
+    }
+  }
+
+  const handlePointerCancel = () => {
+    swipeStartRef.current = null
+  }
+
   if (lessons.length === 0) {
     return (
       <StudyShell title="Studio" back={back}>
@@ -223,6 +278,12 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           title={titleButton}
           back={back}
           actions={headerActions}
+          readingProps={{
+            onPointerDown: handlePointerDown,
+            onPointerMove: handlePointerMove,
+            onPointerUp: handlePointerUp,
+            onPointerCancel: handlePointerCancel,
+          }}
           popup={
             <>
               <GenerateUnitQuestions
@@ -247,21 +308,26 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             rereading ? (
               <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setRereading(false)}>Torna alle domande</Button>
             ) : live.questions > 0 ? (
-              <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
-                Mettimi alla prova · {live.questions === 1 ? '1 domanda' : `${live.questions} domande`}
-              </Button>
-            ) : (
-              // Unità senza domande: si generano sul posto, poi il pulsante diventa
-              // "Mettimi alla prova" (il ripasso parte solo con un clic).
-              <div className="flex w-full max-w-(--reading-width) flex-col gap-1.5">
-                <Button className="w-full justify-center" onClick={() => setGenerateOpen(true)} data-testid="study-generate">
-                  <Sparkles aria-hidden />
-                  Nessuna domanda · genera ora
+              <div className="flex w-full max-w-(--reading-width) items-center gap-2">
+                <Button className="flex-1 justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
+                  Mettimi alla prova · {live.questions}
                 </Button>
-                <Button variant="ghost" className="w-full justify-center" onClick={advance} data-testid="study-next">
-                  {unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine'}
+                <Button
+                  variant="outline"
+                  onClick={() => setGenerateOpen(true)}
+                  aria-label="Genera altre domande"
+                  data-testid="study-generate"
+                  className="shrink-0"
+                >
+                  <Sparkles aria-hidden />
+                  <span className="max-sm:hidden">Genera altre</span>
                 </Button>
               </div>
+            ) : (
+              <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setGenerateOpen(true)} data-testid="study-generate">
+                <Sparkles aria-hidden />
+                Nessuna domanda · genera ora
+              </Button>
             )
           }
         >
@@ -395,13 +461,39 @@ function LessonDetailsPopup({
 }
 
 /** Intestazione (Esci, dove sei, azione a destra), colonna di lettura e pulsante in basso. */
-function StudyShell({ title, back, actions, popup, footer, children }: { title: ReactNode; back: { to: string; label: string }; actions?: ReactNode; popup?: ReactNode; footer?: ReactNode; children: ReactNode }) {
+function StudyShell({
+  title,
+  back,
+  actions,
+  popup,
+  footer,
+  readingProps,
+  children,
+}: {
+  title: ReactNode
+  back: { to: string; label: string }
+  actions?: ReactNode
+  popup?: ReactNode
+  footer?: ReactNode
+  readingProps?: ComponentProps<'div'>
+  children: ReactNode
+}) {
   return (
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
       <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
       {popup}
-      <div className="flex-1 px-7 max-md:px-[18px]">
-        <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3">{children}</div>
+      <div
+        className="flex-1 px-7 max-md:px-[18px]"
+        style={{ touchAction: 'pan-y' }}
+        {...readingProps}
+      >
+        <div
+          className={cn('mx-auto w-full max-w-(--reading-width) pb-8 pt-3', readingProps?.className)}
+          style={{ touchAction: 'pan-y' }}
+          data-testid="study-reading-column"
+        >
+          {children}
+        </div>
       </div>
       {footer && (
         <div className="sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
