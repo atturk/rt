@@ -138,22 +138,28 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await expect(placedImage).toBeVisible()
 
   // 9. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
-  await page.goto('/impostazioni')
+  await page.goto('/impostazioni/lavorazione')
   const card = page.getByRole('region', { name: 'Trascrizione', exact: true })
+  const engine = card.getByTestId('stt-engine')
   const before = (await apiGet<Settings>(page.request, '/settings')).transcription
-  await card.getByLabel('Motore').selectOption('custom')
+  const chooseEngine = async (option: string) => {
+    await card.getByRole('button', { name: 'Motore', exact: true }).click()
+    await page.getByRole('menuitemradio', { name: option, exact: true }).click()
+  }
+  const beforeLabel = (await engine.locator('span').first().textContent())!
+  await chooseEngine('Server OpenAI-compatible')
   await card.getByLabel('Base URL del server').fill('http://127.0.0.1:9100/v1')
-  await card.getByLabel('Modello').fill('whisper-percorso')
+  await card.getByLabel('Modello', { exact: true }).fill('whisper-percorso')
   await card.getByRole('button', { name: 'Salva trascrizione' }).click()
   await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
   await page.reload()
-  await expect(card.getByLabel('Motore')).toHaveValue('custom')
-  await expect(card.getByLabel('Modello')).toHaveValue('whisper-percorso')
+  await expect(engine).toHaveAttribute('data-value', 'custom')
+  await expect(card.getByLabel('Modello', { exact: true })).toHaveValue('whisper-percorso')
   expect((await apiGet<Settings>(page.request, '/settings')).transcription).toMatchObject({
     engine: 'custom', base_url: 'http://127.0.0.1:9100/v1', model: 'whisper-percorso',
   })
-  await card.getByLabel('Motore').selectOption(before.engine)
+  if (before.engine !== 'custom') await chooseEngine(beforeLabel)
   await card.getByRole('button', { name: 'Salva trascrizione' }).click()
   await page.reload()
-  await expect(card.getByLabel('Motore')).toHaveValue(before.engine)
+  await expect(engine).toHaveAttribute('data-value', before.engine)
 })
