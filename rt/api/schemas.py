@@ -150,6 +150,8 @@ class DocumentSection(BaseModel):
 class LessonDocument(BaseModel):
     final: bool = Field(description="True se è il documento di 'rt build' ed è aggiornato, False se "
                                     "anteprima dal draft (quello che il build produrrebbe ora)")
+    pending: bool = Field(False, description="True se la lezione non ha ancora un documento: "
+                                             "il Markdown è solo il testo che lo spiega")
     markdown: str
     html: str = Field(description="HTML sanificato (l'HTML grezzo del Markdown è escapato)")
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")
@@ -589,6 +591,33 @@ class RecallRegenerate(BaseModel):
 
 class RecallSkip(BaseModel):
     question_id: str
+
+
+class RecallQuestionEdit(BaseModel):
+    """Domanda corretta a mano: valgono le stesse regole della generazione."""
+    question_text: str = Field(min_length=1, max_length=2000)
+    options: Optional[List[str]] = Field(None, max_length=4, description="Solo quiz: quattro alternative")
+    correct_index: Optional[int] = Field(None, ge=0, le=3, description="Solo quiz")
+    explanation: Optional[str] = Field(None, max_length=10000,
+                                       description="Commento dell'IA: solo quiz, vaste ed esercizi")
+
+
+class RecallQuestionStatusIn(BaseModel):
+    status: Literal["pending", "asked"] = Field(description="pending: da porre; asked: posta")
+
+
+class RecallRestore(BaseModel):
+    scope: Literal["asked", "wrong"] = Field(
+        description="asked: tutte quelle già poste; wrong: solo quelle con esito sbagliata")
+
+
+class RecallRestored(BaseModel):
+    restored: int = Field(description="Domande rimesse fra quelle da porre")
+
+
+class RecallRestorable(BaseModel):
+    asked: int = Field(description="Domande già poste")
+    wrong: int = Field(description="Domande già poste con esito sbagliata")
 
 
 class RecallSummary(BaseModel):

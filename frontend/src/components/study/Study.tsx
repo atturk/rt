@@ -1,24 +1,33 @@
-import { BookOpen, Check, ChevronDown, List, Mic, Pause, Play, SendHorizontal, Square, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { ApiError, errorMessage, type Schemas } from '@/api/client'
+import { detectSwipe, isElementScrollableX } from './swipe'
+
+import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import {
-  recallKeys, useAnswer, useAnswerVoice, useGenerateForUnits, useNextQuestion, useSkip, useStudyLesson,
-  type RecallQuestion, type StudyUnit,
+  recallKeys, useGenerateForUnits, useStudyLesson,
+  type RecallType, type StudyUnit,
 } from '@/api/recall'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shell/PageHeader'
+import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
+import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
-import { recordingFormat } from '@/lib/recording'
 import { useIsPhone } from '@/lib/phone'
+import { useHighlighterPrefs } from '@/lib/studyPrefs'
 import { cn } from '@/lib/utils'
+import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
+import { SpeedReader } from './SpeedReader'
 
 /**
  * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
@@ -37,6 +46,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [phase, setPhase] = useState<'lettura' | 'domande'>(onlyUnits ? 'domande' : 'lettura')
   const [rereading, setRereading] = useState(false)
   const [indexOpen, setIndexOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const closeGenerate = useCallback(() => setGenerateOpen(false), [])
   const [finished, setFinished] = useState(false)
   const lesson = lessons[lessonIndex] ?? null
   const study = useStudyLesson(lesson?.id ?? null)
@@ -71,6 +82,94 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     } else setFinished(true)
     window.scrollTo?.({ top: 0 })
   }, [units, unitIndex, lessonIndex, lessons.length, onlyUnits])
+
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const titleButtonRef = useRef<HTMLButtonElement>(null)
+  const [highlighterPrefs, setHighlighterPrefs] = useHighlighterPrefs()
+  const [hlMode, setHlMode] = useState<HighlightMode>('evidenzia')
+  const [textRoot, setTextRoot] = useState<HTMLElement | null>(null)
+  const [speedReading, setSpeedReading] = useState(false)
+  const highlights = useStudyHighlighter({
+    root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
+    mode: hlMode, color: highlighterPrefs.color,
+  })
+  const arrows = highlighterPrefs.arrows
+
+  // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
+  useEffect(() => {
+    if (phase !== 'lettura' || speedReading || !arrows) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        if (unitIndex > 0) {
+          e.preventDefault()
+          goToUnit(unitIndex - 1)
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
+        else advance()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [phase, unitIndex, units, speedReading, arrows]) // oxlint-disable-line react-hooks/exhaustive-deps
+
+  // Gestione swipe touch fra le unità nella fase di lettura (F1)
+  const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (phase !== 'lettura' || rereading || speedReading || !arrows) return
+    if (e.pointerType !== 'touch') return
+    if (e.clientX <= 25) return
+    if (window.getSelection()?.toString()) return
+    if (isElementScrollableX(e.target as Element, e.currentTarget)) return
+
+    swipeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now(),
+      id: e.pointerId,
+    }
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!swipeStartRef.current || e.pointerId !== swipeStartRef.current.id) return
+    const start = swipeStartRef.current
+    swipeStartRef.current = null
+
+    if (window.getSelection()?.toString()) return
+
+    const swipe = detectSwipe({
+      startX: start.x,
+      startY: start.y,
+      startTime: start.time,
+      endX: e.clientX,
+      endY: e.clientY,
+      endTime: Date.now(),
+    })
+
+    if (swipe === 'next') {
+      // Ultima unità: si passa alla lezione dopo (o alla schermata finale), come faceva
+      // il pulsante "Unità successiva" che la b4 ha tolto.
+      if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
+      else advance()
+    } else if (swipe === 'prev') {
+      if (unitIndex > 0) {
+        goToUnit(unitIndex - 1)
+      }
+    }
+  }
+
+  const handlePointerCancel = () => {
+    swipeStartRef.current = null
+  }
 
   if (lessons.length === 0) {
     return (
@@ -118,12 +217,43 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       </StudyShell>
     )
   }
-  const position = `${title} · unità ${unitIndex + 1} di ${units.length}`
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
+  const titleButton = (
+    <button
+      ref={titleButtonRef}
+      type="button"
+      onClick={() => setDetailsOpen((v) => !v)}
+      aria-haspopup="dialog"
+      aria-expanded={detailsOpen}
+      title="Dettagli della lezione"
+      data-testid="study-title-button"
+      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <span className="truncate text-[15px] font-semibold text-foreground max-md:hidden">{title}</span>
+      <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
+      <span className="sr-only">Dettagli della lezione</span>
+    </button>
+  )
+
   const headerActions = (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" data-testid="study-header-tools">
+      <HighlightTools
+        mode={hlMode}
+        color={highlighterPrefs.color}
+        onMode={setHlMode}
+        onColor={(color) => setHighlighterPrefs({ ...highlighterPrefs, color })}
+        onClear={highlights.clear}
+      />
+      <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
+      <IconButton
+        label="Lettura veloce"
+        icon={Gauge}
+        onClick={() => setSpeedReading(true)}
+        unavailable={textRoot ? null : 'attendi il testo'}
+        data-testid="study-rsvp-btn"
+      />
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
@@ -141,52 +271,83 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     <>
       {reading && (
         <StudyShell
-          title={position}
+          title={titleButton}
           back={back}
           actions={headerActions}
+          readingProps={{
+            onPointerDown: handlePointerDown,
+            onPointerUp: handlePointerUp,
+            onPointerCancel: handlePointerCancel,
+          }}
+          popup={
+            <>
+              <GenerateUnitQuestions
+                open={generateOpen}
+                onClose={closeGenerate}
+                lessonId={lesson!.id}
+                unit={unit}
+              />
+              {lesson && (
+              <LessonDetailsPopup
+                lesson={lesson}
+                unitCount={units.length}
+                currentUnitIndex={unitIndex}
+                open={detailsOpen}
+                onClose={() => setDetailsOpen(false)}
+                anchorRef={titleButtonRef}
+              />
+              )}
+            </>
+          }
           footer={
             rereading ? (
               <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setRereading(false)}>Torna alle domande</Button>
             ) : live.questions > 0 ? (
-              <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
-                Mettimi alla prova · {live.questions === 1 ? '1 domanda' : `${live.questions} domande`}
-              </Button>
+              <div className="flex w-full max-w-(--reading-width) items-center gap-2">
+                <Button className="flex-1 justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
+                  Mettimi alla prova · {live.questions}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setGenerateOpen(true)}
+                  aria-label="Genera altre domande"
+                  data-testid="study-generate"
+                  className="shrink-0"
+                >
+                  <Sparkles aria-hidden />
+                  <span className="max-sm:hidden">Genera altre</span>
+                </Button>
+              </div>
             ) : (
-              <Button className="w-full max-w-(--reading-width) justify-center" onClick={advance} data-testid="study-next">
-                {unitIndex + 1 < units.length ? 'Nessuna domanda · unità successiva' : lessonIndex + 1 < lessons.length ? 'Nessuna domanda · lezione successiva' : 'Nessuna domanda · fine'}
+              <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setGenerateOpen(true)} data-testid="study-generate">
+                <Sparkles aria-hidden />
+                Nessuna domanda · genera ora
               </Button>
             )
           }
         >
           <Dots count={units.length} current={unitIndex} />
-          <UnitText lessonId={lesson!.id} unit={live} />
+          <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
+          {speedReading && textRoot && (
+            <SpeedReader source={textRoot} title={`${unit.id} ${unit.title}`} onClose={() => setSpeedReading(false)} />
+          )}
         </StudyShell>
       )}
       {phase === 'domande' && (
         <div hidden={rereading}>
-          <QuestionPhase
+          {/* Ripasso dell'unità appena letta: la sessione di ripasso vera e propria, con
+              "non lo so", voto, commento, chip per tipo e ritorno allo studio (4.2.2b3). */}
+          <LightweightSession
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
-            unit={live}
-            total={unit.questions || live.questions}
-            back={back}
-            dots={<Dots count={units.length} current={unitIndex} />}
-            actions={
-              <div className="flex items-center gap-1.5">
-                <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={() => setRereading(true)} />
-                {units.length > 1 && (
-                  <UnitIndexMenu
-                    units={units}
-                    unitIndex={unitIndex}
-                    open={indexOpen}
-                    onOpenChange={setIndexOpen}
-                    onSelectUnit={goToUnit}
-                  />
-                )}
-              </div>
-            }
-            onReread={() => setRereading(true)}
-            onDone={advance}
+            unit={{
+              id: unit.id,
+              title: unit.title,
+              pending: (live.pending ?? {}) as Record<string, number>,
+              onBack: () => setPhase('lettura'),
+              onDone: advance,
+              doneLabel: unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine',
+            }}
           />
         </div>
       )}
@@ -194,13 +355,132 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 }
 
-/** Intestazione (Esci, dove sei, azione a destra), colonna di lettura e pulsante in basso. */
-function StudyShell({ title, back, actions, footer, children }: { title: string; back: { to: string; label: string }; actions?: ReactNode; footer?: ReactNode; children: ReactNode }) {
+/** Popup con i dettagli della lezione aperto dal pulsante titolo. */
+function LessonDetailsPopup({
+  lesson,
+  unitCount,
+  currentUnitIndex,
+  open,
+  onClose,
+  anchorRef,
+}: {
+  lesson: Lesson
+  unitCount: number
+  currentUnitIndex: number
+  open: boolean
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node) &&
+        !anchorRef.current?.contains(e.target as Node)
+      ) {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open, onClose, anchorRef])
+
+  if (!open) return null
+
+  const title = lessonTitle(lesson)
+  const materia = lesson.materia ? subjectName(lesson.materia) : null
+  const data = lesson.data ? longDate(lesson.data) : null
+  const duration = lesson.duration_seconds ? formatDuration(lesson.duration_seconds) : null
+
   return (
-    <div className="flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
-      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta" />
-      <div className="flex-1 px-7 max-md:px-[18px]">
-        <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3">{children}</div>
+    <div
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Dettagli della lezione"
+      data-testid="study-details-popup"
+      className="absolute left-14 top-[50px] z-30 grid w-[min(440px,calc(100%-24px))] gap-2.5 rounded-xl border bg-background p-4 text-body shadow-xl max-md:left-2 max-md:right-2 max-md:top-[54px] max-md:w-auto"
+    >
+      <strong className="font-semibold text-foreground [overflow-wrap:anywhere]">{title}</strong>
+      <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1 text-meta">
+        {materia && (
+          <>
+            <span className="text-muted-foreground">Materia</span>
+            <span>{materia}</span>
+          </>
+        )}
+        {lesson.docente && (
+          <>
+            <span className="text-muted-foreground">Docente</span>
+            <span>{lesson.docente}</span>
+          </>
+        )}
+        {data && (
+          <>
+            <span className="text-muted-foreground">Data</span>
+            <span>{data}</span>
+          </>
+        )}
+        <span className="text-muted-foreground">Unità</span>
+        <span>{unitCount} · stai leggendo la {currentUnitIndex + 1}</span>
+        {duration && (
+          <>
+            <span className="text-muted-foreground">Audio</span>
+            <span>{duration}</span>
+          </>
+        )}
+      </div>
+      <div>
+        <Link
+          to={`/lezioni/${lesson.id}`}
+          className="text-meta font-semibold text-link hover:underline"
+          onClick={onClose}
+        >
+          Apri la lezione ›
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/** Intestazione (Esci, dove sei, azione a destra), colonna di lettura e pulsante in basso. */
+function StudyShell({
+  title,
+  back,
+  actions,
+  popup,
+  footer,
+  readingProps,
+  children,
+}: {
+  title: ReactNode
+  back: { to: string; label: string }
+  actions?: ReactNode
+  popup?: ReactNode
+  footer?: ReactNode
+  readingProps?: ComponentProps<'div'>
+  children: ReactNode
+}) {
+  return (
+    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
+      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+      {popup}
+      <div className="flex-1 touch-pan-y px-7 max-md:px-[18px]" {...readingProps}>
+        <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
+          {children}
+        </div>
       </div>
       {footer && (
         <div className="sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
@@ -232,15 +512,29 @@ function ReadingSkeleton() {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-function UnitText({ lessonId, unit }: { lessonId: number; unit: StudyUnit }) {
+function UnitText({ lessonId, unit, highlightMode, onReady }: {
+  lessonId: number
+  unit: StudyUnit
+  highlightMode: HighlightMode
+  /** Il testo è pronto (formule disegnate): evidenziatore e lettura veloce lo usano. */
+  onReady: (root: HTMLElement | null) => void
+}) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (ref.current) void renderDelimitedMath(ref.current)
-  }, [unit.html])
+    const root = ref.current
+    if (!root) return
+    let alive = true
+    void renderDelimitedMath(root).finally(() => { if (alive) onReady(root) })
+    return () => {
+      alive = false
+      onReady(null)
+    }
+  }, [unit.html, onReady])
   return (
     <section aria-labelledby="study-unit-title">
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
-      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
+      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
+        dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
     </section>
   )
 }
@@ -296,6 +590,14 @@ function UnitAudio({ clip }: { clip: { lessonId: number; start: number; end: num
   )
 }
 
+/** I tipi di domanda che si attaccano a una singola unità (le vaste no). */
+const UNIT_TYPES: { id: RecallType; label: string }[] = [
+  { id: 'quiz', label: 'Quiz' },
+  { id: 'mirata', label: 'Mirata' },
+  { id: 'caso', label: 'Caso clinico' },
+  { id: 'esercizio', label: 'Esercizio' },
+]
+
 /** Domande su una parte che non ne ha ancora: si generano solo su quelle unità (quiz e mirate). */
 function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units: string[]; onReady: () => void }) {
   const generate = useGenerateForUnits(lessonId)
@@ -313,7 +615,7 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
       {jobId && !done ? (
         <p role="status" className="text-meta text-muted-foreground">Genero le domande…</p>
       ) : (
-        <Button onClick={() => generate.mutate(units, { onSuccess: (accepted) => setJobId(accepted.job_id) })} disabled={generate.isPending}>
+        <Button onClick={() => generate.mutate({ unitIds: units }, { onSuccess: (accepted) => setJobId(accepted.job_id) })} disabled={generate.isPending}>
           Genera le domande
         </Button>
       )}
@@ -323,244 +625,96 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
   )
 }
 
-type QuizResult = Schemas['QuizResult']
-
-type Outcome =
-  | { kind: 'quiz'; question: RecallQuestion; choice: number; correct: boolean }
-  | { kind: 'open'; jobId: string; answer: string | null }
-
-const OPEN_LABEL: Record<string, string> = { mirata: 'Domanda mirata', vasta: 'Domanda vasta', caso: 'Caso clinico', esercizio: 'Esercizio' }
-
-/** Le domande dell'unità, una alla volta (schermata 06). */
-function QuestionPhase({ lessonId, unit, total, back, dots, actions, onReread, onDone }: {
+/** Popup "genera ora": tipo, quante e istruzioni, poi il job di recall sull'unità (4.2.2b3). */
+function GenerateUnitQuestions({ open, onClose, lessonId, unit }: {
+  open: boolean
+  onClose: () => void
   lessonId: number
   unit: StudyUnit
-  total: number
-  back: { to: string; label: string }
-  dots: ReactNode
-  actions?: ReactNode
-  onReread: () => void
-  onDone: () => void
 }) {
-  const next = useNextQuestion(lessonId)
-  const answer = useAnswer(lessonId)
-  const voice = useAnswerVoice(lessonId)
-  const skip = useSkip(lessonId)
-  const [question, setQuestion] = useState<RecallQuestion | null>(null)
-  const [asked, setAsked] = useState(0)
-  const [outcome, setOutcome] = useState<Outcome | null>(null)
-  const requested = useRef(false)
-
-  const ask = useCallback((excludeId?: string) => {
-    setOutcome(null)
-    next.mutate({ qtype: 'mista', unitId: unit.id, excludeId }, {
-      onSuccess: (q) => {
-        setQuestion(q)
-        setAsked((n) => n + 1)
-      },
-      onError: (error) => {
-        if (error instanceof ApiError && error.code === 'no_questions') onDone()
-      },
-    })
-  }, [next, unit.id, onDone])
-
-  useEffect(() => {
-    if (requested.current) return
-    requested.current = true
-    ask()
-  }, [ask])
-
-  const proceed = () => {
-    if (asked >= total) onDone()
-    else ask()
-  }
-  const busy = answer.isPending || voice.isPending || next.isPending || skip.isPending
-  const count = Math.max(total, asked)
-  const label = `${unit.title} · domanda ${Math.max(asked, 1)} di ${count}`
-  const failure = next.error && !(next.error instanceof ApiError && next.error.code === 'no_questions') ? next.error : (answer.error ?? voice.error ?? skip.error)
-  return (
-    <div className="flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study-questions">
-      <PageHeader
-        title={label}
-        muted
-        titleAs="h1"
-        back={back}
-        actions={actions ?? <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={onReread} />}
-        className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta"
-      />
-      <div className="flex-1 px-7 pb-8 pt-3 max-md:px-[18px]">
-        <div className="mx-auto w-full max-w-[560px]">
-          {dots}
-          {failure && <Alert tone="danger" className="mb-4">{errorMessage(failure)}</Alert>}
-          {!question ? (
-            <div className="h-48 rounded-lg bg-muted" aria-busy="true" aria-label="Carico la domanda" role="status" />
-          ) : (
-            <article className="rounded-lg bg-muted p-4" data-testid="study-question" data-type={question.type} data-question-id={question.id}>
-              {question.type !== 'quiz' && <p className="mb-1 text-meta text-muted-foreground">{OPEN_LABEL[question.type] ?? 'Domanda aperta'}</p>}
-              <h2 className="mb-0.5 text-[15px] font-semibold leading-relaxed">{question.question_text}</h2>
-              {question.type === 'quiz' ? (
-                <QuizAnswers
-                  question={outcome?.kind === 'quiz' ? outcome.question : question}
-                  outcome={outcome?.kind === 'quiz' ? outcome : null}
-                  disabled={busy || !!outcome}
-                  onAnswer={(choice) => answer.mutate({ questionId: question.id, choice }, {
-                    onSuccess: (r) => {
-                      const quiz = r.quiz as QuizResult | undefined
-                      if (quiz) setOutcome({ kind: 'quiz', question: quiz.question, choice, correct: quiz.correct })
-                    },
-                  })}
-                />
-              ) : outcome?.kind === 'open' ? (
-                <Evaluation jobId={outcome.jobId} />
-              ) : (
-                <OpenAnswer
-                  disabled={busy}
-                  onWritten={(text) => answer.mutate({ questionId: question.id, answer: text }, { onSuccess: (r) => r.job && setOutcome({ kind: 'open', jobId: r.job.job_id, answer: text }) })}
-                  onVoice={(audio) => voice.mutate({ questionId: question.id, audio }, { onSuccess: (job) => setOutcome({ kind: 'open', jobId: job.job_id, answer: null }) })}
-                />
-              )}
-            </article>
-          )}
-          {question && (
-            <div className="mt-4 flex items-center justify-end gap-2">
-              {!outcome && (
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => skip.mutate(question.id, { onSuccess: () => (asked >= total ? onDone() : ask(question.id)) })}>
-                  Salta
-                </Button>
-              )}
-              {outcome && (
-                <Button onClick={proceed} disabled={busy} data-testid="study-continue">
-                  {asked >= total ? 'Avanti' : 'Prossima domanda'}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** Risposte del quiz come righe grandi; dopo la scelta, giusta e sbagliata e la spiegazione. */
-function QuizAnswers({ question, outcome, disabled, onAnswer }: {
-  question: RecallQuestion
-  outcome: { choice: number; correct: boolean } | null
-  disabled: boolean
-  onAnswer: (choice: number) => void
-}) {
-  return (
-    <>
-      <div role="group" aria-label="Risposte">
-        {question.options?.map((option, i) => {
-          const right = outcome && question.correct_index === i
-          const wrong = outcome && outcome.choice === i && !outcome.correct
-          return (
-            <button
-              key={i}
-              type="button"
-              aria-pressed={outcome ? outcome.choice === i : false}
-              disabled={disabled}
-              onClick={() => onAnswer(i)}
-              data-state={right ? 'correct' : wrong ? 'wrong' : undefined}
-              className={cn(
-                'mt-3 flex min-h-[52px] w-full items-start gap-2 rounded-md border bg-card p-3.5 text-left text-[15px] leading-normal text-foreground',
-                'enabled:hover:border-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default',
-                right && 'border-success bg-success-soft text-success',
-                wrong && 'border-danger bg-danger-soft text-danger',
-              )}
-            >
-              <span className="flex-1">{option}</span>
-              {right && <Check className="mt-0.5 size-[18px] shrink-0" aria-label="Risposta giusta" />}
-              {wrong && <X className="mt-0.5 size-[18px] shrink-0" aria-label="Risposta sbagliata" />}
-            </button>
-          )
-        })}
-      </div>
-      {outcome && (
-        <div role="status" className="mt-4 text-body" data-testid="study-feedback">
-          <p className="font-semibold">{outcome.correct ? 'Giusto.' : 'Sbagliato.'}</p>
-          {question.explanation && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{question.explanation}</p>}
-        </div>
-      )}
-    </>
-  )
-}
-
-/** Risposta aperta: scritta o a voce (il microfono c'è solo qui, non nel quiz). */
-function OpenAnswer({ disabled, onWritten, onVoice }: { disabled: boolean; onWritten: (text: string) => void; onVoice: (audio: File) => void }) {
-  const [text, setText] = useState('')
-  const [recording, setRecording] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const recorder = useRef<MediaRecorder | null>(null)
-  const phone = useIsPhone()
-  const supported = typeof window !== 'undefined' && 'MediaRecorder' in window && !!navigator.mediaDevices?.getUserMedia
-  useEffect(() => () => recorder.current?.stream.getTracks().forEach((t) => t.stop()), [])
-  const start = async () => {
-    setError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const format = recordingFormat((t) => MediaRecorder.isTypeSupported(t))
-      const rec = new MediaRecorder(stream, format.mimeType ? { mimeType: format.mimeType } : undefined)
-      const chunks: Blob[] = []
-      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-      rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop())
-        onVoice(new File(chunks, `risposta.${format.extension}`, { type: rec.mimeType || format.mimeType || 'audio/webm' }))
-      }
-      rec.start()
-      recorder.current = rec
-      setRecording(true)
-    } catch (err) {
-      setError(err instanceof Error && err.name === 'NotAllowedError' ? 'Il browser non ha il permesso di usare il microfono.' : 'Microfono non disponibile.')
-    }
-  }
-  const stop = () => {
-    recorder.current?.stop()
-    recorder.current = null
-    setRecording(false)
-  }
-  return (
-    <form
-      className="mt-3"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (text.trim()) onWritten(text.trim())
-      }}
-    >
-      <textarea
-        aria-label="La tua risposta"
-        placeholder="Scrivi la risposta, o rispondi a voce"
-        rows={phone ? 4 : 5}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        className="block w-full rounded-md border bg-card px-3 py-2.5 text-[15px] text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-      />
-      <div className="mt-2 flex items-center gap-1">
-        {recording ? (
-          <IconButton label="Ferma e invia la risposta a voce" icon={Square} onClick={stop} className="text-danger" />
-        ) : (
-          <IconButton label="Rispondi a voce" icon={Mic} onClick={() => void start()} unavailable={!supported ? 'microfono non disponibile in questo browser' : disabled ? 'attendi' : null} />
-        )}
-        {recording && <span role="status" className="text-meta text-danger">Registrazione in corso…</span>}
-        <span className="flex-1" />
-        <IconButton label="Invia la risposta" icon={SendHorizontal} variant="solid" type="submit" unavailable={!text.trim() ? 'scrivi una risposta' : disabled ? 'attendi' : null} />
-      </div>
-      {error && <p role="alert" className="mt-2 text-meta text-danger">{error}</p>}
-    </form>
-  )
-}
-
-/** Valutazione della risposta aperta (job recall_evaluate), dal canale live. */
-function Evaluation({ jobId }: { jobId: string }) {
+  const generate = useGenerateForUnits(lessonId)
+  const client = useQueryClient()
+  const [jobId, setJobId] = useState<string | null>(null)
   const job = useJobStatus(jobId)
-  const result = job.data?.result as { evaluation?: string; answer?: string } | null | undefined
-  if (!jobFinished(job.data)) return <p role="status" className="mt-3 text-meta text-muted-foreground" data-testid="study-evaluating">Valuto la risposta…</p>
-  if (job.data?.state !== 'succeeded') return <Alert tone="danger" className="mt-3">{job.data?.error ?? 'Valutazione non riuscita.'}</Alert>
+  const [qtype, setQtype] = useState<RecallType>('quiz')
+  const [count, setCount] = useState('3')
+  const [instructions, setInstructions] = useState('')
+  const failed = job.data?.state === 'failed'
+  const done = jobFinished(job.data)
+  const running = jobId !== null && !done
+
+  // Finito il job le domande ci sono: si aggiorna lo Studio e si chiude, senza partire
+  // col ripasso (il pulsante "Mettimi alla prova" aspetta un clic).
+  useEffect(() => {
+    if (!done || failed) return
+    void client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }).then(onClose)
+  }, [done, failed, client, lessonId, onClose])
+
   return (
-    <div role="status" className="mt-3 flex flex-col gap-2 text-body" data-testid="study-feedback">
-      {result?.answer && <p className="whitespace-pre-wrap rounded-md bg-card px-3 py-2"><span className="text-meta text-muted-foreground">La tua risposta: </span>{result.answer}</p>}
-      <p className="whitespace-pre-wrap">{result?.evaluation ?? 'Valutazione non disponibile.'}</p>
-    </div>
+    <Modal open={open} onClose={running ? () => undefined : onClose} title={`Genera domande · ${unit.title}`} testId="study-generate-modal">
+      <div className="mt-3 flex flex-col gap-3">
+        <div>
+          <span className="mb-1.5 block text-meta text-muted-foreground">Tipo</span>
+          <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1.5">
+            {UNIT_TYPES.map(({ id, label }) => (
+              <Chip key={id} size="sm" active={qtype === id} aria-pressed={qtype === id} disabled={running} onClick={() => setQtype(id)}>
+                {label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Quante</label>
+          <Input
+            id="study-gen-count"
+            type="number"
+            min="1"
+            max="20"
+            disabled={running}
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+            className="h-8 w-16 px-2 py-0 text-center"
+          />
+        </div>
+        <div>
+          <label htmlFor="study-gen-instructions" className="mb-1 block text-meta text-muted-foreground">
+            Istruzioni aggiuntive (facoltative)
+          </label>
+          <textarea
+            id="study-gen-instructions"
+            rows={2}
+            disabled={running}
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="Per esempio: concentrati sui valori soglia"
+            className="block w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-meta placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          />
+        </div>
+        {failed && <Alert tone="danger">{job.data?.error ?? 'Generazione non riuscita.'}</Alert>}
+        {generate.isError && <Alert tone="danger">{errorMessage(generate.error)}</Alert>}
+        <div className="mt-1 flex items-center justify-end gap-2">
+          {running ? (
+            <p role="status" className="flex-1 text-meta text-muted-foreground">Genero le domande su {unit.id}…</p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={onClose}>Annulla</Button>
+          )}
+          <Button
+            size="sm"
+            disabled={running || generate.isPending}
+            data-testid="study-generate-start"
+            onClick={() =>
+              generate.mutate(
+                { unitIds: [unit.id], qtype, count: Math.min(20, Math.max(1, parseInt(count, 10) || 3)), instructions },
+                { onSuccess: (accepted) => setJobId(accepted.job_id) },
+              )
+            }
+          >
+            <Sparkles aria-hidden />
+            {running ? 'Generazione…' : 'Genera'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -691,6 +845,69 @@ function UnitIndexMenu({
               {renderItems()}
             </div>
           </section>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Evidenziatore e gomma (4.2.2, H1): selettore a due posizioni come quello di Lezioni; un clic
+ * sull'evidenziatore già attivo cambia colore, a giro. Il cestino toglie tutto, dopo una conferma.
+ */
+function HighlightTools({ mode, color, onMode, onColor, onClear }: {
+  mode: HighlightMode
+  color: number
+  onMode: (mode: HighlightMode) => void
+  onColor: (color: number) => void
+  onClear: () => Promise<void>
+}) {
+  const [confirm, setConfirm] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!confirm) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setConfirm(false) }
+    const onClick = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setConfirm(false) }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onClick)
+    }
+  }, [confirm])
+  const segment = 'relative inline-flex size-8 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+  return (
+    <div className="relative flex items-center gap-1" ref={ref}>
+      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5" data-testid="highlight-tools">
+        <button
+          type="button"
+          aria-pressed={mode === 'evidenzia'}
+          aria-label={mode === 'evidenzia' ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}: clic per cambiare colore` : 'Evidenziatore'}
+          title={mode === 'evidenzia' ? `Evidenziatore ${HIGHLIGHT_COLORS[color]} (clic: colore successivo)` : 'Evidenziatore'}
+          data-color={color}
+          data-testid="highlight-pen"
+          className={segment}
+          onClick={() => (mode === 'evidenzia' ? onColor((color + 1) % HIGHLIGHT_COLORS.length) : onMode('evidenzia'))}
+        >
+          <HighlighterIcon className="size-4" aria-hidden />
+          <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
+        </button>
+        <button type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma" title="Gomma: clic su un'evidenziazione per toglierla"
+          data-testid="highlight-eraser" className={segment} onClick={() => onMode('gomma')}>
+          <Eraser className="size-4" aria-hidden />
+        </button>
+      </div>
+      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" />
+      {confirm && (
+        <div role="dialog" aria-label="Togli le evidenziazioni" className="absolute right-0 top-10 z-30 w-64 rounded-lg border bg-card p-3 text-body shadow-panel">
+          <p>Togli tutte le evidenziazioni di questa unità?</p>
+          {failed && <p className="mt-1 text-meta text-danger">Non riuscito, riprova.</p>}
+          <div className="mt-3 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>Annulla</Button>
+            <Button size="sm" variant="destructive" data-testid="highlight-clear-confirm"
+              onClick={() => onClear().then(() => { setFailed(false); setConfirm(false) }, () => setFailed(true))}>Togli</Button>
+          </div>
         </div>
       )}
     </div>

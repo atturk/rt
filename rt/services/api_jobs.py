@@ -201,6 +201,16 @@ def recall_regenerate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done({'question': question_view(question)}, lesson_path=job.lesson_path)
 
 
+def recall_comment_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    """Riscrive solo il commento dell'IA di una domanda, lasciandola com'è (4.2.2b3)."""
+    from rt.services.recall_editing import regenerate_comment
+    from rt.services.recall_service import question_view
+    with ctx.activate():
+        question = regenerate_comment(job.lesson_path, job.payload['question_id'],
+                                      force_mock=bool(job.payload.get('mock')))
+    return _done({'question': question_view(question, reveal=True)}, lesson_path=job.lesson_path)
+
+
 def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Rifornisce il pool di un tipo arrivato alla soglia (dopo una domanda mostrata)."""
     from rt.core.models import RecallQuestionType
@@ -434,7 +444,7 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 for _type, _handler in (
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
-    ('recall_regenerate', recall_regenerate_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
+    ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),

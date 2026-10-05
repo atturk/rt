@@ -28,6 +28,7 @@ class PhaseProgress(_Event):
     current: Optional[int] = None
     total: Optional[int] = None
     message: str = ""
+    lesson_dir: Optional[str] = None
     # Fasi a unità: unità in lavorazione e quante sono fallite finora (dati strutturati per
     # l'interfaccia, es. "Revisione · 8/31", senza leggere il messaggio)
     unit_id: Optional[str] = None

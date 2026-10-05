@@ -24,10 +24,12 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
-import { Select } from '@/components/ui/select'
+import { SettingsSelect as Select } from './common'
 import { optionRevealClass, useOptionKey } from '@/lib/optionKey'
 import { PROVIDERS, ROUTE_ROLES, defaultBaseUrl, providerLabel, type Provider } from '@/lib/settings'
-import { Checkbox, Field, SaveFeedback, SecretBadge, Section } from './common'
+import { Checkbox, Field, SaveFeedback, Section } from './common'
+
+import { SecretsSection, PricingSection } from './keys'
 
 type Connection = Settings['connections'][number]
 type Phase = Settings['phases'][number]
@@ -50,12 +52,12 @@ export function PromptEditorSection() {
       <option value="outline">Scaletta</option><option value="rewrite">Rielaborazione</option><option value="review">Revisione</option>
       <option value="image_description">Descrizione immagini</option><option value="recall">Recall</option>
     </Select></Field>
-    <Field label="Istruzioni aggiuntive (in grigio il predefinito, sempre applicato)" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
-      className="w-full rounded border bg-background p-2 font-mono text-xs placeholder:text-muted-foreground/70" rows={16} maxLength={20000}
+    <Field label="Istruzioni aggiuntive" htmlFor="prompt-instruction"><textarea id="prompt-instruction"
+      className="w-full rounded border bg-background p-2 font-mono text-meta placeholder:text-muted-foreground/70" rows={16} maxLength={20000}
       placeholder={prompts.data?.[phase]?.default ?? ''}
       value={instruction} onChange={(e) => setDrafts((old) => ({ ...old, [phase]: e.target.value }))} /></Field>
     <Button disabled={save.isPending || prompts.isPending} onClick={() => save.mutate()}>Salva istruzioni</Button>
-    {save.isSuccess && <p role="status" className="text-xs text-success">Istruzioni salvate.</p>}
+    {save.isSuccess && <p role="status" className="text-meta text-success">Istruzioni salvate.</p>}
     {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
   </Section>
 }
@@ -86,7 +88,7 @@ export function PhasesSection({ settings }: { settings: Settings }) {
   )
 }
 
-/** Le sei fasi, ognuna con connessione, modello, Salva e Prova. Usate anche dalla configurazione
+/** Le fasi, ognuna con connessione, modello, Salva e Prova. Usate anche dalla configurazione
  * guidata ("Scegli per ogni fase"). */
 export function PhaseRows({ settings }: { settings: Settings }) {
   return (
@@ -118,9 +120,9 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       aria-label={`Fase ${phase.label}`}
     >
       <div className="flex flex-col gap-1 self-center">
-        <span className="text-sm font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
+        <span className="text-body font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
         {phase.model ? (
-          <span className="text-[11px] text-muted-foreground" data-testid="phase-saved">
+          <span className="text-meta text-muted-foreground" data-testid="phase-saved">
             {phase.connection} · {phase.model}
           </span>
         ) : (
@@ -200,7 +202,7 @@ export function ModelTest({
   let outcome = null
   if (current && test.isPending) {
     outcome = (
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-meta text-muted-foreground">
         Prova in corso…
       </p>
     )
@@ -210,7 +212,7 @@ export function ModelTest({
     const r = test.data
     const latency = r.latency_ms != null ? `${r.latency_ms} ms` : null
     outcome = r.ok ? (
-      <p role="status" className="text-xs text-success" data-testid="model-test-result">
+      <p role="status" className="text-meta text-success" data-testid="model-test-result">
         Raggiungibile{latency ? ` · ${latency}` : ''} · {r.message}
       </p>
     ) : (
@@ -241,15 +243,19 @@ export function ModelTest({
 export function ConnectionsSection({ settings }: { settings: Settings }) {
   return (
     <Section id="connessioni" title="Connessioni" description="Provider LLM con le loro chiavi. Con più chiavi RT le alterna automaticamente.">
-      {settings.connections.length === 0 && <p className="text-sm text-muted-foreground">Nessuna connessione.</p>}
+      {settings.connections.length === 0 && <p className="text-body text-muted-foreground">Nessuna connessione.</p>}
       {settings.connections.map((c) => (
-        <ConnectionItem key={c.name} connection={c} />
+        <ConnectionItem key={c.name} connection={c} settings={settings} />
       ))}
+      {Object.keys(settings.pricing ?? {}).filter(provider => !settings.connections.some(c => c.provider === provider)).map(provider =>
+        <div key={provider} className="border-t py-3"><h3 className="text-body font-semibold">{providerLabel(provider)} · senza connessione</h3>
+          <PricingSection settings={settings} connection={{ name: `costi-${provider}`, provider, base_url: '', credentials: [], models: Object.keys(settings.pricing[provider]) }} />
+        </div>)}
     </Section>
   )
 }
 
-function ConnectionItem({ connection }: { connection: Connection }) {
+function ConnectionItem({ connection, settings }: { connection: Connection; settings: Settings }) {
   const addModel = useAddModel()
   const [model, setModel] = useState('')
   const optionDown = useOptionKey()
@@ -269,24 +275,19 @@ function ConnectionItem({ connection }: { connection: Connection }) {
           Eliminare la connessione «{connection.name}» con i suoi modelli
           {keys > 0 ? ` e ${keys === 1 ? 'la sua chiave' : `le sue ${keys} chiavi`} (dall'archivio di RT e da .env)` : ''}?
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">Le fasi e le route che la usano vanno prima assegnate a un'altra connessione.</p>
+        <p className="mt-2 text-meta text-muted-foreground">Le fasi e le route che la usano vanno prima assegnate a un'altra connessione.</p>
         {deletion.isError && <Alert tone="danger" className="mt-3">{errorMessage(deletion.error)}</Alert>}
       </ConfirmDialog>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-10">
-        <h3 className="text-sm font-bold">{connection.name}</h3>
-        <span className="text-xs text-muted-foreground">
+        <h3 className="text-body font-bold">{connection.name}</h3>
+        <span className="text-meta text-muted-foreground">
           {providerLabel(connection.provider)} · {connection.base_url}
         </span>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Chiavi">
-        {connection.credentials.map((cred) => (
-          <span key={cred.name} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            {cred.name} <SecretBadge set={cred.set} />
-          </span>
-        ))}
-      </div>
+      <SecretsSection settings={settings} connection={connection} />
+      <PricingSection settings={settings} connection={connection} />
       <div className="mt-2 flex flex-wrap gap-1.5" data-testid="connection-models">
-        {connection.models.length === 0 && <span className="text-xs text-muted-foreground">Nessun modello.</span>}
+        {connection.models.length === 0 && <span className="text-meta text-muted-foreground">Nessun modello.</span>}
         {connection.models.map((m) => (
           <Badge key={m}>{m}</Badge>
         ))}
@@ -373,7 +374,7 @@ export function NewConnectionForm({ onCreated, submitLabel = 'Crea connessione' 
           </Button>
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground">Le chiavi vanno nell'archivio dei segreti di RT e non si rileggono più dalla pagina.</p>
+      <p className="text-meta text-muted-foreground">Le chiavi vanno nell'archivio dei segreti di RT e non si rileggono più dalla pagina.</p>
       <div>
         <Button type="submit" disabled={create.isPending || !name.trim() || !keys[0].trim()}>
           {submitLabel}
@@ -435,7 +436,7 @@ export function RoutesSection({ settings }: { settings: Settings }) {
           </Select>
         </Field>
       </div>
-      {route.isPending && <p className="text-sm text-muted-foreground">Carico la route…</p>}
+      {route.isPending && <p className="text-body text-muted-foreground">Carico la route…</p>}
       {route.isError && <Alert tone="danger">{errorMessage(route.error)}</Alert>}
       {route.data && <RouteForm key={JSON.stringify(route.data)} route={route.data} settings={settings} save={save} />}
       <SaveFeedback mutation={save} />
@@ -529,13 +530,13 @@ export function CredentialTest({ credential, settings, action }: { credential: s
   if (test.isError) outcome = <Alert tone="danger">{errorMessage(test.error)}</Alert>
   else if (test.data && !isTerminal(state)) {
     outcome = (
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-meta text-muted-foreground">
         {test.data.worker_available ? 'Prova in corso…' : 'Nessun worker attivo: la prova resta in coda finché RT non viene riavviato con la web.'}
       </p>
     )
   } else if (state === 'succeeded' && result) {
     outcome = result.ok ? (
-      <p role="status" className="text-xs text-success" data-testid="credential-test-result">
+      <p role="status" className="text-meta text-success" data-testid="credential-test-result">
         Riuscita: {result.message}
       </p>
     ) : (

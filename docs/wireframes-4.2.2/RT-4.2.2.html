@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wireframe RT 4.2.2</title>
+<style>
+/* Layout: una barra con le schede in alto, sotto la schermata dentro una cornice (desktop o telefono). Token presi dall'app RT (index.css). */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --r-bg:#ffffff; --r-fg:#171717; --r-dim:#8a8a8a; --r-guide:#d4d4d4; --r-panel:#f6f6f6;
+  --hl-1:#ffe58a; --hl-2:#b9ecc9; --hl-3:#bfdcff; --hl-4:#ffc9e3; --hl-5:#ffd2a8;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --r-bg:#0b0b0b; --r-fg:#f2f2f2; --r-dim:#777; --r-guide:#3a3a3a; --r-panel:#141414;
+  --hl-1:#6b5a12; --hl-2:#1f5a37; --hl-3:#1f4a7a; --hl-4:#6e2a4f; --hl-5:#7a4518; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --r-bg:#0b0b0b; --r-fg:#f2f2f2; --r-dim:#777; --r-guide:#3a3a3a; --r-panel:#141414;
+  --hl-1:#6b5a12; --hl-2:#1f5a37; --hl-3:#1f4a7a; --hl-4:#6e2a4f; --hl-5:#7a4518; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 6px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs,.seg{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px}
+.tabs button,.seg button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"],.seg button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:6px;min-width:0}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg)}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 auto;position:relative}
+.frame.desk{width:1000px;height:600px}
+.frame.phone{width:390px;height:760px;border-radius:36px;border-width:8px;border-color:var(--fg)}
+/* ---------- Studio */
+.app{display:flex;height:100%}
+.rail{width:56px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0}
+.rail i{width:34px;height:34px;border-radius:8px;background:var(--acc-soft);display:block}
+.rail i.g{background:transparent;border:1px solid var(--border)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 14px}
+.hdr .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mute);font-size:15px}
+.ib{width:34px;height:34px;border-radius:8px;border:0;background:transparent;color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ib:hover{background:var(--soft)}
+.ib svg{width:18px;height:18px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--fg);white-space:nowrap}
+.body{flex:1;overflow:auto;padding:12px 28px}
+.col{max-width:620px;margin:0 auto;position:relative}
+.dots{display:flex;gap:4px;margin:2px 0 18px}
+.dots i{height:3px;flex:1;border-radius:3px;background:var(--soft)}
+.dots i.on{background:var(--fg)}
+.tool{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;margin:0 0 14px -2px}
+.tool .seg{padding:2px}
+.tool .seg button{width:34px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.tool .seg button svg{width:17px;height:17px}
+.sw{position:absolute;bottom:3px;left:9px;right:9px;height:3px;border-radius:2px}
+.unit h3{font-size:22px;line-height:1.3;margin:0 0 12px}
+.unit p{margin:0 0 14px}
+.unit mark{color:inherit;border-radius:2px;padding:0 1px}
+.unit[data-mode="erase"] mark{cursor:pointer;outline:1px dashed var(--mute)}
+.unit[data-mode="hl"]{cursor:text}
+.ftr{border-top:1px solid var(--border);padding:14px;display:flex;justify-content:center}
+.big{width:100%;max-width:620px;height:46px;border:0;border-radius:8px;background:var(--acc-soft);color:var(--acc);font:inherit;font-weight:600;cursor:pointer}
+.callout{position:absolute;background:var(--note);color:var(--note-fg);font-size:12px;border-radius:6px;padding:3px 7px;white-space:nowrap;pointer-events:none}
+.phone .rail{display:none}
+.phone .hdr{height:56px;padding:0 8px}
+.phone .hdr .t{font-size:13px}
+.phone .body{padding:10px 18px}
+.phone .unit h3{font-size:19px}
+.phone .ftr{border-top:0;padding:0 18px 12px}
+.tabbar{height:64px;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center}
+.tabbar i{width:26px;height:26px;border-radius:7px;background:var(--soft);display:block}
+.tg{width:38px;height:22px;border-radius:11px;border:0;background:var(--border);position:relative;cursor:pointer;flex:none;padding:0}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.tg[aria-pressed="true"]{background:var(--acc)}
+.tg[aria-pressed="true"]::after{left:19px}
+/* ---------- Lettura veloce (stile oleksii: notte/giorno propri, parola spaziata, una lettera di fuoco) */
+.rsvp{--o-bg:#121212;--o-fg:#e9e9e7;--o-dim:#6f6f6c;--o-line:#2a2a28;--o-panel:#1b1b1a;--o-chip:#1e1e1d;--focus:#e8714a;
+  position:absolute;inset:0;background:var(--o-bg);color:var(--o-fg);display:flex;flex-direction:column;padding:18px 22px 14px;gap:8px;font-family:var(--sans);transition:background .25s}
+.rsvp[data-day]{--o-bg:#f4f3ef;--o-fg:#1d1d1b;--o-dim:#8f8d87;--o-line:#dddbd4;--o-panel:#ffffff;--o-chip:#ebe9e3;--focus:#d4572f}
+.rsvp[data-tint="pesca"]{--o-bg:#f6dcc8;--o-fg:#2a1f18;--o-dim:#8a6f5e;--o-line:#e2c3ab;--o-panel:#fbe9dc;--o-chip:#efd0b9}
+.rsvp[data-tint="menta"]{--o-bg:#d5eee2;--o-fg:#16261f;--o-dim:#5f7d70;--o-line:#b9dccb;--o-panel:#e6f6ee;--o-chip:#c6e6d6}
+.rsvp[data-tint="pergamena"]{--o-bg:#efe4c7;--o-fg:#2a2416;--o-dim:#857a5d;--o-line:#dccfa9;--o-panel:#f7efd9;--o-chip:#e5d8b4}
+.otop{display:flex;align-items:center;gap:10px}
+.opill{height:32px;border:1px solid var(--o-line);border-radius:9px;background:var(--o-chip);color:var(--o-fg);font:inherit;font-size:13px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.opill:hover{border-color:var(--o-dim)}
+.ounit{flex:1;min-width:0;text-align:center;font-size:13px;color:var(--o-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.daynight{display:inline-flex;background:var(--o-chip);border:1px solid var(--o-line);border-radius:9px;padding:2px}
+.daynight button{border:0;background:transparent;color:var(--o-dim);font:inherit;font-family:var(--mono);font-size:12px;padding:4px 9px;border-radius:7px;cursor:pointer;display:inline-flex;gap:5px;align-items:center}
+.daynight button[aria-pressed="true"]{background:color-mix(in oklch,var(--focus) 22%,var(--o-panel));color:var(--o-fg)}
+.ostage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;gap:18px;position:relative}
+.oword{font-size:var(--wsize,60px);letter-spacing:.16em;white-space:pre;font-weight:400;display:flex;align-items:baseline;line-height:1.2;transform-origin:center;will-change:transform}
+.oword .pre,.oword .post{display:inline-block;width:6.2em}
+.oword .pre{text-align:right}
+.oword .orp{color:var(--focus)}
+.oword.dys{font-family:'Comic Sans MS','Comic Neue',var(--sans);letter-spacing:.2em}
+.oword.out{animation:zoomout var(--zo,400ms) ease-out forwards}
+@keyframes zoomout{from{transform:scale(1);opacity:1}to{transform:scale(.93);opacity:.82}}
+.orest{color:var(--o-dim);font-size:22px;letter-spacing:.14em;max-width:92%;text-align:center;min-height:1.4em;line-height:1.5}
+.octx{position:absolute;top:0;left:50%;transform:translateX(-50%);width:min(680px,100%);max-height:45%;overflow:auto;background:var(--o-panel);border:1px solid var(--o-line);border-radius:12px;padding:10px 14px;font-size:14px;line-height:1.7;color:var(--o-dim);z-index:2}
+.octx b{color:var(--o-fg);font-weight:400}
+.octx .cur{color:var(--focus);font-weight:600}
+.ospeed{display:grid;grid-template-columns:auto auto;align-items:center;justify-content:center;gap:4px 20px;font-family:var(--mono);font-size:13px;color:var(--o-dim)}
+.ospeed b{color:var(--o-fg);font-weight:400}
+.ospeed input{grid-column:1/-1;width:190px;justify-self:center}
+.rsvp input[type=range]{accent-color:var(--o-fg)}
+.oiconbtn{width:30px;height:30px;border-radius:8px;border:0;background:var(--o-chip);color:var(--o-fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.oiconbtn svg{width:16px;height:16px}
+.octrls{display:flex;justify-content:center;align-items:center;gap:26px;margin-top:6px}
+.oround{width:58px;height:58px;border-radius:50%;border:1px solid var(--o-line);background:var(--o-chip);color:var(--o-fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.oround svg{width:20px;height:20px}
+.oround small{position:absolute;bottom:-18px;font-family:var(--mono);font-size:10px;color:var(--o-dim)}
+.oplay{width:92px;height:92px;background:var(--o-bg)}
+.oplay svg.ic{width:26px;height:26px}
+.oplay svg.ring{position:absolute;inset:-6px;width:104px;height:104px;transform:rotate(-90deg)}
+.oplay svg.ring circle{fill:none;stroke-width:2}
+.ohint{text-align:center;font-size:12px;color:var(--o-dim);margin-top:14px}
+.ometa{text-align:center;font-family:var(--mono);font-size:11px;color:var(--o-dim)}
+.opop{position:absolute;right:22px;top:62px;width:300px;max-height:calc(100% - 80px);overflow:auto;background:var(--o-panel);border:1px solid var(--o-line);border-radius:14px;padding:4px 0;box-shadow:0 16px 40px rgb(0 0 0/.35);z-index:3;font-size:14px}
+.opop .it{padding:10px 14px;display:grid;gap:7px;border-bottom:1px solid var(--o-line)}
+.opop .it:last-child{border-bottom:0}
+.opop .h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.opop small{color:var(--o-dim);font-size:12px;display:block}
+.opop .seg{background:var(--o-chip);padding:3px;border-radius:9px}
+.opop .seg button{color:var(--o-fg);font-size:13px;padding:5px 9px;flex:1}
+.opop .seg button[aria-pressed="true"]{background:var(--o-bg)}
+.opop .seg{display:flex}
+.rsvp .tg{background:var(--o-line)}
+.rsvp .tg[aria-pressed="true"]{background:#1f9d6b}
+.phone .rsvp{padding:12px 14px 10px}
+.phone .oword{--wsize:36px}
+.phone .oword .pre,.phone .oword .post{width:4.6em}
+.phone .orest{font-size:16px}
+.phone .ohint{display:none}
+.phone .opop{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:62%}
+.phone .ounit{display:none}
+.phone .octrls{gap:18px}
+.setnav{width:230px;border-right:1px solid var(--border);padding:14px 8px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.setnav .ttl{font-weight:600;font-size:17px;padding:4px 10px 10px}
+.setnav button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;gap:6px}
+.setnav button small{color:var(--mute);font-size:12px}
+.setnav button[aria-current="true"]{background:var(--acc-soft);color:var(--acc);font-weight:600}
+.setnav hr{border:0;border-top:1px solid var(--border);margin:8px 6px}
+.setpage{overflow:auto;padding:18px 28px}
+.setpage h3{font-size:20px;margin:0 0 4px}
+.setpage .sub{color:var(--mute);font-size:13px;margin:0 0 14px}
+.grp{border:1px solid var(--border);border-radius:12px;margin:0 0 18px;max-width:620px}
+.grp .gt{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:12px 14px 4px}
+.line{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--border);font-size:14px}
+.grp .gt+.line{border-top:0}
+.line small{display:block;color:var(--mute);font-size:12px}
+.line .val{color:var(--mute);font-size:13px;white-space:nowrap}
+.line .tg{background:var(--border)}
+.line .tg[aria-pressed="true"]{background:var(--acc)}
+.keys{display:inline-flex;gap:3px}
+.search{width:100%;max-width:620px;height:36px;border:1px solid var(--border);border-radius:8px;padding:0 12px;font:inherit;font-size:14px;background:var(--bg);color:var(--fg);margin:0 0 14px}
+.phone #scr-set .setnav{width:100%;border-right:0}
+.phone #scr-set .setpage{display:none}
+.phone #scr-set.open .setnav{display:none}
+.phone #scr-set.open .setpage{display:block;padding:14px 16px}
+.hdr{position:relative}
+.hdr .t{border:0;background:transparent;font:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;margin-left:-4px}
+.hdr .t:hover{background:var(--soft)}
+.hdr .t .tl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hdr .t .ti{width:15px;height:15px;flex:none;opacity:.6}
+.tools{display:flex;align-items:center;gap:4px;flex:none}
+.tools .seg{padding:2px}
+.tools .seg button{width:32px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.tools .seg button svg{width:17px;height:17px}
+.vsep{width:1px;height:20px;background:var(--border);margin:0 4px}
+.tpop{position:absolute;top:50px;left:56px;z-index:5;width:min(440px,calc(100% - 24px));background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgb(0 0 0/.18);padding:14px 16px;display:grid;gap:10px;font-size:14px}
+.tpop .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.tpop .kv span:nth-child(odd){color:var(--mute)}
+.tpop a{color:var(--acc);font-weight:600;text-decoration:none;font-size:13px}
+.phone .hdr{gap:2px}
+.phone .hdr .t{flex:0 0 auto;padding:6px}
+.phone .hdr .t .tl{display:none}
+.phone .hdr .t .ti{width:18px;height:18px;opacity:1}
+.phone .hdr > span.spacer{flex:1}
+.phone .tools .seg button{width:36px;height:34px}
+.phone .ib{width:36px;height:36px}
+.phone .vsep{display:none}
+.phone .tpop{left:8px;right:8px;width:auto;top:54px}
+@media (prefers-reduced-motion:reduce){.tg::after{transition:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div style="display:grid;gap:2px">
+    <h1>Wireframe RT 4.2.2</h1>
+    <span class="meta">Bozza da discutere: le parti evidenziate in giallo sono scelte da confermare.</span>
+  </div>
+  <div class="tabs" role="group" aria-label="Schermata">
+    <button id="tab-studio" aria-pressed="true">Studio ed evidenziatore</button>
+    <button id="tab-rsvp" aria-pressed="false">Lettura veloce</button>
+    <button id="tab-set" aria-pressed="false">Impostazioni</button>
+  </div>
+  <div class="seg" role="group" aria-label="Dispositivo">
+    <button id="dev-desk" aria-pressed="true">Mac</button>
+    <button id="dev-phone" aria-pressed="false">iPhone</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="notes-studio" class="notes">
+    <h2>Studio: evidenziatore, frecce, titolo più corto</h2>
+    <ul>
+      <li>Nel titolo non c'è più "· unità 1 di 16": la posizione resta solo nel pulsante dell'indice a destra.</li>
+      <li><span class="kbd">←</span> <span class="kbd">→</span> passano all'unità precedente o successiva (solo su Mac, solo mentre si legge; nelle domande le frecce servono al campo di testo). Prova qui sotto: clicca nella schermata e usa le frecce.</li>
+      <li>In alto a destra, accanto a lettura veloce, audio e indice: evidenziatore e gomma in un selettore a due posizioni, poi il cestino che toglie tutte le evidenziazioni dell'unità.</li>
+      <li>Il titolo è un pulsante: un clic apre un popup con il titolo intero, materia, docente, data, unità e durata dell'audio, più "Apri la lezione". Sull'iPhone lo spazio non basta per il titolo, quindi resta solo l'icona <b>i</b> che apre lo stesso popup.</li>
+      <li>Evidenziatore attivo: si seleziona il testo e resta evidenziato, senza popup. Un altro clic sull'evidenziatore cambia colore (giallo, verde, azzurro, rosa, arancio); la striscia sotto l'icona mostra il colore.</li>
+      <li>Gomma attiva: un clic su un'evidenziazione la toglie.</li>
+      <li class="q">Da confermare: le evidenziazioni si salvano sul Mac (database di RT), quindi si ritrovano anche su iPhone; si vedono solo nello Studio, non cambiano il documento né l'export.</li>
+    </ul>
+  </section>
+  <section id="notes-rsvp" class="notes" hidden>
+    <h2>Lettura veloce, sul modello di oleksii</h2>
+    <ul>
+      <li>Premi play: il suono funziona. È un clic a ogni parola, più grave e lungo a fine frase. A fine frase la parola rimpicciolisce appena e si attenua per tutta la pausa ("zoom out").</li>
+      <li>All'apertura prende il tema dell'app (chiaro o scuro). Con Giorno/Notte lo cambi solo dentro la lettura veloce, come in oleksii. La parola è grande e spaziata, la lettera di fuoco è arancione e sta sempre nello stesso punto. In pausa compare, attenuato, il testo intorno: sopra la frase fino alla parola, sotto il resto della frase. Mentre legge si vede solo la parola.</li>
+      <li>Velocità con lo slider. Il cerchio intorno al play mostra quanto manca alla fine dell'unità. Il pulsante a sinistra torna indietro di N parole, quello a destra ricomincia.</li>
+      <li>Le impostazioni (icona accanto alla velocità) sono quelle di oleksii, in italiano: suono e tono, font per dislessia, modalità Irlen con tre sfondi, rumore di fondo bianco, rosa o marrone, pausa dopo la frase, lettera di fuoco, virgola come pausa piena, passo indietro. Ho aggiunto la dimensione del testo.</li>
+      <li>Da Readest c'è solo "Contesto", in alto a destra: il paragrafo con la parola corrente.</li>
+      <li>Tasti: <span class="kbd">Spazio</span> avvia e ferma, <span class="kbd">←</span> <span class="kbd">→</span> frase precedente e successiva, <span class="kbd">↑</span> <span class="kbd">↓</span> velocità, <span class="kbd">Home</span> ricomincia, <span class="kbd">Esc</span> torna allo Studio.</li>
+      <li class="q">Il codice di oleksii non l'ho potuto aprire, perché da qui il sito è bloccato. Suono, tono e zoom li ho rifatti guardando le tue indicazioni e la descrizione del progetto, quindi i dettagli (timbro del clic, durata dello zoom) sono da confrontare a orecchio con l'originale.</li>
+    </ul>
+  </section>
+
+  <section id="notes-set" class="notes" hidden>
+    <h2>Impostazioni: proposta di riorganizzazione</h2>
+    <ul>
+      <li>Da 8 schede a 7 sezioni divise per quello che vuoi fare, non per come è fatto RT. In alto le cose personali che si toccano spesso, in fondo quelle tecniche.</li>
+      <li>Ogni impostazione sta in un posto solo. Oggi Telegram è diviso tra due schede, il token del bot si cambia in tre posti, la chiave della trascrizione in due e l'arricchimento ha due controlli che si contraddicono.</li>
+      <li>Le chiavi API passano dentro la loro connessione. La scheda Chiavi sparisce, e così i Costi, che vanno sul modello.</li>
+      <li>Il tema ha la scelta "Sistema" e sta in "Aspetto e lettura" (oggi è solo un'icona). Lì vanno anche le preferenze nuove: lettura veloce, evidenziatore, velocità audio.</li>
+      <li>La sezione nuova "Scorciatoie" rende personalizzabili le scorciatoie dell'editor della 4.2.1, come in Obsidian: cerchi il comando, premi la combinazione nuova, e RT ti avvisa se è già usata.</li>
+      <li>Sul telefono l'elenco delle sezioni è una pagina, e ogni sezione si apre a schermo intero (come le Impostazioni di iOS).</li>
+      <li class="q">Da confermare: le preferenze personali (tema, lettura veloce, scorciatoie) si salvano su RT e valgono su tutti i dispositivi. Il tema può restare diverso tra Mac e iPhone se lasci "Sistema".</li>
+    </ul>
+  </section>
+  <div class="stage"><div id="frame" class="frame desk" tabindex="0" aria-label="Schermata di prova">
+
+    <!-- STUDIO -->
+    <div id="scr-studio" class="app">
+      <nav class="rail" aria-hidden="true"><i></i><i class="g"></i><span style="flex:1"></span><i class="g"></i><i class="g"></i></nav>
+      <div class="main">
+        <div class="hdr">
+          <button class="ib" aria-label="Esci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button class="t" id="t-title" aria-haspopup="dialog" aria-expanded="false" title="Dettagli della lezione"><span class="tl">Fisiopatologia e valutazione clinica delle patologie renali: manifestazioni, funzione glomerulare ed esame delle urine</span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></button>
+          <span class="spacer"></span>
+          <div class="tools">
+              <div class="seg" role="group" aria-label="Strumento">
+                <button id="t-hl" aria-pressed="true" title="Evidenziatore (clic di nuovo: cambia colore)" aria-label="Evidenziatore">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>
+                  <span class="sw" id="sw"></span>
+                </button>
+                <button id="t-er" aria-pressed="false" title="Gomma" aria-label="Gomma">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+                </button>
+              </div>
+              <button class="ib" id="t-clear" title="Togli tutte le evidenziazioni di questa unità" aria-label="Togli tutte le evidenziazioni di questa unità"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            <span class="vsep"></span>
+          <button class="ib" id="open-rsvp" aria-label="Lettura veloce" title="Lettura veloce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></button>
+          <button class="ib" aria-label="Audio della lezione per questa unità"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3l14 9-14 9z"/></svg></button>
+          </div>
+          <span class="chip" id="unit-chip">☰ Unità 1 di 3 ⌄</span>
+        </div>
+        <div class="tpop" id="tpop" role="dialog" aria-label="Dettagli della lezione" hidden>
+          <b>Fisiopatologia e valutazione clinica delle patologie renali: manifestazioni, funzione glomerulare ed esame delle urine</b>
+          <div class="kv"><span>Materia</span><span>Patologia generale 2</span><span>Docente</span><span>Provenzano</span><span>Data</span><span>lunedì 29 settembre 2026</span><span>Unità</span><span>16 · stai leggendo la 1</span><span>Audio</span><span>1 h 42 min</span></div>
+          <a href="#" onclick="return false">Apri la lezione ›</a>
+        </div>
+        <div class="body">
+          <div class="col">
+            <div class="dots" id="dots"></div>
+            <article class="unit" id="unit" data-mode="hl"></article>
+          </div>
+        </div>
+        <div class="ftr"><button class="big">Mettimi alla prova · 1 domanda</button></div>
+        <div class="tabbar" id="tabbar" hidden><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+
+    <!-- IMPOSTAZIONI -->
+    <div id="scr-set" class="app" hidden>
+      <nav class="rail" aria-hidden="true"><i class="g"></i><i class="g"></i><span style="flex:1"></span><i class="g"></i><i></i></nav>
+      <div class="setnav" id="setnav"></div>
+      <div class="main setpage" id="setpage"></div>
+    </div>
+
+    <!-- LETTURA VELOCE -->
+    <div id="scr-rsvp" class="rsvp" hidden>
+      <div class="otop">
+        <button class="opill" id="r-close">← Studio</button>
+        <div class="ounit" id="r-unit">1.1 Obiettivi didattici e impostazione fisiopatologica</div>
+        <div class="daynight" role="group" aria-label="Tema"><button id="r-day" aria-pressed="false">☀ Giorno</button><button id="r-night" aria-pressed="true">☾ Notte</button></div>
+        <button class="opill" id="r-ctxbtn" aria-pressed="false">Contesto</button>
+      </div>
+      <div class="ostage">
+        <div class="octx" id="r-ctx" hidden></div>
+        <div class="orest" id="r-before"></div>
+        <div class="oword" id="r-word"><span class="pre"></span><span class="orp"></span><span class="post"></span></div>
+        <div class="orest" id="r-rest"></div>
+      </div>
+      <div class="ospeed"><span>Velocità <b id="r-wpm">300</b> parole/min</span><button class="oiconbtn" id="r-gear" aria-label="Impostazioni della lettura veloce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
+        <input type="range" id="r-speed" min="100" max="900" step="25" value="300" aria-label="Velocità"></div>
+      <div class="octrls">
+        <button class="oround" id="r-back" aria-label="Indietro di 5 parole"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 6v12l-8.5-6zM21 6v12l-8.5-6z"/></svg><small id="r-backlbl">−5</small></button>
+        <button class="oround oplay" id="r-play" aria-label="Avvia"><svg class="ring" viewBox="0 0 104 104"><circle cx="52" cy="52" r="50" stroke="var(--o-line)"/><circle id="r-ring" cx="52" cy="52" r="50" stroke="var(--focus)" stroke-dasharray="314.16" stroke-dashoffset="314.16" stroke-linecap="round"/></svg><span id="r-playic"></span></button>
+        <button class="oround" id="r-reset" aria-label="Ricomincia l'unità"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+      </div>
+      <div class="ometa" id="r-count"></div>
+      <div class="ohint">Spazio avvia e ferma · ← frase precedente · → frase successiva · ↑ ↓ velocità · Home ricomincia · Esc torna allo Studio</div>
+
+      <div class="opop" id="r-pop" hidden>
+        <div class="it"><div class="h"><b>Impostazioni</b><button class="opill" id="r-popclose">Fatto</button></div></div>
+        <div class="it"><div class="h"><span>Suono<small>un clic a ogni parola, più grave a fine frase</small></span><button class="tg" id="p-sound" aria-pressed="true" aria-label="Suono"></button></div>
+          <span>Tono <b id="p-pitchv">1.0</b>×</span><input type="range" id="p-pitch" min="0.5" max="2" step="0.1" value="1" aria-label="Tono"></div>
+        <div class="it"><div class="h"><span>Font per dislessia<small>lettere più distinguibili</small></span><button class="tg" id="p-dys" aria-pressed="false" aria-label="Font per dislessia"></button></div></div>
+        <div class="it"><div class="h"><span>Modalità Irlen<small>sfondo colorato che affatica meno</small></span><button class="tg" id="p-irlen" aria-pressed="false" aria-label="Modalità Irlen"></button></div>
+          <div class="seg" id="p-tint" hidden><button data-v="pesca" aria-pressed="true">Pesca</button><button data-v="menta">Menta</button><button data-v="pergamena">Pergamena</button></div></div>
+        <div class="it"><div class="h"><span>Rumore di fondo<small>copre i rumori intorno</small></span><button class="tg" id="p-noise" aria-pressed="false" aria-label="Rumore di fondo"></button></div>
+          <div class="seg" id="p-noisek" hidden><button data-v="white" aria-pressed="true">Bianco</button><button data-v="pink">Rosa</button><button data-v="brown">Marrone</button></div>
+          <input type="range" id="p-noisevol" min="0" max="0.6" step="0.02" value="0.25" aria-label="Volume del rumore" hidden></div>
+        <div class="it"><span>Pausa dopo la frase <b id="p-pv">400</b> ms</span><input type="range" id="p-pause" min="0" max="1200" step="50" value="400" aria-label="Pausa dopo la frase"></div>
+        <div class="it"><span>Lettera di fuoco<small>dove cade l'occhio nella parola</small></span>
+          <div class="seg" id="p-orp"><button data-v="0.25">Prima</button><button data-v="0.35" aria-pressed="true">Bilanciata</button><button data-v="0.5">Dopo</button></div></div>
+        <div class="it"><div class="h"><span>Virgola come pausa piena</span><button class="tg" id="p-comma" aria-pressed="false" aria-label="Virgola come pausa piena"></button></div></div>
+        <div class="it"><span>Passo indietro: <b id="p-stepv">5</b> parole</span>
+          <div class="seg" id="p-step"><button data-v="1">−1</button><button data-v="3">−3</button><button data-v="5" aria-pressed="true">−5</button><button data-v="10">−10</button></div></div>
+        <div class="it"><div class="h"><span>Dimensione del testo</span><div class="seg"><button id="p-fm">−</button><button id="p-fp">+</button></div></div></div>
+      </div>
+    </div>
+
+  </div></div>
+</main>
+
+<script>
+const $=(id)=>document.getElementById(id);
+const COLORS=['var(--hl-1)','var(--hl-2)','var(--hl-3)','var(--hl-4)','var(--hl-5)'];
+const UNITS=[
+ {t:'1.1 Obiettivi didattici e impostazione fisiopatologica',p:["L'impostazione di questo percorso didattico si focalizza in via prioritaria sulla fisiopatologia, intesa come lo studio dei meccanismi di alterazione delle normali funzioni fisiologiche. L'obiettivo fondamentale non risiede nella trattazione approfondita delle terapie o della diagnostica avanzata, bensì nella comprensione rigorosa dei meccanismi fisiopatologici sottostanti.","In questa prospettiva d'indagine, quando si affronta la raccolta anamnestica del paziente, assumono un ruolo cardine le informazioni relative alla storia clinica di diabete e di ipertensione arteriosa. Il diabete e l'ipertensione arteriosa rappresentano i principali fattori che, in stretta correlazione con la durata temporale della malattia, si associano all'insorgenza e alla progressione della problematica renale."]},
+ {t:'1.2 Manifestazioni cliniche della malattia renale',p:["Le manifestazioni della malattia renale sono spesso tardive: il rene compensa a lungo la perdita di nefroni funzionanti. Edemi, ipertensione e alterazioni della diuresi compaiono quando la riserva funzionale è già ridotta.","Per questo l'esame delle urine e la stima del filtrato glomerulare sono gli strumenti principali per riconoscere precocemente il danno."]},
+ {t:'1.3 Funzione glomerulare',p:["Il filtrato glomerulare dipende dalla pressione di filtrazione, dalla permeabilità della membrana e dalla superficie disponibile. Una sua riduzione si traduce nell'accumulo di sostanze normalmente eliminate, come urea e creatinina."]},
+];
+let unitIdx=0, color=0, mode='hl', screen='studio', device='desk';
+const saved={}; // evidenziazioni per unità (nel wireframe: in memoria)
+
+function renderUnit(){
+  const u=UNITS[unitIdx];
+  $('unit').innerHTML=saved[unitIdx]??`<h3>${u.t}</h3>`+u.p.map(x=>`<p>${x}</p>`).join('');
+  $('dots').innerHTML=UNITS.map((_,i)=>`<i class="${i<=unitIdx?'on':''}"></i>`).join('');
+  $('unit-chip').textContent=(device==='phone'?'☰ ':'☰ Unità ')+(unitIdx+1)+' di '+UNITS.length+' ⌄';
+}
+function save(){saved[unitIdx]=$('unit').innerHTML}
+function setMode(m){mode=m;$('t-hl').setAttribute('aria-pressed',m==='hl');$('t-er').setAttribute('aria-pressed',m==='erase');$('unit').dataset.mode=m}
+$('sw').style.background=COLORS[0];
+$('t-hl').onclick=()=>{if(mode==='hl'){color=(color+1)%COLORS.length;$('sw').style.background=COLORS[color]}else setMode('hl')};
+$('t-er').onclick=()=>setMode('erase');
+$('t-clear').onclick=()=>{$('unit').querySelectorAll('mark').forEach(unwrap);save()};
+function unwrap(m){const p=m.parentNode;while(m.firstChild)p.insertBefore(m.firstChild,m);p.removeChild(m);p.normalize()}
+$('unit').addEventListener('mouseup',hl);$('unit').addEventListener('touchend',()=>setTimeout(hl,10));
+function hl(){
+  if(mode!=='hl')return;const s=getSelection();if(!s.rangeCount||s.isCollapsed)return;
+  const r=s.getRangeAt(0);if(!$('unit').contains(r.commonAncestorContainer))return;
+  const m=document.createElement('mark');m.style.background=COLORS[color];
+  try{m.appendChild(r.extractContents());r.insertNode(m)}catch(e){}
+  s.removeAllRanges();save();
+}
+$('unit').addEventListener('click',(e)=>{if(mode==='erase'&&e.target.tagName==='MARK'){unwrap(e.target);save()}});
+function goUnit(d){const n=unitIdx+d;if(n<0||n>=UNITS.length)return;unitIdx=n;renderUnit()}
+
+
+$('t-title').onclick=(e)=>{e.stopPropagation();const p=$('tpop');p.hidden=!p.hidden;$('t-title').setAttribute('aria-expanded',!p.hidden)};
+document.addEventListener('click',(e)=>{if(!$('tpop').hidden&&!$('tpop').contains(e.target)){$('tpop').hidden=true;$('t-title').setAttribute('aria-expanded','false')}});
+/* ---------- lettura veloce */
+const R={noiseVol:0.25,i:0,playing:false,wpm:300,orp:.35,pause:400,comma:false,step:5,size:60,timer:null,ramp:0,sound:true,pitch:1,noise:false,noiseKind:'white'};
+let words=[],AC=null,noiseNode=null,noiseGain=null;
+function loadWords(){words=[];UNITS[0].p.forEach((p,pi)=>p.split(/\s+/).forEach(w=>words.push({w,p:pi})))}
+const endS=(w)=>/[.!?…]["»”’)]*$/.test(w), endC=(w)=>/[,;:]["»”’)]*$/.test(w), full=(w)=>endS(w)||(R.comma&&endC(w));
+function orpIndex(w){const core=w.replace(/^[^\p{L}\p{N}]+/u,'');const off=w.length-core.length;const L=core.replace(/[^\p{L}\p{N}].*$/u,'').length||core.length;return Math.min(w.length-1,off+Math.max(0,Math.round((L-1)*R.orp)))}
+function audio(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();return AC}
+function click(kind){
+  if(!R.sound)return;const ac=audio();if(!ac)return;const t=ac.currentTime;
+  const base=kind==='end'?520:880, dur=kind==='end'?0.11:0.045;
+  const o=ac.createOscillator(),g=ac.createGain();o.type='triangle';
+  o.frequency.setValueAtTime(base*R.pitch,t);if(kind==='end')o.frequency.exponentialRampToValueAtTime(base*R.pitch*0.82,t+dur);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(kind==='end'?0.22:0.13,t+0.004);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g).connect(ac.destination);o.start(t);o.stop(t+dur+0.02);
+}
+function noiseBuffer(ac,kind){const n=ac.sampleRate*2,b=ac.createBuffer(1,n,ac.sampleRate),d=b.getChannelData(0);let l=0,b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+  for(let i=0;i<n;i++){const w=Math.random()*2-1;
+    if(kind==='white')d[i]=w*0.5;
+    else if(kind==='brown'){l=(l+0.02*w)/1.02;d[i]=l*3.2}
+    else{b0=0.99886*b0+w*0.0555179;b1=0.99332*b1+w*0.0750759;b2=0.969*b2+w*0.153852;b3=0.8665*b3+w*0.3104856;b4=0.55*b4+w*0.5329522;b5=-0.7616*b5-w*0.016898;d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;b6=w*0.115926}}
+  return b}
+let noiseTimer=null;
+function startNoise(preview){clearTimeout(noiseTimer);stopNoise();if(!R.noise||(!R.playing&&!preview))return;const ac=audio();if(!ac)return;
+  noiseNode=ac.createBufferSource();noiseNode.buffer=noiseBuffer(ac,R.noiseKind);noiseNode.loop=true;noiseGain=ac.createGain();
+  const t=ac.currentTime;noiseGain.gain.setValueAtTime(0.0001,t);noiseGain.gain.exponentialRampToValueAtTime(R.noiseVol,t+0.3);
+  noiseNode.connect(noiseGain).connect(ac.destination);noiseNode.start();
+  if(preview&&!R.playing)noiseTimer=setTimeout(stopNoise,2000)}
+function stopNoise(){try{noiseNode&&noiseNode.stop()}catch(e){}noiseNode=null}
+function showWord(anim){
+  const it=words[R.i];if(!it)return;const w=it.w,k=orpIndex(w),el=$('r-word');
+  el.children[0].textContent=w.slice(0,k);el.children[1].textContent=w[k];el.children[2].textContent=w.slice(k+1);
+  el.classList.remove('out');
+  if(anim&&full(w)){void el.offsetWidth;el.style.setProperty('--zo',Math.max(250,R.pause+60000/R.wpm)+'ms');el.classList.add('out')}
+  // testo di contorno solo in pausa: sopra la frase fin qui, sotto il resto della frase
+  let before=[],k2=R.i-1;while(k2>=0&&!endS(words[k2].w)&&before.length<12){before.unshift(words[k2].w);k2--}
+  let j=R.i+1,rest=[];if(!endS(w))while(j<words.length&&rest.length<12){rest.push(words[j].w);if(endS(words[j].w))break;j++}
+  $('r-before').textContent=R.playing?'':before.join(' ');
+  $('r-rest').textContent=R.playing?'':rest.join(' ');
+  const n=R.i+1,tot=words.length,left=Math.round((tot-n)/R.wpm*60);
+  $('r-count').textContent=`${n} / ${tot} parole · ${Math.floor(left/60)} min ${left%60} s`;
+  $('r-ring').setAttribute('stroke-dashoffset',314.16*(1-n/tot));
+  const p=it.p;let html='';words.forEach((x,j)=>{if(x.p!==p)return;html+=(j===R.i?`<span class="cur">${x.w}</span>`:j<R.i?`<b>${x.w}</b>`:x.w)+' '});
+  $('r-ctx').innerHTML=html;
+}
+function delayFor(w){
+  let ms=60000/R.wpm;const L=w.replace(/[^\p{L}\p{N}]/gu,'').length;if(L>8)ms*=1+(L-8)*.06;
+  if(full(w))ms+=R.pause;
+  if(R.ramp>0){ms*=1+R.ramp*.12;R.ramp--}
+  return ms;
+}
+function tick(){if(!R.playing)return;const w=words[R.i].w;showWord(true);click(full(w)?'end':'word');
+  R.timer=setTimeout(()=>{if(R.i<words.length-1){R.i++;tick()}else pause()},delayFor(w))}
+const PLAY='<svg class="ic" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>',PAUSE='<svg class="ic" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+function play(){if(R.playing)return;audio();R.playing=true;R.ramp=5;$('r-playic').innerHTML=PAUSE;$('r-play').setAttribute('aria-label','Pausa');startNoise();tick()}
+function pause(){R.playing=false;clearTimeout(R.timer);stopNoise();$('r-playic').innerHTML=PLAY;$('r-play').setAttribute('aria-label','Avvia');showWord(false)}
+function toggle(){R.playing?pause():play()}
+function sentence(d){const was=R.playing;pause();let i=R.i;
+  if(d<0){i--;while(i>0&&!endS(words[i-1].w))i--;if(i===R.i-1&&i>0){i--;while(i>0&&!endS(words[i-1].w))i--}}
+  else{while(i<words.length-1&&!endS(words[i].w))i++;i=Math.min(i+1,words.length-1)}
+  R.i=Math.max(0,i);showWord(false);if(was)play()}
+function setWpm(v){R.wpm=Math.max(100,Math.min(900,v));$('r-wpm').textContent=R.wpm;$('r-speed').value=R.wpm;showWord(false)}
+$('r-play').onclick=toggle;
+$('r-back').onclick=()=>{const was=R.playing;pause();R.i=Math.max(0,R.i-R.step);showWord(false);if(was)play()};
+$('r-reset').onclick=()=>{pause();R.i=0;showWord(false)};
+$('r-speed').oninput=(e)=>setWpm(+e.target.value);
+$('r-gear').onclick=()=>{$('r-pop').hidden=!$('r-pop').hidden};$('r-popclose').onclick=()=>{$('r-pop').hidden=true};
+$('r-ctxbtn').onclick=(e)=>{const on=$('r-ctx').hidden;$('r-ctx').hidden=!on;e.currentTarget.setAttribute('aria-pressed',on)};
+$('r-day').onclick=()=>{$('scr-rsvp').dataset.day='';delete $('scr-rsvp').dataset.tint;$('r-day').setAttribute('aria-pressed','true');$('r-night').setAttribute('aria-pressed','false');if($('p-irlen').getAttribute('aria-pressed')==='true')$('p-irlen').click()};
+$('r-night').onclick=()=>{delete $('scr-rsvp').dataset.day;delete $('scr-rsvp').dataset.tint;$('r-day').setAttribute('aria-pressed','false');$('r-night').setAttribute('aria-pressed','true');if($('p-irlen').getAttribute('aria-pressed')==='true')$('p-irlen').click()};
+$('r-close').onclick=()=>setScreen('studio');$('open-rsvp').onclick=()=>{setScreen('rsvp');followAppTheme()};
+function followAppTheme(){const t=document.documentElement.dataset.theme;const dark=t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches;(dark?$('r-night'):$('r-day')).click()}
+function tgl(id,fn){$(id).onclick=(e)=>{const on=e.currentTarget.getAttribute('aria-pressed')!=='true';e.currentTarget.setAttribute('aria-pressed',on);fn(on)}}
+tgl('p-sound',on=>R.sound=on);
+tgl('p-dys',on=>$('r-word').classList.toggle('dys',on));
+tgl('p-irlen',on=>{$('p-tint').hidden=!on;if(on)$('scr-rsvp').dataset.tint=$('p-tint').querySelector('[aria-pressed=true]').dataset.v;else delete $('scr-rsvp').dataset.tint});
+tgl('p-noise',on=>{R.noise=on;$('p-noisek').hidden=!on;$('p-noisevol').hidden=!on;on?startNoise(true):stopNoise()});
+$('p-noisevol').oninput=(e)=>{R.noiseVol=Math.max(0.01,+e.target.value);if(noiseGain&&AC)noiseGain.gain.setTargetAtTime(R.noiseVol,AC.currentTime,0.05)};
+tgl('p-comma',on=>R.comma=on);
+$('p-pitch').oninput=(e)=>{R.pitch=+e.target.value;$('p-pitchv').textContent=R.pitch.toFixed(1);click('word')};
+$('p-pause').oninput=(e)=>{R.pause=+e.target.value;$('p-pv').textContent=R.pause};
+function segGroup(id,fn){$(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));fn(b.dataset.v)})}
+segGroup('p-orp',v=>{R.orp=+v;showWord(false)});
+segGroup('p-tint',v=>$('scr-rsvp').dataset.tint=v);
+segGroup('p-noisek',v=>{R.noiseKind=v;startNoise(true)});
+segGroup('p-step',v=>{R.step=+v;$('p-stepv').textContent=v;$('r-backlbl').textContent='−'+v;$('r-back').setAttribute('aria-label',`Indietro di ${v} parole`)});
+$('p-fm').onclick=()=>{R.size=Math.max(24,R.size-4);$('r-word').style.setProperty('--wsize',R.size+'px')};
+$('p-fp').onclick=()=>{R.size=Math.min(84,R.size+4);$('r-word').style.setProperty('--wsize',R.size+'px')};
+
+/* ---------- impostazioni */
+const kb=(...k)=>'<span class="keys">'+k.map(x=>`<span class="kbd">${x}</span>`).join('')+'</span>';
+const tg=(on)=>`<button class="tg" aria-pressed="${on}" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"></button>`;
+const SECTIONS=[
+ {id:'aspetto',n:'Aspetto e lettura',d:'Tema, lettura veloce, evidenziatore',html:`
+  <div class="grp"><div class="gt">Aspetto</div>
+   <div class="line"><span>Tema</span><div class="seg"><button aria-pressed="true">Sistema</button><button>Chiaro</button><button>Scuro</button></div></div>
+   <div class="line"><span>Sfondo dei gruppi in Lezioni</span><span class="val">Colori ⌄</span></div></div>
+  <div class="grp"><div class="gt">Studio</div>
+   <div class="line"><span>Colori dell'evidenziatore<small>l'ordine in cui girano con un clic</small></span><span class="val">giallo, verde, azzurro, rosa, arancio</span></div>
+   <div class="line"><span>Frecce per cambiare unità</span>${tg(true)}</div></div>
+  <div class="grp"><div class="gt">Lettura veloce</div>
+   <div class="line"><span>Velocità</span><span class="val">300 parole/min</span></div>
+   <div class="line"><span>Lettera di fuoco</span><span class="val">Bilanciata</span></div>
+   <div class="line"><span>Pausa dopo la frase</span><span class="val">300 ms</span></div>
+   <div class="line"><span>Font per dislessia</span>${tg(false)}</div>
+   <div class="line"><span>Suono a ogni parola</span>${tg(false)}</div></div>
+  <div class="grp"><div class="gt">Audio</div>
+   <div class="line"><span>Velocità di riproduzione</span><span class="val">1×</span></div></div>`},
+ {id:'editor',n:'Editor e scorciatoie',d:'Scorciatoie da tastiera',html:`
+  <input class="search" placeholder="Cerca un comando o una combinazione" aria-label="Cerca un comando">
+  <div class="grp"><div class="gt">Formattazione</div>
+   <div class="line"><span>Grassetto</span>${kb('⌘','B')}</div>
+   <div class="line"><span>Corsivo</span>${kb('⌘','I')}</div>
+   <div class="line"><span>Barrato</span>${kb('⌘','⇧','X')}</div>
+   <div class="line"><span>Evidenziato</span>${kb('⌘','⇧','H')}</div>
+   <div class="line"><span>Link</span>${kb('⌘','K')}</div></div>
+  <div class="grp"><div class="gt">Righe e sezioni</div>
+   <div class="line"><span>Spunta la casella</span>${kb('⌘','↩')}</div>
+   <div class="line"><span>Elimina il paragrafo</span>${kb('⌘','D')}</div>
+   <div class="line"><span>Chiudi la sezione</span>${kb('⌘','⌥','[')}</div></div>
+  <p class="sub">Clic su una combinazione per cambiarla: premi i tasti nuovi, Esc annulla. Se la combinazione è già usata, RT lo dice e chiede se scambiarle. "Ripristina" torna a quelle di Obsidian.</p>`},
+ {id:'lavorazione',n:'Lavorazione delle lezioni',d:'Trascrizione, scaletta, arricchimento, job',html:`
+  <div class="grp"><div class="gt">Trascrizione</div>
+   <div class="line"><span>Motore</span><span class="val">MacParakeet ⌄</span></div></div>
+  <div class="grp"><div class="gt">Scaletta</div>
+   <div class="line"><span>Approva da sola dopo<small>0 = aspetta sempre te</small></span><span class="val">60 s</span></div></div>
+  <div class="grp"><div class="gt">Arricchimento</div>
+   <div class="line"><span>Modalità</span><div class="seg"><button>Disattivato</button><button aria-pressed="true">Manuale</button><button>Automatico</button></div></div>
+   <div class="line"><span>Limite per lezione</span><span class="val">5 ⌄</span></div>
+   <div class="line"><span>Ricerca web (SearXNG)</span><span class="val">http://127.0.0.1:8888</span></div></div>
+  <div class="grp"><div class="gt">Job</div>
+   <div class="line"><span>Job in parallelo</span><span class="val">2 ⌄</span></div></div>`},
+ {id:'modelli',n:'Modelli e connessioni',d:'Connessioni con le chiavi, modelli per fase, costi',html:`
+  <div class="grp"><div class="gt">Modelli per fase</div>
+   <div class="line"><span>Scaletta</span><span class="val">openrouter · gemini-3-flash ⌄</span></div>
+   <div class="line"><span>Rielaborazione</span><span class="val">openrouter · claude-sonnet ⌄</span></div>
+   <div class="line"><span>Descrizione immagini<small>serve un modello che vede le immagini</small></span><span class="val">openrouter · gemini-3-flash ⌄</span></div></div>
+  <div class="grp"><div class="gt">Connessioni</div>
+   <div class="line"><span>openrouter<small>2 chiavi · costi per modello</small></span><span class="val">Apri ›</span></div>
+   <div class="line"><span>Nuova connessione</span><span class="val">+</span></div></div>
+  <div class="grp"><div class="gt">Avanzate</div>
+   <div class="line"><span>Route di riserva e parametri</span><span class="val">›</span></div>
+   <div class="line"><span>Modelli decisionali<small>classificatore e arricchimento insieme</small></span><span class="val">›</span></div>
+   <div class="line"><span>Istruzioni dei prompt</span><span class="val">›</span></div></div>`},
+ {id:'telegram',n:'Telegram',d:'Bot, gruppo, topic, ripasso',html:`
+  <div class="grp"><div class="line" style="border-top:0"><span>Usa Telegram</span>${tg(true)}</div>
+   <div class="line"><span>Bot<small>attivo</small></span><span class="val">Ferma</span></div></div>
+  <div class="grp"><div class="gt">Gruppo e topic</div>
+   <div class="line"><span>Token e chat del gruppo</span><span class="val">›</span></div>
+   <div class="line"><span>Topic per materia</span><span class="val">6 ›</span></div>
+   <div class="line"><span>Archivio dei topic (account)</span><span class="val">collegato ›</span></div></div>
+  <div class="grp"><div class="gt">Ripasso</div>
+   <div class="line"><span>Domande di scorta per tipo</span><span class="val">›</span></div></div>`},
+ {id:'accesso',n:'Accesso da iPhone',d:'QR di accesso',html:`
+  <div class="grp"><div class="line" style="border-top:0"><span>Indirizzo di RT per l'altro dispositivo</span><span class="val">https://mac.tailnet.ts.net</span></div>
+   <div class="line"><span>QR di accesso</span><span class="val">Crea</span></div></div>`},
+ {id:'info',n:'Info e aggiornamenti',d:'Versione, canale, cartelle',html:`
+  <div class="grp"><div class="line" style="border-top:0"><span>Versione</span><span class="val">4.2.2b1</span></div>
+   <div class="line"><span>Canale<small>oggi si cambia solo con rt -u --beta</small></span><span class="val">Beta</span></div>
+   <div class="line"><span>Cartella dati</span><span class="val">~/rt/data</span></div>
+   <div class="line"><span>Configurazione guidata</span><span class="val">Apri ›</span></div>
+   <div class="line"><span>Esci</span><span class="val">›</span></div></div>`},
+];
+let setSec='aspetto';
+function renderSet(){
+  $('setnav').innerHTML='<div class="ttl">Impostazioni</div>'+SECTIONS.map((x,i)=>(i===2?'<hr>':'')+`<button data-id="${x.id}" aria-current="${x.id===setSec}"><span>${x.n}${device==='phone'?`<br><small>${x.d}</small>`:''}</span>${device==='phone'?'<span>›</span>':''}</button>`).join('');
+  $('setnav').querySelectorAll('button').forEach(b=>b.onclick=()=>{setSec=b.dataset.id;$('scr-set').classList.add('open');renderSet()});
+  const x=SECTIONS.find(y=>y.id===setSec);
+  $('setpage').innerHTML=(device==='phone'?`<button class="ib" aria-label="Indietro" onclick="document.getElementById('scr-set').classList.remove('open')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>`:'')+`<h3>${x.n}</h3><p class="sub">${x.d}</p>`+x.html;
+}
+/* ---------- schede e dispositivo */
+function setScreen(s){screen=s;$('scr-studio').hidden=s!=='studio';$('scr-rsvp').hidden=s!=='rsvp';$('scr-set').hidden=s!=='set';$('tab-set').setAttribute('aria-pressed',s==='set');$('notes-set').hidden=s!=='set';
+  $('tab-studio').setAttribute('aria-pressed',s==='studio');$('tab-rsvp').setAttribute('aria-pressed',s==='rsvp');
+  $('notes-studio').hidden=s!=='studio';$('notes-rsvp').hidden=s!=='rsvp';if(s!=='rsvp')pause();try{localStorage.setItem('wf422',s)}catch(e){}}
+function setDevice(d){device=d;$('frame').className='frame '+(d==='phone'?'phone':'desk');$('dev-desk').setAttribute('aria-pressed',d==='desk');$('dev-phone').setAttribute('aria-pressed',d==='phone');
+  $('tabbar').hidden=d!=='phone';$('scr-set').classList.remove('open');renderUnit();renderSet()}
+$('tab-set').onclick=()=>setScreen('set');$('tab-studio').onclick=()=>setScreen('studio');$('tab-rsvp').onclick=()=>{setScreen('rsvp');followAppTheme()};
+$('dev-desk').onclick=()=>setDevice('desk');$('dev-phone').onclick=()=>setDevice('phone');
+document.addEventListener('keydown',(e)=>{
+  if(e.target.matches('input,textarea'))return;
+  if(screen==='set')return;
+  if(screen==='studio'){if(e.key==='ArrowRight'){goUnit(1);e.preventDefault()}if(e.key==='ArrowLeft'){goUnit(-1);e.preventDefault()}return}
+  if(e.key===' '){toggle();e.preventDefault()}else if(e.key==='ArrowLeft'){sentence(-1);e.preventDefault()}else if(e.key==='ArrowRight'){sentence(1);e.preventDefault()}
+  else if(e.key==='ArrowUp'){setWpm(R.wpm+25);e.preventDefault()}else if(e.key==='ArrowDown'){setWpm(R.wpm-25);e.preventDefault()}
+  else if(e.key==='Home'){pause();R.i=0;showWord(false)}else if(e.key==='Escape'){setScreen('studio')}
+});
+loadWords();renderUnit();renderSet();pause();
+try{const v=localStorage.getItem('wf422');if(v==='rsvp'||v==='set')setScreen(v)}catch(e){}
+</script>
+
+</body>
+</html>

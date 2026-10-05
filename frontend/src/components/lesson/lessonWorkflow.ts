@@ -26,7 +26,7 @@ export function liveRewrite(outline: Schemas['Outline'], document: Schemas['Less
   }
   return {
     tasks,
-    document: { markdown: lines.join('\n'), html: '', final: false, sections: document?.sections.filter((s) => tasks[s.unit_id] === 'done') ?? [] } satisfies Schemas['LessonDocument'],
+    document: { markdown: lines.join('\n'), html: '', final: false, pending: false, sections: document?.sections.filter((s) => tasks[s.unit_id] === 'done') ?? [] } satisfies Schemas['LessonDocument'],
   }
 }
 

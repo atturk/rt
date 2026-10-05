@@ -84,6 +84,9 @@ class JobEventReporter:
             progress = {"phase": event.phase, "completed": True, "partial": event.partial, "step": event.step,
                         "total_steps": event.total_steps}
         try:
+            lesson_dir = getattr(event, "lesson_dir", None)
+            if lesson_dir:
+                self.queue.attach_lesson(self.job_id, str(lesson_dir))
             if isinstance(event, PhaseCompleted) and event.phase == "setup" and (event.result or {}).get("lesson_dir"):
                 # Lezione appena creata dall'audio: il job la indica subito (non solo alla fine),
                 # così la web app apre la pagina della lezione mentre la pipeline continua.

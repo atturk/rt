@@ -13,7 +13,7 @@ from unittest.mock import patch
 from rt.cli import cmd_run, cmd_setup
 from rt.pipeline.setup import run_setup, SetupError
 from rt.pipeline.prepare import run_prepare
-from rt.core.state import get_current_state, WorkflowState
+from rt.core.state import get_current_state, WorkflowState, read_info_yaml
 from rt.core.idempotency import PhaseStatus, check_phase_status
 from rt.core.lesson_paths import lesson_path
 
@@ -59,7 +59,10 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
 
     # 1. File sorgente creati da setup
     assert os.path.isfile(os.path.join(lesson_dir, "info.yaml"))
-    assert os.path.isfile(os.path.join(lesson_dir, "demo_lecture.wav"))
+    stored_audio = read_info_yaml(os.path.join(lesson_dir, "info.yaml"))["file_audio"]
+    assert stored_audio in {"demo_lecture.wav", "demo_lecture.m4a"}
+    assert os.path.isfile(os.path.join(lesson_dir, stored_audio))
+    assert os.path.isfile(FIXTURE_AUDIO)
     assert os.path.isfile(os.path.join(lesson_dir, "trascritto grezzo.json"))
     assert os.path.isfile(os.path.join(lesson_dir, "trascritto grezzo.md"))
 

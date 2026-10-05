@@ -1,24 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+
+import { usePreference } from './preferences'
 
 export type Theme = 'light' | 'dark'
-const KEY = 'rt-theme'
+export type ThemePreference = 'sistema' | 'chiaro' | 'scuro'
 
-function initialTheme(): Theme {
-  if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) return 'dark'
-  return 'light'
-}
-
-/** Tema chiaro/scuro: preferenza dell'interfaccia salvata nel browser (non stato di dominio). */
+/** Sistema segue anche i cambi di tema del dispositivo a pagina già aperta. */
 export function useTheme(): [Theme, () => void] {
-  const [theme, setTheme] = useState<Theme>(initialTheme)
+  const [preference, setPreference] = usePreference<ThemePreference>('theme', 'sistema')
+  const [systemDark, setSystemDark] = useState(() => globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const changed = () => setSystemDark(media.matches)
+    media.addEventListener('change', changed)
+    return () => media.removeEventListener('change', changed)
+  }, [])
+  const theme = preference === 'scuro' || (preference === 'sistema' && systemDark) ? 'dark' : 'light'
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
-    try {
-      localStorage.setItem(KEY, theme)
-    } catch {
-      /* archiviazione non disponibile: il tema vale solo per questa pagina */
-    }
   }, [theme])
-  const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
-  return [theme, toggle]
+  return [theme, () => setPreference(theme === 'dark' ? 'chiaro' : 'scuro')]
 }

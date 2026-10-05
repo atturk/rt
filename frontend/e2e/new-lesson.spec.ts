@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 
@@ -87,4 +88,21 @@ test('zip: niente campi, Importa usa /lessons/import-zip', async ({ page }) => {
   // Esc chiude.
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
+})
+
+test('più audio: la lista mostra l’ordine e lo si cambia con le frecce sulla maniglia', async ({ page }) => {
+  await loginViaLink(page)
+  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('button', { name: 'Nuova lezione' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Nuova lezione' })
+  // La seconda parte basta che sia un file audio: il popup non la apre, la mette solo in coda.
+  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles([
+    { name: 'demo_lecture.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
+    { name: 'parte2.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
+  ])
+  const rows = dialog.getByTestId('audio-order-item')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first()).toContainText('demo_lecture.wav')
+  await dialog.getByRole('button', { name: /^Riordina parte2\.wav/ }).press('ArrowUp')
+  await expect(rows.first()).toContainText('parte2.wav')
+  await expect(dialog.getByTestId('chosen-files')).toContainText("diventano un'unica registrazione")
 })

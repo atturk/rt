@@ -259,6 +259,21 @@ class RecallSession(Base):
     ended_by: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 
 
+class StudyHighlight(Base):
+    """Evidenziazione fatta nello Studio su un'unità (4.2.2): non cambia il documento e non
+    entra negli export. source è la serializzazione di web-highlighter (startMeta, endMeta,
+    text, id); color è l'indice 0–4 dei colori dell'evidenziatore."""
+    __tablename__ = "study_highlights"
+    __table_args__ = (Index("ix_study_highlights_lesson_unit", "lesson_id", "unit_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
+    unit_id: Mapped[str] = mapped_column(String(64))
+    color: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class TelegramCommand(Base):
     """Richiesta dell'app al bot Telegram (avvia o interrompi una sessione di recall): il
     daemon le esegue in ordine e ne scrive l'esito. state: pending | done | failed."""

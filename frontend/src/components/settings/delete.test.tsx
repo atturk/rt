@@ -23,6 +23,7 @@ const SETTINGS = {
   phases: [],
   telegram: { bot_token_set: true },
   transcription: { api_key_set: false },
+  pricing: {},
   secrets_encrypted: true,
 } as unknown as Settings
 
@@ -68,7 +69,7 @@ describe('Chiavi: Prova diventa Elimina con Option', () => {
   it('solo per le chiavi impostate, con conferma', async () => {
     const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok({ name: 'OPENROUTER_API_KEY', set: false, removed_from: ['store'] }))
     vi.spyOn(api, 'GET').mockResolvedValue(ok(SETTINGS))
-    renderWith(<SecretsSection settings={SETTINGS} />)
+    renderWith(<><SecretsSection settings={SETTINGS} connection={SETTINGS.connections[0]} /><SecretsSection settings={SETTINGS} connection={SETTINGS.connections[1]} /></>)
     const user = userEvent.setup()
     const row = (name: string) => screen.getAllByTestId('secret-row').find((r) => r.dataset.name === name)!
     expect(within(row('OPENROUTER_API_KEY')).getByRole('button', { name: 'Prova' })).toBeInTheDocument()
@@ -78,8 +79,8 @@ describe('Chiavi: Prova diventa Elimina con Option', () => {
     const openrouter = row('OPENROUTER_API_KEY')
     expect(within(openrouter).queryByRole('button', { name: 'Prova' })).toBeNull()
     expect(within(row('RT_GOOGLE_1_API_KEY')).getByRole('button', { name: 'Prova' })).toBeInTheDocument() // mancante
-    expect(within(row('RT_TELEGRAM_BOT_TOKEN')).getByRole('button', { name: /^Elimina/ })).toBeInTheDocument()
-    expect(within(row('RT_STT_API_KEY')).queryByRole('button', { name: /^Elimina/ })).toBeNull()
+    expect(screen.queryByText('Token del bot Telegram')).toBeNull()
+    expect(screen.queryByText('Chiave del server di trascrizione')).toBeNull()
 
     await user.click(within(openrouter).getByRole('button', { name: /^Elimina openrouter/ }))
     fireEvent.keyUp(window, { key: 'Alt' })
@@ -92,10 +93,16 @@ describe('Chiavi: Prova diventa Elimina con Option', () => {
 
 describe('Info', () => {
   it('mostra versione, canale e cartelle', async () => {
-    vi.spyOn(api, 'GET').mockResolvedValue(ok({
-      version: '4.1.0b3', prerelease: true, update_channel: 'beta', install_dir: '/opt/rt',
-      data_dir: '/Users/a/.rt', config_dir: '/Users/a/.rt/config', python_version: '3.11.9', platform: 'Darwin 24.0 (arm64)',
-    }))
+    // La scheda Info monta anche la sezione della cache: ogni rotta ha la sua risposta.
+    const cache = { entries: 0, bytes: 0 }
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(
+      path === '/api/v1/system/cache'
+        ? ok({ audio: cache, waveform: cache, total: cache })
+        : ok({
+          version: '4.1.0b3', prerelease: true, update_channel: 'beta', install_dir: '/opt/rt',
+          data_dir: '/Users/a/.rt', config_dir: '/Users/a/.rt/config', python_version: '3.11.9', platform: 'Darwin 24.0 (arm64)',
+        }),
+    )) as never)
     renderWith(<InfoSection />)
     const info = await screen.findByTestId('system-info')
     expect(info).toHaveTextContent('4.1.0b3')

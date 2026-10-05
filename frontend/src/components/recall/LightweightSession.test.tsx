@@ -3,15 +3,26 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
+
 import { LightweightSession } from './LightweightSession'
 
 const mockNextMutateAsync = vi.fn()
+const mockSubjectNextMutateAsync = vi.fn()
 const mockAnswerMutateAsync = vi.fn()
 const mockVoteMutate = vi.fn()
 const mockRegenerateMutateAsync = vi.fn()
 const mockSkipMutateAsync = vi.fn()
 const mockEndMutateAsync = vi.fn()
 const mockHistoryRefetch = vi.fn()
+const mockRestoreMutate = vi.fn()
+let mockRestorableData = { asked: 0, wrong: 0 }
+let mockOverviewData: { questions: Record<string, { pending: number }> } = {
+  questions: {
+    quiz: { pending: 15 },
+    mirata: { pending: 8 },
+  },
+}
 
 vi.mock('@/components/JobProgress', () => ({
   JobProgress: ({ label, onFinished }: { label: string; onFinished: (state: string) => void }) => (
@@ -30,12 +41,7 @@ vi.mock('@/api/hooks', () => ({
 
 vi.mock('@/api/recall', () => ({
   useRecallOverview: vi.fn(() => ({
-    data: {
-      questions: {
-        quiz: { pending: 15 },
-        mirata: { pending: 8 },
-      },
-    },
+    data: mockOverviewData,
   })),
   useRecallHistory: vi.fn(() => ({
     data: { answers: [] },
@@ -49,7 +55,7 @@ vi.mock('@/api/recall', () => ({
     isPending: false,
   })),
   useSubjectNext: vi.fn(() => ({
-    mutateAsync: vi.fn(),
+    mutateAsync: mockSubjectNextMutateAsync,
     isPending: false,
   })),
   useAnswer: vi.fn(() => ({
@@ -80,6 +86,14 @@ vi.mock('@/api/recall', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   })),
+  useRestorable: vi.fn(() => ({
+    data: mockRestorableData,
+  })),
+  useRestoreQuestions: vi.fn(() => ({
+    mutate: mockRestoreMutate,
+    isPending: false,
+    isError: false,
+  })),
 }))
 
 const sampleQuestion = {
@@ -93,14 +107,30 @@ const sampleQuestion = {
   explanation: 'Sotto 22 mEq/L.',
 }
 
-function renderSession(lessonId = 1) {
+/** La sessione nel modo "unità" dello Studio (4.2.2b3). */
+function renderUnitSession(onBack = vi.fn(), onDone = vi.fn(), pending: Record<string, number> = { quiz: 2, mirata: 1 }) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <BrowserRouter>
+        <LightweightSession
+          lessonId={1}
+          unit={{ id: '1.2', title: 'Acidosi metabolica', pending, onBack, onDone, doneLabel: 'Unità successiva' }}
+        />
+      </BrowserRouter>
+    </QueryClientProvider>,
+  )
+  return { onBack, onDone }
+}
+
+function renderSession(lessonId: number | undefined = 1, selectionIds?: number[]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
       <BrowserRouter>
-        <LightweightSession lessonId={lessonId} />
+        <LightweightSession lessonId={lessonId} selectionIds={selectionIds} />
       </BrowserRouter>
     </QueryClientProvider>,
   )
@@ -109,6 +139,13 @@ function renderSession(lessonId = 1) {
 describe('LightweightSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockRestorableData = { asked: 0, wrong: 0 }
+    mockOverviewData = {
+      questions: {
+        quiz: { pending: 15 },
+        mirata: { pending: 8 },
+      },
+    }
     mockNextMutateAsync.mockResolvedValue(sampleQuestion)
   })
 
@@ -142,19 +179,18 @@ describe('LightweightSession', () => {
     expect(screen.getByText('Manca il compenso respiratorio.')).toBeInTheDocument()
   })
 
-  it('risponde a un quiz e mostra la scheda esito', async () => {
-    mockAnswerMutateAsync.mockResolvedValue({ correct: true })
+  it('quiz: il clic sull’alternativa è la risposta e l’esito è quello del server', async () => {
+    // Il server rivela la risposta giusta e la spiegazione: /recall/next non le manda.
+    mockAnswerMutateAsync.mockResolvedValue({ quiz: {
+      correct: true,
+      question: { ...sampleQuestion, correct_index: 0, explanation: 'Sotto 22 mEq/L.' },
+    } })
     renderSession()
 
     await screen.findByText("Quale valore di bicarbonato definisce l'acidosi metabolica?")
+    expect(screen.queryByRole('button', { name: 'Rispondi' })).not.toBeInTheDocument()
 
-    // Seleziona la prima opzione
-    const optA = screen.getByText('Sotto 22 mEq/L').closest('button')!
-    fireEvent.click(optA)
-
-    // Clic su Rispondi
-    const rispondiBtn = screen.getByRole('button', { name: 'Rispondi' })
-    fireEvent.click(rispondiBtn)
+    fireEvent.click(screen.getByText('Sotto 22 mEq/L').closest('button')!)
 
     expect(mockAnswerMutateAsync).toHaveBeenCalledWith({
       questionId: 'q100',
@@ -251,5 +287,103 @@ describe('LightweightSession', () => {
     expect(mockSkipMutateAsync).toHaveBeenCalledWith('q100')
     // la prossima esclude quella appena saltata
     await waitFor(() => expect(mockNextMutateAsync).toHaveBeenLastCalledWith({ qtype: 'quiz', excludeId: 'q100' }))
+  })
+
+  it('modo unità: chip coi conteggi, le vaste non ci sono e "Termina" torna allo studio', async () => {
+    const { onBack } = renderUnitSession()
+    await screen.findByText("Quale valore di bicarbonato definisce l'acidosi metabolica?")
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Acidosi metabolica')
+    const types = screen.getByRole('group', { name: 'Tipo di domanda' })
+    expect(types).not.toHaveTextContent('Vasta')
+    expect(types.querySelector('[aria-pressed=true]')).toHaveTextContent('Mista 3')
+    expect(screen.getByRole('button', { name: 'Quiz 2' })).toBeEnabled()
+    // I tipi senza domande da porre restano spenti.
+    expect(screen.getByRole('button', { name: 'Casi' })).toBeDisabled()
+
+    // Prima della risposta si salta, "Prossima" non c'è ancora.
+    expect(screen.getByRole('button', { name: 'Salta' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Prossima' })).not.toBeInTheDocument()
+
+    // Termina: la domanda lasciata a metà torna fra quelle da porre e si torna allo studio.
+    fireEvent.click(screen.getByRole('button', { name: 'Termina' }))
+    await waitFor(() => expect(onBack).toHaveBeenCalled())
+    expect(mockSkipMutateAsync).toHaveBeenCalledWith('q100')
+  })
+
+  it('modo unità: finite le domande si va avanti nello Studio', async () => {
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    const { onDone } = renderUnitSession()
+    const done = await screen.findByTestId('recall-unit-done')
+    expect(done).toHaveTextContent('Unità successiva')
+    fireEvent.click(done)
+    expect(onDone).toHaveBeenCalled()
+  })
+
+  it('pool vuoto: tipo già mista non mostra "Prova mista" (4.2.2b4 F3)', async () => {
+    localStorage.setItem('rt-recall-last-type', 'mista')
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Prova mista' })).not.toBeInTheDocument()
+    localStorage.clear()
+  })
+
+  it('pool vuoto: tipo diverso da mista e domande da porre > 0 mostra "Prova mista" (4.2.2b4 F3)', async () => {
+    localStorage.setItem('rt-recall-last-type', 'quiz')
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    const provalink = screen.getByRole('button', { name: 'Prova mista' })
+    expect(provalink).toBeInTheDocument()
+    fireEvent.click(provalink)
+    expect(mockNextMutateAsync).toHaveBeenCalledWith({ qtype: 'mista', excludeId: undefined, unitId: undefined })
+    localStorage.clear()
+  })
+
+  it('pool vuoto con una lezione e zero da porre: Genera domande e ripescaggio che riparte (4.2.2b4 F3)', async () => {
+    mockOverviewData = { questions: {} }
+    mockRestorableData = { asked: 4, wrong: 2 }
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    // Nessun "Prova mista" perché zero da porre
+    expect(screen.queryByRole('button', { name: 'Prova mista' })).not.toBeInTheDocument()
+
+    // Pulsante "Genera domande"
+    const generaLink = screen.getByRole('link', { name: 'Genera domande' })
+    expect(generaLink).toHaveAttribute('href', '/lezioni/1?panel=domande')
+
+    // Pulsanti ripescaggio con conteggio
+    const wrongBtn = screen.getByRole('button', { name: 'Riproponi le sbagliate (2)' })
+    const askedBtn = screen.getByRole('button', { name: 'Riproponi le poste (4)' })
+    expect(wrongBtn).toBeInTheDocument()
+    expect(askedBtn).toBeInTheDocument()
+
+    // Clic sul ripescaggio: chiama restore.mutate e riparte la sessione
+    fireEvent.click(wrongBtn)
+    expect(mockRestoreMutate).toHaveBeenCalledWith('wrong', expect.objectContaining({ onSuccess: expect.any(Function) }))
+
+    // Callback onSuccess chiama askNext
+    const { onSuccess } = mockRestoreMutate.mock.calls[0][1]
+    mockNextMutateAsync.mockResolvedValueOnce(sampleQuestion)
+    onSuccess()
+    expect(mockNextMutateAsync).toHaveBeenCalled()
+  })
+
+  it('selezione su più lezioni con pool vuoto: nessun pulsante genera né ripescaggio, solo testo (4.2.2b4 F3)', async () => {
+    mockSubjectNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(undefined, [1, 2])
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    // Nessun link/pulsante Genera domande
+    expect(screen.queryByRole('link', { name: 'Genera domande' })).not.toBeInTheDocument()
+    // Nessun ripescaggio
+    expect(screen.queryByRole('button', { name: /Riproponi/ })).not.toBeInTheDocument()
+    // Testo che dice di generare dai rispettivi pannelli
+    expect(screen.getByText(/Non ci sono domande da porre\. Puoi generare nuove domande dai pannelli delle rispettive lezioni\./)).toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import { Brain, ChevronDown, MoreHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -11,10 +11,14 @@ import {
   useRecallHistory,
   useRecallQuestions,
   useRecallUnits,
+  useRestorable,
+  useRestoreQuestions,
+  useQuestionStatus,
   useSelectRecallUnits,
   type RecallQuestionDetail,
   type RecallType,
 } from '@/api/recall'
+import { QuestionEditModal } from './QuestionEditModal'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
@@ -80,7 +84,15 @@ function questionMeta(q: RecallQuestionDetail, hideUnit: boolean): string {
   return parts.join(' · ')
 }
 
-function QuestionRowMenu({ onDelete }: { onDelete: () => void }) {
+const MENU_ITEM = 'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-meta hover:bg-muted focus-visible:bg-muted'
+
+function QuestionRowMenu({ asked, onDelete, onEdit, onStatus }: {
+  /** La domanda è già stata posta (o risposta): il menu offre di rimetterla fra quelle da porre. */
+  asked: boolean
+  onDelete: () => void
+  onEdit: () => void
+  onStatus: (status: 'pending' | 'asked') => void
+}) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
 
@@ -111,7 +123,31 @@ function QuestionRowMenu({ onDelete }: { onDelete: () => void }) {
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-meta text-danger hover:bg-muted focus-visible:bg-muted"
+            className={MENU_ITEM}
+            onClick={() => {
+              setOpen(false)
+              onEdit()
+            }}
+          >
+            <Pencil className="size-3.5 shrink-0" aria-hidden />
+            Modifica
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={MENU_ITEM}
+            onClick={() => {
+              setOpen(false)
+              onStatus(asked ? 'pending' : 'asked')
+            }}
+          >
+            {asked ? <CircleDashed className="size-3.5 shrink-0" aria-hidden /> : <CircleCheck className="size-3.5 shrink-0" aria-hidden />}
+            {asked ? 'Segna da porre' : 'Segna come posta'}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(MENU_ITEM, 'text-danger')}
             onClick={() => {
               setOpen(false)
               onDelete()
@@ -146,6 +182,9 @@ export function QuestionsPanel({
   const selectUnits = useSelectRecallUnits(id)
   const generate = useGenerateRecall(id)
   const deleteQuestions = useDeleteQuestions(id)
+  const questionStatus = useQuestionStatus(id)
+  const restorable = useRestorable(id, Boolean(lessonId))
+  const restore = useRestoreQuestions(id)
   const jobs = useJobs({ lesson_id: id, limit: 10 })
   const relevance = useRelevance(id)
 
@@ -153,6 +192,12 @@ export function QuestionsPanel({
 
   // Filtro tipo (solo vista normale)
   const [activeFilter, setActiveFilter] = useState<RecallType | null>(null)
+  // Filtro stato: tutte, da porre, poste (4.2.2b3)
+  const [statusFilter, setStatusFilter] = useState<'tutte' | 'pending' | 'asked'>('tutte')
+  // Elenco contraibile
+  const [listOpen, setListOpen] = useState(true)
+  // Domanda aperta nel popup di modifica
+  const [editing, setEditing] = useState<RecallQuestionDetail | null>(null)
 
   // Form generazione globale
   const [globalType, setGlobalType] = useState<RecallType>('quiz')
@@ -200,9 +245,11 @@ export function QuestionsPanel({
         return q.unit_ids.some((u) => selectedUnits!.includes(u))
       }
       if (activeFilter && q.type !== activeFilter) return false
+      if (statusFilter === 'pending' && q.status !== 'pending') return false
+      if (statusFilter === 'asked' && q.status !== 'asked' && q.status !== 'answered') return false
       return true
     })
-  }, [questionsList, isSelectionMode, selectedUnits, activeFilter])
+  }, [questionsList, isSelectionMode, selectedUnits, activeFilter, statusFilter])
 
   // Ultimo ripasso
   const lastRecallText = useMemo(() => {
@@ -255,6 +302,9 @@ export function QuestionsPanel({
   const handleDelete = (questionId: string) => {
     deleteQuestions.mutate([questionId])
   }
+
+  const askedCount = restorable.data?.asked ?? 0
+  const wrongCount = restorable.data?.wrong ?? 0
 
   const summary = relevance.data?.summary
   const classifierStatus = !summary
@@ -466,23 +516,48 @@ export function QuestionsPanel({
         </div>
       )}
 
-      {/* Intestazione elenco */}
-      <div className="mt-1 flex items-center justify-between">
-        <h3 className="text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">
-          {isSelectionMode ? `Domande della parte (${filteredQuestions.length})` : 'Domande della lezione'}
-        </h3>
+      {/* Intestazione elenco: contraibile, con il filtro per stato (4.2.2b3) */}
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setListOpen(!listOpen)}
+          aria-expanded={listOpen}
+          aria-controls="questions-list-body"
+          data-testid="questions-list-toggle"
+          className="flex min-w-0 items-center gap-1 text-left text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground hover:text-foreground"
+        >
+          <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', !listOpen && '-rotate-90')} aria-hidden />
+          {isSelectionMode ? `Domande della parte (${filteredQuestions.length})` : `Domande della lezione (${filteredQuestions.length})`}
+        </button>
         {activeFilter && !isSelectionMode && (
           <button
             type="button"
             onClick={() => setActiveFilter(null)}
-            className="text-meta text-link hover:underline"
+            className="shrink-0 text-meta text-link hover:underline"
           >
             Azzera filtro
           </button>
         )}
       </div>
 
+      {listOpen && !isSelectionMode && (
+        <div role="group" aria-label="Filtra per stato" className="flex flex-wrap gap-1.5">
+          {([['tutte', 'Tutte'], ['pending', 'Da porre'], ['asked', 'Poste']] as const).map(([value, label]) => (
+            <Chip
+              key={value}
+              size="sm"
+              active={statusFilter === value}
+              aria-pressed={statusFilter === value}
+              onClick={() => setStatusFilter(value)}
+            >
+              {label}
+            </Chip>
+          ))}
+        </div>
+      )}
+
       {/* Elenco domande */}
+      <div id="questions-list-body" data-testid="questions-list-body" hidden={!listOpen} className="flex flex-col gap-3.5">
       {questionsQuery.isPending && (
         <div className="flex flex-col gap-2 py-2">
           <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
@@ -518,11 +593,47 @@ export function QuestionsPanel({
                   </p>
                   <p className="mt-0.5 text-body">{q.question_text}</p>
                 </div>
-                <QuestionRowMenu onDelete={() => handleDelete(q.id)} />
+                <QuestionRowMenu
+                  asked={q.status === 'asked' || q.status === 'answered'}
+                  onDelete={() => handleDelete(q.id)}
+                  onEdit={() => setEditing(q)}
+                  onStatus={(status) => questionStatus.mutate({ questionId: q.id, status })}
+                />
               </li>
             )
           })}
         </ul>
+      )}
+
+      {/* Riproponi le domande già poste (4.2.2b3, icone 4.2.2b4 F4) */}
+      {!isSelectionMode && (askedCount > 0 || wrongCount > 0) && (
+        <div className="flex items-center gap-3" data-testid="questions-restore">
+          <div className="flex items-center gap-1.5">
+            <IconButton
+              label="Riproponi le poste"
+              icon={RotateCcw}
+              disabled={askedCount === 0 || restore.isPending}
+              onClick={() => restore.mutate('asked')}
+            />
+            <span className="text-meta text-muted-foreground">{askedCount}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <IconButton
+              label="Solo quelle sbagliate"
+              icon={CircleX}
+              disabled={wrongCount === 0 || restore.isPending}
+              onClick={() => restore.mutate('wrong')}
+            />
+            <span className="text-meta text-muted-foreground">{wrongCount}</span>
+          </div>
+        </div>
+      )}
+      {restore.isError && <Alert tone="danger">{errorMessage(restore.error)}</Alert>}
+      {questionStatus.isError && <Alert tone="danger">{errorMessage(questionStatus.error)}</Alert>}
+      </div>
+
+      {editing && (
+        <QuestionEditModal lessonId={id} question={editing} open onClose={() => setEditing(null)} />
       )}
 
       {/* Footer solo in vista normale */}

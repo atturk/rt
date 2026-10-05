@@ -14,6 +14,10 @@ from rt.core.jev_decision import JevDecisionConfig
 
 router = APIRouter(tags=["impostazioni"])
 
+# Il router personale entra nello stesso punto di registrazione delle impostazioni.
+from rt.api.routers.preferences import router as preferences_router
+router.include_router(preferences_router)
+
 
 class PromptOverrideIn(BaseModel):
     instruction: str = Field(max_length=20000)
@@ -140,7 +144,7 @@ class Settings(BaseModel):
     notices: NoticeSettings
     transcription: Transcription
     telegram: TelegramSettings
-    phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna delle sei fasi LLM")
+    phases: List[PhaseAssignment] = Field(description="Modello assegnato a ciascuna fase LLM")
     connections: List[Connection]
     credentials: List[CredentialState]
     pricing: Dict[str, Dict[str, Dict[str, Any]]]

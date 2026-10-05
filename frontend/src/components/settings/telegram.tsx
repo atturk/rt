@@ -5,7 +5,7 @@ import { errorMessage } from '@/api/client'
 import { useDeleteListenMessages, useListenMessages, useRevealTelegram, useSetTelegramEnabled, type useTopicTest } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { SecretBadge } from './common'
+import { Checkbox, SecretBadge } from './common'
 
 /** Pezzi di Telegram condivisi da impostazioni, configurazione guidata e pagina Bot (RT4-FA6). */
 
@@ -31,7 +31,7 @@ export function RevealableValue({ field, preview }: { field: 'bot_token' | 'chat
   }
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]" data-testid={`${field}-value`}>
+      <code className="break-all rounded bg-muted px-1.5 py-0.5 text-meta" data-testid={`${field}-value`}>
         {value}
       </code>
       <Button
@@ -66,13 +66,13 @@ export function TopicTestResult({ state }: { state: TopicTest }) {
   const { test } = state
   if (test.isError)
     return (
-      <p role="alert" className="text-[11px] text-danger" data-testid="topic-test-result">
+      <p role="alert" className="text-meta text-danger" data-testid="topic-test-result">
         {errorMessage(test.error)}
       </p>
     )
   if (!test.data) return null
   return (
-    <p role="status" className={test.data.ok ? 'text-[11px] text-success' : 'text-[11px] text-danger'} data-testid="topic-test-result">
+    <p role="status" className={test.data.ok ? 'text-meta text-success' : 'text-meta text-danger'} data-testid="topic-test-result">
       {test.data.message}
     </p>
   )
@@ -94,7 +94,7 @@ export function ListenCleanup({ enabled }: { enabled: boolean }) {
           </Button>
         </div>
       ) : (
-        <div role="group" aria-label="Conferma cancellazione" className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+        <div role="group" aria-label="Conferma cancellazione" className="flex flex-col gap-2 rounded-lg border p-3 text-body">
           <p>
             Eliminare dal gruppo {count === 1 ? "il messaggio ricevuto" : `i ${count} messaggi ricevuti`} durante l'ultimo ascolto dei topic?
             Gli altri messaggi del gruppo non vengono toccati.
@@ -116,7 +116,7 @@ export function ListenCleanup({ enabled }: { enabled: boolean }) {
       )}
       {del.isError && <Alert tone="danger">{errorMessage(del.error)}</Alert>}
       {del.data && (
-        <div role="status" className="text-xs" data-testid="cleanup-result">
+        <div role="status" className="text-meta" data-testid="cleanup-result">
           <p className="text-success">
             {del.data.deleted === 1 ? 'Eliminato 1 messaggio.' : `Eliminati ${del.data.deleted} messaggi.`}
           </p>
@@ -135,7 +135,7 @@ export function ListenCleanup({ enabled }: { enabled: boolean }) {
         </div>
       )}
       {!del.data && info.data?.cleaned && count > 0 && (
-        <p className="text-[11px] text-muted-foreground">I messaggi dell'ultimo ascolto sono già stati cancellati.</p>
+        <p className="text-meta text-muted-foreground">I messaggi dell'ultimo ascolto sono già stati cancellati.</p>
       )}
     </div>
   )
@@ -151,21 +151,7 @@ export function TelegramEnabledToggle({ enabled }: { enabled: boolean }) {
   const shown = set.isPending ? (set.variables ?? enabled) : enabled
   return (
     <div className="flex flex-col gap-1" data-testid="telegram-enabled">
-      <label className="flex items-center gap-2 text-sm font-semibold">
-        <input
-          type="checkbox"
-          className="size-4"
-          checked={shown}
-          disabled={set.isPending}
-          onChange={(e) => set.mutate(e.target.checked)}
-        />
-        Usa Telegram
-      </label>
-      <p className="text-xs text-muted-foreground">
-        {shown
-          ? 'Bot, ripassi e decisioni anche su Telegram. Spegnendolo il bot si ferma.'
-          : 'Spento: i ripassi si fanno nella web app e le decisioni nel terminale o nella web app. Token e topic salvati restano.'}
-      </p>
+      <Checkbox id="telegram-enabled" label="Usa Telegram" checked={shown} disabled={set.isPending} onChange={enabled => set.mutate(enabled)} />
       {set.isError && <Alert tone="danger">{errorMessage(set.error)}</Alert>}
     </div>
   )

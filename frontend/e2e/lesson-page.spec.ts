@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, authHeaders, loginViaLink } from './support'
 
 // Pagina della lezione del design 4.2 (schermate 02 e 02b): barra audio con la velocità a valori
 // fissi e menu contestuale del documento (Copia, Leggi da qui, Genera, Domande, Verifica).
@@ -131,9 +131,14 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   expect(element?.context_unit_ids).toEqual([unit])
 
   // Verifica questa parte: review_unit con il contesto dell'unità madre, avanzamento dal vivo.
-  await heading.click({ button: 'right' })
+  // L'elemento generato arriva mentre si clicca e sposta il documento: si riapre il menu finché non c'è.
+  const verifica = menu.getByRole('menuitem', { name: 'Verifica questa parte' })
+  await expect(async () => {
+    await heading.click({ button: 'right' })
+    await expect(verifica).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout: 30_000 })
   const review = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${id}/jobs`))
-  await menu.getByRole('menuitem', { name: 'Verifica questa parte' }).click()
+  await verifica.click()
   expect((await review).postDataJSON()).toMatchObject({ type: 'run_phase', phase: 'review', units: [unit], parent_context: true })
   const status = page.getByTestId('part-review')
   await expect(status).toBeVisible()
@@ -153,4 +158,29 @@ test('menu contestuale: Domande su questa parte apre il pannello Domande sulle u
   await expect(panel).toBeVisible()
   await expect(panel).toHaveAttribute('aria-label', `Domande unità ${unit}`)
   await expect(panel.getByText(`Nuove domande su ${unit}`)).toBeVisible()
+})
+
+// Come l'allineamento in settings.spec.ts si scrive su CHIRURGIA: la lezione di BIOCHIMICA la
+// esporta e reimporta new-lesson.spec.ts, che vuole il documento come l'ha scritto la pipeline.
+test('formule: il LaTeX si vede reso nell’editor e torna in chiaro con il cursore dentro', async ({ page }) => {
+  await loginViaLink(page)
+  const id = await lessonId(page, 'CHIRURGIA')
+  const original = await apiGet<{ markdown: string }>(page.request, `/lessons/${id}/document`)
+  const markdown = `${original.markdown.trimEnd()}\n\nIn riga $E = mc^2$ e da sola:\n\n$$\\int_0^1 x\\,dx = \\frac{1}{2}$$\n`
+  const lease = await page.request.post(`/api/v1/lessons/${id}/document/lease`, { headers: authHeaders() })
+  expect(lease.ok()).toBeTruthy()
+  const { token } = await lease.json()
+  const save = await page.request.put(`/api/v1/lessons/${id}/document/draft`, { headers: authHeaders(), data: { markdown, lease_token: token } })
+  expect(save.ok(), await save.text()).toBeTruthy()
+  await page.request.delete(`/api/v1/lessons/${id}/document/lease?token=${encodeURIComponent(token)}`, { headers: authHeaders() })
+
+  await page.goto(`/lezioni/${id}`)
+  const editor = page.getByTestId('lesson-document')
+  const formulas = editor.locator('.rt-editor-math')
+  await expect(formulas).toHaveCount(2)
+  await expect(formulas.first().locator('math')).toBeVisible()
+  await expect(editor).not.toContainText('$E = mc^2$')
+  // Il clic sulla formula porta il cursore dentro: tornano i delimitatori, come in Obsidian.
+  await formulas.first().click()
+  await expect(editor).toContainText('$E = mc^2$')
 })

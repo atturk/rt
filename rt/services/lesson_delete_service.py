@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from rt.services.errors import Conflict, NotFound, Unavailable
 from rt.db.engine import get_database
-from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, TelegramCommand
+from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyHighlight, TelegramCommand
 from rt.db.session import session_scope
 from rt.services.lesson_service import lessons_root
 from rt.storage import fs
@@ -32,6 +32,7 @@ def purge_lesson_records(session, row: Lesson) -> None:
     path = row.path
     for model in (RecallSession, TelegramCommand):
         session.execute(delete(model).where(model.lesson_path == path))
+    session.execute(delete(StudyHighlight).where(StudyHighlight.lesson_id == row.id))
     for job in session.scalars(select(Job).where(Job.lesson_path == path)):
         session.delete(job)  # JobEvent in cascata anche senza foreign key attive
     keys = [lease_key(row.id), *extra_keys(path)]

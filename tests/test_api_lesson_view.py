@@ -7,6 +7,7 @@ import array
 import os
 import subprocess
 import time
+from unittest import mock
 
 import pytest
 
@@ -33,6 +34,17 @@ def test_document_marks_unit_headings_and_timecodes(api_client, lesson):
     assert f'<p data-unit-timecode="{unit}">{section["start_formatted"]}</p>' in doc["html"]
 
 
+def test_document_says_when_there_is_nothing_to_show(api_client, lesson):
+    """La SPA mostra le righe animate, non il testo del segnaposto: glielo dice 'pending'."""
+    from rt.services.lesson_service import NO_PREVIEW_MARKDOWN
+    doc = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/document").json()
+    assert doc["pending"] is False
+    with mock.patch("rt.services.lesson_service.load_markdown_preview", return_value=NO_PREVIEW_MARKDOWN):
+        doc = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/document").json()
+    assert doc["pending"] is True
+    assert "Nessuna anteprima disponibile" in doc["markdown"]
+
+
 def test_document_marks_only_known_units(api_client, lesson):
     from rt.core.lesson_paths import lesson_path
     from rt.storage import fs
@@ -51,6 +63,16 @@ def test_waveform_is_computed_in_background(api_client, lesson, monkeypatch):
     first = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
     deadline = time.monotonic() + 5
     res = first
+    while not res["ready"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+        res = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
+    assert res == {"ready": True, "peaks": [3, 40, 72]}
+    cleared = api_client.delete("/api/v1/system/cache")
+    assert cleared.status_code == 200 and cleared.json()["waveform"]["entries"] == 1
+    assert api_client.get("/api/v1/system/cache").json()["total"]["entries"] == 0
+    # La forma d'onda torna disponibile alla richiesta successiva allo svuotamento.
+    res = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
+    deadline = time.monotonic() + 5
     while not res["ready"] and time.monotonic() < deadline:
         time.sleep(0.05)
         res = api_client.get(f"/api/v1/lessons/{lesson_id}/audio/waveform").json()
@@ -97,3 +119,6 @@ def test_playable_audio_remuxes_adts_once(tmp_path, rt_db, monkeypatch):
     assert first != str(adts) and open(first, "rb").read().endswith(b"remuxed")
     assert audio_service.playable_audio(str(adts)) == first and len(calls) == 1
     assert not os.path.exists(first + ".tmp.m4a")
+    assert audio_service.clear_cache()["audio"]["entries"] == 1
+    assert os.path.isfile(adts) and not os.path.exists(first)
+    assert audio_service.playable_audio(str(adts)) == first and len(calls) == 2

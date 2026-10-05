@@ -1,7 +1,9 @@
 import { lazy, Suspense, type ComponentType } from 'react'
-import { Navigate, useLocation, useParams, type RouteObject } from 'react-router'
+import { Navigate, Outlet, useLocation, useParams, type RouteObject } from 'react-router'
 
 import { Layout } from '@/components/Layout'
+import { SETTINGS_REDIRECTS } from '@/lib/settings'
+import { useTheme } from '@/lib/theme'
 import { SetupGate } from './setupGate'
 import type { Area } from './types'
 
@@ -23,6 +25,16 @@ const recall = () => import('./recall')
 const settings = () => import('./settings')
 
 const bare = { bare: true }
+
+function SettingsLegacyRedirect({ section }: { section: string }) {
+  const { search, hash } = useLocation()
+  return <Navigate to={`/impostazioni/${section}${search}${hash}`} replace />
+}
+
+function PersonalPreferences() {
+  useTheme()
+  return <Outlet />
+}
 
 function RedirectSubjectRecall() {
   const { materia } = useParams()
@@ -111,18 +123,19 @@ const settingsArea: Area = {
       Component: page(settings, (m) => m.SettingsLayout),
       handle: bare,
       children: [
-        { index: true, Component: page(settings, (m) => m.GeneralSettingsPage) },
-        { path: 'modelli', Component: page(settings, (m) => m.ModelsSettingsPage) },
-        { path: 'chiavi', Component: page(settings, (m) => m.KeysSettingsPage) },
-        { path: 'costi', Component: page(settings, (m) => m.CostsSettingsPage) },
-        { path: 'ricerca-web', Component: page(settings, (m) => m.WebSearchSettingsPage) },
-        { path: 'decisioni', Component: page(settings, (m) => m.DecisionsSettingsPage) },
-        { path: 'info', Component: page(settings, (m) => m.InfoSettingsPage) },
-        // Bot Telegram (RT4-FA6): nel design 4.2 sta nelle impostazioni; /bot resta valido.
-        { path: 'bot', Component: page(() => import('./telegram'), (m) => m.TelegramPage) },
+        { index: true, Component: page(settings, (m) => m.SettingsIndexPage) },
+        { path: 'aspetto', Component: page(settings, (m) => m.AppearanceSettingsPage) },
+        { path: 'editor', Component: page(settings, (m) => m.EditorSettingsPage) },
+        { path: 'lavorazione', Component: page(settings, (m) => m.ProcessingSettingsPage) },
+        { path: 'modelli-connessioni', Component: page(settings, (m) => m.ModelsSettingsPage) },
+        { path: 'telegram', Component: page(settings, (m) => m.TelegramSettingsPage) },
+        { path: 'accesso', Component: page(settings, (m) => m.DeviceSettingsPage) },
+        { path: 'info-aggiornamenti', Component: page(settings, (m) => m.InfoSettingsPage) },
+        ...Object.entries(SETTINGS_REDIRECTS).map(([path, section]) => ({ path, element: <SettingsLegacyRedirect section={section} /> })),
       ],
     },
-    { path: 'bot', element: <Navigate to="/impostazioni/bot" replace /> },
+    { path: 'bot', element: <SettingsLegacyRedirect section="telegram" /> },
+    ...Object.entries({ chiavi: 'modelli-connessioni', costi: 'modelli-connessioni', 'ricerca-web': 'lavorazione', decisioni: 'modelli-connessioni', info: 'info-aggiornamenti' }).map(([path, section]) => ({ path, element: <SettingsLegacyRedirect section={section} /> })),
   ],
 }
 
@@ -143,7 +156,7 @@ export const routes: RouteObject[] = [
     path: '/',
     element: <Layout />,
     // SetupGate porta alla configurazione guidata se il backend segnala setup_required (RT4-F5).
-    children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }],
+    children: [{ element: <PersonalPreferences />, children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }] }],
   },
   { path: '*', element: <NotFound /> },
 ]

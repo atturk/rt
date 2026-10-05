@@ -51,8 +51,8 @@ test('ripasso: quiz con esito, voto e salto', async ({ page }) => {
   await ensureQuestions(page, lesson.id, 'quiz')
   await openSession(page, lesson.id, 'Quiz')
 
+  // Il clic sull'alternativa è già la risposta (4.2.2b3).
   await page.getByRole('button', { name: /^B\./ }).click()
-  await page.getByRole('button', { name: 'Rispondi', exact: true }).click()
   await expect(page.getByTestId('recall-result-card')).toBeVisible()
   const askedId = await questionId(page)
   const asked = (await history(page, lesson.id)).questions.find((q) => q.id === askedId)!
@@ -114,10 +114,10 @@ test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', 
 
 test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
-  // Il bot sta nelle Impostazioni (design 4.2).
+  // Il bot sta nella sezione Telegram delle Impostazioni (4.2.2).
   await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
-  await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: 'Bot Telegram' }).click()
-  await expect(page).toHaveURL(/\/impostazioni\/bot$/)
+  await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: 'Telegram' }).click()
+  await expect(page).toHaveURL(/\/impostazioni\/telegram$/)
   const panel = page.getByTestId('telegram-bot')
   await expect(panel).toHaveAttribute('data-running', 'false')
 

@@ -30,6 +30,8 @@ const UNITS = [
   { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', questions: 0, pending: {} },
 ]
 
+const mockGenerate = vi.fn()
+
 vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
   return {
@@ -39,6 +41,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
       isPending: false,
       isError: false,
     }),
+    useGenerateForUnits: () => ({ mutate: mockGenerate, isPending: false, isError: false }),
   }
 })
 
@@ -74,5 +77,167 @@ describe('StudyFlow unit navigation', () => {
     // L'unità mostrata passa a 1.2
     expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
     expect(screen.getByTestId('unit-index-toggle')).toHaveTextContent('Unità 2 di 3')
+  })
+
+  it('titolo senza posizione, apre e chiude il popup dei dettagli', () => {
+    renderStudy()
+    // Titolo senza "· unità 1 di 3"
+    const titleBtn = screen.getByTestId('study-title-button')
+    expect(titleBtn).toHaveTextContent('Emogasanalisi e acidosi')
+    expect(titleBtn).not.toHaveTextContent('unità 1 di 3')
+
+    // Clic apre il popup dei dettagli
+    fireEvent.click(titleBtn)
+    const popup = screen.getByTestId('study-details-popup')
+    expect(popup).toBeInTheDocument()
+    expect(popup).toHaveTextContent(/fisiologia/i)
+    expect(popup).toHaveTextContent('Rossi')
+    expect(popup).toHaveTextContent('3 · stai leggendo la 1')
+    expect(popup).toHaveTextContent('1 h')
+    expect(screen.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', '/lezioni/1')
+
+    // Esc chiude il popup
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('study-details-popup')).not.toBeInTheDocument()
+  })
+
+  it('frecce ← e → cambiano unità nella fase di lettura', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Freccia destra passa a 1.2
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    // Freccia destra passa a 2.1
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '2.1 Prelievo arterioso' })).toBeInTheDocument()
+
+    // Freccia sinistra torna a 1.2
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+  })
+
+  it('nessun effetto delle frecce con tasti modificatori o con focus in un campo di testo', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con Cmd/Ctrl/Alt premuti non si muove
+    fireEvent.keyDown(window, { key: 'ArrowRight', metaKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'ArrowRight', ctrlKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con focus in un input
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    document.body.removeChild(input)
+  })
+
+  it('nessun effetto delle frecce se disattivate nella preferenza', () => {
+    localStorage.setItem('rt-pref:study.highlighter', JSON.stringify({ color: 0, arrows: false }))
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    localStorage.clear()
+  })
+
+  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità, niente study-next (4.2.2b3, 4.2.2b4)', () => {
+    localStorage.clear()
+    renderStudy()
+    // L'unità 2.1 non ha domande.
+    fireEvent.click(screen.getByTestId('unit-index-toggle'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
+    const generate = screen.getByTestId('study-generate')
+    expect(generate).toHaveTextContent('Nessuna domanda · genera ora')
+    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+
+    fireEvent.click(generate)
+    fireEvent.click(screen.getByRole('button', { name: 'Caso clinico' }))
+    fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
+    fireEvent.click(screen.getByTestId('study-generate-start'))
+
+    expect(mockGenerate).toHaveBeenCalledWith(
+      { unitIds: ['2.1'], qtype: 'caso', count: 2, instructions: 'solo sui valori soglia' },
+      expect.anything(),
+    )
+  })
+
+  it('con domande mostra entrambi i pulsanti e il secondo apre il popup di generazione (4.2.2b4 F2)', () => {
+    localStorage.clear()
+    renderStudy()
+    // L'unità 1.1 ha 2 domande
+    expect(screen.getByTestId('study-quiz')).toHaveTextContent('Mettimi alla prova · 2')
+    const generateBtn = screen.getByTestId('study-generate')
+    expect(generateBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+
+    // Il secondo pulsante apre il popup di generazione
+    fireEvent.click(generateBtn)
+    expect(screen.getByTestId('study-generate-modal')).toBeInTheDocument()
+  })
+
+  it('nessun effetto delle frecce nella fase domande', () => {
+    localStorage.clear()
+    renderStudy()
+    // Passa alla fase domande
+    const quizBtn = screen.getByTestId('study-quiz')
+    fireEvent.click(quizBtn)
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+
+    // Premi freccia destra
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    // Resta nella fase domande
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+  })
+
+  it('swipe touch cambia unità nella fase di lettura (4.2.2b4 F1)', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    const column = screen.getByTestId('study-reading-column')
+
+    // Swipe destra -> sinistra: da x=200 a x=80 (|dx| = 120 >= 60, dy = 5)
+    fireEvent.pointerDown(column, { pointerType: 'touch', pointerId: 1, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'touch', pointerId: 1, clientX: 80, clientY: 105 })
+
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    // Swipe sinistra -> destra: da x=80 a x=200 (|dx| = 120 >= 60, dy = 5)
+    fireEvent.pointerDown(column, { pointerType: 'touch', pointerId: 2, clientX: 80, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'touch', pointerId: 2, clientX: 200, clientY: 105 })
+
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+  })
+
+  it('swipe touch ignorato con mouse o se disattivato da preferenza (4.2.2b4 F1)', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    const column = screen.getByTestId('study-reading-column')
+
+    // Ignorato se pointerType === 'mouse'
+    fireEvent.pointerDown(column, { pointerType: 'mouse', pointerId: 1, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'mouse', pointerId: 1, clientX: 80, clientY: 105 })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Ignorato se arrows disattivate
+    localStorage.setItem('rt-pref:study.highlighter', JSON.stringify({ color: 0, arrows: false }))
+    renderStudy()
+    fireEvent.pointerDown(column, { pointerType: 'touch', pointerId: 2, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(column, { pointerType: 'touch', pointerId: 2, clientX: 80, clientY: 105 })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    localStorage.clear()
   })
 })

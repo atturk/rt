@@ -156,7 +156,7 @@ function DocumentSkeleton() {
   return (
     <div aria-hidden>
       {[['40%', 14, 0], ['100%', 10, 0], ['92%', 10, 0], ['75%', 10, 0], ['35%', 14, 22], ['100%', 10, 0], ['88%', 10, 0]].map(([width, height, top], index) => (
-        <div key={index} className="my-3 rounded-md bg-muted" style={{ width: String(width), height: Number(height), marginTop: Number(top) || undefined }} />
+        <div key={index} className="rt-skeleton my-3 rounded-md" style={{ width: String(width), height: Number(height), marginTop: Number(top) || undefined }} />
       ))}
     </div>
   )
@@ -323,12 +323,15 @@ function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, re
   const running = !!job && isActive(job.state)
   const live = outline && job && isRewriting(job, l.phases.rewrite === 'VALID') ? liveRewrite(outline, document.data, job) : null
   const doc = live?.document ?? document.data
+  // Il documento non c'è ancora e una fase lo sta preparando: lo scheletro, non il testo che lo spiega.
+  const writing = !!doc?.pending && !live && running
   return (
     <div className="mt-6">
       {document.isPending && !live && <DocumentSkeleton />}
       {/* In corso: lo scheletro al posto del testo che ancora manca (linee guida §4). */}
       {document.isError && !live && (running ? <DocumentSkeleton /> : <Alert tone="danger">{errorMessage(document.error)}</Alert>)}
-      {doc && (
+      {writing && <DocumentSkeleton />}
+      {doc && !writing && (
         <>
           {!doc.final && !live && (
             <p className="mb-2 text-meta text-muted-foreground" data-testid="document-preview-note">

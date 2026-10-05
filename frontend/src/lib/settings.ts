@@ -142,3 +142,18 @@ export function rowsToPricing(rows: PricingRow[]): Record<string, Record<string,
   }
   return out
 }
+
+export const SETTINGS_SECTIONS = [
+  { path: 'aspetto', label: 'Aspetto e lettura', description: 'Tema, lettura veloce, evidenziatore' },
+  { path: 'editor', label: 'Editor e scorciatoie', description: 'Comandi e tasti dell’editor' },
+  { path: 'lavorazione', label: 'Lavorazione delle lezioni', description: 'Trascrizione, scaletta, arricchimento, job' },
+  { path: 'modelli-connessioni', label: 'Modelli e connessioni', description: 'Modelli per fase, chiavi e costi' },
+  { path: 'telegram', label: 'Telegram', description: 'Bot, gruppo, topic e notifiche' },
+  { path: 'accesso', label: 'Accesso da iPhone', description: 'Indirizzo e QR di accesso' },
+  { path: 'info-aggiornamenti', label: 'Info e aggiornamenti', description: 'Versione, canale e cartelle' },
+] as const
+
+export const SETTINGS_REDIRECTS: Record<string, string> = {
+  modelli: 'modelli-connessioni', chiavi: 'modelli-connessioni', costi: 'modelli-connessioni',
+  'ricerca-web': 'lavorazione', decisioni: 'modelli-connessioni', bot: 'telegram', info: 'info-aggiornamenti',
+}

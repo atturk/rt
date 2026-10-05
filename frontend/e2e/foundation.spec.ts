@@ -84,17 +84,18 @@ test('dalla riga si apre la lezione', async ({ page }) => {
 test('il tema scuro, nelle Impostazioni, resta dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
   await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
-  await page.getByRole('button', { name: 'Tema scuro' }).click()
+  const theme = page.getByRole('radiogroup', { name: 'Tema' })
+  await theme.getByRole('radio', { name: 'Scuro' }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
   await page.reload()
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await page.getByRole('button', { name: 'Tema chiaro' }).click()
+  await theme.getByRole('radio', { name: 'Chiaro' }).click()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
 })
 
 test('esci chiude la sessione anche sul backend', async ({ page }) => {
   await loginViaLink(page)
-  await page.goto('/impostazioni')
+  await page.goto('/impostazioni/info-aggiornamenti')
   await page.getByRole('button', { name: 'Esci' }).click()
   await expect(page).toHaveURL(/\/login$/)
   await page.goto('/')

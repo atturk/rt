@@ -68,3 +68,21 @@ def test_failure_is_reported_not_exited(tmp_path):
     res = run_pipeline(str(tmp_path / "manca"), PipelineOptions(mock=True, channel="terminal"), RunContext())
     assert res.status == PipelineStatus.FAILED
     assert isinstance(res.error, FileNotFoundError)
+
+
+def test_ingest_emits_lesson_created_before_setup_completes(tmp_path):
+    from rt.services.events import PhaseProgress
+    from rt.services.pipeline_service import ingest_audio
+
+    audio = tmp_path / "lezione.m4a"
+    audio.write_bytes(b"audio")
+    rep = ListReporter()
+    opts = PipelineOptions(mock=True, date="2026-10-05", materia="BIOCHIMICA",
+                           dest_dir=str(tmp_path / "lessons"), channel="terminal")
+    result = ingest_audio(str(audio), opts, RunContext(reporter=rep))
+    assert result.status == PipelineStatus.COMPLETED
+    created = next(e for e in rep.events if isinstance(e, PhaseProgress) and e.lesson_dir)
+    completed = next(e for e in rep.events if isinstance(e, PhaseCompleted) and e.phase == "setup")
+    assert created.message == "Lezione creata"
+    assert created.lesson_dir == completed.result["lesson_dir"]
+    assert rep.events.index(created) < rep.events.index(completed)

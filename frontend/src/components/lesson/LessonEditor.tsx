@@ -1,5 +1,6 @@
 import { AtomicCodeMirrorEditor, type AtomicCodeMirrorEditorHandle } from '@atomic-editor/editor'
 import '@atomic-editor/editor/styles.css'
+import { Compartment, type EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { Check, Circle, LoaderCircle, Lock } from 'lucide-react'
 import { createPortal } from 'react-dom'
@@ -21,13 +22,16 @@ import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
+import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
+import { EditorToolbar } from './EditorToolbar'
 import { lessonFolding } from './lessonFolding'
-import { markdownShortcuts } from './markdownShortcuts'
+import { editorKeymap, type ShortcutPreferences } from './markdownShortcuts'
+import { usePreference } from '@/lib/preferences'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
@@ -40,6 +44,7 @@ type Status =
   | { kind: 'invalid'; problems: Problem[] }
   | { kind: 'error'; message: string; busy: boolean }
 
+const DEFAULT_SHORTCUTS: ShortcutPreferences = {}
 const SAVE_DELAY_MS = 1200
 // Il lease blocca i job della lezione: si prende alla prima modifica e si lascia dopo un po' di quiete.
 const LEASE_IDLE_MS = 60 * 1000
@@ -85,6 +90,9 @@ type Props = {
 export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
+  const [shortcuts] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
+  const [shortcutCompartment] = useState(() => new Compartment())
+  const [editor, setEditor] = useState<{ view: EditorView; state: EditorState } | null>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
   const unitIds = useMemo(() => doc.sections.map((s) => s.unit_id), [doc.sections])
@@ -158,16 +166,30 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     })
   }, [])
   const extensions = useMemo(() => [
-    markdownShortcuts,
+    shortcutCompartment.of(editorKeymap({})),
     lessonFolding,
     timecodeLock,
     lessonUnits,
     lessonReview,
     lessonClassifier,
+    lessonMath,
     lessonImages(lessonId),
     lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
+    // Anche il parsing in background cambia lo stato attivo della formattazione.
+    EditorView.updateListener.of(update => setEditor({ view: update.view, state: update.state })),
     EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
-  ], [lessonId, uploadImage, uploadStarted])
+  ], [lessonId, uploadImage, uploadStarted, shortcutCompartment])
+
+  useEffect(() => {
+    const view = viewOf(handle.current)
+    // Sincronizza lo stato esterno di CodeMirror dopo il suo montaggio.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setEditor(view ? { view, state: view.state } : null)
+  }, [source.key])
+
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: shortcutCompartment.reconfigure(editorKeymap(shortcuts)) })
+  }, [shortcutCompartment, shortcuts, source.key])
 
   const persist = useCallback(async (markdown: string, recover = false) => {
     setStatus({ kind: 'saving' })
@@ -425,6 +447,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         onRestore={restore}
         onDownloadAndRestore={downloadAndRestore}
       />
+      <EditorToolbar view={editor?.view ?? null} state={editor?.state} shortcuts={shortcuts} readOnly={locked} />
       <DocumentMenu lessonId={lessonId} unitIds={unitIds} ready={ready} locate={locate}>
         <div
           ref={surface}

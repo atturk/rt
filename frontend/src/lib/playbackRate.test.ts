@@ -15,7 +15,7 @@ it('salva e rilegge la preferenza, 1× se manca o non è valida', () => {
   expect(loadRate(storage)).toBe(1)
   saveRate(1.75, storage)
   expect(loadRate(storage)).toBe(1.75)
-  data.set('rt-playback-rate', 'boh')
+  data.set('rt-pref:audio.rate', 'boh')
   expect(loadRate(storage)).toBe(1)
   const broken = { getItem: () => { throw new Error('no') }, setItem: () => { throw new Error('no') } }
   expect(loadRate(broken)).toBe(1)

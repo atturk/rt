@@ -1,4 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { api } from '@/api/client'
+import { PREFERENCES_KEY } from '@/lib/preferences'
 import { vi } from 'vitest'
 
 import { AudioPlayer } from './AudioPlayer'
@@ -11,13 +14,20 @@ beforeEach(() => {
   localStorage.clear()
   play.mockClear()
   pause.mockClear()
+  vi.spyOn(api, 'GET').mockImplementation(() => Promise.resolve({ data: { 'audio.rate': JSON.parse(localStorage.getItem('rt-pref:audio.rate') ?? '1') }, response: new Response(null, { status: 200 }) }) as never)
+  vi.spyOn(api, 'PUT').mockResolvedValue({ response: new Response(null, { status: 204 }) } as never)
 })
 
+afterEach(() => vi.restoreAllMocks())
+
 function renderPlayer() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const cached = localStorage.getItem('rt-pref:audio.rate')
+  client.setQueryData(PREFERENCES_KEY, { 'audio.rate': cached ? JSON.parse(cached) : 1 })
   render(
-    <AudioProvider>
+    <QueryClientProvider client={client}><AudioProvider>
       <AudioPlayer lessonId={4} sections={[{ unit_id: '1.1', start_seconds: 0 }, { unit_id: '1.2', start_seconds: 60 }, { unit_id: '1.3', start_seconds: 120 }]} />
-    </AudioProvider>,
+    </AudioProvider></QueryClientProvider>,
   )
   const audio = screen.getByTestId('audio-player').querySelector('audio') as HTMLAudioElement
   Object.defineProperty(audio, 'readyState', { configurable: true, value: HTMLMediaElement.HAVE_METADATA })
@@ -30,22 +40,23 @@ function renderPlayer() {
 
 describe('AudioPlayer', () => {
   it("carica l'audio della lezione e riprende la velocità salvata", () => {
-    localStorage.setItem('rt-playback-rate', '1.25')
+    localStorage.setItem('rt-pref:audio.rate', '1.25')
     const audio = renderPlayer()
     expect(audio).toHaveAttribute('src', '/api/v1/lessons/4/audio')
     expect(screen.getByRole('button', { name: 'Velocità di riproduzione: 1,25×' })).toBeInTheDocument()
     expect(audio.playbackRate).toBe(1.25)
   })
 
-  it('il pulsante velocità gira fra i valori fissi, applica e salva la scelta', () => {
+  it('il pulsante velocità gira fra i valori fissi, applica e salva la scelta su RT', async () => {
     const audio = renderPlayer()
     const speed = screen.getByTestId('speed-button')
     expect(speed).toHaveTextContent('1×')
     for (const [label, rate] of [['1,25×', 1.25], ['1,5×', 1.5], ['1,75×', 1.75], ['2×', 2], ['1×', 1]] as const) {
       fireEvent.click(speed)
-      expect(speed).toHaveTextContent(label)
+      await waitFor(() => expect(speed).toHaveTextContent(label))
       expect(audio.playbackRate).toBe(rate)
-      expect(localStorage.getItem('rt-playback-rate')).toBe(String(rate))
+      expect(localStorage.getItem('rt-pref:audio.rate')).toBe(String(rate))
+      await waitFor(() => expect(api.PUT).toHaveBeenLastCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'audio.rate' } }, body: rate }))
     }
   })
 

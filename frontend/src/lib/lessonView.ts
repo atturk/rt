@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from 'react'
-
 import { lessonTitle, type Lesson } from './format'
 
 /**
@@ -176,7 +174,6 @@ export function groupLessons(sorted: Lesson[], group: LessonGroupBy, dateDir: So
     }))
 }
 
-const STORAGE_KEY = 'rt-lessons-view'
 
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback
@@ -199,37 +196,4 @@ export function parseViewPrefs(raw: string | null): LessonViewPrefs {
     group: pick(data.group, Object.keys(GROUP_LABELS) as LessonGroupBy[], d.group),
     collapsed: Array.isArray(data.collapsed) ? data.collapsed.filter((c): c is string => typeof c === 'string').slice(-200) : [],
   }
-}
-
-function load(): LessonViewPrefs {
-  try {
-    return parseViewPrefs(localStorage.getItem(STORAGE_KEY))
-  } catch {
-    return DEFAULT_VIEW_PREFS
-  }
-}
-
-/** Preferenze della vista, salvate nel browser. */
-export function useLessonViewPrefs() {
-  const [prefs, setPrefs] = useState(load)
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
-    } catch {
-      /* archiviazione non disponibile: vale solo per questa pagina */
-    }
-  }, [prefs])
-  const update = useCallback((patch: Partial<LessonViewPrefs>) => setPrefs((p) => ({ ...p, ...patch })), [])
-  /** Clic su un'intestazione di colonna: stessa colonna inverte, nuova colonna parte dalla direzione naturale. */
-  const sortBy = useCallback(
-    (key: LessonSortKey) =>
-      setPrefs((p) => ({ ...p, sort: key, dir: p.sort === key ? (p.dir === 'asc' ? 'desc' : 'asc') : DEFAULT_DIR[key] })),
-    [],
-  )
-  const toggleGroup = useCallback(
-    (id: string) =>
-      setPrefs((p) => ({ ...p, collapsed: p.collapsed.includes(id) ? p.collapsed.filter((c) => c !== id) : [...p.collapsed, id] })),
-    [],
-  )
-  return { prefs, update, sortBy, toggleGroup }
 }

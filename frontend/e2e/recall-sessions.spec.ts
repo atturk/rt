@@ -43,8 +43,8 @@ test('tipo di domanda: resta l\'ultimo usato dopo la ricarica', async ({ page })
 test('termina: la sessione si chiude sul backend con il riepilogo e si torna alla lezione', async ({ page }) => {
   const lesson = await openSession(page)
   await page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Quiz', exact: true }).click()
+  // Il clic sull'alternativa è già la risposta (4.2.2b3): non c'è più "Rispondi" nel quiz.
   await page.getByRole('button', { name: /^A\./ }).click()
-  await page.getByRole('button', { name: 'Rispondi' }).click()
   await expect(page.getByTestId('recall-result-card')).toBeVisible()
   await expect.poll(async () => (await sessionState(page, lesson.id)).web?.state).toBe('active')
 
@@ -54,4 +54,55 @@ test('termina: la sessione si chiude sul backend con il riepilogo e si torna all
   expect(state.web).toBeNull()
   expect(state.last?.state).toBe('ended')
   expect(state.last?.summary?.answered).toBeGreaterThanOrEqual(1)
+})
+
+type Bank = { questions: { id: string; status: string; question_text: string; type: string }[] }
+
+const bank = (page: Page, lessonId: number) => apiGet<Bank>(page.request, `/lessons/${lessonId}/recall/history`)
+
+test('pannello Domande: elenco contraibile, filtro per stato, modifica a mano e riproposta delle poste', async ({ page }) => {
+  const lesson = await openSession(page)
+  await page.goto(`/lezioni/${lesson.id}?panel=domande`)
+  const panel = page.getByTestId('questions-panel')
+  const toggle = panel.getByTestId('questions-list-toggle')
+  await expect(toggle).toContainText('Domande della lezione')
+
+  // Si contrae e si riapre.
+  await toggle.click()
+  await expect(panel.getByTestId('questions-list-body')).toBeHidden()
+  await toggle.click()
+  await expect(panel.getByTestId('questions-list')).toBeVisible()
+
+  // Filtro per stato: solo quelle da porre.
+  await panel.getByRole('group', { name: 'Filtra per stato' }).getByRole('button', { name: 'Da porre' }).click()
+  const row = panel.getByTestId('questions-list').locator('li').first()
+  await expect(row).toContainText('da porre')
+
+  // Modifica a mano dal menu "...": il testo cambia e la domanda resta fra quelle da porre.
+  const before = (await row.textContent())!
+  await row.getByRole('button', { name: 'Azioni sulla domanda' }).click()
+  await page.getByRole('menuitem', { name: 'Modifica' }).click()
+  const modal = page.getByTestId('question-edit-modal')
+  await expect(modal).toBeVisible()
+  const text = `Domanda corretta a mano ${Date.now()}?`
+  await modal.getByLabel('Testo della domanda').fill(text)
+  await modal.getByTestId('question-edit-save').click()
+  await expect(modal).toBeHidden()
+  await expect(panel.getByTestId('questions-list')).toContainText(text)
+  expect(before).not.toContain(text)
+  await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.question_text === text)?.status).toBe('pending')
+
+  // Segnata come posta, il pulsante la ripesca.
+  const edited = (await bank(page, lesson.id)).questions.find((q) => q.question_text === text)!
+  const editedRow = panel.getByTestId('questions-list').locator('li', { hasText: text })
+  await panel.getByRole('group', { name: 'Filtra per stato' }).getByRole('button', { name: 'Tutte' }).click()
+  await editedRow.getByRole('button', { name: 'Azioni sulla domanda' }).click()
+  await page.getByRole('menuitem', { name: 'Segna come posta' }).click()
+  await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.id === edited.id)?.status).toBe('asked')
+
+  const restore = panel.getByTestId('questions-restore')
+  await expect(restore).toBeVisible()
+  await expect(restore.getByRole('button', { name: /Riproponi le poste/ })).toBeVisible()
+  await restore.getByRole('button', { name: /Riproponi le poste/ }).click()
+  await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.id === edited.id)?.status).toBe('pending')
 })

@@ -6,10 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>rt.</title>
     <script>
-      // Tema prima del primo paint (preferenza dell'interfaccia, non stato di dominio).
+      // Copia della preferenza condivisa prima del primo disegno.
       try {
-        var t = localStorage.getItem('rt-theme')
-        if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches))
+        var legacy = localStorage.getItem('rt-theme')
+        if (legacy !== null && localStorage.getItem('rt-pref:theme') === null) {
+          var migrated = legacy === 'dark' ? 'scuro' : legacy === 'light' ? 'chiaro' : 'sistema'
+          localStorage.setItem('rt-pref:theme', JSON.stringify(migrated))
+          var pending = JSON.parse(localStorage.getItem('rt-pref:migrations') || '{}')
+          pending.theme = migrated
+          localStorage.setItem('rt-pref:migrations', JSON.stringify(pending))
+        }
+        localStorage.removeItem('rt-theme')
+        var t = JSON.parse(localStorage.getItem('rt-pref:theme') || '"sistema"')
+        if (t === 'scuro' || (t === 'sistema' && matchMedia('(prefers-color-scheme: dark)').matches))
           document.documentElement.classList.add('dark')
       } catch (e) {}
     </script>

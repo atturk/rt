@@ -8,6 +8,7 @@ import { useLessons } from '@/api/hooks'
 import { invalidateAfterJob, useCreateLesson, useImportLessonZips, type ZipImportResult } from '@/api/jobs'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { JobProgress } from '@/components/JobProgress'
+import { AudioOrder } from '@/components/lessons/AudioOrder'
 import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -80,6 +81,12 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     zips.reset()
   }
 
+  const clear = () => {
+    setFiles([])
+    setProblem(null)
+    setZipJob(null)
+  }
+
   const finished = useCallback(() => {
     invalidateAfterJob(client)
   }, [client])
@@ -149,7 +156,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const sentence = solo ? "Dopo l'importazione: solo trascrizione" : `Dopo l'importazione: ${stepsList}`
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuova lezione" testId="new-lesson">
+    <Modal open={open} onClose={onClose} title="Nuova lezione" testId="new-lesson" className="w-[min(560px,calc(100vw-32px))]">
       <form onSubmit={submit} aria-label="Nuova lezione" noValidate>
         <input
           ref={input}
@@ -195,6 +202,23 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
             <Upload className="size-[18px]" aria-hidden />
             <span className="text-meta">{DROP_TEXT}</span>
           </div>
+        ) : kind === 'audio' && files.length > 1 ? (
+          <div
+            data-testid="chosen-files"
+            data-kind={kind}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault()
+              choose(Array.from(event.dataTransfer.files))
+            }}
+          >
+            <AudioOrder files={files} disabled={busy} onChange={setFiles} />
+            <p className="-mt-2 mb-3 flex items-center gap-2 text-meta text-muted-foreground">
+              <FileAudio className="size-[18px] shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1">{files.length} file · {formatBytes(total)} · diventano un'unica registrazione, in quest'ordine</span>
+              <IconButton label="Rimuovi" icon={X} disabled={busy} onClick={clear} />
+            </p>
+          </div>
         ) : (
           <div
             className="my-4 flex min-h-[110px] items-center justify-center gap-2.5 rounded-lg border border-dashed px-4 py-3 text-foreground"
@@ -210,11 +234,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
             <span className="min-w-0 text-meta [overflow-wrap:anywhere]">
               {files.length === 1 ? files[0].name : `${files.length} file · ${formatBytes(total)}`}
             </span>
-            <IconButton label="Rimuovi" icon={X} disabled={busy} onClick={() => {
-                setFiles([])
-                setProblem(null)
-                setZipJob(null)
-              }} />
+            <IconButton label="Rimuovi" icon={X} disabled={busy} onClick={clear} />
           </div>
         )}
 
