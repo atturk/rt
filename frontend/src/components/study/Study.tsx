@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronDown, List, Mic, Pause, Play, SendHorizontal, Square, X } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, Gauge, Info, List, Mic, Pause, Play, SendHorizontal, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -14,10 +14,12 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { lessonTitle, type Lesson } from '@/lib/format'
+import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { recordingFormat } from '@/lib/recording'
 import { useIsPhone } from '@/lib/phone'
+import { loadHighlighterPrefs } from '@/lib/studyPrefs'
 import { cn } from '@/lib/utils'
 
 /**
@@ -72,6 +74,38 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     window.scrollTo?.({ top: 0 })
   }, [units, unitIndex, lessonIndex, lessons.length, onlyUnits])
 
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const titleButtonRef = useRef<HTMLButtonElement>(null)
+
+  // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
+  useEffect(() => {
+    if (phase !== 'lettura') return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
+        return
+      }
+      const prefs = loadHighlighterPrefs()
+      if (!prefs.arrows) return
+      if (e.key === 'ArrowLeft') {
+        if (unitIndex > 0) {
+          e.preventDefault()
+          goToUnit(unitIndex - 1)
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (units && unitIndex + 1 < units.length) {
+          e.preventDefault()
+          goToUnit(unitIndex + 1)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [phase, unitIndex, units])
+
   if (lessons.length === 0) {
     return (
       <StudyShell title="Studio" back={back}>
@@ -118,12 +152,35 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       </StudyShell>
     )
   }
-  const position = `${title} · unità ${unitIndex + 1} di ${units.length}`
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
+  const titleButton = (
+    <button
+      ref={titleButtonRef}
+      type="button"
+      onClick={() => setDetailsOpen((v) => !v)}
+      aria-haspopup="dialog"
+      aria-expanded={detailsOpen}
+      title="Dettagli della lezione"
+      data-testid="study-title-button"
+      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <span className="truncate text-[15px] font-semibold text-foreground max-md:hidden">{title}</span>
+      <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
+      <span className="sr-only">Dettagli della lezione</span>
+    </button>
+  )
+
   const headerActions = (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" data-testid="study-header-tools">
+      <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
+      <IconButton
+        label="Lettura veloce"
+        icon={Gauge}
+        onClick={() => {}}
+        data-testid="study-rsvp-btn"
+      />
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
@@ -141,9 +198,21 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     <>
       {reading && (
         <StudyShell
-          title={position}
+          title={titleButton}
           back={back}
           actions={headerActions}
+          popup={
+            lesson && (
+              <LessonDetailsPopup
+                lesson={lesson}
+                unitCount={units.length}
+                currentUnitIndex={unitIndex}
+                open={detailsOpen}
+                onClose={() => setDetailsOpen(false)}
+                anchorRef={titleButtonRef}
+              />
+            )
+          }
           footer={
             rereading ? (
               <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setRereading(false)}>Torna alle domande</Button>
@@ -194,11 +263,112 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 }
 
-/** Intestazione (Esci, dove sei, azione a destra), colonna di lettura e pulsante in basso. */
-function StudyShell({ title, back, actions, footer, children }: { title: string; back: { to: string; label: string }; actions?: ReactNode; footer?: ReactNode; children: ReactNode }) {
+/** Popup con i dettagli della lezione aperto dal pulsante titolo. */
+function LessonDetailsPopup({
+  lesson,
+  unitCount,
+  currentUnitIndex,
+  open,
+  onClose,
+  anchorRef,
+}: {
+  lesson: Lesson
+  unitCount: number
+  currentUnitIndex: number
+  open: boolean
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node) &&
+        !anchorRef.current?.contains(e.target as Node)
+      ) {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open, onClose, anchorRef])
+
+  if (!open) return null
+
+  const title = lessonTitle(lesson)
+  const materia = lesson.materia ? subjectName(lesson.materia) : null
+  const data = lesson.data ? longDate(lesson.data) : null
+  const duration = lesson.duration_seconds ? formatDuration(lesson.duration_seconds) : null
+
   return (
-    <div className="flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
-      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+    <div
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Dettagli della lezione"
+      data-testid="study-details-popup"
+      className="absolute left-14 top-[50px] z-30 grid w-[min(440px,calc(100%-24px))] gap-2.5 rounded-xl border bg-background p-4 text-body shadow-xl max-md:left-2 max-md:right-2 max-md:top-[54px] max-md:w-auto"
+    >
+      <strong className="font-semibold text-foreground [overflow-wrap:anywhere]">{title}</strong>
+      <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1 text-meta">
+        {materia && (
+          <>
+            <span className="text-muted-foreground">Materia</span>
+            <span>{materia}</span>
+          </>
+        )}
+        {lesson.docente && (
+          <>
+            <span className="text-muted-foreground">Docente</span>
+            <span>{lesson.docente}</span>
+          </>
+        )}
+        {data && (
+          <>
+            <span className="text-muted-foreground">Data</span>
+            <span>{data}</span>
+          </>
+        )}
+        <span className="text-muted-foreground">Unità</span>
+        <span>{unitCount} · stai leggendo la {currentUnitIndex + 1}</span>
+        {duration && (
+          <>
+            <span className="text-muted-foreground">Audio</span>
+            <span>{duration}</span>
+          </>
+        )}
+      </div>
+      <div>
+        <Link
+          to={`/lezioni/${lesson.id}`}
+          className="text-meta font-semibold text-accent hover:underline"
+          onClick={onClose}
+        >
+          Apri la lezione ›
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/** Intestazione (Esci, dove sei, azione a destra), colonna di lettura e pulsante in basso. */
+function StudyShell({ title, back, actions, popup, footer, children }: { title: ReactNode; back: { to: string; label: string }; actions?: ReactNode; popup?: ReactNode; footer?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
+      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+      {popup}
       <div className="flex-1 px-7 max-md:px-[18px]">
         <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3">{children}</div>
       </div>
@@ -386,7 +556,7 @@ function QuestionPhase({ lessonId, unit, total, back, dots, actions, onReread, o
         titleAs="h1"
         back={back}
         actions={actions ?? <IconButton label="Rileggi l'unità" icon={BookOpen} onClick={onReread} />}
-        className="max-md:min-h-14 max-md:flex-nowrap [&_h1]:max-md:text-meta"
+        className="max-md:flex-nowrap [&_h1]:max-md:text-meta"
       />
       <div className="flex-1 px-7 pb-8 pt-3 max-md:px-[18px]">
         <div className="mx-auto w-full max-w-[560px]">

@@ -75,4 +75,89 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
     expect(screen.getByTestId('unit-index-toggle')).toHaveTextContent('Unità 2 di 3')
   })
+
+  it('titolo senza posizione, apre e chiude il popup dei dettagli', () => {
+    renderStudy()
+    // Titolo senza "· unità 1 di 3"
+    const titleBtn = screen.getByTestId('study-title-button')
+    expect(titleBtn).toHaveTextContent('Emogasanalisi e acidosi')
+    expect(titleBtn).not.toHaveTextContent('unità 1 di 3')
+
+    // Clic apre il popup dei dettagli
+    fireEvent.click(titleBtn)
+    const popup = screen.getByTestId('study-details-popup')
+    expect(popup).toBeInTheDocument()
+    expect(popup).toHaveTextContent(/fisiologia/i)
+    expect(popup).toHaveTextContent('Rossi')
+    expect(popup).toHaveTextContent('3 · stai leggendo la 1')
+    expect(popup).toHaveTextContent('1 h')
+    expect(screen.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', '/lezioni/1')
+
+    // Esc chiude il popup
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('study-details-popup')).not.toBeInTheDocument()
+  })
+
+  it('frecce ← e → cambiano unità nella fase di lettura', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Freccia destra passa a 1.2
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    // Freccia destra passa a 2.1
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '2.1 Prelievo arterioso' })).toBeInTheDocument()
+
+    // Freccia sinistra torna a 1.2
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+  })
+
+  it('nessun effetto delle frecce con tasti modificatori o con focus in un campo di testo', () => {
+    localStorage.clear()
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con Cmd/Ctrl/Alt premuti non si muove
+    fireEvent.keyDown(window, { key: 'ArrowRight', metaKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'ArrowRight', ctrlKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con focus in un input
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    document.body.removeChild(input)
+  })
+
+  it('nessun effetto delle frecce se disattivate nella preferenza', () => {
+    localStorage.setItem('rt-pref:study.highlighter', JSON.stringify({ color: 0, arrows: false }))
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    localStorage.clear()
+  })
+
+  it('nessun effetto delle frecce nella fase domande', () => {
+    localStorage.clear()
+    renderStudy()
+    // Passa alla fase domande
+    const quizBtn = screen.getByTestId('study-quiz')
+    fireEvent.click(quizBtn)
+    expect(screen.getByTestId('study-questions')).toBeInTheDocument()
+
+    // Premi freccia destra
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    // Resta nella fase domande
+    expect(screen.getByTestId('study-questions')).toBeInTheDocument()
+  })
 })
