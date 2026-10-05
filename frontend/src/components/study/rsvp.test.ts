@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   endsSentence, focusIndex, isFullStop, nextSentence, previousSentence, readUnitWords, remainingSeconds,
   surrounding, wordDelay, type Word,
-} from './speedReader'
+} from './rsvp'
 
 const words = (text: string): Word[] => text.split(' ').map((t) => ({ text: t, para: 0 }))
 

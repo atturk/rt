@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import {
   MAX_WPM, MIN_WPM, focusIndex, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
   remainingSeconds, surrounding, wordDelay,
-} from './speedReader'
+} from './rsvp'
 
 const RING = 2 * Math.PI * 50
 const NOISE_KINDS = [['bianco', 'Bianco'], ['rosa', 'Rosa'], ['marrone', 'Marrone']] as const

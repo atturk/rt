@@ -298,7 +298,7 @@ Componente `SpeedReader.tsx` a schermo intero sopra lo Studio, logica pura in `s
   step, size, sound, pitch, dyslexic, irlen: null|'pesca'|'menta'|'pergamena', noise:
   null|'bianco'|'rosa'|'marrone', noiseVolume}`. Giorno/Notte non si salva (segue l'app ogni volta).
 - `prefers-reduced-motion`: niente zoom out.
-- Test: vitest di `speedReader.ts` (divisione in parole e salto di formule/immagini, stati con e
+- Test: vitest di `rsvp.ts` (divisione in parole e salto di formule/immagini, stati con e
   senza "virgola", tempi, posizione della lettera di fuoco, frase precedente/successiva, indietro
   di N) e del componente (testo intorno solo in pausa, tasti, tema iniziale dall'app).
 
