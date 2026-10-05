@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { apiGet, authHeaders, loginViaLink } from './support'
 
 // Studio del design 4.2 (schermate 05, 05b e 06): lettura dell'unità, poi le sue domande una
 // alla volta, poi l'unità dopo. Si entra dalle righe e dai gruppi di Lezioni e dall'intestazione
@@ -249,6 +249,11 @@ test('Swipe touch fra le unità dello Studio sul telefono (4.2.2b4 F1)', async (
   })
   const page = await context.newPage()
   await loginViaLink(page)
+  // Lo swipe segue la preferenza delle frecce: qui si accende, così il test non dipende
+  // da come l'hanno lasciata gli altri (le preferenze stanno su RT, non nel browser).
+  await page.request.put('/api/v1/preferences/study.highlighter', {
+    headers: authHeaders(), data: { color: 0, arrows: true },
+  })
   const l = await lesson(page, 'BIOCHIMICA')
 
   await page.route(`**/api/v1/lessons/${l.id}/study`, async (route) => {

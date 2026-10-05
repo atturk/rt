@@ -63,6 +63,9 @@ test('tema, lettura, audio e sfondo salvati su RT e riletti dopo la ricarica', a
   await expect(page.getByTestId('pref-audio-rate')).toHaveAttribute('data-value', '1.5')
   await expect(page.getByTestId('rsvp-orp')).toHaveAttribute('data-value', 'dopo')
   await expect(page.getByRole('switch', { name: 'Frecce per cambiare unità' })).toHaveAttribute('aria-checked', 'false')
+  // Le preferenze stanno su RT: le frecce tornano accese, le usano lo Studio e i test dopo questo.
+  await page.getByRole('switch', { name: 'Frecce per cambiare unità' }).click()
+  await expect(page.getByRole('switch', { name: 'Frecce per cambiare unità' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.getByTestId('pref-sfondo')).toHaveAttribute('data-value', 'grigi')
   await page.getByRole('radio', { name: 'Sistema', exact: true }).click()
   await page.emulateMedia({ colorScheme: 'dark' })
