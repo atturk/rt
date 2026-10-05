@@ -46,7 +46,8 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 
   // Lettura (schermata 05): trattini, dove sei, testo dell'unità, audio dei suoi timecode.
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(`unità 1 di ${study.units.length}`)
+  await expect(page.getByTestId('unit-index-toggle')).toContainText(`Unità 1 di ${study.units.length}`)
+  await expect(page.getByRole('heading', { level: 1 })).not.toContainText('unità 1 di')
   await expect(page.getByTestId('study-dots').locator('> *')).toHaveCount(study.units.length)
   await expect(page.getByTestId('study-text')).toHaveText(/\S.{40,}/)
   await expect(page.getByRole('button', { name: 'Audio della lezione per questa unità' })).toBeVisible()
@@ -91,7 +92,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
     if (i + 1 < total) await expect(page.getByRole('heading', { level: 1 })).toContainText(`domanda ${i + 2} di ${total}`)
   }
   // Poi l'unità dopo, o la fine dello Studio.
-  if (study.units.length > 1) await expect(page.getByRole('heading', { level: 1 })).toContainText(`unità 2 di ${study.units.length}`)
+  if (study.units.length > 1) await expect(page.getByTestId('unit-index-toggle')).toContainText(`Unità 2 di ${study.units.length}`)
   else await expect(page.getByTestId('study-done')).toContainText('Hai finito lo Studio della lezione.')
 })
 
