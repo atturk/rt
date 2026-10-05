@@ -93,10 +93,16 @@ describe('Chiavi: Prova diventa Elimina con Option', () => {
 
 describe('Info', () => {
   it('mostra versione, canale e cartelle', async () => {
-    vi.spyOn(api, 'GET').mockResolvedValue(ok({
-      version: '4.1.0b3', prerelease: true, update_channel: 'beta', install_dir: '/opt/rt',
-      data_dir: '/Users/a/.rt', config_dir: '/Users/a/.rt/config', python_version: '3.11.9', platform: 'Darwin 24.0 (arm64)',
-    }))
+    // La scheda Info monta anche la sezione della cache: ogni rotta ha la sua risposta.
+    const cache = { entries: 0, bytes: 0 }
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(
+      path === '/api/v1/system/cache'
+        ? ok({ audio: cache, waveform: cache, total: cache })
+        : ok({
+          version: '4.1.0b3', prerelease: true, update_channel: 'beta', install_dir: '/opt/rt',
+          data_dir: '/Users/a/.rt', config_dir: '/Users/a/.rt/config', python_version: '3.11.9', platform: 'Darwin 24.0 (arm64)',
+        }),
+    )) as never)
     renderWith(<InfoSection />)
     const info = await screen.findByTestId('system-info')
     expect(info).toHaveTextContent('4.1.0b3')

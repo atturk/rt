@@ -198,7 +198,8 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
         assert actual[rel] == expected[rel], rel
     out_dir = str(work / "out")
     assert not os.path.exists(os.path.join(out_dir, LESSON_NAME))  # nessuna cartella di lavoro
-    assert os.listdir(fs.media_dir(rt_db)) == ["L1_demo_lecture.wav"]
+    # L'import a file singolo converte il wav in m4a (4.2.2b4): nei media sta solo quello.
+    assert os.listdir(fs.media_dir(rt_db)) == ["L1_demo_lecture.m4a"]
     assert check_all(rt_db, out_dir) == []
     with session_scope(rt_db) as s:
         lesson = LessonRepository(s).get_by_path(os.path.join(out_dir, LESSON_NAME))

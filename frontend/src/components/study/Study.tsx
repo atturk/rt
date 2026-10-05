@@ -112,10 +112,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           goToUnit(unitIndex - 1)
         }
       } else if (e.key === 'ArrowRight') {
-        if (units && unitIndex + 1 < units.length) {
-          e.preventDefault()
-          goToUnit(unitIndex + 1)
-        }
+        e.preventDefault()
+        if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
+        else advance()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -140,10 +139,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
   }
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!swipeStartRef.current || e.pointerId !== swipeStartRef.current.id) return
-  }
-
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!swipeStartRef.current || e.pointerId !== swipeStartRef.current.id) return
     const start = swipeStartRef.current
@@ -161,9 +156,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     })
 
     if (swipe === 'next') {
-      if (units && unitIndex + 1 < units.length) {
-        goToUnit(unitIndex + 1)
-      }
+      // Ultima unità: si passa alla lezione dopo (o alla schermata finale), come faceva
+      // il pulsante "Unità successiva" che la b4 ha tolto.
+      if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
+      else advance()
     } else if (swipe === 'prev') {
       if (unitIndex > 0) {
         goToUnit(unitIndex - 1)
@@ -280,7 +276,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           actions={headerActions}
           readingProps={{
             onPointerDown: handlePointerDown,
-            onPointerMove: handlePointerMove,
             onPointerUp: handlePointerUp,
             onPointerCancel: handlePointerCancel,
           }}
@@ -482,16 +477,8 @@ function StudyShell({
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
       <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
       {popup}
-      <div
-        className="flex-1 px-7 max-md:px-[18px]"
-        style={{ touchAction: 'pan-y' }}
-        {...readingProps}
-      >
-        <div
-          className={cn('mx-auto w-full max-w-(--reading-width) pb-8 pt-3', readingProps?.className)}
-          style={{ touchAction: 'pan-y' }}
-          data-testid="study-reading-column"
-        >
+      <div className="flex-1 touch-pan-y px-7 max-md:px-[18px]" {...readingProps}>
+        <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
           {children}
         </div>
       </div>

@@ -273,14 +273,16 @@ test('Swipe touch fra le unità dello Studio sul telefono (4.2.2b4 F1)', async (
   const initialTitle = (await unitHeading.textContent()) ?? ''
 
   const cdp = await page.context().newCDPSession(page)
+  // touchEnd vuole l'elenco dei punti vuoto: il pointerup arriva con le coordinate dell'ultimo touchMove.
   const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', x: number, y: number) =>
-    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x, y }] })
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
 
   // Swipe da destra a sinistra (next unit): da (300, 300) a (100, 305)
   await touch('touchStart', 300, 300)
   await page.waitForTimeout(50)
   await touch('touchMove', 200, 302)
   await page.waitForTimeout(50)
+  await touch('touchMove', 100, 305)
   await touch('touchEnd', 100, 305)
 
   await expect(page.getByRole('heading', { level: 2 })).toContainText('Seconda Unità Mock')
@@ -290,6 +292,7 @@ test('Swipe touch fra le unità dello Studio sul telefono (4.2.2b4 F1)', async (
   await page.waitForTimeout(50)
   await touch('touchMove', 200, 302)
   await page.waitForTimeout(50)
+  await touch('touchMove', 300, 305)
   await touch('touchEnd', 300, 305)
 
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(initialTitle)

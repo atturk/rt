@@ -2,7 +2,7 @@
 data: '2026-09-05'
 materia: 'BIOCHIMICA'
 argomenti: 'Lipidi'
-file_audio: 'demo_lecture.wav'
+file_audio: 'demo_lecture.m4a'
 modello: 'mock-asr'
 data_trascrizione: '<TS>'
 fase: trascritto_grezzo

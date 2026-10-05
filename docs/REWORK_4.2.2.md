@@ -599,3 +599,24 @@ dica "sbagliate" per l'altra. Il senso sta nell'etichetta accessibile, i `data-t
 
 **Test**: aggiornare il test del pannello in `QuestionsPanel.test.tsx` e il pezzo di
 `recall-sessions.spec.ts` che usa i due pulsanti.
+
+### Revisione e merge della b4 (Claude)
+
+PR #59 (Codex, B1-B3) e #60 (Antigravity, F1-F4) unite in `claude/rt-4.2.2-beta`: nessun file in
+comune, nessuna interferenza. Correzioni fatte in revisione:
+
+- `delete.test.tsx` mockava `api.GET` con una sola risposta per tutte le rotte, quindi la nuova
+  sezione della cache leggeva `audio.bytes` da un oggetto che non ce l'ha: il mock ora risponde per
+  rotta (era l'unico test rosso della CI).
+- Tolto `study-next` dal footer restava senza via d'uscita l'ultima unità di una lezione: ora la
+  freccia → e lo swipe, sull'ultima unità, chiamano `advance()` come faceva il pulsante (lezione
+  successiva o schermata finale).
+- Via il gestore `onPointerMove` vuoto; `touch-action: pan-y` come classe Tailwind sul solo
+  contenitore che riceve il gesto.
+- `Input.dispatchTouchEvent` vuole `touchPoints: []` su `touchEnd`, altrimenti il gesto non arriva:
+  l'e2e dello swipe passava un punto e falliva.
+- La conversione dell'audio singolo in m4a (B2) cambia due attese: il golden `audio_full` e
+  `tests/test_db_sync.py` ora si aspettano `demo_lecture.m4a`.
+
+La 4.2.2 è uscita stabile senza passare da una b4: le modifiche erano piccole e il grosso era già
+nelle beta b1-b3.
