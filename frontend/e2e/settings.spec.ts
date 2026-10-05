@@ -197,3 +197,24 @@ test('wizard: il modello comune lascia intatte le fasi delle immagini', async ({
   await expect(page).toHaveURL(/passo=2/)
   await expect(page.getByTestId('phase-row')).toHaveCount(2)
 })
+
+test('scorciatoie: registra, ritrova su un altro dispositivo e ripristina', async ({ page, browser }) => {
+  await loginViaLink(page)
+  await page.goto('/impostazioni/editor')
+  const bold = page.getByRole('button', { name: 'Scorciatoia: Grassetto', exact: true })
+  await bold.click()
+  await expect(bold).toHaveText('Premi i tasti…')
+  await bold.press('Control+Shift+j')
+  await expect(bold).toHaveText('Ctrl+Shift+J')
+  await expect.poll(async () => (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['editor.shortcuts']).toEqual({ bold: 'Mod-Shift-j' })
+  const device = await browser.newContext()
+  try {
+    const other = await device.newPage()
+    await loginViaLink(other)
+    await other.goto('/impostazioni/editor')
+    await expect(other.getByRole('button', { name: 'Scorciatoia: Grassetto', exact: true })).toHaveText('Ctrl+Shift+J')
+  } finally { await device.close() }
+  await page.getByRole('button', { name: 'Ripristina tutte', exact: true }).click()
+  await expect.poll(async () => Object.hasOwn(await apiGet(page.request, '/preferences'), 'editor.shortcuts')).toBe(false)
+  await expect(bold).toHaveText('Ctrl+B')
+})

@@ -1,4 +1,4 @@
-import { syntaxTree } from '@codemirror/language'
+import { foldAll, foldCode, unfoldAll, unfoldCode, syntaxTree } from '@codemirror/language'
 import { EditorSelection, type EditorState, type Extension, Prec } from '@codemirror/state'
 import type { SyntaxNode } from '@lezer/common'
 import { EditorView, keymap } from '@codemirror/view'
@@ -408,17 +408,65 @@ export function deleteLineOrParagraph(view: EditorView): boolean {
   return true
 }
 
-export const markdownShortcuts: Extension = Prec.high(
-  keymap.of([
-    { key: 'Mod-b', run: toggleBold },
-    { key: 'Mod-i', run: toggleItalic },
-    { key: 'Mod-k', run: toggleLink },
-    { key: 'Mod-Enter', run: toggleCheckbox },
-    { key: 'Mod-]', run: indentMoreLines },
-    { key: 'Mod-[', run: indentLessLines },
-    { key: 'Mod-d', run: deleteLineOrParagraph },
-    { key: 'Mod-Shift-x', run: toggleStrikethrough },
-    { key: 'Mod-Shift-c', run: toggleInlineCode },
-    { key: 'Mod-Shift-h', run: toggleHighlight },
-  ]),
-)
+export type ShortcutPreferences = Record<string, string | null>
+export type EditorCommand = { id: string; etichetta: string; gruppo: string; predefinita: string | null; run: (view: EditorView) => boolean }
+
+export const editorCommands: readonly EditorCommand[] = [
+  { id: 'bold', etichetta: 'Grassetto', gruppo: 'Formattazione', predefinita: 'Mod-b', run: toggleBold },
+  { id: 'italic', etichetta: 'Corsivo', gruppo: 'Formattazione', predefinita: 'Mod-i', run: toggleItalic },
+  { id: 'strike', etichetta: 'Barrato', gruppo: 'Formattazione', predefinita: 'Mod-Shift-x', run: toggleStrikethrough },
+  { id: 'code', etichetta: 'Codice', gruppo: 'Formattazione', predefinita: 'Mod-Shift-c', run: toggleInlineCode },
+  { id: 'highlight', etichetta: 'Evidenziato', gruppo: 'Formattazione', predefinita: 'Mod-Shift-h', run: toggleHighlight },
+  { id: 'link', etichetta: 'Link', gruppo: 'Formattazione', predefinita: 'Mod-k', run: toggleLink },
+  { id: 'checkbox', etichetta: 'Casella', gruppo: 'Paragrafi', predefinita: 'Mod-Enter', run: toggleCheckbox },
+  { id: 'indent', etichetta: 'Aumenta rientro', gruppo: 'Paragrafi', predefinita: 'Mod-]', run: indentMoreLines },
+  { id: 'unindent', etichetta: 'Riduci rientro', gruppo: 'Paragrafi', predefinita: 'Mod-[', run: indentLessLines },
+  { id: 'delete-paragraph', etichetta: 'Elimina paragrafo', gruppo: 'Paragrafi', predefinita: 'Mod-d', run: deleteLineOrParagraph },
+  { id: 'fold', etichetta: 'Chiudi sezione', gruppo: 'Sezioni', predefinita: 'Mod-Alt-[', run: foldCode },
+  { id: 'unfold', etichetta: 'Riapri sezione', gruppo: 'Sezioni', predefinita: 'Mod-Alt-]', run: unfoldCode },
+  { id: 'fold-all', etichetta: 'Chiudi tutto', gruppo: 'Sezioni', predefinita: 'Ctrl-Alt-[', run: foldAll },
+  { id: 'unfold-all', etichetta: 'Riapri tutto', gruppo: 'Sezioni', predefinita: 'Ctrl-Alt-]', run: unfoldAll },
+]
+
+export function isMacKeyboard(): boolean { return /Mac|iPhone|iPad/.test(navigator.platform) }
+
+/** Una sola forma per ordine dei modificatori, maiuscole e sinonimi di Mod. */
+export function normalizeShortcut(value: string, mac = isMacKeyboard()): string {
+  const parts = value.split(/-(?!$)/)
+  const key = parts.pop() ?? ''
+  const modifiers = new Set(parts.map(p => p === 'Mod' ? (mac ? 'Meta' : 'Ctrl') : p))
+  return [...['Meta', 'Ctrl', 'Alt', 'Shift'].filter(p => modifiers.has(p)), key.length === 1 ? key.toLowerCase() : key].join('-')
+}
+const RESERVED_SHORTCUTS = ['Mod-z', 'Mod-Shift-z', 'Mod-c', 'Mod-v', 'Mod-x', 'Mod-a', 'Mod-f']
+export function isReservedShortcut(key: string): boolean {
+  return RESERVED_SHORTCUTS.some(value => normalizeShortcut(value) === normalizeShortcut(key))
+}
+export function commandShortcut(command: EditorCommand, preferences: ShortcutPreferences): string | null {
+  const custom = preferences[command.id]
+  return custom === null ? null : typeof custom === 'string' ? custom : command.predefinita
+}
+export function shortcutLabel(key: string | null, mac = isMacKeyboard()): string {
+  if (!key) return 'Nessuna'
+  const parts = key.split(/-(?!$)/)
+  const name = parts.pop() ?? ''
+  const symbols: Record<string, string> = mac ? { Mod: '⌘', Meta: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧' }
+    : { Mod: 'Ctrl', Meta: 'Meta', Ctrl: 'Ctrl', Alt: 'Alt', Shift: 'Shift' }
+  return [...parts.map(p => symbols[p] ?? p), name === 'Enter' ? '↵' : name.toUpperCase()].join(mac ? '' : '+')
+}
+
+export function withShortcut(preferences: ShortcutPreferences, command: EditorCommand, key: string | null): ShortcutPreferences {
+  const next = { ...preferences }
+  if (key === command.predefinita) delete next[command.id]
+  else next[command.id] = key
+  return next
+}
+
+export function editorKeymap(preferences: ShortcutPreferences): Extension {
+  return Prec.high(keymap.of(editorCommands.flatMap(command => {
+    const key = commandShortcut(command, preferences)
+    // Le preferenze arrivano da JSON: una combinazione riservata o malformata non blocca l'editor.
+    if (!key || isReservedShortcut(key) || !/^(?:(?:Mod|Meta|Ctrl|Alt|Shift)-)*(?:-|[^-]+)$/.test(key)) return []
+    return [{ key, run: command.run }]
+  })))
+}
+export const markdownShortcuts: Extension = editorKeymap({})

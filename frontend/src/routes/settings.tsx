@@ -12,6 +12,7 @@ import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesS
 import { AppearanceSection, OutlineSettingsSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
+import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { PageBody, PageHeader } from '@/components/shell/PageHeader'
@@ -88,7 +89,7 @@ export function SettingsIndexPage() {
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
 export function AppearanceSettingsPage() { return page(s => <AppearanceSection settings={s} />) }
-export function EditorSettingsPage() { return <p className="text-body">Scorciatoie dell’editor</p> }
+export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
   return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /><WorkerSection settings={s} /></>)
 }

@@ -1,5 +1,6 @@
 import { AtomicCodeMirrorEditor, type AtomicCodeMirrorEditorHandle } from '@atomic-editor/editor'
 import '@atomic-editor/editor/styles.css'
+import { Compartment } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { Check, Circle, LoaderCircle, Lock } from 'lucide-react'
 import { createPortal } from 'react-dom'
@@ -27,7 +28,8 @@ import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
 import { lessonFolding } from './lessonFolding'
-import { markdownShortcuts } from './markdownShortcuts'
+import { editorKeymap, type ShortcutPreferences } from './markdownShortcuts'
+import { usePreference } from '@/lib/preferences'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
@@ -40,6 +42,7 @@ type Status =
   | { kind: 'invalid'; problems: Problem[] }
   | { kind: 'error'; message: string; busy: boolean }
 
+const DEFAULT_SHORTCUTS: ShortcutPreferences = {}
 const SAVE_DELAY_MS = 1200
 // Il lease blocca i job della lezione: si prende alla prima modifica e si lascia dopo un po' di quiete.
 const LEASE_IDLE_MS = 60 * 1000
@@ -85,6 +88,8 @@ type Props = {
 export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
+  const [shortcuts] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
+  const [shortcutCompartment] = useState(() => new Compartment())
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
   const unitIds = useMemo(() => doc.sections.map((s) => s.unit_id), [doc.sections])
@@ -158,7 +163,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     })
   }, [])
   const extensions = useMemo(() => [
-    markdownShortcuts,
+    shortcutCompartment.of(editorKeymap({})),
     lessonFolding,
     timecodeLock,
     lessonUnits,
@@ -167,7 +172,11 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     lessonImages(lessonId),
     lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
     EditorView.contentAttributes.of({ 'aria-label': 'Documento della lezione', 'aria-multiline': 'true' }),
-  ], [lessonId, uploadImage, uploadStarted])
+  ], [lessonId, uploadImage, uploadStarted, shortcutCompartment])
+
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: shortcutCompartment.reconfigure(editorKeymap(shortcuts)) })
+  }, [shortcutCompartment, shortcuts, source.key])
 
   const persist = useCallback(async (markdown: string, recover = false) => {
     setStatus({ kind: 'saving' })

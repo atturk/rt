@@ -1,17 +1,12 @@
 import {
   codeFolding,
-  foldAll,
-  foldCode,
   foldGutter,
-  foldKeymap,
   foldable,
   foldedRanges,
-  unfoldAll,
-  unfoldCode,
   unfoldEffect,
 } from '@codemirror/language'
 import { EditorState, type Extension } from '@codemirror/state'
-import { EditorView, keymap } from '@codemirror/view'
+import { EditorView } from '@codemirror/view'
 
 /**
  * Sezioni richiudibili (folding) come in Obsidian per l'editor delle lezioni (K2):
@@ -106,14 +101,6 @@ const headingClickUnfold = EditorView.domEventHandlers({
   },
 })
 
-const foldingKeymap = keymap.of([
-  { key: 'Mod-Alt-[', run: foldCode },
-  { key: 'Mod-Alt-]', run: unfoldCode },
-  { key: 'Ctrl-Alt-[', run: foldAll },
-  { key: 'Ctrl-Alt-]', run: unfoldAll },
-  ...foldKeymap,
-])
-
 export const lessonFolding: Extension = [
   codeFolding({
     placeholderText: '…',
@@ -121,7 +108,6 @@ export const lessonFolding: Extension = [
   foldGutter({
     markerDOM: createFoldMarker,
   }),
-  foldingKeymap,
   autoUnfoldOnJump,
   headingClickUnfold,
 ]

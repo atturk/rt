@@ -8,7 +8,7 @@ import { LessonEditor, type LessonEditorActions } from './LessonEditor'
 const upload = vi.hoisted(() => ({ started: null as null | ((task: Promise<void>) => void) }))
 vi.mock('./lessonImages', () => ({ lessonImageUploads: (options: { started: (task: Promise<void>) => void }) => { upload.started = options.started; return [] } }))
 const calls = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn(), remove: vi.fn() }))
-vi.mock('@/api/client', async (original) => ({ ...await original<typeof import('@/api/client')>(), api: { POST: calls.post, PUT: calls.put, DELETE: calls.remove } }))
+vi.mock('@/api/client', async (original) => ({ ...await original<typeof import('@/api/client')>(), api: { GET: vi.fn().mockResolvedValue({ data: {}, response: new Response('{}', { status: 200 }) }), POST: calls.post, PUT: calls.put, DELETE: calls.remove } }))
 vi.mock('@atomic-editor/editor', () => ({ AtomicCodeMirrorEditor: ({ markdownSource, onMarkdownChange, readOnly }: { markdownSource: string; onMarkdownChange: (s: string) => void; readOnly: boolean }) => <textarea aria-label="Editor" defaultValue={markdownSource} readOnly={readOnly} onChange={(e) => onMarkdownChange(e.target.value)} /> }))
 vi.mock('./Enrichment', () => ({ EnrichmentPortals: () => null }))
 vi.mock('./DocumentMenu', () => ({ DocumentMenu: ({ children }: { children: React.ReactNode }) => children }))
