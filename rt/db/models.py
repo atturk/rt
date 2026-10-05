@@ -43,6 +43,7 @@ class Lesson(Base):
     phase_runs: Mapped[list["PhaseRun"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
     issues: Mapped[list["Issue"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
     decisions: Mapped[list["ReviewDecision"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
+    highlights: Mapped[list["StudyHighlight"]] = relationship(back_populates="lesson", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class LessonFile(Base):
@@ -274,3 +275,22 @@ class TelegramCommand(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class StudyHighlight(Base):
+    """Evidenziazione di un'unità nello Studio (web-highlighter).
+    Salvate nel database di RT, visibili solo nello Studio. Non entrano in export/import/Telegram."""
+    __tablename__ = "study_highlights"
+    __table_args__ = (
+        Index("ix_study_highlights_lesson_unit", "lesson_id", "unit_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    unit_id: Mapped[str] = mapped_column(String(64), index=True)
+    color: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    lesson: Mapped["Lesson"] = relationship(back_populates="highlights")
+

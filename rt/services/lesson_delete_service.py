@@ -38,6 +38,8 @@ def purge_lesson_records(session, row: Lesson) -> None:
     session.execute(delete(Setting).where(Setting.key.in_(keys)))
     session.execute(delete(StateDocument).where(or_(StateDocument.key == path,
                                                     StateDocument.key.startswith(path + os.sep))))
+    from rt.db.models import StudyHighlight
+    session.execute(delete(StudyHighlight).where(StudyHighlight.lesson_id == row.id))
 
 
 @contextlib.contextmanager

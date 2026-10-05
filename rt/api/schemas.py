@@ -699,3 +699,19 @@ class SectionLabels(BaseModel):
 class SectionLabelOverride(BaseModel):
     kind: Literal["esercizio", "caso"]
     value: Optional[str] = Field(None, description="Nuovo valore; null torna a quello del classificatore")
+
+
+class HighlightCreate(BaseModel):
+    unit_id: str = Field(description="Id dell'unità (es. '1.3')")
+    color: int = Field(ge=0, le=4, description="Indice del colore (0-4)")
+    source: Dict[str, Any] = Field(description="Serializzazione web-highlighter (startMeta, endMeta, text, id)")
+
+
+class HighlightOut(BaseModel):
+    id: int
+    lesson_id: int
+    unit_id: str
+    color: int
+    source: Dict[str, Any]
+    created_at: str
+
