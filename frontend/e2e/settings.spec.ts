@@ -198,7 +198,12 @@ test('wizard: il modello comune lascia intatte le fasi delle immagini', async ({
   await expect(page.getByTestId('phase-row')).toHaveCount(2)
 })
 
+// Le etichette delle scorciatoie dipendono dalla tastiera (⌘ sul Mac della CI): questi test fissano quella PC.
+const pcKeyboard = (target: { addInitScript: Page['addInitScript'] }) =>
+  target.addInitScript(() => Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux x86_64' }))
+
 test('scorciatoie: registra, ritrova su un altro dispositivo e ripristina', async ({ page, browser }) => {
+  await pcKeyboard(page)
   await loginViaLink(page)
   await page.goto('/impostazioni/editor')
   const bold = page.getByRole('button', { name: 'Scorciatoia: Grassetto', exact: true })
@@ -210,6 +215,7 @@ test('scorciatoie: registra, ritrova su un altro dispositivo e ripristina', asyn
   const device = await browser.newContext()
   try {
     const other = await device.newPage()
+    await pcKeyboard(other)
     await loginViaLink(other)
     await other.goto('/impostazioni/editor')
     await expect(other.getByRole('button', { name: 'Scorciatoia: Grassetto', exact: true })).toHaveText('Ctrl+Shift+J')
@@ -220,6 +226,7 @@ test('scorciatoie: registra, ritrova su un altro dispositivo e ripristina', asyn
 })
 
 test('barra editor: comandi sul testo e una riga scorrevole sul telefono', async ({ page }) => {
+  await pcKeyboard(page)
   await loginViaLink(page)
   const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=BIOCHIMICA')
   await page.goto(`/lezioni/${lesson.id}`)
