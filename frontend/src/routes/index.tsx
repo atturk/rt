@@ -1,7 +1,8 @@
 import { lazy, Suspense, type ComponentType } from 'react'
-import { Navigate, useLocation, useParams, type RouteObject } from 'react-router'
+import { Navigate, Outlet, useLocation, useParams, type RouteObject } from 'react-router'
 
 import { Layout } from '@/components/Layout'
+import { useTheme } from '@/lib/theme'
 import { SetupGate } from './setupGate'
 import type { Area } from './types'
 
@@ -23,6 +24,11 @@ const recall = () => import('./recall')
 const settings = () => import('./settings')
 
 const bare = { bare: true }
+
+function PersonalPreferences() {
+  useTheme()
+  return <Outlet />
+}
 
 function RedirectSubjectRecall() {
   const { materia } = useParams()
@@ -143,7 +149,7 @@ export const routes: RouteObject[] = [
     path: '/',
     element: <Layout />,
     // SetupGate porta alla configurazione guidata se il backend segnala setup_required (RT4-F5).
-    children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }],
+    children: [{ element: <PersonalPreferences />, children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }] }],
   },
   { path: '*', element: <NotFound /> },
 ]

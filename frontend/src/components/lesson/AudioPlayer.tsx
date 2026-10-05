@@ -3,7 +3,8 @@ import { useEffect, useState, type CSSProperties } from 'react'
 
 import { Tooltip } from '@/components/ui/tooltip'
 import { formatTime, type TimedSection } from '@/lib/audio'
-import { formatSpeed, loadRate, nextSpeed, saveRate, SPEEDS } from '@/lib/playbackRate'
+import { clampRate, formatSpeed, nextSpeed, SPEEDS } from '@/lib/playbackRate'
+import { usePreference } from '@/lib/preferences'
 import { cn } from '@/lib/utils'
 import { useLessonAudio } from './audio'
 
@@ -26,7 +27,8 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
   const { audioRef, currentTime, setCurrentTime, seek } = useLessonAudio()
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(NaN)
-  const [speed, setSpeed] = useState(loadRate)
+  const [savedSpeed, setSpeed] = usePreference('audio.rate', 1)
+  const speed = clampRate(Number(savedSpeed))
   const [error, setError] = useState(false)
   const known = Number.isFinite(duration) && duration > 0
   const [hover, setHover] = useState(false)
@@ -65,7 +67,6 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
   const cycleSpeed = () => {
     const next = nextSpeed(speed)
     setSpeed(next)
-    saveRate(next)
   }
 
   return (

@@ -14,6 +14,10 @@ from rt.core.jev_decision import JevDecisionConfig
 
 router = APIRouter(tags=["impostazioni"])
 
+# Il router personale entra nello stesso punto di registrazione delle impostazioni.
+from rt.api.routers.preferences import router as preferences_router
+router.include_router(preferences_router)
+
 
 class PromptOverrideIn(BaseModel):
     instruction: str = Field(max_length=20000)
