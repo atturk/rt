@@ -7,18 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { usePreference } from '@/lib/preferences'
+import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
-
-// Forma concordata con studyPrefs.ts: Claude collega il lettore alle preferenze al merge.
-export type RsvpPreference = {
-  wpm: number; orp: 'prima' | 'bilanciata' | 'dopo'; pauseMs: number; comma: boolean
-  step: number; size: number; sound: boolean; pitch: number; dyslexic: boolean
-  irlen: null | 'pesca' | 'menta' | 'pergamena'; noise: null | 'bianco' | 'rosa' | 'marrone'; noiseVolume: number
-}
-const RSVP_DEFAULT: RsvpPreference = { wpm: 300, orp: 'bilanciata', pauseMs: 400, comma: false,
-  step: 5, size: 60, sound: true, pitch: 1, dyslexic: false, irlen: null, noise: null, noiseVolume: 0.25 }
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
 function useGeneralPreference() {
@@ -37,8 +29,8 @@ function useGeneralPreference() {
 
 export function AppearanceSection({ settings }: { settings: Settings }) {
   const [theme, setTheme] = usePreference<ThemePreference>('theme', 'sistema')
-  const [highlighter, setHighlighter] = usePreference('study.highlighter', { color: 0, arrows: true })
-  const [rsvp, setRsvp] = usePreference<RsvpPreference>('study.rsvp', RSVP_DEFAULT)
+  const [highlighter, setHighlighter] = useHighlighterPrefs()
+  const [rsvp, setRsvp] = useRsvpPrefs()
   const [rate, setRate] = usePreference('audio.rate', 1)
   const save = useGeneralPreference()
   const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }

@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronDown, Gauge, Info, List, Mic, Pause, Play, SendHorizontal, Square, X } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Mic, Pause, Play, SendHorizontal, Square, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -19,8 +19,10 @@ import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { recordingFormat } from '@/lib/recording'
 import { useIsPhone } from '@/lib/phone'
-import { loadHighlighterPrefs } from '@/lib/studyPrefs'
+import { useHighlighterPrefs } from '@/lib/studyPrefs'
 import { cn } from '@/lib/utils'
+import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
+import { SpeedReader } from './SpeedReader'
 
 /**
  * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
@@ -76,10 +78,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const [detailsOpen, setDetailsOpen] = useState(false)
   const titleButtonRef = useRef<HTMLButtonElement>(null)
+  const [highlighterPrefs, setHighlighterPrefs] = useHighlighterPrefs()
+  const [hlMode, setHlMode] = useState<HighlightMode>('evidenzia')
+  const [textRoot, setTextRoot] = useState<HTMLElement | null>(null)
+  const [speedReading, setSpeedReading] = useState(false)
+  const highlights = useStudyHighlighter({
+    root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
+    mode: hlMode, color: highlighterPrefs.color,
+  })
+  const arrows = highlighterPrefs.arrows
 
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
-    if (phase !== 'lettura') return
+    if (phase !== 'lettura' || speedReading || !arrows) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -88,8 +99,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
         return
       }
-      const prefs = loadHighlighterPrefs()
-      if (!prefs.arrows) return
       if (e.key === 'ArrowLeft') {
         if (unitIndex > 0) {
           e.preventDefault()
@@ -104,7 +113,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units])
+  }, [phase, unitIndex, units, speedReading, arrows]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   if (lessons.length === 0) {
     return (
@@ -174,11 +183,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const headerActions = (
     <div className="flex items-center gap-1.5" data-testid="study-header-tools">
+      <HighlightTools
+        mode={hlMode}
+        color={highlighterPrefs.color}
+        onMode={setHlMode}
+        onColor={(color) => setHighlighterPrefs({ ...highlighterPrefs, color })}
+        onClear={highlights.clear}
+      />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
         label="Lettura veloce"
         icon={Gauge}
-        onClick={() => {}}
+        onClick={() => setSpeedReading(true)}
+        unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
@@ -228,7 +245,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           }
         >
           <Dots count={units.length} current={unitIndex} />
-          <UnitText lessonId={lesson!.id} unit={live} />
+          <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
+          {speedReading && textRoot && (
+            <SpeedReader source={textRoot} title={`${unit.id} ${unit.title}`} onClose={() => setSpeedReading(false)} />
+          )}
         </StudyShell>
       )}
       {phase === 'domande' && (
@@ -353,7 +373,7 @@ function LessonDetailsPopup({
       <div>
         <Link
           to={`/lezioni/${lesson.id}`}
-          className="text-meta font-semibold text-accent hover:underline"
+          className="text-meta font-semibold text-link hover:underline"
           onClick={onClose}
         >
           Apri la lezione ›
@@ -402,15 +422,29 @@ function ReadingSkeleton() {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-function UnitText({ lessonId, unit }: { lessonId: number; unit: StudyUnit }) {
+function UnitText({ lessonId, unit, highlightMode, onReady }: {
+  lessonId: number
+  unit: StudyUnit
+  highlightMode: HighlightMode
+  /** Il testo è pronto (formule disegnate): evidenziatore e lettura veloce lo usano. */
+  onReady: (root: HTMLElement | null) => void
+}) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (ref.current) void renderDelimitedMath(ref.current)
-  }, [unit.html])
+    const root = ref.current
+    if (!root) return
+    let alive = true
+    void renderDelimitedMath(root).finally(() => { if (alive) onReady(root) })
+    return () => {
+      alive = false
+      onReady(null)
+    }
+  }, [unit.html, onReady])
   return (
     <section aria-labelledby="study-unit-title">
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
-      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
+      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
+        dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
     </section>
   )
 }
@@ -861,6 +895,69 @@ function UnitIndexMenu({
               {renderItems()}
             </div>
           </section>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Evidenziatore e gomma (4.2.2, H1): selettore a due posizioni come quello di Lezioni; un clic
+ * sull'evidenziatore già attivo cambia colore, a giro. Il cestino toglie tutto, dopo una conferma.
+ */
+function HighlightTools({ mode, color, onMode, onColor, onClear }: {
+  mode: HighlightMode
+  color: number
+  onMode: (mode: HighlightMode) => void
+  onColor: (color: number) => void
+  onClear: () => Promise<void>
+}) {
+  const [confirm, setConfirm] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!confirm) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setConfirm(false) }
+    const onClick = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setConfirm(false) }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onClick)
+    }
+  }, [confirm])
+  const segment = 'relative inline-flex size-8 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+  return (
+    <div className="relative flex items-center gap-1" ref={ref}>
+      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5" data-testid="highlight-tools">
+        <button
+          type="button"
+          aria-pressed={mode === 'evidenzia'}
+          aria-label={mode === 'evidenzia' ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}: clic per cambiare colore` : 'Evidenziatore'}
+          title={mode === 'evidenzia' ? `Evidenziatore ${HIGHLIGHT_COLORS[color]} (clic: colore successivo)` : 'Evidenziatore'}
+          data-color={color}
+          data-testid="highlight-pen"
+          className={segment}
+          onClick={() => (mode === 'evidenzia' ? onColor((color + 1) % HIGHLIGHT_COLORS.length) : onMode('evidenzia'))}
+        >
+          <HighlighterIcon className="size-4" aria-hidden />
+          <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
+        </button>
+        <button type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma" title="Gomma: clic su un'evidenziazione per toglierla"
+          data-testid="highlight-eraser" className={segment} onClick={() => onMode('gomma')}>
+          <Eraser className="size-4" aria-hidden />
+        </button>
+      </div>
+      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" />
+      {confirm && (
+        <div role="dialog" aria-label="Togli le evidenziazioni" className="absolute right-0 top-10 z-30 w-64 rounded-lg border bg-card p-3 text-body shadow-panel">
+          <p>Togli tutte le evidenziazioni di questa unità?</p>
+          {failed && <p className="mt-1 text-meta text-danger">Non riuscito, riprova.</p>}
+          <div className="mt-3 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>Annulla</Button>
+            <Button size="sm" variant="destructive" data-testid="highlight-clear-confirm"
+              onClick={() => onClear().then(() => { setFailed(false); setConfirm(false) }, () => setFailed(true))}>Togli</Button>
+          </div>
         </div>
       )}
     </div>

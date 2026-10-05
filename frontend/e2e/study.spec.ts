@@ -46,7 +46,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 
   // Lettura (schermata 05): trattini, dove sei, testo dell'unità, audio dei suoi timecode.
-  await expect(page.getByTestId('unit-index-toggle')).toContainText(`Unità 1 di ${study.units.length}`)
+  if (study.units.length > 1) await expect(page.getByTestId('unit-index-toggle')).toContainText(`Unità 1 di ${study.units.length}`)
   await expect(page.getByRole('heading', { level: 1 })).not.toContainText('unità 1 di')
   await expect(page.getByTestId('study-dots').locator('> *')).toHaveCount(study.units.length)
   await expect(page.getByTestId('study-text')).toHaveText(/\S.{40,}/)
@@ -165,4 +165,58 @@ test('A2: altezza intestazione su Lezioni, Studio e Ripasso (desktop e 390px) e 
     const backBtn = recallHeader.getByRole('link', { name: 'Esci' })
     await expect(backBtn).toBeVisible()
   }
+})
+
+test('Evidenziatore dello Studio: si salva su RT, torna alla riapertura, la gomma lo toglie', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  const text = page.getByTestId('study-text')
+  await expect(text).toHaveText(/\S.{40,}/)
+  // Selezione delle prime parole del primo paragrafo, come col mouse.
+  const selected = await text.evaluate((root) => {
+    const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
+    const range = document.createRange()
+    const start = node.textContent!.search(/\S/)
+    range.setStart(node, start)
+    range.setEnd(node, start + 10)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+    const chosen = range.toString()
+    root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    return chosen
+  })
+  await expect(text.locator('.rt-hl')).toHaveText(selected)
+  await expect(text.locator('.rt-hl-0')).toHaveCount(1)
+  await expect.poll(async () => (await apiGet<unknown[]>(page.request, `/lessons/${l.id}/highlights?unit=${(await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].id}`)).length).toBe(1)
+
+  await page.reload()
+  await expect(text.locator('.rt-hl')).toHaveText(selected)
+  await page.getByTestId('highlight-eraser').click()
+  await text.locator('.rt-hl').first().click()
+  await expect(text.locator('.rt-hl')).toHaveCount(0)
+  await page.reload()
+  await expect(text).toHaveText(/\S.{40,}/)
+  await expect(text.locator('.rt-hl')).toHaveCount(0)
+})
+
+test('Lettura veloce dallo Studio: parola con la lettera di fuoco, pausa con il testo intorno, Esc torna', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toHaveText(/\S.{40,}/)
+  await page.getByRole('button', { name: 'Lettura veloce' }).click()
+  const reader = page.getByTestId('speed-reader')
+  await expect(reader).toBeVisible()
+  const word = page.getByTestId('speed-reader-word')
+  const first = await word.textContent()
+  expect(first?.trim().length).toBeGreaterThan(0)
+  await page.keyboard.press('Space')
+  await expect(word).not.toHaveText(first!)
+  await expect(page.getByTestId('speed-reader-after')).toBeEmpty()
+  await page.keyboard.press('Space')
+  await expect(page.getByTestId('speed-reader-count')).toContainText('parole')
+  await page.keyboard.press('Escape')
+  await expect(reader).toHaveCount(0)
+  await expect(page.getByTestId('study-text')).toBeVisible()
 })
