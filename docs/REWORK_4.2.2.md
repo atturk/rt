@@ -393,3 +393,209 @@ Studio e ripasso diventano la stessa cosa, e le domande del pool si possono corr
   `POST questions/{qid}/edit`, `POST questions/{qid}/status`, `POST questions/{qid}/comment`
   (202, job), `GET questions/restorable`, `POST questions/restore`.
 - Wireframe: `docs/wireframes-4.2.2/RT-4.2.2b3.html`.
+
+## 4.2.2b4 — piano e task (issue del 5 ottobre 2026)
+
+Sei segnalazioni d'uso raccolte da Attilio dopo la b3. Le implementano **Codex (GPT)** e
+**Antigravity**, un giro solo a testa; Claude rivede le PR, le unisce in `claude/rt-4.2.2-beta` e
+pubblica la beta. Valgono le "Regole per tutti" in cima a questo file, con i branch nuovi:
+
+| Agente | Branch | Dove |
+|---|---|---|
+| Codex | `rt422b4/codex` | Codex nel cloud, repo `atturk/rt` |
+| Antigravity | `rt422b4/antigravity` | `~/rt-antigravity` |
+
+Un commit per task (`B1: …`), alla fine **una sola PR verso `claude/rt-4.2.2-beta`**. Niente merge,
+niente tag, `VERSION` non si tocca.
+
+### Divisione dei file
+
+| Agente | File (oltre ai test relativi) |
+|---|---|
+| **Codex** — import, spazio su disco, impostazioni | `rt/pipeline/setup.py`, `rt/services/pipeline_service.py`, `rt/services/events.py`, `rt/services/worker.py`, `rt/services/audio_service.py`, `rt/api/routers/system.py`, `docs/openapi.json`, `frontend/src/api/schema.d.ts`, `frontend/src/components/settings/info.tsx` |
+| **Antigravity** — Studio, ripasso, pannello Domande | `frontend/src/components/study/Study.tsx`, `frontend/src/components/recall/LightweightSession.tsx`, `frontend/src/components/lesson/panels/QuestionsPanel.tsx`, `frontend/e2e/study.spec.ts`, `frontend/e2e/recall-sessions.spec.ts` |
+
+### Task
+
+| Agente | Task |
+|---|---|
+| **Codex** | B1, B2, B3 |
+| **Antigravity** | F1, F2, F3, F4 |
+
+Nessun task aspetta l'altro agente. Ordine consigliato: Codex B1 → B2 → B3;
+Antigravity F4 → F2 → F3 → F1.
+
+### B1 — La lezione importata si vede subito (Codex)
+
+**Sintomo**: importato un audio, per tutta la trascrizione la lezione sta in fondo all'elenco nel
+gruppo "SENZA DATA" senza materia, e aprendola si legge "Nessuna anteprima disponibile" invece
+dello scheletro animato. Appena parte la scaletta tutto si sistema da solo.
+
+**Causa**: `info.yaml` si scrive al punto 7 di `run_setup`, dopo la trascrizione, e `_lesson_summary`
+(`rt/services/lesson_service.py:154`) legge data e materia solo da lì; e `JobEventReporter.emit`
+(`rt/services/worker.py:87`) attacca il job alla lezione solo su `PhaseCompleted(phase="setup")`,
+quindi prima di allora `GET /jobs?lesson_id=N` non dà niente e nella pagina della lezione
+`writing = !!doc?.pending && !live && running` resta falso.
+
+**Da fare**:
+1. In `rt/pipeline/setup.py`, appena la cartella (o la riga nel database) esiste — subito dopo
+   `fs.create_db_lesson` / `fs.makedirs`, punto 4 — scrivere un `info.yaml` provvisorio con
+   `data`, `ora`, `materia`, `argomenti`, `docente`, `cartella`, `creato_il`,
+   `fase_corrente: metadata_only`, `stato: in_attesa_di_trascrizione` (i metadati sono già tutti
+   noti: arrivano dal popup di import). Alla fine il punto 7 riscrive `info.yaml` come fa oggi,
+   contenuto incluso: non cambiarlo.
+2. **Non rompere la ripresa di un import interrotto**: il controllo
+   `elif fs.isfile(existing_info) and not force` (~riga 510) oggi rifiuta una cartella che ha
+   `info.yaml`. Con l'1 quel file c'è dal primo secondo, quindi il controllo deve considerare
+   "già inizializzata" solo una lezione vera: `info.yaml` provvisorio
+   (`stato: in_attesa_di_trascrizione`, nessun `trascritto grezzo.json`/`.md`, nessun lavoro
+   protetto) si può sovrascrivere senza `--force`. Il messaggio e il comportamento per le lezioni
+   vere restano quelli di oggi (vedi `tests/test_web_dashboard.py:42`).
+3. Attaccare il job alla lezione appena la cartella esiste: `run_setup` prende un parametro
+   `on_lesson_created: Optional[Callable[[str], None]]`, chiamato una volta dopo il punto 1;
+   `_setup` in `rt/services/pipeline_service.py` passa
+   `lambda d: ctx.progress("setup", message="Lezione creata", lesson_dir=d)`; `PhaseProgress`
+   (`rt/services/events.py`) prende un campo `lesson_dir: Optional[str] = None`; in
+   `JobEventReporter.emit` l'`attach_lesson` scatta per qualunque evento che porti un `lesson_dir`
+   (il ramo attuale su `PhaseCompleted` resta, è idempotente).
+4. Vale per tutti e tre i rami del punto 5 (trascrizione vera, `mock_asr`, `--skip-transcribe`).
+
+**Risultato atteso**: appena l'import parte, la lezione sta nel gruppo della sua data e materia con
+lo stato "in corso", e aprendola si vede lo scheletro animato per tutta la trascrizione.
+
+**Test**: `tests/test_setup.py` — `info.yaml` con data e materia esiste subito dopo la creazione
+della cartella (anche con `skip_transcribe` e con `mock_asr`); un import interrotto si riprende
+senza `--force`; una lezione vera continua a essere rifiutata. Un test del worker (ListReporter o
+`DbJobQueue`) che l'`attach_lesson` avviene su `PhaseProgress` con `lesson_dir`, prima della fine
+del setup.
+
+### B2 — Niente copie inutili dell'audio (Codex)
+
+Oggi, al punto 6 di `run_setup`, **tutte** le clip originali vengono copiate nella cartella della
+lezione, anche quando sono state unite in `audio completo.m4a` (punto 5, AAC 96k mono 48 kHz,
+~45 MB/ora). `info.yaml` ha un solo `file_audio`, il file unito, e tutto il codice risolve solo
+quello (`rt/services/lesson_service.py:529`, `rt/web/data.py:246`, `rt/pipeline/prepare.py:56`,
+`rt/core/audio_clip.py` via `manifest.json`): le clip originali sono peso morto che raddoppia lo
+spazio, e nemmeno un backup, perché l'import copia e non sposta.
+
+**Da fare**:
+1. Quando c'è stato il merge, copiare **solo** il file unito: il punto 6 copia le clip originali
+   soltanto se non c'è `merged_audio`.
+2. Import a un file solo: se il file non è già in un formato efficiente (`.m4a`, `.mp3`, `.aac`,
+   `.ogg`), transcodificarlo in `<nome>.m4a` con gli stessi parametri del merge
+   (`aresample=48000`, mono, `-c:a aac -b:a 96k -movflags +faststart`) e puntare `file_audio` lì,
+   invece di copiare un `.wav` da ~345 MB/ora. Senza ffmpeg, o se la conversione non riesce, si
+   copia l'originale come oggi (nessun import deve fallire per questo).
+3. L'originale sul disco di chi importa non si cancella mai: RT copia, non sposta.
+
+**Test**: import di due clip → nella cartella c'è solo `audio completo.m4a`; import di un `.wav` →
+c'è solo il `.m4a` e `info.yaml` lo indica; import di un `.m4a` → file copiato identico; senza
+ffmpeg (monkeypatch di `shutil.which`) l'import a un file solo funziona ancora.
+
+### B3 — Sezione "Spazio e cache" nelle impostazioni (Codex)
+
+`rt/services/audio_service.py` scrive in `<cartella dati>/cache/audio/` (copia MP4 degli `.m4a` in
+AAC ADTS che i browser rifiutano) e in `<cartella dati>/cache/waveform/` (i livelli del player). La
+chiave è `sha256(realpath:size:mtime_ns)[:24]`: ogni modifica di un audio lascia la voce vecchia
+per sempre e le lezioni cancellate lasciano le loro. Non c'è scadenza, né conteggio, né modo di
+svuotarla. Si rigenera da sola su richiesta, quindi svuotarla è sempre sicuro.
+
+**Da fare**:
+1. `GET /api/v1/system/cache` → voci e byte per tipo (`audio`, `waveform`) e totale;
+   `DELETE /api/v1/system/cache` → svuota `<dati>/cache` (solo quella cartella, solo i tipi noti,
+   niente errore se manca) e restituisce quanto ha liberato. Schemi Pydantic in
+   `rt/api/routers/system.py` accanto a `SystemInfo`, con `summary` in italiano come le altre rotte.
+   Rigenerare `docs/openapi.json` (`python scripts/export_openapi.py`) e
+   `frontend/src/api/schema.d.ts` (`npm run gen:api`).
+2. `frontend/src/components/settings/info.tsx`: nuova `CacheSection` nella sezione "Info e
+   aggiornamenti", con la dimensione della cache e un pulsante "Svuota la cache" dietro
+   `ConfirmDialog` (come `keys.tsx`). Nessuna frase che spiega l'interfaccia: basta la descrizione
+   della `Section` che dice che si rigenera da sola.
+
+**Test**: pytest delle due rotte (dimensione dopo aver creato file finti nella cache, svuotamento,
+cache assente) e vitest della sezione (mostra la dimensione, chiede conferma, chiama il DELETE).
+
+### F1 — Swipe fra le unità, via "Unità successiva" (Antigravity)
+
+Sul PC le frecce ← → cambiano già unità nella fase di lettura dello Studio (b1, preferenza
+`study.highlighter.arrows`). Sul telefono serve l'equivalente col gesto, e allora il pulsante
+"Unità successiva" sparisce dal footer.
+
+**Da fare** (nessuna libreria):
+- Gestori `pointerdown` / `pointermove` / `pointerup` / `pointercancel` sul contenitore di lettura di
+  `Study.tsx` (la colonna dentro `StudyShell`), attivi solo nella fase di lettura, solo con
+  `event.pointerType === 'touch'` e solo se `study.highlighter.arrows` è attiva (la stessa
+  preferenza delle frecce). `touch-action: pan-y` sul contenitore, così lo scorrimento verticale
+  resta al browser.
+- Soglia: `|dx| >= 60`, `|dx| > 2·|dy|`, gesto più breve di ~600 ms. Destra→sinistra = unità
+  successiva, sinistra→destra = precedente, con gli stessi limiti delle frecce (niente oltre la
+  prima e l'ultima unità della lezione). È un semplice cambio di unità: se l'unità ha domande, le
+  salta, come fanno le frecce.
+- Non rubare il gesto: ignorarlo se parte dentro un elemento che scorre in orizzontale (formule a
+  blocco, tabelle, blocchi di codice: `overflow-x: auto`), se c'è una selezione di testo in corso
+  (`getSelection()?.toString()`, l'evidenziatore lavora sulle selezioni), se la lettura veloce è
+  aperta, o se inizia nei primi 25 px da sinistra (è il "torna indietro" di Safari su iOS).
+- Niente animazione di scorrimento: i trattini in alto e il testo che cambia bastano.
+- Togliere il pulsante `study-next` dal footer (resta l'indice "Unità N di M" per chi non usa i
+  gesti, e il footer di F2).
+
+**Test**: vitest della funzione pura che decide il gesto (estrarla, es. `swipe.ts`), e un e2e in
+`frontend/e2e/study.spec.ts` in un contesto `hasTouch` con il touch via CDP, che funziona così
+(provato):
+
+```ts
+const cdp = await page.context().newCDPSession(page)
+const touch = (type: string, x: number, y: number) =>
+  cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
+```
+
+`page.touchscreen` fa solo tap: con `Input.dispatchTouchEvent` gli eventi arrivano come veri
+`pointerType: 'touch'`.
+
+### F2 — Studio: provare e generare affiancati (Antigravity)
+
+Nel footer della fase di lettura di `Study.tsx`:
+- con domande sull'unità: **due pulsanti affiancati**, "Mettimi alla prova · N" (`study-quiz`,
+  primario) e uno per generarne altre che apre il popup `GenerateUnitQuestions` già esistente
+  (`study-generate`);
+- senza domande: solo quello per generare, com'è oggi ("Nessuna domanda · genera ora").
+
+Capita di avere una sola domanda su un'unità: da lì nasce la richiesta. Sul telefono i due pulsanti
+stanno sulla stessa riga (il secondo può essere solo icona con etichetta accessibile, se il testo
+non ci sta).
+
+**Test**: vitest in `Study.test.tsx` — con domande ci sono entrambi i pulsanti e il secondo apre il
+popup; senza domande c'è solo quello di generazione e non c'è più `study-next`.
+
+### F3 — Pool vuoto: alternative vere (Antigravity)
+
+Nella sessione di ripasso, quando non c'è niente da porre, la scheda `recall-empty`
+(`LightweightSession.tsx`) offre "Prova mista" anche quando il tipo scelto è già mista, e anche
+quando le domande da porre sono zero: un pulsante che rimanda a se stesso.
+
+**Da fare**:
+- "Prova mista" solo quando serve davvero: tipo diverso da mista **e** `daPorreCount > 0`.
+- Con `daPorreCount === 0` e una lezione sola, tre alternative: **"Genera domande"**, che porta a
+  `/lezioni/{id}?panel=domande` (il pannello Domande si apre già da quel parametro),
+  **"Riproponi le sbagliate (N)"** e **"Riproponi le poste (N)"**, che usano il ripescaggio della
+  b3 (`useRestorable`, `useRestoreQuestions` in `frontend/src/api/recall.ts`) e ricominciano la
+  sessione senza passare dal pannello. I due pulsanti di ripescaggio non si mostrano quando il
+  conteggio è zero.
+- Sessione su più lezioni (`isSelection`): nessun pulsante per generare, solo il testo che dice di
+  generare le domande dai pannelli delle rispettive lezioni; il ripescaggio resta fuori.
+- Nel modo "unità" (ripasso dallo Studio) restano "Torna allo studio" e il pulsante dell'unità
+  successiva come oggi, più il ripescaggio se c'è qualcosa da ripescare.
+
+**Test**: vitest in `LightweightSession.test.tsx` per i tre casi (tipo già mista, pool vuoto con una
+lezione, selezione su più lezioni) e per il ripescaggio che riparte.
+
+### F4 — Ripescaggio come due icone (Antigravity)
+
+Nel pannello Domande (`QuestionsPanel.tsx`, blocco `questions-restore` della b3) i due pulsanti
+larghi impilati "Riproponi le poste (12)" e "Solo quelle sbagliate (1)" diventano **due icone
+affiancate** con il conteggio accanto (`IconButton` di `frontend/src/components/ui/icon-button.tsx`,
+come le azioni dell'intestazione della lezione): `RotateCcw` per tutte quelle poste, un'icona che
+dica "sbagliate" per l'altra. Il senso sta nell'etichetta accessibile, i `data-testid` non cambiano.
+
+**Test**: aggiornare il test del pannello in `QuestionsPanel.test.tsx` e il pezzo di
+`recall-sessions.spec.ts` che usa i due pulsanti.
