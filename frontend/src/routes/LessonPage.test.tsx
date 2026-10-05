@@ -45,7 +45,7 @@ it('passa dalla scaletta ai checkpoint nell’editor, poi al testo completo bloc
   expect(screen.queryByLabelText('Editor')).toBeNull()
   workflow.outline = { ...workflow.outline, approved: true }
   workflow.jobs = [{ ...workflow.jobs[0], state: 'running', progress: { phase: 'rewrite', unit_id: '1.2' } }]
-  workflow.document = { markdown: '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto dal checkpoint.', html: '', final: false, sections: [{ unit_id: '1.1', title: 'Unità', start_segment_id: 's1', end_segment_id: 's2' }] }
+  workflow.document = { markdown: '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto dal checkpoint.', html: '', final: false, pending: false, sections: [{ unit_id: '1.1', title: 'Unità', start_segment_id: 's1', end_segment_id: 's2' }] }
   view.rerender(component())
   expect((await screen.findByLabelText<HTMLTextAreaElement>('Editor')).value).toContain('Testo dal checkpoint.')
   expect(screen.getByLabelText('Stati unità')).toHaveTextContent('"1.1":"done","1.2":"working"')
@@ -64,7 +64,7 @@ it('passa dalla scaletta ai checkpoint nell’editor, poi al testo completo bloc
 it('una lezione già rielaborata resta leggibile anche senza approvazione della scaletta persistita', async () => {
   workflow.ready = true
   workflow.outline = { lesson_title: 'Acidosi', approved: false, timer_suspended: false, macro_sections: [] }
-  workflow.document = { markdown: 'Lezione importata', html: '', sections: [], final: true }
+  workflow.document = { markdown: 'Lezione importata', html: '', sections: [], final: true, pending: false }
   render(<MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter>)
   expect(await screen.findByLabelText('Editor')).toHaveValue('Lezione importata')
   expect(screen.queryByTestId('outline-approval')).toBeNull()

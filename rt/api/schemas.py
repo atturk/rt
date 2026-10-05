@@ -150,6 +150,8 @@ class DocumentSection(BaseModel):
 class LessonDocument(BaseModel):
     final: bool = Field(description="True se è il documento di 'rt build' ed è aggiornato, False se "
                                     "anteprima dal draft (quello che il build produrrebbe ora)")
+    pending: bool = Field(False, description="True se la lezione non ha ancora un documento: "
+                                             "il Markdown è solo il testo che lo spiega")
     markdown: str
     html: str = Field(description="HTML sanificato (l'HTML grezzo del Markdown è escapato)")
     sections: List[DocumentSection] = Field(description="Timecode per unità, da segments.json")

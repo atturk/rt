@@ -328,3 +328,19 @@ preferenze di P1. Gli errori grossi diventano task `R<n>` in fondo, per lo stess
 - 5 ottobre: Antigravity si è fermato dopo A2 e S1 (H1 lasciato a metà, recuperato dal Mac in
   `rt422/antigravity-wip`). Su richiesta di Attilio H1 e V1 li ha completati Claude, e
   `studyPrefs.ts` usa direttamente le preferenze su RT di P1.
+
+## 4.2.2b2 (feedback del 5 ottobre, fatti da Claude)
+
+- **Formule nell'editor** (`frontend/src/components/lesson/lessonMath.ts`): dal passaggio
+  all'editor atomic (4.2.0) il LaTeX fra delimitatori si vedeva in chiaro, perché il rendering
+  stava solo in `DocumentView`. Ora un'estensione di CodeMirror lo rende con Temml (lo stesso
+  MathML della lettura) e lo rimette in chiaro quando il cursore entra nella formula, come in
+  Obsidian. Fuori dai blocchi di codice e dal codice in riga.
+- **Popup Nuova lezione**: più largo (560 px) e, con più di un audio, torna la lista con
+  l'ordine in cui i file diventano un'unica registrazione: si riordina trascinando una riga o
+  con le frecce sulla maniglia (`components/lessons/AudioOrder.tsx`, come in 4.1.1).
+- **Niente "Nessuna anteprima disponibile" mentre una fase lavora**: l'API dice ora se la
+  lezione non ha ancora un documento (`LessonDocument.pending`) e la pagina mostra le righe
+  animate al posto del testo del segnaposto.
+- **Righe vuote animate**: un riflesso le attraversa (`.rt-skeleton` e `.rt-unit-pending`),
+  fermo con `prefers-reduced-motion`.

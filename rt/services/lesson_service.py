@@ -408,6 +408,14 @@ def _read_rielaborato(lesson_dir: str) -> Optional[str]:
         return None
 
 
+NO_PREVIEW_MARKDOWN = (
+    "# Nessuna anteprima disponibile\n\n"
+    "Il documento Markdown di questa lezione non è ancora stato generato.\n\n"
+    "Serve almeno la fase di *rewrite* completata per un'anteprima live, "
+    "oppure la fase di *build* per il documento finale."
+)
+
+
 def load_markdown_preview(lesson_dir: str) -> str:
     """Il documento da mostrare, senza frontmatter YAML:
     1. il documento finale, se esiste ed è aggiornato (build VALID);
@@ -434,12 +442,7 @@ def load_markdown_preview(lesson_dir: str) -> str:
         final = _read_rielaborato(lesson_dir)
         if final is not None:
             return final
-        return (
-            "# Nessuna anteprima disponibile\n\n"
-            "Il documento Markdown di questa lezione non è ancora stato generato.\n\n"
-            "Serve almeno la fase di *rewrite* completata per un'anteprima live, "
-            "oppure la fase di *build* per il documento finale."
-        )
+        return NO_PREVIEW_MARKDOWN
 
 
 def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
@@ -485,7 +488,8 @@ def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     tokens = md.parse(strip_generated(markdown))
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})
-    return {"final": final, "markdown": markdown, "html": html, "sections": sections}
+    return {"final": final, "pending": markdown == NO_PREVIEW_MARKDOWN, "markdown": markdown,
+            "html": html, "sections": sections}
 
 
 def _mark_unit_blocks(tokens: list, sections: List[Dict[str, Any]]) -> None:

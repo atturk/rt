@@ -28,6 +28,7 @@
   --foreground: var(--fg);
   --muted: var(--soft);
   --muted-foreground: var(--mute);
+  --skeleton-shine: color-mix(in oklch, var(--bg) 70%, transparent);
   --border: #d4d4d4;
   --input: #d4d4d4;
   --ring: var(--fg);
@@ -65,6 +66,7 @@
   --surface: #1a1a1a;
   --fg: #ffffff;
   --soft: color-mix(in oklch, #ffffff 7%, #171717);
+  --skeleton-shine: color-mix(in oklch, #ffffff 9%, transparent);
   --acc: #155f52;
   --link: #dceee7;
   --shadow: 0 12px 32px color-mix(in oklch, #171717 65%, transparent);
@@ -488,9 +490,27 @@
 .rt-unit-task-working { color: var(--success); }
 .rt-unit-task-waiting, .rt-lesson-editor .rt-unit-waiting { color: var(--muted-foreground); }
 .rt-unit-pending { display: grid; gap: 6px; padding: 10px 0; }
-.rt-unit-pending > div { height: 9px; border-radius: var(--radius-md); background: var(--muted); width: 95%; }
+.rt-unit-pending > div { height: 9px; border-radius: var(--radius-md); width: 95%; }
 .rt-unit-pending > div:nth-child(2) { width: 88%; }
 .rt-unit-pending > div:nth-child(3) { width: 60%; }
+
+/* Righe vuote del testo che si sta scrivendo: un riflesso le attraversa, come nelle altre IA. */
+.rt-unit-pending > div,
+.rt-skeleton {
+  background-color: var(--muted);
+  background-image: linear-gradient(90deg, transparent 0%, var(--skeleton-shine) 50%, transparent 100%);
+  background-repeat: no-repeat;
+  background-size: 240px 100%;
+  animation: rt-skeleton-shine 1.6s ease-in-out infinite;
+}
+@keyframes rt-skeleton-shine {
+  from { background-position: -240px 0; }
+  to { background-position: calc(100% + 240px) 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rt-unit-pending > div,
+  .rt-skeleton { background-image: none; animation: none; }
+}
 
 /* Sezioni richiudibili (folding) come in Obsidian (K2) */
 .cm-foldGutter {
@@ -638,3 +658,13 @@
 .rt-rsvp-word.out { animation: rt-rsvp-out var(--rsvp-out, 400ms) ease-out forwards; }
 @keyframes rt-rsvp-out { from { transform: scale(1); opacity: 1; } to { transform: scale(0.93); opacity: 0.82; } }
 @media (prefers-reduced-motion: reduce) { .rt-rsvp-word.out { animation: none; } }
+
+/* Formule rese dentro l'editor (lessonMath): come nella lettura, ma in riga con il testo. */
+.rt-editor-math math { font-size: 1.02em; }
+.rt-editor-math-block {
+  display: block;
+  margin: 0.4rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.rt-editor-math-block math { font-size: 1.08em; }

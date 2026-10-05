@@ -7,6 +7,7 @@ import array
 import os
 import subprocess
 import time
+from unittest import mock
 
 import pytest
 
@@ -31,6 +32,17 @@ def test_document_marks_unit_headings_and_timecodes(api_client, lesson):
     unit = section["unit_id"]
     assert f'<h3 data-unit-id="{unit}" id="unit-{unit}">' in doc["html"]
     assert f'<p data-unit-timecode="{unit}">{section["start_formatted"]}</p>' in doc["html"]
+
+
+def test_document_says_when_there_is_nothing_to_show(api_client, lesson):
+    """La SPA mostra le righe animate, non il testo del segnaposto: glielo dice 'pending'."""
+    from rt.services.lesson_service import NO_PREVIEW_MARKDOWN
+    doc = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/document").json()
+    assert doc["pending"] is False
+    with mock.patch("rt.services.lesson_service.load_markdown_preview", return_value=NO_PREVIEW_MARKDOWN):
+        doc = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/document").json()
+    assert doc["pending"] is True
+    assert "Nessuna anteprima disponibile" in doc["markdown"]
 
 
 def test_document_marks_only_known_units(api_client, lesson):

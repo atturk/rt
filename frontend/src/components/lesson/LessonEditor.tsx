@@ -22,6 +22,7 @@ import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
+import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
@@ -171,6 +172,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     lessonUnits,
     lessonReview,
     lessonClassifier,
+    lessonMath,
     lessonImages(lessonId),
     lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
     // Anche il parsing in background cambia lo stato attivo della formattazione.

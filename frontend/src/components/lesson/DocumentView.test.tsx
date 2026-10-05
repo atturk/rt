@@ -7,7 +7,7 @@ import { AudioProvider } from './audio'
 import { DocumentView } from './DocumentView'
 
 const doc = {
-  final: false,
+  final: false, pending: false,
   markdown: '',
   sections: [],
   html: '<h3 data-unit-id="1.1">Primo</h3><p>uno</p><h3 data-unit-id="1.2">Secondo</h3><p>due</p>',

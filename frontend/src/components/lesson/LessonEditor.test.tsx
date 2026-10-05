@@ -16,7 +16,7 @@ beforeEach(() => { vi.clearAllMocks(); calls.post.mockResolvedValue({ data: { to
 it('salva subito il testo corrente e libera il lease prima di una decisione', async () => {
   const actions = createRef<LessonEditorActions>()
   const query = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={query}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={query}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false, pending: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
   fireEvent.change(screen.getByLabelText('Editor'), { target: { value: 'Dopo' } })
   await act(() => actions.current!.flush())
   expect(calls.put).toHaveBeenCalledWith('/api/v1/lessons/{lesson_id}/document/draft', expect.objectContaining({ body: { markdown: 'Dopo', lease_token: 'lease' } }))
@@ -26,7 +26,7 @@ it('salva subito il testo corrente e libera il lease prima di una decisione', as
 it('propaga gli errori del salvataggio e conserva il lease', async () => {
   calls.put.mockRejectedValueOnce(new Error('Salvataggio fallito'))
   const actions = createRef<LessonEditorActions>()
-  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false, pending: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
   fireEvent.change(screen.getByLabelText('Editor'), { target: { value: 'Dopo' } })
   await act(async () => { await expect(actions.current!.flush()).rejects.toThrow('API non raggiungibile') })
   expect(calls.remove).not.toHaveBeenCalled()
@@ -34,7 +34,7 @@ it('propaga gli errori del salvataggio e conserva il lease', async () => {
 
 it('attende la fine dei caricamenti prima di salvare e liberare il lease', async () => {
   const actions = createRef<LessonEditorActions>()
-  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Prima', html: '', sections: [], final: false, pending: false }} hasAudio={false} ready locked={false} actionsRef={actions} /></AudioProvider></MemoryRouter></QueryClientProvider>)
   let finish!: () => void
   act(() => upload.started!(new Promise<void>((resolve) => { finish = resolve })))
   fireEvent.change(screen.getByLabelText('Editor'), { target: { value: 'Dopo' } })
@@ -47,7 +47,7 @@ it('attende la fine dei caricamenti prima di salvare e liberare il lease', async
 
 it('blocca il testo durante la classificazione e lo sblocca alla fine del job', () => {
   const query = new QueryClient()
-  const component = (locked: boolean) => <QueryClientProvider client={query}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Testo completo', html: '', sections: [], final: false }} hasAudio={false} ready locked={locked} /></AudioProvider></MemoryRouter></QueryClientProvider>
+  const component = (locked: boolean) => <QueryClientProvider client={query}><MemoryRouter><AudioProvider><LessonEditor lessonId={1} document={{ markdown: 'Testo completo', html: '', sections: [], final: false, pending: false }} hasAudio={false} ready locked={locked} /></AudioProvider></MemoryRouter></QueryClientProvider>
   const view = render(component(true))
   expect(screen.getByRole('img', { name: 'Sola lettura' })).toBeInTheDocument()
   expect(screen.getByLabelText('Editor')).toHaveAttribute('readonly')

@@ -4085,6 +4085,12 @@ export interface components {
             /** Markdown */
             markdown: string;
             /**
+             * Pending
+             * @description True se la lezione non ha ancora un documento: il Markdown è solo il testo che lo spiega
+             * @default false
+             */
+            pending: boolean;
+            /**
              * Sections
              * @description Timecode per unità, da segments.json
              */
