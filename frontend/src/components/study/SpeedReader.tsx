@@ -1,10 +1,11 @@
-import { Pause, Play, Rewind, RotateCcw } from 'lucide-react'
+import { Pause, Play, Rewind, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { Checkbox } from '@/components/settings/common'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
 import {
@@ -51,6 +52,16 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
   useEffect(() => () => {
     if (persist.current) { clearTimeout(persist.current); saveRef.current(prefsRef.current) }
   }, [])
+
+  const previousSettings = useRef(settings)
+  useLayoutEffect(() => {
+    if (previousSettings.current && !settings && persist.current) {
+      clearTimeout(persist.current)
+      persist.current = undefined
+      saveRef.current(prefsRef.current)
+    }
+    previousSettings.current = settings
+  }, [settings])
 
   const word = words[index]?.text ?? ''
   const full = isFullStop(word, prefs.comma)
@@ -138,6 +149,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
       inert={!active || undefined}
       data-testid="speed-reader"
       data-active={active || undefined}
+      data-settings={settings && !phone || undefined}
       className="rt-rsvp absolute inset-0 flex flex-col gap-3 overflow-hidden bg-background px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-5 text-foreground max-md:px-3.5"
     >
       <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
@@ -241,67 +253,55 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
   onPitch: (pitch: number) => void
 }) {
   const ref = useRef<HTMLElement>(null)
-  const [position, setPosition] = useState({ top: 64, right: 20 })
-  useLayoutEffect(() => {
-    const locate = () => {
-      const box = anchor.current?.getBoundingClientRect()
-      if (box) setPosition(old => { const next = { top: box.bottom + 8, right: Math.max(12, window.innerWidth - box.right) }; return old.top === next.top && old.right === next.right ? old : next })
-    }
-    locate()
+  useEffect(() => {
+    if (!phone) return
     const outside = (event: MouseEvent) => {
       if (!ref.current?.contains(event.target as Node) && !anchor.current?.contains(event.target as Node)) onDone()
     }
-    window.addEventListener('resize', locate)
     window.addEventListener('mousedown', outside)
-    return () => { window.removeEventListener('resize', locate); window.removeEventListener('mousedown', outside) }
-  }, [anchor, onDone])
-  const head = (_text: string, hint: string, control: ReactNode) => <div>{control}<small className="block text-meta text-muted-foreground">{hint}</small></div>
+    return () => window.removeEventListener('mousedown', outside)
+  }, [phone, anchor, onDone])
+  const section = (title: string) => <h3 className="px-3.5 pb-1 pt-4 text-meta font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
   return (
-    <section ref={ref} role="dialog" aria-label="Impostazioni della lettura veloce" data-testid="speed-reader-settings" style={phone ? undefined : { top: position.top, right: position.right }}
-      className={cn('fixed z-30 overflow-auto border bg-card py-1 text-body shadow-panel [&_input]:accent-accent-foreground',
-        phone ? 'fixed inset-x-0 bottom-0 max-h-[75dvh] rounded-t-[14px] pb-[env(safe-area-inset-bottom)]' : 'max-h-[calc(100dvh-100px)] w-[340px] rounded-lg')}>
-      <Row><div className="flex items-center justify-between"><b className="font-semibold">Impostazioni</b><Pill onClick={onDone}>Fatto</Pill></div></Row>
+    <section ref={ref} role="dialog" aria-label="Impostazioni della lettura veloce" data-testid="speed-reader-settings"
+      className={cn('rt-rsvp-settings z-30 overflow-auto border bg-card py-1 text-body shadow-panel [&_input]:accent-accent-foreground',
+        phone ? 'fixed inset-x-0 bottom-0 max-h-[75dvh] rounded-t-[14px] pb-[env(safe-area-inset-bottom)]' : 'absolute inset-y-0 right-0 w-[340px] border-y-0 border-r-0')}>
+      <Row><div className="flex items-center justify-between"><b className="font-semibold">Impostazioni</b><IconButton label="Chiudi le impostazioni" icon={X} onClick={onDone} /></div></Row>
+      {section('Lettura')}
       <Row>
-        {head('Suono', 'un clic a ogni parola, più grave a fine frase', <Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />)}
+        <span>Pausa dopo la frase <b className="font-normal">{prefs.pauseMs}</b> ms</span>
+        <input type="range" min={0} max={1200} step={50} value={prefs.pauseMs} aria-label="Pausa dopo la frase" onChange={(e) => update({ pauseMs: Number(e.target.value) })} />
+      </Row>
+      <Row><Toggle label="Virgola come pausa piena" checked={prefs.comma} onChange={(comma) => update({ comma })} /></Row>
+      <Row><span>Lettera di fuoco</span><Segments label="Lettera di fuoco" value={prefs.orp} options={ORPS} onChange={(orp) => update({ orp })} /></Row>
+      <Row><span>Passo indietro: <b className="font-normal">{prefs.step}</b> parole</span>
+        <Segments label="Passo indietro" value={prefs.step} options={STEPS.map((n) => [n, `−${n}`] as const)} onChange={(step) => update({ step })} />
+      </Row>
+      {section('Aspetto')}
+      <Row><div className="flex items-center justify-between">
+        <span>Dimensione del testo <b className="font-normal">{prefs.size}</b></span>
+        <div className="flex gap-1">
+          <Pill aria-label="Testo più piccolo" onClick={() => update({ size: Math.max(24, prefs.size - 4) })}>−</Pill>
+          <Pill aria-label="Testo più grande" onClick={() => update({ size: Math.min(96, prefs.size + 4) })}>+</Pill>
+        </div>
+      </div></Row>
+      <Row><Toggle label="Font per dislessia" checked={prefs.dyslexic} onChange={(dyslexic) => update({ dyslexic })} /></Row>
+      <Row><Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => update({ irlen: on ? 'pesca' : null })} />
+        {prefs.irlen && <Segments label="Sfondo" value={prefs.irlen} options={TINTS} onChange={(irlen) => update({ irlen })} />}
+      </Row>
+      {section('Suono')}
+      <Row><Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />
         <span>Tono <b className="font-normal">{prefs.pitch.toFixed(1)}</b>×</span>
         <input type="range" min={0.5} max={2} step={0.1} value={prefs.pitch} aria-label="Tono"
           onChange={(e) => { const pitch = Number(e.target.value); update({ pitch }); onPitch(pitch) }} />
       </Row>
-      <Row>{head('Font per dislessia', 'lettere più distinguibili', <Toggle label="Font per dislessia" checked={prefs.dyslexic} onChange={(dyslexic) => update({ dyslexic })} />)}</Row>
-      <Row>
-        {head('Modalità Irlen', 'sfondo colorato che affatica meno', <Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => update({ irlen: on ? 'pesca' : null })} />)}
-        {prefs.irlen && <Segments label="Sfondo" value={prefs.irlen} options={TINTS} onChange={(irlen) => update({ irlen })} />}
-      </Row>
-      <Row>
-        {head('Rumore di fondo', 'copre i rumori intorno', <Toggle label="Rumore di fondo" checked={prefs.noise !== null}
-          onChange={(on) => { update({ noise: on ? 'rosa' : null }); onPreviewNoise(on ? 'rosa' : null, prefs.noiseVolume) }} />)}
+      <Row><Toggle label="Rumore di fondo" checked={prefs.noise !== null}
+          onChange={(on) => { update({ noise: on ? 'rosa' : null }); onPreviewNoise(on ? 'rosa' : null, prefs.noiseVolume) }} />
         {prefs.noise && <>
           <Segments label="Tipo di rumore" value={prefs.noise} options={NOISE_KINDS} onChange={(noise) => { update({ noise }); onPreviewNoise(noise, prefs.noiseVolume) }} />
           <input type="range" min={0} max={0.6} step={0.02} value={prefs.noiseVolume} aria-label="Volume del rumore"
             onChange={(e) => update({ noiseVolume: Number(e.target.value) })} />
         </>}
-      </Row>
-      <Row>
-        <span>Pausa dopo la frase <b className="font-normal">{prefs.pauseMs}</b> ms</span>
-        <input type="range" min={0} max={1200} step={50} value={prefs.pauseMs} aria-label="Pausa dopo la frase" onChange={(e) => update({ pauseMs: Number(e.target.value) })} />
-      </Row>
-      <Row>
-        <span>Lettera di fuoco<small className="block text-meta text-muted-foreground">dove cade l'occhio nella parola</small></span>
-        <Segments label="Lettera di fuoco" value={prefs.orp} options={ORPS} onChange={(orp) => update({ orp })} />
-      </Row>
-      <Row>{head('Virgola come pausa piena', ', ; : come un punto', <Toggle label="Virgola come pausa piena" checked={prefs.comma} onChange={(comma) => update({ comma })} />)}</Row>
-      <Row>
-        <span>Passo indietro: <b className="font-normal">{prefs.step}</b> parole</span>
-        <Segments label="Passo indietro" value={prefs.step} options={STEPS.map((n) => [n, `−${n}`] as const)} onChange={(step) => update({ step })} />
-      </Row>
-      <Row>
-        <div className="flex items-center justify-between">
-          <span>Dimensione del testo <b className="font-normal">{prefs.size}</b></span>
-          <div className="flex gap-1">
-            <Pill aria-label="Testo più piccolo" onClick={() => update({ size: Math.max(24, prefs.size - 4) })}>−</Pill>
-            <Pill aria-label="Testo più grande" onClick={() => update({ size: Math.min(96, prefs.size + 4) })}>+</Pill>
-          </div>
-        </div>
       </Row>
     </section>
   )

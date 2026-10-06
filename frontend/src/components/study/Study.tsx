@@ -329,7 +329,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const zenActions = <div className="flex items-center gap-1">
     <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
-    <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
+    <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} active={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
     <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
     <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} />
   </div>

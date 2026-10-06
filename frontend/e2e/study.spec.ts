@@ -407,7 +407,7 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#f6dcc8')
     await page.getByRole('radio', { name: 'Menta', exact: true }).click()
     await expect(header).toHaveCSS('background-color', 'rgb(213, 238, 226)')
-    await page.getByRole('button', { name: 'Fatto', exact: true }).click()
+    await page.getByRole('button', { name: 'Chiudi le impostazioni', exact: true }).click()
     const book = page.getByRole('button', { name: 'Torna allo Studio', exact: true })
     // Il libro è raggiungibile anche dalla tastiera: Spazio deve premere il pulsante.
     if (viewport.width > 767) { await book.focus(); await page.keyboard.press('Space') }
@@ -447,4 +447,37 @@ test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', as
     await expect(target).toBeInViewport()
     await expect(target).toHaveClass(/rt-claim-unit/)
   }
+})
+
+test('impostazioni zen laterali: X, Esc e icona chiudono salvando subito; su iPhone resta il foglio', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  const toggle = page.getByRole('button', { name: 'Impostazioni della lettura veloce', exact: true })
+  const panel = page.getByTestId('speed-reader-settings')
+  for (const close of ['X', 'Esc', 'icona']) {
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(panel).toHaveCSS('width', '340px')
+    await expect(panel.getByRole('button', { name: 'Fatto' })).toHaveCount(0)
+    for (const name of ['Lettura', 'Aspetto', 'Suono']) await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible()
+    await page.getByTestId('speed-reader-word').click()
+    await expect(panel).toBeVisible()
+    const request = page.waitForRequest(r => r.method() === 'PUT' && r.url().endsWith('/preferences/study.rsvp'))
+    await panel.getByRole('button', { name: 'Testo più grande' }).click()
+    if (close === 'X') await panel.getByRole('button', { name: 'Chiudi le impostazioni' }).click()
+    else if (close === 'Esc') await page.keyboard.press('Escape')
+    else await toggle.click()
+    await request
+    await expect(panel).toHaveCount(0)
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('speed-reader')).toBeVisible()
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await toggle.click()
+  const box = await panel.boundingBox()
+  expect(box!.y + box!.height).toBeCloseTo(844)
+  await page.mouse.click(12, 100)
+  await expect(panel).toHaveCount(0)
 })

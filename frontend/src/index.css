@@ -691,3 +691,10 @@
   text-align: center;
 }
 .rt-editor-math-block math { font-size: 1.08em; }
+
+/* La barra laterale lascia la lettura al centro dello spazio disponibile. */
+.rt-rsvp[data-settings] { padding-right: 360px; }
+.rt-rsvp-settings { animation: rt-rsvp-sidebar-in 250ms ease-out; }
+@keyframes rt-rsvp-sidebar-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (max-width: 767px) { .rt-rsvp-settings { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .rt-rsvp-settings { animation: none; } }
