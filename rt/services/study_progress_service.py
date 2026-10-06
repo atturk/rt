@@ -1,6 +1,6 @@
 """Stato di studio nel database, indipendente dai documenti della lezione."""
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, NamedTuple, Optional
 
 from sqlalchemy import select
 
@@ -64,23 +64,34 @@ def mark_read(lesson_id: int, lesson_dir: str, unit_id: str) -> None:
     _touch(lesson_id, lesson_dir, unit_id, {"last_read_at": utcnow()})
 
 
+class _Row(NamedTuple):
+    lesson_id: int
+    unit_id: str
+    status: str
+    status_at: Optional[datetime]
+    last_read_at: Optional[datetime]
+
+
 def summaries(lessons: dict[int, str]) -> dict[int, dict]:
     """Una sola query per tutte le lezioni; ignora le unità tolte dalla scaletta."""
     result = {lid: {"study_learned": 0, "study_learning": 0, "study_last_at": None} for lid in lessons}
     if not lessons:
         return result
-    current = {lid: current_unit_ids(path) for lid, path in lessons.items()}
     with read_scope(get_database()) as session:
-        for row in session.scalars(select(StudyUnit).where(StudyUnit.lesson_id.in_(lessons))):
-            if row.unit_id not in current[row.lesson_id]:
-                continue
-            summary = result[row.lesson_id]
-            if row.status == "appreso":
-                summary["study_learned"] += 1
-            elif row.status == "in-apprendimento":
-                summary["study_learning"] += 1
-            dates = [date for date in (summary["study_last_at"], _at(row.status_at), _at(row.last_read_at)) if date]
-            summary["study_last_at"] = max(dates) if dates else None
+        rows = [_Row(r.lesson_id, r.unit_id, r.status, r.status_at, r.last_read_at)
+                for r in session.scalars(select(StudyUnit).where(StudyUnit.lesson_id.in_(lessons)))]
+    # La scaletta si legge solo per le lezioni studiate: l'elenco non apre centinaia di outline.
+    current = {lid: current_unit_ids(lessons[lid]) for lid in {row.lesson_id for row in rows}}
+    for row in rows:
+        if row.unit_id not in current[row.lesson_id]:
+            continue
+        summary = result[row.lesson_id]
+        if row.status == "appreso":
+            summary["study_learned"] += 1
+        elif row.status == "in-apprendimento":
+            summary["study_learning"] += 1
+        dates = [date for date in (summary["study_last_at"], _at(row.status_at), _at(row.last_read_at)) if date]
+        summary["study_last_at"] = max(dates) if dates else None
     return result
 
 
