@@ -97,7 +97,8 @@ for (const theme of ['light', 'dark'] as const) {
     // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
     await page.getByRole('button', { name: 'Per materia' }).click()
-    await page.getByRole('button', { name: 'Per materia' }).focus()
+    await page.mouse.move(0, 0)
+    await page.getByRole('button', { name: 'Per materia' }).hover()
     await expect(page.getByRole('tooltip', { name: 'Per materia' })).toBeVisible()
     await expectNoViolations(page, 'lezioni per materia con un tooltip')
     await page.keyboard.press('Escape')
