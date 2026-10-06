@@ -406,6 +406,18 @@ def _issue_key(issue) -> tuple:
     return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
 
 
+def _drop_moved_decisions(lesson_dir: str, before: Dict[str, tuple], issues: List[ScienceIssue]) -> None:
+    """Le issue si rinumerano per posizione (sci_000001...): se un id ora indica un'issue diversa
+    da quella decisa, la decisione va tolta. Altrimenti il build la applicherebbe all'issue nuova,
+    e una "modificata" su un'issue di tutta l'unità ne sostituirebbe l'intero testo."""
+    from rt.pipeline.ledger import load_ledger, purge_decisions_by_prefix
+    now = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in issues}
+    for decision in load_ledger(lesson_dir).decisions:
+        issue_id = decision.issue_id
+        if issue_id in before and now.get(issue_id) != before[issue_id]:
+            purge_decisions_by_prefix(lesson_dir, prefix=issue_id)
+
+
 def parent_unit_context(units, unit_id: str) -> Optional[str]:
     """Le altre subunità della stessa unità (stesso prefisso: 2.1 → 2.x), come testo di contesto."""
     if "." not in unit_id:
@@ -544,14 +556,20 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if st_iss.unit_id:
             st_issues_by_unit.setdefault(st_iss.unit_id, []).append(st_iss)
 
+    # Issue decidibili prima di questa run, per id: dopo ogni rinumerazione le decisioni restano
+    # solo sulle issue identiche (vedi _drop_moved_decisions).
+    decided_before = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in load_science_issues(lesson_dir)}
+
     # Riconciliazione all'avvio:
     if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
         reviewed_unit_ids = []
         all_science_issues: List[ScienceIssue] = []
         save_science_issues(all_science_issues, lesson_dir)
-        if force:
-            from rt.pipeline.ledger import purge_decisions_by_prefix
-            purge_decisions_by_prefix(lesson_dir, prefix="sci_")
+        # La review riparte da zero: le issue nuove riprendono i numeri dalla prima, quindi le
+        # decisioni sulle vecchie si attaccherebbero a issue diverse (4.2.3b3.1).
+        from rt.pipeline.ledger import purge_decisions_by_prefix
+        purge_decisions_by_prefix(lesson_dir, prefix="sci_")
+        decided_before = {}
     else:
         ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review")
         existing_issues = load_science_issues(lesson_dir)
@@ -563,6 +581,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             all_science_issues = cleaned_issues
             if len(cleaned_issues) != len(existing_issues):
                 save_science_issues(all_science_issues, lesson_dir)
+                _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
             if reviewed_unit_ids:
                 print(f"🔄 [CHECKPOINT RESUME] {len(reviewed_unit_ids)}/{len(draft.units)} unità didattiche già revisionate per science critic.")
         else:
@@ -615,6 +634,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             
         # Salvataggio atomico dell'artefatto su disco
         save_science_issues(all_science_issues, lesson_dir)
+        _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
 
         # Commit atomico nel checkpoint
         if unit.unit_id not in reviewed_set:
@@ -656,6 +676,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         for s_idx, iss in enumerate(all_science_issues, start=1):
             iss.id = f"sci_{s_idx:06d}"
         save_science_issues(all_science_issues, lesson_dir)
+        _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
 
         source_fp = compute_source_fingerprint(lesson_dir, "review")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
