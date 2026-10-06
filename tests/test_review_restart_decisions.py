@@ -61,3 +61,31 @@ def test_renumbered_issue_loses_decision_identical_keeps_it(tmp_path):
     expected = {i.id for i in shifted if before.get(i.id) == _identity(i)}
     assert {d.issue_id for d in load_ledger(lesson_dir).decisions} == expected
     assert len(expected) < len(issues)
+
+
+def test_manual_edit_in_preview_keeps_review_and_decisions(tmp_path):
+    """4.2.3b3.2: una correzione a mano nell'anteprima (es. per chiudere un'issue) rendeva la
+    review STALE e "Riprendi la pipeline" la rifaceva da zero, perdendo le decisioni."""
+    from rt.core.idempotency import check_phase_status
+    from rt.services.document_edit_service import save_document_edit
+    from rt.services.lesson_service import load_markdown_preview
+    lesson_dir = str(tmp_path)
+    _setup_test_lesson(lesson_dir)
+    run_review(lesson_dir, force=True, force_mock=True)
+    decided = {i.id for i in _decide_all(lesson_dir)}
+    issues = load_science_issues(lesson_dir)
+
+    unit = load_resolved_draft(lesson_dir).units[0]
+    sentence = unit.content.strip().split("\n")[0].strip()
+    markdown = load_markdown_preview(lesson_dir)
+    assert sentence in markdown
+    assert save_document_edit(lesson_dir, markdown.replace(sentence, sentence + " Aggiunta a mano.", 1))["units_changed"] == [unit.unit_id]
+    assert check_phase_status(lesson_dir, "review")[0].name == "STALE"
+
+    result = run_review(lesson_dir, force_mock=True)
+    assert result["action"] == "SKIP"
+    assert check_phase_status(lesson_dir, "review")[0].name == "VALID"
+    assert [i.model_dump() for i in load_science_issues(lesson_dir)] == [i.model_dump() for i in issues]
+    assert {d.issue_id for d in load_ledger(lesson_dir).decisions} == decided
+    # il testo scritto a mano resta, le decisioni non lo sovrascrivono
+    assert "Aggiunta a mano." in load_resolved_draft(lesson_dir).units[0].content
