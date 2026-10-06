@@ -253,7 +253,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
   return (
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       {selecting ? (
-        <label className={cn(row, 'cursor-pointer')}>
+        <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
           <Check className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>

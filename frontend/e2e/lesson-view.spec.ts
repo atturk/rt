@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
+import { test, apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
 
 type Lesson = { id: number; materia: string }
 type PhaseReport = { phases: { phase: string; status: string; reason: string }[] }

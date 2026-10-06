@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { test, apiGet, loginViaLink } from './support'
 
 // Accessibilità di base (RT4-F7): axe con le regole WCAG 2 A/AA su ogni pagina, nei due temi.
 // Controlla etichette, nomi dei pulsanti, ruoli, focus visibile e contrasto dei colori.

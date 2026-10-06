@@ -23,7 +23,7 @@ function iconButtonClass({ variant = 'ghost', active = false, className }: { var
       : active
         ? variant === 'rail'
           ? 'bg-accent text-accent-foreground'
-          : 'bg-muted'
+          : 'bg-accent text-accent-foreground dark:bg-success-soft dark:text-success'
         : 'hover:bg-muted',
     className,
   )

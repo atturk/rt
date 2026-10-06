@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // Pagina della lezione del design 4.2 (schermate 02 e 02b): barra audio con la velocità a valori
 // fissi e menu contestuale del documento (Copia, Leggi da qui, Genera, Domande, Verifica).

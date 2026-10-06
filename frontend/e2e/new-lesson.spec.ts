@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from '@playwright/test'
+import { expect } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // Popup Nuova lezione dalla barra a icone (schermate 00 e 00b): con l'audio materia, docente,
 // data e Avvia, poi la pagina della lezione con l'avanzamento; con lo zip solo Importa.

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
+import { test, apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
 // 'rt run' da terminale: accesso con il link, Nuova lezione, scaletta nella pagina della lezione,

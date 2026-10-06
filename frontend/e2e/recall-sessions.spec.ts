@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // Sessioni di ripasso (G4): il tipo resta l'ultimo usato, "Termina" chiude la sessione sul backend
 // con il riepilogo. Il recall su Telegram dall'app non c'è più (Telegram spento di predefinito):

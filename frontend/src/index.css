@@ -156,6 +156,11 @@
     background: var(--accent);
     color: var(--acc);
   }
+  .dark ::selection,
+  .dark ::highlight(rt-generate) {
+    background: color-mix(in oklch, var(--success) 35%, transparent);
+    color: var(--fg);
+  }
   input::placeholder,
   textarea::placeholder {
     color: var(--mute);
@@ -295,6 +300,10 @@
 .rt-document .rt-claim-unit, .rt-lesson-editor .rt-claim-unit {
   outline: 2px dashed var(--warning);
   outline-offset: 3px;
+}
+
+.dark .rt-lesson-editor .atomic-cm-editor {
+  --atomic-editor-selection-bg: color-mix(in oklch, var(--success) 35%, transparent);
 }
 
 /* Campi segreti (components/ui/secret-input.tsx): testo mascherato senza type="password",
