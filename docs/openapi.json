@@ -6387,6 +6387,36 @@
         "title": "SystemInfo",
         "type": "object"
       },
+      "TailnetInfo": {
+        "properties": {
+          "funnel": {
+            "default": false,
+            "description": "L'indirizzo è pubblico su Internet (Tailscale Funnel)",
+            "title": "Funnel",
+            "type": "boolean"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Indirizzo di RT nella tailnet (https://nome-mac.tailnet.ts.net), None senza Tailscale",
+            "title": "Origin"
+          },
+          "serve": {
+            "default": false,
+            "description": "Tailscale Serve inoltra già l'indirizzo a RT",
+            "title": "Serve",
+            "type": "boolean"
+          }
+        },
+        "title": "TailnetInfo",
+        "type": "object"
+      },
       "TelegramCommandInfo": {
         "properties": {
           "created_at": {
@@ -22270,6 +22300,32 @@
           }
         ],
         "summary": "Versione, canale di aggiornamento e cartelle di RT",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/tailnet": {
+      "get": {
+        "operationId": "system_tailnet_api_v1_system_tailnet_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TailnetInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Indirizzo di RT per gli altri dispositivi della tailnet (es. iPhone)",
         "tags": [
           "sistema"
         ]

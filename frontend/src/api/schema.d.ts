@@ -2535,6 +2535,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/tailnet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Indirizzo di RT per gli altri dispositivi della tailnet (es. iPhone) */
+        get: operations["system_tailnet_api_v1_system_tailnet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/telegram/daemon": {
         parameters: {
             query?: never;
@@ -5540,6 +5557,26 @@ export interface components {
              * @description Versione di RT installata (come 'rt -v')
              */
             version: string;
+        };
+        /** TailnetInfo */
+        TailnetInfo: {
+            /**
+             * Funnel
+             * @description L'indirizzo è pubblico su Internet (Tailscale Funnel)
+             * @default false
+             */
+            funnel: boolean;
+            /**
+             * Origin
+             * @description Indirizzo di RT nella tailnet (https://nome-mac.tailnet.ts.net), None senza Tailscale
+             */
+            origin?: string | null;
+            /**
+             * Serve
+             * @description Tailscale Serve inoltra già l'indirizzo a RT
+             * @default false
+             */
+            serve: boolean;
         };
         /** TelegramCommandInfo */
         TelegramCommandInfo: {
@@ -16948,6 +16985,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
+    system_tailnet_api_v1_system_tailnet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TailnetInfo"];
                 };
             };
         };

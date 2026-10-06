@@ -55,6 +55,11 @@ export function useLoginLink() {
   return useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/auth/login-link')) })
 }
 
+/** Indirizzo di RT nella tailnet (nome MagicDNS del Mac), per il QR dell'altro dispositivo. */
+export function useTailnet() {
+  return useQuery({ queryKey: ['system', 'tailnet'], queryFn: () => unwrap(api.GET('/api/v1/system/tailnet')), staleTime: 60_000 })
+}
+
 export function useLogout() {
   const client = useQueryClient()
   return useMutation({

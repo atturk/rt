@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -37,6 +37,31 @@ describe("Accesso da un altro dispositivo", () => {
     expect(screen.getByRole('img', { name: 'QR del link di accesso' })).toBeInTheDocument()
     expect(screen.getByText(/Scade tra 5:00/)).toBeInTheDocument()
     expect(localStorage.getItem(DEVICE_ORIGIN_KEY)).toBe('https://mac.tail1234.ts.net')
+  })
+
+  it("propone da solo il nome del Mac nella tailnet e lo usa per il QR", async () => {
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: true, funnel: false }))
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ url: 'http://127.0.0.1:8765/login?code=xyz', expires_in: 300 }))
+    localStorage.setItem(DEVICE_ORIGIN_KEY, 'https://100.72.84.124')
+    renderSection()
+    const user = userEvent.setup()
+    const input = screen.getByLabelText("Indirizzo di RT per l'altro dispositivo")
+    await waitFor(() => expect(input).toHaveValue('https://air.tail1234.ts.net'))
+    await user.click(screen.getByRole('button', { name: 'Crea QR di accesso' }))
+    expect(post).toHaveBeenCalledWith('/api/v1/auth/login-link')
+    expect(await screen.findByTestId('device-login-url')).toHaveTextContent('https://air.tail1234.ts.net/login?code=xyz')
+  })
+
+  it("avvisa se l'indirizzo è un IP in https o se Tailscale Serve non è attivo", async () => {
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: false, funnel: false }))
+    renderSection()
+    const user = userEvent.setup()
+    const input = screen.getByLabelText("Indirizzo di RT per l'altro dispositivo")
+    await waitFor(() => expect(input).toHaveValue('https://air.tail1234.ts.net'))
+    expect(screen.getByText(/Tailscale Serve non è attivo/)).toBeInTheDocument()
+    await user.clear(input)
+    await user.type(input, '100.72.84.124')
+    expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del Mac/)).toBeInTheDocument()
   })
 
   it("avvisa se l'indirizzo è quello locale del Mac", async () => {
