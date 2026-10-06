@@ -7,6 +7,7 @@ rt.tui.recall (terminale). Il motore delle domande resta rt.pipeline.recall.
 """
 import json
 import os
+import uuid
 from typing import Any, List, Optional
 
 from rt.core.lesson_paths import lesson_path
@@ -66,7 +67,8 @@ def load_recall_session_state(lesson_dir: str) -> dict:
 
 def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     path = get_recall_session_state_path(lesson_dir)
-    tmp_path = path + ".tmp"
+    # Temporaneo unico: due richieste insieme (Studio e sessione) non si rubano il file.
+    tmp_path = f"{path}.{uuid.uuid4().hex[:8]}.tmp"
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)

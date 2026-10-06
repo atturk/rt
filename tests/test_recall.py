@@ -819,3 +819,29 @@ def test_outcome_contract_rejects_unknown_values_and_accepts_old_answers():
         assert model(**data).outcome is None
         with pytest.raises(ValidationError):
             model(**data, outcome='ottima')
+
+
+def test_save_recall_session_state_concurrent_writers(tmp_path):
+    # due richieste insieme scrivevano lo stesso .tmp: la seconda rinominava un file sparito
+    import threading
+
+    from rt.services.recall_service import get_recall_session_state_path, save_recall_session_state
+
+    lesson_dir = str(tmp_path)
+    errors = []
+
+    def write(i):
+        try:
+            for _ in range(30):
+                save_recall_session_state(lesson_dir, {"order": "alternato", "n": i})
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert os.path.exists(get_recall_session_state_path(lesson_dir))
+    assert not [name for name in os.listdir(lesson_dir) if name.endswith(".tmp")]
