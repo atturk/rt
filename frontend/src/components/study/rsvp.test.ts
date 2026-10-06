@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  endsSentence, focusIndex, isFullStop, nextSentence, previousSentence, readUnitWords, remainingSeconds,
+  endsSentence, focusIndex, formulaMetrics, graveWord, isFullStop, nextSentence, previousSentence, readUnitWords, remainingSeconds,
   surrounding, wordDelay, type Word,
 } from './rsvp'
 
@@ -58,15 +58,54 @@ describe('lettura veloce', () => {
     expect(remainingSeconds(10, 9, 300)).toBe(0)
   })
 
-  it('legge i nodi di testo e salta formule, immagini e tabelle', () => {
+  it('legge testo e formule, conservando i segnaposto di immagini e tabelle', () => {
     const root = document.createElement('div')
     root.innerHTML = '<p>Il <b>pa</b>rametro <span class="katex">x^2</span> cresce.</p>'
       + '<p>Vedi <img alt="grafico"> sotto.</p><table><tr><td>cella</td></tr></table><ul><li>Fine.</li></ul>'
     const { words: read, paragraphs } = readUnitWords(root)
-    expect(read.map((w) => w.text)).toEqual(['Il', 'parametro', 'cresce.', 'Vedi', 'sotto.', 'Fine.'])
-    expect(read.map((w) => w.para)).toEqual([0, 0, 0, 1, 1, 3])
-    expect(paragraphs[0].map((p) => p.text)).toEqual(['Il', 'parametro', '[formula]', 'cresce.'])
+    expect(read.map((w) => w.text)).toEqual(['Il', 'parametro', 'x^2', 'cresce.', 'Vedi', 'sotto.', 'Fine.'])
+    expect(read.map((w) => w.para)).toEqual([0, 0, 0, 0, 1, 1, 3])
+    expect(paragraphs[0].map((p) => p.text)).toEqual(['Il', 'parametro', 'x^2', 'cresce.'])
     expect(paragraphs[1].map((p) => p.text)).toEqual(['Vedi', '[immagine]', 'sotto.'])
     expect(paragraphs[2]).toEqual([{ text: '[tabella]', index: null }])
   })
+})
+
+const FORMULAS = [
+  ['z', 1, 0, false, 200],
+  ['Ca^{2+}', 4, 0, false, 200],
+  [String.raw`x_{\max}`, 2, 0, false, 200],
+  [String.raw`\sum_{i=1}^{6} x_i`, 6, 1, true, 800],
+  [String.raw`z = \frac{x - x_{\min}}{x_{\max} - x_{\min}}`, 11, 1, true, 1050],
+] as const
+const formula = (tex: string): Word => ({ text: tex, para: 0, math: { html: '<math/>', tex, complex: formulaMetrics(tex).complex } })
+const formulaPrefs = { wpm: 300, pauseMs: 400, comma: false, formulaPause: 'adattiva', formulaMs: 2000 } as const
+
+it.each(FORMULAS)('classificazione e durata della tabella: %s', (tex, atoms, structures, complex, ms) => {
+  expect(formulaMetrics(tex)).toEqual({ atoms, structures, complex })
+  expect(wordDelay(formula(tex), formulaPrefs)).toBe(ms)
+  expect(graveWord(formula(tex), formulaPrefs)).toBe(complex)
+  expect(wordDelay(formula(tex), { ...formulaPrefs, formulaPause: 'standard' })).toBe(200)
+  expect(graveWord(formula(tex), { ...formulaPrefs, formulaPause: 'standard' })).toBe(false)
+  expect(wordDelay(formula(tex), { ...formulaPrefs, formulaPause: 'personalizzata' })).toBe(complex ? 2000 : 200)
+})
+it('conta ambienti e formattazione, e aggiunge la pausa dopo la formula', () => {
+  expect(formulaMetrics(String.raw`\begin{matrix}a&b\end{matrix}`)).toEqual({ atoms: 3, structures: 1, complex: true })
+  expect(formulaMetrics(String.raw`\mathrm{Ca}\,^{2+}`)).toEqual({ atoms: 4, structures: 0, complex: false })
+  expect(wordDelay({ ...formula(String.raw`\sqrt{x}`), text: 'formula.' }, formulaPrefs)).toBe(950)
+})
+it('legge una formula in linea e una a blocco, clona l’HTML e associa la punteggiatura', () => {
+  const root = document.createElement('div')
+  root.innerHTML = '<p>Leggi <span class="katex"><span>Ca</span><annotation encoding="application/x-tex">Ca^{2+}</annotation></span>.</p>'
+    + '<div class="katex-display"><span class="katex"><annotation encoding="application/x-tex">\\sqrt{x}</annotation></span></div>'
+    + '<p><math display="block"><semantics><mi>z</mi><annotation encoding="application/x-tex">z</annotation></semantics></math></p>'
+  const result = readUnitWords(root)
+  const math = result.words.filter(w => w.math)
+  expect(math).toHaveLength(3)
+  expect(math[0]).toMatchObject({ text: 'Ca^{2+}.', math: { tex: 'Ca^{2+}', complex: false } })
+  expect(math[1].math?.complex).toBe(true)
+  expect(math[2].math?.complex).toBe(false)
+  expect(math[0].math?.html).toContain('class="katex"')
+  expect(result.paragraphs.flat().filter(p => p.math)).toHaveLength(3)
+  expect(result.paragraphs.flat().map(p => p.text)).not.toContain('[formula]')
 })

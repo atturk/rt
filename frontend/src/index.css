@@ -698,3 +698,9 @@
 @keyframes rt-rsvp-sidebar-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @media (max-width: 767px) { .rt-rsvp-settings { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .rt-rsvp-settings { animation: none; } }
+
+.rt-rsvp-word[data-math] { width: 100%; max-width: 100%; }
+.rt-rsvp-formula { position: relative; display: grid; place-items: center; width: 100%; }
+.rt-rsvp-math { display: inline-block; grid-area: 1 / 1; white-space: nowrap; transform-origin: center; }
+.rt-rsvp-math math, .rt-rsvp-math .katex { font-size: 1em; margin: 0; }
+.rt-rsvp-math .katex-display { margin: 0; }

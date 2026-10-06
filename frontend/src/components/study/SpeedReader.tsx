@@ -9,8 +9,8 @@ import { IconButton } from '@/components/ui/icon-button'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
 import {
-  MAX_WPM, MIN_WPM, focusIndex, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
-  remainingSeconds, surrounding, wordDelay,
+  MAX_WPM, MIN_WPM, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
+  remainingSeconds, surroundingEntries, wordDelay,
 } from './rsvp'
 
 const RING = 2 * Math.PI * 50
@@ -68,11 +68,11 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
 
   useEffect(() => {
     if (!active || !playing || !words[index]) return
-    const text = words[index].text
+    const entry = words[index]
     const current = prefsRef.current
-    const end = isFullStop(text, current.comma)
+    const end = graveWord(entry, current)
     if (current.sound) sound.click(end, current.pitch)
-    const delay = wordDelay(text, current, ramp.current)
+    const delay = wordDelay(entry, current, ramp.current)
     if (ramp.current > 0) ramp.current--
     const timer = setTimeout(() => {
       if (index < words.length - 1) setIndex(index + 1)
@@ -134,7 +134,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
 
   const closeSettings = () => { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
 
-  const around = surrounding(words, index)
+  const around = surroundingEntries(words, index)
   const k = word ? focusIndex(word, prefs.orp) : 0
   const remaining = remainingSeconds(words.length, index, prefs.wpm)
   const progress = words.length ? (index + 1) / words.length : 0
@@ -158,26 +158,27 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
             {para.map((piece, i) => (
               <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
                 piece.index === index && 'font-semibold text-(--rsvp-focus)')} data-current={piece.index === index || undefined}>
-                {piece.text}{' '}
+                {piece.math ? <span dangerouslySetInnerHTML={{ __html: piece.math.html }} /> : piece.text}{' '}
               </span>
             ))}
           </div>
         )}
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-before">
-          {playing ? '' : around.before}
+          {playing ? '' : around.before.map((entry, i) => <span key={i}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         <div
           key={animate ? `out-${index}` : 'still'}
           className={cn('rt-rsvp-word', prefs.dyslexic && 'dyslexic', animate && 'out')}
           style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
           data-testid="speed-reader-word"
+          data-math={words[index]?.math ? true : undefined}
           data-kind={full ? 'fine' : 'normale'}
           aria-live="off"
         >
-          <span className="pre">{word.slice(0, k)}</span><span className="orp">{word.charAt(k)}</span><span className="post">{word.slice(k + 1)}</span>
+          {words[index]?.math ? <FormulaWord html={words[index].math!.html} /> : <><span className="pre">{word.slice(0, k)}</span><span className="orp">{word.charAt(k)}</span><span className="post">{word.slice(k + 1)}</span></>}
         </div>
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-after">
-          {playing ? '' : around.after}
+          {playing ? '' : around.after.map((entry, i) => <span key={i}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
@@ -214,6 +215,28 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
       )}
     </div>
   )
+}
+
+/** Riduce solo le formule che eccedono lo spazio del lettore, anche con la barra aperta. */
+function FormulaWord({ html }: { html: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ scale: 1, height: 0 })
+  useLayoutEffect(() => {
+    const container = ref.current
+    const rendered = container?.firstElementChild as HTMLElement | null
+    if (!container || !rendered) return
+    const fit = () => {
+      const scale = Math.min(1, container.clientWidth / (rendered.scrollWidth || 1))
+      setSize({ scale, height: rendered.offsetHeight * scale })
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(container); observer.observe(rendered)
+    return () => observer.disconnect()
+  }, [html])
+  return <div ref={ref} className="rt-rsvp-formula" style={{ height: size.height || undefined }}>
+    <span className="rt-rsvp-math" style={{ transform: `scale(${size.scale})` }} dangerouslySetInnerHTML={{ __html: html }} />
+  </div>
 }
 
 function Pill(props: React.ComponentProps<typeof Button>) { return <Button variant="outline" size="sm" {...props} /> }
@@ -273,6 +296,16 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
         <input type="range" min={0} max={1200} step={50} value={prefs.pauseMs} aria-label="Pausa dopo la frase" onChange={(e) => update({ pauseMs: Number(e.target.value) })} />
       </Row>
       <Row><Toggle label="Virgola come pausa piena" checked={prefs.comma} onChange={(comma) => update({ comma })} /></Row>
+      <Row><span>Pausa sulle formule</span>
+        <Segments label="Pausa sulle formule" value={prefs.formulaPause} options={[
+          ['adattiva', 'Adattiva'], ['standard', 'Standard'], ['personalizzata', 'Personalizzata'],
+        ]} onChange={(formulaPause) => update({ formulaPause })} />
+        {prefs.formulaPause === 'personalizzata' && <>
+          <span>Formule complesse · {(prefs.formulaMs / 1000).toFixed(1).replace('.', ',')} s</span>
+          <input type="range" min={500} max={5000} step={250} value={prefs.formulaMs} aria-label="Formule complesse"
+            onChange={e => update({ formulaMs: Number(e.target.value) })} />
+        </>}
+      </Row>
       <Row><span>Lettera di fuoco</span><Segments label="Lettera di fuoco" value={prefs.orp} options={ORPS} onChange={(orp) => update({ orp })} /></Row>
       <Row><span>Passo indietro: <b className="font-normal">{prefs.step}</b> parole</span>
         <Segments label="Passo indietro" value={prefs.step} options={STEPS.map((n) => [n, `−${n}`] as const)} onChange={(step) => update({ step })} />

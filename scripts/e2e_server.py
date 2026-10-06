@@ -146,6 +146,16 @@ def _study_lesson(root: str) -> None:
     if result.error:
         raise RuntimeError(result.error)
 
+    from rt.pipeline.rewrite import load_draft, save_draft
+    draft = load_draft(path)
+    draft.units[0].content = "Formula $z$. " + draft.units[0].content
+    draft.units[1].content += '\n\n' + r'$$\sum_{i=1}^{6} x_i$$'
+    save_draft(draft, path, manual=True)
+    validate_phase(path, "rewrite", channel="api")
+    result = run_mock_pipeline(path, with_review=False, auto_accept=True)
+    if result.error:
+        raise RuntimeError(result.error)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
