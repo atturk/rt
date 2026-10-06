@@ -1,5 +1,6 @@
 """Export multiplo in coda: contenuto condiviso col GET, avanzamento e cancellazione."""
 import io
+import json
 import os
 import tempfile
 import zipfile
@@ -20,13 +21,19 @@ def workspace(tmp_path, monkeypatch, rt_db):
 
 
 @pytest.mark.parametrize("fmt", ["markdown", "zip"])
-def test_export_job_progress_download_and_compatibility(api_client, workspace, rt_db, fmt):
+@pytest.mark.parametrize("study", [False, True])
+def test_export_job_progress_download_and_compatibility(api_client, workspace, rt_db, fmt, study):
     first = make_lesson(workspace)
     second = make_lesson(workspace, name="seconda lezione")
     for lesson in (first, second):
         run_mock_pipeline(lesson, with_review=False)
     ids = [l["id"] for l in api_client.get("/api/v1/lessons").json()]
-    response = api_client.post("/api/v1/lesson-exports", json={"ids": ids + ids, "format": fmt, "name": "Oggi: 04/10"})
+    from rt.services.lesson_service import resolve_lesson_dir
+    from rt.services.study_progress_service import current_unit_ids, set_status
+    for lid in ids:
+        path = resolve_lesson_dir(lid)
+        set_status(lid, path, next(iter(current_unit_ids(path))), "appreso")
+    response = api_client.post("/api/v1/lesson-exports", json={"ids": ids + ids, "format": fmt, "name": "Oggi: 04/10", "study": study})
     assert response.status_code == 202, response.text
     accepted = response.json()
     assert accepted["type"] == EXPORT_LESSONS and accepted["lesson_id"] is None
@@ -51,8 +58,12 @@ def test_export_job_progress_download_and_compatibility(api_client, workspace, r
         if fmt == "zip":
             with zipfile.ZipFile(io.BytesIO(archive.read(archive.namelist()[0]))) as inner:
                 assert any(n.endswith("/rt-export.json") for n in inner.namelist())
+                description = json.loads(inner.read(next(n for n in inner.namelist() if n.endswith("/rt-export.json"))))
+                assert ("study" in description) is study
+                if study:
+                    assert description["study"][0]["status"] == "appreso"
     assert api_client.get(url).content == download.content  # il download non consuma lo ZIP
-    legacy = api_client.get("/api/v1/lesson-exports", params={"ids": ids, "format": fmt})
+    legacy = api_client.get("/api/v1/lesson-exports", params={"ids": ids, "format": fmt, "study": study})
     assert _contents(legacy.content) == _contents(download.content)
     os.unlink(job_export_path(accepted["job_id"], job["result"]["file"]))
     assert api_client.get(url).status_code == 404
@@ -100,9 +111,9 @@ def test_cancellation_between_lessons_cleans_temporary_exports(workspace, rt_db,
     original = export.export_zip_to_tempfile
     processed = []
 
-    def cancel_after_first(lesson_dir, scope):
+    def cancel_after_first(lesson_dir, scope, study=False):
         processed.append(lesson_dir)
-        path = original(lesson_dir, scope)
+        path = original(lesson_dir, scope, study=study)
         token.cancel()
         return path
 

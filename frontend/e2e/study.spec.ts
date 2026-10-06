@@ -7,7 +7,32 @@ import { apiGet, authHeaders, loginViaLink } from './support'
 // della lezione; "Domande su questa parte" limita lo Studio alle unità scelte.
 
 type Lesson = { id: number; materia: string; data: string }
-type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null }[] }
+type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null; last_read_at: string | null }[] }
+
+const RSVP_DEFAULT = { wpm: 300, orp: 'bilanciata', pauseMs: 400, comma: false, step: 5, size: 60, sound: false, pitch: 1, dyslexic: false, irlen: null, noise: null, noiseVolume: 0.25 }
+
+let previousHighlighter: unknown
+let previousRsvp: unknown
+test.beforeEach(async ({ page }) => {
+  const preferences = await apiGet<Record<string, unknown>>(page.request, '/preferences')
+  previousHighlighter = preferences['study.highlighter']
+  previousRsvp = preferences['study.rsvp']
+  expect((await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: { ...RSVP_DEFAULT, sound: false } })).ok()).toBeTruthy()
+  const response = await page.request.put('/api/v1/preferences/study.highlighter', {
+    headers: authHeaders(), data: { color: 0, arrows: true },
+  })
+  expect(response.ok()).toBeTruthy()
+})
+test.afterEach(async ({ page }) => {
+  const rsvp = previousRsvp === undefined
+    ? await page.request.delete('/api/v1/preferences/study.rsvp', { headers: authHeaders() })
+    : await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: previousRsvp })
+  expect(rsvp.ok()).toBeTruthy()
+  const response = previousHighlighter === undefined
+    ? await page.request.delete('/api/v1/preferences/study.highlighter', { headers: authHeaders() })
+    : await page.request.put('/api/v1/preferences/study.highlighter', { headers: authHeaders(), data: previousHighlighter })
+  expect(response.ok()).toBeTruthy()
+})
 
 async function lesson(page: Page, materia: string) {
   const [l] = await apiGet<Lesson[]>(page.request, `/lessons?materia=${materia}`)
@@ -304,3 +329,96 @@ test('Swipe touch fra le unità dello Studio sul telefono (4.2.2b4 F1)', async (
   await context.close()
 })
 
+test('Stato di studio persistente, pulsante e S, barrette cliccabili e prima unità non appresa', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  expect(study.units).toHaveLength(2)
+  const setStatus = async (uid: string, status: string) => {
+    const response = await page.request.put(`/api/v1/lessons/${l.id}/study/units/${uid}`, { headers: authHeaders(), data: { status } })
+    expect(response.ok()).toBeTruthy()
+  }
+  for (const unit of study.units) await setStatus(unit.id, 'da-imparare')
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    await expect.poll(async () => (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].last_read_at).not.toBe(study.units[0].last_read_at)
+    const button = page.getByTestId('study-status')
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: da imparare")
+    await button.click()
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: in apprendimento")
+    await expect(button).not.toHaveAttribute('aria-disabled', 'true')
+    const firstBar = page.getByTestId('study-dots').locator('button').first()
+    await expect(firstBar.locator('span')).toHaveClass(/bg-warning/)
+    await page.keyboard.press('s')
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: appreso")
+    await expect(button).not.toHaveAttribute('aria-disabled', 'true')
+    await expect(firstBar.locator('span')).toHaveClass(/bg-success/)
+    await page.reload()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.2')
+    await firstBar.click()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.1')
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: appreso")
+    await page.getByTestId('unit-index-toggle').click()
+    await expect(page.getByTestId('unit-index-menu').getByRole('menuitem').first()).toContainText('qui')
+    await page.keyboard.press('Escape')
+    await setStatus(study.units[1].id, 'appreso')
+    await page.reload()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.1')
+  } finally {
+    for (const unit of study.units) await setStatus(unit.id, 'da-imparare')
+  }
+})
+
+
+test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la finestra, libro ed Esc', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto(`/studio/lezione/${l.id}`)
+    await expect(page.getByTestId('study-title-button')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+    const navigation = page.getByRole('navigation', { name: 'Navigazione', includeHidden: true })
+    await expect(navigation).toBeVisible()
+    const header = page.locator('header').first()
+    const normal = await header.evaluate(el => getComputedStyle(el).backgroundColor)
+    await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+    await expect(navigation).toBeHidden()
+    await expect(page.getByRole('button', { name: 'Torna allo Studio', exact: true })).toBeVisible()
+    await expect(page.getByTestId('highlight-tools')).toHaveCount(0)
+    await expect(page.getByTestId('study-dots')).toBeHidden()
+    await expect(page.getByRole('button', { name: /Giorno|Notte/ })).toHaveCount(0)
+    await expect(page.getByTestId('study-quiz').or(page.getByTestId('study-generate'))).toBeHidden()
+    await page.getByTestId('unit-index-toggle').click()
+    await page.getByRole('menuitem').last().click()
+    await expect(page.getByTestId('speed-reader-word')).toHaveText(/\S/)
+    await expect(header).toContainText('1.2')
+    await expect(navigation).toBeHidden()
+    await page.getByRole('button', { name: 'Contesto', exact: true }).click()
+    await expect(page.getByTestId('speed-reader-context')).toBeVisible()
+    await page.getByRole('button', { name: 'Impostazioni della lettura veloce' }).click()
+    await page.getByRole('switch', { name: 'Modalità Irlen' }).click()
+    await expect(header).toHaveCSS('background-color', 'rgb(246, 220, 200)')
+    await expect(page.getByTestId('speed-reader')).toHaveCSS('background-color', 'rgb(246, 220, 200)')
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#f6dcc8')
+    await page.getByRole('radio', { name: 'Menta', exact: true }).click()
+    await expect(header).toHaveCSS('background-color', 'rgb(213, 238, 226)')
+    await page.getByRole('button', { name: 'Fatto', exact: true }).click()
+    const book = page.getByRole('button', { name: 'Torna allo Studio', exact: true })
+    // Il libro è raggiungibile anche dalla tastiera: Spazio deve premere il pulsante.
+    if (viewport.width > 767) { await book.focus(); await page.keyboard.press('Space') }
+    else await book.click()
+    await expect(navigation).toBeVisible()
+    await expect(header).toHaveCSS('background-color', normal)
+    await expect.poll(async () => ((await apiGet<Record<string, { irlen?: string }>>(page.request, '/preferences'))['study.rsvp'])?.irlen).toBe('menta')
+    await expect(page.getByTestId('study-text')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.2')
+    await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+    await expect(navigation).toBeHidden()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('speed-reader')).toHaveCount(0)
+    await expect(navigation).toBeVisible()
+    // Il giro successivo parte dai valori iniziali, senza perdere la preferenza precedente del server.
+    await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: { ...RSVP_DEFAULT, sound: false } })
+  }
+})

@@ -1353,6 +1353,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/study/units/{unit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Cambia lo stato di studio di un'unità */
+        put: operations["set_status_api_v1_lessons__lesson_id__study_units__unit_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/study/units/{unit_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Segna l'ultima lettura di un'unità */
+        post: operations["mark_read_api_v1_lessons__lesson_id__study_units__unit_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mini-app/auth": {
         parameters: {
             query?: never;
@@ -4182,6 +4216,23 @@ export interface components {
              */
             state?: string | null;
             /**
+             * Study Last At
+             * @description Ultima lettura o cambio di stato nella scaletta attuale
+             */
+            study_last_at?: string | null;
+            /**
+             * Study Learned
+             * @description Unità apprese nella scaletta attuale
+             * @default 0
+             */
+            study_learned: number;
+            /**
+             * Study Learning
+             * @description Unità in apprendimento nella scaletta attuale
+             * @default 0
+             */
+            study_learning: number;
+            /**
              * Titolo
              * @default
              */
@@ -4237,6 +4288,12 @@ export interface components {
              * @default lezioni
              */
             name: string;
+            /**
+             * Study
+             * @description Include lo stato di studio negli archivi completi
+             * @default false
+             */
+            study: boolean;
         };
         /** LessonImage */
         LessonImage: {
@@ -4395,6 +4452,23 @@ export interface components {
              * @description Stato effettivo del workflow (come 'rt status')
              */
             state?: string | null;
+            /**
+             * Study Last At
+             * @description Ultima lettura o cambio di stato nella scaletta attuale
+             */
+            study_last_at?: string | null;
+            /**
+             * Study Learned
+             * @description Unità apprese nella scaletta attuale
+             * @default 0
+             */
+            study_learned: number;
+            /**
+             * Study Learning
+             * @description Unità in apprendimento nella scaletta attuale
+             * @default 0
+             */
+            study_learning: number;
             /**
              * Titolo
              * @default
@@ -5430,6 +5504,28 @@ export interface components {
             /** Units */
             units: components["schemas"]["StudyUnit"][];
         };
+        /** StudyProgress */
+        StudyProgress: {
+            /** Last Read At */
+            last_read_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "da-imparare" | "in-apprendimento" | "appreso";
+            /** Status At */
+            status_at?: string | null;
+            /** Unit Id */
+            unit_id: string;
+        };
+        /** StudyStatusUpdate */
+        StudyStatusUpdate: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "da-imparare" | "in-apprendimento" | "appreso";
+        };
         /** StudyUnit */
         StudyUnit: {
             /**
@@ -5444,6 +5540,8 @@ export interface components {
             html: string;
             /** Id */
             id: string;
+            /** Last Read At */
+            last_read_at?: string | null;
             /**
              * Pending
              * @description Domande da porre sull'unità, per tipo
@@ -5461,6 +5559,14 @@ export interface components {
              * @description Inizio dell'unità nell'audio della lezione (secondi)
              */
             start?: number | null;
+            /**
+             * Status
+             * @default da-imparare
+             * @enum {string}
+             */
+            status: "da-imparare" | "in-apprendimento" | "appreso";
+            /** Status At */
+            status_at?: string | null;
             /** Title */
             title: string;
         };
@@ -6888,6 +6994,8 @@ export interface operations {
                 format?: "markdown" | "zip";
                 /** @description Nome del file scaricato (senza estensione) */
                 name?: string;
+                /** @description Include lo stato di studio negli archivi completi */
+                study?: boolean;
             };
             header?: never;
             path?: never;
@@ -8779,6 +8887,8 @@ export interface operations {
                 format?: "markdown" | "zip";
                 /** @description final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso */
                 scope?: "final" | "all";
+                /** @description Include lo stato di studio nello ZIP completo */
+                study?: boolean;
             };
             header?: never;
             path: {
@@ -11918,6 +12028,146 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StudyLesson"];
                 };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_status_api_v1_lessons__lesson_id__study_units__unit_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                unit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudyStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyProgress"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    mark_read_api_v1_lessons__lesson_id__study_units__unit_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                unit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Autenticazione mancante o non valida */
             401: {

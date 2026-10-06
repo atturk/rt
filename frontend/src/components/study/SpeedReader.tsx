@@ -1,8 +1,11 @@
-import { ChevronLeft, Moon, Pause, Play, Rewind, RotateCcw, SlidersHorizontal, Sun } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Pause, Play, Rewind, RotateCcw } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { Checkbox } from '@/components/settings/common'
+import { Button } from '@/components/ui/button'
+import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
 import {
   MAX_WPM, MIN_WPM, focusIndex, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
@@ -15,19 +18,18 @@ const TINTS = [['pesca', 'Pesca'], ['menta', 'Menta'], ['pergamena', 'Pergamena'
 const ORPS = [['prima', 'Prima'], ['bilanciata', 'Bilanciata'], ['dopo', 'Dopo']] as const
 const STEPS = [1, 3, 5, 10]
 
-/**
- * Lettura veloce dell'unità aperta nello Studio (4.2.2, V1): una parola alla volta con la lettera
- * di fuoco sempre nello stesso punto, clic a ogni parola e uno più grave a fine frase.
- */
-export function SpeedReader({ source, title, onClose }: { source: Element; title: string; onClose: () => void }) {
+/** Lettura veloce integrata nello Studio: conserva suoni, tasti e preferenze. */
+export function SpeedReader({ source, active, context, settings, onSettingsChange, settingsButton, blocked, onTintChange, onClose }: {
+  source: Element; active: boolean; context: boolean; settings: boolean; onSettingsChange: (open: boolean) => void
+  settingsButton: RefObject<HTMLElement | null>; blocked: boolean
+  onTintChange: (tint: RsvpPreference['irlen']) => void; onClose: () => void
+}) {
   const [saved, save] = useRsvpPrefs()
   const [prefs, setPrefs] = useState<RsvpPreference>(saved)
   const { words, paragraphs } = useMemo(() => readUnitWords(source), [source])
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [day, setDay] = useState(() => !document.documentElement.classList.contains('dark'))
-  const [context, setContext] = useState(false)
-  const [settings, setSettings] = useState(false)
+  useEffect(() => onTintChange(prefs.irlen), [prefs.irlen, onTintChange])
   const phone = useIsPhone()
   const [sound] = useState(createSound)
   const prefsRef = useRef(prefs)
@@ -40,17 +42,21 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
     setPrefs((old) => {
       const next = { ...old, ...change }
       clearTimeout(persist.current)
-      persist.current = setTimeout(() => save(next), 400)
+      persist.current = setTimeout(() => { persist.current = undefined; save(next) }, 400)
       return next
     })
   }, [save])
-  useEffect(() => () => clearTimeout(persist.current), [])
+  const saveRef = useRef(save)
+  useLayoutEffect(() => { saveRef.current = save }, [save])
+  useEffect(() => () => {
+    if (persist.current) { clearTimeout(persist.current); saveRef.current(prefsRef.current) }
+  }, [])
 
   const word = words[index]?.text ?? ''
   const full = isFullStop(word, prefs.comma)
 
   useEffect(() => {
-    if (!playing || !words[index]) return
+    if (!active || !playing || !words[index]) return
     const text = words[index].text
     const current = prefsRef.current
     const end = isFullStop(text, current.comma)
@@ -62,14 +68,14 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
       else setPlaying(false)
     }, delay)
     return () => clearTimeout(timer)
-  }, [playing, index, words, sound])
+  }, [active, playing, index, words, sound])
 
   // Il rumore suona durante la lettura; in pausa solo l'anteprima di 2 s delle impostazioni.
   useEffect(() => {
-    if (!playing || !prefs.noise) return
+    if (!active || !playing || !prefs.noise) return
     sound.noise(prefs.noise, prefsRef.current.noiseVolume)
     return () => sound.stopNoise()
-  }, [playing, prefs.noise, sound])
+  }, [active, playing, prefs.noise, sound])
   useEffect(() => sound.volume(prefs.noiseVolume), [prefs.noiseVolume, sound])
   useEffect(() => () => sound.dispose(), [sound])
 
@@ -87,9 +93,10 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
   }, [words.length, playing])
 
   useEffect(() => {
+    if (!active || blocked) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      const field = e.target instanceof Element && e.target.closest('input:not([type=range]), textarea, select')
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      const field = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable=true], header, [data-testid=speed-reader-settings]')
       if (field && e.key !== 'Escape') return
       const keys: Record<string, () => void> = {
         ' ': toggle,
@@ -98,7 +105,10 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
         ArrowUp: () => update({ wpm: Math.min(MAX_WPM, prefsRef.current.wpm + 25) }),
         ArrowDown: () => update({ wpm: Math.max(MIN_WPM, prefsRef.current.wpm - 25) }),
         Home: () => { setPlaying(false); setIndex(0) },
-        Escape: () => (settings ? setSettings(false) : onClose()),
+        Escape: () => {
+          if (settings) { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
+          else onClose()
+        },
       }
       const action = keys[e.key]
       if (!action) return
@@ -107,9 +117,11 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
       e.stopPropagation()
       action()
     }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [toggle, jump, update, words, index, settings, onClose])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, blocked, toggle, jump, update, words, index, settings, settingsButton, onSettingsChange, onClose])
+
+  const closeSettings = () => { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
 
   const around = surrounding(words, index)
   const k = word ? focusIndex(word, prefs.orp) : 0
@@ -120,42 +132,26 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      role="region"
       aria-label="Lettura veloce"
+      aria-hidden={!active || undefined}
+      inert={!active || undefined}
       data-testid="speed-reader"
-      data-day={day && !prefs.irlen ? '' : undefined}
-      data-tint={prefs.irlen ?? undefined}
-      data-theme-mode={day ? 'giorno' : 'notte'}
-      className="rt-rsvp fixed inset-0 z-50 flex flex-col gap-2 px-[22px] pb-3.5 pt-[18px] max-md:px-3.5 max-md:pb-[calc(10px+env(safe-area-inset-bottom))] max-md:pt-3"
+      data-active={active || undefined}
+      className="rt-rsvp absolute inset-0 flex flex-col gap-3 overflow-hidden bg-background px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-5 text-foreground max-md:px-3.5"
     >
-      <div className="flex items-center gap-2.5">
-        <Pill onClick={onClose} aria-label="Torna allo Studio"><ChevronLeft className="size-4" aria-hidden />Studio</Pill>
-        <div className="min-w-0 flex-1 truncate text-center text-meta text-(--o-dim) max-md:invisible">{title}</div>
-        <div role="group" aria-label="Tema della lettura veloce" className="inline-flex rounded-[9px] border border-(--o-line) bg-(--o-chip) p-0.5">
-          {([[true, 'Giorno', Sun], [false, 'Notte', Moon]] as const).map(([value, label, Icon]) => (
-            <button key={label} type="button" aria-pressed={day === value} onClick={() => { setDay(value); if (prefs.irlen) update({ irlen: null }) }}
-              className={cn('inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 font-mono text-meta text-(--o-dim)',
-                day === value && 'bg-[color-mix(in_oklch,var(--o-focus)_22%,var(--o-panel))] text-(--o-fg)')}>
-              <Icon className="size-3.5" aria-hidden /><span className="max-md:sr-only">{label}</span>
-            </button>
-          ))}
-        </div>
-        <Pill aria-pressed={context} onClick={() => setContext(!context)}>Contesto</Pill>
-      </div>
-
       <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
         {context && (
-          <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-(--o-line) bg-(--o-panel) px-3.5 py-2.5 text-body leading-[1.7] text-(--o-dim)">
+          <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
-              <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-(--o-fg)',
-                piece.index === index && 'font-semibold text-(--o-focus)')} data-current={piece.index === index || undefined}>
+              <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
+                piece.index === index && 'font-semibold text-(--rsvp-focus)')} data-current={piece.index === index || undefined}>
                 {piece.text}{' '}
               </span>
             ))}
           </div>
         )}
-        <div className="min-h-[1.5em] max-w-[92%] text-center text-[22px] leading-normal tracking-[0.14em] text-(--o-dim) max-md:text-base" data-testid="speed-reader-before">
+        <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-before">
           {playing ? '' : around.before}
         </div>
         <div
@@ -168,19 +164,15 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
         >
           <span className="pre">{word.slice(0, k)}</span><span className="orp">{word.charAt(k)}</span><span className="post">{word.slice(k + 1)}</span>
         </div>
-        <div className="min-h-[1.5em] max-w-[92%] text-center text-[22px] leading-normal tracking-[0.14em] text-(--o-dim) max-md:text-base" data-testid="speed-reader-after">
+        <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-after">
           {playing ? '' : around.after}
         </div>
-        {!words.length && <p className="text-body text-(--o-dim)">Questa unità non ha testo da leggere.</p>}
+        {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
 
-      <div className="grid grid-cols-[auto_auto] items-center justify-center gap-x-5 gap-y-1 font-mono text-meta text-(--o-dim)">
-        <span>Velocità <b className="font-normal text-(--o-fg)">{prefs.wpm}</b> parole/min</span>
-        <button type="button" aria-label="Impostazioni della lettura veloce" aria-expanded={settings} onClick={() => setSettings(!settings)}
-          className="inline-flex size-[30px] items-center justify-center rounded-lg bg-(--o-chip) text-(--o-fg)">
-          <SlidersHorizontal className="size-4" aria-hidden />
-        </button>
-        <input type="range" min={MIN_WPM} max={MAX_WPM} step={25} value={prefs.wpm} aria-label="Velocità" className="col-span-2 w-[190px] justify-self-center"
+      <div className="grid grid-cols-1 items-center justify-items-center gap-x-5 gap-y-1 text-meta text-muted-foreground">
+        <span>Velocità <b className="font-normal text-foreground">{prefs.wpm}</b> parole/min</span>
+        <input type="range" min={MIN_WPM} max={MAX_WPM} step={25} value={prefs.wpm} aria-label="Velocità" className="w-[220px] accent-accent-foreground justify-self-center"
           onChange={(e) => update({ wpm: Number(e.target.value) })} />
       </div>
 
@@ -189,10 +181,10 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
           <Rewind className="size-5" fill="currentColor" aria-hidden />
         </RoundButton>
         <button type="button" onClick={toggle} aria-label={playing ? 'Pausa' : 'Avvia'} data-testid="speed-reader-play" autoFocus
-          className="relative inline-flex size-[92px] items-center justify-center rounded-full border border-(--o-line) bg-(--o-bg) text-(--o-fg)">
+          className="relative inline-flex size-[92px] items-center justify-center rounded-full border border-border bg-accent text-accent-foreground">
           <svg className="absolute -inset-1.5 size-[104px] -rotate-90" viewBox="0 0 104 104" aria-hidden>
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--o-line)" />
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--o-focus)" strokeLinecap="round"
+            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--border)" />
+            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--rsvp-focus)" strokeLinecap="round"
               strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
           </svg>
           {playing ? <Pause className="size-[26px]" fill="currentColor" aria-hidden /> : <Play className="size-[26px]" fill="currentColor" aria-hidden />}
@@ -201,69 +193,46 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
           <RotateCcw className="size-5" aria-hidden />
         </RoundButton>
       </div>
-      <div className="mt-3 text-center font-mono text-[11px] text-(--o-dim)" data-testid="speed-reader-count">
+      <div className="mt-3 text-center text-meta text-muted-foreground" data-testid="speed-reader-count">
         {words.length ? `${index + 1} / ${words.length} parole · ${formatRemaining(remaining)}` : ''}
       </div>
-      {!phone && (
-        <div className="text-center text-meta text-(--o-dim)">
-          Spazio avvia e ferma · ← frase precedente · → frase successiva · ↑ ↓ velocità · Home ricomincia · Esc torna allo Studio
-        </div>
-      )}
-
       {settings && (
-        <SettingsPanel phone={phone} prefs={prefs} update={update} onDone={() => setSettings(false)}
+        <SettingsPanel anchor={settingsButton} phone={phone} prefs={prefs} update={update} onDone={closeSettings}
           onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch)} />
       )}
     </div>
   )
 }
 
-function Pill({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button type="button" {...props}
-      className={cn('inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-(--o-line) bg-(--o-chip) px-3 text-meta text-(--o-fg) hover:border-(--o-dim) aria-pressed:border-(--o-dim)', className)}>
-      {children}
-    </button>
-  )
-}
+function Pill(props: React.ComponentProps<typeof Button>) { return <Button variant="outline" size="sm" {...props} /> }
 
 function RoundButton({ label, onClick, note, children }: { label: string; onClick: () => void; note?: string; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} onClick={onClick}
-      className="relative inline-flex size-[58px] items-center justify-center rounded-full border border-(--o-line) bg-(--o-chip) text-(--o-fg)">
+      className="relative inline-flex size-[58px] items-center justify-center rounded-full border border-border bg-muted text-foreground">
       {children}
-      {note && <small className="absolute -bottom-[18px] font-mono text-[10px] text-(--o-dim)">{note}</small>}
+      {note && <small className="absolute -bottom-[18px] text-meta text-muted-foreground">{note}</small>}
     </button>
   )
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
-      className={cn('relative h-[22px] w-10 shrink-0 rounded-full transition-colors', checked ? 'bg-success' : 'bg-(--o-line)')}>
-      <span className={cn('absolute top-[3px] size-4 rounded-full bg-white transition-[left]', checked ? 'left-[21px]' : 'left-[3px]')} />
-    </button>
-  )
+  return <Checkbox id={`rsvp-${label}`} label={label} checked={checked} onChange={onChange} />
 }
 
 function Segments<T extends string | number>({ label, value, options, onChange }: {
   label: string; value: T; options: readonly (readonly [T, string])[]; onChange: (value: T) => void
 }) {
-  return (
-    <div role="group" aria-label={label} className="flex rounded-[9px] bg-(--o-chip) p-[3px]">
-      {options.map(([v, text]) => (
-        <button key={String(v)} type="button" aria-pressed={value === v} onClick={() => onChange(v)}
-          className={cn('flex-1 rounded-md px-2 py-1 text-meta text-(--o-fg)', value === v && 'bg-(--o-bg)')}>{text}</button>
-      ))}
-    </div>
-  )
+  return <SlideToggle label={label} value={String(value)} options={options.map(([v, text]) => ({ value: String(v), label: text }))}
+    onChange={next => { const choice = options.find(([v]) => String(v) === next); if (choice) onChange(choice[0]) }} />
 }
 
 function Row({ children }: { children: ReactNode }) {
-  return <div className="grid gap-[7px] border-b border-(--o-line) px-3.5 py-2.5 last:border-b-0">{children}</div>
+  return <div className="grid gap-[7px] border-b border-border px-3.5 py-2.5 last:border-b-0">{children}</div>
 }
 
-function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }: {
+function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, onPitch }: {
+  anchor: RefObject<HTMLElement | null>
   phone: boolean
   prefs: RsvpPreference
   update: (change: Partial<RsvpPreference>) => void
@@ -271,15 +240,26 @@ function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }
   onPreviewNoise: (kind: RsvpPreference['noise'], volume: number) => void
   onPitch: (pitch: number) => void
 }) {
-  const head = (text: string, hint: string, control: ReactNode) => (
-    <div className="flex items-center justify-between gap-2">
-      <span>{text}<small className="block text-meta text-(--o-dim)">{hint}</small></span>{control}
-    </div>
-  )
+  const ref = useRef<HTMLElement>(null)
+  const [position, setPosition] = useState({ top: 64, right: 20 })
+  useLayoutEffect(() => {
+    const locate = () => {
+      const box = anchor.current?.getBoundingClientRect()
+      if (box) setPosition(old => { const next = { top: box.bottom + 8, right: Math.max(12, window.innerWidth - box.right) }; return old.top === next.top && old.right === next.right ? old : next })
+    }
+    locate()
+    const outside = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node) && !anchor.current?.contains(event.target as Node)) onDone()
+    }
+    window.addEventListener('resize', locate)
+    window.addEventListener('mousedown', outside)
+    return () => { window.removeEventListener('resize', locate); window.removeEventListener('mousedown', outside) }
+  }, [anchor, onDone])
+  const head = (_text: string, hint: string, control: ReactNode) => <div>{control}<small className="block text-meta text-muted-foreground">{hint}</small></div>
   return (
-    <section aria-label="Impostazioni della lettura veloce" data-testid="speed-reader-settings"
-      className={cn('z-[3] overflow-auto border border-(--o-line) bg-(--o-panel) py-1 text-body shadow-[0_16px_40px_rgb(0_0_0/0.35)]',
-        phone ? 'fixed inset-x-0 bottom-0 max-h-[75dvh] rounded-t-[14px] pb-[env(safe-area-inset-bottom)]' : 'absolute right-[22px] top-[62px] max-h-[calc(100%-80px)] w-[300px] rounded-[14px]')}>
+    <section ref={ref} role="dialog" aria-label="Impostazioni della lettura veloce" data-testid="speed-reader-settings" style={phone ? undefined : { top: position.top, right: position.right }}
+      className={cn('fixed z-30 overflow-auto border bg-card py-1 text-body shadow-panel [&_input]:accent-accent-foreground',
+        phone ? 'fixed inset-x-0 bottom-0 max-h-[75dvh] rounded-t-[14px] pb-[env(safe-area-inset-bottom)]' : 'max-h-[calc(100dvh-100px)] w-[340px] rounded-lg')}>
       <Row><div className="flex items-center justify-between"><b className="font-semibold">Impostazioni</b><Pill onClick={onDone}>Fatto</Pill></div></Row>
       <Row>
         {head('Suono', 'un clic a ogni parola, più grave a fine frase', <Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />)}
@@ -306,7 +286,7 @@ function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }
         <input type="range" min={0} max={1200} step={50} value={prefs.pauseMs} aria-label="Pausa dopo la frase" onChange={(e) => update({ pauseMs: Number(e.target.value) })} />
       </Row>
       <Row>
-        <span>Lettera di fuoco<small className="block text-meta text-(--o-dim)">dove cade l'occhio nella parola</small></span>
+        <span>Lettera di fuoco<small className="block text-meta text-muted-foreground">dove cade l'occhio nella parola</small></span>
         <Segments label="Lettera di fuoco" value={prefs.orp} options={ORPS} onChange={(orp) => update({ orp })} />
       </Row>
       <Row>{head('Virgola come pausa piena', ', ; : come un punto', <Toggle label="Virgola come pausa piena" checked={prefs.comma} onChange={(comma) => update({ comma })} />)}</Row>

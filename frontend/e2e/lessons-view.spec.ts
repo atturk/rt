@@ -11,6 +11,47 @@ type Lesson = { id: number; materia: string; data: string; docente: string; tito
 
 const ids = (rows: import('@playwright/test').Locator) => rows.evaluateAll((r) => r.map((el) => Number(el.getAttribute('data-lesson-id'))))
 
+let previousExportStudy: unknown
+test.beforeEach(async ({ page }) => {
+  previousExportStudy = (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['export.study']
+  await page.request.put('/api/v1/preferences/export.study', { headers: authHeaders(), data: true })
+})
+test.afterEach(async ({ page }) => {
+  const response = previousExportStudy === undefined
+    ? await page.request.delete('/api/v1/preferences/export.study', { headers: authHeaders() })
+    : await page.request.put('/api/v1/preferences/export.study', { headers: authHeaders(), data: previousExportStudy })
+  expect(response.ok()).toBeTruthy()
+})
+
+test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhone', async ({ page }) => {
+  await loginViaLink(page)
+  const [l] = await apiGet<Lesson[]>(page.request, '/lessons?materia=STUDIO')
+  const study = await apiGet<{ units: { id: string; status: string }[] }>(page.request, `/lessons/${l.id}/study`)
+  const first = study.units[0]
+  const response = await page.request.put(`/api/v1/lessons/${l.id}/study/units/${first.id}`, { headers: authHeaders(), data: { status: 'appreso' } })
+  expect(response.ok()).toBeTruthy()
+  try {
+    await page.reload()
+    const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento')
+    await expect(row.getByTestId('lesson-subtitle')).toContainText('2 unità · 1 apprese')
+    await page.getByRole('button', { name: 'Per docente' }).click()
+    await page.getByRole('button', { name: 'Ordina', exact: true }).click()
+    await page.getByRole('menuitemradio', { name: 'Più avanti nello studio' }).click()
+    await expect(page.getByTestId('lesson-row').first()).toHaveAttribute('data-lesson-id', String(l.id))
+    await page.getByRole('button', { name: 'Seleziona', exact: true }).click()
+    await expect(page.getByTestId('lesson-study-ring')).toHaveCount(0)
+    await page.getByTestId('selection-bar').getByRole('button', { name: 'Annulla', exact: true }).click()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const sort = page.getByRole('button', { name: /Ordina: Avanti/ })
+    await expect(sort).toBeVisible()
+    await sort.click()
+    await expect(page.getByRole('button', { name: /Ordina: Indietro/ })).toBeVisible()
+  } finally {
+    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${first.id}`, { headers: authHeaders(), data: { status: first.status } })
+  }
+})
+
 test('gruppi per data, materia e docente; ordinamento; le scelte restano dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
@@ -75,16 +116,36 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
   await page.getByRole('button', { name: 'Per materia' }).click()
   await page.getByRole('button', { name: 'Seleziona' }).click()
+  await expect(page.getByRole('button', { name: 'Dettagli della selezione' })).toHaveAttribute('aria-disabled', 'true')
   const bio = lessons.filter((l) => l.materia === 'BIOCHIMICA')
   const group = page.locator('[data-testid=lesson-group][data-group=BIOCHIMICA]')
   await group.getByRole('checkbox', { name: /^Seleziona il gruppo/ }).check()
   for (const lesson of bio) await expect(page.locator(`[data-testid=lesson-row][data-lesson-id="${lesson.id}"]`).getByRole('checkbox')).toBeChecked()
   const bar = page.getByTestId('selection-bar')
   await expect(bar.getByTestId('selection-count')).toHaveText(`${bio.length} ${bio.length === 1 ? 'selezionata' : 'selezionate'}`)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await bar.getByRole('button', { name: 'Dettagli della selezione' }).click()
+    const details = page.getByTestId('selection-details')
+    await expect(details).toBeVisible()
+    await expect(details.getByRole('row')).toHaveCount(bio.length + 1)
+    await expect(details.getByRole('columnheader', { name: 'Costo' })).toHaveAttribute('aria-sort', 'descending')
+    await expect(details).toContainText('Materie')
+    await expect(details).toContainText('Docenti')
+    await details.getByRole('button', { name: 'Chiudi' }).click()
+  }
+  await page.setViewportSize({ width: 1280, height: 800 })
 
   // L'export è un job: avanzamento nella barra, poi il download parte da solo e resta "Scarica di nuovo".
   const download = page.waitForEvent('download', { timeout: 50_000 })
   await bar.getByRole('button', { name: 'Scarica zip' }).click()
+  const check = page.getByRole('menuitemcheckbox', { name: 'Includi lo stato di studio' })
+  await expect(check).toHaveAttribute('aria-checked', 'true')
+  await check.click()
+  await expect.poll(async () => (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['export.study']).toBe(false)
+  const exportRequest = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/v1/lesson-exports'))
+  await page.getByRole('menuitem', { name: 'Scarica zip', exact: true }).click()
+  expect((await exportRequest).postDataJSON().study).toBe(false)
   const file = await download
   expect(file.suggestedFilename()).toMatch(/\.zip$/)
   const again = bar.getByRole('link', { name: 'Scarica di nuovo' })

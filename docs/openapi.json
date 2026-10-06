@@ -3249,6 +3249,31 @@
             "description": "Stato effettivo del workflow (come 'rt status')",
             "title": "State"
           },
+          "study_last_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima lettura o cambio di stato nella scaletta attuale",
+            "title": "Study Last At"
+          },
+          "study_learned": {
+            "default": 0,
+            "description": "Unità apprese nella scaletta attuale",
+            "title": "Study Learned",
+            "type": "integer"
+          },
+          "study_learning": {
+            "default": 0,
+            "description": "Unità in apprendimento nella scaletta attuale",
+            "title": "Study Learning",
+            "type": "integer"
+          },
           "titolo": {
             "default": "",
             "title": "Titolo",
@@ -3343,6 +3368,12 @@
             "maxLength": 120,
             "title": "Name",
             "type": "string"
+          },
+          "study": {
+            "default": false,
+            "description": "Include lo stato di studio negli archivi completi",
+            "title": "Study",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3643,6 +3674,31 @@
             ],
             "description": "Stato effettivo del workflow (come 'rt status')",
             "title": "State"
+          },
+          "study_last_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima lettura o cambio di stato nella scaletta attuale",
+            "title": "Study Last At"
+          },
+          "study_learned": {
+            "default": 0,
+            "description": "Unità apprese nella scaletta attuale",
+            "title": "Study Learned",
+            "type": "integer"
+          },
+          "study_learning": {
+            "default": 0,
+            "description": "Unità in apprendimento nella scaletta attuale",
+            "title": "Study Learning",
+            "type": "integer"
           },
           "titolo": {
             "default": "",
@@ -6160,6 +6216,71 @@
         "title": "StudyLesson",
         "type": "object"
       },
+      "StudyProgress": {
+        "properties": {
+          "last_read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Read At"
+          },
+          "status": {
+            "enum": [
+              "da-imparare",
+              "in-apprendimento",
+              "appreso"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status At"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "unit_id"
+        ],
+        "title": "StudyProgress",
+        "type": "object"
+      },
+      "StudyStatusUpdate": {
+        "properties": {
+          "status": {
+            "enum": [
+              "da-imparare",
+              "in-apprendimento",
+              "appreso"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "StudyStatusUpdate",
+        "type": "object"
+      },
       "StudyUnit": {
         "properties": {
           "end": {
@@ -6182,6 +6303,18 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "last_read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Read At"
           },
           "pending": {
             "additionalProperties": {
@@ -6207,6 +6340,28 @@
             ],
             "description": "Inizio dell'unità nell'audio della lezione (secondi)",
             "title": "Start"
+          },
+          "status": {
+            "default": "da-imparare",
+            "enum": [
+              "da-imparare",
+              "in-apprendimento",
+              "appreso"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status At"
           },
           "title": {
             "title": "Title",
@@ -8740,6 +8895,18 @@
               "maxLength": 120,
               "title": "Name",
               "type": "string"
+            }
+          },
+          {
+            "description": "Include lo stato di studio negli archivi completi",
+            "in": "query",
+            "name": "study",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include lo stato di studio negli archivi completi",
+              "title": "Study",
+              "type": "boolean"
             }
           }
         ],
@@ -11339,6 +11506,18 @@
               ],
               "title": "Scope",
               "type": "string"
+            }
+          },
+          {
+            "description": "Include lo stato di studio nello ZIP completo",
+            "in": "query",
+            "name": "study",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include lo stato di studio nello ZIP completo",
+              "title": "Study",
+              "type": "boolean"
             }
           }
         ],
@@ -15779,6 +15958,209 @@
         "summary": "Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna",
         "tags": [
           "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study/units/{unit_id}": {
+      "put": {
+        "operationId": "set_status_api_v1_lessons__lesson_id__study_units__unit_id__put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Unit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyStatusUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyProgress"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cambia lo stato di studio di un'unità",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study/units/{unit_id}/read": {
+      "post": {
+        "operationId": "mark_read_api_v1_lessons__lesson_id__study_units__unit_id__read_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Unit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Segna l'ultima lettura di un'unità",
+        "tags": [
+          "studio"
         ]
       }
     },

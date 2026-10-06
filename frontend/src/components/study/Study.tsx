@@ -1,4 +1,4 @@
-import { ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -24,10 +24,14 @@ import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { useIsPhone } from '@/lib/phone'
-import { useHighlighterPrefs } from '@/lib/studyPrefs'
+import { useHighlighterPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { useZen } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
 import { SpeedReader } from './SpeedReader'
+import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
+import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
+import { StudyStatusIcon } from './StudyStatusIcon'
 
 /**
  * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
@@ -56,11 +60,27 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const loaded = study.data && study.data.id === lesson?.id ? study.data : null
   useEffect(() => {
     // La lista si fissa all'ingresso nella lezione: dopo ogni risposta il conteggio cambia, l'ordine no.
-    // oxlint-disable-next-line react/set-state-in-effect
-    if (loaded && units === null) setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
+    if (loaded && units === null) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
+      setUnitIndex(onlyUnits ? 0 : initialStudyUnit(loaded.units))
+    }
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
+  const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
+  const status = useStudyStatus(lesson?.id ?? 0)
+  const read = useStudyRead(lesson?.id ?? 0)
+  const markRead = read.mutate
+  const changeStatus = () => {
+    if (unit && !status.isPending) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
+  }
+
+  useEffect(() => {
+    if (!unit || finished || (phase !== 'lettura' && !rereading)) return
+    const timer = window.setTimeout(() => markRead(unit.id), 3000)
+    return () => window.clearTimeout(timer)
+  }, [lesson?.id, unit?.id, phase, rereading, finished, markRead]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   const goToUnit = (idx: number) => {
     setUnitIndex(idx)
@@ -89,6 +109,22 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [hlMode, setHlMode] = useState<HighlightMode>('evidenzia')
   const [textRoot, setTextRoot] = useState<HTMLElement | null>(null)
   const [speedReading, setSpeedReading] = useState(false)
+  const [readerMounted, setReaderMounted] = useState(false)
+  const [readerContext, setReaderContext] = useState(false)
+  const [readerSettings, setReaderSettings] = useState(false)
+  const [tint, setTint] = useState<RsvpPreference['irlen']>(null)
+  const settingsButton = useRef<HTMLDivElement>(null)
+  const setZen = useZen()
+  const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [])
+  useEffect(() => {
+    setZen({ active: speedReading, tint })
+    return () => setZen({ active: false, tint: null })
+  }, [speedReading, tint, setZen])
+  useEffect(() => {
+    if (speedReading || !readerMounted) return
+    const timer = setTimeout(() => setReaderMounted(false), globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 300)
+    return () => clearTimeout(timer)
+  }, [speedReading, readerMounted])
   const highlights = useStudyHighlighter({
     root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
     mode: hlMode, color: highlighterPrefs.color,
@@ -97,16 +133,20 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
-    if (phase !== 'lettura' || speedReading || !arrows) return
+    if (phase !== 'lettura' || speedReading) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const isStatusKey = e.key.toLowerCase() === 's'
+      if (!isStatusKey && (!arrows || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight'))) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
         return
       }
-      if (e.key === 'ArrowLeft') {
+      if (isStatusKey) {
+        e.preventDefault()
+        changeStatus()
+      } else if (e.key === 'ArrowLeft') {
         if (unitIndex > 0) {
           e.preventDefault()
           goToUnit(unitIndex - 1)
@@ -119,7 +159,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, speedReading, arrows]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -229,7 +269,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       aria-expanded={detailsOpen}
       title="Dettagli della lezione"
       data-testid="study-title-button"
-      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring max-md:px-0"
     >
       <span className="truncate text-[15px] font-semibold text-foreground max-md:hidden">{title}</span>
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
@@ -238,7 +278,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 
   const headerActions = (
-    <div className="flex items-center gap-1.5" data-testid="study-header-tools">
+    <div className="flex items-center gap-1.5 max-md:gap-0" data-testid="study-header-tools">
       <HighlightTools
         mode={hlMode}
         color={highlighterPrefs.color}
@@ -248,16 +288,31 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
+        label={`Stato dell'unità: ${STATUS_LABELS[live.status ?? 'da-imparare']}`}
+        icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
+        className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
+        onClick={changeStatus}
+        unavailable={status.isPending ? 'salvataggio in corso' : null}
+        data-testid="study-status"
+      />
+      <IconButton
         label="Lettura veloce"
         icon={Gauge}
-        onClick={() => setSpeedReading(true)}
+        onClick={() => {
+          textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+          window.scrollTo?.({ top: 0 })
+          setSpeedReading(true)
+          setReaderMounted(true)
+          setIndexOpen(false)
+          setDetailsOpen(false)
+        }}
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
-          units={units}
+          units={liveUnits}
           unitIndex={unitIndex}
           open={indexOpen}
           onOpenChange={setIndexOpen}
@@ -267,13 +322,22 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </div>
   )
 
+  const zenActions = <div className="flex items-center gap-1">
+    <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
+    <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
+    <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
+    <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} />
+  </div>
+
   return (
     <>
       {reading && (
         <StudyShell
-          title={titleButton}
-          back={back}
-          actions={headerActions}
+          title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
+          back={speedReading ? undefined : back}
+          actions={speedReading ? zenActions : headerActions}
+          zen={speedReading}
+          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
             onPointerUp: handlePointerUp,
@@ -326,11 +390,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             )
           }
         >
-          <Dots count={units.length} current={unitIndex} />
+          {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
+          {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
+          <Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} />
           <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
-          {speedReading && textRoot && (
-            <SpeedReader source={textRoot} title={`${unit.id} ${unit.title}`} onClose={() => setSpeedReading(false)} />
-          )}
         </StudyShell>
       )}
       {phase === 'domande' && (
@@ -464,9 +527,13 @@ function StudyShell({
   footer,
   readingProps,
   children,
+  zen = false,
+  reader,
 }: {
+  zen?: boolean
+  reader?: ReactNode
   title: ReactNode
-  back: { to: string; label: string }
+  back?: { to: string; label: string }
   actions?: ReactNode
   popup?: ReactNode
   footer?: ReactNode
@@ -474,16 +541,19 @@ function StudyShell({
   children: ReactNode
 }) {
   return (
-    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
-      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study" data-zen={zen || undefined}>
+      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:[--control-size:34px] [&_h1]:max-md:min-w-8 [&_h1]:max-md:text-meta" />
       {popup}
-      <div className="flex-1 touch-pan-y px-7 max-md:px-[18px]" {...readingProps}>
-        <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
-          {children}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={zen || undefined} inert={zen || undefined} {...readingProps}>
+          <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
+            {children}
+          </div>
         </div>
+        {reader}
       </div>
       {footer && (
-        <div className="sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
+        <div aria-hidden={zen || undefined} inert={zen || undefined} className="rt-study-footer sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
           {footer}
         </div>
       )}
@@ -491,12 +561,19 @@ function StudyShell({
   )
 }
 
-function Dots({ count, current }: { count: number; current: number }) {
+function Dots({ units, current, onSelect }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void }) {
   return (
-    <div className="mb-6 mt-1 flex gap-1" aria-hidden data-testid="study-dots">
-      {Array.from({ length: count }, (_, i) => (
-        <i key={i} className={cn('h-[3px] flex-1 rounded-md', i <= current ? 'bg-foreground' : 'bg-muted')} data-done={i <= current || undefined} />
-      ))}
+    <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
+      {units.map((u, i) => {
+        const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}`
+        return <button key={u.id} type="button" aria-label={`Unità ${i + 1}: ${label}`} title={label}
+          onClick={() => onSelect(i)} aria-current={i === current ? 'step' : undefined}
+          className="flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
+          <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
+            i === current ? 'h-[7px]' : 'h-[3px]',
+            u.status === 'appreso' ? 'bg-success' : u.status === 'in-apprendimento' ? 'bg-warning' : 'bg-muted')} />
+        </button>
+      })}
     </div>
   )
 }
@@ -533,7 +610,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady }: {
   return (
     <section aria-labelledby="study-unit-title">
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
-      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
+      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-unit-id={unit.id} data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
         dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
     </section>
   )
@@ -786,9 +863,10 @@ function UnitIndexMenu({
                 onOpenChange(false)
               }}
             >
+              <span className="mr-2"><StudyStatusIcon status={u.status} /></span>
               <span className="min-w-0 flex-1 truncate">{u.id} {u.title}</span>
               <span className="ml-2 shrink-0 text-meta text-muted-foreground">
-                {i < unitIndex ? 'letta' : i === unitIndex ? 'qui' : ''}
+                {i === unitIndex ? 'qui' : studyDate(u.status_at)}
               </span>
             </button>
           ))}
