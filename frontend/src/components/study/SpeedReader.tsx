@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
+import { createSound } from './rsvpSound'
 import {
   MAX_WPM, MIN_WPM, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
   remainingSeconds, surroundingEntries, wordDelay,
@@ -76,7 +77,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
     const entry = words[index]
     const current = prefsRef.current
     const end = graveWord(entry, current)
-    if (current.sound) sound.click(end, current.pitch)
+    if (current.sound) sound.click(end, current.pitch, current.clickSound)
     const delay = wordDelay(entry, current, ramp.current)
     if (ramp.current > 0) ramp.current--
     const timer = setTimeout(() => {
@@ -217,7 +218,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
       </div>
       {settings && (
         <SettingsPanel anchor={settingsButton} phone={phone} prefs={prefs} update={update} onDone={closeSettings}
-          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch)} />
+          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch, prefs.clickSound)} />
       )}
     </div>
   )
@@ -332,6 +333,9 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
       <Row><Toggle label="Rallenta sulle evidenziate" checked={prefs.slowHighlights} onChange={slowHighlights => update({ slowHighlights })} /></Row>
       {section('Suono')}
       <Row><Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />
+        {prefs.sound && <><span>Tipo di clic</span><Segments label="Tipo di clic" value={prefs.clickSound} options={[
+          ['legno', 'Legno'], ['tick', 'Tick morbido'], ['classico', 'Classico'],
+        ]} onChange={clickSound => update({ clickSound })} /></>}
         <span>Tono <b className="font-normal">{prefs.pitch.toFixed(1)}</b>×</span>
         <input type="range" min={0.5} max={2} step={0.1} value={prefs.pitch} aria-label="Tono"
           onChange={(e) => { const pitch = Number(e.target.value); update({ pitch }); onPitch(pitch) }} />
@@ -346,111 +350,4 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
       </Row>
     </section>
   )
-}
-
-type NoiseKind = NonNullable<RsvpPreference['noise']>
-
-/** Suoni generati con Web Audio: nessun file. L'AudioContext nasce al primo gesto. */
-function createSound() {
-  let ac: AudioContext | null = null
-  let source: AudioBufferSourceNode | null = null
-  let gain: GainNode | null = null
-  let previewTimer: ReturnType<typeof setTimeout> | undefined
-  const buffers = new Map<NoiseKind, AudioBuffer>()
-  const context = () => {
-    if (!ac) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!Ctor) return null
-      try { ac = new Ctor() } catch { return null }
-    }
-    if (ac.state === 'suspended') void ac.resume()
-    return ac
-  }
-  const stopNoise = () => {
-    clearTimeout(previewTimer)
-    try { source?.stop() } catch { /* già fermo */ }
-    source = null
-    gain = null
-  }
-  const noise = (kind: NoiseKind, volume: number) => {
-    stopNoise()
-    const audio = context()
-    if (!audio) return
-    let buffer = buffers.get(kind)
-    if (!buffer) {
-      buffer = noiseBuffer(audio, kind)
-      buffers.set(kind, buffer)
-    }
-    source = audio.createBufferSource()
-    source.buffer = buffer
-    source.loop = true
-    gain = audio.createGain()
-    const t = audio.currentTime
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, volume), t + 0.3)
-    source.connect(gain).connect(audio.destination)
-    source.start()
-  }
-  return {
-    unlock: () => void context(),
-    click(end: boolean, pitch: number) {
-      const audio = context()
-      if (!audio) return
-      const t = audio.currentTime
-      const base = (end ? 520 : 880) * pitch
-      const duration = end ? 0.11 : 0.045
-      const osc = audio.createOscillator()
-      const env = audio.createGain()
-      osc.type = 'triangle'
-      osc.frequency.setValueAtTime(base, t)
-      if (end) osc.frequency.exponentialRampToValueAtTime(base * 0.82, t + duration)
-      env.gain.setValueAtTime(0.0001, t)
-      env.gain.exponentialRampToValueAtTime(end ? 0.22 : 0.13, t + 0.004)
-      env.gain.exponentialRampToValueAtTime(0.0001, t + duration)
-      osc.connect(env).connect(audio.destination)
-      osc.start(t)
-      osc.stop(t + duration + 0.02)
-    },
-    noise,
-    preview(kind: NoiseKind, volume: number) {
-      noise(kind, volume)
-      previewTimer = setTimeout(stopNoise, 2000)
-    },
-    volume(volume: number) {
-      if (gain && ac) gain.gain.setTargetAtTime(Math.max(0.001, volume), ac.currentTime, 0.05)
-    },
-    stopNoise,
-    dispose() {
-      stopNoise()
-      void ac?.close().catch(() => {})
-      ac = null
-    },
-  }
-}
-
-/** Due secondi di rumore bianco, rosa (filtro di Paul Kellet) o marrone, da ripetere in loop. */
-function noiseBuffer(audio: AudioContext, kind: NoiseKind): AudioBuffer {
-  const length = audio.sampleRate * 2
-  const buffer = audio.createBuffer(1, length, audio.sampleRate)
-  const data = buffer.getChannelData(0)
-  let last = 0
-  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
-  for (let i = 0; i < length; i++) {
-    const white = Math.random() * 2 - 1
-    if (kind === 'bianco') data[i] = white * 0.5
-    else if (kind === 'marrone') {
-      last = (last + 0.02 * white) / 1.02
-      data[i] = last * 3.2
-    } else {
-      b0 = 0.99886 * b0 + white * 0.0555179
-      b1 = 0.99332 * b1 + white * 0.0750759
-      b2 = 0.969 * b2 + white * 0.153852
-      b3 = 0.8665 * b3 + white * 0.3104856
-      b4 = 0.55 * b4 + white * 0.5329522
-      b5 = -0.7616 * b5 - white * 0.016898
-      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11
-      b6 = white * 0.115926
-    }
-  }
-  return buffer
 }
