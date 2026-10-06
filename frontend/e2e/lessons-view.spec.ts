@@ -116,12 +116,25 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')
   await page.getByRole('button', { name: 'Per materia' }).click()
   await page.getByRole('button', { name: 'Seleziona' }).click()
+  await expect(page.getByRole('button', { name: 'Dettagli della selezione' })).toHaveAttribute('aria-disabled', 'true')
   const bio = lessons.filter((l) => l.materia === 'BIOCHIMICA')
   const group = page.locator('[data-testid=lesson-group][data-group=BIOCHIMICA]')
   await group.getByRole('checkbox', { name: /^Seleziona il gruppo/ }).check()
   for (const lesson of bio) await expect(page.locator(`[data-testid=lesson-row][data-lesson-id="${lesson.id}"]`).getByRole('checkbox')).toBeChecked()
   const bar = page.getByTestId('selection-bar')
   await expect(bar.getByTestId('selection-count')).toHaveText(`${bio.length} ${bio.length === 1 ? 'selezionata' : 'selezionate'}`)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await bar.getByRole('button', { name: 'Dettagli della selezione' }).click()
+    const details = page.getByTestId('selection-details')
+    await expect(details).toBeVisible()
+    await expect(details.getByRole('row')).toHaveCount(bio.length + 1)
+    await expect(details.getByRole('columnheader', { name: 'Costo' })).toHaveAttribute('aria-sort', 'descending')
+    await expect(details).toContainText('Materie')
+    await expect(details).toContainText('Docenti')
+    await details.getByRole('button', { name: 'Chiudi' }).click()
+  }
+  await page.setViewportSize({ width: 1280, height: 800 })
 
   // L'export è un job: avanzamento nella barra, poi il download parte da solo e resta "Scarica di nuovo".
   const download = page.waitForEvent('download', { timeout: 50_000 })

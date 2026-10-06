@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Brain, Calendar, CalendarRange, FileText, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Brain, Calendar, CalendarRange, FileText, Info, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -24,6 +24,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 import { usePreference } from '@/lib/preferences'
+import { SelectionDetails } from './SelectionDetails'
 
 const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User } as const
 
@@ -380,6 +381,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
   const markdown = markdownExportNote(lessons)
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const start = useExportLessons()
   const [exportStudy, setExportStudy] = usePreference('export.study', true)
   const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
@@ -415,6 +417,9 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           unavailable={visibleLessons.length === 0 ? 'nessuna lezione visibile' : null}
           onClick={() => onSelectAll(!allSelected)}
         />
+        <IconButton label="Dettagli della selezione" icon={Info} side="top" aria-haspopup="dialog"
+          unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+          onClick={() => setDetailsOpen(true)} />
         <IconLink
           label="Recall sulle lezioni selezionate"
           icon={Brain}
@@ -447,6 +452,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
         <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
       </div>
       {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
+      <SelectionDetails lessons={lessons} open={detailsOpen} onClose={() => setDetailsOpen(false)} />
       {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
       {exportJob?.state === 'succeeded' && (
         <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>

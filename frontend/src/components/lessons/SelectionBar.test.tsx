@@ -24,6 +24,19 @@ function renderBar(chosen = lessons) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('export nella barra di selezione', () => {
+  it('apre i dettagli con una riga per lezione e la tabella ordinabile', () => {
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Dettagli della selezione' }))
+    const dialog = screen.getByRole('dialog', { name: '2 lezioni selezionate' })
+    expect(dialog).toHaveTextContent('Materie')
+    expect(dialog).toHaveTextContent('Docenti')
+    expect(screen.getAllByRole('row')).toHaveLength(3)
+    expect(screen.getByRole('columnheader', { name: 'Costo' })).toHaveAttribute('aria-sort', 'descending')
+    fireEvent.click(screen.getByRole('button', { name: 'Costo' }))
+    expect(screen.getByRole('columnheader', { name: 'Costo' })).toHaveAttribute('aria-sort', 'ascending')
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+    expect(screen.queryByRole('table')).toBeNull()
+  })
   it.each(['markdown', 'zip'] as const)('accoda %s, mostra avanzamento e scarica una volta sola a job finito', async (format) => {
     const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ job_id: 'exp-1', state: 'queued' }, 202))
     let state = 'running'
@@ -69,6 +82,7 @@ describe('export nella barra di selezione', () => {
   it('con selezione vuota non accoda export', () => {
     const post = vi.spyOn(api, 'POST')
     renderBar([])
+    expect(screen.getByRole('button', { name: 'Dettagli della selezione' })).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'Scarica Markdown' }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarica zip' }))
     expect(post).not.toHaveBeenCalled()
