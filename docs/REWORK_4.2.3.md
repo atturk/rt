@@ -577,3 +577,298 @@ Come per la b1: Claude rivede il diff, prova le parti toccate, fa le correzioni 
 "Revisione: …", unisce in `claude/rt-4.2.3-beta`, lancia **tutti** i test in locale (pytest, frontend,
 entrambi i gruppi e2e) prima di pubblicare, pubblica la beta con `release.yml` (VERSION `4.2.3b3`; la PR di Codex parte da prima del fix urgente, quindi in revisione si porta dentro `claude/rt-4.2.3-beta`)
 e segue il run fino alla fine.
+
+## 4.2.3b4 — Studio verso la lezione, fine delle unità, revisione, tipo consigliato, parole lunghe
+
+Richieste di Attilio della sera del 6 ottobre 2026 (thread "Piano 4.2.3"), discusse una per una.
+Lavora **solo Codex (GPT)**, un giro solo. Esce come **4.2.3b4**.
+
+Wireframe di riferimento (interattivo): `docs/wireframes-4.2.3/RT-4.2.3b4.html`, da aprire nel browser.
+Schede: Studio (provare la freccia "Esci" e le frecce ← → alla prima e all'ultima unità), Revisione
+(provare gli stati del pannello e le icone delle issue d'unità), Domande finite (provare "Genera
+consigliato" e "Genera personalizzato"), Lettura veloce iPhone (provare le parole lunghe). Dove piano e
+wireframe non coincidono, vale il piano.
+
+### Regole
+
+Come per la b2 (sezione "Regole" della 4.2.3b2), con queste differenze:
+
+- **Branch**: `rt423b4/codex`, già creato da `claude/rt-4.2.3-beta` (contiene il fix urgente
+  4.2.3b3.1 delle decisioni della revisione). Un commit per task (messaggio `<id>: …`), alla fine
+  **una sola PR verso `claude/rt-4.2.3-beta`**. Mai merge su `main` o sul branch beta, niente tag,
+  `VERSION` non si tocca.
+- Prima di aprire la PR si lanciano **tutti** i test: pytest completo, `npm run lint`,
+  `npm run typecheck`, `npx vitest run`, `npm run build`, e gli e2e di **entrambi** i gruppi
+  (`RT_E2E_GROUP=recall-images` e `RT_E2E_GROUP=other`). Gli e2e usano la build: lanciarli dopo
+  `npm run build`, altrimenti provano l'interfaccia vecchia.
+- Il fix urgente di `rt/pipeline/review.py` e `rt/pipeline/ledger.py` (4.2.3b3.1, test
+  `tests/test_review_restart_decisions.py`) non si tocca: R1 lavora solo sul pannello e sull'API.
+
+### Decisioni (Attilio, 6 ottobre 2026)
+
+- Nello Studio la freccia **"Esci"** porta alla lezione, sull'unità aperta; l'icona "Apri la lezione"
+  accanto al titolo (G2 della b3) si toglie, perché con i titoli lunghi finisce nascosta.
+- Alla fine delle unità **non c'è più la pagina "Hai finito lo Studio"**: si resta sull'ultima unità e
+  un effetto sul bordo dello schermo fa capire che le unità sono finite. Lo stesso prima della prima.
+- La revisione si fa **una volta sola**: a revisione completa e decisa il pulsante è "Ricostruisci il
+  documento" (solo il build). "Riprendi la pipeline" sparisce dal pannello.
+- Le issue che riguardano **tutta l'unità** (qualità ASR, deriva della rielaborazione) non
+  sottolineano più l'unità intera: diventano un'icona accanto al timestamp, solo in revisione.
+- **Tipo consigliato**: Jev legge il testo di ogni unità e consiglia quiz, mirata, caso clinico o
+  esercizio. Nei popup di generazione è un'alternativa alla scelta manuale; quando le domande finiscono
+  ci sono "Genera consigliato" e "Genera personalizzato", con il numero di domande.
+- **Lettura veloce**: una parola troppo lunga per lo schermo si rimpicciolisce quanto basta; se
+  dovesse scendere sotto il 70 % si divide in due (o più) pezzi con il trattino.
+
+### Task
+
+| Id | Cosa |
+|---|---|
+| S1 | Studio: "Esci" porta alla lezione, via l'icona "Apri la lezione" |
+| S2 | Studio: niente pagina finale, effetto sul bordo alla prima e all'ultima unità |
+| R1 | Revisione: pannello con unità verificate e "Ricostruisci il documento" |
+| R2 | Revisione: issue di tutta l'unità come icona accanto al timestamp |
+| Q1 | Tipo di domanda consigliato (Jev, cache, API) |
+| Q2 | Tipo consigliato nell'interfaccia: popup, pannello, fine delle domande |
+| L6 | Lettura veloce: parole lunghe rimpicciolite o divise |
+
+Ordine: S1 → S2 → R1 → R2 → Q1 → Q2 → L6. Q2 usa i campi di Q1.
+
+### S1 — "Esci" porta alla lezione
+
+File: `frontend/src/components/study/Study.tsx`, `frontend/src/routes/study.tsx`. Wireframe: scheda
+**Studio**.
+
+- Oggi `back` è `{ to: '/', label: 'Esci' }` (pagina Lezioni). Dentro `StudyFlow`, quando ci sono
+  lezione e unità, la freccia porta a `/lezioni/{id}#unit-{unitId}` dell'unità aperta (lo stesso
+  indirizzo `lessonUrl` di G2), così l'editor si apre su quell'unità e la segna come fa già G2. Con lo
+  Studio su più lezioni vale la lezione dell'unità aperta. Il suggerimento resta "Esci". Durante il
+  caricamento e in caso di errore (prima che ci sia un'unità) resta la lezione senza `#unit-`.
+- Con `?unita=` (domande su una parte) non cambia nulla: porta già a `/lezioni/{id}`; aggiungere
+  `#unit-` della prima unità della parte.
+- Togliere l'`IconLink` "Apri la lezione" accanto al titolo (`titleButton`). Il link "Apri la lezione"
+  nel popup dei dettagli resta.
+
+Test: e2e — "Esci" dallo Studio aperto sull'unità 2 porta alla lezione con l'unità 2 in vista e
+segnata, anche a 390 px; l'icona accanto al titolo non c'è più. Aggiornare l'e2e di G2.
+
+### S2 — Fine delle unità con un effetto sul bordo
+
+File: `Study.tsx`, `frontend/src/index.css`. Wireframe: scheda **Studio** (pulsanti "← prima unità" e
+"ultima unità →").
+
+- Freccia →, tasto → e swipe verso sinistra **sull'ultima unità dell'ultima lezione**: non si chiama
+  più `advance()` che porta a `finished`; si resta sull'unità e parte l'effetto sul bordo **destro**.
+  Freccia ←, tasto ← e swipe verso destra sulla **prima unità della prima lezione**: effetto sul bordo
+  **sinistro** (oggi non succede nulla). Con lo Studio su più lezioni, il passaggio da una lezione alla
+  successiva resta com'è: l'effetto vale solo ai due estremi.
+- Effetto: una fascia di 28 px sul bordo dell'area di lettura (sotto l'intestazione, a tutta altezza,
+  `pointer-events: none`), sfumatura da `color-mix(in oklch, var(--success) 45%, transparent)` a
+  trasparente verso l'interno, che compare e svanisce in 450 ms; insieme il testo dell'unità si sposta
+  di 12 px verso il bordo e torna (300 ms, ease-out), come il rimbalzo di fine lista. Premendo di
+  nuovo l'animazione riparte. Con `prefers-reduced-motion: reduce` niente spostamento del testo, solo
+  la fascia (opacità massima 0,6, 300 ms).
+- Per chi usa lo screen reader: una regione `aria-live="polite"` dice "Ultima unità" o "Prima unità".
+- La pagina "Hai finito lo Studio della lezione / di queste lezioni" non si raggiunge più dalla
+  lettura. Resta solo per `onlyUnits` ("Hai finito le domande su questa parte"), che nasce dalle
+  domande.
+- Nella schermata di fine domande in modo unità (`LightweightSession`, `unit.onDone`), sull'ultima unità
+  dell'ultima lezione il pulsante "Unità successiva" non compare (resta "Torna allo studio").
+
+Test: vitest della funzione che decide fra cambio unità ed effetto (prima/ultima/in mezzo, più
+lezioni); e2e — ultima unità + → resta sull'ultima (titolo invariato, nessun `study-done`) e la fascia
+destra compare; prima unità + ← mostra la fascia sinistra; swipe simulato a 390 px (vedi la nota
+sullo swipe con CDP nella memoria del progetto: `Input.dispatchTouchEvent` in un contesto `hasTouch`).
+
+### R1 — Pannello della revisione
+
+File: `frontend/src/components/lesson/panels/ReviewPanel.tsx`, `rt/api/schemas.py`,
+`rt/api/routers/lessons.py` (o dove si costruisce `LessonDetail`), eventualmente un componente
+condiviso per il dialogo di conferma del build oggi in `DetailsPanel.tsx`. Wireframe: scheda
+**Revisione**.
+
+Oggi `done = l.phases.review === 'VALID' || items.length > 0`: una revisione a metà sembra finita
+("Tutte decise") e "Riprendi la pipeline" lancia `run_pipeline` con la review, che riprende le unità
+mancanti o, se il testo è cambiato, rifà tutta la review.
+
+- **API**: `LessonDetail` aggiunge `review_progress: { reviewed: int, total: int } | null` (unità nel
+  checkpoint della fase review, cioè `completed_items` del manifest, e unità della bozza; `null` se
+  la review non è mai partita). Rigenerare openapi e `schema.d.ts`.
+- **Stati del pannello** (titolo con `role="status"` come oggi):
+  - *In corso*: com'è oggi (avanzamento, issue trovate, Interrompi).
+  - *Mai verificata*: com'è oggi, con "Verifica tutta la lezione".
+  - *A metà* (`phases.review === 'PARTIAL'`): titolo "Verificate N unità su M"; elenco delle issue come
+    oggi; pulsante principale **"Completa la verifica"** = `run_phase` review senza `force` (riprende
+    dalle unità mancanti).
+  - *Testo cambiato* (`phases.review === 'STALE'`): titolo "Il testo è cambiato dopo la verifica";
+    pulsante principale **"Verifica di nuovo tutta la lezione"** (`force: true`), secondario
+    "Ricostruisci il documento".
+  - *Completa e decisa* (`VALID`, nessuna da decidere): "Tutte decise" con il riepilogo di oggi e il
+    pulsante principale **"Ricostruisci il documento"** = `run_phase` build. Se il build è già `VALID`
+    il pulsante è disattivato con il testo "Documento aggiornato".
+  - *Completa con issue da decidere*: com'è oggi ("N da decidere su M").
+- "Ricostruisci il documento" usa lo stesso dialogo di conferma del build di `DetailsPanel.tsx` quando
+  `phase_report` del build ha avvisi (estrarlo in un componente comune), altrimenti parte subito.
+- "Riprendi la pipeline" sparisce dal pannello. Il badge "Pipeline in attesa" resta: una pipeline in
+  attesa riparte già da sola quando si decide l'ultima issue (`resume_waiting_jobs`).
+- Il pulsante in fondo "Verifica (di nuovo) tutta la lezione" resta, tranne quando è già il pulsante
+  principale.
+
+Test: vitest del pannello per ogni stato (testo, pulsante principale, payload del job); pytest di
+`review_progress` (mai partita, a metà, completa); e2e — dopo aver deciso tutte le issue il pulsante è
+"Ricostruisci il documento" e avvia un job `run_phase` build, non `run_pipeline`.
+
+### R2 — Issue di tutta l'unità come icona
+
+File: `frontend/src/components/lesson/lessonReview.ts`, `frontend/src/components/lesson/reviewIssues.ts`,
+`frontend/src/index.css`, dove l'editor ascolta `ISSUE_EVENT` e scorre all'issue selezionata.
+Wireframe: scheda **Revisione**.
+
+- Per le issue con `paragraphIssue(issue)` (oggi `ERR_ASR_ST`, `ERR_ASR_LLM`, `ERR_REWRITE_DRIFT`) niente
+  `Decoration.mark` sul testo dell'unità: al suo posto un `Decoration.widget` alla fine della riga del
+  timestamp dell'unità (la riga dopo il titolo), un'icona per issue non decisa, nell'ordine delle
+  issue. Le sottolineature a puntini restano per le issue con una frase precisa.
+- Icona `AudioLines` per le issue ASR, `GitCompareArrows` per la deriva della rielaborazione, 16 px,
+  dentro un pulsantino tondo di 24 px; colore `text-warning`; se l'issue è quella selezionata, sfondo
+  e colore della selezione (`rt-issue-selected`). `aria-label` e suggerimento = etichetta del tipo
+  (`issueLabels`, es. "Qualità ASR · statistica").
+- Clic sull'icona = stesso evento di oggi (`ISSUE_EVENT` con l'id): la sidebar seleziona l'issue.
+  Selezionando un'issue d'unità dalla sidebar l'editor scorre fino al suo timestamp.
+- Le icone esistono solo quando l'editor ha le issue della revisione (vista Verifica), come oggi le
+  sottolineature; fuori dalla revisione non si vedono. Le issue decise non hanno icona.
+
+Test: vitest di `lessonReview` (issue d'unità → widget e nessun mark; issue di frase → mark); e2e —
+in Verifica un'issue ASR d'unità mostra l'icona accanto al timestamp, nessuna sottolineatura sul
+testo, il clic la seleziona nella sidebar.
+
+### Q1 — Tipo di domanda consigliato
+
+File nuovi: `rt/services/question_types.py`, test `tests/test_question_types.py`. File toccati:
+`rt/pipeline/rewrite.py` (dopo `unit_relevance.refresh`), `rt/core/lesson_paths.py`,
+`rt/services/recall_service.py` / `rt/services/job_handlers.py` (generazione "consigliato"),
+`rt/api/schemas.py` e i router dello Studio e del recall, `rt/core/config.py`.
+
+- Modello: come `rt/services/section_labels.py` (stessa chiamata `jev_client.call_jev` con il modello,
+  la credenziale e l'endpoint della rilevanza, stesse regole di "attivo": `relevance_model`
+  configurato e `relevance_mode` diverso da `disabled`), ma **per unità della bozza** (2.1, 2.2: le
+  unità dello Studio), con una sola domanda di tipo choice, `tipo_consigliato`:
+  - istruzioni: "Valuta un'unità di una lezione universitaria riscritta e scegli il tipo di domanda
+    più adatto per verificare se lo studente l'ha capita."
+  - `quiz`: "Il contenuto è fatto soprattutto di fatti, definizioni, valori o classificazioni da
+    riconoscere: si verifica bene con domande a risposta multipla."
+  - `mirata`: "Il contenuto spiega un meccanismo, un perché o un collegamento fra concetti: si
+    verifica bene con una domanda aperta precisa, a cui rispondere in poche righe."
+  - `caso`: "Il contenuto riguarda pazienti, quadri clinici, diagnosi, parametri o terapie: si
+    verifica bene presentando un caso clinico da interpretare."
+  - `esercizio`: "Il contenuto contiene calcoli, formule da applicare o procedimenti risolutivi: si
+    verifica bene con un esercizio da svolgere."
+- **Coerenza con casi ed esercizi**: oggi casi ed esercizi nascono solo dalle sezioni che
+  `section_labels` riconosce (`POSITIVE`). Se Jev consiglia `caso` o `esercizio` per un'unità la cui
+  sezione non è positiva per quel tipo, il consiglio diventa il più probabile fra `quiz` e `mirata`.
+  Verificare in `rt/pipeline/recall_special.py` che con `unit_ids` la generazione di quell'unità
+  produca davvero domande del tipo consigliato; il consiglio deve essere sempre un tipo generabile.
+- Cache `unit_question_types.json` nella cartella della lezione (aggiungerla a
+  `rt/core/lesson_paths.py` accanto a `unit_relevance.json`): per unità `type`, `confidence`,
+  `probabilities`, `text_hash`, `config_hash`, `at`. Si ricalcola solo se cambia il testo dell'unità o
+  la configurazione, come `section_labels.refresh`. Mock deterministico (per esempio dal contenuto:
+  formule → esercizio, parole cliniche → caso, altrimenti alternanza quiz/mirata) per test ed e2e.
+- **Quando**: nella pipeline subito dopo `unit_relevance.refresh` in `run_rewrite`; un errore di Jev
+  non fa fallire la rielaborazione (fail-open: unità senza consiglio, notice di avviso). Per le
+  lezioni vecchie senza cache, il calcolo avviene nel job di generazione quando si chiede
+  "consigliato" (vedi sotto).
+- **API**:
+  - le unità dello Studio (`StudyUnit` e la risposta di `GET /lessons/{id}/study`) aggiungono
+    `suggested_qtype: Optional[Literal["quiz","mirata","caso","esercizio"]]`;
+  - la risposta aggiunge `suggestions: bool` (Jev attivo: si possono chiedere consigli);
+  - `RecallGenerate.qtype` accetta anche `"consigliato"`: il job calcola i consigli mancanti delle unità
+    coinvolte (quelle di `unit_ids`, o quelle selezionate per il recall se mancano), raggruppa le unità
+    per tipo consigliato e genera ogni gruppo con il suo tipo. `count` si divide fra i gruppi in
+    proporzione al numero di unità, almeno 1 per gruppo, senza superare `count`. Unità senza consiglio
+    (Jev in errore) → `quiz`. Il messaggio finale del job dice i tipi generati ("3 mirate, 2 quiz").
+  - Rigenerare openapi e `schema.d.ts`.
+
+Test: pytest — choice con le quattro opzioni e le istruzioni; cache non ricalcolata a testo invariato,
+ricalcolata se cambia; coerenza con `section_labels` (caso senza sezione positiva → quiz o mirata);
+fail-open; job "consigliato" con unità di due tipi e divisione di `count`; `suggested_qtype` nella
+risposta dello Studio.
+
+### Q2 — Tipo consigliato nell'interfaccia
+
+File: `Study.tsx` (`GenerateUnitQuestions`), `frontend/src/components/lesson/panels/QuestionsPanel.tsx`
+("Genera altre domande"), `frontend/src/components/recall/LightweightSession.tsx` (blocco
+`recall-empty`). Wireframe: scheda **Domande finite**.
+
+- Tutto quello che segue compare solo se `suggestions` è vero; senza Jev resta la scelta manuale di
+  oggi.
+- **Popup "Genera domande · unità"**: prima dei tipi un chip **"Consigliato · Mirata"** (icona
+  `Sparkles` 14 px, nome del tipo consigliato; solo "Consigliato" se l'unità non ha ancora il
+  consiglio), selezionato all'apertura. Scegliendo un altro chip si torna alla scelta manuale.
+- **Pannello Domande, "Genera altre domande"**: nella select Tipo una prima voce "Consigliato per
+  ogni unità", selezionata all'apertura.
+- **Domande finite** (la scheda `recall-empty` quando le domande sono finite, in modo unità e nel
+  ripasso di una lezione sola; mai nel ripasso di più lezioni, dove resta il testo di oggi): sopra i
+  pulsanti di oggi una riga
+  `Quante [3]  ·  [✦ Genera consigliato · Mirata]  ·  [Tipo ▾] [Genera personalizzato]`:
+  - "Quante": `Input` numerico 1–20, predefinito 3 in modo unità e 10 nel ripasso della lezione;
+  - "Genera consigliato · Mirata": pulsante principale (in modo lezione: "Genera consigliato");
+  - select del tipo (quiz, mirata, caso clinico, esercizio; vasta solo nel ripasso della lezione) e
+    pulsante "Genera personalizzato";
+  - durante il job la riga diventa "Genero le domande…" con l'avanzamento; finito il job la sessione
+    riprende da sola con le domande nuove (come dopo "Riproponi"); in caso di errore un `Alert`.
+  - Su iPhone la riga va a capo: Quante e Genera consigliato sulla prima, tipo e personalizzato sulla
+    seconda, pulsanti a tutta larghezza.
+- "Riproponi le sbagliate", "Riproponi le poste", "Torna allo studio" e "Unità successiva" restano
+  sotto, come oggi.
+
+Test: vitest dei tre punti (chip/voce consigliata presente e selezionata con `suggestions`, assente
+senza; payload `qtype: "consigliato"` con `count`); e2e — finite le domande di un'unità, "Genera
+consigliato" con Quante 2 avvia il job e la sessione riprende con le domande nuove.
+
+### L6 — Lettura veloce: parole lunghe
+
+File: `frontend/src/components/study/SpeedReader.tsx`, `frontend/src/components/study/rsvp.ts`,
+`frontend/src/index.css`. Wireframe: scheda **Lettura veloce iPhone**.
+
+Oggi la parola è divisa in `.pre | .orp | .post`; `.pre` e `.post` sono larghi 6,2em (4,6em sotto
+768 px) con `overflow: visible`, così la lettera di fuoco resta al centro, ma un `.post` più lungo
+esce dallo schermo (sull'iPhone "un'impostazione": la "u" è la lettera di fuoco e "n'impostazione"
+supera il bordo).
+
+- **Spazio**: per lato `(larghezza dell'area di lettura / 2) − (larghezza della lettera di fuoco / 2)
+  − 16 px`.
+- **Misura**: con `CanvasRenderingContext2D.measureText`, usando il font calcolato di `.rt-rsvp-word`
+  (famiglia, peso, dimensione reale, anche OpenDyslexic), la larghezza in px di pre, lettera di fuoco e
+  post di ogni parola. Si calcola per tutta l'unità all'apertura e di nuovo quando cambiano dimensione
+  del testo, font o larghezza dell'area (`ResizeObserver`, rotazione del telefono); mai a ogni parola
+  mostrata.
+- **Scala**: `scale = min(1, spazio / max(pre, post))`. Se `scale ≥ 0,7` la parola si mostra con
+  `font-size` moltiplicato per `scale` (variabile CSS sulla sola parola): pre e post sono in `em`, quindi
+  la lettera di fuoco resta al centro.
+- **Divisione**: se `scale < 0,7` la parola si divide in pezzi, ognuno mostrato come una parola a sé con
+  la sua lettera di fuoco e la sua scala (ogni pezzo almeno 0,7). Tutti i pezzi tranne l'ultimo
+  finiscono con "-", tranne quando il taglio cade dopo un apostrofo o un trattino già presenti. Punti
+  di taglio ammessi: dopo un apostrofo o un trattino; prima di una consonante fra due vocali
+  ("imposta|zione"); fra due consonanti uguali ("at|tività"); mai pezzi sotto 3 caratteri. Fra i punti
+  per cui entrambi i pezzi stanno almeno a 0,7 si sceglie il più vicino alla metà della parola; se il
+  secondo pezzo non sta ancora, si ripete su di lui (parole lunghissime: tre pezzi). Esempio
+  sull'iPhone a dimensione 60: "un'impostazione" → "un'imposta-" (scala 0,87) e "zione". Il wireframe
+  usa esattamente questa regola con la misura vera del canvas.
+- **Tempi e conteggi**: ogni pezzo ha il tempo di `wordDelay` sul proprio testo; la pausa di fine frase
+  e la virgola solo sull'ultimo pezzo; il clic grave solo sull'ultimo. Il Contesto, l'avanzamento
+  ("13 / 338 parole") e i salti (−5, frase precedente) restano sulle parole originali: un pezzo punta
+  alla sua parola. Le evidenziazioni (`hl`) valgono per tutti i pezzi.
+- Le formule non cambiano: hanno già la loro scala (`RsvpFormula`).
+
+Test: vitest della funzione di adattamento con una misura finta (larghezza fissa per carattere):
+parola corta → scala 1; parola un po' lunga → scala fra 0,7 e 1; "un'impostazione" con lo spazio
+dell'iPhone → "un'imposta-" e "zione"; un taglio dopo l'apostrofo non aggiunge il trattino; tre
+pezzi per una parola lunghissima; pausa di fine frase solo sull'ultimo pezzo. E2e a 390 px: la parola
+"un'impostazione" (aggiungerla alla fixture se serve) non esce dalla finestra (`boundingBox` dentro
+`viewport`).
+
+### Revisione e merge (Claude)
+
+Come per la b3: Claude rivede il diff, prova le parti toccate, fa le correzioni brevi con commit
+"Revisione: …", unisce in `claude/rt-4.2.3-beta`, imposta VERSION `4.2.3b4`, lancia **tutti** i test in
+locale (pytest, frontend, build, entrambi i gruppi e2e) prima di pubblicare, pubblica la beta con
+`release.yml` e segue il run fino alla fine.
