@@ -266,6 +266,9 @@ PR #62 di Codex unita in `claude/rt-4.2.3-beta`. Correzioni di Claude:
 
 ## 4.2.3b2 — Ignorata, lettura veloce con formule ed evidenziazioni, suoni, suggerimenti
 
+> Nota: il nome della sezione resta "4.2.3b2" perché il prompt di Codex la cita così, ma questo lotto
+> esce come **4.2.3b3**: la v4.2.3b2 è stata usata per il fix urgente del QR dell'iPhone.
+
 Richieste di Attilio del 6 ottobre 2026 (thread "4.2.3b1"), discusse una per una e approvate sul
 wireframe. Lavora **solo Codex (GPT)**, un giro solo.
 
@@ -572,5 +575,5 @@ Test: e2e, con domande Ripassa porta al ripasso dell'unità; senza domande apre 
 
 Come per la b1: Claude rivede il diff, prova le parti toccate, fa le correzioni brevi con commit
 "Revisione: …", unisce in `claude/rt-4.2.3-beta`, lancia **tutti** i test in locale (pytest, frontend,
-entrambi i gruppi e2e) prima di pubblicare, pubblica la beta con `release.yml` (VERSION `4.2.3b2`)
+entrambi i gruppi e2e) prima di pubblicare, pubblica la beta con `release.yml` (VERSION `4.2.3b3`; la PR di Codex parte da prima del fix urgente, quindi in revisione si porta dentro `claude/rt-4.2.3-beta`)
 e segue il run fino alla fine.
