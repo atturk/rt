@@ -13,7 +13,7 @@ vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJ
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
 const issue: Schemas['IssueItem'] = { issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
 function mount(phases = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, markdown?: string) {
-  return render(<MemoryRouter><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, phase_report: [], segment_count: 0, outline_approved: false }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
+  return render(<MemoryRouter><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, phase_report: [], segment_count: 0, outline_approved: false }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
 }
 beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.jobs = []; state.phone = false })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {

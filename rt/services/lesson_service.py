@@ -281,6 +281,10 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
     with fs.read_snapshot():  # centinaia di letture per lezione, una query ciascuna senza
         ids = indexed_lesson_ids()
         items = _cached_summaries(ids)
+        from rt.services.study_progress_service import summaries
+        progress = summaries({lid: path for path, lid in ids.items()})
+        for item in items:
+            item.update(progress[item["id"]])
     if materia:
         items = [i for i in items if i["materia"] == materia.strip().upper()]
     if state:
@@ -337,6 +341,8 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.cost import compute_lesson_cost
     from rt.services.outline_service import is_outline_approved
     out = lesson_summary(lesson_id, lesson_dir)
+    from rt.services.study_progress_service import summaries
+    out.update(summaries({lesson_id: lesson_dir})[lesson_id])
     manifest = load_manifest(lesson_dir)
     out["phase_report"] = phase_report(lesson_dir)["phases"]
     out["segment_count"] = manifest.segment_count if manifest else 0

@@ -9,7 +9,7 @@ import shutil
 import pytest
 
 from rt.db.engine import get_database, reset_database_cache
-from rt.db.models import Lesson, LessonFile
+from rt.db.models import Lesson, LessonFile, StudyUnit, utcnow
 from rt.db.session import session_scope
 from rt.services import backup_service as bs
 from rt.services import data_service
@@ -80,6 +80,9 @@ def test_restore_brings_back_db_media_and_config(data, tmp_path, monkeypatch):
     data_dir, db = data
     rel = _add_media(db, data_dir, 1, "audio.m4a", b"audio")
     monkeypatch.setattr(data_service, "running_services", lambda: [])
+    at = utcnow()
+    with session_scope(db) as s:
+        s.add(StudyUnit(lesson_id=1, unit_id="1.1", status="appreso", status_at=at, last_read_at=at))
     snap = bs.create_backup(str(tmp_path / "b"), say=lambda _m: None).path
 
     # disastro: media persi, configurazione cambiata, una lezione in più nel DB
@@ -93,6 +96,8 @@ def test_restore_brings_back_db_media_and_config(data, tmp_path, monkeypatch):
     restored = get_database()
     with session_scope(restored) as s:
         assert s.get(Lesson, 2) is None and s.get(Lesson, 1) is not None
+        study = s.get(StudyUnit, (1, "1.1"))
+        assert study.status == "appreso" and study.status_at == at and study.last_read_at == at
     assert (data_dir / "media" / rel).read_bytes() == b"audio"
     assert (data_dir / "config" / "secrets.enc").read_text() == "cifrato"
     assert os.path.isfile(os.path.join(aside, "config", "secrets.enc"))  # la versione sostituita resta

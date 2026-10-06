@@ -3,7 +3,9 @@ rt.api.schemas
 Schemi Pydantic delle risposte e delle richieste dell'API (compaiono nell'OpenAPI e da lì nel
 client generato della SPA).
 """
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
+from rt.services.study_progress_service import StudyStatus
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
@@ -64,6 +66,9 @@ class LessonSummary(BaseModel):
     duration_seconds: Optional[float] = Field(None, description="Durata dell'audio della lezione, se nota")
     recall_questions: int = Field(0, description="Domande di recall nel pool della lezione")
     recall_pending: int = Field(0, description="Domande del pool non ancora poste (da fare)")
+    study_learned: int = Field(0, description="Unità apprese nella scaletta attuale")
+    study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
+    study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
     error: Optional[str] = None
 
 
@@ -507,6 +512,16 @@ class RecallUnits(BaseModel):
     selected: int
 
 
+class StudyStatusUpdate(BaseModel):
+    status: StudyStatus
+
+
+class StudyProgress(StudyStatusUpdate):
+    unit_id: str
+    status_at: Optional[datetime] = None
+    last_read_at: Optional[datetime] = None
+
+
 class StudyUnit(BaseModel):
     id: str
     title: str
@@ -515,6 +530,9 @@ class StudyUnit(BaseModel):
     end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
     pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")
     questions: int = Field(description="Totale delle domande da porre sull'unità")
+    status: StudyStatus = "da-imparare"
+    status_at: Optional[datetime] = None
+    last_read_at: Optional[datetime] = None
 
 
 class StudyLesson(BaseModel):

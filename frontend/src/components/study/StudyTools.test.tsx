@@ -27,7 +27,7 @@ vi.mock('@/lib/preferences', async () => {
 const LESSON = {
   id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', ora: '', data: '2026-10-02', folder_name: 'a',
   phases: { build: 'VALID', rewrite: 'VALID' }, argomenti: '', docente: '', path: '', duration_seconds: 0,
-  unit_count: 2, pending_issues: 0, recall_pending: 0, recall_questions: 0,
+  unit_count: 2, pending_issues: 0, recall_pending: 0, study_learned: 0, study_learning: 0, recall_questions: 0,
 } as Lesson
 const UNITS = [
   { id: '1.1', title: 'Primo', html: '<p>Il rene filtra il sangue. Poi, riassorbe acqua e sali.</p>', questions: 0, pending: {} },

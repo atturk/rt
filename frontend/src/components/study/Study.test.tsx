@@ -21,6 +21,8 @@ const LESSON: Lesson = {
   unit_count: 3,
   pending_issues: 0,
   recall_pending: 0,
+  study_learned: 0,
+  study_learning: 0,
   recall_questions: 3,
 }
 
