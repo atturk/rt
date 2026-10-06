@@ -145,7 +145,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
           <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
               <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
-                piece.index === index && 'font-semibold text-link')} data-current={piece.index === index || undefined}>
+                piece.index === index && 'font-semibold text-(--rsvp-focus)')} data-current={piece.index === index || undefined}>
                 {piece.text}{' '}
               </span>
             ))}
@@ -184,7 +184,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
           className="relative inline-flex size-[92px] items-center justify-center rounded-full border border-border bg-accent text-accent-foreground">
           <svg className="absolute -inset-1.5 size-[104px] -rotate-90" viewBox="0 0 104 104" aria-hidden>
             <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--border)" />
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--link)" strokeLinecap="round"
+            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--rsvp-focus)" strokeLinecap="round"
               strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
           </svg>
           {playing ? <Pause className="size-[26px]" fill="currentColor" aria-hidden /> : <Play className="size-[26px]" fill="currentColor" aria-hidden />}

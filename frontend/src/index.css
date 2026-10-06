@@ -662,7 +662,10 @@
 .rt-rsvp-word.dyslexic { font-family: 'OpenDyslexic', var(--font-sans); letter-spacing: normal; }
 .rt-rsvp-word > .pre, .rt-rsvp-word > .post { display: inline-block; width: 6.2em; overflow: visible; }
 .rt-rsvp-word > .pre { text-align: right; }
-.rt-rsvp-word > .orp { color: var(--link); }
+.rt-rsvp { --rsvp-focus: var(--link); }
+.dark .rt-rsvp { --rsvp-focus: var(--success); }
+.rt-layout[data-tint] .rt-rsvp { --rsvp-focus: #155f52; }
+.rt-rsvp-word > .orp { color: var(--rsvp-focus); }
 @media (max-width: 767.98px) {
   .rt-rsvp-word > .pre, .rt-rsvp-word > .post { width: 4.6em; }
 }
