@@ -28,9 +28,11 @@ def manifest(data):
         return json.loads(archive.read(name)), archive.namelist()
 
 
+@pytest.mark.parametrize("status", ["appreso", "ignorata"])
 @pytest.mark.parametrize("study", [False, True])
-def test_complete_zip_roundtrip_with_and_without_study(api_client, ready, study):
+def test_complete_zip_roundtrip_with_and_without_study(api_client, ready, study, status):
     path, lid, uid = ready
+    progress.set_status(lid, path, uid, status)
     original = progress.list_units(lid)
     data = api_client.get(f"/api/v1/lessons/{lid}/export", params={"format": "zip", "scope": "all", "study": study}).content
     description, files = manifest(data)
@@ -41,7 +43,7 @@ def test_complete_zip_roundtrip_with_and_without_study(api_client, ready, study)
     assert api_client.delete(f"/api/v1/lessons/{lid}").status_code == 204
     imported = import_archive(io.BytesIO(data))
     assert progress.list_units(imported) == (original if study else [])
-    assert api_client.get(f"/api/v1/lessons/{imported}/study").json()["units"][0]["status"] == ("appreso" if study else "da-imparare")
+    assert api_client.get(f"/api/v1/lessons/{imported}/study").json()["units"][0]["status"] == (status if study else "da-imparare")
 
 
 def test_invalid_study_rows_are_skipped_and_dates_are_normalized(api_client, ready):

@@ -339,10 +339,12 @@ def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None) -> int:
     """Domande da porre del tipo (o di tutti, "mista"), eventualmente solo di un'unità."""
     from rt.pipeline.recall import _allowed_units, _question_allowed, load_recall_bank, on_unit
     types = set(resolve_types(qtype))
-    allowed = _allowed_units(lesson_dir)
+    from rt.services.study_progress_service import ignored_unit_ids
+    allowed = None if unit_id is not None else _allowed_units(lesson_dir)
+    ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
     return sum(1 for q in load_recall_bank(lesson_dir).questions
                if q.type in types and q.status == RecallQuestionStatus.PENDING and _question_allowed(q, allowed)
-               and (unit_id is None or on_unit(q, unit_id)))
+               and not ignored.intersection(q.unit_ids) and (unit_id is None or on_unit(q, unit_id)))
 
 
 def next_question_for(lesson_dir: str, qtype, order: str = "alternato",

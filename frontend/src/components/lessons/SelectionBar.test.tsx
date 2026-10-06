@@ -8,8 +8,8 @@ import { SelectionBar } from './LessonsView'
 import type { Lesson } from '@/lib/format'
 
 const lessons: Lesson[] = [
-  { id: 1, folder_name: 'a', path: '', titolo: 'Infiammazione', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, phases: { build: 'VALID', rewrite: 'VALID' } },
-  { id: 2, folder_name: 'b', path: '', titolo: 'Lipidi', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, phases: { build: 'STALE', rewrite: 'MISSING' } },
+  { id: 1, folder_name: 'a', path: '', titolo: 'Infiammazione', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phases: { build: 'VALID', rewrite: 'VALID' } },
+  { id: 2, folder_name: 'b', path: '', titolo: 'Lipidi', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phases: { build: 'STALE', rewrite: 'MISSING' } },
 ]
 const ok = (data: unknown, status = 200) => ({ data, error: undefined, response: new Response('{}', { status }) }) as never
 

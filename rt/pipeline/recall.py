@@ -168,13 +168,15 @@ def get_next_pending_question(
 
     Marca la domanda restituita come ASKED e salva il bank.
     """
-    allowed = _allowed_units(lesson_dir)
+    from rt.services.study_progress_service import ignored_unit_ids
+    allowed = None if unit_id is not None else _allowed_units(lesson_dir)
+    ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         if repair_duplicate_ids(bank):
             save_recall_bank(bank, lesson_dir)
         pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
-                   and _question_allowed(q, allowed)]
+                   and _question_allowed(q, allowed) and not ignored.intersection(q.unit_ids)]
         if unit_id is not None:
             pending = [q for q in pending if on_unit(q, unit_id)]
         if not pending:

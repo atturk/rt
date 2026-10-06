@@ -3249,6 +3249,12 @@
             "description": "Stato effettivo del workflow (come 'rt status')",
             "title": "State"
           },
+          "study_ignored": {
+            "default": 0,
+            "description": "Unità ignorate nella scaletta attuale",
+            "title": "Study Ignored",
+            "type": "integer"
+          },
           "study_last_at": {
             "anyOf": [
               {
@@ -3674,6 +3680,12 @@
             ],
             "description": "Stato effettivo del workflow (come 'rt status')",
             "title": "State"
+          },
+          "study_ignored": {
+            "default": 0,
+            "description": "Unità ignorate nella scaletta attuale",
+            "title": "Study Ignored",
+            "type": "integer"
           },
           "study_last_at": {
             "anyOf": [
@@ -6234,7 +6246,8 @@
             "enum": [
               "da-imparare",
               "in-apprendimento",
-              "appreso"
+              "appreso",
+              "ignorata"
             ],
             "title": "Status",
             "type": "string"
@@ -6269,7 +6282,8 @@
             "enum": [
               "da-imparare",
               "in-apprendimento",
-              "appreso"
+              "appreso",
+              "ignorata"
             ],
             "title": "Status",
             "type": "string"
@@ -6346,7 +6360,8 @@
             "enum": [
               "da-imparare",
               "in-apprendimento",
-              "appreso"
+              "appreso",
+              "ignorata"
             ],
             "title": "Status",
             "type": "string"

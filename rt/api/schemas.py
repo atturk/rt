@@ -68,6 +68,7 @@ class LessonSummary(BaseModel):
     recall_questions: int = Field(0, description="Domande di recall nel pool della lezione")
     recall_pending: int = Field(0, description="Domande del pool non ancora poste (da fare)")
     study_learned: int = Field(0, description="Unità apprese nella scaletta attuale")
+    study_ignored: int = Field(0, description="Unità ignorate nella scaletta attuale")
     study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
     study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
     error: Optional[str] = None

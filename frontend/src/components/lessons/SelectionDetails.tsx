@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { formatCost, lessonTitle, type Lesson } from '@/lib/format'
-import { formatDuration, selectionDetails, shortDate, sortSelection, type SelectionSort } from '@/lib/lessonsPage'
+import { formatDuration, selectionDetails, studyTotal, shortDate, sortSelection, type SelectionSort } from '@/lib/lessonsPage'
 import { studyDate } from '@/components/study/studyProgress'
 
 const COLUMNS: { key: SelectionSort; label: string }[] = [
@@ -33,12 +33,14 @@ export function SelectionDetails({ lessons, open, onClose }: { lessons: Lesson[]
       </div>)}
     </div>
     <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-muted" role="img"
-      aria-label={`${totals.learned} unità apprese, ${totals.learning} in apprendimento su ${totals.units ?? 0}`}>
+      aria-label={`${totals.learned} unità apprese, ${totals.learning} in apprendimento, ${totals.ignored} ignorate su ${totals.units ?? 0}`}>
       <span className="bg-success" style={{ width: `${totals.percentages.learned}%` }} />
       <span className="bg-warning" style={{ width: `${totals.percentages.learning}%` }} />
+      <span style={{ flex: 1 }} />
+      <span className="bg-danger" style={{ width: `${totals.percentages.ignored}%` }} />
     </div>
     <div className="mt-2 flex flex-wrap gap-3 text-meta text-muted-foreground">
-      {([['learned', 'apprese', 'bg-success'], ['learning', 'in apprendimento', 'bg-warning'], ['toLearn', 'da imparare', 'bg-muted']] as const).map(([key, label, color]) =>
+      {([['learned', 'apprese', 'bg-success'], ['learning', 'in apprendimento', 'bg-warning'], ['toLearn', 'da imparare', 'bg-muted'], ['ignored', 'ignorate', 'bg-danger']] as const).map(([key, label, color]) =>
         <span key={key} className="inline-flex items-center gap-1.5"><i aria-hidden className={`size-2 rounded-sm ${color}`} />
           {totals.units ? `${Math.round(totals.percentages[key])}%` : '—'} {label}
         </span>)}
@@ -56,7 +58,7 @@ export function SelectionDetails({ lessons, open, onClose }: { lessons: Lesson[]
         <tbody>{sortSelection(lessons, sort.key, sort.direction).map(lesson => <tr key={lesson.id} className="border-t">
           <td className="min-w-48 py-2 pr-3">{lessonTitle(lesson)}</td>
           <td className="whitespace-nowrap px-2 text-right">{formatDuration(lesson.duration_seconds)}</td>
-          <td className="whitespace-nowrap px-2 text-right">{lesson.unit_count == null ? '—' : `${lesson.study_learned ?? 0}/${lesson.unit_count}`}</td>
+          <td className="whitespace-nowrap px-2 text-right">{lesson.unit_count == null ? '—' : `${lesson.study_learned ?? 0}/${studyTotal(lesson)}`}</td>
           <td className="px-2 text-right">{lesson.recall_questions ?? '—'}</td>
           <td className="whitespace-nowrap pl-2 text-right">{formatCost(lesson.cost_usd)}</td>
         </tr>)}</tbody>

@@ -56,7 +56,7 @@ def test_removed_unit_is_ignored_without_deleting_its_progress(api_client, ready
                 u.id = "99.9"
     save_outline(outline, path)
     summary = service.summaries({lid: path})[lid]
-    assert summary == {"study_learned": 0, "study_learning": 0, "study_last_at": None}
+    assert summary == {"study_learned": 0, "study_learning": 0, "study_ignored": 0, "study_last_at": None}
     assert service.list_units(lid)[0]["status"] == "appreso"
     assert api_client.get("/api/v1/lessons").json()[0]["study_learned"] == 0
 
@@ -94,3 +94,31 @@ def test_lesson_deletion_removes_progress(api_client, ready, rt_db):
     assert api_client.delete(f"/api/v1/lessons/{lid}").status_code == 204
     with read_scope(rt_db) as session:
         assert session.scalars(select(StudyUnit)).all() == []
+
+
+def test_ignored_status_summary_and_recall_filters(api_client, ready):
+    from rt.core.models import RecallQuestionStatus
+    from rt.pipeline.recall import load_recall_bank, save_recall_bank
+    from rt.services import recall_service, recall_units
+    path, lid, units = ready
+    uid = units[0]['id']
+    recall_service.generate_pool(path, force_mock=True)
+    response = api_client.put(f'/api/v1/lessons/{lid}/study/units/{uid}', json={'status': 'ignorata'})
+    assert response.status_code == 200 and response.json()['status'] == 'ignorata'
+    assert api_client.get('/api/v1/lessons').json()[0]['study_ignored'] == 1
+    assert not next(r for r in recall_units.unit_rows(path) if r['unit_id'] == uid)['selected']
+    recall_units.set_selection(path, [u['id'] for u in units])
+    assert next(r for r in recall_units.unit_rows(path) if r['unit_id'] == uid)['selected']
+    original = load_recall_bank(path)
+    expected = sum(q.status == RecallQuestionStatus.PENDING and uid not in q.unit_ids for q in original.questions)
+    assert recall_service.pending_count(path, 'mista') == expected
+    for kind in ['quiz', 'mirata', 'vasta', 'caso', 'esercizio', 'mista']:
+        save_recall_bank(original, path)
+        while (question := recall_service.pick_pending_question(path, kind)) is not None:
+            assert uid not in question.unit_ids
+    save_recall_bank(original, path)
+    assert recall_service.pending_count(path, 'mista', unit_id=uid) > 0
+    assert uid in recall_service.pick_pending_question(path, 'mista', unit_id=uid).unit_ids
+    service.set_status(lid, path, uid, 'da-imparare')
+    save_recall_bank(original, path)
+    assert recall_service.pending_count(path, 'mista') == len(original.questions)

@@ -4233,6 +4233,12 @@ export interface components {
              */
             state?: string | null;
             /**
+             * Study Ignored
+             * @description Unità ignorate nella scaletta attuale
+             * @default 0
+             */
+            study_ignored: number;
+            /**
              * Study Last At
              * @description Ultima lettura o cambio di stato nella scaletta attuale
              */
@@ -4469,6 +4475,12 @@ export interface components {
              * @description Stato effettivo del workflow (come 'rt status')
              */
             state?: string | null;
+            /**
+             * Study Ignored
+             * @description Unità ignorate nella scaletta attuale
+             * @default 0
+             */
+            study_ignored: number;
             /**
              * Study Last At
              * @description Ultima lettura o cambio di stato nella scaletta attuale
@@ -5529,7 +5541,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "da-imparare" | "in-apprendimento" | "appreso";
+            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
             /** Status At */
             status_at?: string | null;
             /** Unit Id */
@@ -5541,7 +5553,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "da-imparare" | "in-apprendimento" | "appreso";
+            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
         };
         /** StudyUnit */
         StudyUnit: {
@@ -5581,7 +5593,7 @@ export interface components {
              * @default da-imparare
              * @enum {string}
              */
-            status: "da-imparare" | "in-apprendimento" | "appreso";
+            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
             /** Status At */
             status_at?: string | null;
             /** Title */

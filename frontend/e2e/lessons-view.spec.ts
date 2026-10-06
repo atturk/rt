@@ -33,8 +33,14 @@ test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhon
   try {
     await page.reload()
     const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
-    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento, 0 ignorate')
     await expect(row.getByTestId('lesson-subtitle')).toContainText('2 unità · 1 apprese')
+    const second = study.units[1]
+    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${second.id}`, { headers: authHeaders(), data: { status: 'ignorata' } })
+    await page.reload()
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 1, 0 in apprendimento, 1 ignorate')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveText('1/1')
+    await expect(row.getByTestId('lesson-subtitle')).not.toContainText('ignorate')
     await page.getByRole('button', { name: 'Per docente' }).click()
     await page.getByRole('button', { name: 'Ordina', exact: true }).click()
     await page.getByRole('menuitemradio', { name: 'Più avanti nello studio' }).click()
@@ -48,7 +54,7 @@ test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhon
     await sort.click()
     await expect(page.getByRole('button', { name: /Ordina: Indietro/ })).toBeVisible()
   } finally {
-    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${first.id}`, { headers: authHeaders(), data: { status: first.status } })
+    for (const unit of study.units) await page.request.put(`/api/v1/lessons/${l.id}/study/units/${unit.id}`, { headers: authHeaders(), data: { status: unit.status } })
   }
 })
 

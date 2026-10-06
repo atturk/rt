@@ -1,24 +1,26 @@
-import { CircleCheck, CircleDashed, Contrast } from 'lucide-react'
+import { CircleCheck, CircleDashed, CircleX, Contrast } from 'lucide-react'
 import type { StudyStatus } from '@/api/studyProgress'
 
 export const STUDY_ICONS = {
   'da-imparare': { icon: CircleDashed, className: 'text-muted-foreground' },
   'in-apprendimento': { icon: Contrast, className: 'text-warning' },
   appreso: { icon: CircleCheck, className: 'text-success [&_circle]:fill-success [&_path]:stroke-background' },
+  ignorata: { icon: CircleX, className: 'text-danger' },
 } as const
 
 export const STATUS_LABELS: Record<StudyStatus, string> = {
-  'da-imparare': 'da imparare',
-  'in-apprendimento': 'in apprendimento',
-  appreso: 'appreso',
+  'da-imparare': 'Da imparare',
+  'in-apprendimento': 'In apprendimento',
+  appreso: 'Appresa',
+  ignorata: 'Ignorata',
 }
 
 export function nextStudyStatus(status: StudyStatus = 'da-imparare'): StudyStatus {
-  return status === 'da-imparare' ? 'in-apprendimento' : status === 'in-apprendimento' ? 'appreso' : 'da-imparare'
+  return status === 'da-imparare' ? 'in-apprendimento' : status === 'in-apprendimento' ? 'appreso' : status === 'appreso' ? 'ignorata' : 'da-imparare'
 }
 
 export function initialStudyUnit(units: { status?: StudyStatus }[]): number {
-  const index = units.findIndex(unit => unit.status !== 'appreso')
+  const index = units.findIndex(unit => unit.status !== 'appreso' && unit.status !== 'ignorata')
   return index < 0 ? 0 : index
 }
 
