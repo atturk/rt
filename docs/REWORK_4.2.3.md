@@ -252,3 +252,14 @@ colore Irlen.
 Come per la 4.2.2: Claude rivede il diff, prova le parti toccate, fa le correzioni brevi con commit
 "Revisione: …", unisce in `claude/rt-4.2.3-beta`, lancia **tutti** gli e2e (entrambi i gruppi) prima
 di pubblicare e pubblica la beta con `release.yml` (VERSION `4.2.3b1`).
+
+### Revisione (6 ottobre 2026)
+
+PR #62 di Codex unita in `claude/rt-4.2.3-beta`. Correzioni di Claude:
+
+- l'elenco delle lezioni apriva la scaletta di ogni lezione a ogni richiesta per contare le unità
+  studiate: ora solo quelle con righe in `study_units`;
+- nel tema scuro la lettera di fuoco della lettura veloce (colore `--link`) era quasi bianca: ora usa
+  `--rsvp-focus` (success nel tema scuro, verde scuro con Irlen);
+- `e2e/new-lesson.spec.ts` falliva quando avanzamento e "Scaletta da approvare" erano visibili
+  insieme.
