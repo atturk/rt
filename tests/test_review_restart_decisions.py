@@ -2,7 +2,7 @@
 riprendono i numeri da sci_000001 e le decisioni vecchie si attaccavano a issue diverse: il job
 saltava dritto al documento e il build applicava decisioni sbagliate."""
 from rt.core.idempotency import check_phase_status
-from rt.pipeline.ledger import get_pending_issues, load_ledger, record_decision
+from rt.pipeline.ledger import get_pending_issues, load_ledger, load_resolved_draft, record_decision
 from rt.pipeline.review import _drop_moved_decisions, load_science_issues, run_review
 from rt.pipeline.rewrite import load_draft, save_draft
 from tests.test_force_review_ledger_purge import _setup_test_lesson
@@ -34,6 +34,9 @@ def test_review_restarted_from_scratch_drops_old_decisions(tmp_path):
     assert pending and len(pending) == len(load_science_issues(lesson_dir))
     ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
     assert ids == {"custom_000001"}
+    # nessuna "modificata" vecchia sostituisce il testo di un'unità (caso reale: 2.2 ridotta a una frase)
+    resolved = load_resolved_draft(lesson_dir)
+    assert [u.content for u in resolved.units] == [u.content for u in load_draft(lesson_dir).units]
 
 
 def _identity(issue):
