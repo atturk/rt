@@ -1,4 +1,4 @@
-import { BookOpen, FileText, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -16,7 +16,7 @@ import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
-import { IconButton, IconLink } from '@/components/ui/icon-button'
+import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -67,6 +67,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
+  const lessonUrl = lesson ? `/lezioni/${lesson.id}${unit ? `#unit-${encodeURIComponent(unit.id)}` : ''}` : back.to
+  const studyBack = { to: lessonUrl, label: back.label }
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
   const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
   const status = useStudyStatus(lesson?.id ?? 0)
@@ -213,7 +215,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   if (lessons.length === 0) {
     return (
-      <StudyShell title="Studio" back={back}>
+      <StudyShell title="Studio" back={studyBack}>
         <p className="text-body text-muted-foreground" data-testid="study-empty">Nessuna lezione pronta per lo Studio: serve la rielaborazione.</p>
       </StudyShell>
     )
@@ -221,7 +223,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const title = lesson ? lessonTitle(lesson) : 'Studio'
   if (finished) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         <div className="flex flex-col items-start gap-4" data-testid="study-done">
           <p className="text-body">{onlyUnits ? 'Hai finito le domande su questa parte.' : lessons.length > 1 ? 'Hai finito lo Studio di queste lezioni.' : 'Hai finito lo Studio della lezione.'}</p>
           <Link to={back.to} className="font-semibold text-link underline-offset-2 hover:underline">{back.label === 'Esci' ? 'Torna indietro' : back.label}</Link>
@@ -231,7 +233,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
   if (study.isError) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         <p role="alert" className="flex items-center gap-3 text-body"><span className="text-danger">{errorMessage(study.error)}</span>
           <Button variant="outline" size="sm" onClick={() => void study.refetch()}>Riprova</Button></p>
       </StudyShell>
@@ -239,7 +241,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
   if (!units || !loaded) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         <ReadingSkeleton />
       </StudyShell>
     )
@@ -247,7 +249,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const none = onlyUnits && units.every((u) => u.questions === 0)
   if (units.length === 0 || !unit || !live || none) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         {onlyUnits ? <NoQuestionsYet lessonId={lesson!.id} units={units.length ? units.map((u) => u.id) : onlyUnits} onReady={() => setUnits(null)} /> : (
           <div className="flex flex-col items-start gap-4">
             <p className="text-body text-muted-foreground">Questa lezione non ha unità da studiare.</p>
@@ -260,9 +262,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
-  const lessonUrl = `/lezioni/${lesson!.id}#unit-${encodeURIComponent(unit.id)}`
   const titleButton = (
-    <span className="inline-flex max-w-full items-center gap-1">
     <button
       ref={titleButtonRef}
       type="button"
@@ -277,8 +277,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
       <span className="sr-only">Dettagli della lezione</span>
     </button>
-    <IconLink label="Apri la lezione" icon={FileText} to={lessonUrl} />
-    </span>
   )
 
   const headerActions = (
@@ -339,7 +337,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       {reading && (
         <StudyShell
           title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
-          back={speedReading ? undefined : back}
+          back={speedReading ? undefined : studyBack}
           actions={speedReading ? zenActions : headerActions}
           zen={speedReading}
           reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}

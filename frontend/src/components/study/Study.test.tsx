@@ -66,6 +66,14 @@ function renderStudy() {
 }
 
 describe('StudyFlow unit navigation', () => {
+  it('Esci segue l’unità aperta e il link accanto al titolo non c’è', () => {
+    renderStudy()
+    expect(screen.getByRole('link', { name: 'Esci' })).toHaveAttribute('href', '/lezioni/1#unit-1.1')
+    fireEvent.click(screen.getByRole('button', { name: 'Unità 2: Acidosi metabolica, Da imparare' }))
+    expect(screen.getByRole('link', { name: 'Esci' })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
+    expect(screen.queryByRole('link', { name: /^Apri la lezione$/ })).not.toBeInTheDocument()
+  })
+
   it('S e il pulsante cambiano stato; S non agisce nei campi o con i modificatori', () => {
     renderStudy()
     fireEvent.click(screen.getByRole('button', { name: "Stato: da imparare" }))

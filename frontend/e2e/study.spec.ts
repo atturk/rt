@@ -427,7 +427,7 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
   }
 })
 
-test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
+test('Esci porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
   await loginViaLink(page)
   const l = await lesson(page, 'STUDIO')
   const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
@@ -436,7 +436,8 @@ test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', as
     await page.setViewportSize({ width, height: 844 })
     await page.goto(`/studio/lezione/${l.id}`)
     await page.getByTestId('study-dots').locator('button').nth(1).click()
-    const link = page.getByRole('link', { name: 'Apri la lezione', exact: true })
+    await expect(page.getByRole('link', { name: 'Apri la lezione', exact: true })).toHaveCount(0)
+    const link = page.getByRole('link', { name: 'Esci', exact: true })
     await expect(link).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
     await page.getByTestId('study-title-button').click()
     await expect(page.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
