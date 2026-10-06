@@ -2,6 +2,7 @@ import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Hig
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
+import { studyNavigation } from './studyNavigation'
 import { detectSwipe, isElementScrollableX } from './swipe'
 
 import { errorMessage } from '@/api/client'
@@ -45,6 +46,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   onlyUnits?: string[] | null
   back: { to: string; label: string }
 }) {
+  const enterLast = useRef(false)
+  const [edge, setEdge] = useState<{ side: 'left' | 'right'; sequence: number } | null>(null)
+  const edgeSequence = useRef(0)
+  useEffect(() => {
+    if (!edge) return
+    const timer = setTimeout(() => setEdge(null), 450)
+    return () => clearTimeout(timer)
+  }, [edge])
   const [lessonIndex, setLessonIndex] = useState(0)
   const [unitIndex, setUnitIndex] = useState(0)
   const [phase, setPhase] = useState<'lettura' | 'domande'>(onlyUnits ? 'domande' : 'lettura')
@@ -63,7 +72,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     if (loaded && units === null) {
       // oxlint-disable-next-line react/set-state-in-effect
       setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
-      setUnitIndex(onlyUnits ? 0 : initialStudyUnit(loaded.units))
+      setUnitIndex(enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits ? 0 : initialStudyUnit(loaded.units))
+      enterLast.current = false
     }
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
@@ -104,6 +114,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     } else setFinished(true)
     window.scrollTo?.({ top: 0 })
   }, [units, unitIndex, lessonIndex, lessons.length, onlyUnits])
+
+  const navigateReading = (direction: -1 | 1) => {
+    if (!units || !unit) return
+    const target = studyNavigation(direction, unitIndex, units.length, lessonIndex, lessons.length)
+    if (target === 'left-edge' || target === 'right-edge') {
+      setEdge({ side: target === 'left-edge' ? 'left' : 'right', sequence: ++edgeSequence.current })
+    } else if (target === 'previous-unit' || target === 'next-unit') {
+      goToUnit(unitIndex + direction)
+    } else if (target === 'next-lesson') advance()
+    else {
+      enterLast.current = true
+      setLessonIndex(lessonIndex - 1)
+      setUnits(null)
+      setUnitIndex(0)
+      window.scrollTo?.({ top: 0 })
+    }
+  }
 
   const [detailsOpen, setDetailsOpen] = useState(false)
   const titleButtonRef = useRef<HTMLButtonElement>(null)
@@ -148,20 +175,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       if (isStatusKey) {
         e.preventDefault()
         changeStatus()
-      } else if (e.key === 'ArrowLeft') {
-        if (unitIndex > 0) {
-          e.preventDefault()
-          goToUnit(unitIndex - 1)
-        }
-      } else if (e.key === 'ArrowRight') {
+      } else {
         e.preventDefault()
-        if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
-        else advance()
+        navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -197,16 +218,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       endTime: Date.now(),
     })
 
-    if (swipe === 'next') {
-      // Ultima unità: si passa alla lezione dopo (o alla schermata finale), come faceva
-      // il pulsante "Unità successiva" che la b4 ha tolto.
-      if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
-      else advance()
-    } else if (swipe === 'prev') {
-      if (unitIndex > 0) {
-        goToUnit(unitIndex - 1)
-      }
-    }
+    if (swipe === 'next' || swipe === 'prev') navigateReading(swipe === 'next' ? 1 : -1)
   }
 
   const handlePointerCancel = () => {
@@ -340,6 +352,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           back={speedReading ? undefined : studyBack}
           actions={speedReading ? zenActions : headerActions}
           zen={speedReading}
+          edge={edge}
           reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
@@ -412,7 +425,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
               title: unit.title,
               pending: (live.pending ?? {}) as Record<string, number>,
               onBack: () => setPhase('lettura'),
-              onDone: advance,
+              onDone: onlyUnits || unitIndex + 1 < units.length || lessonIndex + 1 < lessons.length ? advance : undefined,
               doneLabel: unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine',
             }}
           />
@@ -532,6 +545,7 @@ function StudyShell({
   popup,
   footer,
   readingProps,
+  edge,
   children,
   zen = false,
   reader,
@@ -543,6 +557,7 @@ function StudyShell({
   actions?: ReactNode
   popup?: ReactNode
   footer?: ReactNode
+  edge?: { side: 'left' | 'right'; sequence: number } | null
   readingProps?: ComponentProps<'div'>
   children: ReactNode
 }) {
@@ -552,10 +567,12 @@ function StudyShell({
       {popup}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={zen || undefined} inert={zen || undefined} {...readingProps}>
-          <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
+          <div key={edge?.sequence ?? 0} className={cn("mx-auto w-full max-w-(--reading-width) pb-8 pt-3", edge && `rt-study-bump-${edge.side}`)} data-testid="study-reading-column">
             {children}
           </div>
         </div>
+        {edge && <div key={edge.sequence} data-testid={`study-edge-${edge.side}`} className={`rt-study-edge rt-study-edge-${edge.side}`} aria-hidden /> }
+        <div className="sr-only" aria-live="polite"><span key={edge?.sequence}>{edge ? edge.side === 'left' ? 'Prima unità' : 'Ultima unità' : ''}</span></div>
         {reader}
       </div>
       {footer && (

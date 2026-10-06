@@ -716,3 +716,30 @@
 .rt-rsvp-word[data-hl] > .pre > span { border-radius: 3px 0 0 3px; }
 .rt-rsvp-word[data-hl] > .post > span { border-radius: 0 3px 3px 0; }
 .rt-rsvp-hl { border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+
+/* Limiti delle unità dello Studio. */
+.rt-study-edge {
+  position: absolute;
+  inset-block: 0;
+  width: 28px;
+  pointer-events: none;
+  animation: rt-study-edge 450ms ease-out both;
+}
+.rt-study-edge-left {
+  left: 0;
+  background: linear-gradient(to right, color-mix(in oklch, var(--success) 45%, transparent), transparent);
+}
+.rt-study-edge-right {
+  right: 0;
+  background: linear-gradient(to left, color-mix(in oklch, var(--success) 45%, transparent), transparent);
+}
+.rt-study-bump-left { animation: rt-study-bump-left 300ms ease-out; }
+.rt-study-bump-right { animation: rt-study-bump-right 300ms ease-out; }
+@keyframes rt-study-edge { 0%, 100% { opacity: 0; } 30% { opacity: 1; } }
+@keyframes rt-study-bump-left { 0%, 100% { transform: translateX(0); } 35% { transform: translateX(-12px); } }
+@keyframes rt-study-bump-right { 0%, 100% { transform: translateX(0); } 35% { transform: translateX(12px); } }
+@media (prefers-reduced-motion: reduce) {
+  .rt-study-bump-left, .rt-study-bump-right { animation: none; }
+  .rt-study-edge { animation: rt-study-edge-reduced 300ms ease-out both; }
+}
+@keyframes rt-study-edge-reduced { 0%, 100% { opacity: 0; } 30% { opacity: .6; } }

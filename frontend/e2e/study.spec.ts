@@ -585,3 +585,50 @@ test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande de
   await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
   await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
 })
+
+
+test('ai limiti le frecce lasciano l’unità aperta e mostrano la fascia', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByTestId('study-edge-left')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(study.units[0].title)
+  await page.getByTestId('study-dots').locator('button').last().click()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('study-edge-right')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(study.units.at(-1)!.title)
+  await expect(page.getByTestId('study-done')).toHaveCount(0)
+  await expect(page.locator('[aria-live="polite"]')).toContainText('Ultima unità')
+})
+
+test('swipe ai limiti a 390 px: fascia e unità invariata', async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 844 } })
+  const page = await context.newPage()
+  try {
+    await loginViaLink(page)
+    const l = await lesson(page, 'STUDIO')
+    await page.goto(`/studio/lezione/${l.id}`)
+    const cdp = await context.newCDPSession(page)
+    for (const side of ['left', 'right']) {
+      const buttons = page.getByTestId('study-dots').locator('button')
+      await (side === 'left' ? buttons.first() : buttons.last()).click()
+      await expect(page.getByRole('heading', { level: 2 })).toContainText(side === 'left' ? '1.1' : '1.2')
+      const title = await page.getByRole('heading', { level: 2 }).textContent()
+      const start = side === 'left' ? 100 : 300
+      const end = side === 'left' ? 300 : 100
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: start, y: 400 }] })
+      await page.waitForTimeout(50) // Distanzia i campioni del gesto, come uno swipe reale.
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: (start + end) / 2, y: 402 }] })
+      await page.waitForTimeout(50)
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: end, y: 405 }] })
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect(page.getByTestId(`study-edge-${side}`)).toBeVisible()
+      await expect(page.getByRole('heading', { level: 2 })).toHaveText(title!)
+      await expect(page.getByTestId('study-done')).toHaveCount(0)
+      await expect(page.getByTestId(`study-edge-${side}`)).toHaveCount(0)
+    }
+  } finally { await context.close() }
+})

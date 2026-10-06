@@ -66,6 +66,20 @@ function renderStudy() {
 }
 
 describe('StudyFlow unit navigation', () => {
+  it('le frecce ai limiti mostrano la fascia e annunciano il limite senza finire lo Studio', () => {
+    localStorage.clear()
+    renderStudy()
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByTestId('study-edge-left')).toBeInTheDocument()
+    expect(screen.getByText('Prima unità')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Unità 3: Prelievo arterioso, Da imparare' }))
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByTestId('study-edge-right')).toBeInTheDocument()
+    expect(screen.getByText('Ultima unità')).toBeInTheDocument()
+    expect(screen.queryByTestId('study-done')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('2.1 Prelievo arterioso')
+  })
+
   it('Esci segue l’unità aperta e il link accanto al titolo non c’è', () => {
     renderStudy()
     expect(screen.getByRole('link', { name: 'Esci' })).toHaveAttribute('href', '/lezioni/1#unit-1.1')
