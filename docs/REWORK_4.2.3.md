@@ -263,3 +263,314 @@ PR #62 di Codex unita in `claude/rt-4.2.3-beta`. Correzioni di Claude:
   `--rsvp-focus` (success nel tema scuro, verde scuro con Irlen);
 - `e2e/new-lesson.spec.ts` falliva quando avanzamento e "Scaletta da approvare" erano visibili
   insieme.
+
+## 4.2.3b2 — Ignorata, lettura veloce con formule ed evidenziazioni, suoni, suggerimenti
+
+Richieste di Attilio del 6 ottobre 2026 (thread "4.2.3b1"), discusse una per una e approvate sul
+wireframe. Lavora **solo Codex (GPT)**, un giro solo.
+
+Wireframe di riferimento (interattivo): `docs/wireframes-4.2.3/RT-4.2.3b2.html`, da aprire nel browser.
+Schede: Lettura veloce (provare "Parola dopo", la barra laterale delle impostazioni e il pulsante
+Ripassa), Studio (provare il pulsante dello stato e i suggerimenti passando sulle icone), Ripasso
+(provare "Prossima" e "Fine"), Lezioni. Dove piano e wireframe non coincidono, vale il piano. Il
+wireframe della b1 resta valido per tutto quello che qui non cambia.
+
+### Regole
+
+Come per la b1 (sezione "Regole" sopra), con queste differenze:
+
+- **Branch**: `rt423b2/codex`, già creato da `claude/rt-4.2.3-beta`. Un commit per task
+  (messaggio `<id>: …`), alla fine **una sola PR verso `claude/rt-4.2.3-beta`**. Mai merge su `main`
+  o sul branch beta, niente tag, `VERSION` non si tocca.
+- Prima di aprire la PR si lanciano **tutti** i test, non solo quelli delle parti toccate: pytest
+  completo, `npm run lint`, `npm run typecheck`, `npx vitest run`, e gli e2e di **entrambi** i gruppi
+  (`RT_E2E_GROUP=recall-images` e `RT_E2E_GROUP=other`). Nella b1 la release è caduta due volte su e2e
+  che nessuno aveva lanciato.
+
+### Decisioni (Attilio, 6 ottobre 2026)
+
+- Nuovo stato dell'unità **Ignorata**: per le parti senza informazioni utili. È una scelta solo
+  dell'utente, come le evidenziazioni, distinta dalla rilevanza calcolata dal classificatore.
+- I suggerimenti del pulsante dello stato dicono solo lo stato ("Da imparare", "In apprendimento",
+  "Appresa", "Ignorata").
+- In Lezioni il sottotitolo mostra solo le apprese, **non** le ignorate. Le ignorate si vedono
+  dall'arco rosso dell'anello.
+- Lettura veloce: le formule si leggono (oggi si saltano), le evidenziazioni si vedono con una fascia
+  uniforme, le impostazioni diventano una barra laterale senza "Fatto", i pulsanti sono quattro e
+  uguali, il clic si sceglie fra tre suoni con **Legno** predefinito.
+- Dopo l'ultima domanda del ripasso il pulsante è **"Fine"**.
+- Suggerimenti solo al passaggio del mouse, con il comportamento "delay group".
+- La selezione del testo nel tema scuro deve leggersi.
+
+### Task
+
+| Id | Cosa |
+|---|---|
+| G1 | Stato "Ignorata" (database, API, Studio, Lezioni, ripasso) |
+| G2 | Studio: icona "Apri la lezione" |
+| G3 | Ripasso: "Prossima" diventa "Fine" |
+| G4 | Suggerimenti con delay group |
+| G5 | Tema scuro: selezione del testo e pulsanti premuti |
+| L1 | Lettura veloce: impostazioni in una barra laterale |
+| L2 | Lettura veloce: formule |
+| L3 | Lettura veloce: evidenziazioni |
+| L4 | Lettura veloce: tre suoni del clic, Legno predefinito |
+| L5 | Lettura veloce: quattro pulsanti, Ripassa |
+
+Ordine: G1 → G2 → G3 → G4 → G5 → L1 → L2 → L3 → L4 → L5. L2, L3 e L4 aggiungono voci alla barra
+laterale di L1.
+
+### G1 — Stato "Ignorata"
+
+File: `rt/services/study_progress_service.py`, `rt/api/schemas.py`, `rt/api/routers/study_progress.py`,
+`rt/services/recall_service.py` (e dove si sceglie la selezione predefinita delle unità per generare,
+`rt/services/recall_units.py`), `frontend/src/api/studyProgress.ts`,
+`frontend/src/components/study/studyProgress.ts`, `frontend/src/components/study/Study.tsx`,
+`frontend/src/components/lessons/LessonsView.tsx`, `frontend/src/lib/lessonsPage.ts`. Wireframe:
+schede **Studio** e **Lezioni**.
+
+- **Valori**: `ignorata` si aggiunge a `STATUSES` e ai `Literal` dello schema. Nessuna migrazione: la
+  colonna `status` è già `String(16)`. L'export zip e l'import la accettano come gli altri stati.
+- **Ciclo** (pulsante e tasto `S`): da imparare → in apprendimento → appresa → **ignorata** → da
+  imparare.
+- **Icona**: `CircleX` (lucide) in `text-danger`. **Barretta**: `bg-danger`.
+- **Etichette**: `STATUS_LABELS` diventa al femminile e con la maiuscola, cioè "Da imparare", "In
+  apprendimento", "Appresa", "Ignorata"; il valore salvato resta `appreso`. Il **suggerimento** del
+  pulsante è solo l'etichetta (oggi "Stato dell'unità: …"). L'`aria-label` resta descrittivo, "Stato:
+  appresa". Le stesse etichette nell'indice delle unità.
+- **Apertura dello Studio**: `initialStudyUnit` salta le apprese **e** le ignorate; se sono tutte
+  apprese o ignorate si parte dalla prima. Un'unità ignorata resta raggiungibile dalla barretta,
+  dall'indice e dalle frecce.
+- **Ripasso e generazione**: le domande delle unità ignorate non escono nella sessione sulla lezione
+  intera (Mista e per tipo, web e Telegram: `pick_pending_question` senza `unit_id`). Restano nel pool
+  e tornano se l'unità cambia stato. Con `unit_id` esplicito (ripasso dell'unità) l'unità si usa
+  anche se ignorata. Le unità ignorate sono escluse anche dalla selezione predefinita per generare
+  domande sulla lezione intera; se l'utente le sceglie a mano si usano.
+- **Lezioni**:
+  - `LessonSummary` guadagna `study_ignored`, calcolato nella stessa query di U1.
+  - **Anello**: tutte le unità sul giro, arco success per le apprese, warning per quelle in
+    apprendimento, **danger per le ignorate** in fondo al giro. Il numero è apprese su unità da
+    studiare (`unit_count - study_ignored`): 18 unità, 2 ignorate, 7 apprese → "7/16".
+    `aria-label` "7 unità apprese su 16, 3 in apprendimento, 2 ignorate".
+  - L'anello compare anche se ci sono solo ignorate.
+  - **Sottotitolo**: invariato, solo " · N apprese". Niente "ignorate".
+  - Gli ordinamenti "Più avanti / Più indietro nello studio" e i Dettagli della selezione (D1) usano
+    lo stesso conto (apprese / unità non ignorate). In D1 la barra dello studio aggiunge il segmento
+    danger con la legenda "ignorate".
+
+Test: pytest (stato `ignorata` accettato, `study_ignored` nel riassunto, domande delle ignorate escluse
+dalla sessione sulla lezione e incluse con `unit_id`, export/import); vitest (ciclo a quattro,
+apertura che salta le ignorate, ordinamenti e conti con le ignorate); e2e in `study.spec.ts` (il ciclo
+arriva a "Ignorata", la barretta è rossa, la riapertura la salta) e in `lessons-view.spec.ts`
+(l'anello mostra "N/M" senza le ignorate).
+
+### G2 — Studio: "Apri la lezione"
+
+File: `frontend/src/components/study/Study.tsx`. Wireframe: scheda **Studio** (icona tratteggiata).
+
+- `IconLink` "Apri la lezione" (`FileText` o simile) nell'intestazione dello Studio, subito dopo il
+  pulsante dei dettagli; sul telefono nello stesso gruppo di icone. Non c'è in modalità zen.
+- Porta a `/lezioni/{id}#unit-{unitId}` dell'unità aperta: la pagina della lezione la porta in vista e
+  la segna come fa già per "Vai all'unità" (`DocumentView.tsx`, `LessonEditor.tsx`).
+- Il link "Apri la lezione ›" nel popup dei dettagli resta e usa lo stesso indirizzo.
+
+Test: e2e, il clic porta alla pagina della lezione con l'unità segnata.
+
+### G3 — Ripasso: "Prossima" diventa "Fine"
+
+File: `rt/api/schemas.py` (`RecallQuestion`), `rt/api/routers/recall.py`, `rt/services/recall_service.py`,
+`frontend/src/components/recall/LightweightSession.tsx`. Wireframe: scheda **Ripasso**.
+
+- `POST /lessons/{id}/recall/next` risponde anche con `remaining`: quante domande pendenti restano
+  **dopo** quella restituita, con gli stessi filtri (tipo o Mista, `unit_id`, unità ignorate escluse
+  come in G1).
+- In `LightweightSession`, dopo aver risposto a una domanda con `remaining == 0`, il pulsante
+  "Prossima" si chiama **"Fine"** e mostra subito la schermata finale di oggi (per l'unità: "Hai finito
+  le domande di questa unità" con "Riproponi le poste", "Torna allo studio", "Unità successiva"; per
+  la lezione intera il suo messaggio), senza chiamare `next`.
+- Se si cambia tipo con i chip, vale il `remaining` della nuova domanda.
+
+Test: pytest di `remaining`; vitest di `LightweightSession` (all'ultima domanda compare "Fine" e il clic
+mostra la schermata finale senza chiamare `next`).
+
+### G4 — Suggerimenti con delay group
+
+File: `frontend/src/components/ui/tooltip.tsx` (e i suoi test). Wireframe: scheda **Studio**, dove i
+suggerimenti funzionano già così.
+
+Oggi il suggerimento si apre anche a ogni focus (`onFocus: show`) e si chiude solo al blur. Così resta
+aperto dopo un clic (Chrome dà il focus al pulsante), quando si torna alla finestra e quando un popup
+restituisce il focus al pulsante. Nuovo comportamento, unico per tutta l'app:
+
+- si apre al passaggio del mouse dopo **600 ms**;
+- se un altro suggerimento è aperto, o se ne è chiuso uno da meno di **300 ms**, si apre **subito**
+  (stato condiviso a livello di modulo, niente librerie);
+- un clic (`pointerdown`) sul pulsante lo chiude e non si riapre finché il puntatore non esce e rientra;
+- col focus si apre solo se il focus è visibile (`:focus-visible`, cioè navigando con Tab), mai al
+  clic né quando il focus torna da solo; si chiude al blur e con `Esc` (già così);
+- sui dispositivi senza hover (`(hover: none)`, telefono) non si apre mai.
+
+L'API del componente (`content`, `side`, `describe`, `disabled`, render-prop) non cambia.
+
+Test: vitest con i timer finti (600 ms, apertura immediata entro 300 ms, chiusura al clic, niente
+apertura al focus non visibile).
+
+### G5 — Tema scuro: selezione del testo e pulsanti premuti
+
+File: `frontend/src/index.css`, `frontend/src/components/ui/icon-button.tsx`,
+`frontend/src/components/lessons/LessonsView.tsx`. Wireframe: scheda **Studio**, riquadro sotto.
+
+- **Selezione**: oggi `::selection` ha sfondo `--accent` (verde chiarissimo) e testo `--acc` (verde
+  scuro) anche nel tema scuro. Safari rende trasparente uno sfondo di selezione opaco, quindi nel tema
+  scuro il verde chiaro diventa quasi nero e il testo verde scuro sparisce. Nel tema scuro si usa uno
+  sfondo già traslucido, `color-mix(in oklch, var(--success) 35%, transparent)`, con il testo
+  `var(--fg)`. Il tema chiaro non cambia. La stessa coppia di colori vale per `::highlight(rt-generate)`
+  e per `--atomic-editor-selection-bg` nel tema scuro.
+- **Pulsanti a icona premuti** (`active` nella variante ghost): oggi `bg-muted`, nel tema scuro quasi
+  uguale allo sfondo e identico all'hover. Diventano `bg-accent text-accent-foreground` nel tema
+  chiaro e `bg-success-soft text-success` nel tema scuro, diversi dall'hover. Si vede per esempio su
+  "Seleziona" in Lezioni e sull'evidenziatore dello Studio.
+- In selezione, la riga spuntata di Lezioni ha uno sfondo tenue (`bg-accent/40` o il token più vicino).
+
+Test: e2e leggero, nel tema scuro il colore calcolato di `::selection` non è più `--accent`; il
+pulsante "Seleziona" premuto ha uno sfondo diverso da quello della pagina.
+
+### L1 — Impostazioni in una barra laterale
+
+File: `frontend/src/components/study/SpeedReader.tsx` (`SettingsPanel`), `frontend/src/index.css`.
+Wireframe: scheda **Lettura veloce**, icona delle impostazioni.
+
+- **Mac**: al posto del popover, una barra laterale a destra larga 340 px, dall'intestazione al fondo
+  della finestra, che entra scorrendo (circa 250 ms, niente animazione con `prefers-reduced-motion`).
+  Mentre è aperta la parola, i pulsanti e lo slider della velocità si centrano nello spazio rimasto a
+  sinistra, così le modifiche si vedono subito.
+- **Niente "Fatto"**. Si chiude con la X in alto a destra della barra, con `Esc` o di nuovo con
+  l'icona delle impostazioni, che resta visibile e premuta. Il clic fuori non la chiude: la parola
+  resta visibile e si può leggere con la barra aperta. Alla chiusura il salvataggio parte subito,
+  senza aspettare i 400 ms.
+- **Sezioni**, con il titolo piccolo maiuscolo come nel wireframe:
+  - **Lettura**: pausa dopo la frase, virgola come pausa piena, pausa sulle formule (L2), lettera di
+    fuoco, passo indietro;
+  - **Aspetto**: dimensione del testo, font per dislessia, modalità Irlen, evidenziazioni (L3);
+  - **Suono**: suono sì/no, tipo di clic (L4), tono, rumore di fondo.
+- **iPhone**: resta il foglio dal basso, senza "Fatto": si chiude toccando fuori o con `Esc`.
+
+Test: aggiornare gli e2e della lettura veloce (niente "Fatto"; la X e `Esc` chiudono; una modifica
+fatta e chiusa subito è salvata su RT).
+
+### L2 — Formule nella lettura veloce
+
+File: `frontend/src/components/study/rsvp.ts` (e `rsvp.test.ts`), `SpeedReader.tsx`,
+`frontend/src/lib/studyPrefs.ts`. Wireframe: scheda **Lettura veloce**, "Parola dopo".
+
+- Oggi `readUnitWords` salta `.katex` e nel Contesto mette "[formula]". Ora ogni formula diventa un
+  elemento del flusso: `Word` guadagna un campo opzionale `math: { html: string; tex: string; complex: boolean }`.
+  - `html` è l'HTML della formula già resa da KaTeX nel testo, da clonare.
+  - `tex` è il sorgente, da `annotation[encoding="application/x-tex"]`.
+- La formula si mostra al posto della parola, centrata, senza lettera di fuoco, con la stessa
+  dimensione del testo. Se non sta in larghezza si rimpicciolisce (`transform: scale` calcolato)
+  fino a entrare. Nel Contesto c'è la formula resa, non "[formula]".
+- **Semplice o complessa**, dal sorgente:
+  - **atomi**: ogni lettera, cifra o simbolo vale 1; ogni comando `\nome` vale 1, tranne quelli di
+    struttura e quelli di formattazione e spaziatura (`\left`, `\right`, `\,`, `\;`, `\quad`,
+    `\text`, `\mathrm`, `\mathbf`, `\operatorname`, `\displaystyle`), che valgono 0. Graffe, `^`,
+    `_` e spazi valgono 0;
+  - **strutture**: `\frac`, `\dfrac`, `\tfrac`, `\sum`, `\prod`, `\int`, `\oint`, `\sqrt`, `\lim`,
+    `\begin{…}` (una per ambiente);
+  - **semplice** = nessuna struttura e al massimo 6 atomi. Non conta se è scritta con `$` o `$$`.
+- **Durata**, preferenza nuova in `study.rsvp`: `formulaPause: 'adattiva' | 'standard' | 'personalizzata'`
+  (predefinito `adattiva`) e `formulaMs` (predefinito 2000, da 500 a 5000 a passi di 250).
+  - semplice, o modalità `standard`: come una parola;
+  - complessa in `adattiva`: `60000 / wpm × (1 + 0,25 × atomi + 1,5 × strutture)`;
+  - complessa in `personalizzata`: `formulaMs`;
+  - se la formula chiude la frase si aggiunge la pausa di fine frase, come per le parole.
+- **Suono**: una formula complessa (in `adattiva` o `personalizzata`) suona con il clic grave di fine
+  frase; una semplice con quello normale.
+- **Impostazioni** (sezione Lettura): "Pausa sulle formule" con tre segmenti Adattiva · Standard ·
+  Personalizzata; con Personalizzata compare lo slider "Formule complesse · 2,0 s".
+- Esempi a 300 parole/min (pausa parola 200 ms), da usare nei test:
+
+  | Sorgente | Atomi | Strutture | Tipo | Durata adattiva |
+  |---|---|---|---|---|
+  | `z` | 1 | 0 | semplice | 200 ms |
+  | `Ca^{2+}` | 4 | 0 | semplice | 200 ms |
+  | `x_{\max}` | 2 | 0 | semplice | 200 ms |
+  | `\sum_{i=1}^{6} x_i` | 6 | 1 | complessa | 800 ms |
+  | `z = \frac{x - x_{\min}}{x_{\max} - x_{\min}}` | 11 | 1 | complessa | 1050 ms |
+
+Test: vitest della classificazione e delle durate (la tabella), di `readUnitWords` con una formula in
+linea e una a blocco; e2e: una formula in un'unità del fixture compare nella lettura veloce.
+
+### L3 — Evidenziazioni nella lettura veloce
+
+File: `rsvp.ts`, `SpeedReader.tsx`, `frontend/src/index.css`, `frontend/src/lib/studyPrefs.ts`.
+Wireframe: scheda **Lettura veloce**, le parole "matematicamente tale obiettivo,".
+
+- `readUnitWords` segna `hl: true` sulle parole che stanno dentro un `.rt-hl`. Le parole vanno
+  rilette quando le evidenziazioni cambiano mentre la lettura veloce è aperta: oggi si calcolano solo
+  quando cambia `source`.
+- La parola evidenziata ha **una sola fascia** di sfondo, indipendente dal colore scelto nello Studio:
+  token `--rsvp-hl` / `--rsvp-hl-fg` accanto a `--rsvp-focus` in `index.css`.
+  - Tema chiaro: `--hl-1` (giallo) con il testo normale.
+  - Tema scuro: `#6b5a12` con testo bianco.
+  - Irlen: `color-mix(in oklch, var(--fg) 16%, transparent)` con il testo normale.
+  - La lettera di fuoco resta colorata dentro la fascia, con contrasto sufficiente in tutti e cinque
+    i casi (chiaro, scuro, pesca, menta, pergamena).
+- Nel Contesto le parole evidenziate hanno la stessa fascia.
+- Preferenze nuove in `study.rsvp`, sezione Aspetto:
+  - `highlights` (predefinito `true`): "Mostra le evidenziazioni".
+  - `slowHighlights` (predefinito `false`): "Rallenta sulle evidenziate", che allunga di 1,3 volte la
+    durata delle parole evidenziate.
+
+Test: vitest di `readUnitWords` con `.rt-hl` e della durata con `slowHighlights`; e2e: una parola
+evidenziata nello Studio ha la fascia nella lettura veloce.
+
+### L4 — Tre suoni del clic, Legno predefinito
+
+File: `SpeedReader.tsx` (`createSound`), `frontend/src/lib/studyPrefs.ts`. Si ascoltano tutti
+nell'artifact "Suoni della lettura veloce" (link nel thread).
+
+- Preferenza nuova `clickSound: 'legno' | 'tick' | 'classico'` in `study.rsvp`, predefinito
+  **`legno`** (vale anche per chi ha già `study.rsvp` salvato senza questa chiave). Nelle impostazioni,
+  sezione Suono, "Tipo di clic" con tre segmenti Legno · Tick morbido · Classico, visibile quando il
+  suono è attivo.
+- Tutto con Web Audio, niente file né librerie. `p` è il tono (`pitch`), `t` l'istante; "grave" è il
+  suono di fine frase e delle formule complesse. Inviluppo: da 0,0001 al picco in *attacco*, poi
+  esponenziale a 0,0001 in *decadimento*.
+
+  | Suono | Normale | Grave |
+  |---|---|---|
+  | **Classico** (quello di oggi) | triangolare 880·p Hz, picco 0,13, attacco 4 ms, decadimento 45 ms | triangolare 520·p Hz che scende a 0,82×, picco 0,22, attacco 4 ms, decadimento 110 ms |
+  | **Tick morbido** | sinusoide 1000·p → 940·p Hz, picco 0,2, attacco 4 ms, decadimento 35 ms, filtro passa-basso 2600 Hz | sinusoide 620·p → 480·p Hz, picco 0,3, attacco 6 ms, decadimento 120 ms, stesso filtro |
+  | **Legno** | rumore bianco con filtro passa-banda 2200·p Hz Q 5, picco 0,3, attacco 1 ms, decadimento 12 ms; più sinusoide 760·p → 700·p Hz, picco 0,14, attacco 2 ms, decadimento 30 ms | rumore con passa-banda 900·p Hz Q 3, picco 0,35, decadimento 30 ms; più sinusoide 380·p → 330·p Hz, picco 0,32, attacco 3 ms, decadimento 110 ms |
+
+- Il buffer di rumore (0,2 s) si crea una volta sola, come quelli del rumore di fondo.
+
+Test: vitest della preferenza (predefinito `legno`, anche se la chiave manca); un test di
+`createSound` con un `AudioContext` finto che controlla quali nodi crea per ciascun suono.
+
+### L5 — Quattro pulsanti uguali, Ripassa
+
+File: `SpeedReader.tsx`, `Study.tsx`. Wireframe: scheda **Lettura veloce**, pulsante "Unità con 7
+domande" per vedere i due casi.
+
+- I pulsanti sotto la parola diventano quattro, **tutti tondi e della stessa grandezza** (56 px; 48 px
+  sul telefono): indietro di N parole, play/pausa (resta con lo stile primario), ricomincia,
+  **Ripassa**. Sotto ciascuno un'etichetta corta in `text-meta`: "−5", "Play"/"Pausa", "Ricomincia",
+  "Ripassa"/"Genera".
+- **Ripassa**:
+  - se l'unità ha domande (`units[].questions > 0` dello Studio), icona `MessageCircleQuestion` e
+    suggerimento "Ripassa l'unità · N domande". Esce dalla lettura veloce e apre il ripasso
+    dell'unità, la stessa pagina di "Mettimi alla prova";
+  - se non ne ha, icona `Sparkles` e suggerimento "Genera domande su questa unità". Apre il popup
+    "Genera domande" già esistente sull'unità; generate le domande, il pulsante diventa Ripassa.
+- I tasti della lettura veloce non cambiano; Ripassa non ha tasto.
+
+Test: e2e, con domande Ripassa porta al ripasso dell'unità; senza domande apre il popup Genera.
+
+### Revisione e merge (Claude)
+
+Come per la b1: Claude rivede il diff, prova le parti toccate, fa le correzioni brevi con commit
+"Revisione: …", unisce in `claude/rt-4.2.3-beta`, lancia **tutti** i test in locale (pytest, frontend,
+entrambi i gruppi e2e) prima di pubblicare, pubblica la beta con `release.yml` (VERSION `4.2.3b2`)
+e segue il run fino alla fine.
