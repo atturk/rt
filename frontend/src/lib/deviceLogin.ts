@@ -14,6 +14,25 @@ export function isLoopback(origin: string): boolean {
   }
 }
 
+/** https://100.72.84.124: il certificato di Tailscale vale solo per il nome del Mac, non per l'IP. */
+export function isHttpsIp(origin: string): boolean {
+  try {
+    const url = new URL(origin)
+    return url.protocol === 'https:' && (/^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.startsWith('['))
+  } catch {
+    return false
+  }
+}
+
+/** Indirizzo da proporre: quello salvato o la pagina stessa, se l'iPhone può usarli; altrimenti
+ * quello della tailnet rilevato dal Mac. */
+export function preferredOrigin(saved: string, here: string, tailnet: string | null | undefined): string {
+  const usable = (value: string) => !!value && !isLoopback(value) && !isHttpsIp(value)
+  if (usable(saved)) return saved
+  if (usable(here)) return here
+  return tailnet || saved
+}
+
 /** "nome-mac.tailnet.ts.net" o "https://…/" → "https://nome-mac.tailnet.ts.net"; null se non è un indirizzo. */
 export function normalizeOrigin(value: string): string | null {
   const text = value.trim()

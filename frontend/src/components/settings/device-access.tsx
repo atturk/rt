@@ -2,21 +2,35 @@ import { useEffect, useMemo, useState } from 'react'
 import { encode } from 'uqr'
 
 import { errorMessage } from '@/api/client'
-import { useLoginLink } from '@/api/hooks'
+import { useLoginLink, useTailnet } from '@/api/hooks'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { deviceLoginUrl, isLoopback, normalizeOrigin, readDeviceOrigin, saveDeviceOrigin } from '@/lib/deviceLogin'
+import {
+  deviceLoginUrl,
+  isHttpsIp,
+  isLoopback,
+  normalizeOrigin,
+  preferredOrigin,
+  readDeviceOrigin,
+  saveDeviceOrigin,
+} from '@/lib/deviceLogin'
 import { Field, Section } from './common'
 
 /** Accesso da iPhone o da un altro computer: un QR con il link monouso (5 minuti, una volta).
- * Se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo va scritto a mano
- * (Tailscale: https://nome-mac.tailnet.ts.net, rete locale: http://nome-mac.local:8765). */
+ * Se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della tailnet
+ * che il Mac stesso rileva (https://nome-mac.tailnet.ts.net, l'unico per cui vale il certificato
+ * di Tailscale); senza Tailscale si scrive a mano (rete locale: http://nome-mac.local:8765). */
 export function DeviceAccessSection() {
   const here = window.location.origin
-  const [address, setAddress] = useState(() => readDeviceOrigin() || (isLoopback(here) ? '' : here))
+  const tailnet = useTailnet().data
+  const [saved] = useState(readDeviceOrigin)
+  // null finché non si scrive nel campo: intanto vale l'indirizzo proposto (salvato, pagina o tailnet)
+  const [typed, setTyped] = useState<string | null>(null)
   const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null)
   const loginLink = useLoginLink()
+  const detected = tailnet?.origin ?? null
+  const address = typed ?? preferredOrigin(saved, here, detected)
   const origin = normalizeOrigin(address)
 
   const create = () => {
@@ -53,13 +67,38 @@ export function DeviceAccessSection() {
           value={address}
           placeholder="https://nome-mac.tailnet.ts.net"
           onChange={(e) => {
-            setAddress(e.target.value)
+            setTyped(e.target.value)
             setLink(null)
           }}
         />
       </Field>
       {origin && isLoopback(origin) && (
         <Alert tone="warning">Questo indirizzo raggiunge solo il Mac stesso: da iPhone non si apre.</Alert>
+      )}
+      {origin && isHttpsIp(origin) && (
+        <Alert tone="warning">
+          Con l'indirizzo IP la connessione sicura non riesce: il certificato di Tailscale vale solo per il nome del Mac
+          {detected ? (
+            <>
+              , cioè <code>{detected}</code>
+            </>
+          ) : (
+            ' (https://nome-mac.tailnet.ts.net)'
+          )}
+          .
+        </Alert>
+      )}
+      {tailnet && detected && origin === detected && !tailnet.serve && (
+        <Alert tone="warning">
+          Tailscale Serve non è attivo su questo Mac: nel Terminale esegui <code>tailscale serve --bg 8765</code>, poi
+          crea il QR.
+        </Alert>
+      )}
+      {tailnet && detected && origin === detected && tailnet.funnel && (
+        <Alert tone="warning">
+          Questo indirizzo è pubblico su Internet (Tailscale Funnel): per tenerlo nella sola tailnet esegui{' '}
+          <code>tailscale serve --bg 8765</code>, che spegne il Funnel.
+        </Alert>
       )}
       <div>
         <Button onClick={create} disabled={!origin || loginLink.isPending}>
