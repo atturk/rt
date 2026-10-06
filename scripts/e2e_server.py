@@ -160,7 +160,7 @@ def _study_lesson(root: str) -> None:
 
     from rt.pipeline.rewrite import load_draft, save_draft
     draft = load_draft(path)
-    draft.units[0].content = "Formula $z$. " + draft.units[0].content
+    draft.units[0].content = "Formula $z$. un’impostazione un'impostazione. " + draft.units[0].content
     draft.units[1].content += '\n\n' + r'$$\sum_{i=1}^{6} x_i$$'
     save_draft(draft, path, manual=True)
     validate_phase(path, "rewrite", channel="api")

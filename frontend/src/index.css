@@ -661,7 +661,8 @@
 .rt-rsvp-word {
   display: flex;
   align-items: baseline;
-  font-size: var(--rsvp-size, 60px);
+  font-size: calc(var(--rsvp-size, 60px) * var(--rsvp-scale, 1));
+  width: 100%;
   font-family: var(--font-sans);
   letter-spacing: normal;
   line-height: 1.2;
@@ -669,14 +670,14 @@
   transform-origin: center;
 }
 .rt-rsvp-word.dyslexic { font-family: 'OpenDyslexic', var(--font-sans); letter-spacing: normal; }
-.rt-rsvp-word > .pre, .rt-rsvp-word > .post { display: inline-block; width: 6.2em; overflow: visible; }
+.rt-rsvp-word > .pre, .rt-rsvp-word > .post { display: inline-block; flex: 1; min-width: 0; overflow: visible; }
 .rt-rsvp-word > .pre { text-align: right; }
 .rt-rsvp { --rsvp-focus: var(--link); --rsvp-hl: var(--hl-1); --rsvp-hl-fg: var(--fg); }
 .dark .rt-rsvp { --rsvp-focus: var(--success); --rsvp-hl: #6b5a12; --rsvp-hl-fg: #ffffff; }
 .rt-layout[data-tint] .rt-rsvp { --rsvp-focus: #155f52; --rsvp-hl: color-mix(in oklch, var(--fg) 16%, transparent); --rsvp-hl-fg: var(--fg); }
 .rt-rsvp-word > .orp { color: var(--rsvp-focus); }
 @media (max-width: 767.98px) {
-  .rt-rsvp-word > .pre, .rt-rsvp-word > .post { width: 4.6em; }
+  .rt-rsvp-word > .pre, .rt-rsvp-word > .post { min-width: 0; }
 }
 .rt-rsvp-word.out { animation: rt-rsvp-out var(--rsvp-out, 400ms) ease-out forwards; }
 @keyframes rt-rsvp-out { from { transform: scale(1); opacity: 1; } to { transform: scale(0.93); opacity: 0.82; } }
@@ -770,3 +771,6 @@
   .rt-empty-type { grid-column: 1 / 3; width: 100%; }
   .rt-empty-custom { grid-column: 3; width: 100%; }
 }
+
+/* Misura del font alla dimensione originale, indipendente dalla parola mostrata. */
+.rt-rsvp-measure { position: absolute; visibility: hidden; pointer-events: none; }

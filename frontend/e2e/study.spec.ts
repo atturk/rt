@@ -684,3 +684,24 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
     })).ok()).toBeTruthy()
   }
 })
+
+test('a 390 px un’impostazione si divide e resta dentro la finestra', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  await page.keyboard.press('ArrowRight')
+  const word = page.getByTestId('speed-reader-word')
+  await expect(word).toContainText('imposta')
+  expect(Number(await word.getAttribute('data-scale'))).toBeGreaterThanOrEqual(.7)
+  for (const fragment of await word.locator('.pre > span, .orp, .post > span').all()) {
+    const box = await fragment.boundingBox()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  }
+  await page.getByRole('button', { name: 'Contesto', exact: true }).click()
+  await expect(page.getByTestId('speed-reader-context')).toContainText('un’impostazione')
+  await expect(page.getByTestId('speed-reader-context')).not.toContainText('imposta-')
+})

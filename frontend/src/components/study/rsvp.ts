@@ -5,7 +5,7 @@
 import type { RsvpPreference } from '@/lib/studyPrefs'
 
 export type Formula = { html: string; tex: string; complex: boolean }
-export type Word = { text: string; para: number; math?: Formula; hl?: boolean }
+export type Word = { text: string; para: number; math?: Formula; hl?: boolean; lastPiece?: boolean }
 /** Pezzo del Contesto: una parola letta (index) o un elemento saltato (formula, immagine, tabella). */
 export type ContextPiece = { text: string; index: number | null; math?: Formula; hl?: boolean }
 
@@ -56,7 +56,7 @@ export function wordDelay(word: string | Word, prefs: Pick<RsvpPreference, 'wpm'
     const count = letters(entry.text)
     if (count > 8) ms *= 1 + (count - 8) * 0.06
   }
-  if (isFullStop(entry.text, prefs.comma)) ms += prefs.pauseMs
+  if (entry.lastPiece !== false && isFullStop(entry.text, prefs.comma)) ms += prefs.pauseMs
   if (entry.hl && prefs.slowHighlights) ms *= 1.3
   if (ramp > 0) ms *= 1 + ramp * 0.12
   return ms
@@ -80,7 +80,7 @@ export function formulaMetrics(tex: string): { atoms: number; structures: number
 
 /** Clic grave per fine frase o formule complesse con pausa dedicata. */
 export function graveWord(word: Word, prefs: Pick<RsvpPreference, 'comma' | 'formulaPause'>): boolean {
-  return isFullStop(word.text, prefs.comma) || !!(word.math?.complex && prefs.formulaPause !== 'standard')
+  return word.lastPiece !== false && (isFullStop(word.text, prefs.comma) || !!(word.math?.complex && prefs.formulaPause !== 'standard'))
 }
 
 /** Inizio della frase precedente; se si è già all'inizio di una frase, quella prima ancora. */
@@ -215,4 +215,45 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     next++
   }
   return { words, paragraphs }
+}
+
+export type DisplayWord = Word & { sourceIndex: number; scale: number; lastPiece: boolean }
+export type WordMeasure = (text: string) => number
+
+/** Misura sui due lati della lettera di fuoco, nel font alla dimensione originale. */
+export function wordScale(text: string, width: number, measure: WordMeasure, orp: RsvpPreference['orp']): number {
+  const focus = focusIndex(text, orp)
+  const space = Math.max(0, width / 2 - measure(text.charAt(focus)) / 2 - 16)
+  return Math.min(1, space / Math.max(measure(text.slice(0, focus)), measure(text.slice(focus + 1)), 1))
+}
+
+function wordCuts(word: string): number[] {
+  const cuts: number[] = []
+  for (let i = 3; i <= word.length - 3; i++) {
+    const a = word[i - 1], b = word[i], c = word[i + 1] ?? ''
+    const vowel = /[aeiouàèéìòù]/i, consonant = /[bcdfghlmnpqrstvz]/i
+    if (/[’'-]/.test(a) || vowel.test(a) && consonant.test(b) && vowel.test(c) ||
+      a.toLowerCase() === b.toLowerCase() && consonant.test(a)) cuts.push(i)
+  }
+  return cuts
+}
+
+/** Divide solo ai punti ammessi; tutti i pezzi mantengono l’indice della parola originale. */
+export function adaptWord(word: Word, sourceIndex: number, width: number, measure: WordMeasure, orp: RsvpPreference['orp']): DisplayWord[] {
+  const fit = (text: string) => wordScale(text, width, measure, orp)
+  const split = (text: string): string[] => {
+    if (fit(text) >= .7) return [text]
+    const cuts = wordCuts(text)
+    if (!cuts.length) return [text]
+    const head = (at: number) => text.slice(0, at) + (/[’'-]$/.test(text.slice(0, at)) ? '' : '-')
+    const good = cuts.filter(at => fit(head(at)) >= .7 && fit(text.slice(at)) >= .7)
+    const heads = cuts.filter(at => fit(head(at)) >= .7)
+    const pool = good.length ? good : heads.length ? heads : cuts
+    const middle = text.length / 2
+    const at = pool.reduce((a, b) => Math.abs(b - middle) < Math.abs(a - middle) ? b : a)
+    // Se servono più di due pezzi, anche la coda si divide con le stesse regole.
+    return [...split(head(at)), ...split(text.slice(at))]
+  }
+  const pieces = word.math ? [word.text] : split(word.text)
+  return pieces.map((text, i) => ({ ...word, text, sourceIndex, lastPiece: i === pieces.length - 1, scale: word.math ? 1 : fit(text) }))
 }
