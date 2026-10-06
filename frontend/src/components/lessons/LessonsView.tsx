@@ -259,10 +259,30 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
         <Link to={`/lezioni/${lesson.id}`} className={row} aria-labelledby={titleId}>
           <StatusDot status={lessonStatus(lesson, running)} />
           {text}
+          <StudyRing lesson={lesson} />
         </Link>
       )}
     </li>
   )
+}
+
+/** Anello sommato sulle unità della scaletta attuale, allineato sul margine delle righe. */
+function StudyRing({ lesson }: { lesson: Lesson }) {
+  const learned = lesson.study_learned ?? 0
+  const learning = lesson.study_learning ?? 0
+  if (!learned && !learning) return null
+  const total = lesson.unit_count ?? 0
+  const learnedArc = total ? learned / total * 100 : 0
+  const learningArc = total ? learning / total * 100 : 0
+  return <span className="ml-2 flex shrink-0 self-center items-center gap-2 text-meta tabular-nums text-muted-foreground"
+    role="img" aria-label={`${learned} unità apprese su ${total}, ${learning} in apprendimento`} data-testid="lesson-study-ring">
+    <span aria-hidden>{learned}/{total}</span>
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[3]">
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-muted" />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-success" strokeDasharray={`${learnedArc} ${100 - learnedArc}`} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-warning" strokeDasharray={`${learningArc} ${100 - learningArc}`} strokeDashoffset={-learnedArc} />
+    </svg>
+  </span>
 }
 
 function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup }: {

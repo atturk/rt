@@ -30,6 +30,9 @@ describe('lessonSubtitle', () => {
     expect(lessonSubtitle(lesson(2, { docente: '', unit_count: null }), 'data', NOW)).toBe('Fisiologia')
     expect(lessonSubtitle(lesson(3, { data: '', materia: '' }), 'docente', NOW)).toBe('9 unità')
   })
+  it('aggiunge le unità apprese solo quando ce ne sono', () => {
+    expect(lessonSubtitle(lesson(1, { study_learned: 7 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità · 7 apprese')
+  })
 })
 
 describe('formati', () => {
@@ -67,6 +70,19 @@ describe('lessonsGroups', () => {
     const groups = lessonsGroups(lessons, { group: 'mese', sort: 'recenti' }, NOW)
     expect(groups.map((g) => g.label)).toEqual(['Ottobre 2026'])
     expect(groups[0].lessons).toHaveLength(3)
+  })
+  it('studio recente: mai studiate in fondo per data, senza cambiare i gruppi', () => {
+    const rows = [lesson(1, { study_last_at: '2026-10-01T20:00:00Z' }), lesson(2, { study_last_at: '2026-10-02T12:00:00Z' }),
+      lesson(3, { data: '2026-10-01' }), lesson(4, { data: '2026-10-02' })]
+    expect(lessonsGroups(rows, { group: 'materia', sort: 'studio-recente' }, NOW)[0].lessons.map(l => l.id)).toEqual([2, 1, 4, 3])
+  })
+  it('percentuali e spareggio per le unità in apprendimento, con unità mancanti o zero', () => {
+    const rows = [lesson(1, { unit_count: 10, study_learned: 5, study_learning: 1 }),
+      lesson(2, { unit_count: 20, study_learned: 10, study_learning: 3 }),
+      lesson(3, { unit_count: 3, study_learned: 3 }), lesson(4, { unit_count: 0 }), lesson(5, { unit_count: null })]
+    expect(lessonsGroups(rows, { group: 'materia', sort: 'piu-avanti' }, NOW)[0].lessons.map(l => l.id)).toEqual([3, 2, 1, 5, 4])
+    expect(lessonsGroups(rows, { group: 'materia', sort: 'piu-indietro' }, NOW)[0].lessons.map(l => l.id)).toEqual([5, 4, 1, 2, 3])
+    expect(rows.map(l => l.id)).toEqual([1, 2, 3, 4, 5])
   })
 })
 

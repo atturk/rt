@@ -11,6 +11,35 @@ type Lesson = { id: number; materia: string; data: string; docente: string; tito
 
 const ids = (rows: import('@playwright/test').Locator) => rows.evaluateAll((r) => r.map((el) => Number(el.getAttribute('data-lesson-id'))))
 
+test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhone', async ({ page }) => {
+  await loginViaLink(page)
+  const [l] = await apiGet<Lesson[]>(page.request, '/lessons?materia=STUDIO')
+  const study = await apiGet<{ units: { id: string; status: string }[] }>(page.request, `/lessons/${l.id}/study`)
+  const first = study.units[0]
+  const response = await page.request.put(`/api/v1/lessons/${l.id}/study/units/${first.id}`, { headers: authHeaders(), data: { status: 'appreso' } })
+  expect(response.ok()).toBeTruthy()
+  try {
+    await page.reload()
+    const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento')
+    await expect(row.getByTestId('lesson-subtitle')).toContainText('2 unità · 1 apprese')
+    await page.getByRole('button', { name: 'Per docente' }).click()
+    await page.getByRole('button', { name: 'Ordina', exact: true }).click()
+    await page.getByRole('menuitemradio', { name: 'Più avanti nello studio' }).click()
+    await expect(page.getByTestId('lesson-row').first()).toHaveAttribute('data-lesson-id', String(l.id))
+    await page.getByRole('button', { name: 'Seleziona', exact: true }).click()
+    await expect(page.getByTestId('lesson-study-ring')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Annulla la selezione' }).click()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const sort = page.getByRole('button', { name: /Ordina: Avanti/ })
+    await expect(sort).toBeVisible()
+    await sort.click()
+    await expect(page.getByRole('button', { name: /Ordina: Indietro/ })).toBeVisible()
+  } finally {
+    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${first.id}`, { headers: authHeaders(), data: { status: first.status } })
+  }
+})
+
 test('gruppi per data, materia e docente; ordinamento; le scelte restano dopo la ricarica', async ({ page }) => {
   await loginViaLink(page)
   const lessons = await apiGet<Lesson[]>(page.request, '/lessons')

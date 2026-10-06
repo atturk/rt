@@ -9,7 +9,7 @@ import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
  * sta nel popup Info.
  */
 export type LessonsGrouping = 'data' | 'mese' | 'materia' | 'docente'
-export type LessonsSort = 'recenti' | 'meno-recenti' | 'titolo'
+export type LessonsSort = 'recenti' | 'meno-recenti' | 'titolo' | 'studio-recente' | 'piu-avanti' | 'piu-indietro'
 
 export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', mese: 'Per mese', materia: 'Per materia', docente: 'Per docente' }
 export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'mese', 'materia', 'docente']
@@ -19,9 +19,15 @@ export const SORT_OPTIONS: Record<LessonsSort, string> = {
   recenti: 'Dalla più recente',
   'meno-recenti': 'Dalla meno recente',
   titolo: 'Per titolo',
+  'studio-recente': 'Studiate di recente',
+  'piu-avanti': 'Più avanti nello studio',
+  'piu-indietro': 'Più indietro nello studio',
 }
-export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'titolo']
-export const PHONE_SORT_LABELS: Record<LessonsSort, string> = { recenti: 'Recenti', 'meno-recenti': 'Vecchie', titolo: 'A–Z' }
+export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'titolo', 'studio-recente', 'piu-avanti', 'piu-indietro']
+export const PHONE_SORT_LABELS: Record<LessonsSort, string> = {
+  recenti: 'Recenti', 'meno-recenti': 'Vecchie', titolo: 'A–Z',
+  'studio-recente': 'Studio', 'piu-avanti': 'Avanti', 'piu-indietro': 'Indietro',
+}
 
 /** Sfondo del gruppo n-esimo secondo la preferenza (variabili --group-* in index.css). */
 export function groupBackground(index: number, mode: string | undefined): string | undefined {
@@ -71,7 +77,15 @@ export function useLessonsPrefs(): [LessonsPrefs, (patch: Partial<LessonsPrefs>)
 
 /** Gruppi della pagina: dentro ogni gruppo l'ordine scelto; i giorni seguono la direzione della data. */
 export function lessonsGroups(lessons: Lesson[], prefs: LessonsPrefs, now = new Date()): LessonGroup[] {
-  const sorted = prefs.sort === 'titolo' ? sortLessons(lessons, 'titolo', 'asc') : sortLessons(lessons, 'data', prefs.sort === 'recenti' ? 'desc' : 'asc')
+  let sorted = sortLessons(lessons, 'data', prefs.sort === 'meno-recenti' ? 'asc' : 'desc')
+  if (prefs.sort === 'titolo') sorted = sortLessons(lessons, 'titolo', 'asc')
+  else if (prefs.sort === 'studio-recente') {
+    sorted.sort((a, b) => (Date.parse(b.study_last_at ?? '') || 0) - (Date.parse(a.study_last_at ?? '') || 0))
+  } else if (prefs.sort === 'piu-avanti' || prefs.sort === 'piu-indietro') {
+    const direction = prefs.sort === 'piu-avanti' ? -1 : 1
+    const ratio = (lesson: Lesson) => lesson.unit_count ? (lesson.study_learned ?? 0) / lesson.unit_count : 0
+    sorted.sort((a, b) => direction * (ratio(a) - ratio(b) || (a.study_learning ?? 0) - (b.study_learning ?? 0)))
+  }
   const dateDir = prefs.sort === 'meno-recenti' ? 'asc' : 'desc'
   return groupLessons(sorted, prefs.group === 'data' ? 'giorno' : prefs.group, dateDir, now)
 }
@@ -119,7 +133,7 @@ export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new
         : group === 'materia'
           ? [date, teacher]
           : [date, subject]
-  return [...fields, unitsText(lesson)].filter(Boolean).join(' · ')
+  return [...fields, unitsText(lesson), lesson.study_learned > 0 ? `${lesson.study_learned} apprese` : null].filter(Boolean).join(' · ')
 }
 
 /** Etichetta del gruppo: le materie come nel resto della pagina ("Fisiologia"). */
