@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 
@@ -33,6 +33,13 @@ const UNITS = [
 ]
 
 const mockGenerate = vi.fn()
+const progress = vi.hoisted(() => ({ status: vi.fn(), read: vi.fn() }))
+vi.mock('@/api/studyProgress', () => ({
+  useStudyStatus: () => ({ mutate: progress.status, isPending: false }),
+  useStudyRead: () => ({ mutate: progress.read }),
+}))
+beforeEach(() => vi.clearAllMocks())
+afterEach(() => vi.useRealTimers())
 
 vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
@@ -59,6 +66,39 @@ function renderStudy() {
 }
 
 describe('StudyFlow unit navigation', () => {
+  it('S e il pulsante cambiano stato; S non agisce nei campi o con i modificatori', () => {
+    renderStudy()
+    fireEvent.click(screen.getByRole('button', { name: "Stato dell'unità: da imparare" }))
+    expect(progress.status).toHaveBeenCalledWith({ unitId: '1.1', status: 'in-apprendimento' })
+    fireEvent.keyDown(window, { key: 's' })
+    expect(progress.status).toHaveBeenCalledTimes(2)
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true })
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    fireEvent.keyDown(input, { key: 's' })
+    input.remove()
+    expect(progress.status).toHaveBeenCalledTimes(2)
+  })
+
+  it('le barrette sono pulsanti accessibili e cambiano unità', () => {
+    renderStudy()
+    fireEvent.click(screen.getByRole('button', { name: 'Unità 2: Acidosi metabolica, da imparare' }))
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('1.2 Acidosi metabolica')
+    expect(screen.getByRole('button', { name: 'Unità 2: Acidosi metabolica, da imparare' })).toHaveAttribute('aria-current', 'step')
+  })
+
+  it('segna una lettura dopo tre secondi, una volta sola; una visita breve non conta', () => {
+    vi.useFakeTimers()
+    renderStudy()
+    act(() => vi.advanceTimersByTime(2999))
+    expect(progress.read).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    act(() => vi.advanceTimersByTime(3000))
+    expect(progress.read).toHaveBeenCalledExactlyOnceWith('1.2')
+    act(() => vi.advanceTimersByTime(6000))
+    expect(progress.read).toHaveBeenCalledOnce()
+  })
+
   it('mostra il pulsante Unità 1 di 3 e apre l\'indice per navigare all\'unità 1.2', () => {
     renderStudy()
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()

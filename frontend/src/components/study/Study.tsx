@@ -28,6 +28,9 @@ import { useHighlighterPrefs } from '@/lib/studyPrefs'
 import { cn } from '@/lib/utils'
 import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
 import { SpeedReader } from './SpeedReader'
+import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
+import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
+import { StudyStatusIcon } from './StudyStatusIcon'
 
 /**
  * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
@@ -56,11 +59,27 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const loaded = study.data && study.data.id === lesson?.id ? study.data : null
   useEffect(() => {
     // La lista si fissa all'ingresso nella lezione: dopo ogni risposta il conteggio cambia, l'ordine no.
-    // oxlint-disable-next-line react/set-state-in-effect
-    if (loaded && units === null) setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
+    if (loaded && units === null) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
+      setUnitIndex(onlyUnits ? 0 : initialStudyUnit(loaded.units))
+    }
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
+  const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
+  const status = useStudyStatus(lesson?.id ?? 0)
+  const read = useStudyRead(lesson?.id ?? 0)
+  const markRead = read.mutate
+  const changeStatus = () => {
+    if (unit && !status.isPending) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
+  }
+
+  useEffect(() => {
+    if (!unit || finished || (phase !== 'lettura' && !rereading)) return
+    const timer = window.setTimeout(() => markRead(unit.id), 3000)
+    return () => window.clearTimeout(timer)
+  }, [lesson?.id, unit?.id, phase, rereading, finished, markRead]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   const goToUnit = (idx: number) => {
     setUnitIndex(idx)
@@ -97,16 +116,20 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
-    if (phase !== 'lettura' || speedReading || !arrows) return
+    if (phase !== 'lettura' || speedReading) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const isStatusKey = e.key.toLowerCase() === 's'
+      if (!isStatusKey && (!arrows || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight'))) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
         return
       }
-      if (e.key === 'ArrowLeft') {
+      if (isStatusKey) {
+        e.preventDefault()
+        changeStatus()
+      } else if (e.key === 'ArrowLeft') {
         if (unitIndex > 0) {
           e.preventDefault()
           goToUnit(unitIndex - 1)
@@ -119,7 +142,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, speedReading, arrows]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -248,6 +271,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
+        label={`Stato dell'unità: ${STATUS_LABELS[live.status ?? 'da-imparare']}`}
+        icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
+        className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
+        onClick={changeStatus}
+        unavailable={status.isPending ? 'salvataggio in corso' : null}
+        data-testid="study-status"
+      />
+      <IconButton
         label="Lettura veloce"
         icon={Gauge}
         onClick={() => setSpeedReading(true)}
@@ -257,7 +288,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
-          units={units}
+          units={liveUnits}
           unitIndex={unitIndex}
           open={indexOpen}
           onOpenChange={setIndexOpen}
@@ -326,7 +357,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             )
           }
         >
-          <Dots count={units.length} current={unitIndex} />
+          {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
+          {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
+          <Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} />
           <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
           {speedReading && textRoot && (
             <SpeedReader source={textRoot} title={`${unit.id} ${unit.title}`} onClose={() => setSpeedReading(false)} />
@@ -491,12 +524,19 @@ function StudyShell({
   )
 }
 
-function Dots({ count, current }: { count: number; current: number }) {
+function Dots({ units, current, onSelect }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void }) {
   return (
-    <div className="mb-6 mt-1 flex gap-1" aria-hidden data-testid="study-dots">
-      {Array.from({ length: count }, (_, i) => (
-        <i key={i} className={cn('h-[3px] flex-1 rounded-md', i <= current ? 'bg-foreground' : 'bg-muted')} data-done={i <= current || undefined} />
-      ))}
+    <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
+      {units.map((u, i) => {
+        const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}`
+        return <button key={u.id} type="button" aria-label={`Unità ${i + 1}: ${label}`} title={label}
+          onClick={() => onSelect(i)} aria-current={i === current ? 'step' : undefined}
+          className="flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
+          <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
+            i === current ? 'h-[7px]' : 'h-[3px]',
+            u.status === 'appreso' ? 'bg-success' : u.status === 'in-apprendimento' ? 'bg-warning' : 'bg-muted')} />
+        </button>
+      })}
     </div>
   )
 }
@@ -786,9 +826,10 @@ function UnitIndexMenu({
                 onOpenChange(false)
               }}
             >
+              <span className="mr-2"><StudyStatusIcon status={u.status} /></span>
               <span className="min-w-0 flex-1 truncate">{u.id} {u.title}</span>
               <span className="ml-2 shrink-0 text-meta text-muted-foreground">
-                {i < unitIndex ? 'letta' : i === unitIndex ? 'qui' : ''}
+                {i === unitIndex ? 'qui' : studyDate(u.status_at)}
               </span>
             </button>
           ))}

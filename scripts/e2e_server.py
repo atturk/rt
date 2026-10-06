@@ -55,6 +55,7 @@ def _workspace(base: str, telegram: bool = False) -> str:
     os.environ["RT_TELEGRAM_FAKE"] = "1"
     os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [ROOT, os.environ.get("PYTHONPATH")]))
     os.environ.pop("RT_DATABASE_URL", None)
+    os.environ.pop("RT_DATA_DIR", None)  # anche nell'ambiente cloud i dati degli e2e restano isolati
     os.environ["RT_SECRETS_FILE"] = os.path.join(work, "config", "secrets.enc")
     os.chdir(work)
     return lessons
@@ -111,11 +112,39 @@ def _lessons(root: str) -> None:
     chirurgia = _plain_lesson(root, "2026-09-01", "CHIRURGIA", "Suture")
     add_audio(chirurgia)
     run_mock_pipeline(chirurgia, with_review=True, auto_accept=True)
+    # Lezione con due unità reali per navigazione e stato di studio, senza mock delle API.
+    _study_lesson(root)
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)
     if report.errors:
         raise RuntimeError("; ".join(report.errors))
+
+
+def _study_lesson(root: str) -> None:
+    from rt.core.lesson_paths import lesson_path
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.outline import load_outline, save_outline
+    from rt.services.outline_service import approve_outline
+    from rt.services.phase_validation_service import validate_phase
+    from tests.api_support import run_mock_pipeline
+    path = _plain_lesson(root, "2026-09-02", "STUDIO", "Unità di prova")
+    run_mock_pipeline(path, with_review=False, auto_accept=False)
+    segments = load_segments_json(lesson_path(path, "segments.json")).segments
+    middle = len(segments) // 2
+    outline = load_outline(path)
+    first = outline.macro_sections[0].units[0]
+    outline.macro_sections = outline.macro_sections[:1]
+    outline.macro_sections[0].units = [
+        first.model_copy(update={"id": "1.1", "title": "Prima unità", "end_segment_id": segments[middle - 1].id}),
+        first.model_copy(update={"id": "1.2", "title": "Seconda unità", "start_segment_id": segments[middle].id}),
+    ]
+    save_outline(outline, path)
+    validate_phase(path, "outline", channel="api")
+    approve_outline(path, channel="api")
+    result = run_mock_pipeline(path, with_review=False, auto_accept=True)
+    if result.error:
+        raise RuntimeError(result.error)
 
 
 def main() -> int:

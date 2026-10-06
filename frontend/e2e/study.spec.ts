@@ -9,6 +9,21 @@ import { apiGet, authHeaders, loginViaLink } from './support'
 type Lesson = { id: number; materia: string; data: string }
 type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null }[] }
 
+let previousHighlighter: unknown
+test.beforeEach(async ({ page }) => {
+  previousHighlighter = (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['study.highlighter']
+  const response = await page.request.put('/api/v1/preferences/study.highlighter', {
+    headers: authHeaders(), data: { color: 0, arrows: true },
+  })
+  expect(response.ok()).toBeTruthy()
+})
+test.afterEach(async ({ page }) => {
+  const response = previousHighlighter === undefined
+    ? await page.request.delete('/api/v1/preferences/study.highlighter', { headers: authHeaders() })
+    : await page.request.put('/api/v1/preferences/study.highlighter', { headers: authHeaders(), data: previousHighlighter })
+  expect(response.ok()).toBeTruthy()
+})
+
 async function lesson(page: Page, materia: string) {
   const [l] = await apiGet<Lesson[]>(page.request, `/lessons?materia=${materia}`)
   return l
@@ -304,3 +319,41 @@ test('Swipe touch fra le unità dello Studio sul telefono (4.2.2b4 F1)', async (
   await context.close()
 })
 
+test('Stato di studio persistente, pulsante e S, barrette cliccabili e prima unità non appresa', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  expect(study.units).toHaveLength(2)
+  const setStatus = async (uid: string, status: string) => {
+    const response = await page.request.put(`/api/v1/lessons/${l.id}/study/units/${uid}`, { headers: authHeaders(), data: { status } })
+    expect(response.ok()).toBeTruthy()
+  }
+  for (const unit of study.units) await setStatus(unit.id, 'da-imparare')
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    const button = page.getByTestId('study-status')
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: da imparare")
+    await button.click()
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: in apprendimento")
+    await expect(button).not.toHaveAttribute('aria-disabled', 'true')
+    const firstBar = page.getByTestId('study-dots').locator('button').first()
+    await expect(firstBar.locator('span')).toHaveClass(/bg-warning/)
+    await page.keyboard.press('s')
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: appreso")
+    await expect(button).not.toHaveAttribute('aria-disabled', 'true')
+    await expect(firstBar.locator('span')).toHaveClass(/bg-success/)
+    await page.reload()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.2')
+    await firstBar.click()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.1')
+    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: appreso")
+    await page.getByTestId('unit-index-toggle').click()
+    await expect(page.getByTestId('unit-index-menu').getByRole('menuitem').first()).toContainText('qui')
+    await page.keyboard.press('Escape')
+    await setStatus(study.units[1].id, 'appreso')
+    await page.reload()
+    await expect(page.getByRole('heading', { level: 2 })).toContainText('1.1')
+  } finally {
+    for (const unit of study.units) await setStatus(unit.id, 'da-imparare')
+  }
+})
