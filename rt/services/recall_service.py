@@ -84,6 +84,20 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progre
     from rt.core.config import load_config
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
 
+    if qtypes == ["consigliato"]:
+        from rt.services import question_types
+        from rt.services.recall_units import selected_units, _units
+        units = selected_units(lesson_dir) if unit_ids is None else [u for u in _units(lesson_dir) if u.unit_id in set(unit_ids)]
+        records = question_types.refresh(lesson_dir, force_mock=force_mock, unit_ids=[u.unit_id for u in units])
+        groups = {}
+        for unit in units:
+            kind = records.get(unit.unit_id, {}).get("type") or "quiz"
+            groups.setdefault(kind, []).append(unit.unit_id)
+        generated = {}
+        for kind, quota in question_types.allocate(groups, count if count is not None else 10).items():
+            generated.update(generate_pool(lesson_dir, force_mock=force_mock, qtypes=[kind], progress=progress,
+                                           unit_ids=groups[kind], instructions=instructions, selection=selection, count=quota))
+        return generated
     types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType])]
     state_dir = load_config().telegram.state_dir
     generated = {}

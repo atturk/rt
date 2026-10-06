@@ -4954,7 +4954,7 @@ export interface components {
              * Qtype
              * @description Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)
              */
-            qtype?: ("quiz" | "mirata" | "vasta" | "caso" | "esercizio") | null;
+            qtype?: ("quiz" | "mirata" | "vasta" | "caso" | "esercizio") | "consigliato" | null;
             /**
              * Selection
              * @description Testo selezionato dall'utente nell'editor o nelle unità
@@ -5548,6 +5548,11 @@ export interface components {
              * @description False se la lezione non ha ancora una rielaborazione valida (nessuna unità)
              */
             ready: boolean;
+            /**
+             * Suggestions
+             * @default false
+             */
+            suggestions: boolean;
             /** Units */
             units: components["schemas"]["StudyUnit"][];
         };
@@ -5614,6 +5619,8 @@ export interface components {
             status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
             /** Status At */
             status_at?: string | null;
+            /** Suggested Qtype */
+            suggested_qtype?: ("quiz" | "mirata" | "caso" | "esercizio") | null;
             /** Title */
             title: string;
         };

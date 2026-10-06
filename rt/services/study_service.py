@@ -41,6 +41,8 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.core.markdown_render import markdown_parser
     from rt.services.lesson_service import lesson_audio_file
     from rt.services.study_progress_service import list_units
+    from rt.services import question_types
+    suggested = question_types.suggestions(lesson_dir)
     progress = {row["unit_id"]: row for row in list_units(lesson_id)}
     ready = check_phase_status(lesson_dir, "rewrite")[0] == PhaseStatus.VALID
     md = markdown_parser()
@@ -48,6 +50,7 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     if ready:
         for unit in study_units(lesson_dir):
             units.append({**{k: unit[k] for k in ("id", "title", "start", "end", "pending")},
+                          "suggested_qtype": suggested.get(unit["id"]),
                           "html": md.render(unit["content"]), "questions": sum(unit["pending"].values()),
                           **{k: v for k, v in progress.get(unit["id"], {}).items() if k != "unit_id"}})
-    return {"id": lesson_id, "ready": ready, "has_audio": lesson_audio_file(lesson_dir) is not None, "units": units}
+    return {"id": lesson_id, "suggestions": question_types.enabled(), "ready": ready, "has_audio": lesson_audio_file(lesson_dir) is not None, "units": units}

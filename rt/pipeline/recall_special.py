@@ -172,8 +172,10 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     if unit_ids is not None:
         wanted_uids = set(unit_ids)
         from rt.services import section_labels
-        all_secs = section_labels.sections(lesson_dir)
-        filtered = [s for s in all_secs if any(u.unit_id in wanted_uids for u in s.get("units", []))]
+        from rt.pipeline.ledger import load_resolved_draft
+        all_secs = section_labels.sections(lesson_dir, list(load_resolved_draft(lesson_dir).units))
+        filtered = [{**s, "units": [u for u in s["units"] if u.unit_id in wanted_uids]}
+                    for s in all_secs if any(u.unit_id in wanted_uids for u in s["units"])]
         if filtered:
             todo = [[s] for s in filtered]
         else:
@@ -338,7 +340,8 @@ def generate_special_batch(
                          unit_ids=unit_ids, instructions=instructions, selection=selection) \
         if (unit_ids is not None or section_labels.mode(force_mock) != "disabled") else []
     wanted = (count - len(results)) if count is not None else 0
-    templates = [t for t in load_recall_bank(lesson_dir).templates if t.kind == qtype]
+    templates = [t for t in load_recall_bank(lesson_dir).templates if t.kind == qtype
+                 and (unit_ids is None or set(t.unit_ids) <= set(unit_ids))]
     if wanted > 0 and templates:
         random.shuffle(templates)
         for template in templates[:min(wanted, 2)]:  # ogni variante costa due chiamate

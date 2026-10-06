@@ -60,6 +60,11 @@ def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir
             "selection": body.selection,
             "count": body.count,
         }, actor)
+    if body.qtype == "consigliato":
+        return enqueue_job("recall_generate", lesson_dir, {
+            "force_mock": body.mock, "regenerate": True, "qtypes": ["consigliato"],
+            "count": body.count, "instructions": body.instructions, "selection": body.selection,
+        }, actor)
     if body.qtype:
         return enqueue_job("recall_batch", lesson_dir, body.model_dump(), actor)
     return enqueue_job("recall_generate", lesson_dir, {

@@ -4772,6 +4772,10 @@
                 "type": "string"
               },
               {
+                "const": "consigliato",
+                "type": "string"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -6265,6 +6269,11 @@
             "title": "Ready",
             "type": "boolean"
           },
+          "suggestions": {
+            "default": false,
+            "title": "Suggestions",
+            "type": "boolean"
+          },
           "units": {
             "items": {
               "$ref": "#/components/schemas/StudyUnit"
@@ -6431,6 +6440,23 @@
               }
             ],
             "title": "Status At"
+          },
+          "suggested_qtype": {
+            "anyOf": [
+              {
+                "enum": [
+                  "quiz",
+                  "mirata",
+                  "caso",
+                  "esercizio"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Qtype"
           },
           "title": {
             "title": "Title",

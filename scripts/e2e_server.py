@@ -44,6 +44,7 @@ def _workspace(base: str, telegram: bool = False) -> str:
     # Telegram è spento di predefinito; gli e2e del bot finto lo accendono (e lo provano a spegnere)
     general["telegram"]["enabled"] = telegram
     # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
+    general.setdefault("jev", {}).update(relevance_model="typesafe/jev-1.13", relevance_mode="shadow")
     general["searxng_base_url"] = "http://127.0.0.1:9"
     # nessuna connessione nel config di esempio: senza questo ogni pagina porterebbe alla
     # configurazione guidata (la si prova in settings.spec.ts e nel job CI 'installer')
