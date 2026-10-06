@@ -98,7 +98,8 @@ def _lessons(root: str) -> None:
     run_mock_pipeline(done, with_review=True, auto_accept=True)
     _plain_lesson(root, "2026-09-12", "FISIOLOGIA", "Il rene")
     for date, materia, argomenti in (("2026-09-19", "FARMACOLOGIA", "Recettori"),
-                                     ("2026-09-20", "PATOLOGIA", "Infiammazione")):
+                                     ("2026-09-20", "PATOLOGIA", "Infiammazione"),
+                                     ("2026-09-03", "REVISIONE", "Verifica di prova")):
         lesson = _plain_lesson(root, date, materia, argomenti)
         add_audio(lesson)
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sull'outline

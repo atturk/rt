@@ -4222,6 +4222,7 @@ export interface components {
              * @default 0
              */
             recall_questions: number;
+            review_progress?: components["schemas"]["ReviewProgress"] | null;
             /**
              * Segment Count
              * @default 0
@@ -5337,6 +5338,13 @@ export interface components {
              * @description Valore completo, null se non impostato
              */
             value?: string | null;
+        };
+        /** ReviewProgress */
+        ReviewProgress: {
+            /** Reviewed */
+            reviewed: number;
+            /** Total */
+            total: number;
         };
         /** RouteIn */
         RouteIn: {

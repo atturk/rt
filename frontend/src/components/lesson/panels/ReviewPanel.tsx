@@ -1,5 +1,6 @@
+import { BuildConfirmDialog } from '../BuildConfirmDialog'
 import { EditorState } from '@codemirror/state'
-import { Check, Pencil, Play, ShieldCheck, Undo2, X } from 'lucide-react'
+import { Check, Pencil, ShieldCheck, Undo2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { errorMessage, type Schemas } from '@/api/client'
@@ -33,6 +34,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
   const [showList, setShowList] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [confirmBuild, setConfirmBuild] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const { seek } = useLessonAudio()
   const items = issues.data?.items ?? []
@@ -46,7 +48,11 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
   const verifying = active && (active.type === 'run_pipeline' || active.type === 'run_phase') && (active.progress?.phase === 'review' || (active.payload as { phase?: string })?.phase === 'review')
   const progress = verifying ? phaseProgress(active) : null
   const waiting = jobs.data?.some((j) => j.state === 'waiting_for_decision' && j.decision?.kind === 'science_issue')
-  const done = l.phases.review === 'VALID' || items.length > 0
+  const complete = l.phases.review === 'VALID'
+  const partial = l.phases.review === 'PARTIAL'
+  const stale = l.phases.review === 'STALE'
+  const done = complete || partial || stale || items.length > 0
+  const buildWarnings = l.phase_report.find(p => p.phase === 'build')?.warnings ?? []
   const busy = saving || decide.isPending || undo.isPending || run.isPending || !!active
   const select = (id: string) => { setEditing(false); const next = new URLSearchParams(params); next.set('issue', id); setParams(next, { replace: true }) }
   const action = async (fn: () => Promise<unknown>) => {
@@ -64,19 +70,30 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       setParams(query, { replace: true })
     })
   }
+  const build = () => {
+    if (buildWarnings.length) setConfirmBuild(true)
+    else void action(() => run.mutateAsync({ type: 'run_phase', phase: 'build' }))
+  }
+  const verify = (force: boolean) => void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', ...(force ? { force: true } : {}) }))
+  const buildButton = <Button disabled={busy || l.phases.build === 'VALID'} onClick={build}>{l.phases.build === 'VALID' ? 'Documento aggiornato' : 'Ricostruisci il documento'}</Button>
   if (issues.isPending) return <p className="text-meta text-muted-foreground">Carico la verifica…</p>
   if (issues.isError) return <Alert tone="danger">{errorMessage(issues.error)}</Alert>
   return <div className="flex flex-col gap-3 text-body" data-testid="lesson-review-panel">
-    <p className="font-semibold" role="status">{verifying ? 'In corso' : done ? pending.length ? `${pending.length} da decidere su ${items.length}` : 'Tutte decise' : 'Mai verificata'}</p>
+    <p className="font-semibold" role="status">{verifying ? 'In corso' : partial ? `Verificate ${l.review_progress?.reviewed ?? 0} unità su ${l.review_progress?.total ?? l.unit_count ?? 0}` : stale ? 'Il testo è cambiato dopo la verifica' : complete ? pending.length ? `${pending.length} da decidere su ${items.length}` : 'Tutte decise' : 'Mai verificata'}</p>
     {verifying && <>
       <p className="text-meta text-muted-foreground">{progress?.detail ? `${progress.detail} · ` : ''}{items.length} issue trovate finora</p>
       <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(active.id)}>Interrompi</Button>
     </>}
-    {done && pending.length === 0 && <>
-      <p className="text-meta">{decided.length} issue decise: {['accepted', 'rejected', 'edited'].map((d) => `${decided.filter((i) => i.decision?.decision === d).length} ${decisionLabels[d] === 'accettata' ? 'accettate' : d === 'rejected' ? 'mantenute' : 'modificate'}`).join(', ')}.</p>
-      <Button disabled={busy} onClick={() => void action(() => run.mutateAsync({ type: 'run_pipeline', with_review: true }))}><Play />Riprendi la pipeline</Button>
-      {waiting && <Badge tone="neutral">Pipeline in attesa</Badge>}
+    {!verifying && partial && <Button disabled={busy} onClick={() => verify(false)}>Completa la verifica</Button>}
+    {!verifying && stale && <>
+      <p className="text-meta text-muted-foreground">Le correzioni fatte a mano non rifanno la verifica.</p>
+      <Button disabled={busy} onClick={() => void action(() => run.mutateAsync({ type: 'run_pipeline', with_review: true }))}>Aggiorna il documento</Button>
     </>}
+    {!verifying && complete && pending.length === 0 && <>
+      <p className="text-meta">{decided.length} issue decise: {['accepted', 'rejected', 'edited'].map((d) => `${decided.filter((i) => i.decision?.decision === d).length} ${decisionLabels[d] === 'accettata' ? 'accettate' : d === 'rejected' ? 'mantenute' : 'modificate'}`).join(', ')}.</p>
+      {buildButton}
+    </>}
+    {waiting && <Badge tone="neutral">Pipeline in attesa</Badge>}
     {last && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void action(async () => { await undo.mutateAsync(last.issue_id); select(last.issue_id) })}><Undo2 />Annulla l'ultima</Button>}
     {selected && <IssueCard key={issueOf(selected).id} item={selected} busy={busy} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} changed={markdown !== undefined && !selected.decision && !issueRange(EditorState.create({ doc: markdown }), selected)} onCloseIssue={() => onDecide(paragraphIssue(issueOf(selected)) ? 'accepted' : 'rejected')} onRecheck={() => void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', unit: issueOf(selected).unit_id ?? undefined, force: true }))} />}
     {phone && done && <Button variant="outline" size="sm" aria-expanded={showList} onClick={() => setShowList(!showList)}>Elenco ({items.length})</Button>}
@@ -95,7 +112,11 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
         </li> })}
       </ul>
     </>}
-    <Button variant="outline" size="sm" disabled={busy || l.phases.rewrite !== 'VALID'} onClick={() => void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', force: done }))}><ShieldCheck />{done ? 'Verifica di nuovo tutta la lezione' : 'Verifica tutta la lezione'}</Button>
+    <Button variant={done ? 'outline' : 'default'} size="sm" disabled={busy || l.phases.rewrite !== 'VALID'} onClick={() => verify(done)}><ShieldCheck />{done ? 'Verifica di nuovo tutta la lezione' : 'Verifica tutta la lezione'}</Button>
+    <BuildConfirmDialog open={confirmBuild} warnings={buildWarnings} onCancel={() => setConfirmBuild(false)} onConfirm={() => {
+      setConfirmBuild(false)
+      void action(() => run.mutateAsync({ type: 'run_phase', phase: 'build' }))
+    }} />
     {(failure || cancel.isError) && <Alert tone="danger">{failure ?? errorMessage(cancel.error)}</Alert>}
   </div>
 }

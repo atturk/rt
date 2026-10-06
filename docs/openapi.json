@@ -3232,6 +3232,16 @@
             "title": "Recall Questions",
             "type": "integer"
           },
+          "review_progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "segment_count": {
             "default": 0,
             "title": "Segment Count",
@@ -5779,6 +5789,24 @@
           "field"
         ],
         "title": "RevealOut",
+        "type": "object"
+      },
+      "ReviewProgress": {
+        "properties": {
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reviewed",
+          "total"
+        ],
+        "title": "ReviewProgress",
         "type": "object"
       },
       "RouteIn": {

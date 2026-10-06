@@ -126,7 +126,13 @@ class LessonActions(BaseModel):
     export_zip: LessonAction
 
 
+class ReviewProgress(BaseModel):
+    reviewed: int
+    total: int
+
+
 class LessonDetail(LessonSummary):
+    review_progress: Optional[ReviewProgress] = None
     phase_report: List[PhaseState]
     segment_count: int = 0
     outline_approved: bool = False
