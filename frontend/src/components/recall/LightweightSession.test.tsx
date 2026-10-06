@@ -387,3 +387,33 @@ describe('LightweightSession', () => {
     expect(screen.getByText(/Non ci sono domande da porre\. Puoi generare nuove domande dai pannelli delle rispettive lezioni\./)).toBeInTheDocument()
   })
 })
+
+it.each([false, true])('all’ultima domanda Fine mostra il finale senza next (unità: %s)', async (unit) => {
+  vi.clearAllMocks()
+  mockRestorableData = { asked: 1, wrong: 0 }
+  mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, remaining: 0 })
+  mockAnswerMutateAsync.mockResolvedValue({ quiz: { correct: true, question: sampleQuestion } })
+  if (unit) renderUnitSession()
+  else renderSession()
+  fireEvent.click((await screen.findByText('Sotto 22 mEq/L')).closest('button')!)
+  const finish = await screen.findByRole('button', { name: 'Fine' })
+  expect(screen.queryByRole('button', { name: 'Prossima' })).not.toBeInTheDocument()
+  fireEvent.click(finish)
+  expect(await screen.findByTestId('recall-empty')).toBeVisible()
+  if (unit) expect(screen.getByText('Hai finito le domande di questa unità')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Riproponi le poste (1)' })).toBeVisible()
+  expect(mockNextMutateAsync).toHaveBeenCalledTimes(1)
+})
+
+it('il cambio tipo usa remaining della nuova domanda', async () => {
+  vi.clearAllMocks()
+  mockNextMutateAsync.mockResolvedValueOnce({ ...sampleQuestion, remaining: 0 })
+    .mockResolvedValueOnce({ ...sampleQuestion, id: 'q101', remaining: 2 })
+  mockAnswerMutateAsync.mockResolvedValue({ quiz: { correct: true, question: sampleQuestion } })
+  renderUnitSession()
+  await screen.findByText('Sotto 22 mEq/L')
+  fireEvent.click(screen.getByRole('button', { name: /^Quiz/  }))
+  await waitFor(() => expect(screen.getByTestId('recall-question')).toHaveAttribute('data-question-id', 'q101'))
+  fireEvent.click(screen.getByText('Sotto 22 mEq/L').closest('button')!)
+  expect(await screen.findByRole('button', { name: 'Prossima' })).toBeVisible()
+})

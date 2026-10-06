@@ -9,8 +9,8 @@ from rt.db.models import StudyUnit, utcnow
 from rt.db.session import read_scope, session_scope
 from rt.services.errors import NotFound
 
-StudyStatus = Literal["da-imparare", "in-apprendimento", "appreso"]
-STATUSES = ("da-imparare", "in-apprendimento", "appreso")
+StudyStatus = Literal["da-imparare", "in-apprendimento", "appreso", "ignorata"]
+STATUSES = ("da-imparare", "in-apprendimento", "appreso", "ignorata")
 
 
 def _at(value):
@@ -74,7 +74,7 @@ class _Row(NamedTuple):
 
 def summaries(lessons: dict[int, str]) -> dict[int, dict]:
     """Una sola query per tutte le lezioni; ignora le unità tolte dalla scaletta."""
-    result = {lid: {"study_learned": 0, "study_learning": 0, "study_last_at": None} for lid in lessons}
+    result = {lid: {"study_learned": 0, "study_learning": 0, "study_ignored": 0, "study_last_at": None} for lid in lessons}
     if not lessons:
         return result
     with read_scope(get_database()) as session:
@@ -90,6 +90,8 @@ def summaries(lessons: dict[int, str]) -> dict[int, dict]:
             summary["study_learned"] += 1
         elif row.status == "in-apprendimento":
             summary["study_learning"] += 1
+        elif row.status == "ignorata":
+            summary["study_ignored"] += 1
         dates = [date for date in (summary["study_last_at"], _at(row.status_at), _at(row.last_read_at)) if date]
         summary["study_last_at"] = max(dates) if dates else None
     return result
@@ -121,3 +123,16 @@ def restore_units(session, lesson_id: int, entries) -> None:
             continue
         session.merge(StudyUnit(lesson_id=lesson_id, unit_id=unit_id, status=status,
                                 status_at=status_at, last_read_at=last_read_at))
+
+
+def ignored_unit_ids(lesson_dir: str) -> set[str]:
+    """Stati espliciti anche per i canali senza API; senza database non ci sono ignorate."""
+    import os
+    from rt.db.models import Lesson
+    db = get_database()
+    if db is None:
+        return set()
+    path = os.path.realpath(os.path.abspath(lesson_dir))
+    with read_scope(db) as session:
+        return set(session.scalars(select(StudyUnit.unit_id).join(Lesson).where(
+            Lesson.path == path, StudyUnit.status == "ignorata")))

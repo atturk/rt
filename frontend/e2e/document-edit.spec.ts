@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink, openLessonDetails } from './support'
+import { test, apiGet, loginViaLink, openLessonDetails } from './support'
 
 // Documento della lezione come in Obsidian (atomic-editor): si legge e si modifica nello stesso
 // posto, senza modalità né avvisi, e si salva da solo nella bozza. CHIRURGIA è una lezione

@@ -3,6 +3,12 @@ import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/utils'
 
+// Un solo suggerimento aperto; il gruppo resta caldo per 300 ms dopo la chiusura.
+let activeTooltip: (() => void) | null = null
+let lastClosed: number | null = null
+
+const canHover = () => !window.matchMedia?.('(hover: none)').matches
+
 type Side = 'top' | 'right' | 'bottom'
 
 export type TooltipTriggerProps = {
@@ -12,6 +18,7 @@ export type TooltipTriggerProps = {
   onMouseLeave: () => void
   onFocus: () => void
   onBlur: () => void
+  onPointerDown: () => void
   onKeyDown: (e: React.KeyboardEvent) => void
 }
 
@@ -39,24 +46,48 @@ export function Tooltip({
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null)
   const [trigger, setTrigger] = React.useState<HTMLElement | null>(null)
 
+  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const suppressed = React.useRef(false)
+  const hide = React.useCallback(function hideTooltip() {
+    clearTimeout(timer.current)
+    timer.current = undefined
+    if (activeTooltip === hideTooltip) {
+      activeTooltip = null
+      lastClosed = Date.now()
+    }
+    setOpen(false)
+  }, [])
+  React.useEffect(() => hide, [hide])
+
   const show = React.useCallback(() => {
-    if (!trigger) return
+    if (!trigger || disabled || suppressed.current || !canHover()) return
+    if (activeTooltip !== hide) activeTooltip?.()
+    activeTooltip = hide
     const r = trigger.getBoundingClientRect()
     const gap = 8
     if (side === 'right') setPos({ top: r.top + r.height / 2, left: r.right + gap })
     else if (side === 'bottom') setPos({ top: r.bottom + gap, left: r.left + r.width / 2 })
     else setPos({ top: r.top - gap, left: r.left + r.width / 2 })
     setOpen(true)
-  }, [side, trigger])
-  const hide = React.useCallback(() => setOpen(false), [])
+  }, [side, trigger, disabled, hide])
+  const hover = React.useCallback(() => {
+    suppressed.current = false
+    if (!canHover() || disabled) return
+    clearTimeout(timer.current)
+    if (activeTooltip || (lastClosed !== null && Date.now() - lastClosed < 300)) show()
+    else timer.current = setTimeout(show, 600)
+  }, [disabled, show])
 
+  const focus = React.useCallback(() => { if (trigger?.matches(':focus-visible')) show() }, [trigger, show])
+  const pointerDown = React.useCallback(() => { suppressed.current = true; hide() }, [hide])
   const visible = open && !disabled && pos !== null
   const props: TooltipTriggerProps = {
     ref: setTrigger,
     'aria-describedby': describe && !disabled ? id : undefined,
-    onMouseEnter: show,
+    onMouseEnter: hover,
     onMouseLeave: hide,
-    onFocus: show,
+    onFocus: focus,
+    onPointerDown: pointerDown,
     onBlur: hide,
     onKeyDown: (e) => {
       // Solo se il suggerimento si vede: altrimenti Esc va a chi lo aspetta (menu, dialoghi).
@@ -70,6 +101,7 @@ export function Tooltip({
     side === 'right' ? 'translateY(-50%)' : side === 'bottom' ? 'translateX(-50%)' : 'translate(-50%, -100%)'
   return (
     <>
+      {/* oxlint-disable-next-line react/refs -- Il render-prop passa i gestori al trigger; i ref si leggono solo negli eventi. */}
       {children(props)}
       {/* Sempre nel DOM per aria-describedby; visibile solo quando aperto. */}
       {createPortal(

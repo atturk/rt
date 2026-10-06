@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // Studio del design 4.2 (schermate 05, 05b e 06): lettura dell'unità, poi le sue domande una
 // alla volta, poi l'unità dopo. Si entra dalle righe e dai gruppi di Lezioni e dall'intestazione
@@ -343,21 +343,25 @@ test('Stato di studio persistente, pulsante e S, barrette cliccabili e prima uni
     await page.goto(`/studio/lezione/${l.id}`)
     await expect.poll(async () => (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].last_read_at).not.toBe(study.units[0].last_read_at)
     const button = page.getByTestId('study-status')
-    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: da imparare")
+    await expect(button).toHaveAttribute('aria-label', "Stato: da imparare")
     await button.click()
-    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: in apprendimento")
+    await expect(button).toHaveAttribute('aria-label', "Stato: in apprendimento")
     await expect(button).not.toHaveAttribute('aria-disabled', 'true')
     const firstBar = page.getByTestId('study-dots').locator('button').first()
     await expect(firstBar.locator('span')).toHaveClass(/bg-warning/)
     await page.keyboard.press('s')
-    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: appreso")
+    await expect(button).toHaveAttribute('aria-label', "Stato: appresa")
     await expect(button).not.toHaveAttribute('aria-disabled', 'true')
     await expect(firstBar.locator('span')).toHaveClass(/bg-success/)
+    await button.click()
+    await expect(button).toHaveAttribute('aria-label', 'Stato: ignorata')
+    await expect(firstBar.locator('span')).toHaveClass(/bg-danger/)
+    await expect(button).not.toHaveAttribute('aria-disabled', 'true')
     await page.reload()
     await expect(page.getByRole('heading', { level: 2 })).toContainText('1.2')
     await firstBar.click()
     await expect(page.getByRole('heading', { level: 2 })).toContainText('1.1')
-    await expect(button).toHaveAttribute('aria-label', "Stato dell'unità: appreso")
+    await expect(button).toHaveAttribute('aria-label', 'Stato: ignorata')
     await page.getByTestId('unit-index-toggle').click()
     await expect(page.getByTestId('unit-index-menu').getByRole('menuitem').first()).toContainText('qui')
     await page.keyboard.press('Escape')
@@ -403,7 +407,7 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#f6dcc8')
     await page.getByRole('radio', { name: 'Menta', exact: true }).click()
     await expect(header).toHaveCSS('background-color', 'rgb(213, 238, 226)')
-    await page.getByRole('button', { name: 'Fatto', exact: true }).click()
+    await page.getByRole('button', { name: 'Chiudi le impostazioni', exact: true }).click()
     const book = page.getByRole('button', { name: 'Torna allo Studio', exact: true })
     // Il libro è raggiungibile anche dalla tastiera: Spazio deve premere il pulsante.
     if (viewport.width > 767) { await book.focus(); await page.keyboard.press('Space') }
@@ -421,4 +425,162 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
     // Il giro successivo parte dai valori iniziali, senza perdere la preferenza precedente del server.
     await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: { ...RSVP_DEFAULT, sound: false } })
   }
+})
+
+test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[1]
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-dots').locator('button').nth(1).click()
+    const link = page.getByRole('link', { name: 'Apri la lezione', exact: true })
+    await expect(link).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
+    await page.getByTestId('study-title-button').click()
+    await expect(page.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
+    await page.keyboard.press('Escape')
+    await link.click()
+    await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}#unit-${unit.id.replace('.', '\\.')}$`))
+    const target = page.getByTestId('lesson-document').locator(`[data-unit-id="${unit.id}"]`)
+    await expect(target).toBeInViewport()
+    await expect(target).toHaveClass(/rt-claim-unit/)
+  }
+})
+
+test('impostazioni zen laterali: X, Esc e icona chiudono salvando subito; su iPhone resta il foglio', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  const toggle = page.getByRole('button', { name: 'Impostazioni della lettura veloce', exact: true })
+  const panel = page.getByTestId('speed-reader-settings')
+  for (const close of ['X', 'Esc', 'icona']) {
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(panel).toHaveCSS('width', '340px')
+    await expect(panel.getByRole('button', { name: 'Fatto' })).toHaveCount(0)
+    for (const name of ['Lettura', 'Aspetto', 'Suono']) await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible()
+    await page.getByTestId('speed-reader-word').click()
+    await expect(panel).toBeVisible()
+    const request = page.waitForRequest(r => r.method() === 'PUT' && r.url().endsWith('/preferences/study.rsvp'))
+    await panel.getByRole('button', { name: 'Testo più grande' }).click()
+    if (close === 'X') await panel.getByRole('button', { name: 'Chiudi le impostazioni' }).click()
+    else if (close === 'Esc') await page.keyboard.press('Escape')
+    else await toggle.click()
+    await request
+    await expect(panel).toHaveCount(0)
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('speed-reader')).toBeVisible()
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await toggle.click()
+  const box = await panel.boundingBox()
+  expect(box!.y + box!.height).toBeCloseTo(844)
+  await page.mouse.click(12, 100)
+  await expect(panel).toHaveCount(0)
+})
+
+test('la formula dell’unità è resa anche nella lettura veloce e nel Contesto', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await expect(page.getByTestId('study-text').locator('math').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowLeft')
+  // La formula è il secondo elemento: Play la mostra prima della pausa di fine frase.
+  await page.getByRole('button', { name: 'Avvia', exact: true }).click()
+  await expect(page.getByTestId('speed-reader-word').locator('math')).toBeVisible()
+  await page.getByRole('button', { name: 'Pausa', exact: true }).click()
+  await expect(page.getByTestId('speed-reader-word')).toHaveAttribute('data-math', 'true')
+  await expect(page.getByTestId('speed-reader-word').locator('.orp')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Contesto', exact: true }).click()
+  await expect(page.getByTestId('speed-reader-context').locator('math').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Impostazioni della lettura veloce' }).click()
+  await page.getByRole('radio', { name: 'Personalizzata', exact: true }).click()
+  const slider = page.getByRole('slider', { name: 'Formule complesse' })
+  await expect(slider).toHaveAttribute('min', '500')
+  await expect(slider).toHaveAttribute('max', '5000')
+  await expect(slider).toHaveAttribute('step', '250')
+})
+
+test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Contesto', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unitId = study.units[0].id
+  const previous = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    const text = page.getByTestId('study-text')
+    await expect(text).toHaveText(/\S.{40,}/)
+    await text.evaluate(root => {
+      const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
+      const range = document.createRange()
+      const start = node.textContent!.search(/\S/)
+      range.setStart(node, start); range.setEnd(node, start + 10)
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(range)
+      root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await expect(text.locator('.rt-hl').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+    const word = page.getByTestId('speed-reader-word')
+    await expect(word).toHaveAttribute('data-hl', 'true')
+    const bg = await word.locator('.orp').evaluate(el => getComputedStyle(el).backgroundColor)
+    expect(bg).not.toBe('rgba(0, 0, 0, 0)')
+    await expect(word.locator('.pre > span')).toHaveCSS('background-color', bg)
+    await expect(word.locator('.post > span')).toHaveCSS('background-color', bg)
+    await page.getByRole('button', { name: 'Contesto', exact: true }).click()
+    await expect(page.getByTestId('speed-reader-context').locator('.rt-rsvp-hl').first()).toHaveCSS('background-color', bg)
+    await page.getByRole('button', { name: 'Impostazioni della lettura veloce' }).click()
+    await page.getByRole('switch', { name: 'Mostra le evidenziazioni' }).click()
+    await expect(word).not.toHaveAttribute('data-hl')
+  } finally {
+    const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+    for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) {
+      await page.request.delete(`/api/v1/lessons/${l.id}/highlights/${row.id}`, { headers: authHeaders() })
+    }
+  }
+})
+
+test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande dell’unità', async ({ page }) => {
+  test.setTimeout(150_000)
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[0]
+  expect(unit.questions).toBe(0)
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  const controls = page.getByTestId('speed-reader-controls')
+  await expect(controls.getByRole('button')).toHaveCount(4)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    const size = width === 390 ? 48 : 56
+    for (const button of await controls.getByRole('button').all()) {
+      await expect(button).toHaveCSS('width', `${size}px`)
+      await expect(button).toHaveCSS('height', `${size}px`)
+      expect(await button.evaluate(el => parseFloat(getComputedStyle(el).borderRadius))).toBeGreaterThanOrEqual(size / 2)
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 844 })
+  await page.getByRole('button', { name: 'Genera domande su questa unità' }).click()
+  const modal = page.getByTestId('study-generate-modal')
+  await expect(modal).toBeVisible()
+  const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
+  await modal.getByRole('button', { name: 'Genera', exact: true }).click()
+  expect((await request).postDataJSON()).toMatchObject({ unit_ids: [unit.id] })
+  await expect(modal).toBeHidden({ timeout: 90_000 })
+  const review = page.getByRole('button', { name: /Ripassa l'unità · \d+ domande/ })
+  await expect(review).toBeVisible()
+  await review.click()
+  await expect(page.getByTestId('speed-reader')).toBeHidden()
+  await expect(page.getByTestId('recall-session-page')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(unit.title)
+  await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
+  await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
 })

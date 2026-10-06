@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect } from '@playwright/test'
 
-import { apiGet, loginLink, loginViaLink, openLessonDetails, serverState } from './support'
+import { test, apiGet, loginLink, loginViaLink, openLessonDetails, serverState } from './support'
 
 type Lesson = { id: number; materia: string; titolo: string; folder_name: string; state: string | null }
 

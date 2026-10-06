@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { expect, type APIRequestContext } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c): gruppi per data, materia o docente,
 // ordinamento, popup Info, selezione con lo scaricamento. Le scelte restano nel browser.
@@ -33,8 +33,14 @@ test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhon
   try {
     await page.reload()
     const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
-    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento, 0 ignorate')
     await expect(row.getByTestId('lesson-subtitle')).toContainText('2 unità · 1 apprese')
+    const second = study.units[1]
+    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${second.id}`, { headers: authHeaders(), data: { status: 'ignorata' } })
+    await page.reload()
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 1, 0 in apprendimento, 1 ignorate')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveText('1/1')
+    await expect(row.getByTestId('lesson-subtitle')).not.toContainText('ignorate')
     await page.getByRole('button', { name: 'Per docente' }).click()
     await page.getByRole('button', { name: 'Ordina', exact: true }).click()
     await page.getByRole('menuitemradio', { name: 'Più avanti nello studio' }).click()
@@ -48,7 +54,7 @@ test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhon
     await sort.click()
     await expect(page.getByRole('button', { name: /Ordina: Indietro/ })).toBeVisible()
   } finally {
-    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${first.id}`, { headers: authHeaders(), data: { status: first.status } })
+    for (const unit of study.units) await page.request.put(`/api/v1/lessons/${l.id}/study/units/${unit.id}`, { headers: authHeaders(), data: { status: unit.status } })
   }
 })
 
@@ -231,4 +237,44 @@ test('selezione: Elimina le lezioni selezionate con la conferma scritta; il Mark
     expect((await page.request.get(`/api/v1/lessons/${id}`, { headers: authHeaders() })).status()).toBe(404)
   }
   await bar.getByRole('button', { name: 'Annulla' }).click()
+})
+
+test('tema scuro: selezione leggibile, pulsante premuto e riga selezionata', async ({ page }) => {
+  const previous = (await apiGet<Record<string, unknown>>(page.request, '/preferences')).theme
+  try {
+    expect((await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify('scuro') })).ok()).toBeTruthy()
+    await loginViaLink(page)
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    const colors = await page.evaluate(() => {
+      const normal = getComputedStyle(document.body)
+      const selection = getComputedStyle(document.body, '::selection')
+      const highlight = getComputedStyle(document.body, '::highlight(rt-generate)')
+      const probe = document.createElement('span'); probe.style.background = 'var(--accent)'; document.body.append(probe)
+      const accent = getComputedStyle(probe).backgroundColor
+      probe.style.background = 'var(--muted)'
+      const muted = getComputedStyle(probe).backgroundColor; probe.remove()
+      return { bg: selection.backgroundColor, fg: selection.color, text: normal.color, accent, muted, highlight: highlight.backgroundColor }
+    })
+    expect(colors.bg).not.toBe(colors.accent)
+    expect(colors.fg).toBe(colors.text)
+    expect(colors.highlight).toBe(colors.bg)
+    const button = page.getByRole('button', { name: 'Seleziona', exact: true })
+    await button.hover()
+    await expect(button).toHaveCSS('background-color', colors.muted)
+    const hover = await button.evaluate(el => getComputedStyle(el).backgroundColor)
+    await button.click()
+    await expect.poll(() => button.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(hover)
+    const pressed = await button.evaluate(el => getComputedStyle(el).backgroundColor)
+    expect(pressed).not.toBe(hover)
+    expect(pressed).not.toBe(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor))
+    const row = page.getByTestId('lesson-row').first()
+    const before = await row.locator('label').first().evaluate(el => getComputedStyle(el).backgroundColor)
+    await row.getByRole('checkbox').check()
+    expect(await row.locator('label').first().evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(before)
+  } finally {
+    const response = previous === undefined
+      ? await page.request.delete('/api/v1/preferences/theme', { headers: authHeaders() })
+      : await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify(previous) })
+    expect(response.ok()).toBeTruthy()
+  }
 })

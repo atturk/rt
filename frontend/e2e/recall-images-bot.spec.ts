@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
+import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
 
 // Sessione di ripasso leggera, pannello Arricchimento e bot Telegram contro l'API vera. Il worker
 // gira con --mock (LLM finto) e il bot è finto (RT_TELEGRAM_FAKE=1), vedi scripts/e2e_server.py.

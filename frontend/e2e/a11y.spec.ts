@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { test, apiGet, loginViaLink } from './support'
 
 // Accessibilità di base (RT4-F7): axe con le regole WCAG 2 A/AA su ogni pagina, nei due temi.
 // Controlla etichette, nomi dei pulsanti, ruoli, focus visibile e contrasto dei colori.
@@ -97,7 +97,8 @@ for (const theme of ['light', 'dark'] as const) {
     // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
     await page.getByRole('button', { name: 'Per materia' }).click()
-    await page.getByRole('button', { name: 'Per materia' }).focus()
+    await page.mouse.move(0, 0)
+    await page.getByRole('button', { name: 'Per materia' }).hover()
     await expect(page.getByRole('tooltip', { name: 'Per materia' })).toBeVisible()
     await expectNoViolations(page, 'lezioni per materia con un tooltip')
     await page.keyboard.press('Escape')

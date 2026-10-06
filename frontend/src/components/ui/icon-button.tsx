@@ -23,7 +23,7 @@ function iconButtonClass({ variant = 'ghost', active = false, className }: { var
       : active
         ? variant === 'rail'
           ? 'bg-accent text-accent-foreground'
-          : 'bg-muted'
+          : 'bg-accent text-accent-foreground dark:bg-success-soft dark:text-success'
         : 'hover:bg-muted',
     className,
   )
@@ -54,8 +54,8 @@ export function IconButton({ label, icon: Icon, side = 'bottom', variant, active
           aria-label={label}
           aria-disabled={unavailable ? true : undefined}
           className={iconButtonClass({ variant, active, className })}
-          {...props}
           {...trigger}
+          {...props}
           onClick={unavailable ? (event) => event.preventDefault() : onClick}
         >
           <Icon aria-hidden />

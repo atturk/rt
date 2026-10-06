@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { test, apiGet, loginViaLink } from './support'
 
 // Ricerca lato client nella pagina Lezioni, barra di ricerca in Recall e Immagini, sezione Review,
 // barra a icone del design 4.2 (PC) e schede in basso (telefono).

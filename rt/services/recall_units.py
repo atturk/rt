@@ -33,10 +33,12 @@ def unit_rows(lesson_dir: str, units: Optional[list] = None) -> List[Dict]:
     records = _load(lesson_dir, "resolved")
     stored = load_recall_bank(lesson_dir).unit_selection or {}
     chosen, known = set(stored.get("selected") or []), set(stored.get("known") or [])
+    from rt.services.study_progress_service import ignored_unit_ids
+    ignored = ignored_unit_ids(lesson_dir)
     rows = []
     for unit in units:
         signal = recall_signal(lesson_dir, unit, records)
-        default = suggested(signal)
+        default = suggested(signal) and unit.unit_id not in ignored
         custom = bool(stored) and unit.unit_id in known
         rows.append({"unit_id": unit.unit_id, "title": unit.title, **signal, "suggested": default,
                      "selected": unit.unit_id in chosen if custom else default})

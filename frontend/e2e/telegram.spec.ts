@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // RT4-FA6, 4.2.2: sezione Telegram delle Impostazioni. Gira dopo settings.spec.ts (stesso server, in serie), che ha
 // salvato token, Chat ID e i topic BIOCHIMICA (12) e ANATOMIA (27) contro la Bot API finta.

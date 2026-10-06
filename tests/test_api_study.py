@@ -135,3 +135,25 @@ def test_generate_from_the_editor_writes_and_saves_the_prompt(api_client, ready,
     assert "write" not in queue().get(again["job_id"]).payload
     _drain(worker)
     assert api_client.get(base).json()["elements"][0]["prompt"] == done["prompt"]
+
+
+@pytest.mark.parametrize('qtype', ['mista', 'quiz', 'mirata'])
+@pytest.mark.parametrize('explicit', [False, True])
+def test_next_returns_remaining_with_same_filters(api_client, ready, qtype, explicit, monkeypatch):
+    from rt.services import recall_service, study_progress_service
+    from rt.api.routers import recall as router
+    monkeypatch.setattr(router, '_refill_later', lambda *args: None)
+    path, lid, _worker = ready
+    recall_service.generate_pool(path, force_mock=True)
+    uid = api_client.get(f'/api/v1/lessons/{lid}/study').json()['units'][0]['id']
+    study_progress_service.set_status(lid, path, uid, 'ignorata' if explicit else 'da-imparare')
+    params = {'qtype': qtype, **({'unit_id': uid} if explicit else {})}
+    count = recall_service.pending_count(path, qtype, unit_id=uid if explicit else None)
+    assert count > 0
+    for remaining in range(count - 1, -1, -1):
+        response = api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params)
+        assert response.status_code == 200
+        assert response.json()['remaining'] == remaining
+        if explicit:
+            assert uid in response.json()['unit_ids']
+    assert api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params).status_code == 404

@@ -837,9 +837,14 @@ export function LightweightSession({
                     <Button
                       variant="default"
                       disabled={busy}
-                      onClick={() => askNext()}
+                      onClick={() => {
+                        if (!isSelection && currentQuestion.remaining === 0) {
+                          setCurrentQuestion(null)
+                          setEmptyPoolError(true)
+                        } else void askNext()
+                      }}
                     >
-                      Prossima
+                      {!isSelection && currentQuestion.remaining === 0 ? 'Fine' : 'Prossima'}
                     </Button>
                   )}
                 </div>

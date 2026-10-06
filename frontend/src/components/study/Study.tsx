@@ -1,4 +1,4 @@
-import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, FileText, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -16,7 +16,7 @@ import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
-import { IconButton } from '@/components/ui/icon-button'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -260,7 +260,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
+  const lessonUrl = `/lezioni/${lesson!.id}#unit-${encodeURIComponent(unit.id)}`
   const titleButton = (
+    <span className="inline-flex max-w-full items-center gap-1">
     <button
       ref={titleButtonRef}
       type="button"
@@ -275,6 +277,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
       <span className="sr-only">Dettagli della lezione</span>
     </button>
+    <IconLink label="Apri la lezione" icon={FileText} to={lessonUrl} />
+    </span>
   )
 
   const headerActions = (
@@ -288,7 +292,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
-        label={`Stato dell'unità: ${STATUS_LABELS[live.status ?? 'da-imparare']}`}
+        label={STATUS_LABELS[live.status ?? 'da-imparare']}
+        aria-label={`Stato: ${STATUS_LABELS[live.status ?? 'da-imparare'].toLocaleLowerCase('it')}`}
         icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
         className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
         onClick={changeStatus}
@@ -324,7 +329,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const zenActions = <div className="flex items-center gap-1">
     <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
-    <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
+    <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} active={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
     <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
     <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} />
   </div>
@@ -337,7 +342,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           back={speedReading ? undefined : back}
           actions={speedReading ? zenActions : headerActions}
           zen={speedReading}
-          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen} onTintChange={setTint} onClose={closeReader} /> : undefined}
+          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
             onPointerUp: handlePointerUp,
@@ -356,6 +361,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                 lesson={lesson}
                 unitCount={units.length}
                 currentUnitIndex={unitIndex}
+                lessonUrl={lessonUrl}
                 open={detailsOpen}
                 onClose={() => setDetailsOpen(false)}
                 anchorRef={titleButtonRef}
@@ -423,6 +429,7 @@ function LessonDetailsPopup({
   lesson,
   unitCount,
   currentUnitIndex,
+  lessonUrl,
   open,
   onClose,
   anchorRef,
@@ -430,6 +437,7 @@ function LessonDetailsPopup({
   lesson: Lesson
   unitCount: number
   currentUnitIndex: number
+  lessonUrl: string
   open: boolean
   onClose: () => void
   anchorRef: React.RefObject<HTMLButtonElement | null>
@@ -507,7 +515,7 @@ function LessonDetailsPopup({
       </div>
       <div>
         <Link
-          to={`/lezioni/${lesson.id}`}
+          to={lessonUrl}
           className="text-meta font-semibold text-link hover:underline"
           onClick={onClose}
         >
@@ -571,7 +579,7 @@ function Dots({ units, current, onSelect }: { units: StudyUnit[]; current: numbe
           className="flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
-            u.status === 'appreso' ? 'bg-success' : u.status === 'in-apprendimento' ? 'bg-warning' : 'bg-muted')} />
+            u.status === 'appreso' ? 'bg-success' : u.status === 'in-apprendimento' ? 'bg-warning' : u.status === 'ignorata' ? 'bg-danger' : 'bg-muted')} />
         </button>
       })}
     </div>

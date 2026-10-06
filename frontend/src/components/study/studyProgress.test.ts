@@ -3,13 +3,16 @@ import { initialStudyUnit, nextStudyStatus, studyDate } from './studyProgress'
 it('apre la prima unità non appresa, oppure la prima quando sono tutte apprese', () => {
   expect(initialStudyUnit([{ status: 'appreso' }, { status: 'in-apprendimento' }, {}])).toBe(1)
   expect(initialStudyUnit([{ status: 'appreso' }, { status: 'appreso' }])).toBe(0)
+  expect(initialStudyUnit([{ status: 'ignorata' }, { status: 'appreso' }, {}])).toBe(2)
+  expect(initialStudyUnit([{ status: 'ignorata' }, { status: 'appreso' }])).toBe(0)
   expect(initialStudyUnit([])).toBe(0)
 })
 
-it('cicla i tre stati senza promozioni automatiche', () => {
+it('cicla i quattro stati senza promozioni automatiche', () => {
   expect(nextStudyStatus()).toBe('in-apprendimento')
   expect(nextStudyStatus('in-apprendimento')).toBe('appreso')
-  expect(nextStudyStatus('appreso')).toBe('da-imparare')
+  expect(nextStudyStatus('appreso')).toBe('ignorata')
+  expect(nextStudyStatus('ignorata')).toBe('da-imparare')
 })
 
 it('mostra oggi, ieri e la data per i cambi precedenti, anche attraverso il cambio di mese', () => {

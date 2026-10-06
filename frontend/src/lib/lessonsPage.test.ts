@@ -172,3 +172,13 @@ describe('markdownExportNote', () => {
     expect(markdownExportNote([lesson(1)])).toEqual({ unavailable: null, hint: null })
   })
 })
+
+it('esclude le ignorate dal denominatore, le mostra nella barra e non nel sottotitolo', () => {
+  const rows = [lesson(1, { unit_count: 10, study_learned: 4, study_ignored: 5 }), lesson(2, { unit_count: 10, study_learned: 5 })]
+  expect(lessonsGroups(rows, { group: 'materia', sort: 'piu-avanti' }, NOW)[0].lessons.map(l => l.id)).toEqual([1, 2])
+  expect(lessonsGroups(rows, { group: 'materia', sort: 'piu-indietro' }, NOW)[0].lessons.map(l => l.id)).toEqual([2, 1])
+  expect(sortSelection(rows, 'studio', 'desc').map(l => l.id)).toEqual([1, 2])
+  expect(selectionDetails(rows)).toMatchObject({ units: 20, studyUnits: 15, ignored: 5, percentages: { learned: 45, ignored: 25, toLearn: 30 } })
+  expect(lessonSubtitle(rows[0], 'data', NOW)).not.toContain('ignorate')
+  expect(selectionDetails([lesson(1, { unit_count: 2, study_ignored: 2 })]).studyUnits).toBe(0)
+})

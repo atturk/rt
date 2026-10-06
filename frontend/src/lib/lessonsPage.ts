@@ -83,7 +83,7 @@ export function lessonsGroups(lessons: Lesson[], prefs: LessonsPrefs, now = new 
     sorted.sort((a, b) => (Date.parse(b.study_last_at ?? '') || 0) - (Date.parse(a.study_last_at ?? '') || 0))
   } else if (prefs.sort === 'piu-avanti' || prefs.sort === 'piu-indietro') {
     const direction = prefs.sort === 'piu-avanti' ? -1 : 1
-    const ratio = (lesson: Lesson) => lesson.unit_count ? (lesson.study_learned ?? 0) / lesson.unit_count : 0
+    const ratio = (lesson: Lesson) => studyTotal(lesson) ? (lesson.study_learned ?? 0) / studyTotal(lesson) : 0
     sorted.sort((a, b) => direction * (ratio(a) - ratio(b) || (a.study_learning ?? 0) - (b.study_learning ?? 0)))
   }
   const dateDir = prefs.sort === 'meno-recenti' ? 'asc' : 'desc'
@@ -170,6 +170,7 @@ export function selectionDetails(lessons: readonly Lesson[]) {
   const cost = sum(lessons.map(l => l.cost_usd))
   const units = sum(lessons.map(l => l.unit_count))
   const learned = sum(lessons.map(l => l.study_learned)) ?? 0
+  const ignored = sum(lessons.map(l => l.study_ignored)) ?? 0
   const learning = sum(lessons.map(l => l.study_learning)) ?? 0
   const latest = [...lessons].filter(l => l.study_last_at && Number.isFinite(Date.parse(l.study_last_at)))
     .sort((a, b) => Date.parse(b.study_last_at!) - Date.parse(a.study_last_at!))[0]
@@ -181,7 +182,7 @@ export function selectionDetails(lessons: readonly Lesson[]) {
   }
   return {
     count: lessons.length, duration, firstDate: dates[0] ?? null, lastDate: dates.at(-1) ?? null,
-    units, learned, learning, questions: sum(lessons.map(l => l.recall_questions)), pending: sum(lessons.map(l => l.recall_pending)),
+    units, learned, learning, ignored, studyUnits: units == null ? null : Math.max(0, units - ignored), questions: sum(lessons.map(l => l.recall_questions)), pending: sum(lessons.map(l => l.recall_pending)),
     cost, costPerHour: cost != null && duration && duration > 0 ? cost * 3600 / duration : null,
     lastStudy: latest ? { at: latest.study_last_at!, lesson: lessonTitle(latest) } : null,
     ready: statuses.filter(status => status === 'pronta').length,
@@ -190,11 +191,17 @@ export function selectionDetails(lessons: readonly Lesson[]) {
     percentages: {
       learned: units ? learned / units * 100 : 0,
       learning: units ? learning / units * 100 : 0,
-      toLearn: units ? Math.max(0, units - learned - learning) / units * 100 : 0,
+      ignored: units ? ignored / units * 100 : 0,
+      toLearn: units ? Math.max(0, units - learned - learning - ignored) / units * 100 : 0,
     },
     subjects: counts(lessons.map(l => subjectName(l.materia.trim()) || 'Senza materia')),
     teachers: counts(lessons.map(l => l.docente.trim() || 'Senza docente')),
   }
+}
+
+/** Denominatore comune per l'avanzamento: le unità della scaletta senza le ignorate. */
+export function studyTotal(lesson: Pick<Lesson, 'unit_count' | 'study_ignored'>): number {
+  return Math.max(0, (lesson.unit_count ?? 0) - (lesson.study_ignored ?? 0))
 }
 
 export type SelectionSort = 'lezione' | 'audio' | 'studio' | 'domande' | 'costo'
@@ -204,7 +211,7 @@ export function sortSelection(lessons: readonly Lesson[], key: SelectionSort, di
   const value = (lesson: Lesson) => {
     if (key === 'lezione') return lessonTitle(lesson)
     if (key === 'audio') return lesson.duration_seconds
-    if (key === 'studio') return lesson.unit_count ? (lesson.study_learned ?? 0) / lesson.unit_count : 0
+    if (key === 'studio') return studyTotal(lesson) ? (lesson.study_learned ?? 0) / studyTotal(lesson) : 0
     if (key === 'domande') return lesson.recall_questions
     return lesson.cost_usd
   }

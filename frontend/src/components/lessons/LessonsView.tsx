@@ -253,7 +253,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
   return (
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       {selecting ? (
-        <label className={cn(row, 'cursor-pointer')}>
+        <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
           <Check className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
@@ -272,17 +272,21 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
 function StudyRing({ lesson }: { lesson: Lesson }) {
   const learned = lesson.study_learned ?? 0
   const learning = lesson.study_learning ?? 0
-  if (!learned && !learning) return null
+  const ignored = lesson.study_ignored ?? 0
+  if (!learned && !learning && !ignored) return null
   const total = lesson.unit_count ?? 0
+  const toStudy = Math.max(0, total - ignored)
+  const ignoredArc = total ? ignored / total * 100 : 0
   const learnedArc = total ? learned / total * 100 : 0
   const learningArc = total ? learning / total * 100 : 0
   return <span className="ml-2 flex shrink-0 self-center items-center gap-2 text-meta tabular-nums text-muted-foreground"
-    role="img" aria-label={`${learned} unità apprese su ${total}, ${learning} in apprendimento`} data-testid="lesson-study-ring">
-    <span aria-hidden>{learned}/{total}</span>
+    role="img" aria-label={`${learned} unità apprese su ${toStudy}, ${learning} in apprendimento, ${ignored} ignorate`} data-testid="lesson-study-ring">
+    <span aria-hidden>{learned}/{toStudy}</span>
     <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[3]">
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-muted" />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-success" strokeDasharray={`${learnedArc} ${100 - learnedArc}`} />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-warning" strokeDasharray={`${learningArc} ${100 - learningArc}`} strokeDashoffset={-learnedArc} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-danger" strokeDasharray={`${ignoredArc} ${100 - ignoredArc}`} strokeDashoffset={-(100 - ignoredArc)} />
     </svg>
   </span>
 }

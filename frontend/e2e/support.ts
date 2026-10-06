@@ -1,8 +1,27 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { expect, test as base, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 type ServerState = { base_url: string; token: string; lessons_root: string; searxng_url: string }
+
+/** Ogni e2e lascia le preferenze del server come le ha trovate, anche se fallisce. */
+export const test = base.extend<{ restorePreferences: void }>({
+  restorePreferences: [async ({ page, request }, use) => {
+    const previous = await apiGet<Record<string, unknown>>(request, '/preferences')
+    await use()
+    // Ferma anche i salvataggi differiti della pagina prima del ripristino.
+    if (!page.isClosed()) await page.goto('about:blank')
+    const current = await apiGet<Record<string, unknown>>(request, '/preferences')
+    for (const key of new Set([...Object.keys(previous), ...Object.keys(current)])) {
+      if (JSON.stringify(previous[key]) === JSON.stringify(current[key])) continue
+      const path = `/api/v1/preferences/${encodeURIComponent(key)}`
+      const response = Object.hasOwn(previous, key)
+        ? await request.put(path, { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify(previous[key]) })
+        : await request.delete(path, { headers: authHeaders() })
+      expect(response.ok(), `Ripristino della preferenza ${key}`).toBeTruthy()
+    }
+  }, { auto: true, timeout: 30_000 }],
+})
 
 export function serverState(): ServerState {
   const file = fileURLToPath(new URL('./.state/server.json', import.meta.url))
