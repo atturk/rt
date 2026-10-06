@@ -26,7 +26,7 @@ import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
-import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
+import { ISSUE_EVENT, issuePosition, lessonReview, setReview } from './lessonReview'
 import { issueOf } from './reviewIssues'
 import { EditorToolbar } from './EditorToolbar'
 import { lessonFolding } from './lessonFolding'
@@ -315,8 +315,8 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     if (!view) return
     view.dispatch({ effects: setReview.of({ items: reviewItems ?? [], selected: selectedIssueId }) })
     if (selectedIssue) {
-      const range = issueRange(view.state, selectedIssue)
-      if (range) view.dispatch({ effects: EditorView.scrollIntoView(range.from, { y: 'center' }) })
+      const position = issuePosition(view.state, selectedIssue)
+      if (position !== null) view.dispatch({ effects: EditorView.scrollIntoView(position, { y: 'center' }) })
     }
   }, [reviewItems, selectedIssueId, selectedIssue, source.key])
   useEffect(() => {

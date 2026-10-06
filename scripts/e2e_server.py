@@ -105,6 +105,16 @@ def _lessons(root: str) -> None:
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sull'outline
         approve_outline(lesson, channel="api")
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sulle issue
+        if materia == "REVISIONE":
+            from rt.pipeline.review import load_science_issues, save_science_issues
+            from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+            from rt.services.phase_validation_service import validate_phase
+            issues = load_science_issues(lesson)
+            issues.append(ScienceIssue(id="sci_asr_test", type=ScienceType.ERR_ASR_ST,
+                                      severity=ScienceSeverity.MEDIUM, unit_id=issues[0].unit_id,
+                                      claim="Qualità dell’intera unità", reason="Issue ASR di prova"))
+            save_science_issues(issues, lesson)
+            validate_phase(lesson, "review", channel="api")
     anatomia = _plain_lesson(root, "2026-09-21", "ANATOMIA", "Cuore")
     run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
     approve_outline(anatomia, channel="api")

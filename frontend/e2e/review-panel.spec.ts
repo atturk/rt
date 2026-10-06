@@ -8,6 +8,14 @@ test('revisione decisa: ricostruisce con run_phase build', async ({ page }) => {
   await page.goto(`/lezioni/${lesson.id}?panel=verifica`)
   const panel = page.getByTestId('lesson-review-panel')
   await expect(panel).toBeVisible()
+  const icon = page.getByTestId('lesson-document').getByRole('button', { name: 'Qualità ASR · statistica', exact: true })
+  await expect(icon).toBeVisible()
+  await expect(icon.locator('svg')).toBeVisible()
+  await expect(page.getByTestId('lesson-document').locator('span[data-review-issue="sci_asr_test"]')).toHaveCount(0)
+  await expect(icon.locator('..')).toContainText(/\d{2}:\d{2}/)
+  await icon.click()
+  await expect(panel.getByTestId('issue-detail')).toContainText('Qualità ASR · statistica')
+  await expect(page).toHaveURL(/issue=sci_asr_test/)
   const issues = await apiGet<{ items: { decision: unknown }[] }>(page.request, `/lessons/${lesson.id}/issues?status=all`)
   let remaining = issues.items.filter(i => !i.decision).length
   while (remaining > 0) {

@@ -743,3 +743,21 @@
   .rt-study-edge { animation: rt-study-edge-reduced 300ms ease-out both; }
 }
 @keyframes rt-study-edge-reduced { 0%, 100% { opacity: 0; } 30% { opacity: .6; } }
+
+/* Issue che riguardano tutta l’unità, accanto al timestamp in Verifica. */
+.rt-lesson-editor .rt-unit-issue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  vertical-align: middle;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--warning);
+  cursor: pointer;
+}
+.rt-lesson-editor .rt-unit-issue.rt-issue-selected { background: var(--warning-soft); }
+.rt-lesson-editor .rt-unit-issue:focus-visible { outline: 2px solid var(--ring); }
