@@ -632,3 +632,55 @@ test('swipe ai limiti a 390 px: fascia e unità invariata', async ({ browser }) 
     }
   } finally { await context.close() }
 })
+
+test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 riprende la sessione', async ({ page }) => {
+  test.setTimeout(150_000)
+  await loginViaLink(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units.at(-1)!
+  const selection = await apiGet<{ custom: boolean; units: { unit_id: string; selected: boolean }[] }>(page.request, `/lessons/${l.id}/recall/units`)
+  // Il rifornimento automatico della lezione resta sulle altre unità: questa deve esaurirsi davvero.
+  expect((await page.request.put(`/api/v1/lessons/${l.id}/recall/units`, {
+    headers: authHeaders(), data: { unit_ids: study.units.filter(u => u.id !== unit.id).map(u => u.id) },
+  })).ok()).toBeTruthy()
+  try {
+    const history = await apiGet<{ questions: { id: string; unit_ids: string[] }[] }>(page.request, `/lessons/${l.id}/recall/history`)
+    for (const question of history.questions.filter(q => q.unit_ids.includes(unit.id))) {
+      expect((await page.request.post(`/api/v1/lessons/${l.id}/recall/questions/${question.id}/status`, {
+        headers: authHeaders(), data: { status: 'asked' },
+      })).ok()).toBeTruthy()
+    }
+    const accepted = await page.request.post(`/api/v1/lessons/${l.id}/recall/generate`, {
+      headers: authHeaders(), data: { qtype: 'consigliato', unit_ids: [unit.id], count: 1 },
+    })
+    const jobId = (await accepted.json()).job_id
+    await expect.poll(async () => (await apiGet<{ state: string }>(page.request, `/jobs/${jobId}`)).state).toBe('succeeded')
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-dots').locator('button').last().click()
+    await page.getByTestId('study-quiz').click()
+    await answer(page)
+    await page.getByRole('button', { name: 'Fine', exact: true }).click()
+    await expect(page.getByTestId('recall-empty')).toBeVisible()
+    await expect(page.getByTestId('recall-unit-done')).toHaveCount(0)
+    const generation = page.getByTestId('recall-empty-generation')
+    await expect(generation.getByRole('button', { name: /^Genera consigliato ·/ })).toBeVisible()
+    for (const button of await generation.getByRole('button').all()) {
+      const box = await button.boundingBox()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+      expect(await button.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    }
+    await page.getByLabel('Quante', { exact: true }).fill('2')
+    const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
+    await page.getByRole('button', { name: /^Genera consigliato/ }).click()
+    expect((await request).postDataJSON()).toMatchObject({ qtype: 'consigliato', count: 2, unit_ids: [unit.id] })
+    await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByTestId('recall-empty')).toHaveCount(0)
+  } finally {
+    expect((await page.request.put(`/api/v1/lessons/${l.id}/recall/units`, {
+      headers: authHeaders(), data: { unit_ids: selection.custom ? selection.units.filter(u => u.selected).map(u => u.unit_id) : null },
+    })).ok()).toBeTruthy()
+  }
+})

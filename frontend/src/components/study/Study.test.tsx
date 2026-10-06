@@ -32,13 +32,14 @@ const UNITS = [
   { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', questions: 0, pending: {} },
 ]
 
+let mockSuggestions = false
 const mockGenerate = vi.fn()
 const progress = vi.hoisted(() => ({ status: vi.fn(), read: vi.fn() }))
 vi.mock('@/api/studyProgress', () => ({
   useStudyStatus: () => ({ mutate: progress.status, isPending: false }),
   useStudyRead: () => ({ mutate: progress.read }),
 }))
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false })
 afterEach(() => vi.useRealTimers())
 
 vi.mock('@/api/recall', async (importOriginal) => {
@@ -46,7 +47,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
   return {
     ...actual,
     useStudyLesson: () => ({
-      data: { id: 1, units: UNITS, has_audio: false },
+      data: { id: 1, units: UNITS.map(u => ({ ...u, suggested_qtype: 'mirata' })), has_audio: false, suggestions: mockSuggestions },
       isPending: false,
       isError: false,
     }),
@@ -304,4 +305,15 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
     localStorage.clear()
   })
+})
+
+it.each([true, false])('popup Genera: consigliato presente e selezionato solo con Jev (%s)', suggestions => {
+  mockSuggestions = suggestions
+  renderStudy()
+  fireEvent.click(screen.getByTestId('study-generate'))
+  if (suggestions) expect(screen.getByRole('button', { name: 'Consigliato · Mirata' })).toHaveAttribute('aria-pressed', 'true')
+  else expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.click(screen.getByTestId('study-generate-start'))
+  expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'consigliato' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })

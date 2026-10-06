@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { QuestionsPanel } from './QuestionsPanel'
 
+let mockSuggestions = false
 const mockGenerateMutate = vi.fn()
 const mockDeleteMutate = vi.fn()
 const mockSelectUnitsMutate = vi.fn()
@@ -13,6 +14,7 @@ const mockRestoreMutate = vi.fn()
 const mockEditMutate = vi.fn()
 
 vi.mock('@/api/recall', () => ({
+  useStudyLesson: () => ({ data: { suggestions: mockSuggestions } }),
   useRecallOverview: vi.fn(() => ({
     data: {
       questions: {
@@ -125,6 +127,7 @@ function renderPanel(props: React.ComponentProps<typeof QuestionsPanel> = { less
 describe('QuestionsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSuggestions = false
   })
 
   it('mostra il riepilogo con conteggi per tipo e link al ripasso', () => {
@@ -293,4 +296,15 @@ describe('QuestionsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rivedi le etichette' }))
     expect(onSwitchToClassifier).toHaveBeenCalledTimes(1)
   })
+})
+
+it.each([true, false])('Genera altre domande: voce consigliata solo con Jev (%s)', suggestions => {
+  mockSuggestions = suggestions
+  renderPanel()
+  const type = screen.getByLabelText('Tipo')
+  expect(type).toHaveValue(suggestions ? 'consigliato' : 'quiz')
+  expect(screen.queryByRole('option', { name: 'Consigliato per ogni unità' }) !== null).toBe(suggestions)
+  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
+  expect(mockGenerateMutate).toHaveBeenCalledWith(expect.objectContaining({ qtype: suggestions ? 'consigliato' : 'quiz', count: 2 }), expect.anything())
 })

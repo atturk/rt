@@ -1,3 +1,4 @@
+import { EmptyGeneration } from './EmptyGeneration'
 import {
   BookOpen,
   Brain,
@@ -81,6 +82,8 @@ export function LightweightSession({
     id: string
     title: string
     /** Domande da porre per tipo: i tipi vuoti restano spenti. */
+    suggestions?: boolean
+    suggestedQtype?: RecallType | null
     pending: Record<string, number>
     onBack: () => void
     /** Finite le domande dell'unità: avanti nello Studio (unità o lezione successiva). */
@@ -552,6 +555,10 @@ export function LightweightSession({
                       ? 'Non ci sono domande da porre in questa lezione. Puoi generarne di nuove o riproporre quelle già poste.'
                       : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o prova mista.'}
               </p>
+              {!isSelection && lessonId && <EmptyGeneration lessonId={lessonId} unit={unit} available={unit ? unitPending === 0 : daPorreCount === 0} onGenerated={() => {
+                setQtype('mista')
+                void askNext('mista')
+              }} />}
               {restore.isError && <Alert tone="danger" className="mt-3">{errorMessage(restore.error)}</Alert>}
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 {/* Prova mista: solo quando serve davvero (tipo diverso da mista e domande da porre > 0) */}

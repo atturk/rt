@@ -7,6 +7,8 @@ import { ApiError } from '@/api/client'
 
 import { LightweightSession } from './LightweightSession'
 
+let mockSuggestions = false
+const mockGenerateMutate = vi.fn()
 const mockNextMutateAsync = vi.fn()
 const mockSubjectNextMutateAsync = vi.fn()
 const mockAnswerMutateAsync = vi.fn()
@@ -40,6 +42,9 @@ vi.mock('@/api/hooks', () => ({
 }))
 
 vi.mock('@/api/recall', () => ({
+  recallKeys: { all: (id: number) => ['recall', id] },
+  useStudyLesson: () => ({ data: { suggestions: mockSuggestions } }),
+  useGenerateRecall: () => ({ mutate: mockGenerateMutate, isPending: false }),
   useRecallOverview: vi.fn(() => ({
     data: mockOverviewData,
   })),
@@ -110,7 +115,7 @@ const sampleQuestion = {
 /** La sessione nel modo "unità" dello Studio (4.2.2b3). */
 function renderUnitSession(onBack = vi.fn(), onDone = vi.fn(), pending: Record<string, number> = { quiz: 2, mirata: 1 }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  const tree = (pending: Record<string, number>) => (
     <QueryClientProvider client={client}>
       <BrowserRouter>
         <LightweightSession
@@ -118,9 +123,10 @@ function renderUnitSession(onBack = vi.fn(), onDone = vi.fn(), pending: Record<s
           unit={{ id: '1.2', title: 'Acidosi metabolica', pending, onBack, onDone, doneLabel: 'Unità successiva' }}
         />
       </BrowserRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
-  return { onBack, onDone }
+  const view = render(tree(pending))
+  return { onBack, onDone, updatePending: (next: Record<string, number>) => view.rerender(tree(next)) }
 }
 
 function renderSession(lessonId: number | undefined = 1, selectionIds?: number[]) {
@@ -139,6 +145,7 @@ function renderSession(lessonId: number | undefined = 1, selectionIds?: number[]
 describe('LightweightSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSuggestions = false
     mockRestorableData = { asked: 0, wrong: 0 }
     mockOverviewData = {
       questions: {
@@ -416,4 +423,21 @@ it('il cambio tipo usa remaining della nuova domanda', async () => {
   await waitFor(() => expect(screen.getByTestId('recall-question')).toHaveAttribute('data-question-id', 'q101'))
   fireEvent.click(screen.getByText('Sotto 22 mEq/L').closest('button')!)
   expect(await screen.findByRole('button', { name: 'Prossima' })).toBeVisible()
+})
+
+it('finite le domande dell’unità: Genera consigliato con Quante 2 riprende da solo', async () => {
+  mockSuggestions = true
+  mockNextMutateAsync.mockRejectedValueOnce(new ApiError(404, 'no_questions', 'Finite'))
+  mockNextMutateAsync.mockResolvedValue(sampleQuestion)
+  mockGenerateMutate.mockImplementation((_payload, options) => options.onSuccess({ job_id: 'new-job' }))
+  const { updatePending } = renderUnitSession(undefined, undefined, {})
+  expect(await screen.findByTestId('recall-empty-generation')).toBeVisible()
+  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Genera consigliato' }))
+  expect(mockGenerateMutate).toHaveBeenCalledWith({ qtype: 'consigliato', count: 2, unit_ids: ['1.2'] }, expect.anything())
+  // Gli eventi live aggiornano le domande prima dell’effetto di completamento del job.
+  updatePending({ quiz: 2 })
+  fireEvent.click(screen.getByRole('button', { name: 'Genero le domande…' }))
+  expect(await screen.findByTestId('recall-question')).toHaveAttribute('data-question-id', 'q100')
+  expect(mockNextMutateAsync).toHaveBeenLastCalledWith(expect.objectContaining({ qtype: 'mista', unitId: '1.2' }))
 })

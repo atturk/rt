@@ -8,6 +8,7 @@ import { useRelevance } from '@/api/relevance'
 import {
   useDeleteQuestions,
   useGenerateRecall,
+  useStudyLesson,
   useRecallHistory,
   useRecallQuestions,
   useRecallUnits,
@@ -17,6 +18,7 @@ import {
   useSelectRecallUnits,
   type RecallQuestionDetail,
   type RecallType,
+  type RecallGenerateType,
 } from '@/api/recall'
 import { QuestionEditModal } from './QuestionEditModal'
 import { Alert } from '@/components/ui/alert'
@@ -187,6 +189,7 @@ export function QuestionsPanel({
   const restore = useRestoreQuestions(id)
   const jobs = useJobs({ lesson_id: id, limit: 10 })
   const relevance = useRelevance(id)
+  const suggestions = useStudyLesson(id).data?.suggestions ?? false
 
   const [unitModalOpen, setUnitModalOpen] = useState(false)
 
@@ -200,7 +203,8 @@ export function QuestionsPanel({
   const [editing, setEditing] = useState<RecallQuestionDetail | null>(null)
 
   // Form generazione globale
-  const [globalType, setGlobalType] = useState<RecallType>('quiz')
+  const [chosenGlobalType, setGlobalType] = useState<RecallGenerateType | null>(null)
+  const globalType = chosenGlobalType ?? (suggestions ? 'consigliato' : 'quiz')
   const [globalCount, setGlobalCount] = useState<string>('10')
   const [globalInstructions, setGlobalInstructions] = useState<string>('')
 
@@ -380,8 +384,9 @@ export function QuestionsPanel({
                   <Select
                     id="q-type"
                     value={globalType}
-                    onChange={(e) => setGlobalType(e.target.value as RecallType)}
+                    onChange={(e) => setGlobalType(e.target.value as RecallGenerateType)}
                   >
+                    {suggestions && <option value="consigliato">Consigliato per ogni unità</option>}
                     {TYPES.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.label}
