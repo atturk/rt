@@ -109,3 +109,16 @@ it('legge una formula in linea e una a blocco, clona l’HTML e associa la punte
   expect(result.paragraphs.flat().filter(p => p.math)).toHaveLength(3)
   expect(result.paragraphs.flat().map(p => p.text)).not.toContain('[formula]')
 })
+
+it('riconosce evidenziazioni annidate e parole divise, senza dipendere dal colore', () => {
+  const root = document.createElement('div')
+  root.innerHTML = '<p>Il <span class="rt-hl rt-hl-0">rene <b>filtra</b></span> <span class="rt-hl rt-hl-4">san</span>gue ogni giorno.</p>'
+  const { words, paragraphs } = readUnitWords(root)
+  expect(words.map(w => [w.text, !!w.hl])).toEqual([
+    ['Il', false], ['rene', true], ['filtra', true], ['sangue', true], ['ogni', false], ['giorno.', false],
+  ])
+  expect(paragraphs[0].filter(p => p.hl).map(p => p.text)).toEqual(['rene', 'filtra', 'sangue'])
+  expect(wordDelay(words[1], { ...formulaPrefs, slowHighlights: true })).toBe(260)
+  expect(wordDelay(words[1], { ...formulaPrefs, slowHighlights: false })).toBe(200)
+  expect(wordDelay(words[0], { ...formulaPrefs, slowHighlights: true })).toBe(200)
+})

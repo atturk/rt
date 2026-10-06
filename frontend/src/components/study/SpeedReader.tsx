@@ -1,5 +1,5 @@
 import { Pause, Play, Rewind, RotateCcw, X } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
@@ -27,7 +27,12 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
 }) {
   const [saved, save] = useRsvpPrefs()
   const [prefs, setPrefs] = useState<RsvpPreference>(saved)
-  const { words, paragraphs } = useMemo(() => readUnitWords(source), [source])
+  const [{ words, paragraphs }, setText] = useState(() => readUnitWords(source))
+  useEffect(() => {
+    const observer = new MutationObserver(() => setText(readUnitWords(source)))
+    observer.observe(source, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [source])
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   useEffect(() => onTintChange(prefs.irlen), [prefs.irlen, onTintChange])
@@ -157,28 +162,29 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
           <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
               <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
-                piece.index === index && 'font-semibold text-(--rsvp-focus)')} data-current={piece.index === index || undefined}>
+                piece.index === index && 'font-semibold text-(--rsvp-focus)', piece.hl && prefs.highlights && 'rt-rsvp-hl')} data-current={piece.index === index || undefined}>
                 {piece.math ? <span dangerouslySetInnerHTML={{ __html: piece.math.html }} /> : piece.text}{' '}
               </span>
             ))}
           </div>
         )}
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-before">
-          {playing ? '' : around.before.map((entry, i) => <span key={i}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
+          {playing ? '' : around.before.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         <div
           key={animate ? `out-${index}` : 'still'}
           className={cn('rt-rsvp-word', prefs.dyslexic && 'dyslexic', animate && 'out')}
           style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
           data-testid="speed-reader-word"
+          data-hl={words[index]?.hl && prefs.highlights || undefined}
           data-math={words[index]?.math ? true : undefined}
           data-kind={full ? 'fine' : 'normale'}
           aria-live="off"
         >
-          {words[index]?.math ? <FormulaWord html={words[index].math!.html} /> : <><span className="pre">{word.slice(0, k)}</span><span className="orp">{word.charAt(k)}</span><span className="post">{word.slice(k + 1)}</span></>}
+          {words[index]?.math ? <FormulaWord html={words[index].math!.html} /> : <><span className="pre"><span>{word.slice(0, k)}</span></span><span className="orp">{word.charAt(k)}</span><span className="post"><span>{word.slice(k + 1)}</span></span></>}
         </div>
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-after">
-          {playing ? '' : around.after.map((entry, i) => <span key={i}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
+          {playing ? '' : around.after.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
@@ -322,6 +328,8 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
       <Row><Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => update({ irlen: on ? 'pesca' : null })} />
         {prefs.irlen && <Segments label="Sfondo" value={prefs.irlen} options={TINTS} onChange={(irlen) => update({ irlen })} />}
       </Row>
+      <Row><Toggle label="Mostra le evidenziazioni" checked={prefs.highlights} onChange={highlights => update({ highlights })} /></Row>
+      <Row><Toggle label="Rallenta sulle evidenziate" checked={prefs.slowHighlights} onChange={slowHighlights => update({ slowHighlights })} /></Row>
       {section('Suono')}
       <Row><Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />
         <span>Tono <b className="font-normal">{prefs.pitch.toFixed(1)}</b>×</span>

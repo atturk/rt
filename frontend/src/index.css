@@ -671,9 +671,9 @@
 .rt-rsvp-word.dyslexic { font-family: 'OpenDyslexic', var(--font-sans); letter-spacing: normal; }
 .rt-rsvp-word > .pre, .rt-rsvp-word > .post { display: inline-block; width: 6.2em; overflow: visible; }
 .rt-rsvp-word > .pre { text-align: right; }
-.rt-rsvp { --rsvp-focus: var(--link); }
-.dark .rt-rsvp { --rsvp-focus: var(--success); }
-.rt-layout[data-tint] .rt-rsvp { --rsvp-focus: #155f52; }
+.rt-rsvp { --rsvp-focus: var(--link); --rsvp-hl: var(--hl-1); --rsvp-hl-fg: var(--fg); }
+.dark .rt-rsvp { --rsvp-focus: var(--success); --rsvp-hl: #6b5a12; --rsvp-hl-fg: #ffffff; }
+.rt-layout[data-tint] .rt-rsvp { --rsvp-focus: #155f52; --rsvp-hl: color-mix(in oklch, var(--fg) 16%, transparent); --rsvp-hl-fg: var(--fg); }
 .rt-rsvp-word > .orp { color: var(--rsvp-focus); }
 @media (max-width: 767.98px) {
   .rt-rsvp-word > .pre, .rt-rsvp-word > .post { width: 4.6em; }
@@ -704,3 +704,15 @@
 .rt-rsvp-math { display: inline-block; grid-area: 1 / 1; white-space: nowrap; transform-origin: center; }
 .rt-rsvp-math math, .rt-rsvp-math .katex { font-size: 1em; margin: 0; }
 .rt-rsvp-math .katex-display { margin: 0; }
+
+/* Una fascia continua sul testo effettivo: le colonne vuote della lettera di fuoco restano libere. */
+.rt-rsvp-hl,
+.rt-rsvp-word[data-hl] > .pre > span,
+.rt-rsvp-word[data-hl] > .post > span,
+.rt-rsvp-word[data-hl] .rt-rsvp-math {
+  background: var(--rsvp-hl); color: var(--rsvp-hl-fg);
+}
+.rt-rsvp-word[data-hl] > .orp { background: var(--rsvp-hl); }
+.rt-rsvp-word[data-hl] > .pre > span { border-radius: 3px 0 0 3px; }
+.rt-rsvp-word[data-hl] > .post > span { border-radius: 0 3px 3px 0; }
+.rt-rsvp-hl { border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }

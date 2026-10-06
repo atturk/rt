@@ -5,9 +5,9 @@
 import type { RsvpPreference } from '@/lib/studyPrefs'
 
 export type Formula = { html: string; tex: string; complex: boolean }
-export type Word = { text: string; para: number; math?: Formula }
+export type Word = { text: string; para: number; math?: Formula; hl?: boolean }
 /** Pezzo del Contesto: una parola letta (index) o un elemento saltato (formula, immagine, tabella). */
-export type ContextPiece = { text: string; index: number | null; math?: Formula }
+export type ContextPiece = { text: string; index: number | null; math?: Formula; hl?: boolean }
 
 const SENTENCE_END = /[.!?…]["'»”’)\]]*$/
 const SOFT_END = /[,;:]["'»”’)\]]*$/
@@ -43,7 +43,7 @@ export function focusIndex(word: string, orp: RsvpPreference['orp']): number {
 }
 
 /** Durata di una parola in ms. `ramp` (5…1) rallenta le prime parole dopo play. */
-export function wordDelay(word: string | Word, prefs: Pick<RsvpPreference, 'wpm' | 'pauseMs' | 'comma'> & Partial<Pick<RsvpPreference, 'formulaPause' | 'formulaMs'>>, ramp = 0): number {
+export function wordDelay(word: string | Word, prefs: Pick<RsvpPreference, 'wpm' | 'pauseMs' | 'comma'> & Partial<Pick<RsvpPreference, 'formulaPause' | 'formulaMs' | 'slowHighlights'>>, ramp = 0): number {
   const entry = typeof word === 'string' ? { text: word, para: 0 } : word
   let ms = 60000 / prefs.wpm
   if (entry.math) {
@@ -57,6 +57,7 @@ export function wordDelay(word: string | Word, prefs: Pick<RsvpPreference, 'wpm'
     if (count > 8) ms *= 1 + (count - 8) * 0.06
   }
   if (isFullStop(entry.text, prefs.comma)) ms += prefs.pauseMs
+  if (entry.hl && prefs.slowHighlights) ms *= 1.3
   if (ramp > 0) ms *= 1 + ramp * 0.12
   return ms
 }
@@ -167,11 +168,12 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
   const emitMark = (mark: { node: Node; label: string }) => {
     const para = paraOf(mark.node)
     const el = mark.node as Element
+    const hl = !!el.closest('.rt-hl')
     if (el.matches('.katex, .katex-display, math')) {
       const tex = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? el.getAttribute('aria-label') ?? el.textContent ?? ''
       const math = { html: el.outerHTML, tex, complex: formulaMetrics(tex).complex }
-      paragraphs[para].push({ text: tex, index: words.length, math })
-      words.push({ text: tex, para, math })
+      paragraphs[para].push({ text: tex, index: words.length, math, ...(hl ? { hl: true } : {}) })
+      words.push({ text: tex, para, math, ...(hl ? { hl: true } : {}) })
     } else paragraphs[para].push({ text: mark.label, index: null })
   }
   let next = 0
@@ -186,6 +188,7 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     if (node.nodeType !== Node.TEXT_NODE) continue
     const before = next
     flushMarksBefore(node)
+    const hl = !!node.parentElement?.closest('.rt-hl')
     const text = node.textContent ?? ''
     const para = paraOf(node)
     const parts = splitWords(text)
@@ -198,11 +201,12 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     if (!last?.math && glue && before === next && last?.para === para && parts.length && !/^\s/.test(text)) {
       last.text += parts.shift()
       const piece = paragraphs[para].findLast((p) => p.index === words.length - 1)
-      if (piece) piece.text = last.text
+      if (hl) last.hl = true
+      if (piece) { piece.text = last.text; if (last.hl) piece.hl = true }
     }
     for (const word of parts) {
-      paragraphs[para].push({ text: word, index: words.length })
-      words.push({ text: word, para })
+      paragraphs[para].push({ text: word, index: words.length, ...(hl ? { hl: true } : {}) })
+      words.push({ text: word, para, ...(hl ? { hl: true } : {}) })
     }
     if (text) glue = !!text.trim() && !/\s$/.test(text)
   }

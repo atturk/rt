@@ -506,3 +506,42 @@ test('la formula dell’unità è resa anche nella lettura veloce e nel Contesto
   await expect(slider).toHaveAttribute('max', '5000')
   await expect(slider).toHaveAttribute('step', '250')
 })
+
+test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Contesto', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unitId = study.units[0].id
+  const previous = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    const text = page.getByTestId('study-text')
+    await expect(text).toHaveText(/\S.{40,}/)
+    await text.evaluate(root => {
+      const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
+      const range = document.createRange()
+      const start = node.textContent!.search(/\S/)
+      range.setStart(node, start); range.setEnd(node, start + 10)
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(range)
+      root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await expect(text.locator('.rt-hl').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+    const word = page.getByTestId('speed-reader-word')
+    await expect(word).toHaveAttribute('data-hl', 'true')
+    const bg = await word.locator('.orp').evaluate(el => getComputedStyle(el).backgroundColor)
+    expect(bg).not.toBe('rgba(0, 0, 0, 0)')
+    await expect(word.locator('.pre > span')).toHaveCSS('background-color', bg)
+    await expect(word.locator('.post > span')).toHaveCSS('background-color', bg)
+    await page.getByRole('button', { name: 'Contesto', exact: true }).click()
+    await expect(page.getByTestId('speed-reader-context').locator('.rt-rsvp-hl').first()).toHaveCSS('background-color', bg)
+    await page.getByRole('button', { name: 'Impostazioni della lettura veloce' }).click()
+    await page.getByRole('switch', { name: 'Mostra le evidenziazioni' }).click()
+    await expect(word).not.toHaveAttribute('data-hl')
+  } finally {
+    const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+    for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) {
+      await page.request.delete(`/api/v1/lessons/${l.id}/highlights/${row.id}`, { headers: authHeaders() })
+    }
+  }
+})
