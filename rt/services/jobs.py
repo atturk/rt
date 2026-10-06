@@ -472,6 +472,9 @@ class DbJobQueue:
             row = s.get(Job, job_id)
             if row is None or row.state != JobState.RUNNING.value or row.worker_id != worker_id:
                 return False
+            if state == JobState.WAITING_FOR_DECISION.value and row.cancel_requested:
+                # Annullato mentre girava e fermo su una decisione: nessuno la prenderà più.
+                state, decision = JobState.CANCELLED.value, None
             row.state = state
             row.lease_until = None
             row.active_lesson = None

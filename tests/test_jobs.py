@@ -144,6 +144,20 @@ def test_cancel_during_rewrite(queue, tmp_path, monkeypatch, mock_calls):
         assert s.get(Job, job_id).active_lesson is None
 
 
+def test_cancel_requested_before_decision_ends_cancelled(queue):
+    # annullato mentre gira, dopo l'ultimo punto di controllo: il job non resta fermo
+    # su una decisione che nessuno prenderà
+    job_id = queue.enqueue("slow", None, {})
+
+    def handler(job, ctx):
+        queue.cancel(job_id)
+        return JobOutcome(state=JobState.WAITING_FOR_DECISION, decision={"kind": "outline_approval"})
+
+    _worker(queue, handlers={"slow": handler}).run_once()
+    job = queue.get(job_id)
+    assert job.state == "cancelled" and job.decision is None and job.finished_at is not None
+
+
 class _WorkerKilled(BaseException):
     """Simula la morte del processo worker (kill -9): nessuna pulizia, il job resta 'running'."""
 
