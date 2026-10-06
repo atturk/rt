@@ -27,7 +27,8 @@ CHANNELS = (STABLE, BETA)
 CHANNEL_FILE = "update-channel"
 
 _VERSION_RE = re.compile(
-    r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-.]?(a|alpha|b|beta|c|rc)[-.]?(\d*))?$", re.IGNORECASE)
+    r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-.]?(a|alpha|b|beta|c|rc)[-.]?(\d*))?(?:\.(\d+))?$",
+    re.IGNORECASE)
 _PRE_RANK = {"a": 0, "alpha": 0, "b": 1, "beta": 1, "c": 2, "rc": 2}
 _FINAL_RANK = 3
 
@@ -51,18 +52,22 @@ def parse_semver(version_str: str) -> Optional[Tuple[int, int, int]]:
     return (major, minor, patch)
 
 
-def parse_version(version_str: str) -> Optional[Tuple[int, int, int, int, int]]:
+def parse_version(version_str: str) -> Optional[Tuple[int, int, int, int, int, int]]:
     """Come parse_semver, ma ordina anche le prerelease PEP 440: 4.1.0a1 < 4.1.0b1 < 4.1.0rc1
-    < 4.1.0. Ritorna (major, minor, patch, rango, numero) o None se non è una versione."""
+    < 4.1.0, e i fix urgenti con la quarta cifra: 4.2.2 < 4.2.2.1 < 4.2.3b1 < 4.2.3b1.1 < 4.2.3b2.
+    Ritorna (major, minor, patch, rango, numero, fix) o None se non è una versione."""
     if not version_str:
         return None
     m = _VERSION_RE.match(format_version(version_str))
     if not m:
         return None
     major, minor, patch = (int(g) if g is not None else 0 for g in m.group(1, 2, 3))
+    fix = int(m.group(6) or 0)
+    if m.group(6) is not None and m.group(3) is None:
+        return None  # "4.2.1" senza patch non è un fix urgente di 4.2
     if m.group(4) is None:
-        return (major, minor, patch, _FINAL_RANK, 0)
-    return (major, minor, patch, _PRE_RANK[m.group(4).lower()], int(m.group(5) or 0))
+        return (major, minor, patch, _FINAL_RANK, 0, fix)
+    return (major, minor, patch, _PRE_RANK[m.group(4).lower()], int(m.group(5) or 0), fix)
 
 
 def is_prerelease(version_str: str) -> bool:

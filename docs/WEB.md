@@ -54,8 +54,10 @@ Serve, che lo pubblica soltanto nella tua tailnet, in HTTPS (necessario per il r
    abilita MagicDNS e i certificati HTTPS.
 2. Sul Mac: `tailscale serve --bg 8765` (resta attivo ai riavvii; `tailscale serve status`
    mostra l'indirizzo, del tipo `https://nome-mac.tailnet.ts.net`).
-3. Nella web app sul Mac: **Impostazioni > Generali > Accesso da un altro dispositivo**,
-   scrivi quell'indirizzo e premi **Crea QR di accesso**; inquadra il QR con l'iPhone.
+3. Nella web app sul Mac: **Impostazioni > Generali > Accesso da un altro dispositivo**: RT
+   propone da solo quell'indirizzo (lo legge da Tailscale, su qualunque Mac); premi **Crea QR di
+   accesso** e inquadra il QR con l'iPhone. Non usare l'IP 100.x: il certificato HTTPS di
+   Tailscale vale solo per il nome del Mac.
 4. Su iPhone: Condividi > Aggiungi alla schermata Home.
 
 Non usare `tailscale funnel`: renderebbe RT pubblico su Internet.

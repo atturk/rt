@@ -1,4 +1,6 @@
 """Stato del servizio e sessione della SPA."""
+from typing import Optional
+
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
@@ -112,6 +114,25 @@ def create_login_link(request: Request, _actor: Actor) -> LoginLink:
     code = auth.create_login_code()
     return LoginLink(url=f"{str(request.base_url).rstrip('/')}/login?code={code}",
                      expires_in=auth.LOGIN_CODE_SECONDS)
+
+
+class TailnetInfo(BaseModel):
+    origin: Optional[str] = Field(None, description="Indirizzo di RT nella tailnet (https://nome-mac.tailnet.ts.net), "
+                                                    "None senza Tailscale")
+    serve: bool = Field(False, description="Tailscale Serve inoltra già l'indirizzo a RT")
+    funnel: bool = Field(False, description="L'indirizzo è pubblico su Internet (Tailscale Funnel)")
+
+
+@router.get("/system/tailnet", response_model=TailnetInfo,
+            summary="Indirizzo di RT per gli altri dispositivi della tailnet (es. iPhone)")
+def system_tailnet(request: Request, _actor: Actor) -> TailnetInfo:
+    from rt.core.tailscale import tailnet_address
+    server = request.scope.get("server") or (None, None)
+    port = server[1] or request.url.port or 8765
+    found = tailnet_address(int(port))
+    if found is None:
+        return TailnetInfo()
+    return TailnetInfo(origin=found.origin, serve=found.serve, funnel=found.funnel)
 
 
 @router.delete("/auth/session", status_code=204, summary="Chiude la sessione della SPA")
