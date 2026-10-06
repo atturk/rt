@@ -11,6 +11,18 @@ type Lesson = { id: number; materia: string; data: string; docente: string; tito
 
 const ids = (rows: import('@playwright/test').Locator) => rows.evaluateAll((r) => r.map((el) => Number(el.getAttribute('data-lesson-id'))))
 
+let previousExportStudy: unknown
+test.beforeEach(async ({ page }) => {
+  previousExportStudy = (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['export.study']
+  await page.request.put('/api/v1/preferences/export.study', { headers: authHeaders(), data: true })
+})
+test.afterEach(async ({ page }) => {
+  const response = previousExportStudy === undefined
+    ? await page.request.delete('/api/v1/preferences/export.study', { headers: authHeaders() })
+    : await page.request.put('/api/v1/preferences/export.study', { headers: authHeaders(), data: previousExportStudy })
+  expect(response.ok()).toBeTruthy()
+})
+
 test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhone', async ({ page }) => {
   await loginViaLink(page)
   const [l] = await apiGet<Lesson[]>(page.request, '/lessons?materia=STUDIO')
@@ -29,7 +41,7 @@ test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhon
     await expect(page.getByTestId('lesson-row').first()).toHaveAttribute('data-lesson-id', String(l.id))
     await page.getByRole('button', { name: 'Seleziona', exact: true }).click()
     await expect(page.getByTestId('lesson-study-ring')).toHaveCount(0)
-    await page.getByRole('button', { name: 'Annulla la selezione' }).click()
+    await page.getByTestId('selection-bar').getByRole('button', { name: 'Annulla', exact: true }).click()
     await page.setViewportSize({ width: 390, height: 844 })
     const sort = page.getByRole('button', { name: /Ordina: Avanti/ })
     await expect(sort).toBeVisible()
@@ -114,6 +126,13 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   // L'export è un job: avanzamento nella barra, poi il download parte da solo e resta "Scarica di nuovo".
   const download = page.waitForEvent('download', { timeout: 50_000 })
   await bar.getByRole('button', { name: 'Scarica zip' }).click()
+  const check = page.getByRole('menuitemcheckbox', { name: 'Includi lo stato di studio' })
+  await expect(check).toHaveAttribute('aria-checked', 'true')
+  await check.click()
+  await expect.poll(async () => (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['export.study']).toBe(false)
+  const exportRequest = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/v1/lesson-exports'))
+  await page.getByRole('menuitem', { name: 'Scarica zip', exact: true }).click()
+  expect((await exportRequest).postDataJSON().study).toBe(false)
   const file = await download
   expect(file.suggestedFilename()).toMatch(/\.zip$/)
   const again = bar.getByRole('link', { name: 'Scarica di nuovo' })

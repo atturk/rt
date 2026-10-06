@@ -34,9 +34,10 @@ describe('export nella barra di selezione', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     const client = renderBar()
     fireEvent.click(screen.getByRole('button', { name: format === 'markdown' ? 'Scarica Markdown' : 'Scarica zip' }))
+    if (format === 'zip') fireEvent.click(screen.getByRole('menuitem', { name: 'Scarica zip' }))
     await screen.findByRole('progressbar')
     expect(post).toHaveBeenCalledWith('/api/v1/lesson-exports', { body: {
-      ids: format === 'markdown' ? [1] : [1, 2], format, name: 'Lezioni selezionate',
+      ids: format === 'markdown' ? [1] : [1, 2], format, name: 'Lezioni selezionate', study: format === 'zip',
     } })
     expect(await screen.findByText(/Esporto 2 su 2: Lipidi/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Scarica zip' })).toHaveAttribute('aria-disabled', 'true')

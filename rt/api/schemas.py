@@ -18,6 +18,7 @@ class LessonExportRequest(BaseModel):
     ids: List[int] = Field(min_length=1, description="Id delle lezioni")
     format: Literal["markdown", "zip"] = "markdown"
     name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
+    study: bool = Field(False, description="Include lo stato di studio negli archivi completi")
 
 
 class LessonMetadataUpdate(BaseModel):

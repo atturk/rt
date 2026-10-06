@@ -3368,6 +3368,12 @@
             "maxLength": 120,
             "title": "Name",
             "type": "string"
+          },
+          "study": {
+            "default": false,
+            "description": "Include lo stato di studio negli archivi completi",
+            "title": "Study",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8890,6 +8896,18 @@
               "title": "Name",
               "type": "string"
             }
+          },
+          {
+            "description": "Include lo stato di studio negli archivi completi",
+            "in": "query",
+            "name": "study",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include lo stato di studio negli archivi completi",
+              "title": "Study",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -11488,6 +11506,18 @@
               ],
               "title": "Scope",
               "type": "string"
+            }
+          },
+          {
+            "description": "Include lo stato di studio nello ZIP completo",
+            "in": "query",
+            "name": "study",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include lo stato di studio nello ZIP completo",
+              "title": "Study",
+              "type": "boolean"
             }
           }
         ],

@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
 import { IconButton, IconLink } from '@/components/ui/icon-button'
-import { MenuButton, type MenuSection } from '@/components/ui/menu'
+import { LinkMenuButton, MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
@@ -23,6 +23,7 @@ import type { LessonGroup } from '@/lib/lessonView'
 import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
+import { usePreference } from '@/lib/preferences'
 
 const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User } as const
 
@@ -380,12 +381,13 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
   const start = useExportLessons()
+  const [exportStudy, setExportStudy] = usePreference('export.study', true)
   const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
   const download = useRef<HTMLAnchorElement>(null)
   const downloaded = useRef<string | null>(null)
   const exporting = start.isPending || exportJob?.state === 'queued'
   const runExport = (format: 'markdown' | 'zip') => {
-    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate' }, {
+    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate', study: format === 'zip' && exportStudy }, {
       onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
     })
   }
@@ -428,7 +430,12 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           unavailable={exporting ? 'esportazione in corso' : markdown.unavailable}
           hint={markdown.hint}
         />
-        <IconButton label="Scarica zip" icon={Archive} side="top" onClick={() => runExport('zip')} unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
+        <LinkMenuButton label="Scarica zip" icon={Archive} side="top"
+          unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+          items={[
+            { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
+            { label: 'Scarica zip', onSelect: () => runExport('zip') },
+          ]} />
         <IconButton
           label="Elimina le lezioni selezionate"
           icon={Trash2}

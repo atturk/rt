@@ -1,5 +1,5 @@
 """Stato di studio nel database, indipendente dai documenti della lezione."""
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Literal
 
 from sqlalchemy import select
@@ -82,3 +82,31 @@ def summaries(lessons: dict[int, str]) -> dict[int, dict]:
             dates = [date for date in (summary["study_last_at"], _at(row.status_at), _at(row.last_read_at)) if date]
             summary["study_last_at"] = max(dates) if dates else None
     return result
+
+
+def restore_units(session, lesson_id: int, entries) -> None:
+    """Ripristino dal manifesto ZIP: le righe malformate non bloccano l'importazione."""
+    if not isinstance(entries, list):
+        return
+
+    def date(value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Data non valida.")
+        at = datetime.fromisoformat(value)
+        return at.astimezone(timezone.utc).replace(tzinfo=None) if at.tzinfo else at
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        unit_id = entry.get("unit_id")
+        status = entry.get("status")
+        if not isinstance(unit_id, str) or not 1 <= len(unit_id) <= 64 or status not in STATUSES:
+            continue
+        try:
+            status_at, last_read_at = date(entry.get("status_at")), date(entry.get("last_read_at"))
+        except (ValueError, TypeError, OverflowError):
+            continue
+        session.merge(StudyUnit(lesson_id=lesson_id, unit_id=unit_id, status=status,
+                                status_at=status_at, last_read_at=last_read_at))

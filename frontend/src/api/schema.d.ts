@@ -4288,6 +4288,12 @@ export interface components {
              * @default lezioni
              */
             name: string;
+            /**
+             * Study
+             * @description Include lo stato di studio negli archivi completi
+             * @default false
+             */
+            study: boolean;
         };
         /** LessonImage */
         LessonImage: {
@@ -6988,6 +6994,8 @@ export interface operations {
                 format?: "markdown" | "zip";
                 /** @description Nome del file scaricato (senza estensione) */
                 name?: string;
+                /** @description Include lo stato di studio negli archivi completi */
+                study?: boolean;
             };
             header?: never;
             path?: never;
@@ -8879,6 +8887,8 @@ export interface operations {
                 format?: "markdown" | "zip";
                 /** @description final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso */
                 scope?: "final" | "all";
+                /** @description Include lo stato di studio nello ZIP completo */
+                study?: boolean;
             };
             header?: never;
             path: {

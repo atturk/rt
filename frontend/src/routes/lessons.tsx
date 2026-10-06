@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { lessonTitle } from '@/lib/format'
+import { usePreference } from '@/lib/preferences'
 
 export function DashboardPage() {
   // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
@@ -282,6 +283,7 @@ export function LessonPage() {
 
 /** Azioni della lezione nell’ordine del wireframe Main. */
 function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['LessonDetail']; panel: PanelView | null; onToggle: (view: PanelView) => void }) {
+  const [exportStudy, setExportStudy] = usePreference('export.study', true)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
   return (
@@ -296,7 +298,8 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         icon={Download}
         items={[
           { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />
     </div>
