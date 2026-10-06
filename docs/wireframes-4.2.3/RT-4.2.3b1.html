@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wireframe RT 4.2.3b1</title>
+<style>
+/* Layout: same wireframe frame as 4.2.2 (tabs on top, notes, then a 1000px app frame); tokens mirror RT's index.css */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --ok:#147464; --ok-soft:#e4f3ed; --warn:#c7761a; --warn-soft:#fff3df; --todo:#d4d4d4;
+  --rail:#fafafa; --orp:#c4502e;
+  --irlen:#f6dccb;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --todo:#f2f2f2;
+  --rail:#131313; --orp:#ef7a52; --irlen:#3b2a20; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --todo:#f2f2f2;
+  --rail:#131313; --orp:#ef7a52; --irlen:#3b2a20; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg)}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 auto;position:relative;width:1000px;height:640px;display:flex}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;transition:opacity .35s ease,width .35s ease}
+.rail i{width:22px;height:22px;border-radius:6px;background:var(--soft);display:block}
+.rail .sp{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;transition:background .35s ease}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;flex:none;transition:border-color .35s ease}
+.hdr .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:600;transition:opacity .35s ease}
+.ib{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none;transition:opacity .35s ease}
+.ib:hover{background:var(--soft)}
+.ib svg{width:18px;height:18px}
+.ib.on{background:var(--soft)}
+.sep{width:1px;height:16px;background:var(--border);margin:0 3px;transition:opacity .35s ease}
+.seg{display:inline-flex;background:var(--soft);border-radius:9px;padding:2px;transition:opacity .35s ease}
+.seg .ib{width:30px;height:30px}
+.seg .ib.on{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.unitbtn{height:34px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;display:inline-flex;align-items:center;gap:7px;padding:0 10px;cursor:pointer;white-space:nowrap;transition:opacity .35s ease}
+.unitbtn svg{width:16px;height:16px}
+.st-btn svg{width:20px;height:20px}
+.st-todo{color:var(--mute)}
+.st-learning{color:var(--warn)}
+.st-learned{color:var(--ok)}
+.body{flex:1;overflow:auto;padding:14px 28px;min-height:0;position:relative}
+.read{max-width:640px;margin:0 auto}
+.dots{display:flex;gap:4px;align-items:center;height:12px;margin:2px 0 18px}
+.dots i{flex:1;height:3px;border-radius:2px;background:var(--todo);opacity:.55;cursor:pointer;transition:height .15s ease}
+.dots i:hover{height:6px}
+.dots i.learning{background:var(--warn);opacity:1}
+.dots i.learned{background:var(--ok);opacity:1}
+.dots i.cur{height:7px;opacity:1}
+.read h3{font-size:21px;margin:0 0 12px;text-wrap:balance}
+.read p{margin:0 0 14px;font-size:15.5px;line-height:1.75;max-width:64ch}
+.foot{border-top:1px solid var(--border);padding:12px 16px;flex:none;display:flex;justify-content:center;gap:8px;transition:opacity .35s ease}
+.btn{height:44px;padding:0 16px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.btn.pri{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc);font-weight:600}
+.btn.sm{height:32px;font-size:13px;padding:0 12px}
+.btn svg{width:16px;height:16px}
+.menu{position:absolute;z-index:6;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 12px 28px rgb(0 0 0/.18);display:grid;gap:1px}
+.menu .sec{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);padding:8px 10px 3px}
+.menu .row{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;font-size:14px;cursor:pointer}
+.menu .row:hover{background:var(--soft)}
+.menu .row .r{margin-left:auto;font-size:12px;color:var(--mute);white-space:nowrap}
+.menu .row svg{width:15px;height:15px;flex:none}
+.menu .row.here{background:var(--acc-soft);color:var(--acc)}
+.tip{position:absolute;z-index:7;background:var(--fg);color:var(--bg);font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;pointer-events:none}
+/* lezioni */
+.lhdr{display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.lhdr h3{margin:0;font-size:18px;flex:1}
+.search{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:5px 9px;color:var(--mute);font-size:13px;width:200px}
+.search svg{width:15px;height:15px}
+.group{border-radius:12px;padding:10px 6px 6px;margin:0 0 12px}
+.group:nth-child(odd){background:var(--soft)}
+.gl{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);padding:0 10px 4px}
+.lrow{display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:9px}
+.lrow:hover{background:color-mix(in oklch,var(--fg) 6%,transparent)}
+.lrow .dot{width:6px;height:6px;border-radius:50%;background:var(--mute);flex:none}
+.lrow .tx{flex:1;min-width:0}
+.lrow .tt{display:block;font-size:15px}
+.lrow .st{display:block;font-size:13px;color:var(--mute)}
+.lrow .st b{font-weight:600;color:var(--ok)}
+.ring{display:flex;align-items:center;gap:7px;flex:none;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums;width:86px;justify-content:flex-end}
+.ring svg{width:22px;height:22px;transform:rotate(-90deg)}
+.minibar{display:flex;height:4px;border-radius:2px;overflow:hidden;background:color-mix(in oklch,var(--todo) 55%,transparent);width:140px;margin-top:5px}
+.minibar i{display:block;height:100%}
+.chk{width:16px;height:16px;border:1px solid var(--mute);border-radius:4px;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.chk.on{background:var(--acc-soft);border-color:var(--acc)}
+.chk.on::after{content:"";width:4px;height:8px;border:solid var(--acc);border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-1px)}
+.selbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 26px rgb(0 0 0/.16);display:flex;align-items:center;gap:4px;padding:6px 10px 6px 14px;font-size:13px;white-space:nowrap}
+.selbar .new{position:relative}
+.selbar .new::after{content:"";position:absolute;inset:-3px;border:2px dashed var(--acc);border-radius:10px;pointer-events:none}
+.scrim{position:absolute;inset:0;background:rgb(0 0 0/.42);display:flex;align-items:center;justify-content:center;padding:20px;z-index:8}
+.modal{background:var(--bg);border:1px solid var(--border);border-radius:14px;width:min(620px,100%);max-height:100%;overflow:auto;padding:18px 20px;display:grid;gap:14px;box-shadow:0 12px 32px rgb(0 0 0/.18)}
+.modal h3{margin:0;font-size:16px;display:flex;align-items:center;gap:8px}
+.modal h3 .sp{flex:1}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kv div{border:1px solid var(--border);border-radius:10px;padding:9px 11px;display:grid;gap:1px}
+.kv small{font-size:12px;color:var(--mute)}
+.kv b{font-size:17px;font-variant-numeric:tabular-nums}
+.kv span{font-size:12px;color:var(--mute)}
+.stack{display:flex;height:8px;border-radius:4px;overflow:hidden;background:color-mix(in oklch,var(--todo) 55%,transparent)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);flex-wrap:wrap}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-weight:600;text-align:left;color:var(--mute);font-size:12px;padding:5px 6px;border-bottom:1px solid var(--border)}
+td{padding:6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{white-space:normal}
+td.n,th.n{text-align:right}
+/* zen */
+.zen .rail{opacity:0;width:0;border:0;overflow:hidden;padding:0}
+.zen .hdr{border-color:transparent}
+.zen .hide-zen{opacity:0;pointer-events:none;width:0;margin:0;overflow:hidden;border:0;padding:0}
+.zen .foot{opacity:0;pointer-events:none}
+.zen .t{opacity:.45;font-weight:500}
+.zen.irlen .main{background:var(--irlen)}
+.zen.irlen .unitbtn{background:transparent}
+.show-zen{display:none}
+.zen .show-zen{display:inline-flex}
+.rsvp{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;pointer-events:none;transition:opacity .45s ease .15s}
+.zen .rsvp{opacity:1;pointer-events:auto}
+.zen .read{opacity:0;transition:opacity .3s ease}
+.read{transition:opacity .3s ease .1s}
+.word{font-size:56px;letter-spacing:.01em;font-weight:500;font-family:var(--sans)}
+.word .o{color:var(--orp)}
+.around{color:var(--mute);font-size:17px;max-width:80%;text-align:center;min-height:1.6em}
+.ctl{display:flex;align-items:center;gap:18px;margin-top:40px}
+.round{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--bg);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.round.big{width:64px;height:64px;background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc)}
+.round svg{width:20px;height:20px}
+.speed{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mute)}
+.speed input{width:180px;accent-color:var(--acc)}
+.meta{font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+.pop{position:absolute;right:14px;top:56px;width:300px;z-index:6;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 28px rgb(0 0 0/.18);font-size:14px;max-height:calc(100% - 70px);overflow:auto}
+.pop .r{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.pop .r:last-child{border:0}
+.pop small{display:block;color:var(--mute);font-size:12px}
+.tg{width:36px;height:20px;border-radius:10px;background:var(--border);position:relative;flex:none;cursor:pointer;border:0}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--bg);transition:left .15s}
+.tg[aria-pressed="true"]{background:var(--acc)}
+.tg[aria-pressed="true"]::after{left:18px}
+.ctx{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:min(620px,90%);border:1px solid var(--border);background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;color:var(--mute);line-height:1.7}
+.ctx b{color:var(--orp);font-weight:600}
+/* phone */
+.phones{display:flex;gap:20px;justify-content:center;flex-wrap:wrap}
+.phone{width:300px;height:600px;border:1px solid var(--border);border-radius:34px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column;position:relative}
+.phone .ph{display:flex;align-items:center;gap:2px;padding:44px 8px 8px;border-bottom:1px solid var(--border)}
+.phone .ph .ib{width:32px;height:32px}
+.phone .ph .ib svg{width:17px;height:17px}
+.phone .pb{flex:1;padding:12px 16px;overflow:hidden}
+.phone .pb p{font-size:14px;line-height:1.65;margin:0 0 10px}
+.phone .tabbar{height:64px;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center}
+.phone .tabbar i{width:22px;height:22px;border-radius:6px;background:var(--soft)}
+.cap{text-align:center;font-size:13px;color:var(--mute);margin-top:6px}
+svg{display:block}
+.pill{font-size:12px;border-radius:999px;padding:1px 8px;background:var(--soft);color:var(--mute)}
+.callout{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--acc);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-todo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></symbol>
+    <symbol id="i-learning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+    <symbol id="i-learned" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5" fill="currentColor" stroke="none"/><path d="m8 12.5 3 3 5-6" stroke="var(--bg)"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
+    <symbol id="i-ctx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6H3M21 12H8M21 18H8M3 12v6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-hl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3l14 9-14 9z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-rewind" viewBox="0 0 24 24" fill="currentColor"><path d="M11 19 2 12l9-7zM22 19l-9-7 9-7z"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M7 12h10M10 18h4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5M16 13H8M16 17H8"/></symbol>
+    <symbol id="i-zip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <h1>Wireframe RT 4.2.3b1</h1>
+  <span class="meta">stato delle unità · avanzamento nelle lezioni · lettura veloce zen · dettagli della selezione</span>
+  <div class="tabs" role="group" aria-label="Schermata">
+    <button data-tab="studio" aria-pressed="true">Studio</button>
+    <button data-tab="lezioni" aria-pressed="false">Lezioni</button>
+    <button data-tab="zen" aria-pressed="false">Lettura veloce zen</button>
+    <button data-tab="dettagli" aria-pressed="false">Dettagli selezione</button>
+    <button data-tab="iphone" aria-pressed="false">iPhone</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============================ STUDIO ============================ -->
+<section data-view="studio">
+  <div class="notes">
+    <h2>Studio: stato dell'unità</h2>
+    <ul>
+      <li>Nuovo pulsante a sinistra della lettura veloce: un solo tocco cicla <b>da imparare → in apprendimento → appreso → da imparare</b>. Tre icone, nessun testo: cerchio tratteggiato, mezzo pieno (arancione), pieno con spunta (verde). Il nome dello stato resta nel tooltip e per lo screen reader. Prova a cliccarlo qui sotto.</li>
+      <li>Scorciatoia proposta: <span class="kbd">S</span> cicla lo stato, come <span class="kbd">←</span> <span class="kbd">→</span> cambiano unità.</li>
+      <li>Le barrette prendono il colore dello stato: neutre (come oggi) da imparare, arancioni in apprendimento, verdi apprese. L'unità aperta non si riconosce più dal colore, quindi la sua barretta è <b>più alta</b>. In più si possono cliccare per saltare a quell'unità, con il titolo nel tooltip.</li>
+      <li>Nell'indice "Unità N di M" il vecchio "letta" lascia il posto all'icona dello stato e alla data dell'ultimo cambio.</li>
+      <li>All'apertura dello Studio si parte dalla <b>prima unità non appresa</b> nell'ordine. Se sono tutte apprese si parte dalla 1. Qui le unità 1, 2 e 4 sono apprese, quindi si apre la 3.</li>
+      <li>Il footer è già quello della b4: niente "Unità successiva", si cambia unità con le frecce o con lo swipe.</li>
+      <li>RT segna anche <b>quando</b> hai studiato: ogni unità aperta nello Studio aggiorna "ultimo studio" della lezione. Serve per l'ordinamento e per i dettagli.</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame" id="f-studio">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="hdr">
+        <button class="ib" aria-label="Indietro"><svg><use href="#i-back"/></svg></button>
+        <span class="t">Elettromagnetismo applicato alle scienze biomediche: campi, onde, interazione con i tessuti</span>
+        <button class="ib" aria-label="Dettagli della lezione"><svg><use href="#i-info"/></svg></button>
+        <span class="seg"><button class="ib on" aria-label="Evidenzia"><svg><use href="#i-hl"/></svg></button><button class="ib" aria-label="Gomma"><svg><use href="#i-eraser"/></svg></button></span>
+        <button class="ib" aria-label="Togli tutte le evidenziazioni"><svg><use href="#i-trash"/></svg></button>
+        <span class="sep"></span>
+        <button class="ib st-btn" id="stateBtn" title="Da imparare (S per cambiare)" aria-label="Stato dell'unità: da imparare"><svg><use href="#i-todo"/></svg></button>
+        <button class="ib" aria-label="Lettura veloce"><svg><use href="#i-gauge"/></svg></button>
+        <button class="ib" aria-label="Audio dell'unità"><svg><use href="#i-play"/></svg></button>
+        <button class="unitbtn" id="unitBtn"><svg><use href="#i-list"/></svg><span id="unitLbl">Unità 3 di 12</span><svg><use href="#i-down"/></svg></button>
+      </div>
+      <div class="body">
+        <div class="read">
+          <div class="dots" id="dots"></div>
+          <h3 id="unitTitle">1.3 Il ruolo dei modelli e delle leggi sperimentali</h3>
+          <p>La docente introduce il concetto di modello fisico come rappresentazione semplificata di un fenomeno, utile a prevedere il comportamento di un sistema biologico esposto a un campo elettromagnetico.</p>
+          <p>Le leggi sperimentali, come la legge di Coulomb, descrivono relazioni misurate tra grandezze. Il modello le collega e permette di stimare, ad esempio, l'assorbimento di energia in un tessuto.</p>
+          <p>Segue un esempio sul SAR (tasso di assorbimento specifico, in W/kg), la grandezza usata nelle norme per limitare l'esposizione ai telefoni cellulari.</p>
+        </div>
+        <div class="menu" id="unitMenu" hidden style="right:14px;top:4px;width:330px"></div>
+      </div>
+      <div class="foot">
+        <button class="btn pri" style="width:420px">Mettimi alla prova · 4 domande</button>
+        <button class="btn" aria-label="Genera altre domande"><svg><use href="#i-spark"/></svg>Genera altre</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================ LEZIONI ============================ -->
+<section data-view="lezioni" hidden>
+  <div class="notes">
+    <h2>Lezioni: quanto hai studiato</h2>
+    <ul>
+      <li><b>Proposta A (consigliata): anello a destra della riga</b> con "7/18". L'arco verde sono le apprese, quello arancione le unità in apprendimento. Gli anelli stanno tutti in colonna sul bordo destro, quindi a colpo d'occhio si confronta la percentuale tra lezioni senza leggere. Non aggiunge altezza alla riga.</li>
+      <li><b>Proposta B: barretta sotto il sottotitolo</b>, verde e arancione, come una versione compatta delle barrette dello Studio. Si legge bene, ma la riga diventa più alta e su iPhone l'elenco si allunga.</li>
+      <li>In tutte e due il sottotitolo dice "18 unità · 7 apprese". Una lezione mai aperta nello Studio non mostra niente, così l'elenco resta pulito. Una lezione tutta appresa ha l'anello pieno verde.</li>
+      <li>Ordina ha tre voci nuove: <b>Studiate di recente</b>, <b>Più avanti nello studio</b>, <b>Più indietro nello studio</b>. La percentuale conta solo le apprese. A pari percentuale vince chi ha più unità in apprendimento. Le lezioni mai studiate vanno in fondo con "Studiate di recente". L'ordine vale dentro ogni gruppo, come oggi.</li>
+      <li>Su iPhone il pulsante Ordina che cicla prende le etichette brevi "Studio", "Avanti", "Indietro".</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="lhdr">
+        <h3>Lezioni</h3>
+        <div class="tabs" role="group" aria-label="Variante" style="padding:2px">
+          <button data-var="ring" aria-pressed="true" style="font-size:13px;padding:4px 10px">A · anello</button>
+          <button data-var="bar" aria-pressed="false" style="font-size:13px;padding:4px 10px">B · barretta</button>
+        </div>
+        <span class="seg"><button class="ib on" aria-label="Per data"><svg><use href="#i-cal"/></svg></button><button class="ib" aria-label="Per materia"><svg><use href="#i-tag"/></svg></button><button class="ib" aria-label="Per docente"><svg><use href="#i-user"/></svg></button></span>
+        <div style="position:relative"><button class="ib on" id="sortBtn" aria-label="Ordina"><svg><use href="#i-filter"/></svg></button>
+          <div class="menu" id="sortMenu" style="right:0;top:40px;width:250px">
+            <div class="sec">Ordina</div>
+            <div class="row" data-sort="recenti">Più recenti</div>
+            <div class="row" data-sort="vecchie">Meno recenti</div>
+            <div class="row" data-sort="titolo">Titolo</div>
+            <div class="row here" data-sort="studio">Studiate di recente <span class="r">nuovo</span></div>
+            <div class="row" data-sort="avanti">Più avanti nello studio <span class="r">nuovo</span></div>
+            <div class="row" data-sort="indietro">Più indietro nello studio <span class="r">nuovo</span></div>
+          </div>
+        </div>
+        <div class="search"><svg><use href="#i-search"/></svg>Cerca</div>
+        <button class="ib" aria-label="Seleziona"><svg><use href="#i-check"/></svg></button>
+      </div>
+      <div class="body" id="lessonList"></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================ ZEN ============================ -->
+<section data-view="zen" hidden>
+  <div class="notes">
+    <h2>Lettura veloce come modalità zen</h2>
+    <ul>
+      <li>Non è più una schermata a parte sopra lo Studio: si resta nella stessa pagina. Premendo il tachimetro il testo sfuma, spariscono barra laterale (su iPhone la barra in basso), evidenziatore, cestino, audio, footer e freccia indietro. Al centro compare la parola. Premi i due pulsanti qui sotto per vedere la transizione.</li>
+      <li>In alto restano solo: il titolo attenuato, <b>libro</b> (al posto del tachimetro, torna allo Studio, anche con <span class="kbd">Esc</span>), <b>impostazioni</b>, <b>contesto</b> e l'indice "Unità N di M", che nel tuo schizzo c'era ancora. Cambiare unità da lì fa ripartire la lettura veloce sulla nuova unità.</li>
+      <li>Via Giorno/Notte: segue il tema dell'app. Via "Mettimi alla prova": per fare le domande torni allo Studio col libro.</li>
+      <li>La parola usa lo stesso carattere del testo dello Studio, senza la spaziatura larga. La lettera di fuoco resta colorata.</li>
+      <li>Slider, pulsanti e testi prendono lo stile dell'app: niente monospazio, pulsanti rotondi come le icone dell'app, play nel verde dell'app. Il pannello impostazioni è un popover come gli altri menu (su iPhone un foglio dal basso), con le stesse voci di oggi.</li>
+      <li><b>Modalità Irlen</b> colora tutta la finestra, intestazione compresa. Essendo nascosta la barra laterale non resta nessuna parte bianca. Uscendo si torna ai colori normali.</li>
+    </ul>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+    <button class="btn sm" id="zenToggle">Entra nella lettura veloce</button>
+    <button class="btn sm" id="irlenToggle" aria-pressed="false">Modalità Irlen: no</button>
+  </div>
+  <div class="stage"><div class="frame" id="f-zen">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="hdr">
+        <button class="ib hide-zen" aria-label="Indietro"><svg><use href="#i-back"/></svg></button>
+        <span class="t">1.1 Inquadramento della lezione e omeostasi cellulare</span>
+        <button class="ib hide-zen" aria-label="Dettagli della lezione"><svg><use href="#i-info"/></svg></button>
+        <span class="seg hide-zen"><button class="ib on" aria-label="Evidenzia"><svg><use href="#i-hl"/></svg></button><button class="ib" aria-label="Gomma"><svg><use href="#i-eraser"/></svg></button></span>
+        <button class="ib hide-zen" aria-label="Togli tutte le evidenziazioni"><svg><use href="#i-trash"/></svg></button>
+        <span class="sep hide-zen"></span>
+        <button class="ib st-btn st-learning hide-zen" aria-label="Stato: in apprendimento"><svg><use href="#i-learning"/></svg></button>
+        <button class="ib" id="zenEnter" aria-label="Lettura veloce"><svg><use href="#i-gauge"/></svg></button>
+        <button class="ib show-zen" id="zenSettings" aria-label="Impostazioni della lettura veloce"><svg><use href="#i-sliders"/></svg></button>
+        <button class="ib show-zen" id="zenCtx" aria-label="Mostra il contesto"><svg><use href="#i-ctx"/></svg></button>
+        <button class="ib hide-zen" aria-label="Audio dell'unità"><svg><use href="#i-play"/></svg></button>
+        <button class="unitbtn"><svg><use href="#i-list"/></svg>Unità 1 di 18<svg><use href="#i-down"/></svg></button>
+      </div>
+      <div class="body" style="display:flex;flex-direction:column">
+        <div class="read">
+          <div class="dots"><i class="learning cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <h3>1.1 Inquadramento della lezione e omeostasi cellulare</h3>
+          <p>L'obiettivo di questo percorso didattico consiste nell'analizzare le alterazioni patogenetiche cellulari sistematicamente, partendo dall'omeostasi e dai meccanismi con cui la cellula mantiene l'equilibrio interno.</p>
+          <p>Quando uno stimolo supera la capacità di adattamento, la cellula va incontro a danno reversibile e, oltre una certa soglia, a morte cellulare per necrosi o apoptosi.</p>
+        </div>
+        <div class="rsvp" aria-live="off">
+          <div class="ctx" id="ctxBox" hidden>… L'obiettivo di questo percorso didattico <b>consiste</b> nell'analizzare le alterazioni patogenetiche cellulari sistematicamente, partendo dall'omeostasi …</div>
+          <div class="around">L'obiettivo di questo percorso didattico</div>
+          <div class="word">c<span class="o">o</span>nsiste</div>
+          <div class="around"></div>
+          <div class="ctl">
+            <button class="round" aria-label="Indietro di 5 parole"><svg><use href="#i-rewind"/></svg></button>
+            <button class="round big" aria-label="Avvia"><svg><use href="#i-play"/></svg></button>
+            <button class="round" aria-label="Ricomincia"><svg><use href="#i-restart"/></svg></button>
+          </div>
+          <div class="speed"><label for="wpm">Velocità</label><input id="wpm" type="range" min="100" max="900" step="25" value="300"><b id="wpmV" style="color:var(--fg);font-weight:600">300</b> parole/min</div>
+          <div class="meta">6 / 355 parole · 1 min 10 s</div>
+        </div>
+        <div class="pop" id="zenPop" hidden>
+          <div class="r"><b>Lettura veloce</b><button class="btn sm" id="zenPopClose">Fatto</button></div>
+          <div class="r"><span>Suono<small>un clic a ogni parola, più grave a fine frase</small></span><button class="tg" aria-pressed="true" aria-label="Suono"></button></div>
+          <div class="r"><span>Font per dislessia<small>lettere più distinguibili</small></span><button class="tg" aria-pressed="false" aria-label="Font per dislessia"></button></div>
+          <div class="r"><span>Modalità Irlen<small>colora tutta la finestra</small></span><button class="tg" id="irlenTg" aria-pressed="false" aria-label="Modalità Irlen"></button></div>
+          <div class="r"><span>Rumore di fondo<small>copre i rumori intorno</small></span><button class="tg" aria-pressed="false" aria-label="Rumore di fondo"></button></div>
+          <div class="r"><span>Pausa dopo la frase<small>400 ms</small></span></div>
+          <div class="r"><span>Lettera di fuoco<small>Prima · <b>Bilanciata</b> · Dopo</small></span></div>
+          <div class="r"><span>Virgola come pausa piena</span><button class="tg" aria-pressed="false" aria-label="Virgola come pausa piena"></button></div>
+          <div class="r"><span>Passo indietro<small>−1 · −3 · <b>−5</b> · −10</small></span></div>
+          <div class="r"><span>Dimensione del testo<small>60</small></span></div>
+        </div>
+      </div>
+      <div class="foot">
+        <button class="btn pri" style="width:520px">Mettimi alla prova · 7 domande</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================ DETTAGLI ============================ -->
+<section data-view="dettagli" hidden>
+  <div class="notes">
+    <h2>Dettagli delle lezioni selezionate</h2>
+    <ul>
+      <li>Nella barra della selezione arriva l'icona <b>i</b> (tratteggiata qui sotto), prima di Recall. Apre un popup con i totali delle lezioni selezionate. Funziona anche con una sola lezione.</li>
+      <li>In alto i totali: lezioni, ore di audio, unità, domande, costo (con la media per ora di audio) e ultimo studio. Sotto, la barra dello studio sommata su tutte le unità selezionate.</li>
+      <li>Poi una tabella con una riga per lezione, ordinabile cliccando l'intestazione, così si vede quale lezione è costata di più o è più indietro.</li>
+      <li>In fondo il riepilogo di materie e docenti, utile quando selezioni un gruppo per data. Tutti i dati ci sono già nell'elenco, tranne lo studio che arriva con questa beta.</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="lhdr"><h3>Lezioni</h3><button class="ib on" aria-label="Seleziona"><svg><use href="#i-check"/></svg></button></div>
+      <div class="body" id="selList"></div>
+      <div class="selbar">
+        <span style="margin-right:6px">4 selezionate</span>
+        <button class="ib" aria-label="Seleziona tutto"><svg><use href="#i-check"/></svg></button>
+        <button class="ib new" id="detBtn" aria-label="Dettagli della selezione"><svg><use href="#i-info"/></svg></button>
+        <button class="ib" aria-label="Recall"><svg><use href="#i-brain"/></svg></button>
+        <button class="ib" aria-label="Scarica Markdown"><svg><use href="#i-file"/></svg></button>
+        <button class="ib" id="zipBtn" aria-label="Scarica zip"><svg><use href="#i-zip"/></svg></button>
+        <button class="ib" aria-label="Elimina"><svg><use href="#i-trash"/></svg></button>
+        <button class="ib" aria-label="Annulla"><svg><use href="#i-x"/></svg></button>
+      </div>
+      <div class="menu" id="zipMenu" hidden style="left:50%;bottom:70px;transform:translateX(40px);width:290px">
+        <div class="row" style="cursor:default"><span class="chk on"></span>Includi lo stato di studio</div>
+        <div class="row" style="cursor:default;font-size:12.5px;color:var(--mute)">Chi importa lo zip ritrova apprese e in apprendimento. La scelta resta per la prossima volta.</div>
+        <div class="row" style="cursor:default;justify-content:flex-end"><button class="btn sm pri">Scarica zip</button></div>
+      </div>
+      <div class="scrim" id="detModal">
+        <div class="modal" role="dialog" aria-label="Dettagli di 4 lezioni">
+          <h3>4 lezioni selezionate<span class="sp"></span><button class="ib" id="detClose" aria-label="Chiudi"><svg><use href="#i-x"/></svg></button></h3>
+          <div class="kv">
+            <div><small>Audio</small><b>6 h 12 min</b><span>dal 22 set al 3 ott</span></div>
+            <div><small>Unità</small><b>74</b><span>31 apprese · 12 in apprendimento</span></div>
+            <div><small>Domande</small><b>212</b><span>48 da fare</span></div>
+            <div><small>Costo</small><b>$2,84</b><span>$0,46 per ora di audio</span></div>
+            <div><small>Ultimo studio</small><b>oggi</b><span>Patologia generale · 1.4</span></div>
+            <div><small>Stato</small><b>3 pronte</b><span>1 da verificare</span></div>
+          </div>
+          <div style="display:grid;gap:6px">
+            <div class="stack"><i style="width:42%;background:var(--ok)"></i><i style="width:16%;background:var(--warn)"></i></div>
+            <div class="legend"><span><i style="background:var(--ok)"></i>42% apprese</span><span><i style="background:var(--warn)"></i>16% in apprendimento</span><span><i style="background:var(--todo);opacity:.6"></i>42% da imparare</span></div>
+          </div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr><th>Lezione</th><th class="n">Audio</th><th class="n">Studio</th><th class="n">Domande</th><th class="n">Costo ▾</th></tr></thead>
+              <tbody>
+                <tr><td>Elettromagnetismo applicato alle scienze biomediche</td><td class="n">1 h 48</td><td class="n">3/26</td><td class="n">71</td><td class="n">$0,97</td></tr>
+                <tr><td>Danno cellulare, adattamenti e morte</td><td class="n">1 h 36</td><td class="n">18/18</td><td class="n">54</td><td class="n">$0,74</td></tr>
+                <tr><td>Infiammazione acuta: mediatori chimici</td><td class="n">1 h 30</td><td class="n">10/16</td><td class="n">49</td><td class="n">$0,69</td></tr>
+                <tr><td>Biochimica: glicolisi e sua regolazione</td><td class="n">1 h 18</td><td class="n">0/14</td><td class="n">38</td><td class="n">$0,44</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="legend" style="font-size:13px"><span><b style="color:var(--fg)">Materie</b> Patologia generale 2 · Fisica medica 1 · Biochimica 1</span><span><b style="color:var(--fg)">Docenti</b> Costanzo 1 · Rossi 2 · Bianchi 1</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="notes">
+    <h2>Esportare lo stato di studio</h2>
+    <ul>
+      <li>Lo stato vive nel database di RT, non nel browser: così Mac e iPhone vedono le stesse unità apprese.</li>
+      <li>Lo zip di una lezione (dalla lezione o dalla selezione, clicca l'icona zip qui sopra) si scarica dopo un piccolo popover con <b>Includi lo stato di studio</b>. La scelta viene ricordata. Se è attiva, nello zip c'è un file <code>study.json</code> con stato e date per unità, e l'import lo ripristina.</li>
+      <li>Il Markdown non lo include: è il documento da leggere, lo stato non c'entra. Il backup di RT lo include sempre, perché copia il database.</li>
+      <li>Le evidenziazioni restano fuori dallo zip, come deciso per la 4.2.2. Si possono aggiungere con la stessa casella se ti servono.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================ IPHONE ============================ -->
+<section data-view="iphone" hidden>
+  <div class="notes">
+    <h2>Su iPhone</h2>
+    <ul>
+      <li>Nello Studio l'icona dello stato entra nell'intestazione accanto a quella della lettura veloce. Lo spazio c'è perché il titolo su iPhone è già solo l'icona <b>i</b>.</li>
+      <li>In lettura veloce sparisce anche la barra in basso dell'app. La parola sta al centro, i controlli in basso con l'area sicura dell'iPhone, le impostazioni in un foglio dal basso.</li>
+    </ul>
+  </div>
+  <div class="phones">
+    <div>
+      <div class="phone">
+        <div class="ph">
+          <button class="ib" aria-label="Indietro"><svg><use href="#i-back"/></svg></button>
+          <button class="ib" aria-label="Dettagli"><svg><use href="#i-info"/></svg></button>
+          <span style="flex:1"></span>
+          <button class="ib" aria-label="Evidenzia"><svg><use href="#i-hl"/></svg></button>
+          <button class="ib st-btn st-learning" aria-label="Stato: in apprendimento"><svg><use href="#i-learning"/></svg></button>
+          <button class="ib" aria-label="Lettura veloce"><svg><use href="#i-gauge"/></svg></button>
+          <button class="ib" aria-label="Audio"><svg><use href="#i-play"/></svg></button>
+          <button class="unitbtn" style="height:32px;padding:0 8px;font-size:13px">4 di 12</button>
+        </div>
+        <div class="pb">
+          <div class="dots"><i class="learned"></i><i class="learned"></i><i class="learned"></i><i class="learning cur"></i><i class="learning"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <h3 style="font-size:18px;margin:0 0 8px">1.4 Campi statici e campi variabili</h3>
+          <p>Un campo elettrico statico non varia nel tempo; un campo variabile genera a sua volta un campo magnetico, ed è questa reciprocità a produrre le onde.</p>
+          <p>Nei tessuti la risposta dipende dalla frequenza: a bassa frequenza prevalgono le correnti indotte, ad alta frequenza il riscaldamento.</p>
+        </div>
+        <div style="padding:0 16px 10px;display:flex;gap:6px"><button class="btn pri" style="flex:1">Mettimi alla prova · 5</button><button class="btn" aria-label="Genera altre domande"><svg><use href="#i-spark"/></svg></button></div>
+        <div class="tabbar"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="cap">Studio, unità 4 in apprendimento</div>
+    </div>
+    <div>
+      <div class="phone">
+        <div class="ph" style="border-color:transparent">
+          <span style="flex:1;font-size:13px;color:var(--mute);padding-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">1.4 Campi statici e…</span>
+          <button class="ib" aria-label="Torna allo Studio"><svg><use href="#i-book"/></svg></button>
+          <button class="ib" aria-label="Impostazioni"><svg><use href="#i-sliders"/></svg></button>
+          <button class="ib" aria-label="Contesto"><svg><use href="#i-ctx"/></svg></button>
+          <button class="unitbtn" style="height:32px;padding:0 8px;font-size:13px">4 di 12</button>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+          <div class="around" style="font-size:14px">un campo variabile genera</div>
+          <div class="word" style="font-size:40px">a sua v<span class="o">o</span>lta</div>
+          <div class="around" style="font-size:14px"></div>
+        </div>
+        <div style="display:grid;justify-items:center;gap:10px;padding:0 0 34px">
+          <div class="ctl" style="margin:0">
+            <button class="round" aria-label="Indietro"><svg><use href="#i-rewind"/></svg></button>
+            <button class="round big" aria-label="Avvia"><svg><use href="#i-play"/></svg></button>
+            <button class="round" aria-label="Ricomincia"><svg><use href="#i-restart"/></svg></button>
+          </div>
+          <div class="meta">300 parole/min · 1 min 10 s</div>
+        </div>
+      </div>
+      <div class="cap">Lettura veloce zen, senza barra in basso</div>
+    </div>
+  </div>
+</section>
+
+<section class="notes">
+  <h2>Deciso (Attilio, 5 ottobre 2026)</h2>
+  <div class="q">Avanzamento nell'elenco: anello a destra (A). L'indice "Unità N di M" resta in lettura veloce. Con tutte le unità apprese lo Studio riparte dalla 1. Piano: docs/REWORK_4.2.3.md.</div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  const views=[...document.querySelectorAll('[data-view]')];
+  document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('[data-tab]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+    views.forEach(v=>v.hidden=v.dataset.view!==b.dataset.tab);
+    try{localStorage.setItem('rt423-tab',b.dataset.tab)}catch(e){}
+  }));
+  try{const t=localStorage.getItem('rt423-tab');if(t){const b=document.querySelector('[data-tab="'+t+'"]');b&&b.click()}}catch(e){}
+
+  /* ---------- studio ---------- */
+  const STATES=['todo','learning','learned'];
+  const LABEL={todo:'Da imparare',learning:'In apprendimento',learned:'Appreso'};
+  const titles=['1.1 Presentazione della docente e del corso','1.2 Elettrostatica ed elettromagnetismo','1.3 Il ruolo dei modelli e delle leggi sperimentali','2.1 Dalla descrizione dei fenomeni statici','2.2 Onde elettromagnetiche e lunghezza d\'onda','2.3 Tecnologie wireless e significato del SAR','2.4 Velocità di propagazione nei tessuti','3.1 Interazione con i tessuti biologici','3.2 Effetti termici','3.3 Effetti non termici','4.1 Normativa e limiti di esposizione','4.2 Prospettive diagnostiche e terapeutiche'];
+  const dates=['3 ott','3 ott','','4 ott','4 ott','','','','','','',''];
+  const st=['learned','learned','todo','learned','learning','todo','todo','todo','todo','todo','todo','todo'];
+  let cur=st.findIndex(s=>s!=='learned'); if(cur<0)cur=0;
+  const dots=document.getElementById('dots'),btn=document.getElementById('stateBtn'),menu=document.getElementById('unitMenu');
+  function render(){
+    dots.innerHTML='';
+    st.forEach((s,i)=>{const d=document.createElement('i');d.className=(s==='todo'?'':s)+(i===cur?' cur':'');d.title=titles[i]+' · '+LABEL[s].toLowerCase();d.onclick=()=>{cur=i;render()};dots.appendChild(d)});
+    const s=st[cur];btn.className='ib st-btn st-'+s;btn.innerHTML='<svg><use href="#i-'+s+'"/></svg>';
+    btn.title=LABEL[s]+' (S per cambiare)';btn.setAttribute('aria-label','Stato dell\'unità: '+LABEL[s].toLowerCase());
+    document.getElementById('unitLbl').textContent='Unità '+(cur+1)+' di '+st.length;
+    document.getElementById('unitTitle').textContent=titles[cur];
+    menu.innerHTML='<div class="sec">Unità</div>'+titles.map((t,i)=>'<div class="row'+(i===cur?' here':'')+'" data-i="'+i+'"><svg class="st-'+st[i]+'"><use href="#i-'+st[i]+'"/></svg><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t+'</span><span class="r">'+(i===cur?'qui':(dates[i]||''))+'</span></div>').join('');
+    menu.querySelectorAll('.row').forEach(r=>r.onclick=()=>{cur=+r.dataset.i;menu.hidden=true;render()});
+  }
+  btn.onclick=()=>{st[cur]=STATES[(STATES.indexOf(st[cur])+1)%3];dates[cur]='oggi';render()};
+  document.getElementById('unitBtn').onclick=()=>{menu.hidden=!menu.hidden};
+  document.addEventListener('keydown',e=>{
+    if(document.querySelector('[data-view="studio"]').hidden||e.metaKey||e.ctrlKey||e.target.tagName==='INPUT')return;
+    if(e.key==='s'||e.key==='S'){btn.click()}
+    if(e.key==='ArrowRight'&&cur<st.length-1){cur++;render()}
+    if(e.key==='ArrowLeft'&&cur>0){cur--;render()}
+  });
+  render();
+
+  /* ---------- lezioni ---------- */
+  const lessons=[
+    {t:'Danno cellulare, adattamenti e morte: eziologia e meccanismi',m:'Patologia generale',u:18,a:18,l:0,last:5,d:'2 ott'},
+    {t:'Elettromagnetismo applicato alle scienze biomediche',m:'Fisica medica',u:26,a:3,l:2,last:6,d:'3 ott'},
+    {t:'Infiammazione acuta: mediatori chimici e cellulari',m:'Patologia generale',u:16,a:7,l:4,last:4,d:'1 ott'},
+    {t:'Biochimica: glicolisi e sua regolazione',m:'Biochimica',u:14,a:0,l:0,last:0,d:'30 set'},
+    {t:'Istologia: tessuto epiteliale di rivestimento',m:'Istologia',u:12,a:2,l:5,last:2,d:'29 set'},
+  ];
+  let variant='ring',sort='studio';
+  function ring(a,l,u){
+    const C=2*Math.PI*9,ga=C*a/u,gl=C*l/u;
+    return '<svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="9" fill="none" stroke="var(--soft)" stroke-width="3"/>'+
+      '<circle cx="11" cy="11" r="9" fill="none" stroke="var(--warn)" stroke-width="3" stroke-dasharray="0 '+ga+' '+gl+' '+C+'"/>'+
+      '<circle cx="11" cy="11" r="9" fill="none" stroke="var(--ok)" stroke-width="3" stroke-dasharray="'+ga+' '+C+'"/></svg>';
+  }
+  function lrow(x,sel){
+    const has=x.a+x.l>0;
+    const sub=x.m+' · '+x.d+' · '+x.u+' unità'+(has?' · <b>'+x.a+' apprese</b>':'');
+    const right=variant==='ring'&&has?'<span class="ring">'+x.a+'/'+x.u+ring(x.a,x.l,x.u)+'</span>':'<span class="ring"></span>';
+    const bar=variant==='bar'&&has?'<span class="minibar"><i style="width:'+(100*x.a/x.u)+'%;background:var(--ok)"></i><i style="width:'+(100*x.l/x.u)+'%;background:var(--warn)"></i></span>':'';
+    return '<div class="lrow">'+(sel===undefined?'<span class="dot"></span>':'<span class="chk'+(sel?' on':'')+'"></span>')+'<span class="tx"><span class="tt">'+x.t+'</span><span class="st">'+sub+'</span>'+bar+'</span>'+(sel===undefined?right:'')+'</div>';
+  }
+  function sorted(){
+    const a=[...lessons];
+    if(sort==='studio')a.sort((p,q)=>q.last-p.last);
+    if(sort==='avanti')a.sort((p,q)=>q.a/q.u-p.a/p.u||q.l-p.l);
+    if(sort==='indietro')a.sort((p,q)=>p.a/p.u-q.a/q.u||p.l-q.l);
+    if(sort==='titolo')a.sort((p,q)=>p.t.localeCompare(q.t));
+    if(sort==='vecchie')a.reverse();
+    return a;
+  }
+  function renderList(){
+    document.getElementById('lessonList').innerHTML='<div class="group"><div class="gl">Questa settimana</div>'+sorted().map(x=>lrow(x)).join('')+'</div>';
+  }
+  document.querySelectorAll('[data-var]').forEach(b=>b.onclick=()=>{variant=b.dataset.var;document.querySelectorAll('[data-var]').forEach(x=>x.setAttribute('aria-pressed',x===b));renderList()});
+  const sm=document.getElementById('sortMenu');
+  document.getElementById('sortBtn').onclick=()=>{sm.hidden=!sm.hidden};
+  sm.querySelectorAll('[data-sort]').forEach(r=>r.onclick=()=>{sort=r.dataset.sort;sm.querySelectorAll('.row').forEach(x=>x.classList.toggle('here',x===r));renderList()});
+  renderList();
+  document.getElementById('selList').innerHTML='<div class="group"><div class="gl">Questa settimana</div>'+lessons.map((x,i)=>lrow(x,i!==4)).join('')+'</div>';
+
+  /* ---------- dettagli ---------- */
+  const dm=document.getElementById('detModal'),zm=document.getElementById('zipMenu');
+  document.getElementById('detBtn').onclick=()=>{dm.hidden=false;zm.hidden=true};
+  document.getElementById('detClose').onclick=()=>{dm.hidden=true};
+  document.getElementById('zipBtn').onclick=()=>{zm.hidden=!zm.hidden;dm.hidden=true};
+
+  /* ---------- zen ---------- */
+  const fz=document.getElementById('f-zen'),zt=document.getElementById('zenToggle'),ze=document.getElementById('zenEnter');
+  const it=document.getElementById('irlenToggle'),itg=document.getElementById('irlenTg'),pop=document.getElementById('zenPop');
+  function setZen(on){
+    fz.classList.toggle('zen',on);
+    ze.innerHTML='<svg><use href="#i-'+(on?'book':'gauge')+'"/></svg>';
+    ze.setAttribute('aria-label',on?'Torna allo Studio':'Lettura veloce');
+    zt.textContent=on?'Torna allo Studio':'Entra nella lettura veloce';
+    if(!on){pop.hidden=true;document.getElementById('ctxBox').hidden=true}
+  }
+  function setIrlen(on){
+    fz.classList.toggle('irlen',on);it.setAttribute('aria-pressed',on);itg.setAttribute('aria-pressed',on);
+    it.textContent='Modalità Irlen: '+(on?'sì':'no');
+    if(on&&!fz.classList.contains('zen'))setZen(true);
+  }
+  zt.onclick=()=>setZen(!fz.classList.contains('zen'));
+  ze.onclick=()=>setZen(!fz.classList.contains('zen'));
+  it.onclick=()=>setIrlen(!fz.classList.contains('irlen'));
+  itg.onclick=()=>setIrlen(!fz.classList.contains('irlen'));
+  document.getElementById('zenSettings').onclick=()=>{pop.hidden=!pop.hidden};
+  document.getElementById('zenPopClose').onclick=()=>{pop.hidden=true};
+  document.getElementById('zenCtx').onclick=()=>{const c=document.getElementById('ctxBox');c.hidden=!c.hidden};
+  pop.querySelectorAll('.tg:not(#irlenTg)').forEach(t=>t.onclick=()=>t.setAttribute('aria-pressed',t.getAttribute('aria-pressed')!=='true'));
+  const w=document.getElementById('wpm');w.oninput=()=>{document.getElementById('wpmV').textContent=w.value};
+})();
+</script>
+</body>
+</html>
