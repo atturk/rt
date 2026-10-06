@@ -199,7 +199,7 @@ export function selectionDetails(lessons: readonly Lesson[]) {
   }
 }
 
-/** Denominatore comune per l'avanzamento: le ignorate restano nel totale della scaletta. */
+/** Denominatore comune per l'avanzamento: le unità della scaletta senza le ignorate. */
 export function studyTotal(lesson: Pick<Lesson, 'unit_count' | 'study_ignored'>): number {
   return Math.max(0, (lesson.unit_count ?? 0) - (lesson.study_ignored ?? 0))
 }
