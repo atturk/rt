@@ -454,6 +454,7 @@ class CredentialTest(BaseModel):
 # ---------------------------------------------------------------- recall
 
 class RecallQuestion(BaseModel):
+    remaining: Optional[int] = Field(None, ge=0, description="Domande pendenti dopo quella restituita, con gli stessi filtri di next")
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
     type: str

@@ -4948,6 +4948,19 @@
             "title": "Question Text",
             "type": "string"
           },
+          "remaining": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Domande pendenti dopo quella restituita, con gli stessi filtri di next",
+            "title": "Remaining"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -5093,6 +5106,19 @@
           "question_text": {
             "title": "Question Text",
             "type": "string"
+          },
+          "remaining": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Domande pendenti dopo quella restituita, con gli stessi filtri di next",
+            "title": "Remaining"
           },
           "status": {
             "title": "Status",

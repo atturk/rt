@@ -5021,6 +5021,11 @@ export interface components {
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
             /** Question Text */
             question_text: string;
+            /**
+             * Remaining
+             * @description Domande pendenti dopo quella restituita, con gli stessi filtri di next
+             */
+            remaining?: number | null;
             /** Status */
             status: string;
             /** Type */
@@ -5055,6 +5060,11 @@ export interface components {
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
             /** Question Text */
             question_text: string;
+            /**
+             * Remaining
+             * @description Domande pendenti dopo quella restituita, con gli stessi filtri di next
+             */
+            remaining?: number | null;
             /** Status */
             status: string;
             /** Type */

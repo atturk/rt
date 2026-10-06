@@ -185,8 +185,10 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
     question = next_question_for(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id)
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
+    from rt.services.recall_service import pending_count
+    remaining = pending_count(lesson_dir, qtype, unit_id=unit_id)
     _refill_later(lesson_dir, question, mock, actor)
-    return question_view(question)
+    return {**question_view(question), "remaining": remaining}
 
 
 @router.post("/lessons/{lesson_id}/recall/answer", summary="Risponde: quiz subito, risposta scritta con un job di valutazione",
