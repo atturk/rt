@@ -342,7 +342,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           back={speedReading ? undefined : back}
           actions={speedReading ? zenActions : headerActions}
           zen={speedReading}
-          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen} onTintChange={setTint} onClose={closeReader} /> : undefined}
+          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
             onPointerUp: handlePointerUp,

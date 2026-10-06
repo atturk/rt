@@ -15,7 +15,7 @@ afterEach(() => vi.unstubAllGlobals())
 it('rilegge le evidenziazioni modificate mentre il lettore è aperto', async () => {
   const source = document.createElement('div')
   source.innerHTML = '<p>Prima parola.</p>'
-  render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} onTintChange={vi.fn()} onClose={vi.fn()} />)
+  render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} />)
   expect(screen.getByTestId('speed-reader-word')).not.toHaveAttribute('data-hl')
   await act(async () => { source.innerHTML = '<p><span class="rt-hl rt-hl-4">Prima</span> parola.</p>' })
   await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-hl', 'true'))

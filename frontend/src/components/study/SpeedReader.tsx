@@ -1,4 +1,4 @@
-import { Pause, Play, Rewind, RotateCcw, X } from 'lucide-react'
+import { MessageCircleQuestion, Pause, Play, Rewind, RotateCcw, Sparkles, X, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { useIsPhone } from '@/lib/phone'
@@ -21,9 +21,10 @@ const ORPS = [['prima', 'Prima'], ['bilanciata', 'Bilanciata'], ['dopo', 'Dopo']
 const STEPS = [1, 3, 5, 10]
 
 /** Lettura veloce integrata nello Studio: conserva suoni, tasti e preferenze. */
-export function SpeedReader({ source, active, context, settings, onSettingsChange, settingsButton, blocked, onTintChange, onClose }: {
+export function SpeedReader({ source, active, context, settings, onSettingsChange, settingsButton, blocked, questions, onReview, onGenerate, onTintChange, onClose }: {
   source: Element; active: boolean; context: boolean; settings: boolean; onSettingsChange: (open: boolean) => void
   settingsButton: RefObject<HTMLElement | null>; blocked: boolean
+  questions: number; onReview: () => void; onGenerate: () => void
   onTintChange: (tint: RsvpPreference['irlen']) => void; onClose: () => void
 }) {
   const [saved, save] = useRsvpPrefs()
@@ -196,22 +197,19 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
           onChange={(e) => update({ wpm: Number(e.target.value) })} />
       </div>
 
-      <div className="mt-1.5 flex items-center justify-center gap-[26px]">
-        <RoundButton label={`Indietro di ${prefs.step} parole`} onClick={() => jump(index - prefs.step)} note={`−${prefs.step}`}>
-          <Rewind className="size-5" fill="currentColor" aria-hidden />
-        </RoundButton>
-        <button type="button" onClick={toggle} aria-label={playing ? 'Pausa' : 'Avvia'} data-testid="speed-reader-play" autoFocus
-          className="relative inline-flex size-[92px] items-center justify-center rounded-full border border-border bg-accent text-accent-foreground">
-          <svg className="absolute -inset-1.5 size-[104px] -rotate-90" viewBox="0 0 104 104" aria-hidden>
+      <div className="mt-1.5 flex items-center justify-center gap-6 max-md:gap-4" data-testid="speed-reader-controls">
+        <RoundButton label={`Indietro di ${prefs.step} parole`} icon={Rewind} onClick={() => jump(index - prefs.step)} note={`−${prefs.step}`} />
+        <RoundButton label={playing ? 'Pausa' : 'Avvia'} icon={playing ? Pause : Play} onClick={toggle} note={playing ? 'Pausa' : 'Play'} primary testId="speed-reader-play" badge={
+          <svg className="pointer-events-none absolute -inset-1.5 -rotate-90" style={{ width: 'calc(100% + 12px)', height: 'calc(100% + 12px)' }} viewBox="0 0 104 104" aria-hidden>
             <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--border)" />
             <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--rsvp-focus)" strokeLinecap="round"
               strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
           </svg>
-          {playing ? <Pause className="size-[26px]" fill="currentColor" aria-hidden /> : <Play className="size-[26px]" fill="currentColor" aria-hidden />}
-        </button>
-        <RoundButton label="Ricomincia l'unità" onClick={() => { setPlaying(false); setIndex(0) }}>
-          <RotateCcw className="size-5" aria-hidden />
-        </RoundButton>
+        } />
+        <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0) }} note="Ricomincia" />
+        <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
+          icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
+          onClick={() => { setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
       </div>
       <div className="mt-3 text-center text-meta text-muted-foreground" data-testid="speed-reader-count">
         {words.length ? `${index + 1} / ${words.length} parole · ${formatRemaining(remaining)}` : ''}
@@ -248,14 +246,14 @@ function FormulaWord({ html }: { html: string }) {
 
 function Pill(props: React.ComponentProps<typeof Button>) { return <Button variant="outline" size="sm" {...props} /> }
 
-function RoundButton({ label, onClick, note, children }: { label: string; onClick: () => void; note?: string; children: ReactNode }) {
-  return (
-    <button type="button" aria-label={label} onClick={onClick}
-      className="relative inline-flex size-[58px] items-center justify-center rounded-full border border-border bg-muted text-foreground">
-      {children}
-      {note && <small className="absolute -bottom-[18px] text-meta text-muted-foreground">{note}</small>}
-    </button>
-  )
+function RoundButton({ label, icon, onClick, note, primary, badge, testId }: {
+  label: string; icon: LucideIcon; onClick: () => void; note: string; primary?: boolean; badge?: ReactNode; testId?: string
+}) {
+  return <div className="flex flex-col items-center gap-2">
+    <IconButton label={label} icon={icon} onClick={onClick} variant={primary ? 'solid' : 'ghost'} badge={badge} data-testid={testId}
+      className={cn('size-14 min-w-14 rounded-full border border-border max-md:size-12 max-md:min-w-12 [&_svg]:size-5', !primary && 'bg-muted')} />
+    <span className="text-meta text-muted-foreground">{note}</span>
+  </div>
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {

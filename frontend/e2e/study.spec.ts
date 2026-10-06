@@ -545,3 +545,42 @@ test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Conte
     }
   }
 })
+
+test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande dell’unità', async ({ page }) => {
+  test.setTimeout(150_000)
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[0]
+  expect(unit.questions).toBe(0)
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  const controls = page.getByTestId('speed-reader-controls')
+  await expect(controls.getByRole('button')).toHaveCount(4)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    const size = width === 390 ? 48 : 56
+    for (const button of await controls.getByRole('button').all()) {
+      await expect(button).toHaveCSS('width', `${size}px`)
+      await expect(button).toHaveCSS('height', `${size}px`)
+      expect(await button.evaluate(el => parseFloat(getComputedStyle(el).borderRadius))).toBeGreaterThanOrEqual(size / 2)
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 844 })
+  await page.getByRole('button', { name: 'Genera domande su questa unità' }).click()
+  const modal = page.getByTestId('study-generate-modal')
+  await expect(modal).toBeVisible()
+  const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
+  await modal.getByRole('button', { name: 'Genera', exact: true }).click()
+  expect((await request).postDataJSON()).toMatchObject({ unit_ids: [unit.id] })
+  await expect(modal).toBeHidden({ timeout: 90_000 })
+  const review = page.getByRole('button', { name: /Ripassa l'unità · \d+ domande/ })
+  await expect(review).toBeVisible()
+  await review.click()
+  await expect(page.getByTestId('speed-reader')).toBeHidden()
+  await expect(page.getByTestId('recall-session-page')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(unit.title)
+  await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
+  await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
+})
