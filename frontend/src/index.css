@@ -292,8 +292,8 @@
   border-radius: 3px;
   padding: 1px 2px;
 }
-.rt-document .rt-claim-unit {
-  outline: 2px dashed #e0b84a;
+.rt-document .rt-claim-unit, .rt-lesson-editor .rt-claim-unit {
+  outline: 2px dashed var(--warning);
   outline-offset: 3px;
 }
 

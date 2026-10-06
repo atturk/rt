@@ -1,4 +1,4 @@
-import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, FileText, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -16,7 +16,7 @@ import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
-import { IconButton } from '@/components/ui/icon-button'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -260,7 +260,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
+  const lessonUrl = `/lezioni/${lesson!.id}#unit-${encodeURIComponent(unit.id)}`
   const titleButton = (
+    <span className="inline-flex max-w-full items-center gap-1">
     <button
       ref={titleButtonRef}
       type="button"
@@ -275,6 +277,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
       <span className="sr-only">Dettagli della lezione</span>
     </button>
+    <IconLink label="Apri la lezione" icon={FileText} to={lessonUrl} />
+    </span>
   )
 
   const headerActions = (
@@ -357,6 +361,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                 lesson={lesson}
                 unitCount={units.length}
                 currentUnitIndex={unitIndex}
+                lessonUrl={lessonUrl}
                 open={detailsOpen}
                 onClose={() => setDetailsOpen(false)}
                 anchorRef={titleButtonRef}
@@ -424,6 +429,7 @@ function LessonDetailsPopup({
   lesson,
   unitCount,
   currentUnitIndex,
+  lessonUrl,
   open,
   onClose,
   anchorRef,
@@ -431,6 +437,7 @@ function LessonDetailsPopup({
   lesson: Lesson
   unitCount: number
   currentUnitIndex: number
+  lessonUrl: string
   open: boolean
   onClose: () => void
   anchorRef: React.RefObject<HTMLButtonElement | null>
@@ -508,7 +515,7 @@ function LessonDetailsPopup({
       </div>
       <div>
         <Link
-          to={`/lezioni/${lesson.id}`}
+          to={lessonUrl}
           className="text-meta font-semibold text-link hover:underline"
           onClick={onClose}
         >

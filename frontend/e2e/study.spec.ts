@@ -426,3 +426,25 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
     await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: { ...RSVP_DEFAULT, sound: false } })
   }
 })
+
+test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[1]
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-dots').locator('button').nth(1).click()
+    const link = page.getByRole('link', { name: 'Apri la lezione', exact: true })
+    await expect(link).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
+    await page.getByTestId('study-title-button').click()
+    await expect(page.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
+    await page.keyboard.press('Escape')
+    await link.click()
+    await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}#unit-${unit.id.replace('.', '\\.')}$`))
+    const target = page.getByTestId('lesson-document').locator(`[data-unit-id="${unit.id}"]`)
+    await expect(target).toBeInViewport()
+    await expect(target).toHaveClass(/rt-claim-unit/)
+  }
+})

@@ -136,7 +136,7 @@ describe('StudyFlow unit navigation', () => {
     expect(popup).toHaveTextContent('Rossi')
     expect(popup).toHaveTextContent('3 · stai leggendo la 1')
     expect(popup).toHaveTextContent('1 h')
-    expect(screen.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', '/lezioni/1')
+    expect(screen.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', '/lezioni/1#unit-1.1')
 
     // Esc chiude il popup
     fireEvent.keyDown(document, { key: 'Escape' })

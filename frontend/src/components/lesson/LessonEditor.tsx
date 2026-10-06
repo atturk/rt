@@ -23,7 +23,7 @@ import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonMath } from './lessonMath'
-import { lessonImages, lessonUnits, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
+import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issueRange, lessonReview, setReview } from './lessonReview'
@@ -349,6 +349,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     const scrollToTarget = (target: { unitId?: string | null; imageName?: string | null }) => {
       const view = viewOf(handle.current)
       if (!view) return
+      view.dispatch({ effects: setLinkedUnit.of(target.unitId ?? null) })
       const docText = view.state.doc.toString()
       if (target.imageName) {
         let pos = docText.indexOf(target.imageName)
@@ -372,7 +373,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     } else if (hash.startsWith('#img-')) {
       const imageName = decodeURIComponent(hash.slice('#img-'.length))
       scrollToTarget({ imageName })
-    }
+    } else viewOf(handle.current)?.dispatch({ effects: setLinkedUnit.of(null) })
 
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ unitId?: string | null; imageName?: string | null }>).detail

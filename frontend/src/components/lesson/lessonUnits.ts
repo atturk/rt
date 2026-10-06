@@ -41,6 +41,7 @@ export function unitRanges(state: EditorState): UnitRange[] {
 
 export const setSlots = StateEffect.define<Record<string, HTMLElement>>()
 export const setUnitTasks = StateEffect.define<Record<string, { state: UnitTask; element: HTMLElement }>>()
+export const setLinkedUnit = StateEffect.define<string | null>()
 
 class SlotWidget extends WidgetType {
   readonly element: HTMLElement
@@ -71,14 +72,15 @@ class PendingUnit extends WidgetType {
   }
 }
 
-type UnitsState = { slots: Record<string, HTMLElement>; tasks: Record<string, { state: UnitTask; element: HTMLElement }>; decorations: DecorationSet }
+type UnitsState = { slots: Record<string, HTMLElement>; tasks: Record<string, { state: UnitTask; element: HTMLElement }>; linked: string | null; decorations: DecorationSet }
 
-function build(state: EditorState, slots: UnitsState['slots'], tasks: UnitsState['tasks']): UnitsState {
+function build(state: EditorState, slots: UnitsState['slots'], tasks: UnitsState['tasks'], linked: string | null): UnitsState {
   const ranges: Range<Decoration>[] = []
   for (const unit of unitRanges(state)) {
     // come le intestazioni della lettura: ci si arriva con [data-unit-id]
     const task = tasks[unit.id]
-    ranges.push(Decoration.line({ attributes: { 'data-unit-id': unit.id, ...(task ? { 'data-task': task.state } : {}) }, class: task?.state === 'waiting' ? 'rt-unit-waiting' : '' }).range(unit.from))
+    const className = [task?.state === 'waiting' && 'rt-unit-waiting', linked === unit.id && 'rt-claim-unit'].filter(Boolean).join(' ')
+    ranges.push(Decoration.line({ attributes: { 'data-unit-id': unit.id, ...(task ? { 'data-task': task.state } : {}) }, class: className }).range(unit.from))
     if (task) {
       ranges.push(Decoration.widget({ widget: new SlotWidget(task.element), side: -1 }).range(unit.from))
       if (task.state === 'working') ranges.push(Decoration.widget({ widget: new PendingUnit(), block: true, side: 1 }).range(unit.to))
@@ -86,19 +88,20 @@ function build(state: EditorState, slots: UnitsState['slots'], tasks: UnitsState
     const slot = slots[unit.id]
     if (slot) ranges.push(Decoration.widget({ widget: new SlotWidget(slot), block: true, side: 1 }).range(unit.to))
   }
-  return { slots, tasks, decorations: Decoration.set(ranges, true) }
+  return { slots, tasks, linked, decorations: Decoration.set(ranges, true) }
 }
 
 const unitsField = StateField.define<UnitsState>({
-  create: (state) => build(state, {}, {}),
+  create: (state) => build(state, {}, {}, null),
   update(value, tr) {
-    let { slots, tasks } = value
+    let { slots, tasks, linked } = value
     for (const effect of tr.effects) {
       if (effect.is(setSlots)) slots = effect.value
       if (effect.is(setUnitTasks)) tasks = effect.value
+      if (effect.is(setLinkedUnit)) linked = effect.value
     }
-    if (!tr.docChanged && slots === value.slots && tasks === value.tasks) return value
-    return build(tr.state, slots, tasks)
+    if (!tr.docChanged && slots === value.slots && tasks === value.tasks && linked === value.linked) return value
+    return build(tr.state, slots, tasks, linked)
   },
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
 })
