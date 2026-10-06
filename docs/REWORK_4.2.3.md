@@ -700,9 +700,14 @@ mancanti o, se il testo è cambiato, rifà tutta la review.
   - *A metà* (`phases.review === 'PARTIAL'`): titolo "Verificate N unità su M"; elenco delle issue come
     oggi; pulsante principale **"Completa la verifica"** = `run_phase` review senza `force` (riprende
     dalle unità mancanti).
-  - *Testo cambiato* (`phases.review === 'STALE'`): titolo "Il testo è cambiato dopo la verifica";
-    pulsante principale **"Verifica di nuovo tutta la lezione"** (`force: true`), secondario
-    "Ricostruisci il documento".
+  - *Testo cambiato* (`phases.review === 'STALE'`): titolo "Il testo è cambiato dopo la verifica",
+    sotto in `text-meta` "Le correzioni fatte a mano non rifanno la verifica."; pulsante principale
+    **"Aggiorna il documento"** = `run_pipeline` con `with_review: true`, senza `force`. Motivo: dalla
+    4.2.3b3.2 (fix urgente in `review.py`) lo stato resta STALE anche dopo le sole correzioni a mano
+    nell'editor, ma `run_review` le riconosce, tiene issue e decisioni e salta al build; rifà la
+    review solo se la rielaborazione, i segmenti o le unità sono davvero cambiati. Non usare
+    `force` qui e non scrivere "verifica di nuovo". Il pulsante in fondo "Verifica di nuovo tutta la
+    lezione" (`force: true`) resta disponibile come oggi.
   - *Completa e decisa* (`VALID`, nessuna da decidere): "Tutte decise" con il riepilogo di oggi e il
     pulsante principale **"Ricostruisci il documento"** = `run_phase` build. Se il build è già `VALID`
     il pulsante è disattivato con il testo "Documento aggiornato".
@@ -711,8 +716,8 @@ mancanti o, se il testo è cambiato, rifà tutta la review.
   `phase_report` del build ha avvisi (estrarlo in un componente comune), altrimenti parte subito.
 - "Riprendi la pipeline" sparisce dal pannello. Il badge "Pipeline in attesa" resta: una pipeline in
   attesa riparte già da sola quando si decide l'ultima issue (`resume_waiting_jobs`).
-- Il pulsante in fondo "Verifica (di nuovo) tutta la lezione" resta, tranne quando è già il pulsante
-  principale.
+- Il pulsante in fondo "Verifica (di nuovo) tutta la lezione" resta in tutti gli stati tranne *Mai
+  verificata*, dove è già il pulsante principale.
 
 Test: vitest del pannello per ogni stato (testo, pulsante principale, payload del job); pytest di
 `review_progress` (mai partita, a metà, completa); e2e — dopo aver deciso tutte le issue il pulsante è
