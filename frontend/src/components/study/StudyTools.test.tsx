@@ -114,14 +114,27 @@ describe('lettura veloce', () => {
   it('si apre sull’unità, con il tema dell’app, e Esc torna allo Studio', async () => {
     document.documentElement.classList.add('dark')
     const reader = await open()
-    expect(reader).toHaveAttribute('data-theme-mode', 'notte')
+    expect(reader).not.toHaveAttribute('data-theme-mode')
+    expect(reader).not.toHaveClass('fixed')
+    expect(screen.queryByRole('button', { name: /Giorno|Notte/ })).not.toBeInTheDocument()
     expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Il')
-    fireEvent.click(screen.getByRole('button', { name: /Giorno/ }))
-    expect(reader).toHaveAttribute('data-theme-mode', 'giorno')
+    expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+    expect(screen.queryByTestId('study-title-button')).not.toBeInTheDocument()
     expect(document.documentElement).toHaveClass('dark')
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Primo' })).toBeInTheDocument()
+  })
+
+  it('le scorciatoie non intercettano i controlli dell’intestazione e delle impostazioni', async () => {
+    await open()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Torna allo Studio' }), { key: ' ' })
+    expect(screen.getByRole('button', { name: 'Avvia' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Tono' }), { key: 'ArrowUp' })
+    expect(screen.getByText('300')).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' })).toHaveFocus()
   })
 
   it('il testo intorno si vede solo in pausa', async () => {
@@ -155,6 +168,23 @@ describe('lettura veloce', () => {
     expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Il')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Primo' })).toBeInTheDocument()
+  })
+
+  it('l’indice cambia unità restando in zen, il libro torna al testo e conserva le preferenze', async () => {
+    await open()
+    fireEvent.click(screen.getByTestId('unit-index-toggle'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /1.2 Secondo/ }))
+    await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Altro'))
+    expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Pausa dopo la frase' }), { target: { value: '650' } })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('speed-reader-settings')).not.toBeInTheDocument()
+    expect(screen.getByTestId('speed-reader')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Torna allo Studio' }))
+    await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
+    expect(JSON.parse(localStorage.getItem('rt-pref:study.rsvp')!)).toMatchObject({ pauseMs: 650 })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Secondo' })).toBeInTheDocument()
   })
 
   it('con "virgola come pausa piena" la parola con la virgola diventa fine frase', async () => {

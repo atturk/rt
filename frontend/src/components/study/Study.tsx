@@ -1,4 +1,4 @@
-import { ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -24,7 +24,8 @@ import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { useIsPhone } from '@/lib/phone'
-import { useHighlighterPrefs } from '@/lib/studyPrefs'
+import { useHighlighterPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { useZen } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
 import { SpeedReader } from './SpeedReader'
@@ -108,6 +109,22 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [hlMode, setHlMode] = useState<HighlightMode>('evidenzia')
   const [textRoot, setTextRoot] = useState<HTMLElement | null>(null)
   const [speedReading, setSpeedReading] = useState(false)
+  const [readerMounted, setReaderMounted] = useState(false)
+  const [readerContext, setReaderContext] = useState(false)
+  const [readerSettings, setReaderSettings] = useState(false)
+  const [tint, setTint] = useState<RsvpPreference['irlen']>(null)
+  const settingsButton = useRef<HTMLDivElement>(null)
+  const setZen = useZen()
+  const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [])
+  useEffect(() => {
+    setZen({ active: speedReading, tint })
+    return () => setZen({ active: false, tint: null })
+  }, [speedReading, tint, setZen])
+  useEffect(() => {
+    if (speedReading || !readerMounted) return
+    const timer = setTimeout(() => setReaderMounted(false), globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 300)
+    return () => clearTimeout(timer)
+  }, [speedReading, readerMounted])
   const highlights = useStudyHighlighter({
     root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
     mode: hlMode, color: highlighterPrefs.color,
@@ -252,7 +269,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       aria-expanded={detailsOpen}
       title="Dettagli della lezione"
       data-testid="study-title-button"
-      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring max-md:px-0"
     >
       <span className="truncate text-[15px] font-semibold text-foreground max-md:hidden">{title}</span>
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
@@ -261,7 +278,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 
   const headerActions = (
-    <div className="flex items-center gap-1.5" data-testid="study-header-tools">
+    <div className="flex items-center gap-1.5 max-md:gap-0" data-testid="study-header-tools">
       <HighlightTools
         mode={hlMode}
         color={highlighterPrefs.color}
@@ -281,7 +298,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <IconButton
         label="Lettura veloce"
         icon={Gauge}
-        onClick={() => setSpeedReading(true)}
+        onClick={() => {
+          textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+          window.scrollTo?.({ top: 0 })
+          setSpeedReading(true)
+          setReaderMounted(true)
+          setIndexOpen(false)
+          setDetailsOpen(false)
+        }}
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
@@ -298,13 +322,22 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </div>
   )
 
+  const zenActions = <div className="flex items-center gap-1">
+    <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
+    <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
+    <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
+    <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} />
+  </div>
+
   return (
     <>
       {reading && (
         <StudyShell
-          title={titleButton}
-          back={back}
-          actions={headerActions}
+          title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
+          back={speedReading ? undefined : back}
+          actions={speedReading ? zenActions : headerActions}
+          zen={speedReading}
+          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
             onPointerUp: handlePointerUp,
@@ -361,9 +394,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
           <Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} />
           <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
-          {speedReading && textRoot && (
-            <SpeedReader source={textRoot} title={`${unit.id} ${unit.title}`} onClose={() => setSpeedReading(false)} />
-          )}
         </StudyShell>
       )}
       {phase === 'domande' && (
@@ -497,9 +527,13 @@ function StudyShell({
   footer,
   readingProps,
   children,
+  zen = false,
+  reader,
 }: {
+  zen?: boolean
+  reader?: ReactNode
   title: ReactNode
-  back: { to: string; label: string }
+  back?: { to: string; label: string }
   actions?: ReactNode
   popup?: ReactNode
   footer?: ReactNode
@@ -507,16 +541,19 @@ function StudyShell({
   children: ReactNode
 }) {
   return (
-    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study">
-      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap [&_h1]:max-md:text-meta" />
+    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study" data-zen={zen || undefined}>
+      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:[--control-size:34px] [&_h1]:max-md:min-w-8 [&_h1]:max-md:text-meta" />
       {popup}
-      <div className="flex-1 touch-pan-y px-7 max-md:px-[18px]" {...readingProps}>
-        <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
-          {children}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={zen || undefined} inert={zen || undefined} {...readingProps}>
+          <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
+            {children}
+          </div>
         </div>
+        {reader}
       </div>
       {footer && (
-        <div className="sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
+        <div aria-hidden={zen || undefined} inert={zen || undefined} className="rt-study-footer sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
           {footer}
         </div>
       )}
@@ -573,7 +610,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady }: {
   return (
     <section aria-labelledby="study-unit-title">
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
-      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
+      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-unit-id={unit.id} data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
         dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
     </section>
   )
