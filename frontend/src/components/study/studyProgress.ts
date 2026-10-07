@@ -3,9 +3,9 @@ import type { StudyStatus } from '@/api/studyProgress'
 
 export const STUDY_ICONS = {
   'da-imparare': { icon: CircleDashed, className: 'text-muted-foreground' },
-  'in-apprendimento': { icon: Contrast, className: 'text-warning' },
-  appreso: { icon: CircleCheck, className: 'text-success [&_circle]:fill-success [&_path]:stroke-background' },
-  ignorata: { icon: CircleX, className: 'text-danger' },
+  'in-apprendimento': { icon: Contrast, className: 'text-study-learning' },
+  appreso: { icon: CircleCheck, className: 'text-study-learned [&_circle]:fill-study-learned [&_path]:stroke-background' },
+  ignorata: { icon: CircleX, className: 'text-study-ignored' },
 } as const
 
 export const STATUS_LABELS: Record<StudyStatus, string> = {

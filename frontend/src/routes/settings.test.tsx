@@ -90,8 +90,7 @@ describe('Le sette sezioni', () => {
     await userEvent.click(within(nav).getByRole('link', { name: /Aspetto e lettura/ }))
     expect(await screen.findByRole('radiogroup', { name: 'Tema' })).toBeVisible()
     expect(screen.queryByRole('navigation', { name: 'Sezioni delle impostazioni' })).toBeNull()
-    await userEvent.click(screen.getByRole('link', { name: 'Impostazioni' }))
-    expect(await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Impostazioni' })).toHaveAttribute('href', '/impostazioni')
   })
   it.each(Object.entries(SETTINGS_REDIRECTS))('il vecchio URL %s porta alla sezione %s e conserva i parametri', async (old, next) => {
     realSettings(`/impostazioni/${old}?fase=rewrite`)

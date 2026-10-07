@@ -1,3 +1,4 @@
+import { act } from '@testing-library/react'
 import { markdown } from '@codemirror/lang-markdown'
 import {
   foldable,
@@ -37,15 +38,22 @@ function createView(doc: string) {
     doc,
     extensions: [markdown(), lessonFolding],
   })
-  const view = new EditorView({ state })
+  const parent = document.createElement('div')
+  document.body.append(parent)
+  const view = new EditorView({ state, parent })
   views.push(view)
   return view
 }
 
-afterEach(() => {
-  while (views.length > 0) {
-    views.pop()?.destroy()
-  }
+afterEach(async () => {
+  await act(async () => {
+    while (views.length > 0) {
+      const view = views.pop()!
+      const parent = view.dom.parentElement
+      view.destroy()
+      parent?.remove()
+    }
+  })
 })
 
 const DOC = `## 1. Introduzione

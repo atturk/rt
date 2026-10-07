@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { usePreference } from '@/lib/preferences'
-import { Section } from './common'
+import { Field, Section, SettingsSelect } from './common'
 
 const DEFAULT_SHORTCUTS: ShortcutPreferences = {}
 
@@ -26,6 +26,7 @@ function recordedKey(event: KeyboardEvent): string | null {
 type Conflict = { command: EditorCommand; other: EditorCommand; key: string; previous: string | null }
 
 export function EditorShortcutsSection() {
+  const [toolbar, saveToolbar] = usePreference('editor.toolbar', true)
   const [preferences, save] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [search, setSearch] = useState('')
   const [recording, setRecording] = useState<string | null>(null)
@@ -57,6 +58,11 @@ export function EditorShortcutsSection() {
     if (key) assign(command, key)
   }
   return <div className="flex flex-col gap-3">
+    <Field label="Barra di formattazione" htmlFor="editor-toolbar">
+      <SettingsSelect id="editor-toolbar" value={toolbar ? 'si' : 'no'} onChange={e => saveToolbar(e.target.value === 'si')}>
+        <option value="si">Sì</option><option value="no">No</option>
+      </SettingsSelect>
+    </Field>
     <Input type="search" aria-label="Cerca comando o combinazione" placeholder="Cerca comando o combinazione" value={search} onChange={e => { setSearch(e.target.value); setRecording(null) }} />
     {message && <Alert tone="warning">{message}</Alert>}
     {groups.map(group => <Section key={group} id={`scorciatoie-${group.toLowerCase()}`} title={group}>

@@ -1,3 +1,4 @@
+import { UnitStrip } from './UnitStrip'
 import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -18,7 +19,6 @@ import {
   useSelectRecallUnits,
   type RecallQuestionDetail,
   type RecallType,
-  type RecallGenerateType,
 } from '@/api/recall'
 import { QuestionEditModal } from './QuestionEditModal'
 import { Alert } from '@/components/ui/alert'
@@ -28,16 +28,17 @@ import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
-import { Select } from '@/components/ui/select'
+import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
+import { QUESTION_TYPE_LABELS, mostSuggested } from '@/lib/questionTypes'
 import { isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
 const TYPES: { id: RecallType; label: string; plural: string }[] = [
-  { id: 'quiz', label: 'Quiz', plural: 'quiz' },
-  { id: 'mirata', label: 'Mirata', plural: 'mirate' },
-  { id: 'vasta', label: 'Vasta', plural: 'vaste' },
-  { id: 'caso', label: 'Caso', plural: 'casi' },
-  { id: 'esercizio', label: 'Esercizio', plural: 'esercizi' },
+  { id: 'quiz', label: QUESTION_TYPE_LABELS.quiz, plural: 'quiz' },
+  { id: 'mirata', label: QUESTION_TYPE_LABELS.mirata, plural: 'mirate' },
+  { id: 'vasta', label: QUESTION_TYPE_LABELS.vasta, plural: 'vaste' },
+  { id: 'caso', label: QUESTION_TYPE_LABELS.caso, plural: 'casi' },
+  { id: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio, plural: 'esercizi' },
 ]
 
 const SELECTION_TYPES: RecallType[] = ['quiz', 'mirata', 'caso', 'esercizio']
@@ -189,7 +190,10 @@ export function QuestionsPanel({
   const restore = useRestoreQuestions(id)
   const jobs = useJobs({ lesson_id: id, limit: 10 })
   const relevance = useRelevance(id)
-  const suggestions = useStudyLesson(id).data?.suggestions ?? false
+  const study = useStudyLesson(id).data
+  const suggestions = study?.suggestions ?? false
+  const selectedIds = new Set((recallUnits.data?.units ?? []).filter(u => u.selected).map(u => u.unit_id))
+  const advice = mostSuggested((study?.units ?? []).filter(u => selectedIds.has(u.id)))
 
   const [unitModalOpen, setUnitModalOpen] = useState(false)
 
@@ -203,8 +207,8 @@ export function QuestionsPanel({
   const [editing, setEditing] = useState<RecallQuestionDetail | null>(null)
 
   // Form generazione globale
-  const [chosenGlobalType, setGlobalType] = useState<RecallGenerateType | null>(null)
-  const globalType = chosenGlobalType ?? (suggestions ? 'consigliato' : 'quiz')
+  const [chosenGlobalType, setGlobalType] = useState<RecallType | null>(null)
+  const globalType = chosenGlobalType ?? (suggestions ? advice.type : 'quiz')
   const [globalCount, setGlobalCount] = useState<string>('10')
   const [globalInstructions, setGlobalInstructions] = useState<string>('')
 
@@ -311,13 +315,6 @@ export function QuestionsPanel({
   const wrongCount = restorable.data?.wrong ?? 0
 
   const summary = relevance.data?.summary
-  const classifierStatus = !summary
-    ? null
-    : summary.errors > 0
-      ? `${summary.errors} errori`
-      : summary.missing + summary.stale > 0
-        ? `${summary.missing + summary.stale} unità da classificare`
-        : 'aggiornato'
   const unitsData = recallUnits.data
   const totalUnits = unitsData?.units?.length ?? 0
   const selectedUnitsCount = unitsData?.selected ?? unitsData?.units?.filter((u) => u.selected).length ?? 0
@@ -378,21 +375,8 @@ export function QuestionsPanel({
             <form onSubmit={handleGlobalGenerate} className="mt-3 flex flex-col gap-2.5">
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label htmlFor="q-type" className="mb-1 block text-meta text-muted-foreground">
-                    Tipo
-                  </label>
-                  <Select
-                    id="q-type"
-                    value={globalType}
-                    onChange={(e) => setGlobalType(e.target.value as RecallGenerateType)}
-                  >
-                    {suggestions && <option value="consigliato">Consigliato per ogni unità</option>}
-                    {TYPES.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </Select>
+                  <span className="mb-1 block text-meta text-muted-foreground">Tipo</span>
+                  <QuestionTypeChips value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} />
                 </div>
                 <div className="w-20">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">
@@ -641,36 +625,11 @@ export function QuestionsPanel({
         <QuestionEditModal lessonId={id} question={editing} open onClose={() => setEditing(null)} />
       )}
 
-      {/* Footer solo in vista normale */}
-      {!isSelectionMode && (
-        <div className="mt-auto flex flex-col gap-2 border-t pt-3 text-meta text-muted-foreground">
-          <div className="flex items-center justify-between">
-            <span>
-              Unità per il recaller: {selectedUnitsCount} di {totalUnits}
-              {unitsData?.custom ? ' (personalizzata)' : ' (solo rilevanti)'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setUnitModalOpen(true)}
-              className="font-medium text-link hover:underline"
-            >
-              Scegli
-            </button>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Classificatore{classifierStatus ? `: ${classifierStatus}` : ''}</span>
-            {onSwitchToClassifier && (
-              <button
-                type="button"
-                onClick={onSwitchToClassifier}
-                className="font-medium text-link hover:underline"
-              >
-                Rivedi le etichette
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {!isSelectionMode && <UnitStrip target="recaller"
+        units={(unitsData?.units ?? []).map(unit => { const classification = relevance.data?.units.find(u => u.unit_id === unit.unit_id); return { unit_id: unit.unit_id, title: unit.title, included: unit.selected, unclassified: relevance.data?.mode !== 'disabled' && !!classification && (classification.stale || !classification.prediction) } })}
+        rule={unitsData?.custom ? 'Scelta personalizzata' : 'Al recaller vanno le unità rilevanti'}
+        onSelect={() => setUnitModalOpen(true)} onClassifier={onSwitchToClassifier}
+        classifierEnabled={!!relevance.data && relevance.data.mode !== 'disabled'} classifierUpdated={!!summary && summary.missing + summary.stale + summary.errors === 0} />}
 
       {/* Modal selezione unità per il recaller */}
       <Modal

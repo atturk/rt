@@ -90,6 +90,7 @@ type Props = {
 export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
+  const [showToolbar] = usePreference('editor.toolbar', true)
   const [shortcuts] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [shortcutCompartment] = useState(() => new Compartment())
   const [editor, setEditor] = useState<{ view: EditorView; state: EditorState } | null>(null)
@@ -103,7 +104,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const reviewItems = reviewOpen ? review.data?.items : undefined
   const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
   const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
-  const { hash } = useLocation()
+  const { hash, state: routerState } = useLocation()
 
 
   // Il testo che l'editor mostra al montaggio; cambia (e l'editor riparte) solo se il documento
@@ -346,10 +347,10 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
 
   // "Vai all'unità" (#unit-<id>) o all'immagine (#img-<name>), o tramite evento rt-editor-scroll
   useEffect(() => {
-    const scrollToTarget = (target: { unitId?: string | null; imageName?: string | null }) => {
+    const scrollToTarget = (target: { unitId?: string | null; imageName?: string | null }, mark = true) => {
       const view = viewOf(handle.current)
       if (!view) return
-      view.dispatch({ effects: setLinkedUnit.of(target.unitId ?? null) })
+      view.dispatch({ effects: setLinkedUnit.of(mark ? target.unitId ?? null : null) })
       const docText = view.state.doc.toString()
       if (target.imageName) {
         let pos = docText.indexOf(target.imageName)
@@ -369,7 +370,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
 
     if (hash.startsWith('#unit-')) {
       const unitId = decodeURIComponent(hash.slice('#unit-'.length))
-      scrollToTarget({ unitId })
+      scrollToTarget({ unitId }, !routerState?.fromStudy)
     } else if (hash.startsWith('#img-')) {
       const imageName = decodeURIComponent(hash.slice('#img-'.length))
       scrollToTarget({ imageName })
@@ -381,7 +382,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     }
     window.addEventListener(EDITOR_SCROLL_EVENT, handler)
     return () => window.removeEventListener(EDITOR_SCROLL_EVENT, handler)
-  }, [hash, source.key])
+  }, [hash, routerState, source.key])
 
   // Il clic destro su una parola la seleziona (macOS): conta solo una selezione già fatta prima.
   const selectedBefore = useRef(false)
@@ -448,7 +449,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         onRestore={restore}
         onDownloadAndRestore={downloadAndRestore}
       />
-      <EditorToolbar view={editor?.view ?? null} state={editor?.state} shortcuts={shortcuts} readOnly={locked} />
+      {showToolbar && <EditorToolbar view={editor?.view ?? null} state={editor?.state} shortcuts={shortcuts} readOnly={locked} />}
       <DocumentMenu lessonId={lessonId} unitIds={unitIds} ready={ready} locate={locate}>
         <div
           ref={surface}

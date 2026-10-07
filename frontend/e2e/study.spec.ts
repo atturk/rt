@@ -7,7 +7,7 @@ import { test, apiGet, authHeaders, loginViaLink } from './support'
 // della lezione; "Domande su questa parte" limita lo Studio alle unità scelte.
 
 type Lesson = { id: number; materia: string; data: string }
-type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null; last_read_at: string | null }[] }
+type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null; last_read_at: string | null; suggested_qtype: string | null }[] }
 
 const RSVP_DEFAULT = { wpm: 300, orp: 'bilanciata', pauseMs: 400, comma: false, step: 5, size: 60, sound: false, pitch: 1, dyslexic: false, irlen: null, noise: null, noiseVolume: 0.25 }
 
@@ -65,7 +65,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
 
   // Dalla riga si apre la lezione, Studio è nell'intestazione.
   await page.goto('/')
-  await page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`).getByRole('link').click()
+  await page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`).locator(`a[href="/lezioni/${l.id}"]`).click()
   await page.getByTestId('lesson-actions').getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 
@@ -348,14 +348,14 @@ test('Stato di studio persistente, pulsante e S, barrette cliccabili e prima uni
     await expect(button).toHaveAttribute('aria-label', "Stato: in apprendimento")
     await expect(button).not.toHaveAttribute('aria-disabled', 'true')
     const firstBar = page.getByTestId('study-dots').locator('button').first()
-    await expect(firstBar.locator('span')).toHaveClass(/bg-warning/)
+    await expect(firstBar.locator('span')).toHaveClass(/bg-study-learning/)
     await page.keyboard.press('s')
     await expect(button).toHaveAttribute('aria-label', "Stato: appresa")
     await expect(button).not.toHaveAttribute('aria-disabled', 'true')
-    await expect(firstBar.locator('span')).toHaveClass(/bg-success/)
+    await expect(firstBar.locator('span')).toHaveClass(/bg-study-learned/)
     await button.click()
     await expect(button).toHaveAttribute('aria-label', 'Stato: ignorata')
-    await expect(firstBar.locator('span')).toHaveClass(/bg-danger/)
+    await expect(firstBar.locator('span')).toHaveClass(/bg-study-ignored/)
     await expect(button).not.toHaveAttribute('aria-disabled', 'true')
     await page.reload()
     await expect(page.getByRole('heading', { level: 2 })).toContainText('1.2')
@@ -427,7 +427,7 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
   }
 })
 
-test('Esci porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
+test('Esci porta all’unità aperta senza segnarla, anche su iPhone', async ({ page }) => {
   await loginViaLink(page)
   const l = await lesson(page, 'STUDIO')
   const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
@@ -446,7 +446,7 @@ test('Esci porta all’unità aperta e la segna, anche su iPhone', async ({ page
     await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}#unit-${unit.id.replace('.', '\\.')}$`))
     const target = page.getByTestId('lesson-document').locator(`[data-unit-id="${unit.id}"]`)
     await expect(target).toBeInViewport()
-    await expect(target).toHaveClass(/rt-claim-unit/)
+    await expect(target).not.toHaveClass(/rt-claim-unit/)
   }
 })
 
@@ -665,7 +665,7 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
     await expect(page.getByTestId('recall-empty')).toBeVisible()
     await expect(page.getByTestId('recall-unit-done')).toHaveCount(0)
     const generation = page.getByTestId('recall-empty-generation')
-    await expect(generation.getByRole('button', { name: /^Genera consigliato ·/ })).toBeVisible()
+    await expect(generation.getByRole('button', { name: 'Genera', exact: true })).toBeVisible()
     for (const button of await generation.getByRole('button').all()) {
       const box = await button.boundingBox()
       expect(box!.x).toBeGreaterThanOrEqual(0)
@@ -674,8 +674,8 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
     }
     await page.getByLabel('Quante', { exact: true }).fill('2')
     const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
-    await page.getByRole('button', { name: /^Genera consigliato/ }).click()
-    expect((await request).postDataJSON()).toMatchObject({ qtype: 'consigliato', count: 2, unit_ids: [unit.id] })
+    await page.getByRole('button', { name: 'Genera', exact: true }).click()
+    expect((await request).postDataJSON()).toMatchObject({ qtype: unit.suggested_qtype, count: 2, unit_ids: [unit.id] })
     await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
     await expect(page.getByTestId('recall-empty')).toHaveCount(0)
   } finally {
@@ -704,4 +704,46 @@ test('a 390 px un’impostazione si divide e resta dentro la finestra', async ({
   await page.getByRole('button', { name: 'Contesto', exact: true }).click()
   await expect(page.getByTestId('speed-reader-context')).toContainText('un’impostazione')
   await expect(page.getByTestId('speed-reader-context')).not.toContainText('imposta-')
+})
+
+test('il clic destro toglie un’evidenziazione salvata anche dopo il ricaricamento', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unitId = study.units[0].id
+  const previous = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-dots').locator('button').first().click()
+    const text = page.getByTestId('study-text')
+    await expect(text).toHaveText(/\S.{40,}/)
+    await text.evaluate(root => {
+      const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
+      const range = document.createRange()
+      const start = node.textContent!.search(/\S/)
+      range.setStart(node, start); range.setEnd(node, start + 10)
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(range)
+      root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await expect.poll(async () => (await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)).length).toBe(previous.length + 1)
+    await text.locator('.rt-hl').first().click({ button: 'right' })
+    await expect.poll(async () => (await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)).length).toBe(previous.length)
+    await page.reload()
+    await page.getByTestId('study-dots').locator('button').first().click()
+    await expect(text.locator('.rt-hl')).toHaveCount(previous.length)
+  } finally {
+    const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+    for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) await page.request.delete(`/api/v1/lessons/${l.id}/highlights/${row.id}`, { headers: authHeaders() })
+  }
+})
+
+test('Vai all’unità dalla lezione continua a segnare il testo', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[1]
+  await page.goto(`/lezioni/${l.id}#unit-${unit.id}`)
+  const target = page.getByTestId('lesson-document').locator(`[data-unit-id="${unit.id}"]`)
+  await expect(target).toBeInViewport()
+  await expect(target).toHaveClass(/rt-claim-unit/)
 })

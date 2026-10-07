@@ -1,3 +1,4 @@
+import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { EditorState, StateEffect, StateField, type Range } from '@codemirror/state'
@@ -51,14 +52,15 @@ class UnitIssueWidget extends WidgetType {
     button.className = `rt-unit-issue${this.selected ? ' rt-issue-selected' : ''}`
     button.dataset.reviewIssue = issue.id
     button.setAttribute('aria-label', issueLabels[issue.type] ?? issue.type)
-    button.title = issueLabels[issue.type] ?? issue.type
     button.addEventListener('click', () => button.dispatchEvent(new CustomEvent(ISSUE_EVENT, { bubbles: true, detail: issue.id })))
     const root = createRoot(button)
     root.render(createElement(paragraphIssueIcon(issue), { size: 16, 'aria-hidden': true }))
+    mountDomTooltip(button, issueLabels[issue.type] ?? issue.type)
     this.roots.set(button, root)
     return button
   }
   destroy(node: HTMLElement) {
+    unmountDomTooltip(node)
     const root = this.roots.get(node)
     queueMicrotask(() => root?.unmount())
   }

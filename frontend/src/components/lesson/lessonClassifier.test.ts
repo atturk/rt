@@ -9,7 +9,7 @@ function mount() {
   const view = new EditorView({ parent, state: EditorState.create({ doc: markdown, extensions: [lessonClassifier, timecodeLock] }) })
   return { parent, view }
 }
-const unit = (id: string, score: number, effective: 'didactic' | 'organizational'): Schemas['UnitRelevanceItem'] => ({ unit_id: id, title: '', content: '', effective, prediction: effective, answer: { score }, stale: false })
+const unit = (id: string, score: number, effective: 'didactic' | 'organizational'): Schemas['UnitRelevanceItem'] => ({ unit_id: id, review_included: effective === 'didactic', title: '', content: '', effective, prediction: effective, answer: { score }, stale: false })
 it('affianca al timecode etichetta e numero colorato, attenuando il testo non didattico', () => {
   const { parent, view } = mount()
   view.dispatch({ effects: setClassifier.of([unit('1.1', .4, 'organizational'), unit('1.2', 1.8, 'didactic')]) })

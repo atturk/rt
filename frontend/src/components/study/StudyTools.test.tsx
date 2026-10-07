@@ -196,3 +196,43 @@ describe('lettura veloce', () => {
     expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-kind', 'fine')
   })
 })
+
+it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
+  renderStudy()
+  fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo · E/ })).toBeVisible()
+  fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
+  fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
+  expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+})
+
+it('E alterna evidenziatore e gomma, ma non nei campi di testo', () => {
+  renderStudy()
+  fireEvent.keyDown(window, { key: 'e' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
+  const input = document.createElement('input')
+  document.body.append(input)
+  fireEvent.keyDown(input, { key: 'e' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
+  input.remove()
+  fireEvent.keyDown(window, { key: 'E' })
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('il triplo clic non seleziona il paragrafo', async () => {
+  renderStudy()
+  await waitFor(() => expect(api.list).toHaveBeenCalled())
+  expect(fireEvent.mouseDown(screen.getByTestId('study-text'), { detail: 3 })).toBe(false)
+  expect(api.add).not.toHaveBeenCalled()
+})
+
+it.each(['evidenzia', 'gomma'])('il clic destro toglie un’evidenziazione in modalità %s', async mode => {
+  api.list.mockResolvedValueOnce([{ id: 3, unit_id: '1.1', color: 2, source: { startMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 3 }, endMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 7 }, text: 'rene', id: 'a' } }])
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text').querySelector('.rt-hl')).toBeInTheDocument())
+  if (mode === 'gomma') fireEvent.click(screen.getByTestId('highlight-eraser'))
+  expect(fireEvent.contextMenu(screen.getByTestId('study-text').querySelector('.rt-hl')!)).toBe(false)
+  await waitFor(() => expect(api.remove).toHaveBeenCalledWith(1, 3))
+  expect(screen.getByTestId('study-text').querySelector('.rt-hl')).not.toBeInTheDocument()
+  expect(fireEvent.contextMenu(screen.getByTestId('study-text'))).toBe(true)
+})

@@ -1,3 +1,4 @@
+import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
@@ -16,8 +17,8 @@ const VALUES: Record<string, string> = {
   adattabile: 'si presta',
 }
 const KINDS: { kind: Kind; label: string }[] = [
-  { kind: 'esercizio', label: 'Esercizio' },
-  { kind: 'caso', label: 'Caso clinico' },
+  { kind: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio },
+  { kind: 'caso', label: QUESTION_TYPE_LABELS.caso },
 ]
 
 /** Etichette nascoste delle unità (sezioni della scaletta) da cui nascono casi clinici ed

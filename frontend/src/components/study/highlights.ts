@@ -36,9 +36,40 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
     highlighter.current = h
     saved.current = ids
     let alive = true
+    let tripleClick = false
+    const remove = (id: string) => {
+      h.remove(id)
+      const row = ids.get(id)
+      ids.delete(id)
+      if (row !== undefined) void highlightsApi.remove(lessonId, row).catch(() => {})
+    }
+    const onMouseDown = (event: MouseEvent) => {
+      tripleClick = event.detail >= 3
+      if (tripleClick && modeRef.current === 'evidenzia') {
+        event.preventDefault()
+        window.getSelection()?.removeAllRanges()
+      }
+    }
+    const onMouseUp = (event: MouseEvent) => {
+      if (tripleClick || event.detail >= 3 || event.button !== 0) {
+        event.stopImmediatePropagation()
+        if (tripleClick) window.getSelection()?.removeAllRanges()
+      }
+    }
+    const onContextMenu = (event: MouseEvent) => {
+      const id = h.getIdByDom(event.target as HTMLElement)
+      if (!id) return
+      event.preventDefault()
+      remove(id)
+    }
+    root.addEventListener('mousedown', onMouseDown, true)
+    root.addEventListener('mouseup', onMouseUp, true)
+    root.addEventListener('contextmenu', onContextMenu)
+
 
     h.on(Highlighter.event.CREATE, ({ sources, type }) => {
       if (type !== 'from-input') return
+      if (tripleClick) { sources.forEach(source => h.remove(source.id)); return }
       for (const source of sources) {
         const chosen = colorRef.current
         h.addClass(`rt-hl-${chosen}`, source.id)
@@ -51,10 +82,7 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
     })
     h.on(Highlighter.event.CLICK, ({ id }) => {
       if (modeRef.current !== 'gomma') return
-      h.remove(id)
-      const row = ids.get(id)
-      ids.delete(id)
-      if (row !== undefined) void highlightsApi.remove(lessonId, row).catch(() => {})
+      remove(id)
     })
     if (modeRef.current === 'evidenzia') h.run()
 
@@ -79,6 +107,9 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
 
     return () => {
       alive = false
+      root.removeEventListener('mousedown', onMouseDown, true)
+      root.removeEventListener('mouseup', onMouseUp, true)
+      root.removeEventListener('contextmenu', onContextMenu)
       h.dispose()
       if (highlighter.current === h) highlighter.current = null
     }

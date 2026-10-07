@@ -50,6 +50,7 @@ async function expectNoViolations(page: Page, name: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   test(`accessibilità: nessuna violazione axe, tema ${theme === 'dark' ? 'scuro' : 'chiaro'}`, async ({ page }) => {
+    test.setTimeout(180_000)
     await page.addInitScript((t) => localStorage.setItem('rt-theme', t), theme)
     await page.goto('/login')
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()

@@ -41,7 +41,7 @@ type Common = {
   badge?: ReactNode
 }
 
-export function IconButton({ label, icon: Icon, side = 'bottom', variant, active, unavailable, hint, badge, className, onClick, ...props }: Common & Omit<ComponentProps<'button'>, 'children'> & {
+export function IconButton({ label, icon: Icon, side = 'bottom', variant, active, unavailable, hint, badge, className, onClick, ...props }: Common & Omit<ComponentProps<'button'>, 'children' | 'title'> & {
   /** Nota in più nel suggerimento quando il pulsante è disponibile (come in IconAnchor). */
   hint?: string | null
 }) {
@@ -66,7 +66,7 @@ export function IconButton({ label, icon: Icon, side = 'bottom', variant, active
   )
 }
 
-export function IconLink({ label, icon: Icon, side = 'bottom', variant, active, unavailable, badge, className, ...props }: Common & Omit<LinkProps, 'children'>) {
+export function IconLink({ label, icon: Icon, side = 'bottom', variant, active, unavailable, badge, className, ...props }: Common & Omit<LinkProps, 'children' | 'title'>) {
   if (unavailable) return <IconButton label={label} icon={Icon} side={side} variant={variant} unavailable={unavailable} className={className} />
   return (
     <Tooltip content={label} side={side} describe={false}>
@@ -81,7 +81,7 @@ export function IconLink({ label, icon: Icon, side = 'bottom', variant, active, 
 }
 
 /** Come IconLink, per i download (href all'API, attributo download). */
-export function IconAnchor({ label, icon: Icon, side = 'bottom', variant, unavailable, hint, className, ...props }: Omit<Common, 'active' | 'badge'> & Omit<ComponentProps<'a'>, 'children'> & {
+export function IconAnchor({ label, icon: Icon, side = 'bottom', variant, unavailable, hint, className, ...props }: Omit<Common, 'active' | 'badge'> & Omit<ComponentProps<'a'>, 'children' | 'title'> & {
   /** Nota in più nel suggerimento (collegata con aria-describedby), per esempio cosa resta fuori. */
   hint?: string | null
 }) {

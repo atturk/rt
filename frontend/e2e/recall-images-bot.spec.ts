@@ -30,7 +30,7 @@ async function ensureQuestions(page: Page, lessonId: number, type: 'quiz' | 'mir
   await page.goto(`/lezioni/${lessonId}?panel=domande`)
   const panel = page.getByTestId('questions-panel')
   await panel.getByText('Genera altre domande').click()
-  await panel.getByLabel('Tipo', { exact: true }).selectOption(type)
+  await panel.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: ({ quiz: 'Quiz', mirata: 'Mirata', vasta: 'Vasta', caso: 'Caso clinico', esercizio: 'Esercizio' } as Record<string, string>)[type], exact: true }).click()
   await panel.getByRole('button', { name: 'Genera', exact: true }).click()
   await expect.poll(pending, { timeout: 30_000 }).toBeGreaterThan(0)
 }

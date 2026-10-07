@@ -1,3 +1,4 @@
+import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
 import { EditorState, type Extension, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 
@@ -56,7 +57,7 @@ class TimecodeChip extends WidgetType {
     const chip = document.createElement('span')
     chip.className = 'rt-timecode rt-timecode-locked'
     chip.textContent = this.text
-    chip.title = 'Clic: ascolta da qui · triplo clic: modifica'
+    mountDomTooltip(chip, 'Clic: ascolta da qui · triplo clic: modifica')
     chip.setAttribute('role', 'button')
     chip.setAttribute('aria-label', `Timecode ${this.text}: clic per ascoltare, triplo clic per modificarlo`)
     chip.addEventListener('mousedown', (event) => {
@@ -72,6 +73,7 @@ class TimecodeChip extends WidgetType {
     })
     return chip
   }
+  destroy(node: HTMLElement) { unmountDomTooltip(node) }
   ignoreEvent() {
     return true
   }
