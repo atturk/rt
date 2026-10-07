@@ -4,7 +4,7 @@ Schemi Pydantic delle risposte e delle richieste dell'API (compaiono nell'OpenAP
 client generato della SPA).
 """
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Union, Any, Dict, List, Literal, Optional
 from rt.services.study_progress_service import StudyStatus
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
@@ -126,7 +126,13 @@ class LessonActions(BaseModel):
     export_zip: LessonAction
 
 
+class ReviewProgress(BaseModel):
+    reviewed: int
+    total: int
+
+
 class LessonDetail(LessonSummary):
+    review_progress: Optional[ReviewProgress] = None
     phase_report: List[PhaseState]
     segment_count: int = 0
     outline_approved: bool = False
@@ -525,7 +531,11 @@ class StudyProgress(StudyStatusUpdate):
     last_read_at: Optional[datetime] = None
 
 
+SuggestedQuestionType = Literal["quiz", "mirata", "caso", "esercizio"]
+
+
 class StudyUnit(BaseModel):
+    suggested_qtype: Optional[SuggestedQuestionType] = None
     id: str
     title: str
     html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
@@ -539,6 +549,7 @@ class StudyUnit(BaseModel):
 
 
 class StudyLesson(BaseModel):
+    suggestions: bool = False
     id: int
     ready: bool = Field(description="False se la lezione non ha ancora una rielaborazione valida (nessuna unità)")
     has_audio: bool
@@ -568,7 +579,7 @@ class RecallHistory(BaseModel):
 
 
 class RecallGenerate(BaseModel):
-    qtype: Optional[QuestionType] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
+    qtype: Optional[Union[QuestionType, Literal["consigliato"]]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
     unit_ids: Optional[List[str]] = Field(None, max_length=200, description="Solo queste unità (Domande su questa parte): "
                                           "quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall")

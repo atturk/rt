@@ -1,14 +1,16 @@
-import { BookOpen, FileText, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { advisedLabel } from '@/lib/questionTypes'
+import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
+import { studyNavigation } from './studyNavigation'
 import { detectSwipe, isElementScrollableX } from './swipe'
 
 import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import {
   recallKeys, useGenerateForUnits, useStudyLesson,
-  type RecallType, type StudyUnit,
+  type RecallType, type RecallGenerateType, type StudyUnit,
 } from '@/api/recall'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -16,7 +18,7 @@ import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
-import { IconButton, IconLink } from '@/components/ui/icon-button'
+import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -45,6 +47,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   onlyUnits?: string[] | null
   back: { to: string; label: string }
 }) {
+  const enterLast = useRef(false)
+  const [edge, setEdge] = useState<{ side: 'left' | 'right'; sequence: number } | null>(null)
+  const edgeSequence = useRef(0)
+  useEffect(() => {
+    if (!edge) return
+    const timer = setTimeout(() => setEdge(null), 450)
+    return () => clearTimeout(timer)
+  }, [edge])
   const [lessonIndex, setLessonIndex] = useState(0)
   const [unitIndex, setUnitIndex] = useState(0)
   const [phase, setPhase] = useState<'lettura' | 'domande'>(onlyUnits ? 'domande' : 'lettura')
@@ -63,10 +73,13 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     if (loaded && units === null) {
       // oxlint-disable-next-line react/set-state-in-effect
       setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
-      setUnitIndex(onlyUnits ? 0 : initialStudyUnit(loaded.units))
+      setUnitIndex(enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits ? 0 : initialStudyUnit(loaded.units))
+      enterLast.current = false
     }
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
+  const lessonUrl = lesson ? `/lezioni/${lesson.id}${unit ? `#unit-${encodeURIComponent(unit.id)}` : ''}` : back.to
+  const studyBack = { to: lessonUrl, label: back.label }
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
   const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
   const status = useStudyStatus(lesson?.id ?? 0)
@@ -102,6 +115,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     } else setFinished(true)
     window.scrollTo?.({ top: 0 })
   }, [units, unitIndex, lessonIndex, lessons.length, onlyUnits])
+
+  const navigateReading = (direction: -1 | 1) => {
+    if (!units || !unit) return
+    const target = studyNavigation(direction, unitIndex, units.length, lessonIndex, lessons.length)
+    if (target === 'left-edge' || target === 'right-edge') {
+      setEdge({ side: target === 'left-edge' ? 'left' : 'right', sequence: ++edgeSequence.current })
+    } else if (target === 'previous-unit' || target === 'next-unit') {
+      goToUnit(unitIndex + direction)
+    } else if (target === 'next-lesson') advance()
+    else {
+      enterLast.current = true
+      setLessonIndex(lessonIndex - 1)
+      setUnits(null)
+      setUnitIndex(0)
+      window.scrollTo?.({ top: 0 })
+    }
+  }
 
   const [detailsOpen, setDetailsOpen] = useState(false)
   const titleButtonRef = useRef<HTMLButtonElement>(null)
@@ -146,20 +176,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       if (isStatusKey) {
         e.preventDefault()
         changeStatus()
-      } else if (e.key === 'ArrowLeft') {
-        if (unitIndex > 0) {
-          e.preventDefault()
-          goToUnit(unitIndex - 1)
-        }
-      } else if (e.key === 'ArrowRight') {
+      } else {
         e.preventDefault()
-        if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
-        else advance()
+        navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -195,16 +219,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       endTime: Date.now(),
     })
 
-    if (swipe === 'next') {
-      // Ultima unità: si passa alla lezione dopo (o alla schermata finale), come faceva
-      // il pulsante "Unità successiva" che la b4 ha tolto.
-      if (units && unitIndex + 1 < units.length) goToUnit(unitIndex + 1)
-      else advance()
-    } else if (swipe === 'prev') {
-      if (unitIndex > 0) {
-        goToUnit(unitIndex - 1)
-      }
-    }
+    if (swipe === 'next' || swipe === 'prev') navigateReading(swipe === 'next' ? 1 : -1)
   }
 
   const handlePointerCancel = () => {
@@ -213,7 +228,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   if (lessons.length === 0) {
     return (
-      <StudyShell title="Studio" back={back}>
+      <StudyShell title="Studio" back={studyBack}>
         <p className="text-body text-muted-foreground" data-testid="study-empty">Nessuna lezione pronta per lo Studio: serve la rielaborazione.</p>
       </StudyShell>
     )
@@ -221,7 +236,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const title = lesson ? lessonTitle(lesson) : 'Studio'
   if (finished) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         <div className="flex flex-col items-start gap-4" data-testid="study-done">
           <p className="text-body">{onlyUnits ? 'Hai finito le domande su questa parte.' : lessons.length > 1 ? 'Hai finito lo Studio di queste lezioni.' : 'Hai finito lo Studio della lezione.'}</p>
           <Link to={back.to} className="font-semibold text-link underline-offset-2 hover:underline">{back.label === 'Esci' ? 'Torna indietro' : back.label}</Link>
@@ -231,7 +246,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
   if (study.isError) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         <p role="alert" className="flex items-center gap-3 text-body"><span className="text-danger">{errorMessage(study.error)}</span>
           <Button variant="outline" size="sm" onClick={() => void study.refetch()}>Riprova</Button></p>
       </StudyShell>
@@ -239,7 +254,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
   if (!units || !loaded) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         <ReadingSkeleton />
       </StudyShell>
     )
@@ -247,7 +262,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const none = onlyUnits && units.every((u) => u.questions === 0)
   if (units.length === 0 || !unit || !live || none) {
     return (
-      <StudyShell title={title} back={back}>
+      <StudyShell title={title} back={studyBack}>
         {onlyUnits ? <NoQuestionsYet lessonId={lesson!.id} units={units.length ? units.map((u) => u.id) : onlyUnits} onReady={() => setUnits(null)} /> : (
           <div className="flex flex-col items-start gap-4">
             <p className="text-body text-muted-foreground">Questa lezione non ha unità da studiare.</p>
@@ -260,9 +275,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
-  const lessonUrl = `/lezioni/${lesson!.id}#unit-${encodeURIComponent(unit.id)}`
   const titleButton = (
-    <span className="inline-flex max-w-full items-center gap-1">
     <button
       ref={titleButtonRef}
       type="button"
@@ -277,8 +290,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
       <span className="sr-only">Dettagli della lezione</span>
     </button>
-    <IconLink label="Apri la lezione" icon={FileText} to={lessonUrl} />
-    </span>
   )
 
   const headerActions = (
@@ -339,9 +350,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       {reading && (
         <StudyShell
           title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
-          back={speedReading ? undefined : back}
+          back={speedReading ? undefined : studyBack}
           actions={speedReading ? zenActions : headerActions}
           zen={speedReading}
+          edge={edge}
           reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
@@ -350,12 +362,13 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           }}
           popup={
             <>
-              <GenerateUnitQuestions
+              {generateOpen && <GenerateUnitQuestions
                 open={generateOpen}
                 onClose={closeGenerate}
                 lessonId={lesson!.id}
-                unit={unit}
-              />
+                unit={live}
+                suggestions={loaded.suggestions}
+              />}
               {lesson && (
               <LessonDetailsPopup
                 lesson={lesson}
@@ -412,9 +425,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             unit={{
               id: unit.id,
               title: unit.title,
+              suggestions: loaded.suggestions,
+              suggestedQtype: live.suggested_qtype,
               pending: (live.pending ?? {}) as Record<string, number>,
               onBack: () => setPhase('lettura'),
-              onDone: advance,
+              onDone: onlyUnits || unitIndex + 1 < units.length || lessonIndex + 1 < lessons.length ? advance : undefined,
               doneLabel: unitIndex + 1 < units.length ? 'Unità successiva' : lessonIndex + 1 < lessons.length ? 'Lezione successiva' : 'Fine',
             }}
           />
@@ -534,6 +549,7 @@ function StudyShell({
   popup,
   footer,
   readingProps,
+  edge,
   children,
   zen = false,
   reader,
@@ -545,6 +561,7 @@ function StudyShell({
   actions?: ReactNode
   popup?: ReactNode
   footer?: ReactNode
+  edge?: { side: 'left' | 'right'; sequence: number } | null
   readingProps?: ComponentProps<'div'>
   children: ReactNode
 }) {
@@ -554,10 +571,12 @@ function StudyShell({
       {popup}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={zen || undefined} inert={zen || undefined} {...readingProps}>
-          <div className="mx-auto w-full max-w-(--reading-width) pb-8 pt-3" data-testid="study-reading-column">
+          <div key={edge?.sequence ?? 0} className={cn("mx-auto w-full max-w-(--reading-width) pb-8 pt-3", edge && `rt-study-bump-${edge.side}`)} data-testid="study-reading-column">
             {children}
           </div>
         </div>
+        {edge && <div key={edge.sequence} data-testid={`study-edge-${edge.side}`} className={`rt-study-edge rt-study-edge-${edge.side}`} aria-hidden /> }
+        <div className="sr-only" aria-live="polite"><span key={edge?.sequence}>{edge ? edge.side === 'left' ? 'Prima unità' : 'Ultima unità' : ''}</span></div>
         {reader}
       </div>
       {footer && (
@@ -711,17 +730,18 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
 }
 
 /** Popup "genera ora": tipo, quante e istruzioni, poi il job di recall sull'unità (4.2.2b3). */
-function GenerateUnitQuestions({ open, onClose, lessonId, unit }: {
+function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
   open: boolean
   onClose: () => void
   lessonId: number
   unit: StudyUnit
+  suggestions: boolean
 }) {
   const generate = useGenerateForUnits(lessonId)
   const client = useQueryClient()
   const [jobId, setJobId] = useState<string | null>(null)
   const job = useJobStatus(jobId)
-  const [qtype, setQtype] = useState<RecallType>('quiz')
+  const [qtype, setQtype] = useState<RecallGenerateType>(suggestions ? 'consigliato' : 'quiz')
   const [count, setCount] = useState('3')
   const [instructions, setInstructions] = useState('')
   const failed = job.data?.state === 'failed'
@@ -741,6 +761,9 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit }: {
         <div>
           <span className="mb-1.5 block text-meta text-muted-foreground">Tipo</span>
           <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1.5">
+            {suggestions && <Chip size="sm" active={qtype === 'consigliato'} aria-pressed={qtype === 'consigliato'} disabled={running} onClick={() => setQtype('consigliato')}>
+              <Sparkles className="size-3.5" aria-hidden />{advisedLabel(unit.suggested_qtype)}
+            </Chip>}
             {UNIT_TYPES.map(({ id, label }) => (
               <Chip key={id} size="sm" active={qtype === id} aria-pressed={qtype === id} disabled={running} onClick={() => setQtype(id)}>
                 {label}

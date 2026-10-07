@@ -1,3 +1,4 @@
+import { BuildConfirmDialog } from '../BuildConfirmDialog'
 import { ChevronDown, ChevronUp, Download, MoreHorizontal, Play, RotateCcw, Trash2, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
@@ -781,24 +782,10 @@ export function DetailsPanel({
         {validate.isError && <Alert tone="danger" className="mt-3">{errorMessage(validate.error)}</Alert>}
       </ConfirmDialog>
 
-      {/* Dialogo conferma build */}
-      <ConfirmDialog
-        open={confirmBuild}
-        title="Creare il documento finale?"
-        confirmLabel="Crea il documento comunque"
-        onCancel={() => setConfirmBuild(false)}
-        onConfirm={() => {
-          setConfirmBuild(false)
-          start({ type: 'run_phase', phase: 'build' })
-        }}
-      >
-        <p>Il documento finale sarà uguale all'anteprima che vedi ora. Prima di confermarlo, controlla:</p>
-        <ul className="mt-2 list-disc pl-5" data-testid="build-confirm-warnings">
-          {buildWarnings.map((w) => (
-            <li key={w.code}>{w.message}</li>
-          ))}
-        </ul>
-      </ConfirmDialog>
+      <BuildConfirmDialog open={confirmBuild} warnings={buildWarnings} onCancel={() => setConfirmBuild(false)} onConfirm={() => {
+        setConfirmBuild(false)
+        start({ type: 'run_phase', phase: 'build' })
+      }} />
     </div>
   )
 }

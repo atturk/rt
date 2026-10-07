@@ -119,6 +119,15 @@ def run_rewrite(
         if result.get("status") in ("draft_validated", "unit_regenerated"):
             from rt.services.unit_relevance import refresh
             refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
+            try:
+                from rt.services import question_types
+                question_types.refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning("Tipi consigliati non disponibili", exc_info=True)
+                if ctx is not None:
+                    from rt.services.events import Notice
+                    ctx.emit(Notice(level="warning", message="Avviso: tipi di domanda consigliati non disponibili."))
         return scope.complete(result)
 
 

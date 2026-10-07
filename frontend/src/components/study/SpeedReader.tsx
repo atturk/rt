@@ -1,5 +1,5 @@
 import { MessageCircleQuestion, Pause, Play, Rewind, RotateCcw, Sparkles, X, type LucideIcon } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
@@ -10,7 +10,7 @@ import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
 import { createSound } from './rsvpSound'
 import {
-  MAX_WPM, MIN_WPM, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
+  MAX_WPM, MIN_WPM, adaptWord, type DisplayWord, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
   remainingSeconds, surroundingEntries, wordDelay,
 } from './rsvp'
 
@@ -36,6 +36,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
     return () => observer.disconnect()
   }, [source])
   const [index, setIndex] = useState(0)
+  const [pieceIndex, setPieceIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   useEffect(() => onTintChange(prefs.irlen), [prefs.irlen, onTintChange])
   const phone = useIsPhone()
@@ -70,23 +71,52 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
     previousSettings.current = settings
   }, [settings])
 
-  const word = words[index]?.text ?? ''
-  const full = isFullStop(word, prefs.comma)
+  const readingArea = useRef<HTMLDivElement>(null)
+  const probe = useRef<HTMLSpanElement>(null)
+  const fallback = useMemo(() => words.map((word, sourceIndex) => [{ ...word, sourceIndex, scale: 1, lastPiece: true }]), [words])
+  const [adapted, setAdapted] = useState<{ source: typeof words; pieces: DisplayWord[][] } | null>(null)
+  useLayoutEffect(() => {
+    const area = readingArea.current, element = probe.current
+    if (!area || !element) return
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    let alive = true
+    const fit = () => {
+      if (!alive || area.clientWidth <= 0) return
+      const font = getComputedStyle(element)
+      ctx.font = `${font.fontWeight} ${font.fontSize} ${font.fontFamily}`
+      setAdapted({ source: words, pieces: words.map((word, i) => adaptWord(word, i, area.clientWidth, text => ctx.measureText(text).width, prefs.orp)) })
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(area)
+    void document.fonts?.ready.then(fit)
+    document.fonts?.addEventListener('loadingdone', fit)
+    return () => { alive = false; observer.disconnect(); document.fonts?.removeEventListener('loadingdone', fit) }
+  }, [words, prefs.size, prefs.dyslexic, prefs.orp, phone])
+  const pieces = adapted?.source === words ? adapted.pieces : fallback
+  const currentPieces = pieces[index] ?? []
+  const currentPieceIndex = Math.min(pieceIndex, Math.max(0, currentPieces.length - 1))
+  const entry = currentPieces[currentPieceIndex]
+  const atLastPiece = currentPieceIndex === currentPieces.length - 1
+  const word = entry?.text ?? ''
+  const full = entry?.lastPiece !== false && isFullStop(word, prefs.comma)
 
   useEffect(() => {
-    if (!active || !playing || !words[index]) return
-    const entry = words[index]
+    if (!active || !playing || !entry) return
     const current = prefsRef.current
     const end = graveWord(entry, current)
     if (current.sound) sound.click(end, current.pitch, current.clickSound)
     const delay = wordDelay(entry, current, ramp.current)
     if (ramp.current > 0) ramp.current--
     const timer = setTimeout(() => {
-      if (index < words.length - 1) setIndex(index + 1)
+      if (currentPieceIndex + 1 < currentPieces.length) setPieceIndex(currentPieceIndex + 1)
+      else if (index < words.length - 1) { setIndex(index + 1); setPieceIndex(0) }
       else setPlaying(false)
     }, delay)
     return () => clearTimeout(timer)
-  }, [active, playing, index, words, sound])
+  }, [active, playing, index, currentPieceIndex, words, pieces, sound]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Il rumore suona durante la lettura; in pausa solo l'anteprima di 2 s delle impostazioni.
   useEffect(() => {
@@ -101,12 +131,13 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
     if (!words.length) return
     sound.unlock()
     ramp.current = 5
-    setIndex((i) => (i >= words.length - 1 ? 0 : i))
+    if (index >= words.length - 1 && atLastPiece) { setIndex(0); setPieceIndex(0) }
     setPlaying(true)
-  }, [words.length, sound])
+  }, [words.length, index, atLastPiece, sound])
   const toggle = useCallback(() => (playing ? setPlaying(false) : play()), [playing, play])
   const jump = useCallback((to: number) => {
     setIndex(Math.max(0, Math.min(words.length - 1, to)))
+    setPieceIndex(0)
     if (playing) ramp.current = 5
   }, [words.length, playing])
 
@@ -122,7 +153,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
         ArrowRight: () => jump(nextSentence(words, index)),
         ArrowUp: () => update({ wpm: Math.min(MAX_WPM, prefsRef.current.wpm + 25) }),
         ArrowDown: () => update({ wpm: Math.max(MIN_WPM, prefsRef.current.wpm - 25) }),
-        Home: () => { setPlaying(false); setIndex(0) },
+        Home: () => { setPlaying(false); setIndex(0); setPieceIndex(0) },
         Escape: () => {
           if (settings) { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
           else onClose()
@@ -159,7 +190,8 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
       data-settings={settings && !phone || undefined}
       className="rt-rsvp absolute inset-0 flex flex-col gap-3 overflow-hidden bg-background px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-5 text-foreground max-md:px-3.5"
     >
-      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
+      <div ref={readingArea} className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
+        <span ref={probe} aria-hidden className={cn('rt-rsvp-word rt-rsvp-measure', prefs.dyslexic && 'dyslexic')} style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * .6) : prefs.size}px` } as CSSProperties}>M</span>
         {context && (
           <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
@@ -176,8 +208,11 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
         <div
           key={animate ? `out-${index}` : 'still'}
           className={cn('rt-rsvp-word', prefs.dyslexic && 'dyslexic', animate && 'out')}
-          style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
+          style={{ '--rsvp-scale': entry?.scale ?? 1, '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
           data-testid="speed-reader-word"
+          data-source-index={index}
+          data-piece={currentPieceIndex}
+          data-scale={entry?.scale ?? 1}
           data-hl={words[index]?.hl && prefs.highlights || undefined}
           data-math={words[index]?.math ? true : undefined}
           data-kind={full ? 'fine' : 'normale'}
@@ -206,7 +241,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
               strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
           </svg>
         } />
-        <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0) }} note="Ricomincia" />
+        <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
         <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
           icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
           onClick={() => { setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />

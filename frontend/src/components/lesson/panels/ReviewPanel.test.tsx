@@ -12,8 +12,8 @@ vi.mock('@/api/hooks', () => ({
 vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJob: () => ({ mutate: state.cancel }) }))
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
 const issue: Schemas['IssueItem'] = { issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
-function mount(phases = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, markdown?: string) {
-  return render(<MemoryRouter><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
+function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}) {
+  return render(<MemoryRouter><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
 }
 beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.jobs = []; state.phone = false })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {
@@ -49,7 +49,7 @@ it('mostra mai verificata, in corso e tutte decise', () => {
   state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-03' } }]
   mount()
   expect(screen.getByRole('status')).toHaveTextContent('Tutte decise')
-  expect(screen.getByRole('button', { name: 'Riprendi la pipeline' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Ricostruisci il documento' })).toBeEnabled()
   fireEvent.click(screen.getByRole('button', { name: 'Decise 1' }))
   expect(screen.getByRole('list', { name: 'Decise' })).toHaveTextContent('Il pH è 6.')
 })
@@ -76,4 +76,47 @@ it('sul telefono mostra testo e correzione, con elenco a richiesta', () => {
   expect(screen.queryByRole('list')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Elenco (1)' }))
   expect(screen.getByRole('list', { name: 'Da decidere' })).toBeInTheDocument()
+})
+
+it.each([
+  ['MISSING', 'Mai verificata', 'Verifica tutta la lezione', { type: 'run_phase', phase: 'review' }],
+  ['PARTIAL', 'Verificate 2 unità su 5', 'Completa la verifica', { type: 'run_phase', phase: 'review' }],
+  ['STALE', 'Il testo è cambiato dopo la verifica', 'Aggiorna il documento', { type: 'run_pipeline', with_review: true }],
+  ['VALID', 'Tutte decise', 'Ricostruisci il documento', { type: 'run_phase', phase: 'build' }],
+])('stato %s: titolo, azione e payload', async (review, title, button, payload) => {
+  state.items = []
+  mount({ rewrite: 'VALID', review, build: 'STALE' }, undefined, undefined, { review_progress: { reviewed: 2, total: 5 } })
+  expect(screen.getByRole('status')).toHaveTextContent(title)
+  expect(screen.queryByRole('button', { name: 'Riprendi la pipeline' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: button }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith(payload))
+})
+it('review completa con issue da decidere mostra il conteggio', () => {
+  mount()
+  expect(screen.getByRole('status')).toHaveTextContent('1 da decidere su 1')
+  expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
+})
+it('build già valido disattiva il pulsante e mostra Documento aggiornato', () => {
+  state.items = []
+  mount({ rewrite: 'VALID', review: 'VALID', build: 'VALID' })
+  expect(screen.getByRole('button', { name: 'Documento aggiornato' })).toBeDisabled()
+})
+it('la ricostruzione richiede la conferma quando ci sono avvisi', async () => {
+  state.items = []
+  mount({ rewrite: 'VALID', review: 'VALID', build: 'STALE' }, undefined, undefined, {
+    phase_report: [{ phase: 'build', status: 'STALE', reason: '', warnings: [{ code: 'pending', message: 'Avviso di prova', count: 1 }] }],
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Ricostruisci il documento' }))
+  expect(state.run).not.toHaveBeenCalled()
+  expect(screen.getByTestId('build-confirm-warnings')).toHaveTextContent('Avviso di prova')
+  fireEvent.click(screen.getByRole('button', { name: 'Crea il documento comunque' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'build' }))
+})
+
+it('testo cambiato: conserva le correzioni per default e permette di rifare la verifica in fondo', async () => {
+  mount({ rewrite: 'VALID', review: 'STALE', build: 'STALE' })
+  expect(screen.getByText('Le correzioni fatte a mano non rifanno la verifica.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo tutta la lezione' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', force: true }))
 })

@@ -3232,6 +3232,16 @@
             "title": "Recall Questions",
             "type": "integer"
           },
+          "review_progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "segment_count": {
             "default": 0,
             "title": "Segment Count",
@@ -4762,6 +4772,10 @@
                 "type": "string"
               },
               {
+                "const": "consigliato",
+                "type": "string"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -5781,6 +5795,24 @@
         "title": "RevealOut",
         "type": "object"
       },
+      "ReviewProgress": {
+        "properties": {
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reviewed",
+          "total"
+        ],
+        "title": "ReviewProgress",
+        "type": "object"
+      },
       "RouteIn": {
         "properties": {
           "base_url": {
@@ -6237,6 +6269,11 @@
             "title": "Ready",
             "type": "boolean"
           },
+          "suggestions": {
+            "default": false,
+            "title": "Suggestions",
+            "type": "boolean"
+          },
           "units": {
             "items": {
               "$ref": "#/components/schemas/StudyUnit"
@@ -6403,6 +6440,23 @@
               }
             ],
             "title": "Status At"
+          },
+          "suggested_qtype": {
+            "anyOf": [
+              {
+                "enum": [
+                  "quiz",
+                  "mirata",
+                  "caso",
+                  "esercizio"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Qtype"
           },
           "title": {
             "title": "Title",

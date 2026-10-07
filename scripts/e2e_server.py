@@ -44,6 +44,7 @@ def _workspace(base: str, telegram: bool = False) -> str:
     # Telegram è spento di predefinito; gli e2e del bot finto lo accendono (e lo provano a spegnere)
     general["telegram"]["enabled"] = telegram
     # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
+    general.setdefault("jev", {}).update(relevance_model="typesafe/jev-1.13", relevance_mode="shadow")
     general["searxng_base_url"] = "http://127.0.0.1:9"
     # nessuna connessione nel config di esempio: senza questo ogni pagina porterebbe alla
     # configurazione guidata (la si prova in settings.spec.ts e nel job CI 'installer')
@@ -98,12 +99,23 @@ def _lessons(root: str) -> None:
     run_mock_pipeline(done, with_review=True, auto_accept=True)
     _plain_lesson(root, "2026-09-12", "FISIOLOGIA", "Il rene")
     for date, materia, argomenti in (("2026-09-19", "FARMACOLOGIA", "Recettori"),
-                                     ("2026-09-20", "PATOLOGIA", "Infiammazione")):
+                                     ("2026-09-20", "PATOLOGIA", "Infiammazione"),
+                                     ("2026-09-03", "REVISIONE", "Verifica di prova")):
         lesson = _plain_lesson(root, date, materia, argomenti)
         add_audio(lesson)
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sull'outline
         approve_outline(lesson, channel="api")
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sulle issue
+        if materia == "REVISIONE":
+            from rt.pipeline.review import load_science_issues, save_science_issues
+            from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+            from rt.services.phase_validation_service import validate_phase
+            issues = load_science_issues(lesson)
+            issues.append(ScienceIssue(id="sci_asr_test", type=ScienceType.ERR_ASR_ST,
+                                      severity=ScienceSeverity.MEDIUM, unit_id=issues[0].unit_id,
+                                      claim="Qualità dell’intera unità", reason="Issue ASR di prova"))
+            save_science_issues(issues, lesson)
+            validate_phase(lesson, "review", channel="api")
     anatomia = _plain_lesson(root, "2026-09-21", "ANATOMIA", "Cuore")
     run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
     approve_outline(anatomia, channel="api")
@@ -148,7 +160,7 @@ def _study_lesson(root: str) -> None:
 
     from rt.pipeline.rewrite import load_draft, save_draft
     draft = load_draft(path)
-    draft.units[0].content = "Formula $z$. " + draft.units[0].content
+    draft.units[0].content = "Formula $z$. un’impostazione un'impostazione. " + draft.units[0].content
     draft.units[1].content += '\n\n' + r'$$\sum_{i=1}^{6} x_i$$'
     save_draft(draft, path, manual=True)
     validate_phase(path, "rewrite", channel="api")

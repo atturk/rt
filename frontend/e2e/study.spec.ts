@@ -427,7 +427,7 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
   }
 })
 
-test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
+test('Esci porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
   await loginViaLink(page)
   const l = await lesson(page, 'STUDIO')
   const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
@@ -436,7 +436,8 @@ test('Apri la lezione porta all’unità aperta e la segna, anche su iPhone', as
     await page.setViewportSize({ width, height: 844 })
     await page.goto(`/studio/lezione/${l.id}`)
     await page.getByTestId('study-dots').locator('button').nth(1).click()
-    const link = page.getByRole('link', { name: 'Apri la lezione', exact: true })
+    await expect(page.getByRole('link', { name: 'Apri la lezione', exact: true })).toHaveCount(0)
+    const link = page.getByRole('link', { name: 'Esci', exact: true })
     await expect(link).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
     await page.getByTestId('study-title-button').click()
     await expect(page.getByRole('link', { name: 'Apri la lezione ›' })).toHaveAttribute('href', `/lezioni/${l.id}#unit-${unit.id}`)
@@ -583,4 +584,124 @@ test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande de
   await expect(page.getByRole('heading', { level: 1 })).toContainText(unit.title)
   await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
   await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
+})
+
+
+test('ai limiti le frecce lasciano l’unità aperta e mostrano la fascia', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByTestId('study-edge-left')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(study.units[0].title)
+  await page.getByTestId('study-dots').locator('button').last().click()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('study-edge-right')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(study.units.at(-1)!.title)
+  await expect(page.getByTestId('study-done')).toHaveCount(0)
+  await expect(page.locator('[aria-live="polite"]')).toContainText('Ultima unità')
+})
+
+test('swipe ai limiti a 390 px: fascia e unità invariata', async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 844 } })
+  const page = await context.newPage()
+  try {
+    await loginViaLink(page)
+    const l = await lesson(page, 'STUDIO')
+    await page.goto(`/studio/lezione/${l.id}`)
+    const cdp = await context.newCDPSession(page)
+    for (const side of ['left', 'right']) {
+      const buttons = page.getByTestId('study-dots').locator('button')
+      await (side === 'left' ? buttons.first() : buttons.last()).click()
+      await expect(page.getByRole('heading', { level: 2 })).toContainText(side === 'left' ? '1.1' : '1.2')
+      const title = await page.getByRole('heading', { level: 2 }).textContent()
+      const start = side === 'left' ? 100 : 300
+      const end = side === 'left' ? 300 : 100
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: start, y: 400 }] })
+      await page.waitForTimeout(50) // Distanzia i campioni del gesto, come uno swipe reale.
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: (start + end) / 2, y: 402 }] })
+      await page.waitForTimeout(50)
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: end, y: 405 }] })
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect(page.getByTestId(`study-edge-${side}`)).toBeVisible()
+      await expect(page.getByRole('heading', { level: 2 })).toHaveText(title!)
+      await expect(page.getByTestId('study-done')).toHaveCount(0)
+      await expect(page.getByTestId(`study-edge-${side}`)).toHaveCount(0)
+    }
+  } finally { await context.close() }
+})
+
+test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 riprende la sessione', async ({ page }) => {
+  test.setTimeout(150_000)
+  await loginViaLink(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units.at(-1)!
+  const selection = await apiGet<{ custom: boolean; units: { unit_id: string; selected: boolean }[] }>(page.request, `/lessons/${l.id}/recall/units`)
+  // Il rifornimento automatico della lezione resta sulle altre unità: questa deve esaurirsi davvero.
+  expect((await page.request.put(`/api/v1/lessons/${l.id}/recall/units`, {
+    headers: authHeaders(), data: { unit_ids: study.units.filter(u => u.id !== unit.id).map(u => u.id) },
+  })).ok()).toBeTruthy()
+  try {
+    const history = await apiGet<{ questions: { id: string; unit_ids: string[] }[] }>(page.request, `/lessons/${l.id}/recall/history`)
+    for (const question of history.questions.filter(q => q.unit_ids.includes(unit.id))) {
+      expect((await page.request.post(`/api/v1/lessons/${l.id}/recall/questions/${question.id}/status`, {
+        headers: authHeaders(), data: { status: 'asked' },
+      })).ok()).toBeTruthy()
+    }
+    const accepted = await page.request.post(`/api/v1/lessons/${l.id}/recall/generate`, {
+      headers: authHeaders(), data: { qtype: 'consigliato', unit_ids: [unit.id], count: 1 },
+    })
+    const jobId = (await accepted.json()).job_id
+    await expect.poll(async () => (await apiGet<{ state: string }>(page.request, `/jobs/${jobId}`)).state).toBe('succeeded')
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-dots').locator('button').last().click()
+    await page.getByTestId('study-quiz').click()
+    await answer(page)
+    await page.getByRole('button', { name: 'Fine', exact: true }).click()
+    await expect(page.getByTestId('recall-empty')).toBeVisible()
+    await expect(page.getByTestId('recall-unit-done')).toHaveCount(0)
+    const generation = page.getByTestId('recall-empty-generation')
+    await expect(generation.getByRole('button', { name: /^Genera consigliato ·/ })).toBeVisible()
+    for (const button of await generation.getByRole('button').all()) {
+      const box = await button.boundingBox()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+      expect(await button.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    }
+    await page.getByLabel('Quante', { exact: true }).fill('2')
+    const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
+    await page.getByRole('button', { name: /^Genera consigliato/ }).click()
+    expect((await request).postDataJSON()).toMatchObject({ qtype: 'consigliato', count: 2, unit_ids: [unit.id] })
+    await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByTestId('recall-empty')).toHaveCount(0)
+  } finally {
+    expect((await page.request.put(`/api/v1/lessons/${l.id}/recall/units`, {
+      headers: authHeaders(), data: { unit_ids: selection.custom ? selection.units.filter(u => u.selected).map(u => u.unit_id) : null },
+    })).ok()).toBeTruthy()
+  }
+})
+
+test('a 390 px un’impostazione si divide e resta dentro la finestra', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/studio/lezione/${l.id}`)
+  await page.getByTestId('study-dots').locator('button').first().click()
+  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  await page.keyboard.press('ArrowRight')
+  const word = page.getByTestId('speed-reader-word')
+  await expect(word).toContainText('imposta')
+  expect(Number(await word.getAttribute('data-scale'))).toBeGreaterThanOrEqual(.7)
+  for (const fragment of await word.locator('.pre > span, .orp, .post > span').all()) {
+    const box = await fragment.boundingBox()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  }
+  await page.getByRole('button', { name: 'Contesto', exact: true }).click()
+  await expect(page.getByTestId('speed-reader-context')).toContainText('un’impostazione')
+  await expect(page.getByTestId('speed-reader-context')).not.toContainText('imposta-')
 })

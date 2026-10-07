@@ -157,3 +157,27 @@ def test_next_returns_remaining_with_same_filters(api_client, ready, qtype, expl
         if explicit:
             assert uid in response.json()['unit_ids']
     assert api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params).status_code == 404
+
+
+def test_study_suggested_qtype_and_recommended_job(api_client, ready, monkeypatch):
+    from rt.core.config import RTConfig, JevConfig
+    from rt.services import question_types, section_labels
+    path, lid, worker = ready
+    cfg = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"))
+    monkeypatch.setattr(question_types, "load_config", lambda: cfg)
+    monkeypatch.setattr(section_labels, "load_config", lambda: cfg)
+    question_types.refresh(path, force_mock=True)
+    response = api_client.get(f"/api/v1/lessons/{lid}/study").json()
+    assert response["suggestions"] is True
+    assert response["units"][0]["suggested_qtype"] in ("quiz", "mirata")
+    for unit_ids in (None, [response["units"][0]["id"]]):
+        accepted = api_client.post(f"/api/v1/lessons/{lid}/recall/generate", json={
+            "qtype": "consigliato", "count": 2, "unit_ids": unit_ids, "mock": True,
+        })
+        assert accepted.status_code == 202
+        _drain(worker)
+        job = _job(api_client, accepted.json())
+        assert job["type"] == "recall_generate" and job["state"] == "succeeded"
+    monkeypatch.setattr(question_types, "load_config", RTConfig)
+    response = api_client.get(f"/api/v1/lessons/{lid}/study").json()
+    assert response["suggestions"] is False and response["units"][0]["suggested_qtype"] is None

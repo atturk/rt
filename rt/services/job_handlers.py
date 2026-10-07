@@ -144,7 +144,8 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                       count=job.payload.get("count"),
                                       progress=recall_progress(ctx))
             total = sum(generated.values())
-            detail = ", ".join(f"{n} {t}" for t, n in generated.items())
+            names = {"quiz": "quiz", "mirata": "mirate", "vasta": "vaste", "caso": "casi clinici", "esercizio": "esercizi"}
+            detail = ", ".join(f"{n} {names.get(t, t)}" for t, n in generated.items())
             ctx.emit(Notice(message=_recall_message(f"Pool di domande: {total} nuove ({detail}).", total,
                                                     unit_rows(lesson_dir))))
     return JobOutcome(state=JobState.SUCCEEDED, result={"questions": len(load_recall_bank(lesson_dir).questions)})

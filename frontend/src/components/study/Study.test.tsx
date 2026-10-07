@@ -32,13 +32,14 @@ const UNITS = [
   { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', questions: 0, pending: {} },
 ]
 
+let mockSuggestions = false
 const mockGenerate = vi.fn()
 const progress = vi.hoisted(() => ({ status: vi.fn(), read: vi.fn() }))
 vi.mock('@/api/studyProgress', () => ({
   useStudyStatus: () => ({ mutate: progress.status, isPending: false }),
   useStudyRead: () => ({ mutate: progress.read }),
 }))
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false })
 afterEach(() => vi.useRealTimers())
 
 vi.mock('@/api/recall', async (importOriginal) => {
@@ -46,7 +47,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
   return {
     ...actual,
     useStudyLesson: () => ({
-      data: { id: 1, units: UNITS, has_audio: false },
+      data: { id: 1, units: UNITS.map(u => ({ ...u, suggested_qtype: 'mirata' })), has_audio: false, suggestions: mockSuggestions },
       isPending: false,
       isError: false,
     }),
@@ -66,6 +67,28 @@ function renderStudy() {
 }
 
 describe('StudyFlow unit navigation', () => {
+  it('le frecce ai limiti mostrano la fascia e annunciano il limite senza finire lo Studio', () => {
+    localStorage.clear()
+    renderStudy()
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByTestId('study-edge-left')).toBeInTheDocument()
+    expect(screen.getByText('Prima unità')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Unità 3: Prelievo arterioso, Da imparare' }))
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByTestId('study-edge-right')).toBeInTheDocument()
+    expect(screen.getByText('Ultima unità')).toBeInTheDocument()
+    expect(screen.queryByTestId('study-done')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('2.1 Prelievo arterioso')
+  })
+
+  it('Esci segue l’unità aperta e il link accanto al titolo non c’è', () => {
+    renderStudy()
+    expect(screen.getByRole('link', { name: 'Esci' })).toHaveAttribute('href', '/lezioni/1#unit-1.1')
+    fireEvent.click(screen.getByRole('button', { name: 'Unità 2: Acidosi metabolica, Da imparare' }))
+    expect(screen.getByRole('link', { name: 'Esci' })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
+    expect(screen.queryByRole('link', { name: /^Apri la lezione$/ })).not.toBeInTheDocument()
+  })
+
   it('S e il pulsante cambiano stato; S non agisce nei campi o con i modificatori', () => {
     renderStudy()
     fireEvent.click(screen.getByRole('button', { name: "Stato: da imparare" }))
@@ -282,4 +305,15 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
     localStorage.clear()
   })
+})
+
+it.each([true, false])('popup Genera: consigliato presente e selezionato solo con Jev (%s)', suggestions => {
+  mockSuggestions = suggestions
+  renderStudy()
+  fireEvent.click(screen.getByTestId('study-generate'))
+  if (suggestions) expect(screen.getByRole('button', { name: 'Consigliato · Mirata' })).toHaveAttribute('aria-pressed', 'true')
+  else expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.click(screen.getByTestId('study-generate-start'))
+  expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'consigliato' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })

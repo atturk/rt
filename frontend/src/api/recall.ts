@@ -4,6 +4,7 @@ import { api, unwrap, type Schemas } from './client'
 import { formData } from './jobStatus'
 
 export type RecallType = 'quiz' | 'mirata' | 'vasta' | 'caso' | 'esercizio'
+export type RecallGenerateType = RecallType | 'consigliato'
 export type RecallQuestion = Schemas['RecallQuestion']
 export type RecallAnswerRecord = Schemas['RecallAnswerRecord']
 export type Vote = 'up' | 'down' | 'lightning'
@@ -44,7 +45,7 @@ function useRecallMutation<TVars, TData>(id: number, fn: (vars: TVars) => Promis
 }
 
 export type GenerateRecallOptions = {
-  qtype?: RecallType | null
+  qtype?: RecallGenerateType | null
   count?: number | null
   instructions?: string | null
   unit_ids?: string[] | null
@@ -139,7 +140,7 @@ export function useStudyLesson(id: number | null) {
 /** Domande solo su alcune unità: Domande su questa parte e "genera ora" dallo Studio.
  *  Senza `qtype` genera di tutti i tipi, come prima. */
 export function useGenerateForUnits(id: number) {
-  return useRecallMutation(id, (vars: { unitIds: string[]; qtype?: RecallType | null; count?: number | null; instructions?: string | null }) =>
+  return useRecallMutation(id, (vars: { unitIds: string[]; qtype?: RecallGenerateType | null; count?: number | null; instructions?: string | null }) =>
     unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/generate', {
       params: path(id),
       body: {

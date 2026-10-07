@@ -1,3 +1,4 @@
+import { AudioLines, GitCompareArrows } from 'lucide-react'
 import type { Schemas } from '@/api/client'
 
 export type IssueItem = Schemas['IssueItem']
@@ -8,4 +9,5 @@ export const issueLabels: Record<string, string> = {
   ERR_CONCETTUALE: 'Errore concettuale', ERR_REWRITE_DRIFT: 'Fedeltà al parlato', ERR_ASR_LLM: 'Qualità ASR · modello',
   ERR_ASR_ST: 'Qualità ASR · statistica', IMPRECISIONE: 'Imprecisione', OMISSIONE: 'Omissione', CHIARIMENTO: 'Chiarimento',
 }
+export const paragraphIssueIcon = (issue: Issue) => issue.type === 'ERR_REWRITE_DRIFT' ? GitCompareArrows : AudioLines
 export const decisionLabels: Record<string, string> = { accepted: 'accettata', rejected: 'mantenuta', edited: 'modificata' }
