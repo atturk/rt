@@ -1,0 +1,212 @@
+<title>Wireframe unità al revisore</title>
+<style>
+/* Layout: wireframe frame as in 4.2.3 wireframes (notes, state switches, the Verifica panel); tokens mirror RT's index.css */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --warn:#d99a0b; --ok:#13896b; --off:#c9c9c9;
+  --tip-bg:#171717; --tip-fg:#ffffff;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --warn:#f5c242; --ok:#5cc79f; --off:#444444;
+  --tip-bg:#ffffff; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --warn:#f5c242; --ok:#5cc79f; --off:#444444;
+  --tip-bg:#ffffff; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ol,.notes ul{margin:0;padding-left:20px;display:grid;gap:5px}
+.notes li{font-size:14px}
+code{font-family:var(--mono);font-size:12.5px}
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.panels{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
+.panel{width:380px;max-width:100%;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;min-height:560px}
+.ph{display:flex;justify-content:space-between;align-items:center}
+.ph b{font-size:18px}
+.x{font-size:20px;color:var(--mute)}
+.st{font-size:17px;font-weight:600}
+.btn{height:40px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.done{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--mute);opacity:.8}
+.seg{display:flex;gap:8px}
+.seg span{height:38px;padding:0 14px;border-radius:9px;border:1px solid var(--border);display:inline-flex;align-items:center;font-size:14.5px}
+.seg span.on{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc)}
+.sel{height:44px;border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;padding:0 12px;justify-content:space-between}
+.foot{margin-top:auto;border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.cap{font-size:12px;color:var(--mute);letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+/* the element */
+.rv{display:flex;align-items:center;gap:10px}
+.units{position:relative;flex:1;min-width:0;display:flex;gap:2px;align-items:center;height:28px;cursor:pointer;border:0;background:transparent;padding:0}
+.units i{flex:1;height:8px;border-radius:2px;background:var(--acc);position:relative}
+.units i.out{background:transparent;box-shadow:inset 0 0 0 1.5px var(--off)}
+.units i.new{background:repeating-linear-gradient(135deg,var(--acc) 0 2px,transparent 2px 4px)}
+.units i:hover{transform:scaleY(1.6)}
+.cnt{font-size:14px;font-variant-numeric:tabular-nums;color:var(--fg);white-space:nowrap}
+.cnt small{color:var(--mute);font-size:14px}
+.ib{position:relative;width:34px;height:34px;border-radius:8px;border:0;background:transparent;color:var(--mute);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none}
+.ib:hover{background:var(--soft);color:var(--fg)}
+.ib svg{width:18px;height:18px}
+.ib .badge{position:absolute;top:6px;right:5px;width:7px;height:7px;border-radius:50%;border:1.5px solid var(--bg)}
+.tip{position:absolute;bottom:calc(100% + 6px);right:0;background:var(--tip-bg);color:var(--tip-fg);font-size:12px;line-height:1.45;padding:5px 9px;border-radius:7px;pointer-events:none;z-index:5;opacity:0;transition:opacity .1s;width:max-content;max-width:260px;text-align:left;font-weight:400}
+.ib:hover .tip,.ib:focus-visible .tip,.units:hover>.tip,.units:focus-visible>.tip{opacity:1}
+.units>.tip{left:0;right:auto}
+.utip{position:fixed;background:var(--tip-bg);color:var(--tip-fg);font-size:12px;padding:4px 8px;border-radius:7px;pointer-events:none;z-index:9;white-space:nowrap}
+.compact{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)}
+.compact b{color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums}
+.log{font-size:13px;color:var(--mute);min-height:20px;font-family:var(--mono);text-align:center}
+.small{font-size:13px;color:var(--mute)}
+</style>
+
+<div class="top">
+  <h1>Unità al revisore</h1>
+  <span class="meta">Wireframe per la 4.2.3 stabile · fondo del pannello Verifica</span>
+</div>
+
+<div class="wrap">
+  <section class="notes" aria-label="Proposta">
+    <h2>Come funziona oggi</h2>
+    <p class="small" style="margin:0">Al revisore vanno solo le unità che il classificatore considera didattiche (la stessa regola del recaller "solo rilevanti"). Se il classificatore è spento vanno tutte; un'unità non ancora classificata, o cambiata dopo la classificazione, va comunque al revisore. Il revisore non ha una scelta personalizzata come il recaller: la scelta passa dalle etichette del classificatore.</p>
+    <h2>Proposta</h2>
+    <ol>
+      <li><b>Una striscia di unità</b> in fondo al pannello: una tacca per unità, piena se va al revisore, vuota se è esclusa, a righe se non è ancora classificata. Passando su una tacca: "2.4 Emogasanalisi · esclusa". Accanto, il numero "15/18".</li>
+      <li><b>Passando sulla striscia</b> il suggerimento spiega la regola in una riga.</li>
+      <li><b>Un'icona etichette</b> a destra apre il classificatore (oggi "Rivedi le etichette"), con un puntino: verde se è aggiornato, giallo se va rifatto. Il suggerimento dice quale dei due.</li>
+      <li>Niente testo fisso oltre al numero. Con il classificatore spento la striscia è tutta piena e l'icona non c'è.</li>
+    </ol>
+    <p class="small" style="margin:0">Il secondo pannello mostra un'alternativa più asciutta, senza striscia. Propongo la striscia, e lo stesso elemento anche in fondo al pannello Domande al posto di "Unità per il recaller: 18 di 18 (solo rilevanti) · Scegli", così i due pannelli si leggono allo stesso modo.</p>
+  </section>
+
+  <div class="bar">
+    <div class="tabs" role="group" aria-label="Classificatore">
+      <button data-state="ok" aria-pressed="true">Classificatore aggiornato</button>
+      <button data-state="stale" aria-pressed="false">Da aggiornare</button>
+      <button data-state="off" aria-pressed="false">Spento</button>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div class="panel" aria-label="Proposta: striscia">
+      <div class="ph"><b>Verifica con LLM</b><span class="x" aria-hidden="true">✕</span></div>
+      <div class="st">Tutte decise</div>
+      <div>26 issue decise: 14 accettate, 11 mantenute, 1 modificata.</div>
+      <div class="btn done">Documento aggiornato</div>
+      <div class="seg"><span class="on">Da decidere 0</span><span>Decise 26</span></div>
+      <div class="sel">Cronologico <span aria-hidden="true">⌄</span></div>
+      <div class="btn">Verifica di nuovo tutta la lezione</div>
+      <div class="foot">
+        <span class="cap">Proposta</span>
+        <div class="rv">
+          <button class="units" id="strip" aria-label=""><span class="tip" id="stripTip"></span></button>
+          <span class="cnt" id="cnt"></span>
+          <button class="ib" id="tags" aria-label="">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+            <span class="badge" id="badge"></span><span class="tip" id="tagsTip"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" aria-label="Alternativa: compatta">
+      <div class="ph"><b>Verifica con LLM</b><span class="x" aria-hidden="true">✕</span></div>
+      <div class="st">Tutte decise</div>
+      <div>26 issue decise: 14 accettate, 11 mantenute, 1 modificata.</div>
+      <div class="btn done">Documento aggiornato</div>
+      <div class="seg"><span class="on">Da decidere 0</span><span>Decise 26</span></div>
+      <div class="sel">Cronologico <span aria-hidden="true">⌄</span></div>
+      <div class="btn">Verifica di nuovo tutta la lezione</div>
+      <div class="foot">
+        <span class="cap">Alternativa</span>
+        <div class="rv" style="justify-content:space-between">
+          <span class="compact">
+            <button class="ib" id="info2" aria-label="">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+              <span class="tip" id="info2Tip" style="left:0;right:auto"></span>
+            </button>
+            <b id="cnt2"></b> unità
+          </span>
+          <button class="ib" id="tags2" aria-label="">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+            <span class="badge" id="badge2"></span><span class="tip" id="tags2Tip"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="log" id="log" aria-live="polite">Passa sulla striscia, sulle tacche e sulle icone.</div>
+</div>
+
+<script>
+const UNITS = [
+  ['1.1','Presentazione del corso','out'],['1.2','Il pH e la sua misura','in'],['1.3','Sistemi tampone','in'],['1.4','Tampone bicarbonato','in'],
+  ['2.1','Ruolo del polmone','in'],['2.2','Ruolo del rene','in'],['2.3','Compenso respiratorio','in'],['2.4','Emogasanalisi','in'],
+  ['3.1','Acidosi metabolica','in'],['3.2','Gap anionico','in'],['3.3','Acidosi respiratoria','in'],['3.4','Alcalosi metabolica','in'],
+  ['4.1','Alcalosi respiratoria','in'],['4.2','Disturbi misti','in'],['4.3','Casi clinici','in'],['4.4','Domande degli studenti','out'],
+  ['5.1','Organizzazione dell’esame','out'],['5.2','Riepilogo','new'],
+];
+let state = 'ok';
+const $ = (id) => document.getElementById(id);
+const utip = document.createElement('div'); utip.className = 'utip'; utip.hidden = true; document.body.appendChild(utip);
+
+function kind(u){
+  if (state === 'off') return 'in';
+  if (state === 'stale' && u[2] === 'new') return 'new';
+  return u[2] === 'new' ? 'in' : u[2];
+}
+function render(){
+  const kinds = UNITS.map(kind);
+  const sent = kinds.filter(k => k !== 'out').length, total = UNITS.length;
+  const strip = $('strip');
+  strip.querySelectorAll('i').forEach(i => i.remove());
+  UNITS.forEach((u, n) => {
+    const i = document.createElement('i');
+    const k = kinds[n];
+    if (k !== 'in') i.className = k;
+    i.dataset.label = `${u[0]} ${u[1]} · ${k === 'out' ? 'esclusa' : k === 'new' ? 'non classificata, va al revisore' : 'va al revisore'}`;
+    strip.appendChild(i);
+  });
+  const rule = state === 'off'
+    ? 'Classificatore spento: al revisore vanno tutte le unità.'
+    : `Al revisore vanno le unità didattiche secondo il classificatore${kinds.includes('new') ? ', più quelle non ancora classificate' : ''}.`;
+  $('stripTip').textContent = rule;
+  strip.setAttribute('aria-label', `${sent} unità su ${total} al revisore. ${rule}`);
+  $('cnt').innerHTML = `${sent}<small>/${total}</small>`;
+  $('cnt2').textContent = `${sent}/${total}`;
+  $('info2Tip').textContent = rule;
+  $('info2').setAttribute('aria-label', rule);
+  const tagTip = state === 'stale' ? 'Rivedi le etichette · classificatore da aggiornare' : 'Rivedi le etichette · classificatore aggiornato';
+  for (const [b, badge, tip] of [['tags','badge','tagsTip'],['tags2','badge2','tags2Tip']]) {
+    $(b).hidden = state === 'off';
+    $(badge).style.background = state === 'stale' ? 'var(--warn)' : 'var(--ok)';
+    $(tip).textContent = tagTip;
+    $(b).setAttribute('aria-label', tagTip);
+  }
+}
+$('strip').addEventListener('mousemove', (e) => {
+  const i = e.target.closest('i');
+  if (!i) { utip.hidden = true; $('stripTip').style.opacity = ''; return }
+  $('stripTip').style.opacity = '0';
+  utip.textContent = i.dataset.label; utip.hidden = false;
+  const r = i.getBoundingClientRect();
+  utip.style.left = Math.max(8, Math.min(r.left - 40, innerWidth - utip.offsetWidth - 8)) + 'px';
+  utip.style.top = (r.top - 30) + 'px';
+});
+$('strip').addEventListener('mouseleave', () => { utip.hidden = true; $('stripTip').style.opacity = '' });
+$('strip').addEventListener('click', () => { $('log').textContent = '→ apre il classificatore (Rivedi le etichette)' });
+for (const b of ['tags','tags2']) $(b).addEventListener('click', () => { $('log').textContent = '→ apre il classificatore (Rivedi le etichette)' });
+document.querySelectorAll('[data-state]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-state]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  state = b.dataset.state; render();
+}));
+render();
+</script>

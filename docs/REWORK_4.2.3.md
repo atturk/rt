@@ -877,3 +877,314 @@ Come per la b3: Claude rivede il diff, prova le parti toccate, fa le correzioni 
 "Revisione: …", unisce in `claude/rt-4.2.3-beta`, imposta VERSION `4.2.3b4`, lancia **tutti** i test in
 locale (pytest, frontend, build, entrambi i gruppi e2e) prima di pubblicare, pubblica la beta con
 `release.yml` e segue il run fino alla fine.
+
+## 4.2.3 stabile — rifiniture dopo la b4
+
+Riscontri di Attilio della mattina del 7 ottobre 2026 (thread "Bug breaking"), provando la v4.2.3b4,
+discussi uno per uno e confermati sui wireframe. Lavora **solo Codex (GPT)**, un giro solo. Dopo la
+revisione esce direttamente come **4.2.3 stabile** (eventuali correzioni dopo con la quarta cifra,
+4.2.3.1 e così via).
+
+Wireframe di riferimento (interattivi), da aprire nel browser:
+
+- `docs/wireframes-4.2.3/RT-4.2.3-correzione.html` — card della revisione con correzione proposta (C1).
+- `docs/wireframes-4.2.3/RT-4.2.3-lezioni.html` — righe di Lezioni: anello, scudo, icone cliccabili,
+  domande (N1, N2). Selettore "Proposta / Oggi" e "Computer / iPhone".
+- `docs/wireframes-4.2.3/RT-4.2.3-revisore.html` — unità al revisore in fondo al pannello Verifica (N3).
+  Vale il pannello di sinistra ("Proposta", la striscia), non l'alternativa.
+
+Dove piano e wireframe non coincidono, vale il piano.
+
+### Regole
+
+Come per la b4 (sezione "Regole" della 4.2.3b4), con queste differenze:
+
+- **Branch**: `rt423s/codex`, già creato da `claude/rt-4.2.3-beta` (v4.2.3b4 più i fix urgenti
+  4.2.3b3.1 e 4.2.3b3.2). Un commit per task (messaggio `<id>: …`), alla fine **una sola PR verso
+  `claude/rt-4.2.3-beta`**. Mai merge su `main` o sul branch beta, niente tag, `VERSION` non si tocca.
+- Il fix urgente in `rt/pipeline/review.py` e `rt/pipeline/ledger.py` (test
+  `tests/test_review_restart_decisions.py`) non si tocca.
+- Tutti i test prima della PR, come nella b4 (pytest completo, lint, typecheck, vitest, build, e2e di
+  entrambi i gruppi dopo la build).
+
+### Decisioni (Attilio, 7 ottobre 2026)
+
+- I suggerimenti (delay group della b3) vanno bene: devono essere **gli stessi su tutte le icone**,
+  niente più suggerimenti nativi del browser.
+- Studio: il **triplo clic** non deve evidenziare un paragrafo intero per sbaglio; il **clic destro**
+  su un'evidenziazione la toglie; una **scorciatoia** passa da evidenziatore a gomma e viceversa.
+- Tornando dallo Studio alla lezione, l'unità **non** va segnata (si arriva solo lì).
+- "Consigliato" **non è un'opzione a parte**: le opzioni sono solo i tipi di domanda, e il tipo
+  consigliato ha accanto una stellina. Vale per il popup dell'unità, il pannello Domande e la
+  schermata "domande finite".
+- La barra di formattazione dell'editor si può **nascondere** dalle Impostazioni.
+- Da Impostazioni e da Job si torna **alla pagina esatta** da cui si è arrivati (freccia indietro, o
+  di nuovo clic sull'icona).
+- Colori dello studio più distinguibili (appresa, in apprendimento, ignorata), uguali nell'anello e
+  nelle barrette dello Studio.
+- Righe di Lezioni: anello grande come lo scudo e senza numeri (i numeri nel suggerimento), via
+  "N apprese" dal sottotitolo, scudo della verifica giallo o verde, icone cliccabili, "N domande" nel
+  sottotitolo, via il puntino giallo "Da verificare".
+- Card della correzione proposta: Accetta e Mantieni solo icone, modifica col doppio clic sul box,
+  ripristino del testo proposto. Confermate anche le regole di contorno (sotto, C1).
+- In fondo al pannello Verifica si vede quante unità vanno al revisore, con una striscia di tacche; lo
+  stesso elemento va in fondo al pannello Domande al posto della riga di testo di oggi.
+
+### Task
+
+| Id | Cosa |
+|---|---|
+| T1 | Suggerimenti uguali su tutte le icone |
+| E1 | Evidenziatore dello Studio: niente triplo clic, clic destro toglie, scorciatoia E |
+| E2 | Ritorno dallo Studio alla lezione senza segnare l'unità |
+| E3 | Barra di formattazione dell'editor nascondibile |
+| P1 | Tipo consigliato come stellina accanto al tipo |
+| A1 | Indietro da Impostazioni e Job verso la pagina di partenza |
+| K1 | Colori dello studio |
+| N1 | Righe di Lezioni: anello, scudo, icone cliccabili, sottotitolo |
+| C1 | Card della correzione proposta |
+| N3 | Unità al revisore e al recaller in fondo ai pannelli |
+
+Ordine: T1 → E1 → E2 → E3 → P1 → A1 → K1 → N1 → C1 → N3. N1 usa i colori di K1; C1 e N3 usano il
+`Tooltip` come lo lascia T1.
+
+### T1 — Suggerimenti uguali su tutte le icone
+
+File: tutti i componenti con pulsanti a icona o icone con `title=` (per esempio `HighlightTools` in
+`frontend/src/components/study/Study.tsx`: evidenziatore e gomma hanno `title`, e il browser mostra il
+suo suggerimento grigio invece di quello di RT), `frontend/src/components/ui/tooltip.tsx`,
+`frontend/src/components/ui/icon-button.tsx`.
+
+- Ogni elemento cliccabile che mostra solo un'icona usa il `Tooltip` di RT (o `IconButton`, che lo
+  usa già), con lo stesso ritardo condiviso della b3. Nessun `title=` su pulsanti, link e icone: va
+  tolto, e il testo passa al `Tooltip` (il nome accessibile resta in `aria-label`).
+- Restano i `title` che non sono suggerimenti di icone (titoli di `Modal`, `PageHeader`, ecc.) e quelli
+  su testo troncato, se servono per leggere il testo intero.
+- Il suggerimento dell'evidenziatore: "Evidenziatore giallo · clic: colore successivo · E"; della gomma:
+  "Gomma · clic su un'evidenziazione per toglierla · E" (la scorciatoia arriva con E1).
+- Nessuna modifica al comportamento del `Tooltip` stesso.
+
+Test: un vitest che fallisce se un componente in `frontend/src/components` mette `title=` su un
+`<button>` o su un `<a>`/`Link` (controllo sul sorgente o sul DOM renderizzato delle schermate
+principali, a scelta); vitest di `HighlightTools`: al passaggio del mouse compare il suggerimento di RT
+(`role="tooltip"`).
+
+### E1 — Evidenziatore dello Studio
+
+File: `frontend/src/components/study/highlights.ts`, `Study.tsx` (`HighlightTools` e il gestore dei
+tasti della fase di lettura).
+
+- **Triplo clic**: in modalità evidenziatore un triplo clic non deve creare un'evidenziazione di tutto
+  il paragrafo. Sul contenitore del testo, un `mousedown` con `event.detail >= 3` fa
+  `preventDefault()` (niente selezione del paragrafo), e in ogni caso una selezione nata da un triplo
+  clic non si evidenzia. Il doppio clic su una parola continua a evidenziarla.
+- **Clic destro**: in entrambe le modalità, il clic destro (`contextmenu`) su un'evidenziazione la
+  toglie come fa la gomma (stessa chiamata `highlightsApi.remove`) e non apre il menu del browser. Il
+  clic destro fuori dalle evidenziazioni resta quello del browser. Su iPhone non cambia nulla.
+- **Scorciatoia E**: nella fase di lettura (stesse condizioni del tasto S: non nei campi di testo, non
+  con Cmd/Ctrl/Alt, non in lettura veloce) il tasto E passa da evidenziatore a gomma e viceversa. Il
+  colore resta quello scelto.
+
+Test: vitest — `contextmenu` su un'evidenziazione la toglie e chiama l'API; E alterna le due modalità
+(e non fa nulla dentro un input); `mousedown` con `detail: 3` è annullato. E2e — clic destro su
+un'evidenziazione salvata la toglie e al ricaricamento non torna.
+
+### E2 — Ritorno dallo Studio senza segnare l'unità
+
+File: `Study.tsx` (link "Esci" di S1), `frontend/src/components/lesson/LessonEditor.tsx` (effetto su
+`#unit-`, `setLinkedUnit`), `frontend/src/components/lesson/DocumentView.tsx`.
+
+- Oggi `/lezioni/{id}#unit-{unità}` porta l'unità in vista **e** la segna (`setLinkedUnit`). Dallo
+  Studio deve solo portarla in vista. La freccia "Esci" passa uno stato del router (per esempio
+  `state: { fromStudy: true }`) e l'editor, con quello stato, fa solo lo scroll senza `setLinkedUnit`.
+- Gli altri link "Vai all'unità" (Classificatore, Rilevanza, ecc.) continuano a segnare l'unità.
+
+Test: aggiornare l'e2e di S1 — dopo "Esci" l'unità è in vista ma non segnata; un e2e esistente di
+"Vai all'unità" continua a vederla segnata.
+
+### E3 — Barra di formattazione nascondibile
+
+File: `frontend/src/components/lesson/EditorToolbar.tsx`, `LessonEditor.tsx`, la sezione "Editor e
+scorciatoie" delle Impostazioni (`frontend/src/lib/settings.ts` e il componente della sezione), le
+preferenze lato server dell'editor.
+
+- Nuova preferenza "Barra di formattazione" (Sì/No, predefinito Sì) nella sezione **Editor e
+  scorciatoie**, salvata sul server come le altre preferenze dell'editor.
+- Con "No" la barra (annulla/ripeti, elenchi, grassetto, corsivo, barrato, codice, evidenzia, link,
+  cerca) non si mostra; le scorciatoie da tastiera continuano a funzionare.
+
+Test: vitest della sezione (cambia e salva la preferenza); e2e — con "No" la barra non c'è nella
+lezione e Cmd/Ctrl+B mette comunque il grassetto; alla fine il test rimette la preferenza com'era.
+
+### P1 — Tipo consigliato come stellina
+
+File: `Study.tsx` (`GenerateUnitQuestions`, `UNIT_TYPES`), `frontend/src/components/lesson/panels/QuestionsPanel.tsx`
+(`TYPES`, select "Tipo"), `frontend/src/components/recall/EmptyGeneration.tsx`,
+`frontend/src/lib/questionTypes.ts`.
+
+- **Opzioni = solo i tipi.** Sparisce "Consigliato" (popup) e "Consigliato per ogni unità" (pannello).
+  Il tipo consigliato ha accanto una stellina (`Sparkles` di lucide, colore d'accento, 14 px) e il
+  suggerimento "Consigliato da Jev"; quando il popup o il pannello si aprono è già selezionato.
+- **Nomi uguali dappertutto**: le etichette vengono da `QUESTION_TYPE_LABELS` (oggi il pannello dice
+  "Caso" e il popup "Caso clinico"). Nel popup dell'unità e nella fine delle domande di un'unità
+  niente "Vasta" (come oggi); nel pannello Domande della lezione "Vasta" c'è.
+- **Popup dell'unità** (Studio, "Genera domande · unità"): chip dei tipi, stellina su `suggested_qtype`
+  dell'unità.
+- **Pannello Domande** ("Genera altre domande"): il select diventa una fila di chip come nel popup.
+  La stellina va sul tipo consigliato per **più unità** fra quelle selezionate per il recaller, e il suo
+  suggerimento dice "Consigliato per N unità su M". Generando, il tipo scelto vale per tutte le unità.
+  Il qtype `consigliato` resta nell'API (per compatibilità), ma l'interfaccia non lo usa più.
+- **Fine delle domande** (`EmptyGeneration`): una sola riga "Quante · chip dei tipi con la stellina ·
+  Genera", al posto di "Genera consigliato" e "Genera personalizzato". Il tipo consigliato è già
+  selezionato; la sessione riprende da sola come oggi.
+- Senza Jev configurato (`suggestions` falso) non c'è stellina e il primo tipo selezionato è Quiz.
+
+Test: aggiornare i vitest di Q2 (popup, pannello, fine domande): nessuna opzione "Consigliato", la
+stellina sul tipo giusto, il tipo consigliato preselezionato, nel pannello il conteggio "N unità su M".
+Aggiornare gli e2e di Q2.
+
+### A1 — Indietro da Impostazioni e Job
+
+File: `frontend/src/components/Layout.tsx` (sezioni `JOBS` e `SETTINGS`), le pagine
+`frontend/src/routes/settings.tsx` e `frontend/src/routes/jobs.tsx`.
+
+- Quando si entra in Impostazioni (`/impostazioni…`, `/bot…`) o in Job (`/job…`, `/importa…`) da
+  un'altra pagina, RT si ricorda l'indirizzo completo di partenza (percorso, query e `#`, per esempio
+  `/lezioni/15?panel=verifica#unit-2.4` o `/studio/lezione/15`).
+- Nell'intestazione di Impostazioni e di Job compare la freccia indietro (come nello Studio, con il
+  suggerimento "Indietro") che riporta lì. Anche un secondo clic sull'icona Impostazioni (o Job) nella
+  barra laterale, e nella barra in basso dell'iPhone, riporta lì.
+- Spostarsi fra le sezioni delle Impostazioni non cambia l'indirizzo di partenza. Se si è arrivati
+  direttamente (link aperto da fuori, ricarica), la freccia porta a Lezioni.
+- Passando da Impostazioni a Job (o viceversa) vale sempre la prima pagina fuori da entrambe.
+
+Test: vitest della logica dell'indirizzo di partenza; e2e — dalla lezione con il pannello Verifica
+aperto si va in Impostazioni, si cambia sezione, freccia indietro → di nuovo la lezione con il
+pannello aperto; lo stesso con il secondo clic sull'icona; da Job allo stesso modo.
+
+### K1 — Colori dello studio
+
+File: `frontend/src/index.css`, `Study.tsx` (barrette, riga ~601, e pulsante dello stato),
+`frontend/src/components/lessons/LessonsView.tsx` (`StudyRing`),
+`frontend/src/components/lessons/SelectionDetails.tsx`. Wireframe: **lezioni**.
+
+- Nuovi token in `index.css`, chiaro e scuro: `--study-learned`, `--study-learning`,
+  `--study-ignored`, `--study-track` (valori del wireframe: chiaro `#13896b`, `#e8a317`, `#d4382a`,
+  `#e6e6e6`; scuro `#5cc79f`, `#f5c242`, `#ff6b5b`, `#333333`), con le classi Tailwind
+  corrispondenti. Il tema Irlen, se ridefinisce i colori, li ridefinisce anche qui.
+- Usano questi token: le barrette dello Studio (oggi `bg-success`, `bg-warning`, `bg-danger`),
+  l'anello di Lezioni, le icone del pulsante dello stato nello Studio, i pallini dei Dettagli della
+  selezione. `success`, `warning` e `danger` restano per tutto il resto.
+- Anello: fra un arco e l'altro un piccolo stacco (circa 3 unità su 100 di `pathLength`), come nel
+  wireframe.
+
+Test: vitest di `StudyRing` (archi presenti con i nuovi colori); aggiornare i test che controllano le
+classi delle barrette.
+
+### N1 — Righe di Lezioni
+
+File: `LessonsView.tsx` (`LessonRow`, `StudyRing`, `StatusDot`), `frontend/src/lib/lessonsPage.ts`
+(`lessonSubtitle`, `lessonStatus`). Wireframe: **lezioni** (Proposta, Computer e iPhone).
+
+- **Anello**: 19 px come lo scudo, tratto di circa 2,6 px; **niente numero** accanto (via "1/11").
+  Suggerimento RT: "N apprese · N da apprendere · N ignorate" (singolare "appresa", "ignorata"), dove
+  "da apprendere" = unità − apprese − ignorate. Il nome accessibile è lo stesso testo.
+- **Sottotitolo**: via "N apprese"; si aggiunge "N domande" (da `recall_questions`, solo se > 0) dopo
+  "N unità".
+- **Scudo della verifica** (`ShieldCheck` di lucide, 19 px): verde (`--study-learned`) se
+  `phases.review === 'VALID'` e `pending_issues === 0`; giallo (`--study-learning`) in tutti gli altri
+  casi con la rielaborazione fatta; nessuno scudo se `phases.rewrite !== 'VALID'`. Suggerimento:
+  "Verifica fatta", "Verifica da fare" o "Verifica da fare · N issue da decidere".
+- **Posizione**: a destra della riga; su computer anello e scudo in riga, sull'iPhone (`max-md`) uno
+  sopra l'altro. Ogni icona ha il suo posto fisso anche quando manca (posto vuoto), così gli scudi
+  restano in colonna. Area da toccare 34 px su computer, 40 px sull'iPhone.
+- **Clic**: anello → `/studio/lezione/{id}`; scudo → `/lezioni/{id}?panel=verifica`; il resto della
+  riga apre la lezione come oggi. Oggi tutta la riga è un `Link`: non si mettono link dentro un link.
+  Il titolo diventa il link e copre la riga con un `::after` assoluto; anello e scudo sono link
+  separati sopra (`position: relative; z-index: 1`). Con la selezione attiva le icone non ci sono
+  (come oggi l'anello).
+- **Puntino**: lo stato "da verificare" non ha più il puntino giallo (lo dice lo scudo): si disegna come
+  "pronta". `lessonStatus` e i conteggi che lo usano restano com'erano.
+
+Test: vitest di `lessonSubtitle` (domande sì, apprese no) e della riga (scudo verde/giallo/assente,
+link giusti, nessun `<a>` dentro un `<a>`); e2e — clic sull'anello apre lo Studio, clic sullo scudo apre
+la lezione con il pannello Verifica, clic sul titolo apre la lezione; a 390 px anello e scudo in
+colonna e il titolo non si sovrappone.
+
+### C1 — Card della correzione proposta
+
+File: `frontend/src/components/lesson/panels/ReviewPanel.tsx` (`IssueCard`) e il suo test. Wireframe:
+**correzione**.
+
+Vale per le issue con correzione proposta (`!paragraphIssue(issue)`). Le issue di paragrafo restano
+come oggi.
+
+- **Accetta** e **Mantieni** diventano pulsanti a sola icona (`Check`, accento come oggi; `X`,
+  contorno) con il `Tooltip`: "Accetta la correzione" e "Mantieni il testo attuale". Il pulsante
+  "Modifica" sparisce. Sull'iPhone restano grandi (48 px di altezza come oggi).
+- **Modifica**: doppio clic sul box "Correzione proposta" (sull'iPhone basta un tocco). Il box diventa
+  bianco con il bordo d'accento e il testo si modifica lì dentro (textarea che cresce col testo, il
+  cursore dove si è cliccato o alla fine). Passando sul box (solo con il mouse) compare "Doppio clic per
+  modificare".
+- In modifica, a destra di "Correzione proposta", fuori dal box, compare un piccolo pulsante a icona
+  (`RotateCcw`) "Ripristina la correzione proposta", attivo solo se il testo è cambiato.
+- **Applicare**: clic fuori dal box o su ✓ (o Cmd/Ctrl+Invio) → decisione `edited` con il testo scritto.
+  Il suggerimento di ✓ in modifica con testo cambiato diventa "Applica la tua correzione".
+- **Regole confermate**: uscire dal box senza aver cambiato nulla non decide niente (il box torna
+  com'era); Esc annulla la modifica senza decidere; ✕ durante la modifica vale "Mantieni" e scarta il
+  testo scritto; il testo vuoto non si applica.
+- Lo stato `editing` del pannello (oggi passato a `IssueCard`) si adatta: niente più form separato per
+  queste issue.
+
+Test: vitest — doppio clic apre la modifica; clic fuori con testo cambiato manda `edited` con quel
+testo; clic fuori senza cambi non manda nulla; Esc annulla; ✕ in modifica manda `rejected`; il
+ripristino rimette il testo proposto; i due pulsanti hanno solo l'icona e il nome accessibile. E2e —
+modifica col doppio clic e clic fuori: l'issue passa fra le decise come "modificata" e il testo nel
+documento è quello scritto.
+
+### N3 — Unità al revisore e al recaller
+
+File: `rt/services/unit_relevance.py` (`list_units`), `rt/api/schemas.py` e il router di
+`/lessons/{id}/relevance` in `rt/api/routers/lessons.py` (schema `UnitRelevanceOverview`), `ReviewPanel.tsx`, `QuestionsPanel.tsx` (footer di oggi, righe ~645-670), un
+componente condiviso nuovo (per esempio `frontend/src/components/lesson/panels/UnitStrip.tsx`).
+Wireframe: **revisore** (pannello "Proposta").
+
+- **Regola** (già nel codice, non cambia): al revisore vanno le unità per cui
+  `unit_relevance.included(lesson_dir, unit)` è vero, cioè le didattiche col classificatore attivo,
+  tutte col classificatore spento, e quelle non classificate o cambiate dopo la classificazione.
+- **API**: ogni riga di `GET /lessons/{id}/relevance` aggiunge `review_included: bool`, calcolato con
+  `included()` (così l'interfaccia non rifà la regola). Rigenerare openapi e `schema.d.ts`.
+- **Elemento** in fondo al pannello Verifica (sotto "Verifica di nuovo tutta la lezione", con il bordo
+  in alto come il footer del pannello Domande):
+  - una **striscia** con una tacca per unità, in ordine: piena (accento) se va al revisore, vuota (solo
+    contorno) se è esclusa, a righe se non è ancora classificata o è cambiata (`stale` o senza
+    `prediction`) ma va comunque. Passando su una tacca: "2.4 Emogasanalisi · va al revisore" /
+    "· esclusa" / "· non classificata, va al revisore".
+  - accanto il numero "15/18" (incluse/totale), senza altro testo.
+  - passando sulla striscia (fuori dalle tacche) il suggerimento con la regola in una riga: "Al revisore
+    vanno le unità didattiche secondo il classificatore" (+ ", più quelle non ancora classificate" se
+    ce ne sono); col classificatore spento "Classificatore spento: al revisore vanno tutte le unità".
+  - a destra un pulsante a icona etichette (`Tag`) che apre il classificatore (come oggi "Rivedi le
+    etichette"), con un puntino verde se il classificatore è aggiornato e giallo se va rifatto
+    (stesso stato che il footer del pannello Domande mostra oggi come testo); suggerimento "Rivedi le
+    etichette · classificatore aggiornato / da aggiornare". Col classificatore spento non c'è.
+  - un clic sulla striscia apre anche lui il classificatore.
+- **Pannello Domande**: lo stesso componente al posto delle due righe di oggi ("Unità per il recaller:
+  18 di 18 (solo rilevanti) · Scegli" e "Classificatore: … · Rivedi le etichette"). Qui la tacca è piena
+  se l'unità è selezionata per il recaller; un clic sulla striscia apre il popup "Unità per il recaller"
+  (oggi "Scegli"); il suggerimento della striscia dice "Al recaller vanno le unità rilevanti" oppure
+  "Scelta personalizzata"; l'icona etichette come sopra.
+- Su iPhone niente suggerimenti al passaggio: il clic fa quello che fa su computer.
+
+Test: pytest — `review_included` coincide con `included()` (classificatore spento, attivo, unità stale);
+vitest del componente (tacche piene/vuote/a righe, conteggio, puntino, clic); vitest dei due pannelli
+(il footer di testo di oggi non c'è più). E2e — nel pannello Verifica di una lezione con il
+classificatore attivo il numero e le tacche corrispondono, e il clic sull'icona apre il classificatore.
+
+### Revisione, merge e stabile (Claude)
+
+Claude rivede il diff, prova le parti toccate, fa le correzioni brevi con commit "Revisione: …", unisce
+in `claude/rt-4.2.3-beta`, imposta VERSION `4.2.3`, lancia **tutti** i test in locale (pytest,
+frontend, build, entrambi i gruppi e2e). Poi apre la PR da `claude/rt-4.2.3-beta` verso `main` (la PR
+#63 con i fix urgenti va unita prima, o chiusa se è già tutto nella beta), e dopo il merge di Attilio
+lancia `release.yml` su `main` e segue il run fino alla fine.
