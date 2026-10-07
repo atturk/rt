@@ -3,7 +3,9 @@ rt.api.schemas
 Schemi Pydantic delle risposte e delle richieste dell'API (compaiono nell'OpenAPI e da lì nel
 client generato della SPA).
 """
-from typing import Any, Dict, List, Literal, Optional
+from datetime import datetime
+from typing import Union, Any, Dict, List, Literal, Optional
+from rt.services.study_progress_service import StudyStatus
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
@@ -16,6 +18,7 @@ class LessonExportRequest(BaseModel):
     ids: List[int] = Field(min_length=1, description="Id delle lezioni")
     format: Literal["markdown", "zip"] = "markdown"
     name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
+    study: bool = Field(False, description="Include lo stato di studio negli archivi completi")
 
 
 class LessonMetadataUpdate(BaseModel):
@@ -64,6 +67,10 @@ class LessonSummary(BaseModel):
     duration_seconds: Optional[float] = Field(None, description="Durata dell'audio della lezione, se nota")
     recall_questions: int = Field(0, description="Domande di recall nel pool della lezione")
     recall_pending: int = Field(0, description="Domande del pool non ancora poste (da fare)")
+    study_learned: int = Field(0, description="Unità apprese nella scaletta attuale")
+    study_ignored: int = Field(0, description="Unità ignorate nella scaletta attuale")
+    study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
+    study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
     error: Optional[str] = None
 
 
@@ -119,7 +126,13 @@ class LessonActions(BaseModel):
     export_zip: LessonAction
 
 
+class ReviewProgress(BaseModel):
+    reviewed: int
+    total: int
+
+
 class LessonDetail(LessonSummary):
+    review_progress: Optional[ReviewProgress] = None
     phase_report: List[PhaseState]
     segment_count: int = 0
     outline_approved: bool = False
@@ -158,6 +171,7 @@ class LessonDocument(BaseModel):
 
 
 class UnitRelevanceItem(BaseModel):
+    review_included: bool = Field(description="Unità inclusa nella verifica secondo la regola condivisa del classificatore")
     unit_id: str
     title: str
     content: str
@@ -447,6 +461,7 @@ class CredentialTest(BaseModel):
 # ---------------------------------------------------------------- recall
 
 class RecallQuestion(BaseModel):
+    remaining: Optional[int] = Field(None, ge=0, description="Domande pendenti dopo quella restituita, con gli stessi filtri di next")
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
     type: str
@@ -507,7 +522,21 @@ class RecallUnits(BaseModel):
     selected: int
 
 
+class StudyStatusUpdate(BaseModel):
+    status: StudyStatus
+
+
+class StudyProgress(StudyStatusUpdate):
+    unit_id: str
+    status_at: Optional[datetime] = None
+    last_read_at: Optional[datetime] = None
+
+
+SuggestedQuestionType = Literal["quiz", "mirata", "caso", "esercizio"]
+
+
 class StudyUnit(BaseModel):
+    suggested_qtype: Optional[SuggestedQuestionType] = None
     id: str
     title: str
     html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
@@ -515,9 +544,13 @@ class StudyUnit(BaseModel):
     end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
     pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")
     questions: int = Field(description="Totale delle domande da porre sull'unità")
+    status: StudyStatus = "da-imparare"
+    status_at: Optional[datetime] = None
+    last_read_at: Optional[datetime] = None
 
 
 class StudyLesson(BaseModel):
+    suggestions: bool = False
     id: int
     ready: bool = Field(description="False se la lezione non ha ancora una rielaborazione valida (nessuna unità)")
     has_audio: bool
@@ -547,7 +580,7 @@ class RecallHistory(BaseModel):
 
 
 class RecallGenerate(BaseModel):
-    qtype: Optional[QuestionType] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
+    qtype: Optional[Union[QuestionType, Literal["consigliato"]]] = Field(None, description="Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)")
     count: Optional[int] = Field(None, ge=1, le=50)
     unit_ids: Optional[List[str]] = Field(None, max_length=200, description="Solo queste unità (Domande su questa parte): "
                                           "quiz, mirate, casi ed esercizi, anche se l'unità non è fra quelle selezionate per il recall")

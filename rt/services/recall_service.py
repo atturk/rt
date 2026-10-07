@@ -7,6 +7,7 @@ rt.tui.recall (terminale). Il motore delle domande resta rt.pipeline.recall.
 """
 import json
 import os
+import uuid
 from typing import Any, List, Optional
 
 from rt.core.lesson_paths import lesson_path
@@ -66,7 +67,8 @@ def load_recall_session_state(lesson_dir: str) -> dict:
 
 def save_recall_session_state(lesson_dir: str, state: dict) -> None:
     path = get_recall_session_state_path(lesson_dir)
-    tmp_path = path + ".tmp"
+    # Temporaneo unico: due richieste insieme (Studio e sessione) non si rubano il file.
+    tmp_path = f"{path}.{uuid.uuid4().hex[:8]}.tmp"
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)
@@ -82,6 +84,20 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progre
     from rt.core.config import load_config
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
 
+    if qtypes == ["consigliato"]:
+        from rt.services import question_types
+        from rt.services.recall_units import selected_units, _units
+        units = selected_units(lesson_dir) if unit_ids is None else [u for u in _units(lesson_dir) if u.unit_id in set(unit_ids)]
+        records = question_types.refresh(lesson_dir, force_mock=force_mock, unit_ids=[u.unit_id for u in units])
+        groups = {}
+        for unit in units:
+            kind = records.get(unit.unit_id, {}).get("type") or "quiz"
+            groups.setdefault(kind, []).append(unit.unit_id)
+        generated = {}
+        for kind, quota in question_types.allocate(groups, count if count is not None else 10).items():
+            generated.update(generate_pool(lesson_dir, force_mock=force_mock, qtypes=[kind], progress=progress,
+                                           unit_ids=groups[kind], instructions=instructions, selection=selection, count=quota))
+        return generated
     types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType])]
     state_dir = load_config().telegram.state_dir
     generated = {}
@@ -337,10 +353,12 @@ def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None) -> int:
     """Domande da porre del tipo (o di tutti, "mista"), eventualmente solo di un'unità."""
     from rt.pipeline.recall import _allowed_units, _question_allowed, load_recall_bank, on_unit
     types = set(resolve_types(qtype))
-    allowed = _allowed_units(lesson_dir)
+    from rt.services.study_progress_service import ignored_unit_ids
+    allowed = None if unit_id is not None else _allowed_units(lesson_dir)
+    ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
     return sum(1 for q in load_recall_bank(lesson_dir).questions
                if q.type in types and q.status == RecallQuestionStatus.PENDING and _question_allowed(q, allowed)
-               and (unit_id is None or on_unit(q, unit_id)))
+               and not ignored.intersection(q.unit_ids) and (unit_id is None or on_unit(q, unit_id)))
 
 
 def next_question_for(lesson_dir: str, qtype, order: str = "alternato",

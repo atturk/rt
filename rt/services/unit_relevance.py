@@ -228,6 +228,7 @@ def list_units(lesson_dir: str, *, view="draft") -> dict:
                      "label": row.get("label") if fresh else None,
                      "answer": row.get("answer") if fresh else None,
                      "override": row.get("override") if fresh else None,
+                     "review_included": included(lesson_dir, unit, view=view),
                      "effective": effective, "error": row.get("error") if fresh else None,
                      "stale": bool(row) and not fresh,
                      "corrected_at": row.get("corrected_at") if fresh else None,

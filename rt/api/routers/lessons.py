@@ -210,6 +210,7 @@ def export_lesson(
                                                "zip: archivio con i file scelti da scope"),
     scope: Literal["final", "all"] = Query("final", description="final: Markdown finale, errori concettuali e "
                                            "immagini richiamate; all: tutti i file della lezione, audio compreso"),
+    study: bool = Query(False, description="Include lo stato di studio nello ZIP completo"),
 ):
     from urllib.parse import quote
     from rt.storage.export import ExportError, export_zip_to_tempfile, final_markdown, zip_name
@@ -218,7 +219,7 @@ def export_lesson(
             filename, content = final_markdown(lesson_dir)
             media_type = "text/markdown; charset=utf-8"
         else:
-            path = export_zip_to_tempfile(lesson_dir, scope)
+            path = export_zip_to_tempfile(lesson_dir, scope, study=study)
             filename = zip_name(lesson_dir)
             disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
             return FileResponse(path, media_type="application/zip", filename=filename,
@@ -238,6 +239,7 @@ def export_lessons(
     format: Literal["markdown", "zip"] = Query("markdown", description="markdown: i documenti finali aggiornati; "
                                                "zip: l'archivio completo di ogni lezione"),
     name: str = Query("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)"),
+    study: bool = Query(False, description="Include lo stato di studio negli archivi completi"),
 ):
     from urllib.parse import quote
     from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
@@ -247,7 +249,7 @@ def export_lessons(
     except LessonNotFound as exc:
         raise ApiError(404, "lesson_not_found", str(exc))
     try:
-        path, _count = export_many_to_tempfile(dirs, format)
+        path, _count = export_many_to_tempfile(dirs, format, study=study)
     except ExportError as exc:
         raise ApiError(404, "export_not_available", str(exc))
     filename = many_export_filename(name, format)

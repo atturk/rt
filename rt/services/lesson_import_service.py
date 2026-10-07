@@ -135,4 +135,6 @@ def import_archive(archive: Union[str, BinaryIO]) -> int:
                 raise
         with session_scope(db) as session:
             lesson = LessonRepository(session).get_by_path(target)
+            from rt.services.study_progress_service import restore_units
+            restore_units(session, lesson.id, manifest.get("study"))
             return lesson.id

@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink, openLessonDetails } from './support'
+import { test, apiGet, authHeaders, loginViaLink, openLessonDetails } from './support'
 
 // Documento della lezione come in Obsidian (atomic-editor): si legge e si modifica nello stesso
 // posto, senza modalità né avvisi, e si salva da solo nella bozza. CHIRURGIA è una lezione
@@ -96,4 +96,35 @@ test('anche con issue da valutare si modifica subito, senza avvisi; Ripristina t
   await expect(errors).toHaveCount(0)
   await expect(doc).not.toContainText('Testo fuori posto')
   expect((await apiGet<LessonDocument>(page.request, `/lessons/${farm.id}/document`)).markdown).toBe(before)
+})
+
+
+test('la barra si nasconde ma Ctrl/Cmd+B continua a formattare', async ({ page }) => {
+  const prefs = await apiGet<Record<string, unknown>>(page.request, '/preferences')
+  const names = ['editor.toolbar', 'editor.shortcuts']
+  try {
+    await page.request.put('/api/v1/preferences/editor.toolbar', { headers: authHeaders(), data: false })
+    await page.request.put('/api/v1/preferences/editor.shortcuts', { headers: authHeaders(), data: {} })
+    await loginViaLink(page)
+    const l = await lesson(page, 'CHIRURGIA')
+    await page.goto(`/lezioni/${l.id}`)
+    await expect(page.getByRole('toolbar', { name: 'Strumenti dell’editor' })).toHaveCount(0)
+    const doc = page.getByTestId('lesson-document')
+    const before = (await apiGet<LessonDocument>(page.request, `/lessons/${l.id}/document`)).markdown
+    const line = doc.locator('.cm-line').filter({ hasText: 'Paragrafo aggiunto a mano.' }).first()
+    await line.click()
+    await page.keyboard.press('Home')
+    await page.keyboard.press('Shift+End')
+    await page.keyboard.press('ControlOrMeta+b')
+    await expect.poll(async () => (await apiGet<LessonDocument>(page.request, `/lessons/${l.id}/document`)).markdown).toContain('**Paragrafo aggiunto a mano.**')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(async () => (await apiGet<LessonDocument>(page.request, `/lessons/${l.id}/document`)).markdown).toBe(before)
+  } finally {
+    for (const name of names) {
+      const response = prefs[name] === undefined
+        ? await page.request.delete(`/api/v1/preferences/${name}`, { headers: authHeaders() })
+        : await page.request.put(`/api/v1/preferences/${name}`, { headers: authHeaders(), data: prefs[name] })
+      expect(response.ok()).toBeTruthy()
+    }
+  }
 })

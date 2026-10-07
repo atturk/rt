@@ -1,6 +1,7 @@
 import { GripVertical, X } from 'lucide-react'
 import { useState, type DragEvent, type KeyboardEvent } from 'react'
 
+import { Tooltip } from '@/components/ui/tooltip'
 import { IconButton } from '@/components/ui/icon-button'
 import { formatBytes } from '@/lib/jobs'
 import { moveItem } from '@/lib/order'
@@ -73,17 +74,17 @@ export function AudioOrder({ files, onChange, disabled }: { files: File[]; onCha
             over === index && dragged !== index && 'border-foreground',
           )}
         >
-          <button
+          <Tooltip content="Trascina per riordinare (o usa le frecce)">{(trigger) => <button
+            {...trigger}
             type="button"
             data-audio-handle={index}
             disabled={disabled}
             aria-label={`Riordina ${file.name}: posizione ${index + 1} di ${files.length}, usa le frecce su e giù`}
-            title="Trascina per riordinare (o usa le frecce)"
             onKeyDown={(event) => keyMove(event, index)}
             className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
           >
             <GripVertical className="size-4" aria-hidden />
-          </button>
+          </button>}</Tooltip>
           <span className="w-4 shrink-0 text-right text-muted-foreground">{index + 1}</span>
           <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>
           <span className="shrink-0 text-muted-foreground">{formatBytes(file.size)}</span>

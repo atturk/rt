@@ -161,3 +161,25 @@ def test_summary_says_whether_and_how_the_classifier_ran(tmp_path):
     assert summary["by_label"] == {"Organizzativa": 1}
     assert summary["excluded"] == 1 and summary["model"] == "typesafe/jev-1.13"
     assert summary["last_run_at"] and summary["last_run_mode"] == "active"
+
+
+def test_review_included_uses_shared_rule_for_disabled_active_and_stale(tmp_path):
+    path = setup_mock_lesson(tmp_path, num_units=2)
+    for mode in ("disabled", "active"):
+        with patch.object(gate, "load_config", return_value=_config(mode)):
+            units = load_draft(path).units
+            if mode == "active":
+                gate.refresh(path, force_mock=True)
+                gate.set_override(path, units[0].unit_id, "organizational", actor="test")
+            rows = gate.list_units(path)["units"]
+            assert [row["review_included"] for row in rows] == [gate.included(path, unit) for unit in units]
+            if mode == "active":
+                assert rows[0]["review_included"] is False
+                records = gate._load(path)
+                records[units[0].unit_id]["text_hash"] = "vecchio"
+                gate._save(path, records)
+                stale = gate.list_units(path)["units"][0]
+                assert stale["stale"] and stale["review_included"]
+                assert stale["review_included"] == gate.included(path, units[0])
+            else:
+                assert all(row["review_included"] for row in rows)

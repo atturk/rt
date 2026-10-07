@@ -602,6 +602,25 @@ def test_parse_version_orders_pep440_prereleases():
     assert not is_prerelease("4.0.1") and not is_prerelease("boh")
 
 
+def test_parse_version_orders_hotfix_fourth_digit():
+    """Fix urgenti: la quarta cifra segue la versione che corregge e precede la successiva."""
+    order = ["4.2.2", "4.2.2.1", "4.2.2.2", "4.2.3b1", "4.2.3b1.1", "4.2.3b1.2", "4.2.3b2",
+             "4.2.3", "4.2.3.1", "4.2.10"]
+    assert sorted(reversed(order), key=parse_version) == order
+    assert parse_version("v4.2.2.1") == parse_version("4.2.2.1")
+    assert not is_prerelease("4.2.2.1") and is_prerelease("4.2.3b1.1")
+    assert parse_version("4.2.3.1.1") is None
+
+
+def test_beta_channel_sees_hotfix_releases():
+    releases = [{"tag_name": "v4.2.3b1", "prerelease": True, "draft": False},
+                {"tag_name": "v4.2.3b1.1", "prerelease": True, "draft": False},
+                {"tag_name": "v4.2.2.1", "prerelease": False, "draft": False}]
+    urlopen, _ = _fake_github(releases=releases)
+    with patch("urllib.request.urlopen", side_effect=urlopen):
+        assert get_latest_remote_version("/x", channel="beta") == "4.2.3b1.1"
+
+
 def test_stable_channel_uses_latest_endpoint_only():
     urlopen, seen = _fake_github()
     with patch("urllib.request.urlopen", side_effect=urlopen):

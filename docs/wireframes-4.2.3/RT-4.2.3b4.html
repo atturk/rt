@@ -1,0 +1,346 @@
+<title>Wireframe RT 4.2.3b4</title>
+<style>
+/* Layout: same wireframe frame as 4.2.3b1/b2 (tabs on top, notes, then the app frame); tokens mirror RT's index.css */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --ok:#147464; --ok-soft:#e4f3ed; --warn:#c7761a; --warn-soft:#fff3df; --danger:#b42318;
+  --rail:#fafafa; --orp:#155f52; --edge:rgb(20 116 100 / .45); --bad:#b42318;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --danger:#ff8a7a;
+  --rail:#131313; --orp:#5cc79f; --edge:rgb(92 199 159 / .45); --bad:#ff8a7a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --danger:#ff8a7a;
+  --rail:#131313; --orp:#5cc79f; --edge:rgb(92 199 159 / .45); --bad:#ff8a7a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.notes li{font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg)}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 auto;position:relative;width:1000px;height:600px;display:flex}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0}
+.rail i{width:22px;height:22px;border-radius:6px;background:var(--soft);display:block}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;flex:none}
+.hdr .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:600;color:var(--mute)}
+.ib{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none;position:relative}
+.ib:hover{background:var(--soft)}
+.ib svg{width:18px;height:18px}
+.ib.back{background:var(--soft)}
+.tip{position:absolute;top:40px;left:0;background:var(--fg);color:var(--bg);font-size:12px;padding:4px 8px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:5;opacity:0;transition:opacity .12s}
+.ib:hover .tip,.ib:focus-visible .tip{opacity:1}
+.unitbtn{height:34px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;display:inline-flex;align-items:center;gap:7px;padding:0 10px;white-space:nowrap}
+.body{flex:1;overflow:auto;padding:14px 28px;min-height:0;position:relative}
+.read{max-width:640px;margin:0 auto;transition:transform .3s ease-out}
+.dots{display:flex;gap:4px;align-items:center;height:12px;margin:2px 0 18px}
+.dots i{flex:1;height:3px;border-radius:2px;background:var(--border)}
+.dots i.done{background:var(--ok)}
+.dots i.cur{height:7px;background:var(--fg)}
+.read h3{font-size:21px;margin:0 0 12px;text-wrap:balance}
+.read p{margin:0 0 14px;font-size:15.5px;line-height:1.75;max-width:64ch}
+.btn{height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
+.btn.pri{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc);font-weight:600}
+.btn[disabled]{opacity:.5;cursor:default}
+.btn svg{width:16px;height:16px}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* S2: edge feedback */
+.edge{position:absolute;top:52px;bottom:0;width:28px;pointer-events:none;opacity:0;z-index:3}
+.edge.r{right:0;background:linear-gradient(to left,var(--edge),transparent)}
+.edge.l{left:0;background:linear-gradient(to right,var(--edge),transparent)}
+.edge.go{animation:edge .45s ease-out}
+@keyframes edge{0%{opacity:0}35%{opacity:1}100%{opacity:0}}
+.bump-r{animation:bumpr .3s ease-out}.bump-l{animation:bumpl .3s ease-out}
+@keyframes bumpr{50%{transform:translateX(12px)}}@keyframes bumpl{50%{transform:translateX(-12px)}}
+@media (prefers-reduced-motion: reduce){.bump-r,.bump-l{animation:none}.edge.go{animation:edgeq .3s ease-out}@keyframes edgeq{0%,100%{opacity:0}40%{opacity:.6}}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.log{font-size:13px;color:var(--mute);min-height:20px}
+/* R: review */
+.ed{flex:1;overflow:auto;padding:18px 28px;min-width:0}
+.ed h3{font-size:18px;margin:16px 0 4px}
+.tc{display:inline-flex;align-items:center;gap:6px;margin-bottom:8px}
+.chip{font-family:var(--mono);font-size:12.5px;border:1px solid var(--border);border-radius:8px;padding:1px 8px}
+.ui{width:24px;height:24px;border-radius:50%;border:0;background:transparent;color:var(--warn);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative}
+.ui:hover{background:var(--warn-soft)}
+.ui.sel{background:var(--warn-soft);box-shadow:0 0 0 2px var(--warn)}
+.ui svg{width:16px;height:16px}
+.ui .tip{top:28px}
+.ui:hover .tip,.ui:focus-visible .tip{opacity:1}
+.ed p{margin:0 0 12px;line-height:1.75;font-size:15px;max-width:66ch}
+.u{text-decoration:underline dotted var(--warn) 2px;text-underline-offset:4px}
+.u.sel{background:var(--warn-soft)}
+.side{width:330px;flex:none;border-left:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.side .st{font-weight:600}
+.small{font-size:13px;color:var(--mute)}
+.seg2{display:inline-flex;flex-wrap:wrap;gap:4px}
+.seg2 button{border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;border-radius:8px;padding:4px 9px;cursor:pointer}
+.seg2 button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.issue{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:grid;gap:4px;font-size:13.5px}
+.issue b{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--warn)}
+/* Q: generation */
+.card{border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;display:grid;gap:14px;justify-items:center;background:var(--bg)}
+.gen{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:12px;border-radius:10px;background:var(--soft)}
+.gen label{font-size:13px;color:var(--mute)}
+.num{width:58px;height:36px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;text-align:center}
+.sel2{height:36px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;padding:0 8px}
+.vr{width:1px;height:22px;background:var(--border)}
+.modal{border:1px solid var(--border);border-radius:14px;padding:20px;width:400px;max-width:100%;background:var(--bg);box-shadow:0 12px 28px rgb(0 0 0/.18);display:grid;gap:12px;text-align:left}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:0;border-radius:999px;padding:5px 12px;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.chips button[aria-pressed="true"]{background:var(--acc-soft);color:var(--acc);font-weight:600}
+.chips svg{width:14px;height:14px}
+/* L6: phone */
+.phone{width:390px;height:640px;border:1px solid var(--border);border-radius:30px;background:var(--bg);margin:0 auto;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.phone .hdr{height:48px}
+.rsvp{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.rsvp .cl{position:absolute;left:50%;top:30%;bottom:30%;width:1px;background:var(--border)}
+.w{display:flex;align-items:baseline;white-space:pre;line-height:1.2;font-family:var(--sans)}
+.w .pre,.w .post{display:inline-block;width:4.6em;overflow:visible}
+.w .pre{text-align:right}
+.w .orp{color:var(--orp)}
+.w.out .post{color:var(--bad)}
+.rsvp-ctl{padding:14px;border-top:1px solid var(--border);display:grid;gap:10px;justify-items:center}
+.meter{font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums;text-align:center}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:760px){.grid2{grid-template-columns:minmax(0,1fr)}}
+</style>
+
+<div class="top">
+  <h1>RT 4.2.3b4</h1>
+  <div class="tabs" role="group" aria-label="Schede">
+    <button data-tab="studio" aria-pressed="true">Studio</button>
+    <button data-tab="rev" aria-pressed="false">Revisione</button>
+    <button data-tab="dom" aria-pressed="false">Domande finite</button>
+    <button data-tab="rsvp" aria-pressed="false">Lettura veloce iPhone</button>
+  </div>
+  <span class="meta">Wireframe del piano 4.2.3b4 (docs/REWORK_4.2.3.md). Dove non coincidono vale il piano.</span>
+</div>
+
+<!-- ============ STUDIO ============ -->
+<section class="wrap" id="tab-studio">
+  <div class="notes">
+    <h2>S1 e S2: "Esci" porta alla lezione, fine delle unità sul bordo</h2>
+    <ul>
+      <li>La freccia <b>Esci</b> apre la lezione sull'unità aperta (<span class="kbd">/lezioni/7#unit-2.2</span>). L'icona "Apri la lezione" accanto al titolo non c'è più.</li>
+      <li>Prova <span class="kbd">←</span> <span class="kbd">→</span> (anche da tastiera dopo un clic nel riquadro): alla prima e all'ultima unità si resta lì, il bordo si illumina e il testo rimbalza. Nessuna pagina "Hai finito lo Studio".</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame" id="studio" tabindex="0">
+    <div class="rail"><i></i><i></i></div>
+    <div class="main">
+      <div class="hdr">
+        <button class="ib back" id="esci" aria-label="Esci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span class="tip">Esci</span></button>
+        <span class="t">Fisiopatologia dell'equilibrio acido-base: sistemi tampone, meccanismi di compenso e interpretazione clinica dei disturbi</span>
+        <span class="unitbtn" id="unitlbl">Unità 1 di 4</span>
+      </div>
+      <div class="edge l" id="edgeL"></div><div class="edge r" id="edgeR"></div>
+      <div class="body"><div class="read" id="readbox">
+        <div class="dots" id="dots"></div>
+        <h3 id="utitle"></h3>
+        <p id="utext"></p>
+      </div></div>
+      <div style="border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="prev">← Unità precedente (tasto ←)</button>
+        <button class="btn" id="next">Unità successiva (tasto →) →</button>
+        <span class="log" id="slog" aria-hidden="true"></span>
+        <span class="sr" aria-live="polite" id="live"></span>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ REVISIONE ============ -->
+<section class="wrap" id="tab-rev" hidden>
+  <div class="notes">
+    <h2>R1 e R2: pannello della revisione, issue di tutta l'unità</h2>
+    <ul>
+      <li>Le issue che riguardano tutta l'unità (qualità ASR, fedeltà al parlato) sono icone accanto al timestamp, solo in revisione. Le sottolineature a puntini restano per le frasi precise.</li>
+      <li>Clic su un'icona: l'issue si seleziona nella sidebar. Prova anche a cambiare lo stato del pannello qui sotto: "Riprendi la pipeline" non c'è più.</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame">
+    <div class="main" style="flex-direction:row">
+      <div class="ed">
+        <h3>2.1 Regolazione omeostatica del pH</h3>
+        <div class="tc"><span class="chip">24:12</span></div>
+        <p>La concentrazione degli idrogenioni nel sangue è regolata in un intervallo molto stretto. <span class="u" data-i="c1">Il pH arterioso normale è compreso tra 7,20 e 7,30.</span> Piccole variazioni modificano la struttura delle proteine e l'attività degli enzimi.</p>
+        <h3>2.2 Valori fisiologici del pH nei diversi compartimenti biologici</h3>
+        <div class="tc"><span class="chip">29:07</span>
+          <button class="ui" data-i="a1" aria-label="Qualità ASR · statistica"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3"/></svg><span class="tip">Qualità ASR · statistica</span></button>
+          <button class="ui" data-i="d1" aria-label="Fedeltà al parlato"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/><path d="m15 9-3-3 3-3"/><circle cx="19" cy="18" r="3"/><path d="M12 18H7a2 2 0 0 1-2-2V9"/><path d="m9 15 3 3-3 3"/></svg><span class="tip">Fedeltà al parlato</span></button>
+        </div>
+        <p>L'unità introduce l'analisi del pH nei diversi compartimenti biologici dell'organismo, partendo dall'emogasanalisi arteriosa. Il prelievo arterioso è utilizzato per valutare il pH del sangue e gli scambi gassosi.</p>
+        <p>Il pH non assume lo stesso valore in tutti i compartimenti dell'organismo. Nei succhi gastrici il pH è decisamente più basso; anche le urine presentano, in condizioni normali, un pH tendenzialmente acido.</p>
+      </div>
+      <div class="side">
+        <div class="small">Stato del pannello (solo nel wireframe):</div>
+        <div class="seg2" role="group" aria-label="Stato del pannello" id="rstate">
+          <button data-s="partial" aria-pressed="false">A metà</button>
+          <button data-s="pending" aria-pressed="true">Da decidere</button>
+          <button data-s="stale" aria-pressed="false">Testo cambiato</button>
+          <button data-s="done" aria-pressed="false">Tutte decise</button>
+          <button data-s="built" aria-pressed="false">Documento aggiornato</button>
+        </div>
+        <div id="rpanel" style="display:grid;gap:10px"></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ DOMANDE ============ -->
+<section class="wrap" id="tab-dom" hidden>
+  <div class="notes">
+    <h2>Q2: tipo consigliato</h2>
+    <ul>
+      <li>Quando le domande finiscono: <b>Quante</b>, poi <b>Genera consigliato</b> (il tipo che Jev consiglia per l'unità) oppure un tipo scelto e <b>Genera personalizzato</b>. Finito il job la sessione riprende da sola.</li>
+      <li>Nel popup "Genera domande" il primo chip è "Consigliato", già selezionato. Senza Jev configurato non compare nulla di tutto questo.</li>
+    </ul>
+  </div>
+  <div class="grid2">
+    <div class="card" id="qcard">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--mute)"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/></svg>
+      <div><div style="font-weight:600">Hai finito le domande di questa unità</div><div class="small">Puoi generarne altre, tornare al testo dell'unità o andare avanti.</div></div>
+      <div class="gen" id="genrow">
+        <label for="qn">Quante</label><input class="num" id="qn" type="number" min="1" max="20" value="3">
+        <button class="btn pri" id="gcons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 14.06 4 20M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8Z"/></svg>Genera consigliato · Mirata</button>
+        <span class="vr"></span>
+        <label for="qt" class="sr">Tipo</label>
+        <select class="sel2" id="qt"><option>Quiz</option><option>Mirata</option><option>Caso clinico</option><option>Esercizio</option></select>
+        <button class="btn" id="gpers">Genera personalizzato</button>
+      </div>
+      <div class="ctl" style="justify-content:center">
+        <button class="btn">Riproponi le sbagliate (1)</button>
+        <button class="btn">Riproponi le poste (24)</button>
+        <button class="btn">Torna allo studio</button>
+        <button class="btn pri">Unità successiva</button>
+      </div>
+    </div>
+    <div class="modal" role="dialog" aria-label="Genera domande">
+      <div style="font-weight:600;font-size:17px">Genera domande · Regolazione omeostatica del pH e significato delle variazioni degli idrogenioni</div>
+      <div class="small">Tipo</div>
+      <div class="chips" id="mchips">
+        <button aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8Z"/></svg>Consigliato · Mirata</button>
+        <button aria-pressed="false">Quiz</button><button aria-pressed="false">Mirata</button><button aria-pressed="false">Caso clinico</button><button aria-pressed="false">Esercizio</button>
+      </div>
+      <div class="ctl"><label class="small" for="mq">Quante</label><input class="num" id="mq" type="number" value="3" min="1" max="20"></div>
+      <div class="ctl" style="justify-content:flex-end"><button class="btn">Annulla</button><button class="btn pri">Genera</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RSVP ============ -->
+<section class="wrap" id="tab-rsvp" hidden>
+  <div class="notes">
+    <h2>L6: parole lunghe nella lettura veloce</h2>
+    <ul>
+      <li>La lettera di fuoco resta sempre sulla linea centrale. Una parola che non sta si rimpicciolisce quanto basta (misura vera con il canvas, qui sotto); sotto il 70 % si divide con il trattino.</li>
+      <li>Usa <b>Parola dopo</b> e confronta "Oggi" (in rosso la parte che esce) con "4.2.3b4". "Dimensione" cambia il testo come nelle impostazioni.</li>
+    </ul>
+  </div>
+  <div class="phone">
+    <div class="hdr"><span class="t" style="font-size:13px">2.2 Valori fisiologici del pH…</span><span class="unitbtn" style="height:30px;font-size:13px">5 di 14</span></div>
+    <div class="rsvp" id="rsvpbox"><div class="cl"></div><div class="w" id="word"></div></div>
+    <div class="rsvp-ctl">
+      <div class="seg2" role="group" aria-label="Versione" id="mode">
+        <button data-m="old" aria-pressed="false">Oggi</button><button data-m="new" aria-pressed="true">4.2.3b4</button>
+      </div>
+      <div class="ctl" style="justify-content:center">
+        <button class="btn" id="wprev">← Parola prima</button>
+        <button class="btn pri" id="wnext">Parola dopo →</button>
+      </div>
+      <div class="ctl" style="justify-content:center"><label class="small" for="wsize">Dimensione</label><input id="wsize" type="range" min="24" max="96" step="4" value="60"><span class="small" id="wsizev">60</span></div>
+      <div class="meter" id="wmeter"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+// Tabs
+const tabs=[...document.querySelectorAll('.tabs button')]
+function showTab(id){tabs.forEach(b=>b.setAttribute('aria-pressed',b.dataset.tab===id));['studio','rev','dom','rsvp'].forEach(t=>document.getElementById('tab-'+t).hidden=t!==id);if(id==='rsvp')renderWord()}
+tabs.forEach(b=>b.onclick=()=>showTab(b.dataset.tab))
+if(['studio','rev','dom','rsvp'].includes(location.hash.slice(1)))showTab(location.hash.slice(1))
+
+// ---------- Studio (S1, S2)
+const units=[
+ ['2.1 Regolazione omeostatica del pH','La concentrazione degli idrogenioni nel sangue è mantenuta in un intervallo molto stretto, perché piccole variazioni modificano la struttura delle proteine e l\'attività degli enzimi.'],
+ ['2.2 Valori fisiologici del pH nei diversi compartimenti biologici','Nel sangue arterioso il pH è mantenuto tra 7,36 e 7,45, con un valore ottimale intorno a 7,38–7,42. Nei succhi gastrici è decisamente più basso; le urine sono tendenzialmente acide.'],
+ ['2.3 Produzione metabolica degli acidi','Il metabolismo cellulare produce di continuo acidi volatili (CO₂) e fissi, che i sistemi tampone, il polmone e il rene devono neutralizzare o eliminare.'],
+ ['3.1 Equazione bicarbonato-acido carbonico','Il pH dipende dal rapporto fra bicarbonato e acido carbonico: con un rapporto di 20 a 1 il pH è 7,4, come prevede l\'equazione di Henderson-Hasselbalch.']]
+let ui=0
+const live=document.getElementById('live'),slog=document.getElementById('slog'),readbox=document.getElementById('readbox')
+function renderUnit(){document.getElementById('utitle').textContent=units[ui][0];document.getElementById('utext').textContent=units[ui][1];document.getElementById('unitlbl').textContent=`Unità ${ui+1} di ${units.length}`;document.getElementById('dots').innerHTML=units.map((_,i)=>`<i class="${i<ui?'done':''} ${i===ui?'cur':''}"></i>`).join('')}
+function edge(side){const e=document.getElementById(side==='r'?'edgeR':'edgeL');e.classList.remove('go');readbox.classList.remove('bump-r','bump-l');void e.offsetWidth;e.classList.add('go');readbox.classList.add(side==='r'?'bump-r':'bump-l');live.textContent=side==='r'?'Ultima unità':'Prima unità';slog.textContent=side==='r'?'Ultima unità: resti qui.':'Prima unità: resti qui.'}
+function go(d){const n=ui+d;if(n<0)return edge('l');if(n>=units.length)return edge('r');ui=n;slog.textContent='';renderUnit()}
+document.getElementById('prev').onclick=()=>go(-1)
+document.getElementById('next').onclick=()=>go(1)
+document.getElementById('studio').addEventListener('keydown',e=>{if(e.key==='ArrowRight'){e.preventDefault();go(1)}if(e.key==='ArrowLeft'){e.preventDefault();go(-1)}})
+document.getElementById('esci').onclick=()=>{slog.textContent=`Esci → /lezioni/7#unit-${units[ui][0].split(' ')[0]} (l'editor si apre su questa unità)`}
+renderUnit()
+
+// ---------- Revisione (R1, R2)
+let rs='pending',selected='a1'
+const panels={
+ partial:()=>`<div class="st" role="status">Verificate 6 unità su 14</div><div class="small">3 da decidere fra quelle già verificate.</div><button class="btn pri">Completa la verifica</button>${issueCard()}`,
+ pending:()=>`<div class="st" role="status">3 da decidere su 24</div>${issueCard()}<button class="btn" style="justify-self:start">Verifica di nuovo tutta la lezione</button>`,
+ stale:()=>`<div class="st" role="status">Il testo è cambiato dopo la verifica</div><div class="small">Le correzioni fatte a mano non rifanno la verifica.</div><button class="btn pri">Aggiorna il documento</button><button class="btn" style="justify-self:start">Verifica di nuovo tutta la lezione</button>`,
+ done:()=>`<div class="st" role="status">Tutte decise</div><div class="small">24 issue decise: 18 accettate, 2 mantenute, 4 modificate.</div><button class="btn pri">Ricostruisci il documento</button><button class="btn" style="justify-self:start">Verifica di nuovo tutta la lezione</button>`,
+ built:()=>`<div class="st" role="status">Tutte decise</div><div class="small">24 issue decise: 18 accettate, 2 mantenute, 4 modificate.</div><button class="btn pri" disabled>Documento aggiornato</button><button class="btn" style="justify-self:start">Verifica di nuovo tutta la lezione</button>`}
+const issues={a1:['Qualità ASR · statistica','Unità 2.2 · 29:07','Trascrizione poco affidabile in questa unità: confidenza media bassa su molti segmenti.'],d1:['Fedeltà al parlato','Unità 2.2 · 29:07','La rielaborazione aggiunge dettagli sui compartimenti che il docente non cita.'],c1:['Errore concettuale','Unità 2.1 · 24:40','Il pH arterioso normale è compreso tra 7,35 e 7,45, non tra 7,20 e 7,30.']}
+function issueCard(){const i=issues[selected];return `<div class="issue"><b>${i[0]}</b><span class="small">${i[1]}</span><span>${i[2]}</span><div class="ctl"><button class="btn pri">Accetta</button><button class="btn">Mantieni</button></div></div>`}
+function renderRev(){document.getElementById('rpanel').innerHTML=panels[rs]();document.querySelectorAll('[data-i]').forEach(el=>el.classList.toggle('sel',el.dataset.i===selected&&rs!=='done'&&rs!=='built'));document.querySelectorAll('.ui').forEach(el=>el.hidden=rs==='done'||rs==='built');document.querySelectorAll('span[data-i]').forEach(el=>el.classList.toggle('u',!(rs==='done'||rs==='built')))}
+document.querySelectorAll('#rstate button').forEach(b=>b.onclick=()=>{rs=b.dataset.s;document.querySelectorAll('#rstate button').forEach(x=>x.setAttribute('aria-pressed',x===b));renderRev()})
+document.querySelectorAll('[data-i]').forEach(el=>el.addEventListener('click',()=>{selected=el.dataset.i;if(rs==='done'||rs==='built')rs='pending';document.querySelectorAll('#rstate button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.s===rs));renderRev()}))
+renderRev()
+
+// ---------- Domande (Q2)
+const genrow=document.getElementById('genrow'),genHTML=genrow.innerHTML
+function runGen(label){const n=document.getElementById('qn').value||3;genrow.innerHTML=`<span class="small" role="status">Genero ${n} domande (${label})…</span>`;setTimeout(()=>{genrow.innerHTML=`<span class="small" role="status">${n} domande nuove: la sessione riprende con la prima.</span> <button class="btn" id="again">Rifai la prova</button>`;document.getElementById('again').onclick=()=>{genrow.innerHTML=genHTML;bindGen()}},1400)}
+function bindGen(){document.getElementById('gcons').onclick=()=>runGen('consigliato: mirata');document.getElementById('gpers').onclick=()=>runGen(document.getElementById('qt').value.toLowerCase())}
+bindGen()
+document.querySelectorAll('#mchips button').forEach(b=>b.onclick=()=>document.querySelectorAll('#mchips button').forEach(x=>x.setAttribute('aria-pressed',x===b)))
+
+// ---------- Lettura veloce (L6): misura vera con canvas, stessa regola del piano
+const sentence="Il corso di patologia generale è concepito secondo un'impostazione interdisciplinare con particolare riferimento all'ossigenazione dell'emoglobina e alla elettroneutralità.".split(' ')
+let wi=sentence.indexOf("un'impostazione"),mode='new'
+const ORP=0.35,MIN=0.7,MARGIN=16
+const ctx=document.createElement('canvas').getContext('2d')
+function focusIdx(w){const lead=w.length-w.replace(/^[^\p{L}\p{N}]+/u,'').length;const core=w.slice(lead);const c=core.replace(/[^\p{L}\p{N}].*$/su,'').length||core.length;return Math.min(w.length-1,lead+Math.max(0,Math.round((c-1)*ORP)))}
+function fontPx(){return Math.round(+document.getElementById('wsize').value*0.6)}
+function measure(t){ctx.font=`${fontPx()}px ${getComputedStyle(document.body).fontFamily}`;return ctx.measureText(t).width}
+function fit(w,avail){const f=focusIdx(w);const pre=measure(w.slice(0,f)),orp=measure(w[f]),post=measure(w.slice(f+1));const space=avail/2-orp/2-MARGIN;return Math.min(1,space/Math.max(pre,post,1))}
+function cuts(w){const out=[];const letters=/\p{L}/u;for(let i=3;i<=w.length-3;i++){const a=w[i-1],b=w[i],c=w[i+1]||'';if(a==="'"||a==='-')out.push(i);else if(letters.test(a)&&/[bcdfghlmnpqrstvz]/i.test(b)&&/[aeiouàèéìòù]/i.test(c)&&/[aeiouàèéìòù]/i.test(a))out.push(i);else if(a.toLowerCase()===b.toLowerCase()&&/[bcdfglmnprstvz]/i.test(a))out.push(i)}return out}
+function split(w,avail){if(fit(w,avail)>=MIN)return[w];const opts=cuts(w);if(!opts.length)return[w];
+  // fra i punti ammessi, il più vicino alla metà con entrambi i pezzi almeno al 70 %; dopo un apostrofo niente trattino
+  const head=i=>w.slice(0,i)+(/['-]$/.test(w.slice(0,i))?'':'-')
+  const good=opts.filter(i=>fit(head(i),avail)>=MIN&&fit(w.slice(i),avail)>=MIN);const pool=good.length?good:opts;const mid=w.length/2;const i=pool.reduce((a,b)=>Math.abs(b-mid)<Math.abs(a-mid)?b:a)
+  return [head(i),...split(w.slice(i),avail)]}
+let pieces=[],pi=0
+function build(){const avail=document.getElementById('rsvpbox').clientWidth;pieces=[];sentence.forEach((w,k)=>{const ps=mode==='new'?split(w,avail):[w];ps.forEach(p=>pieces.push({t:p,k,scale:mode==='new'?Math.min(1,fit(p,avail)):1}))})}
+function renderWord(){build();if(pi>=pieces.length)pi=pieces.length-1;const p=pieces[pi]||pieces.find(x=>x.k===wi);const w=p.t,f=focusIdx(w);const el=document.getElementById('word');el.style.fontSize=(fontPx()*p.scale)+'px';el.innerHTML=`<span class="pre"></span><span class="orp"></span><span class="post"></span>`;el.children[0].textContent=w.slice(0,f);el.children[1].textContent=w[f];el.children[2].textContent=w.slice(f+1);
+  const box=document.getElementById('rsvpbox').getBoundingClientRect(),r=el.children[2].getBoundingClientRect(),postEnd=r.left+measure(w.slice(f+1))*p.scale,preStart=el.children[0].getBoundingClientRect().right-measure(w.slice(0,f))*p.scale;const out=postEnd>box.right||preStart<box.left;el.classList.toggle('out',out)
+  const same=pieces.filter(x=>x.k===p.k);document.getElementById('wmeter').textContent=`Parola ${p.k+1} di ${sentence.length}${same.length>1?` · pezzo ${same.indexOf(p)+1} di ${same.length}`:''} · scala ${Math.round(p.scale*100)} %${out?' · esce dallo schermo':''}`}
+function setWord(k){build();pi=pieces.findIndex(x=>x.k===k)}
+document.getElementById('wnext').onclick=()=>{pi=Math.min(pieces.length-1,pi+1);renderWord()}
+document.getElementById('wprev').onclick=()=>{pi=Math.max(0,pi-1);renderWord()}
+document.getElementById('wsize').oninput=e=>{const k=pieces[pi]?.k??wi;document.getElementById('wsizev').textContent=e.target.value;setWord(k);renderWord()}
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{const k=pieces[pi]?.k??wi;mode=b.dataset.m;document.querySelectorAll('#mode button').forEach(x=>x.setAttribute('aria-pressed',x===b));setWord(k);renderWord()})
+setWord(wi)
+new ResizeObserver(()=>{if(!document.getElementById('tab-rsvp').hidden){const k=pieces[pi]?.k??wi;setWord(k);renderWord()}}).observe(document.getElementById('rsvpbox'))
+</script>

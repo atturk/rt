@@ -122,3 +122,33 @@ def test_playable_audio_remuxes_adts_once(tmp_path, rt_db, monkeypatch):
     assert audio_service.clear_cache()["audio"]["entries"] == 1
     assert os.path.isfile(adts) and not os.path.exists(first)
     assert audio_service.playable_audio(str(adts)) == first and len(calls) == 2
+
+
+@pytest.mark.parametrize("reviewed", [None, 1, 2])
+def test_review_progress_from_manifest(api_client, lesson, reviewed):
+    from rt.core.manifest import load_manifest, save_manifest
+    from rt.pipeline.rewrite import load_draft, save_draft
+    draft = load_draft(lesson)
+    draft.units = [draft.units[0], draft.units[0].model_copy(update={"unit_id": "1.2"})]
+    save_draft(draft, lesson)
+    manifest = load_manifest(lesson)
+    units = load_draft(lesson).units
+    if reviewed is None:
+        manifest.phase_records.pop("review", None)
+    else:
+        manifest.phase_records["review"]["completed_items"] = [u.unit_id for u in units[:reviewed]]
+    save_manifest(manifest, lesson)
+    response = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}")
+    assert response.status_code == 200
+    assert response.json()["review_progress"] == (None if reviewed is None else {
+        "reviewed": len(units[:reviewed]), "total": len(units),
+    })
+
+
+def test_relevance_exposes_review_included(api_client, lesson):
+    from rt.pipeline.rewrite import load_draft
+    from rt.services import unit_relevance
+    response = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/relevance")
+    assert response.status_code == 200
+    expected = {unit.unit_id: unit_relevance.included(lesson, unit) for unit in load_draft(lesson).units}
+    assert {row["unit_id"]: row["review_included"] for row in response.json()["units"]} == expected

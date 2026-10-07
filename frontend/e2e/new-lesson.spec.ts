@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from '@playwright/test'
+import { expect } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 // Popup Nuova lezione dalla barra a icone (schermate 00 e 00b): con l'audio materia, docente,
 // data e Avvia, poi la pagina della lezione con l'avanzamento; con lo zip solo Importa.
@@ -47,7 +47,7 @@ test('audio: materia, docente, data di oggi, Avvia e si arriva alla lezione con 
   const [job] = (await apiGet<Job[]>(page.request, `/jobs?lesson_id=${lessonId}`)).filter((j) => ['queued', 'running', 'waiting_for_decision'].includes(j.state))
   if (job) {
     // In corso: le due barre; ferma sulla scaletta: il riquadro "Scaletta da approvare" (C4).
-    await expect(page.getByTestId('phase-progress').or(page.getByTestId('outline-approval'))).toBeVisible()
+    await expect(page.getByTestId('phase-progress').or(page.getByTestId('outline-approval')).first()).toBeVisible()
     const res = await page.request.post(`/api/v1/jobs/${job.id}/cancel`, { headers: authHeaders() })
     expect(res.ok()).toBeTruthy()
     await expect.poll(async () => (await apiGet<Job>(page.request, `/jobs/${job.id}`)).state, { timeout: LONG }).toBe('cancelled')

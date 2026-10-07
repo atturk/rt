@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
+import { test, apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
 
 type Lesson = { id: number; materia: string }
 type PhaseReport = { phases: { phase: string; status: string; reason: string }[] }
@@ -186,7 +186,9 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^Tutti i dati \(zip\)/])
   for (const item of await menu.getByRole('menuitem').all()) {
     await expect(item).toHaveAttribute('aria-disabled', 'true')
-    await expect(item).toHaveAttribute('title', /rielaborazione/)
+    await expect(item).not.toHaveAttribute('title')
+    await item.hover()
+    await expect(page.getByRole('tooltip')).toContainText(/rielaborazione/)
   }
   await page.keyboard.press('Escape')
   await expect(menu).toBeHidden()

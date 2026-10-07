@@ -71,3 +71,11 @@ it('su Mac registra il tasto fisico con Option e mostra i simboli', async () => 
   await waitFor(() => expect(api.PUT).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'editor.shortcuts' } }, body: { bold: 'Mod-Alt-j' } }))
   expect(button).toHaveTextContent('⌘⌥J')
 })
+
+it('la barra di formattazione è attiva per default e la scelta si salva sul server', async () => {
+  expect(screen.getByTestId('editor-toolbar')).toHaveAttribute('data-value', 'si')
+  await userEvent.click(screen.getByRole('button', { name: 'Barra di formattazione' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'No' }))
+  await waitFor(() => expect(api.PUT).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'editor.toolbar' } }, body: false }))
+  expect(screen.getByTestId('editor-toolbar')).toHaveAttribute('data-value', 'no')
+})

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
+import { test, apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
 // 'rt run' da terminale: accesso con il link, Nuova lezione, scaletta nella pagina della lezione,
@@ -91,7 +91,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.goto(`/lezioni/${lessonId}?panel=domande`)
   const questions = page.getByTestId('questions-panel')
   await questions.getByText('Genera altre domande').click()
-  await questions.getByLabel('Tipo', { exact: true }).selectOption('quiz')
+  await questions.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Quiz', exact: true }).click()
   await questions.getByRole('button', { name: 'Genera', exact: true }).click()
   await expect.poll(async () => (await apiGet<History>(page.request, `/lessons/${lessonId}/recall/history`)).questions.length, { timeout: LONG }).toBeGreaterThan(0)
   await page.reload()

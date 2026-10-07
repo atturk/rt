@@ -27,7 +27,7 @@ vi.mock('@/lib/preferences', async () => {
 const LESSON = {
   id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', ora: '', data: '2026-10-02', folder_name: 'a',
   phases: { build: 'VALID', rewrite: 'VALID' }, argomenti: '', docente: '', path: '', duration_seconds: 0,
-  unit_count: 2, pending_issues: 0, recall_pending: 0, recall_questions: 0,
+  unit_count: 2, pending_issues: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, recall_questions: 0,
 } as Lesson
 const UNITS = [
   { id: '1.1', title: 'Primo', html: '<p>Il rene filtra il sangue. Poi, riassorbe acqua e sali.</p>', questions: 0, pending: {} },
@@ -114,14 +114,27 @@ describe('lettura veloce', () => {
   it('si apre sull’unità, con il tema dell’app, e Esc torna allo Studio', async () => {
     document.documentElement.classList.add('dark')
     const reader = await open()
-    expect(reader).toHaveAttribute('data-theme-mode', 'notte')
+    expect(reader).not.toHaveAttribute('data-theme-mode')
+    expect(reader).not.toHaveClass('fixed')
+    expect(screen.queryByRole('button', { name: /Giorno|Notte/ })).not.toBeInTheDocument()
     expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Il')
-    fireEvent.click(screen.getByRole('button', { name: /Giorno/ }))
-    expect(reader).toHaveAttribute('data-theme-mode', 'giorno')
+    expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+    expect(screen.queryByTestId('study-title-button')).not.toBeInTheDocument()
     expect(document.documentElement).toHaveClass('dark')
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Primo' })).toBeInTheDocument()
+  })
+
+  it('le scorciatoie non intercettano i controlli dell’intestazione e delle impostazioni', async () => {
+    await open()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Torna allo Studio' }), { key: ' ' })
+    expect(screen.getByRole('button', { name: 'Avvia' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Tono' }), { key: 'ArrowUp' })
+    expect(screen.getByText('300')).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' })).toHaveFocus()
   })
 
   it('il testo intorno si vede solo in pausa', async () => {
@@ -157,6 +170,23 @@ describe('lettura veloce', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Primo' })).toBeInTheDocument()
   })
 
+  it('l’indice cambia unità restando in zen, il libro torna al testo e conserva le preferenze', async () => {
+    await open()
+    fireEvent.click(screen.getByTestId('unit-index-toggle'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /1.2 Secondo/ }))
+    await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Altro'))
+    expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Pausa dopo la frase' }), { target: { value: '650' } })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('speed-reader-settings')).not.toBeInTheDocument()
+    expect(screen.getByTestId('speed-reader')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Torna allo Studio' }))
+    await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
+    expect(JSON.parse(localStorage.getItem('rt-pref:study.rsvp')!)).toMatchObject({ pauseMs: 650 })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Secondo' })).toBeInTheDocument()
+  })
+
   it('con "virgola come pausa piena" la parola con la virgola diventa fine frase', async () => {
     await open()
     fireEvent.keyDown(window, { key: 'ArrowRight' })
@@ -165,4 +195,44 @@ describe('lettura veloce', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Virgola come pausa piena' }))
     expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-kind', 'fine')
   })
+})
+
+it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
+  renderStudy()
+  fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo · E/ })).toBeVisible()
+  fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
+  fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
+  expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+})
+
+it('E alterna evidenziatore e gomma, ma non nei campi di testo', () => {
+  renderStudy()
+  fireEvent.keyDown(window, { key: 'e' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
+  const input = document.createElement('input')
+  document.body.append(input)
+  fireEvent.keyDown(input, { key: 'e' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
+  input.remove()
+  fireEvent.keyDown(window, { key: 'E' })
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('il triplo clic non seleziona il paragrafo', async () => {
+  renderStudy()
+  await waitFor(() => expect(api.list).toHaveBeenCalled())
+  expect(fireEvent.mouseDown(screen.getByTestId('study-text'), { detail: 3 })).toBe(false)
+  expect(api.add).not.toHaveBeenCalled()
+})
+
+it.each(['evidenzia', 'gomma'])('il clic destro toglie un’evidenziazione in modalità %s', async mode => {
+  api.list.mockResolvedValueOnce([{ id: 3, unit_id: '1.1', color: 2, source: { startMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 3 }, endMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 7 }, text: 'rene', id: 'a' } }])
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text').querySelector('.rt-hl')).toBeInTheDocument())
+  if (mode === 'gomma') fireEvent.click(screen.getByTestId('highlight-eraser'))
+  expect(fireEvent.contextMenu(screen.getByTestId('study-text').querySelector('.rt-hl')!)).toBe(false)
+  await waitFor(() => expect(api.remove).toHaveBeenCalledWith(1, 3))
+  expect(screen.getByTestId('study-text').querySelector('.rt-hl')).not.toBeInTheDocument()
+  expect(fireEvent.contextMenu(screen.getByTestId('study-text'))).toBe(true)
 })

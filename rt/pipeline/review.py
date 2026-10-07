@@ -406,6 +406,47 @@ def _issue_key(issue) -> tuple:
     return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
 
 
+def _drop_moved_decisions(lesson_dir: str, before: Dict[str, tuple], issues: List[ScienceIssue]) -> None:
+    """Le issue si rinumerano per posizione (sci_000001...): se un id ora indica un'issue diversa
+    da quella decisa, la decisione va tolta. Altrimenti il build la applicherebbe all'issue nuova,
+    e una "modificata" su un'issue di tutta l'unità ne sostituirebbe l'intero testo."""
+    from rt.pipeline.ledger import load_ledger, purge_decisions_by_prefix
+    now = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in issues}
+    for decision in load_ledger(lesson_dir).decisions:
+        issue_id = decision.issue_id
+        if issue_id in before and now.get(issue_id) != before[issue_id]:
+            purge_decisions_by_prefix(lesson_dir, prefix=issue_id)
+
+
+def _only_manual_edits(lesson_dir: str, units, eligible_ids) -> bool:
+    """True se dopo la revisione sono cambiate solo unità corrette a mano nell'anteprima (il
+    testo scritto dall'utente, decisioni comprese): segmenti, versione della fase e unità da
+    rivedere sono gli stessi. Allora la review non riparte e issue e decisioni restano."""
+    from rt.core.idempotency import PROCESSOR_VERSIONS, compute_file_sha256 as file_hash
+    from rt.core.manifest import load_manifest
+    from rt.pipeline.document_edits import edited_unit_ids
+    manifest = load_manifest(lesson_dir)
+    record = ((getattr(manifest, "phase_records", {}) or {}).get("review") or {}) if manifest else {}
+    reviewed = record.get("unit_hashes")
+    if record.get("status") not in (PhaseStatus.VALID.value, PhaseStatus.STALE.value) or not isinstance(reviewed, dict):
+        return False
+    if record.get("processor_version") != PROCESSOR_VERSIONS.get("review"):
+        return False
+    segments = (record.get("input_hashes") or {}).get("segments.json")
+    if not segments or segments != file_hash(lesson_path(lesson_dir, "segments.json")):
+        return False
+    current = _unit_hashes(units)
+    if set(current) != set(reviewed):
+        return False
+    changed = {uid for uid, digest in current.items() if reviewed.get(uid) != digest}
+    if not changed or not changed <= edited_unit_ids(lesson_dir):
+        return False
+    eligible_before = record.get("eligible_units")
+    if isinstance(eligible_before, list) and set(eligible_before) - changed != set(eligible_ids) - changed:
+        return False
+    return True
+
+
 def parent_unit_context(units, unit_id: str) -> Optional[str]:
     """Le altre subunità della stessa unità (stesso prefisso: 2.1 → 2.x), come testo di contesto."""
     if "." not in unit_id:
@@ -544,14 +585,47 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if st_iss.unit_id:
             st_issues_by_unit.setdefault(st_iss.unit_id, []).append(st_iss)
 
+    # Testo corretto a mano nell'anteprima dopo la revisione (per esempio per chiudere un'issue):
+    # la review resta valida con le sue issue e decisioni, invece di ripartire da zero (4.2.3b3.2).
+    if not force and phase_status == PhaseStatus.STALE and _only_manual_edits(lesson_dir, draft.units, eligible_ids):
+        all_science_issues = load_science_issues(lesson_dir)
+        record_phase_fingerprint(
+            lesson_dir=lesson_dir, phase_name="review",
+            source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
+            artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+            metadata={"unit_hashes": _unit_hashes(draft.units), "eligible_units": sorted(eligible_ids)},
+        )
+        if ctx is not None:
+            ctx.emit(Notice(level="info", message="Revisione già fatta: il testo è cambiato solo nelle unità "
+                                                  "corrette a mano, issue e decisioni restano."))
+        pending_sci = [s for s in all_science_issues if s.status == "pending"]
+        return {
+            "status": "review_completed", "action": "SKIP", "skipped": True,
+            "reason": "testo modificato solo a mano dopo la revisione",
+            "total_science_issues": len(all_science_issues),
+            "concettuale_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_CONCETTUALE),
+            "asr_statistical_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_ST),
+            "asr_llm_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_ASR_LLM),
+            "rewrite_drift_issues": sum(1 for x in all_science_issues if x.type == ScienceType.ERR_REWRITE_DRIFT),
+            "next_state": (WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci
+                           else WorkflowState.READY_TO_BUILD.value),
+            "issues_path": get_science_issues_path(lesson_dir),
+        }
+
+    # Issue decidibili prima di questa run, per id: dopo ogni rinumerazione le decisioni restano
+    # solo sulle issue identiche (vedi _drop_moved_decisions).
+    decided_before = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in load_science_issues(lesson_dir)}
+
     # Riconciliazione all'avvio:
     if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
         reviewed_unit_ids = []
         all_science_issues: List[ScienceIssue] = []
         save_science_issues(all_science_issues, lesson_dir)
-        if force:
-            from rt.pipeline.ledger import purge_decisions_by_prefix
-            purge_decisions_by_prefix(lesson_dir, prefix="sci_")
+        # La review riparte da zero: le issue nuove riprendono i numeri dalla prima, quindi le
+        # decisioni sulle vecchie si attaccherebbero a issue diverse (4.2.3b3.1).
+        from rt.pipeline.ledger import purge_decisions_by_prefix
+        purge_decisions_by_prefix(lesson_dir, prefix="sci_")
+        decided_before = {}
     else:
         ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review")
         existing_issues = load_science_issues(lesson_dir)
@@ -563,6 +637,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             all_science_issues = cleaned_issues
             if len(cleaned_issues) != len(existing_issues):
                 save_science_issues(all_science_issues, lesson_dir)
+                _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
             if reviewed_unit_ids:
                 print(f"🔄 [CHECKPOINT RESUME] {len(reviewed_unit_ids)}/{len(draft.units)} unità didattiche già revisionate per science critic.")
         else:
@@ -615,6 +690,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             
         # Salvataggio atomico dell'artefatto su disco
         save_science_issues(all_science_issues, lesson_dir)
+        _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
 
         # Commit atomico nel checkpoint
         if unit.unit_id not in reviewed_set:
@@ -656,6 +732,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         for s_idx, iss in enumerate(all_science_issues, start=1):
             iss.id = f"sci_{s_idx:06d}"
         save_science_issues(all_science_issues, lesson_dir)
+        _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
 
         source_fp = compute_source_fingerprint(lesson_dir, "review")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
@@ -671,7 +748,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             phase_name="review",
             source_fingerprint=source_fp,
             artifact_fingerprints={"science_issues.json": sci_hash},
-            metadata=_provenance,
+            metadata={**_provenance, "unit_hashes": unit_hashes, "eligible_units": sorted(eligible_ids)},
         )
         if (force or phase_status == PhaseStatus.STALE) and (old_sci_hash is None or old_sci_hash != sci_hash):
             mark_downstream_stale(lesson_dir, "review")

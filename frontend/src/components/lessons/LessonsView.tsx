@@ -1,5 +1,6 @@
+import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Brain, Calendar, CalendarRange, FileText, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -11,7 +12,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
 import { IconButton, IconLink } from '@/components/ui/icon-button'
-import { MenuButton, type MenuSection } from '@/components/ui/menu'
+import { LinkMenuButton, MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
@@ -23,6 +24,8 @@ import type { LessonGroup } from '@/lib/lessonView'
 import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
+import { usePreference } from '@/lib/preferences'
+import { SelectionDetails } from './SelectionDetails'
 
 const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User } as const
 
@@ -184,7 +187,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
 
 const DOT_CLASSES: Record<LessonStatus, string> = {
   'in-corso': 'bg-muted-foreground animate-[rt-pulse_1.8s_ease-in-out_infinite]',
-  'da-verificare': 'bg-warning',
+  'da-verificare': 'bg-muted-foreground',
   errore: 'bg-danger',
   pronta: 'bg-muted-foreground',
   'da-completare': 'border border-muted-foreground bg-transparent',
@@ -192,7 +195,7 @@ const DOT_CLASSES: Record<LessonStatus, string> = {
 
 function StatusDot({ status }: { status: LessonStatus }) {
   return (
-    <span className="flex h-lh w-1.5 shrink-0 items-center justify-center text-body" title={STATUS_LABELS[status]} data-testid="lesson-status" data-status={status}>
+    <span className="flex h-lh w-1.5 shrink-0 items-center justify-center text-body" data-testid="lesson-status" data-status={status}>
       <span className={cn('block size-1.5 rounded-full', DOT_CLASSES[status])} aria-hidden />
       <span className="sr-only">{STATUS_LABELS[status]}</span>
     </span>
@@ -225,7 +228,7 @@ function Check({ label, checked, indeterminate = false, className, onChange }: {
   )
 }
 
-function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
+export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
   lesson: Lesson
   grouping: LessonsGrouping
   running: boolean
@@ -236,10 +239,11 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
   const titleId = useId()
-  const row = 'flex items-start gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
+  const row = 'relative flex items-start gap-3 rounded-lg px-2.5 py-3 text-foreground no-underline transition-colors hover:bg-muted max-md:px-2 max-md:py-2.5'
   const text = (
     <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-      <span id={titleId} className="block text-body">{title}</span>
+      {selecting ? <span id={titleId} className="block text-body">{title}</span> :
+        <Link id={titleId} to={`/lezioni/${lesson.id}`} className="block text-body after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-2 focus-visible:outline-ring">{title}</Link>}
       {subtitle && (
         <span className="block text-meta text-muted-foreground" data-testid="lesson-subtitle">
           {subtitle}
@@ -251,18 +255,52 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
   return (
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       {selecting ? (
-        <label className={cn(row, 'cursor-pointer')}>
+        <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
           <Check className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
-        <Link to={`/lezioni/${lesson.id}`} className={row} aria-labelledby={titleId}>
+        <div className={row}>
           <StatusDot status={lessonStatus(lesson, running)} />
           {text}
-        </Link>
+          <div className="relative z-1 flex shrink-0 self-center items-center max-md:flex-col" data-testid="lesson-indicators">
+            <div className="flex size-[34px] items-center justify-center max-md:size-10"><StudyRing lesson={lesson} /></div>
+            <div className="flex size-[34px] items-center justify-center max-md:size-10"><ReviewShield lesson={lesson} /></div>
+          </div>
+        </div>
       )}
     </li>
   )
+}
+
+/** Anello sommato sulle unità della scaletta attuale, allineato sul margine delle righe. */
+export function StudyRing({ lesson }: { lesson: Lesson }) {
+  const learned = lesson.study_learned ?? 0
+  const learning = lesson.study_learning ?? 0
+  const ignored = lesson.study_ignored ?? 0
+  if (!learned && !learning && !ignored) return null
+  const total = lesson.unit_count ?? 0
+  const ignoredArc = total ? ignored / total * 100 : 0
+  const learnedArc = total ? learned / total * 100 : 0
+  const learningArc = total ? learning / total * 100 : 0
+  const label = `${learned} ${learned === 1 ? 'appresa' : 'apprese'} · ${Math.max(0, total - learned - ignored)} da apprendere · ${ignored} ${ignored === 1 ? 'ignorata' : 'ignorate'}`
+  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/studio/lezione/${lesson.id}`} aria-label={label} data-testid="lesson-study-ring" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+    <svg width="19" height="19" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[2.6]">
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-track" />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learned" strokeDasharray={`${Math.max(0, learnedArc - 3)} ${100 - Math.max(0, learnedArc - 3)}`} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learning" strokeDasharray={`${Math.max(0, learningArc - 3)} ${100 - Math.max(0, learningArc - 3)}`} strokeDashoffset={-learnedArc} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={`${Math.max(0, ignoredArc - 3)} ${100 - Math.max(0, ignoredArc - 3)}`} strokeDashoffset={-(100 - ignoredArc)} />
+    </svg>
+  </Link>}</Tooltip>
+}
+
+function ReviewShield({ lesson }: { lesson: Lesson }) {
+  if (lesson.phases.rewrite !== 'VALID') return null
+  const done = lesson.phases.review === 'VALID' && lesson.pending_issues === 0
+  const label = done ? 'Verifica fatta' : `Verifica da fare${lesson.pending_issues > 0 ? ` · ${lesson.pending_issues} issue da decidere` : ''}`
+  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/lezioni/${lesson.id}?panel=verifica`} aria-label={label} data-testid="lesson-review-shield" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+    <ShieldCheck aria-hidden className={cn('size-[19px]', done ? 'text-study-learned' : 'text-study-learning')} />
+  </Link>}</Tooltip>
 }
 
 function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup }: {
@@ -359,13 +397,15 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
   const markdown = markdownExportNote(lessons)
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const start = useExportLessons()
+  const [exportStudy, setExportStudy] = usePreference('export.study', true)
   const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
   const download = useRef<HTMLAnchorElement>(null)
   const downloaded = useRef<string | null>(null)
   const exporting = start.isPending || exportJob?.state === 'queued'
   const runExport = (format: 'markdown' | 'zip') => {
-    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate' }, {
+    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate', study: format === 'zip' && exportStudy }, {
       onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
     })
   }
@@ -393,6 +433,9 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           unavailable={visibleLessons.length === 0 ? 'nessuna lezione visibile' : null}
           onClick={() => onSelectAll(!allSelected)}
         />
+        <IconButton label="Dettagli della selezione" icon={Info} side="top" aria-haspopup="dialog"
+          unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+          onClick={() => setDetailsOpen(true)} />
         <IconLink
           label="Recall sulle lezioni selezionate"
           icon={Brain}
@@ -408,7 +451,12 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           unavailable={exporting ? 'esportazione in corso' : markdown.unavailable}
           hint={markdown.hint}
         />
-        <IconButton label="Scarica zip" icon={Archive} side="top" onClick={() => runExport('zip')} unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null} />
+        <LinkMenuButton label="Scarica zip" icon={Archive} side="top"
+          unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null}
+          items={[
+            { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
+            { label: 'Scarica zip', onSelect: () => runExport('zip') },
+          ]} />
         <IconButton
           label="Elimina le lezioni selezionate"
           icon={Trash2}
@@ -420,6 +468,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
         <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
       </div>
       {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
+      <SelectionDetails lessons={lessons} open={detailsOpen} onClose={() => setDetailsOpen(false)} />
       {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
       {exportJob?.state === 'succeeded' && (
         <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>

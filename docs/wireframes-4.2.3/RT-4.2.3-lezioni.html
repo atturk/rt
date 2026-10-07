@@ -1,0 +1,206 @@
+<title>Wireframe righe di Lezioni</title>
+<style>
+/* Layout: wireframe frame as in 4.2.3 wireframes (notes, controls, app frame desktop or iPhone); tokens mirror RT's index.css */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --group:#f6f4f4;
+  --tip-bg:#171717; --tip-fg:#ffffff;
+  /* anello oggi (success / warning / danger di index.css) */
+  --old-learned:#147464; --old-learning:#98620c; --old-ignored:#a04232; --old-track:#f1f1f1;
+  /* proposta: token dedicati allo studio, usati anche dalle barrette dello Studio */
+  --st-learned:#13896b; --st-learning:#e8a317; --st-ignored:#d4382a; --st-track:#e6e6e6;
+  /* verifica */
+  --rv-todo:#d99a0b; --rv-done:#13896b;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --group:#1d1d1d; --tip-bg:#ffffff; --tip-fg:#171717;
+  --old-learned:#6fd3b3; --old-learning:#f1c27a; --old-ignored:#ff9f8c; --old-track:#262626;
+  --st-learned:#5cc79f; --st-learning:#f5c242; --st-ignored:#ff6b5b; --st-track:#333333;
+  --rv-todo:#f5c242; --rv-done:#5cc79f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --group:#1d1d1d; --tip-bg:#ffffff; --tip-fg:#171717;
+  --old-learned:#6fd3b3; --old-learning:#f1c27a; --old-ignored:#ff9f8c; --old-track:#262626;
+  --st-learned:#5cc79f; --st-learning:#f5c242; --st-ignored:#ff6b5b; --st-track:#333333;
+  --rv-todo:#f5c242; --rv-done:#5cc79f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ol,.notes ul{margin:0;padding-left:20px;display:grid;gap:5px}
+.notes li{font-size:14px}
+code{font-family:var(--mono);font-size:12.5px}
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;margin:0 auto;width:900px;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+.frame.phone{width:390px;padding:14px 12px;border-radius:34px;border-width:8px;border-color:var(--soft)}
+.group{background:var(--group);border-radius:12px;padding:8px 6px}
+.glabel{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600;padding:4px 10px 2px}
+ul.rows{list-style:none;margin:0;padding:0}
+/* the row: the title link covers the row (::after), the two icons sit above it */
+.row{position:relative;display:flex;align-items:flex-start;gap:12px;border-radius:9px;padding:11px 10px}
+.row:hover{background:var(--soft)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--mute);flex:none;margin-top:9px}
+.dot.run{animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+.txt{flex:1;min-width:0;overflow-wrap:anywhere}
+.title{display:block;color:var(--fg);text-decoration:none}
+.title::after{content:"";position:absolute;inset:0;border-radius:9px}
+.sub{display:block;font-size:13px;color:var(--mute)}
+.marks{position:relative;z-index:1;display:flex;align-items:center;gap:4px;align-self:center;flex:none}
+.phone .marks{flex-direction:column;gap:2px}
+.slot{width:34px;height:34px;flex:none}
+.mk{position:relative;height:34px;min-width:34px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 6px;color:var(--mute);text-decoration:none;font-size:13px;font-variant-numeric:tabular-nums;cursor:pointer;background:transparent;border:0;font-family:inherit}
+.phone .mk{height:40px;min-width:40px}
+.mk:hover{background:var(--bg);box-shadow:0 0 0 1px var(--border)}
+.mk svg{display:block}
+.shield{width:19px;height:19px}
+.ringsvg{width:19px;height:19px;transform:rotate(-90deg)}
+.shield.todo{color:var(--rv-todo)}
+.shield.done{color:var(--rv-done)}
+.tip{position:absolute;top:calc(100% + 4px);right:0;background:var(--tip-bg);color:var(--tip-fg);font-size:12px;padding:4px 8px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:5;opacity:0;transition:opacity .1s}
+.mk:hover .tip,.mk:focus-visible .tip{opacity:1}
+.phone .tip{display:none}
+.log{font-size:13px;color:var(--mute);min-height:20px;font-family:var(--mono)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--mute)}
+.legend i{display:inline-block;width:18px;height:5px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.sw{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:grid;gap:8px;background:var(--bg)}
+.sw .bars{display:flex;gap:4px}
+.sw .bars i{flex:1;height:4px;border-radius:2px}
+.sw .bars i.cur{height:8px}
+.small{font-size:13px;color:var(--mute)}
+@media (prefers-reduced-motion: reduce){.dot.run{animation:none}}
+</style>
+
+<div class="top">
+  <h1>Righe di Lezioni: studio e verifica</h1>
+  <span class="meta">Wireframe per la 4.2.3 stabile · anello più leggibile, stato della verifica, icone cliccabili, domande nel sottotitolo</span>
+</div>
+
+<div class="wrap">
+  <section class="notes" aria-label="Proposta">
+    <h2>Cosa cambia nella riga</h2>
+    <ol>
+      <li><b>Anello più contrastato.</b> Tre colori di studio dedicati, distanti fra loro: verde per appresa, giallo ambra per in apprendimento, rosso vivo per ignorata, con un piccolo stacco fra gli archi. Sono gli stessi colori delle barrette dello Studio, così si risolve anche "Ignorata e In apprendimento si confondono" del messaggio precedente. Anello grande come lo scudo (19 px), con lo stesso spessore di tratto.</li>
+      <li><b>Niente numeri</b>: via "N apprese" dal sottotitolo e via "1/11" accanto all'anello. Passando sull'anello il suggerimento dice "N apprese · N da apprendere · N ignorate" (le unità totali sono già nel sottotitolo).</li>
+      <li><b>Icona della verifica</b> (lo scudo del pannello Verifica): gialla se la revisione non è fatta o ci sono issue da decidere, verde se è fatta e tutte decise. Niente icona se la lezione non è ancora rielaborata. Su computer anello e scudo stanno in riga, sull'iPhone uno sopra l'altro.</li>
+      <li><b>Icone cliccabili.</b> Anello → Studio della lezione. Scudo → lezione con il pannello Verifica aperto. Il resto della riga apre la lezione come oggi.</li>
+      <li><b>Domande nel sottotitolo:</b> "14 unità · 23 domande", solo se ce ne sono.</li>
+    </ol>
+    <h2>Scelte mie</h2>
+    <ul>
+      <li>Ogni icona ha il suo posto fisso: se una lezione non ha l'anello, lo spazio resta vuoto e gli scudi restano in colonna.</li>
+      <li>Il puntino giallo "Da verificare" a sinistra non c'è più (lo dice lo scudo): il puntino resta per in corso, errore e da completare.</li>
+      <li>"Da apprendere" = unità non ancora apprese e non ignorate (comprende quelle in apprendimento, che nell'anello restano ambra).</li>
+      <li>Suggerimento dello scudo: "Verifica da fare · 3 issue da decidere" oppure "Verifica fatta".</li>
+    </ul>
+    <p class="small">Dati già nell'API: <code>study_*</code> e <code>unit_count</code> per l'anello, <code>phases.review</code> e <code>pending_issues</code> per lo scudo, <code>recall_questions</code> per le domande. Link: <code>/studio/lezione/15</code> e <code>/lezioni/15?panel=verifica</code>. Tecnicamente la riga smette di essere un unico link (non si possono mettere link dentro un link): il titolo copre la riga e le due icone stanno sopra.</p>
+  </section>
+
+  <div class="bar">
+    <div class="tabs" role="group" aria-label="Dispositivo">
+      <button id="tDesk" aria-pressed="true">Computer</button>
+      <button id="tPhone" aria-pressed="false">iPhone</button>
+    </div>
+    <div class="tabs" role="group" aria-label="Versione">
+      <button id="cNew" aria-pressed="true">Proposta</button>
+      <button id="cOld" aria-pressed="false">Oggi</button>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="stage">
+    <div class="frame" id="frame">
+      <div class="group">
+        <div class="glabel">Fisiopatologia</div>
+        <ul class="rows" id="g1"></ul>
+      </div>
+      <div class="group">
+        <div class="glabel">PGSS</div>
+        <ul class="rows" id="g2"></ul>
+      </div>
+    </div>
+  </div>
+  <div class="log" id="log" aria-live="polite">Passa sulle icone o cliccale.</div>
+
+  <section class="notes" aria-label="Barrette dello Studio">
+    <h2>Gli stessi colori nelle barrette dello Studio</h2>
+    <div class="swatches">
+      <div class="sw"><span class="small">Oggi</span><div class="bars"><i class="cur" style="background:var(--old-ignored)"></i><i style="background:var(--old-learning)"></i><i style="background:var(--old-learning)"></i><i style="background:var(--old-learned)"></i><i style="background:var(--old-track)"></i></div></div>
+      <div class="sw"><span class="small">Proposta</span><div class="bars"><i class="cur" style="background:var(--st-ignored)"></i><i style="background:var(--st-learning)"></i><i style="background:var(--st-learning)"></i><i style="background:var(--st-learned)"></i><i style="background:var(--st-track)"></i></div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const LESSONS = [
+  { g:'g1', id:14, title:"Fisiopatologia degli squilibri acido-base: acidosi metabolica e respiratoria, meccanismi di compenso e interpretazione clinica", date:'30 set', teacher:'Corsonello', units:18, learned:0, learning:0, ignored:0, questions:0, review:'todo', pending:3 },
+  { g:'g1', id:15, title:"Fisiopatologia dell'equilibrio acido-base: sistemi tampone, meccanismi di compenso e interpretazione clinica dei disturbi", date:'28 set', teacher:'Corsonello', units:14, learned:1, learning:2, ignored:3, questions:23, review:'done', pending:0 },
+  { g:'g1', id:12, title:"Emogasanalisi arteriosa: lettura guidata e casi", date:'25 set', teacher:'Corsonello', units:12, learned:7, learning:2, ignored:1, questions:41, review:'done', pending:0 },
+  { g:'g2', id:21, title:"Modellazione dell'ottimizzazione lineare: strutture algebriche, interpretazione geometrica e applicazione ai problemi di trasporto", date:'1 ott', teacher:'Conforti', units:19, learned:0, learning:4, ignored:0, questions:8, review:'todo', pending:0 },
+  { g:'g2', id:22, title:"Problemi decisionali e modellazione quantitativa nei servizi sanitari", date:'2 ott', teacher:'Conforti', units:null, running:true, learned:0, learning:0, ignored:0, questions:0, review:null, pending:0 },
+];
+let palette = 'st';
+const shieldSvg = (cls) => `<svg class="shield ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>`;
+
+function ring(l){
+  const p = palette, total = l.units || 0;
+  const gap = p === 'st' ? 3 : 0;
+  const seg = (n) => total ? n / total * 100 : 0;
+  const arcs = [['learned', seg(l.learned)], ['learning', seg(l.learning)]];
+  const sw = p==='st' ? 2.6 : 3, w = p==='st' ? 19 : 22;
+  let html = `<svg class="ringsvg" style="width:${w}px;height:${w}px" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" pathLength="100" fill="none" stroke="var(--${p==='st'?'st':'old'}-track)" stroke-width="${sw*24/w}"/>`;
+  let off = 0;
+  for (const [k, v] of arcs) {
+    if (v > 0) html += `<circle cx="12" cy="12" r="9.5" pathLength="100" fill="none" stroke="var(--${p==='st'?'st':'old'}-${k})" stroke-width="${sw*24/w}" stroke-dasharray="${Math.max(v-gap,1.5)} ${100-Math.max(v-gap,1.5)}" stroke-dashoffset="${-off}"/>`;
+    off += v;
+  }
+  const ig = seg(l.ignored);
+  if (ig > 0) html += `<circle cx="12" cy="12" r="9.5" pathLength="100" fill="none" stroke="var(--${p==='st'?'st':'old'}-ignored)" stroke-width="${sw*24/w}" stroke-dasharray="${Math.max(ig-gap,1.5)} ${100-Math.max(ig-gap,1.5)}" stroke-dashoffset="${-(100-ig)}"/>`;
+  return html + '</svg>';
+}
+
+function row(l){
+  const studied = l.learned || l.learning || l.ignored;
+  const toStudy = Math.max(0, (l.units||0) - l.ignored);
+  const sub = palette === 'st' ? [l.date, l.teacher, l.units != null ? `${l.units} unità` : null, l.questions ? `${l.questions} domande` : null] : [l.date, l.teacher, l.units != null ? `${l.units} unità` : null, l.learned ? `${l.learned} apprese` : null].filter(Boolean).join(' · ');
+  const todo = Math.max(0, (l.units||0) - l.learned - l.ignored);
+  const ringTip = palette === 'st' ? `${l.learned} ${l.learned===1?'appresa':'apprese'} · ${todo} da apprendere · ${l.ignored} ${l.ignored===1?'ignorata':'ignorate'}` : `${l.learned} unità apprese su ${toStudy}`;
+  const ringEl = studied
+    ? `<a class="mk" href="#" data-go="/studio/lezione/${l.id}" aria-label="${ringTip}">${palette==='st' ? '' : `<span class="count">${l.learned}/${toStudy}</span>`}${ring(l)}<span class="tip">${ringTip}</span></a>`
+    : `<span class="slot" aria-hidden="true"></span>`;
+  const rvTip = l.review === 'done' ? 'Verifica fatta' : l.pending ? `Verifica da fare · ${l.pending} issue da decidere` : 'Verifica da fare';
+  const rvEl = l.review
+    ? `<a class="mk" href="#" data-go="/lezioni/${l.id}?panel=verifica" aria-label="${rvTip}">${shieldSvg(l.review)}<span class="tip">${rvTip}</span></a>`
+    : `<span class="slot" aria-hidden="true"></span>`;
+  return `<li class="row"><span class="dot${l.running?' run':''}" aria-hidden="true"></span><span class="txt"><a class="title" href="#" data-go="/lezioni/${l.id}">${l.title}</a><span class="sub">${sub}</span></span><span class="marks">${ringEl}${rvEl}</span></li>`;
+}
+
+function render(){
+  for (const g of ['g1','g2']) document.getElementById(g).innerHTML = LESSONS.filter(l => l.g === g).map(row).join('');
+  const p = palette === 'st' ? 'st' : 'old';
+  document.getElementById('legend').innerHTML = `<span><i style="background:var(--${p}-learned)"></i>Appresa</span><span><i style="background:var(--${p}-learning)"></i>In apprendimento</span><span><i style="background:var(--${p}-ignored)"></i>Ignorata</span>`;
+}
+function press(on, off){ on.setAttribute('aria-pressed','true'); off.setAttribute('aria-pressed','false') }
+document.getElementById('tDesk').onclick = (e) => { press(e.currentTarget, document.getElementById('tPhone')); document.getElementById('frame').classList.remove('phone') };
+document.getElementById('tPhone').onclick = (e) => { press(e.currentTarget, document.getElementById('tDesk')); document.getElementById('frame').classList.add('phone') };
+document.getElementById('cNew').onclick = (e) => { press(e.currentTarget, document.getElementById('cOld')); palette = 'st'; render() };
+document.getElementById('cOld').onclick = (e) => { press(e.currentTarget, document.getElementById('cNew')); palette = 'old'; render() };
+document.getElementById('frame').addEventListener('click', (e) => {
+  const a = e.target.closest('[data-go]'); if (!a) return;
+  e.preventDefault();
+  document.getElementById('log').textContent = '→ ' + a.dataset.go;
+});
+render();
+</script>

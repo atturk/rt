@@ -1,3 +1,5 @@
+import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
+import { EmptyGeneration } from './EmptyGeneration'
 import {
   BookOpen,
   Brain,
@@ -49,11 +51,11 @@ type SessionType = RecallType | 'mista'
 
 const SESSION_TYPES: { id: SessionType; label: string }[] = [
   { id: 'mista', label: 'Mista' },
-  { id: 'quiz', label: 'Quiz' },
-  { id: 'mirata', label: 'Mirata' },
-  { id: 'vasta', label: 'Vasta' },
-  { id: 'caso', label: 'Casi' },
-  { id: 'esercizio', label: 'Esercizi' },
+  { id: 'quiz', label: QUESTION_TYPE_LABELS.quiz },
+  { id: 'mirata', label: QUESTION_TYPE_LABELS.mirata },
+  { id: 'vasta', label: QUESTION_TYPE_LABELS.vasta },
+  { id: 'caso', label: QUESTION_TYPE_LABELS.caso },
+  { id: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio },
 ]
 
 type DiscardReason = NonNullable<Schemas['RecallVote']['reasons']>[number]
@@ -81,6 +83,8 @@ export function LightweightSession({
     id: string
     title: string
     /** Domande da porre per tipo: i tipi vuoti restano spenti. */
+    suggestions?: boolean
+    suggestedQtype?: RecallType | null
     pending: Record<string, number>
     onBack: () => void
     /** Finite le domande dell'unità: avanti nello Studio (unità o lezione successiva). */
@@ -552,6 +556,10 @@ export function LightweightSession({
                       ? 'Non ci sono domande da porre in questa lezione. Puoi generarne di nuove o riproporre quelle già poste.'
                       : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o prova mista.'}
               </p>
+              {!isSelection && lessonId && <EmptyGeneration lessonId={lessonId} unit={unit} available={unit ? unitPending === 0 : daPorreCount === 0} onGenerated={() => {
+                setQtype('mista')
+                void askNext('mista')
+              }} />}
               {restore.isError && <Alert tone="danger" className="mt-3">{errorMessage(restore.error)}</Alert>}
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 {/* Prova mista: solo quando serve davvero (tipo diverso da mista e domande da porre > 0) */}
@@ -837,9 +845,14 @@ export function LightweightSession({
                     <Button
                       variant="default"
                       disabled={busy}
-                      onClick={() => askNext()}
+                      onClick={() => {
+                        if (!isSelection && currentQuestion.remaining === 0) {
+                          setCurrentQuestion(null)
+                          setEmptyPoolError(true)
+                        } else void askNext()
+                      }}
                     >
-                      Prossima
+                      {!isSelection && currentQuestion.remaining === 0 ? 'Fine' : 'Prossima'}
                     </Button>
                   )}
                 </div>

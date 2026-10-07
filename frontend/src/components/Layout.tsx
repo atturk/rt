@@ -1,5 +1,6 @@
+import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
 import { Activity, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation, useMatches } from 'react-router'
 
 import { ApiError } from '@/api/client'
@@ -10,6 +11,7 @@ import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext } from '@/components/shell/newLesson'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
+import { ZenContext, IRLEN_COLORS, type ZenState } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -37,9 +39,10 @@ function Badge() {
 
 function NavItem({ section, path, side, variant }: { section: Section; path: string; side: 'right' | 'top'; variant: 'rail' | 'ghost' }) {
   const active = section.match(path)
+  const returnAddress = useReturnAddress()
   return (
     <IconLink
-      to={section.to}
+      to={active && section !== LESSONS ? returnAddress : section.to}
       label={section.label}
       icon={section.icon}
       side={side}
@@ -51,9 +54,30 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
 }
 
 export function Layout() {
+  const [zen, setZen] = useState<ZenState>({ active: false, tint: null })
+  useEffect(() => {
+    if (!zen.active || !zen.tint) return
+    const existing = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    const meta = existing ?? document.createElement('meta')
+    const previous = meta.getAttribute('content')
+    meta.name = 'theme-color'
+    meta.content = IRLEN_COLORS[zen.tint]
+    if (!existing) document.head.append(meta)
+    return () => {
+      if (!existing) meta.remove()
+      else if (previous === null) meta.removeAttribute('content')
+      else meta.content = previous
+    }
+  }, [zen.active, zen.tint])
   const me = useMe()
   const location = useLocation()
   const matches = useMatches()
+  const [returnAddress, setReturnAddress] = useState('/')
+  useEffect(() => {
+    // L'indirizzo vive solo nella sessione di navigazione: una ricarica usa Lezioni.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setReturnAddress(previous => rememberReturnAddress(previous, location))
+  }, [location])
   const [newLesson, setNewLesson] = useState(false)
   const openNewLesson = useCallback(() => setNewLesson(true), [])
   const closeNewLesson = useCallback(() => setNewLesson(false), [])
@@ -80,10 +104,10 @@ export function Layout() {
   const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
   const path = location.pathname
   return (
-    <NewLessonContext value={openNewLesson}>
-      <div className="flex min-h-dvh">
+    <ReturnAddressContext value={returnAddress}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
+      <div className="rt-layout flex min-h-dvh bg-background" data-zen={zen.active || undefined} data-tint={zen.active ? zen.tint ?? undefined : undefined}>
         {!phone && <nav
-          aria-label="Navigazione"
+          aria-label="Navigazione" aria-hidden={zen.active || undefined} inert={zen.active || undefined}
           className="sticky top-0 hidden h-dvh w-(--rail-width) shrink-0 flex-col items-center gap-1.5 border-r bg-background py-3 md:flex"
         >
           <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={openNewLesson} aria-haspopup="dialog" />
@@ -106,8 +130,8 @@ export function Layout() {
 
         {/* Telefono: tre schede in basso (linee guida §2). */}
         {phone && <nav
-          aria-label="Navigazione"
-          className="fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
+          aria-label="Navigazione" aria-hidden={zen.active || undefined} inert={zen.active || undefined}
+          className="fixed inset-x-0 bottom-0 z-50 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
         >
           {[LESSONS, JOBS, SETTINGS].map((section) => (
             <NavItem key={section.to} section={section} path={path} side="top" variant="ghost" />
@@ -119,6 +143,6 @@ export function Layout() {
           <NewLessonDialog open onClose={closeNewLesson} />
         </Suspense>
       )}
-    </NewLessonContext>
+    </NewLessonContext></ZenContext></ReturnAddressContext>
   )
 }

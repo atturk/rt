@@ -193,26 +193,26 @@ def export_to_dir(lesson_dir: str, out_dir: str, scope: str = "final") -> List[s
     return written
 
 
-def export_zip(lesson_dir: str, scope: str = "final") -> bytes:
+def export_zip(lesson_dir: str, scope: str = "final", study: bool = False) -> bytes:
     """Archivio zip con i file nella cartella <nome lezione>/."""
     buf = io.BytesIO()
-    _export_zip_into(lesson_dir, scope, buf)
+    _export_zip_into(lesson_dir, scope, buf, study=study)
     return buf.getvalue()
 
 
-def export_zip_to_tempfile(lesson_dir: str, scope: str = "final") -> str:
+def export_zip_to_tempfile(lesson_dir: str, scope: str = "final", study: bool = False) -> str:
     """Build a large ZIP on disk so FastAPI can stream it without buffering all media."""
     with tempfile.NamedTemporaryFile(prefix="rt-export-", suffix=".zip", delete=False) as output:
         path = output.name
         try:
-            _export_zip_into(lesson_dir, scope, output)
+            _export_zip_into(lesson_dir, scope, output, study=study)
         except BaseException:
             os.unlink(path)
             raise
     return path
 
 
-def _export_zip_into(lesson_dir: str, scope: str, buf) -> None:
+def _export_zip_into(lesson_dir: str, scope: str, buf, study: bool = False) -> None:
     folder = os.path.basename(os.path.normpath(lesson_dir))
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         entries = []
@@ -226,8 +226,15 @@ def _export_zip_into(lesson_dir: str, scope: str, buf) -> None:
                 payload = src if isinstance(src, bytes) else _read(src)
                 entries.append({"path": rel, "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
         if scope == "all":
-            zf.writestr(f"{folder}/rt-export.json", json.dumps({"format": "rt-lesson", "version": 1,
-                "scope": "all", "files": entries}, ensure_ascii=False))
+            manifest = {"format": "rt-lesson", "version": 1, "scope": "all", "files": entries}
+            if study:
+                from rt.services.lesson_service import lesson_id_for_dir
+                from rt.services.study_progress_service import list_units
+                lid = lesson_id_for_dir(lesson_dir)
+                manifest["study"] = [{**row, "status_at": row["status_at"].isoformat() if row["status_at"] else None,
+                    "last_read_at": row["last_read_at"].isoformat() if row["last_read_at"] else None}
+                    for row in list_units(lid)] if lid is not None else []
+            zf.writestr(f"{folder}/rt-export.json", json.dumps(manifest, ensure_ascii=False))
 
 
 def many_export_filename(name: str, fmt: str) -> str:
@@ -237,7 +244,8 @@ def many_export_filename(name: str, fmt: str) -> str:
 
 
 def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
-                            progress: Optional[Callable[[int, int, str], None]] = None) -> Tuple[str, int]:
+                            progress: Optional[Callable[[int, int, str], None]] = None,
+                            study: bool = False) -> Tuple[str, int]:
     """Un gruppo di lezioni in un solo ZIP (percorso, lezioni incluse).
 
     markdown: il documento finale di ogni lezione che ne ha uno aggiornato (le altre si
@@ -272,7 +280,7 @@ def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
                     final = final_markdown_name(names)
                     zf.writestr(unique(final), _read(names[final]))
                 else:
-                    single = export_zip_to_tempfile(lesson_dir, "all")
+                    single = export_zip_to_tempfile(lesson_dir, "all", study=study)
                     try:
                         zf.write(single, unique(zip_name(lesson_dir)))
                     finally:

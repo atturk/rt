@@ -77,7 +77,10 @@
         "1.1": "<SHA256>"
       },
       "provider": null,
-      "model": null
+      "model": null,
+      "eligible_units": [
+        "1.1"
+      ]
     },
     "build": {
       "stale_reason": null,

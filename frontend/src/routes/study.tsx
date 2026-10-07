@@ -13,7 +13,7 @@ export function StudyLessonPage() {
   const [params] = useSearchParams()
   const lesson = useLesson(id)
   const only = params.get('unita')?.split(',').map((u) => u.trim()).filter(Boolean) ?? null
-  const back = only ? { to: `/lezioni/${id}`, label: 'Esci' } : { to: '/', label: 'Esci' }
+  const back = { to: `/lezioni/${id}`, label: 'Esci' }
   if (lesson.isError) return <Failure back={back} error={lesson.error} retry={() => void lesson.refetch()} />
   if (!lesson.data) return <Loading back={back} />
   const ready = lesson.data.phases.rewrite === 'VALID'

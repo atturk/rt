@@ -4,9 +4,10 @@
  */
 import type { RsvpPreference } from '@/lib/studyPrefs'
 
-export type Word = { text: string; para: number }
+export type Formula = { html: string; tex: string; complex: boolean }
+export type Word = { text: string; para: number; math?: Formula; hl?: boolean; lastPiece?: boolean }
 /** Pezzo del Contesto: una parola letta (index) o un elemento saltato (formula, immagine, tabella). */
-export type ContextPiece = { text: string; index: number | null }
+export type ContextPiece = { text: string; index: number | null; math?: Formula; hl?: boolean }
 
 const SENTENCE_END = /[.!?…]["'»”’)\]]*$/
 const SOFT_END = /[,;:]["'»”’)\]]*$/
@@ -42,13 +43,44 @@ export function focusIndex(word: string, orp: RsvpPreference['orp']): number {
 }
 
 /** Durata di una parola in ms. `ramp` (5…1) rallenta le prime parole dopo play. */
-export function wordDelay(word: string, prefs: Pick<RsvpPreference, 'wpm' | 'pauseMs' | 'comma'>, ramp = 0): number {
+export function wordDelay(word: string | Word, prefs: Pick<RsvpPreference, 'wpm' | 'pauseMs' | 'comma'> & Partial<Pick<RsvpPreference, 'formulaPause' | 'formulaMs' | 'slowHighlights'>>, ramp = 0): number {
+  const entry = typeof word === 'string' ? { text: word, para: 0 } : word
   let ms = 60000 / prefs.wpm
-  const count = letters(word)
-  if (count > 8) ms *= 1 + (count - 8) * 0.06
-  if (isFullStop(word, prefs.comma)) ms += prefs.pauseMs
+  if (entry.math) {
+    if (entry.math.complex && prefs.formulaPause !== 'standard') {
+      const metrics = formulaMetrics(entry.math.tex)
+      ms = prefs.formulaPause === 'personalizzata' ? prefs.formulaMs ?? 2000
+        : ms * (1 + 0.25 * metrics.atoms + 1.5 * metrics.structures)
+    }
+  } else {
+    const count = letters(entry.text)
+    if (count > 8) ms *= 1 + (count - 8) * 0.06
+  }
+  if (entry.lastPiece !== false && isFullStop(entry.text, prefs.comma)) ms += prefs.pauseMs
+  if (entry.hl && prefs.slowHighlights) ms *= 1.3
   if (ramp > 0) ms *= 1 + ramp * 0.12
   return ms
+}
+
+/** Atomi e strutture del sorgente, indipendenti dal delimitatore in linea o a blocco. */
+export function formulaMetrics(tex: string): { atoms: number; structures: number; complex: boolean } {
+  const structures = new Set(['frac', 'dfrac', 'tfrac', 'sum', 'prod', 'int', 'oint', 'sqrt', 'lim', 'begin'])
+  const formatting = new Set(['left', 'right', ',', ';', 'quad', 'text', 'mathrm', 'mathbf', 'operatorname', 'displaystyle', 'end'])
+  let atoms = 0, count = 0
+  const tokens = tex.match(/\\(?:begin|end)\s*\{[^}]*\}|\\(?:[a-zA-Z]+|.)|[^{}^_\s]/gu) ?? []
+  for (const token of tokens) {
+    if (!token.startsWith('\\')) { atoms++; continue }
+    const command = /^\\([a-zA-Z]+|.)/u.exec(token)?.[1] ?? ''
+    if (structures.has(command)) count++
+    else if (!formatting.has(command)) atoms++
+  }
+
+  return { atoms, structures: count, complex: count > 0 || atoms > 6 }
+}
+
+/** Clic grave per fine frase o formule complesse con pausa dedicata. */
+export function graveWord(word: Word, prefs: Pick<RsvpPreference, 'comma' | 'formulaPause'>): boolean {
+  return word.lastPiece !== false && (isFullStop(word.text, prefs.comma) || !!(word.math?.complex && prefs.formulaPause !== 'standard'))
 }
 
 /** Inizio della frase precedente; se si è già all'inizio di una frase, quella prima ancora. */
@@ -69,17 +101,22 @@ export function nextSentence(words: Word[], i: number): number {
 }
 
 /** Testo intorno, solo in pausa: la frase fino alla parola sopra, il resto sotto (max 12 per lato). */
-export function surrounding(words: Word[], i: number, max = 12): { before: string; after: string } {
-  const before: string[] = []
-  for (let k = i - 1; k >= 0 && !endsSentence(words[k].text) && before.length < max; k--) before.unshift(words[k].text)
-  const after: string[] = []
+export function surroundingEntries(words: Word[], i: number, max = 12): { before: Word[]; after: Word[] } {
+  const before: Word[] = []
+  for (let k = i - 1; k >= 0 && !endsSentence(words[k].text) && before.length < max; k--) before.unshift(words[k])
+  const after: Word[] = []
   if (words[i] && !endsSentence(words[i].text)) {
     for (let k = i + 1; k < words.length && after.length < max; k++) {
-      after.push(words[k].text)
+      after.push(words[k])
       if (endsSentence(words[k].text)) break
     }
   }
-  return { before: before.join(' '), after: after.join(' ') }
+  return { before, after }
+}
+
+export function surrounding(words: Word[], i: number, max = 12): { before: string; after: string } {
+  const entries = surroundingEntries(words, i, max)
+  return { before: entries.before.map(w => w.text).join(' '), after: entries.after.map(w => w.text).join(' ') }
 }
 
 /** Secondi che mancano alla fine, alla velocità attuale. */
@@ -103,8 +140,8 @@ function skipLabel(el: Element): string {
 }
 
 /**
- * Parole del testo dell'unità (l'HTML già sanificato di UnitText): formule, immagini e tabelle
- * si saltano e nel Contesto restano come segnaposto. `para` raggruppa le parole per blocco.
+ * Parole e formule dell'HTML già sanificato di UnitText; immagini e tabelle
+ * restano nel Contesto come segnaposto. `para` raggruppa le parole per blocco.
  */
 export function readUnitWords(root: Element): { words: Word[]; paragraphs: ContextPiece[][] } {
   const words: Word[] = []
@@ -128,10 +165,21 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
   // Gli elementi saltati non si visitano: restano nel Contesto come segnaposto, al loro posto.
   const marks: { node: Node; label: string }[] = []
   root.querySelectorAll(SKIP).forEach((el) => { if (!el.parentElement?.closest(SKIP)) marks.push({ node: el, label: skipLabel(el) }) })
+  const emitMark = (mark: { node: Node; label: string }) => {
+    const para = paraOf(mark.node)
+    const el = mark.node as Element
+    const hl = !!el.closest('.rt-hl')
+    if (el.matches('.katex, .katex-display, math')) {
+      const tex = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? el.getAttribute('aria-label') ?? el.textContent ?? ''
+      const math = { html: el.outerHTML, tex, complex: formulaMetrics(tex).complex }
+      paragraphs[para].push({ text: tex, index: words.length, math, ...(hl ? { hl: true } : {}) })
+      words.push({ text: tex, para, math, ...(hl ? { hl: true } : {}) })
+    } else paragraphs[para].push({ text: mark.label, index: null })
+  }
   let next = 0
   const flushMarksBefore = (node: Node) => {
     while (next < marks.length && (marks[next].node.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-      paragraphs[paraOf(marks[next].node)].push({ text: marks[next].label, index: null })
+      emitMark(marks[next])
       next++
     }
   }
@@ -140,24 +188,72 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     if (node.nodeType !== Node.TEXT_NODE) continue
     const before = next
     flushMarksBefore(node)
+    const hl = !!node.parentElement?.closest('.rt-hl')
     const text = node.textContent ?? ''
     const para = paraOf(node)
     const parts = splitWords(text)
     const last = words[words.length - 1]
-    if (glue && before === next && last?.para === para && parts.length && !/^\s/.test(text)) {
+    if (last?.math && last.para === para && !/^\s/.test(text) && parts.length && /^[.,;:!?…]+$/.test(parts[0])) {
       last.text += parts.shift()
-      const piece = paragraphs[para].findLast((p) => p.index === words.length - 1)
+      const piece = paragraphs[para].findLast(p => p.index === words.length - 1)
       if (piece) piece.text = last.text
     }
+    if (!last?.math && glue && before === next && last?.para === para && parts.length && !/^\s/.test(text)) {
+      last.text += parts.shift()
+      const piece = paragraphs[para].findLast((p) => p.index === words.length - 1)
+      if (hl) last.hl = true
+      if (piece) { piece.text = last.text; if (last.hl) piece.hl = true }
+    }
     for (const word of parts) {
-      paragraphs[para].push({ text: word, index: words.length })
-      words.push({ text: word, para })
+      paragraphs[para].push({ text: word, index: words.length, ...(hl ? { hl: true } : {}) })
+      words.push({ text: word, para, ...(hl ? { hl: true } : {}) })
     }
     if (text) glue = !!text.trim() && !/\s$/.test(text)
   }
   while (next < marks.length) {
-    paragraphs[paraOf(marks[next].node)].push({ text: marks[next].label, index: null })
+    emitMark(marks[next])
     next++
   }
   return { words, paragraphs }
+}
+
+export type DisplayWord = Word & { sourceIndex: number; scale: number; lastPiece: boolean }
+export type WordMeasure = (text: string) => number
+
+/** Misura sui due lati della lettera di fuoco, nel font alla dimensione originale. */
+export function wordScale(text: string, width: number, measure: WordMeasure, orp: RsvpPreference['orp']): number {
+  const focus = focusIndex(text, orp)
+  const space = Math.max(0, width / 2 - measure(text.charAt(focus)) / 2 - 16)
+  return Math.min(1, space / Math.max(measure(text.slice(0, focus)), measure(text.slice(focus + 1)), 1))
+}
+
+function wordCuts(word: string): number[] {
+  const cuts: number[] = []
+  for (let i = 3; i <= word.length - 3; i++) {
+    const a = word[i - 1], b = word[i], c = word[i + 1] ?? ''
+    const vowel = /[aeiouàèéìòù]/i, consonant = /[bcdfghlmnpqrstvz]/i
+    if (/[’'-]/.test(a) || vowel.test(a) && consonant.test(b) && vowel.test(c) ||
+      a.toLowerCase() === b.toLowerCase() && consonant.test(a)) cuts.push(i)
+  }
+  return cuts
+}
+
+/** Divide solo ai punti ammessi; tutti i pezzi mantengono l’indice della parola originale. */
+export function adaptWord(word: Word, sourceIndex: number, width: number, measure: WordMeasure, orp: RsvpPreference['orp']): DisplayWord[] {
+  const fit = (text: string) => wordScale(text, width, measure, orp)
+  const split = (text: string): string[] => {
+    if (fit(text) >= .7) return [text]
+    const cuts = wordCuts(text)
+    if (!cuts.length) return [text]
+    const head = (at: number) => text.slice(0, at) + (/[’'-]$/.test(text.slice(0, at)) ? '' : '-')
+    const good = cuts.filter(at => fit(head(at)) >= .7 && fit(text.slice(at)) >= .7)
+    const heads = cuts.filter(at => fit(head(at)) >= .7)
+    const pool = good.length ? good : heads.length ? heads : cuts
+    const middle = text.length / 2
+    const at = pool.reduce((a, b) => Math.abs(b - middle) < Math.abs(a - middle) ? b : a)
+    // Se servono più di due pezzi, anche la coda si divide con le stesse regole.
+    return [...split(head(at)), ...split(text.slice(at))]
+  }
+  const pieces = word.math ? [word.text] : split(word.text)
+  return pieces.map((text, i) => ({ ...word, text, sourceIndex, lastPiece: i === pieces.length - 1, scale: word.math ? 1 : fit(text) }))
 }

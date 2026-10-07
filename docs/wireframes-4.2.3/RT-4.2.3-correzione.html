@@ -1,0 +1,225 @@
+<title>Wireframe correzione proposta</title>
+<style>
+/* Layout: wireframe frame as in 4.2.3b1-b4 (notes, then the app frame: document + review sidebar); tokens mirror RT's index.css */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --warn:#98620c; --warn-soft:#fff3df; --ok:#147464;
+  --rail:#fafafa; --tip-bg:#171717; --tip-fg:#ffffff;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --warn:#f1c27a; --warn-soft:#3a2c14; --ok:#5cc79f;
+  --rail:#131313; --tip-bg:#ffffff; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --warn:#f1c27a; --warn-soft:#3a2c14; --ok:#5cc79f;
+  --rail:#131313; --tip-bg:#ffffff; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ol,.notes ul{margin:0;padding-left:20px;display:grid;gap:5px}
+.notes li{font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg)}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 auto;width:1000px;height:640px;display:flex}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0}
+.rail i{width:22px;height:22px;border-radius:6px;background:var(--soft);display:block}
+.ed{flex:1;overflow:auto;padding:22px 32px;min-width:0}
+.ed h3{font-size:18px;margin:0 0 6px}
+.chip{font-family:var(--mono);font-size:12.5px;border:1px solid var(--border);border-radius:8px;padding:1px 8px;display:inline-block;margin-bottom:10px}
+.ed p{margin:0 0 12px;line-height:1.75;font-size:15px;max-width:62ch}
+.u{text-decoration:underline dotted var(--warn) 2px;text-underline-offset:4px;background:var(--warn-soft)}
+.u.fixed{text-decoration:none;background:var(--acc-soft);transition:background 1.2s}
+.side{width:360px;flex:none;border-left:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.small{font-size:13px;color:var(--mute)}
+
+/* Issue card */
+.card{border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-size:12.5px;border-radius:7px;padding:1px 8px;background:var(--warn-soft);color:var(--warn)}
+.badge.ok{background:var(--acc-soft);color:var(--acc)}
+.where{display:flex;gap:12px;align-items:center;font-size:13.5px;color:var(--mute)}
+.link{color:var(--acc);font-weight:500}
+.lblrow{display:flex;align-items:center;justify-content:space-between;min-height:28px;margin-bottom:4px}
+.lbl{font-size:13.5px;font-weight:600}
+.fix{border-radius:10px;background:var(--soft);padding:10px 12px;font-size:15px;line-height:1.55;border:1.5px solid transparent;cursor:text;position:relative;transition:background .12s,border-color .12s}
+.fix:hover{border-color:var(--border)}
+.fix.editing{background:var(--bg);border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.fix textarea{all:unset;display:block;width:100%;font:inherit;line-height:inherit;color:var(--fg);resize:none;white-space:pre-wrap;overflow:hidden}
+.fix .ghost{color:var(--mute);font-size:12px;position:absolute;right:10px;bottom:-20px;opacity:0;transition:opacity .15s;pointer-events:none}
+.fix:not(.editing):hover .ghost{opacity:1}
+.reason{font-size:13.5px;margin:0}
+.actions{display:flex;gap:8px;align-items:center}
+.ib{width:40px;height:36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative}
+.ib:hover{background:var(--soft)}
+.ib.pri{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc)}
+.ib.pri:hover{filter:brightness(.97)}
+.ib svg{width:18px;height:18px}
+.ib.mini{width:28px;height:28px;border-radius:7px;border-color:transparent;color:var(--mute)}
+.ib.mini:hover{background:var(--soft);color:var(--fg)}
+.ib.mini svg{width:15px;height:15px}
+.ib[disabled]{opacity:.4;cursor:default}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.tip{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--tip-bg);color:var(--tip-fg);font-size:12px;padding:4px 8px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:5;opacity:0;transition:opacity .1s}
+.ib.mini .tip{left:auto;right:0;transform:none}
+.ib:hover .tip,.ib:focus-visible .tip{opacity:1}
+.hint{font-size:12.5px;color:var(--mute);min-height:18px}
+.done{display:flex;flex-direction:column;gap:8px}
+.reset{align-self:flex-start;font:inherit;font-size:13px;color:var(--acc);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.log{font-size:13px;color:var(--mute);min-height:20px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="top">
+  <h1>Correzione proposta: revisione più rapida</h1>
+  <span class="meta">Wireframe per la 4.2.3 stabile · pannello della revisione, issue con correzione</span>
+</div>
+
+<div class="wrap">
+  <section class="notes" aria-label="Come funziona">
+    <h2>Il flusso</h2>
+    <ol>
+      <li><b>Accetta</b> e <b>Mantieni</b> diventano icone (✓ e ✕) con il suggerimento al passaggio del mouse. Il pulsante "Modifica" sparisce.</li>
+      <li>Doppio clic sul box della correzione: il box diventa bianco con il bordo d'accento e il testo si modifica lì dentro. Passando sul box compare "Doppio clic per modificare".</li>
+      <li>Appena si entra in modifica, a destra di "Correzione proposta" compare una piccola icona per ripristinare il testo proposto (attiva solo se il testo è cambiato).</li>
+      <li>Per applicare: clic fuori dal box oppure ✓ (o <span class="kbd">⌘</span> <span class="kbd">↩</span>). La decisione salvata è "Modificata" con il tuo testo.</li>
+    </ol>
+    <h2>Proposte mie, da confermare</h2>
+    <ul>
+      <li>Se esci dal box senza aver cambiato nulla, torna com'era e non decide niente.</li>
+      <li><span class="kbd">Esc</span> annulla la modifica e torna al testo proposto, senza decidere.</li>
+      <li>✕ durante la modifica vuol dire comunque "Mantieni il testo attuale": la tua modifica si scarta.</li>
+      <li>Sull'iPhone il doppio tocco ingrandisce la pagina, quindi lì basta un tocco sul box.</li>
+      <li>Le issue di paragrafo (senza correzione proposta) restano come oggi.</li>
+    </ul>
+  </section>
+
+  <div class="stage">
+    <div class="frame">
+      <div class="rail" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="ed">
+        <span class="chip">29:39</span>
+        <h3>2.4 Emogasanalisi: interpretazione</h3>
+        <p>L'emogasanalisi arteriosa fornisce in pochi minuti pH, pCO₂ e bicarbonato, da cui si ricava il tipo di disturbo acido-base e l'eventuale compenso.</p>
+        <p><span class="u" id="docSentence">Per esercitarsi nell'interpretazione dell'emogasanalisi, si consideri un paziente con pH pari a 7,25, pressione parziale di anidride carbonica (pCO₂) di 38 mmHg e concentrazione di bicarbonato di 18 mmol/L.</span> Il primo passo è stabilire se il pH indica acidemia o alcalemia, poi capire quale dei due parametri spiega la variazione.</p>
+        <p>Con un bicarbonato basso e una pCO₂ normale il quadro è quello di un'acidosi metabolica non ancora compensata dal punto di vista respiratorio.</p>
+      </div>
+      <aside class="side" aria-label="Revisione">
+        <div class="small">Da decidere 12 · Decise 31</div>
+        <div class="card" id="card">
+          <div class="head"><h2>Errore concettuale</h2><span class="badge">media</span></div>
+          <div class="where"><span>Unità 2.4</span><span class="link">Ascolta da 29:39</span></div>
+          <div id="live">
+            <div class="lblrow">
+              <span class="lbl" id="fixLabel">Correzione proposta</span>
+              <button class="ib mini" id="restore" hidden aria-label="Ripristina la correzione proposta" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                <span class="tip">Ripristina la correzione proposta</span>
+              </button>
+            </div>
+            <div class="fix" id="fix" aria-labelledby="fixLabel">
+              <textarea id="fixText" rows="1" readonly tabindex="-1"></textarea>
+              <span class="ghost">Doppio clic per modificare</span>
+            </div>
+          </div>
+          <p class="reason">I tre valori non sono coerenti tra loro secondo l'equazione di Henderson–Hasselbalch: con HCO₃⁻ pari a 18 mmol/L e pCO₂ pari a 38 mmHg il pH atteso è circa 7,30, non 7,25.</p>
+          <div class="actions" id="actions">
+            <button class="ib pri" id="accept" aria-label="Accetta la correzione">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <span class="tip" id="acceptTip">Accetta la correzione</span>
+            </button>
+            <button class="ib" id="keep" aria-label="Mantieni il testo attuale">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <span class="tip">Mantieni il testo attuale</span>
+            </button>
+          </div>
+          <div class="done" id="done" hidden>
+            <span class="badge ok" id="doneBadge">Accettata</span>
+            <button class="reset" id="reset">Rifai la prova</button>
+          </div>
+        </div>
+        <div class="hint" id="hint">Prova: doppio clic sul box grigio, cambia un numero, poi clicca fuori.</div>
+        <div class="log" id="log" aria-live="polite"></div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROPOSED = "Per esercitarsi nell'interpretazione dell'emogasanalisi, si consideri un paziente con pH pari a 7,30, pressione parziale di anidride carbonica (pCO₂) di 38 mmHg e concentrazione di bicarbonato di 18 mmol/L.";
+const ORIGINAL = document.getElementById('docSentence').textContent;
+const $ = (id) => document.getElementById(id);
+const fix = $('fix'), ta = $('fixText'), restore = $('restore'), card = $('card');
+let editing = false;
+
+function grow(){ ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px' }
+function changed(){ return ta.value.trim() !== PROPOSED }
+function refresh(){
+  restore.disabled = !changed();
+  const edited = editing && changed();
+  $('acceptTip').textContent = edited ? 'Applica la tua correzione' : 'Accetta la correzione';
+  $('accept').setAttribute('aria-label', $('acceptTip').textContent);
+}
+function enter(){
+  if (editing) return;
+  editing = true;
+  fix.classList.add('editing');
+  ta.readOnly = false; ta.tabIndex = 0;
+  restore.hidden = false;
+  ta.focus();
+  $('hint').textContent = 'Clic fuori o ✓ per applicare · Esc per annullare';
+  refresh();
+}
+function leave(){
+  editing = false;
+  fix.classList.remove('editing');
+  ta.readOnly = true; ta.tabIndex = -1;
+  restore.hidden = true;
+  $('hint').textContent = '';
+  refresh();
+}
+function decide(kind){
+  const text = kind === 'edited' ? ta.value.trim() : kind === 'accepted' ? PROPOSED : ORIGINAL;
+  leave();
+  $('live').hidden = true; $('actions').hidden = true; $('done').hidden = false;
+  $('doneBadge').textContent = { accepted: 'Accettata', rejected: 'Mantenuta', edited: 'Modificata' }[kind];
+  const s = $('docSentence');
+  s.textContent = text;
+  s.className = kind === 'rejected' ? '' : 'u fixed';
+  $('log').textContent = kind === 'edited' ? 'Applicata la correzione modificata da te.' : kind === 'accepted' ? 'Applicata la correzione proposta.' : 'Testo lasciato com\'era, issue chiusa.';
+}
+function reset(){
+  ta.value = PROPOSED; grow();
+  $('live').hidden = false; $('actions').hidden = false; $('done').hidden = true;
+  const s = $('docSentence'); s.textContent = ORIGINAL; s.className = 'u';
+  $('log').textContent = '';
+  $('hint').textContent = 'Prova: doppio clic sul box grigio, cambia un numero, poi clicca fuori.';
+  refresh();
+}
+
+fix.addEventListener('dblclick', enter);
+if (matchMedia('(pointer: coarse)').matches) fix.addEventListener('click', enter);
+ta.addEventListener('input', () => { grow(); refresh() });
+ta.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { ta.value = PROPOSED; grow(); leave(); $('log').textContent = 'Modifica annullata.' }
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); decide(changed() ? 'edited' : 'accepted') }
+});
+restore.addEventListener('mousedown', (e) => e.preventDefault());
+restore.addEventListener('click', () => { ta.value = PROPOSED; grow(); refresh(); ta.focus() });
+$('accept').addEventListener('mousedown', (e) => e.preventDefault());
+$('keep').addEventListener('mousedown', (e) => e.preventDefault());
+$('accept').addEventListener('click', () => decide(editing && changed() ? 'edited' : 'accepted'));
+$('keep').addEventListener('click', () => decide('rejected'));
+$('reset').addEventListener('click', reset);
+document.addEventListener('mousedown', (e) => {
+  if (!editing || fix.contains(e.target) || restore.contains(e.target)) return;
+  if (changed()) decide('edited'); else { leave(); $('log').textContent = 'Nessuna modifica: niente da applicare.' }
+});
+reset();
+</script>

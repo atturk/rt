@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { lessonUnits, setUnitTasks, unitRanges } from './lessonUnits'
+import { lessonUnits, setLinkedUnit, setUnitTasks, unitRanges } from './lessonUnits'
 import { timecodeLock } from './timecodeLock'
 
 it('affianca gli stati ai titoli e lo scheletro all’unità corrente senza modificare il Markdown', () => {
@@ -28,4 +28,17 @@ it('un titolo senza numero dentro un\'unità non la chiude (come per il server)'
   const ranges = unitRanges(EditorState.create({ doc }))
   expect(ranges.map((r) => r.id)).toEqual(['1.1', '1.2'])
   expect(doc.slice(ranges[0].from, ranges[0].to)).toContain('Ancora 1.1.')
+})
+
+it('segna l’unità raggiunta dal link e toglie il segno cambiando destinazione', () => {
+  const doc = '### 1.1 Prima\nTesto.\n### 1.2 Seconda\nAltro.'
+  const parent = document.createElement('div')
+  const view = new EditorView({ parent, state: EditorState.create({ doc, extensions: [lessonUnits] }) })
+  view.dispatch({ effects: setLinkedUnit.of('1.2') })
+  expect(parent.querySelector('[data-unit-id="1.2"]')).toHaveClass('rt-claim-unit')
+  expect(parent.querySelector('[data-unit-id="1.1"]')).not.toHaveClass('rt-claim-unit')
+  view.dispatch({ effects: setLinkedUnit.of(null) })
+  expect(parent.querySelector('.rt-claim-unit')).toBeNull()
+  expect(view.state.doc.toString()).toBe(doc)
+  view.destroy()
 })

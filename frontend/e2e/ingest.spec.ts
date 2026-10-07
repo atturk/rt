@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, disableOutlineTimer, importAudioApi, loginViaLink } from './support'
+import { test, apiGet, disableOutlineTimer, importAudioApi, loginViaLink } from './support'
 
 // RT4-F4: importazione con upload, job con eventi live (SSE), approvazione della scaletta.
 // Il worker di scripts/e2e_server.py esegue davvero i job; la modalità prova (mock) evita

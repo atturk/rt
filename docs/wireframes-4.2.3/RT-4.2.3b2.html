@@ -1,0 +1,695 @@
+<title>Wireframe RT 4.2.3b2</title>
+<style>
+/* Layout: same wireframe frame as 4.2.2 (tabs on top, notes, then a 1000px app frame); tokens mirror RT's index.css */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --ok:#147464; --ok-soft:#e4f3ed; --warn:#c7761a; --warn-soft:#fff3df; --todo:#d4d4d4;
+  --rail:#fafafa; --orp:#c4502e;
+  --irlen:#f6dccb;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --todo:#f2f2f2;
+  --rail:#131313; --orp:#ef7a52; --irlen:#3b2a20; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --todo:#f2f2f2;
+  --rail:#131313; --orp:#ef7a52; --irlen:#3b2a20; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg)}
+.stage{overflow-x:auto;padding-bottom:4px}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 auto;position:relative;width:1000px;height:640px;display:flex}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;transition:opacity .35s ease,width .35s ease}
+.rail i{width:22px;height:22px;border-radius:6px;background:var(--soft);display:block}
+.rail .sp{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;transition:background .35s ease}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;flex:none;transition:border-color .35s ease}
+.hdr .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:600;transition:opacity .35s ease}
+.ib{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none;transition:opacity .35s ease}
+.ib:hover{background:var(--soft)}
+.ib svg{width:18px;height:18px}
+.ib.on{background:var(--soft)}
+.sep{width:1px;height:16px;background:var(--border);margin:0 3px;transition:opacity .35s ease}
+.seg{display:inline-flex;background:var(--soft);border-radius:9px;padding:2px;transition:opacity .35s ease}
+.seg .ib{width:30px;height:30px}
+.seg .ib.on{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.unitbtn{height:34px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;display:inline-flex;align-items:center;gap:7px;padding:0 10px;cursor:pointer;white-space:nowrap;transition:opacity .35s ease}
+.unitbtn svg{width:16px;height:16px}
+.st-btn svg{width:20px;height:20px}
+.st-todo{color:var(--mute)}
+.st-learning{color:var(--warn)}
+.st-learned{color:var(--ok)}
+.body{flex:1;overflow:auto;padding:14px 28px;min-height:0;position:relative}
+.read{max-width:640px;margin:0 auto}
+.dots{display:flex;gap:4px;align-items:center;height:12px;margin:2px 0 18px}
+.dots i{flex:1;height:3px;border-radius:2px;background:var(--todo);opacity:.55;cursor:pointer;transition:height .15s ease}
+.dots i:hover{height:6px}
+.dots i.learning{background:var(--warn);opacity:1}
+.dots i.learned{background:var(--ok);opacity:1}
+.dots i.cur{height:7px;opacity:1}
+.read h3{font-size:21px;margin:0 0 12px;text-wrap:balance}
+.read p{margin:0 0 14px;font-size:15.5px;line-height:1.75;max-width:64ch}
+.foot{border-top:1px solid var(--border);padding:12px 16px;flex:none;display:flex;justify-content:center;gap:8px;transition:opacity .35s ease}
+.btn{height:44px;padding:0 16px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.btn.pri{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc);font-weight:600}
+.btn.sm{height:32px;font-size:13px;padding:0 12px}
+.btn svg{width:16px;height:16px}
+.menu{position:absolute;z-index:6;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 12px 28px rgb(0 0 0/.18);display:grid;gap:1px}
+.menu .sec{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);padding:8px 10px 3px}
+.menu .row{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;font-size:14px;cursor:pointer}
+.menu .row:hover{background:var(--soft)}
+.menu .row .r{margin-left:auto;font-size:12px;color:var(--mute);white-space:nowrap}
+.menu .row svg{width:15px;height:15px;flex:none}
+.menu .row.here{background:var(--acc-soft);color:var(--acc)}
+.tip{position:absolute;z-index:7;background:var(--fg);color:var(--bg);font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;pointer-events:none}
+/* lezioni */
+.lhdr{display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.lhdr h3{margin:0;font-size:18px;flex:1}
+.search{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:5px 9px;color:var(--mute);font-size:13px;width:200px}
+.search svg{width:15px;height:15px}
+.group{border-radius:12px;padding:10px 6px 6px;margin:0 0 12px}
+.group:nth-child(odd){background:var(--soft)}
+.gl{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);padding:0 10px 4px}
+.lrow{display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:9px}
+.lrow:hover{background:color-mix(in oklch,var(--fg) 6%,transparent)}
+.lrow .dot{width:6px;height:6px;border-radius:50%;background:var(--mute);flex:none}
+.lrow .tx{flex:1;min-width:0}
+.lrow .tt{display:block;font-size:15px}
+.lrow .st{display:block;font-size:13px;color:var(--mute)}
+.lrow .st b{font-weight:600;color:var(--ok)}
+.ring{display:flex;align-items:center;gap:7px;flex:none;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums;width:86px;justify-content:flex-end}
+.ring svg{width:22px;height:22px;transform:rotate(-90deg)}
+.minibar{display:flex;height:4px;border-radius:2px;overflow:hidden;background:color-mix(in oklch,var(--todo) 55%,transparent);width:140px;margin-top:5px}
+.minibar i{display:block;height:100%}
+.chk{width:16px;height:16px;border:1px solid var(--mute);border-radius:4px;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.chk.on{background:var(--acc-soft);border-color:var(--acc)}
+.chk.on::after{content:"";width:4px;height:8px;border:solid var(--acc);border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-1px)}
+.selbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 26px rgb(0 0 0/.16);display:flex;align-items:center;gap:4px;padding:6px 10px 6px 14px;font-size:13px;white-space:nowrap}
+.selbar .new{position:relative}
+.selbar .new::after{content:"";position:absolute;inset:-3px;border:2px dashed var(--acc);border-radius:10px;pointer-events:none}
+.scrim{position:absolute;inset:0;background:rgb(0 0 0/.42);display:flex;align-items:center;justify-content:center;padding:20px;z-index:8}
+.modal{background:var(--bg);border:1px solid var(--border);border-radius:14px;width:min(620px,100%);max-height:100%;overflow:auto;padding:18px 20px;display:grid;gap:14px;box-shadow:0 12px 32px rgb(0 0 0/.18)}
+.modal h3{margin:0;font-size:16px;display:flex;align-items:center;gap:8px}
+.modal h3 .sp{flex:1}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kv div{border:1px solid var(--border);border-radius:10px;padding:9px 11px;display:grid;gap:1px}
+.kv small{font-size:12px;color:var(--mute)}
+.kv b{font-size:17px;font-variant-numeric:tabular-nums}
+.kv span{font-size:12px;color:var(--mute)}
+.stack{display:flex;height:8px;border-radius:4px;overflow:hidden;background:color-mix(in oklch,var(--todo) 55%,transparent)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);flex-wrap:wrap}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-weight:600;text-align:left;color:var(--mute);font-size:12px;padding:5px 6px;border-bottom:1px solid var(--border)}
+td{padding:6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{white-space:normal}
+td.n,th.n{text-align:right}
+/* zen */
+.zen .rail{opacity:0;width:0;border:0;overflow:hidden;padding:0}
+.zen .hdr{border-color:transparent}
+.zen .hide-zen{opacity:0;pointer-events:none;width:0;margin:0;overflow:hidden;border:0;padding:0}
+.zen .foot{opacity:0;pointer-events:none}
+.zen .t{opacity:.45;font-weight:500}
+.zen.irlen .main{background:var(--irlen)}
+.zen.irlen .unitbtn{background:transparent}
+.show-zen{display:none}
+.zen .show-zen{display:inline-flex}
+.rsvp{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;pointer-events:none;transition:opacity .45s ease .15s}
+.zen .rsvp{opacity:1;pointer-events:auto}
+.zen .read{opacity:0;transition:opacity .3s ease}
+.read{transition:opacity .3s ease .1s}
+.word{font-size:56px;letter-spacing:.01em;font-weight:500;font-family:var(--sans)}
+.word .o{color:var(--orp)}
+.around{color:var(--mute);font-size:17px;max-width:80%;text-align:center;min-height:1.6em}
+.ctl{display:flex;align-items:center;gap:18px;margin-top:40px}
+.round{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--bg);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.round.big{width:64px;height:64px;background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc)}
+.round svg{width:20px;height:20px}
+.speed{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mute)}
+.speed input{width:180px;accent-color:var(--acc)}
+.meta{font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+.pop{position:absolute;right:14px;top:56px;width:300px;z-index:6;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 28px rgb(0 0 0/.18);font-size:14px;max-height:calc(100% - 70px);overflow:auto}
+.pop .r{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.pop .r:last-child{border:0}
+.pop small{display:block;color:var(--mute);font-size:12px}
+.tg{width:36px;height:20px;border-radius:10px;background:var(--border);position:relative;flex:none;cursor:pointer;border:0}
+.tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--bg);transition:left .15s}
+.tg[aria-pressed="true"]{background:var(--acc)}
+.tg[aria-pressed="true"]::after{left:18px}
+.ctx{position:absolute;top:16px;left:50%;transform:translateX(-50%);width:min(620px,90%);border:1px solid var(--border);background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px;color:var(--mute);line-height:1.7}
+.ctx b{color:var(--orp);font-weight:600}
+/* phone */
+.phones{display:flex;gap:20px;justify-content:center;flex-wrap:wrap}
+.phone{width:300px;height:600px;border:1px solid var(--border);border-radius:34px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column;position:relative}
+.phone .ph{display:flex;align-items:center;gap:2px;padding:44px 8px 8px;border-bottom:1px solid var(--border)}
+.phone .ph .ib{width:32px;height:32px}
+.phone .ph .ib svg{width:17px;height:17px}
+.phone .pb{flex:1;padding:12px 16px;overflow:hidden}
+.phone .pb p{font-size:14px;line-height:1.65;margin:0 0 10px}
+.phone .tabbar{height:64px;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center}
+.phone .tabbar i{width:22px;height:22px;border-radius:6px;background:var(--soft)}
+.cap{text-align:center;font-size:13px;color:var(--mute);margin-top:6px}
+svg{display:block}
+.pill{font-size:12px;border-radius:999px;padding:1px 8px;background:var(--soft);color:var(--mute)}
+.callout{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--acc);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>
+/* 4.2.3b2: red for "Ignorata", the highlight band of speed reading, sidebar, formulas */
+:root{--bad:#a04232;--bad-soft:#ffe9e3;--band:#fde68a;--band-fg:#171717;--sel:#dceee7;--sel-fg:#155f52}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bad:#ff9f8c;--bad-soft:#3d1d17;--band:#6b5a12;--band-fg:#ffffff;--sel:rgb(111 211 179/.32);--sel-fg:#ffffff}}
+:root[data-theme="dark"]{--bad:#ff9f8c;--bad-soft:#3d1d17;--band:#6b5a12;--band-fg:#ffffff;--sel:rgb(111 211 179/.32);--sel-fg:#ffffff}
+.irlen-on{--band:color-mix(in oklch,#2a241f 16%,transparent);--band-fg:#2a241f}
+[hidden]{display:none!important}
+.st-ignored{color:var(--bad)}
+.dots i.ignored{background:var(--bad);opacity:1}
+.tip{transition:opacity .08s}
+.tip[hidden]{display:none}
+.round{width:56px;height:56px}
+.round svg{width:22px;height:22px}
+.round.play{background:var(--acc-soft);border-color:var(--acc-soft);color:var(--acc)}
+.ctl{gap:16px}
+.ctl .lab{display:grid;justify-items:center;gap:6px;font-size:12px;color:var(--mute)}
+.word .band{background:var(--band);color:var(--band-fg);border-radius:6px;padding:0 10px;box-decoration-break:clone}
+.math{font-family:'Cambria Math','STIX Two Math','Times New Roman',serif;font-style:italic;font-weight:400;display:inline-block;white-space:nowrap}
+.math .up{font-style:normal}
+.frac{display:inline-flex;flex-direction:column;align-items:center;font-size:.62em;line-height:1.15;vertical-align:middle}
+.frac>span:first-child{border-bottom:2px solid currentColor;padding:0 .2em .05em}
+.frac>span:last-child{padding:.05em .2em 0}
+.bigop{display:inline-flex;flex-direction:column;align-items:center;line-height:.9;font-style:normal}
+.bigop small{font-size:.32em;font-style:italic}
+.timer{max-width:min(560px,90%);font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums;min-height:1.5em;text-align:center}
+.timer b{color:var(--fg);font-weight:600}
+.side{position:absolute;top:52px;right:0;bottom:0;width:340px;background:var(--bg);border-left:1px solid var(--border);box-shadow:-12px 0 28px rgb(0 0 0/.12);z-index:6;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease;visibility:hidden}
+.side.open{transform:none;visibility:visible}
+.side header{display:flex;align-items:center;justify-content:space-between;padding:10px 10px 10px 16px;border-bottom:1px solid var(--border);flex:none}
+.side header b{font-size:15px}
+.side .sc{overflow:auto;padding:4px 0 12px}
+.side h4{margin:0;padding:14px 16px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.side .r{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 16px;font-size:14px}
+.side .r small{display:block;color:var(--mute);font-size:12px}
+.side .r.col{flex-direction:column;align-items:stretch;gap:6px}
+.side input[type=range]{width:100%;accent-color:var(--acc)}
+.segs{display:flex;background:var(--soft);border-radius:999px;padding:3px;gap:2px}
+.segs button{flex:1;border:0;background:transparent;color:var(--mute);font:inherit;font-size:13px;padding:5px 8px;border-radius:999px;cursor:pointer}
+.segs button[aria-pressed="true"]{background:var(--acc-soft);color:var(--acc);font-weight:600}
+.side .new{color:var(--acc);font-size:11px;font-weight:600;margin-left:6px;letter-spacing:.03em}
+.main.shift .rsvp{right:340px;transition:right .25s ease}
+.rsvp{transition:opacity .45s ease .15s,right .25s ease}
+.demo-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.sel-demo{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 18px;font-size:15.5px;line-height:1.75;display:grid;gap:10px}
+.sel-demo .now{background:var(--sel);color:var(--sel-fg)}
+.sel-demo .was{background:color-mix(in oklch,#dceee7 22%,var(--bg));color:#155f52}
+.sel-demo small{color:var(--mute);font-size:12px}
+/* ripasso */
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:0;border-radius:999px;padding:6px 14px;background:var(--soft);color:var(--mute);font:inherit;font-size:14px}
+.chip.on{background:var(--acc-soft);color:var(--acc);font-weight:600}
+.qmeta{font-size:13px;color:var(--mute);margin:16px 0 6px}
+.q{font-size:21px;font-weight:600;line-height:1.4;margin:0 0 18px;text-wrap:balance;max-width:58ch}
+.fb{border:1px solid color-mix(in oklch,var(--ok) 45%,var(--border));background:var(--ok-soft);border-radius:12px;padding:14px 16px;display:grid;gap:6px;font-size:14px}
+.fb b{color:var(--ok);font-size:15px}
+.bar2{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);margin-top:22px;padding-top:14px;gap:10px;flex-wrap:wrap}
+.empty{border:1px solid var(--border);border-radius:12px;padding:26px 20px;display:grid;justify-items:center;gap:8px;text-align:center;margin-top:16px}
+.empty svg{width:32px;height:32px;color:var(--mute)}
+.empty .acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+.badge-new{position:relative}
+.badge-new::after{content:"";position:absolute;inset:-3px;border:2px dashed var(--acc);border-radius:11px;pointer-events:none}
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-todo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></symbol>
+    <symbol id="i-learning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+    <symbol id="i-learned" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5" fill="currentColor" stroke="none"/><path d="m8 12.5 3 3 5-6" stroke="var(--bg)"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
+    <symbol id="i-ctx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6H3M21 12H8M21 18H8M3 12v6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-hl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3l14 9-14 9z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-rewind" viewBox="0 0 24 24" fill="currentColor"><path d="M11 19 2 12l9-7zM22 19l-9-7 9-7z"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M7 12h10M10 18h4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5M16 13H8M16 17H8"/></symbol>
+    <symbol id="i-zip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  </defs>
+</svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-ignored" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+  <symbol id="i-quest" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 14.06 4 16l5.94 1.94L12 24l2.06-6.06L20 16l-5.94-1.94L12 8z" transform="translate(0 -4) scale(1 .95)"/><path d="M19 2v4M21 4h-4"/></symbol>
+  <symbol id="i-lesson" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5M10 13l-2 2 2 2M14 13l2 2-2 2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+</defs></svg>
+
+<header class="top">
+  <h1>Wireframe RT 4.2.3b2</h1>
+  <span class="meta">lettura veloce: quattro pulsanti, formule, evidenziazioni, impostazioni laterali · Studio: Ignorata, Apri la lezione, tooltip · Ripasso: Fine · Lezioni</span>
+  <div class="tabs" role="group" aria-label="Schermata">
+    <button data-tab="zen" aria-pressed="true">Lettura veloce</button>
+    <button data-tab="studio" aria-pressed="false">Studio</button>
+    <button data-tab="ripasso" aria-pressed="false">Ripasso</button>
+    <button data-tab="lezioni" aria-pressed="false">Lezioni</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============================ LETTURA VELOCE ============================ -->
+<section data-view="zen">
+  <div class="notes">
+    <h2>Lettura veloce: quattro pulsanti uguali, formule, evidenziazioni</h2>
+    <ul>
+      <li><b>Quattro pulsanti della stessa grandezza</b>: indietro di N parole, play/pausa (resta verde), ricomincia, <b>Ripassa</b>. Ripassa ha due facce. Se l'unità ha domande ha il fumetto col punto interrogativo e porta al ripasso dell'unità, la stessa pagina di "Mettimi alla prova". Se non ne ha ha le stelline e apre il popup "Genera domande" di oggi. Cambia caso con il pulsante qui sopra il riquadro.</li>
+      <li><b>Formule</b>: oggi vengono saltate tutte, anche <i>z</i>. Diventano una "parola" che mostra la formula vera, centrata e senza lettera di fuoco. Una formula semplice (nessuna frazione, sommatoria, integrale o radice, al massimo 6 simboli) dura quanto una parola. Una complessa, in modalità adattiva, dura pausa parola × (1 + 0,25 × simboli + 1,5 × strutture). Premi <b>Parola dopo</b> per scorrere la frase di esempio: sotto vedi quanto dura ogni passo a 300 parole/min.</li>
+      <li><b>Evidenziazioni</b>: le parole evidenziate nello Studio hanno <b>una sola fascia</b>, qualunque colore avessero. Il colore della fascia dipende dallo sfondo: giallo nel chiaro, ambra scura nel tema scuro, una velatura scura con Irlen.</li>
+      <li><b>Impostazioni in una barra laterale</b> a destra, alta quanto la finestra. Mentre è aperta la parola si sposta al centro dello spazio libero, così vedi l'effetto delle modifiche. Niente "Fatto": si chiude con la X, con <span class="kbd">Esc</span> o di nuovo con l'icona, e salva subito. Tre sezioni: Lettura, Aspetto, Suono. Sull'iPhone resta il foglio dal basso, senza "Fatto".</li>
+    </ul>
+  </div>
+  <div class="demo-row">
+    <button class="btn sm" id="stepBtn">Parola dopo →</button>
+    <button class="btn sm" id="qToggle" aria-pressed="true">Unità con 7 domande</button>
+    <button class="btn sm" id="irlenToggle" aria-pressed="false">Modalità Irlen: no</button>
+  </div>
+  <div class="stage"><div class="frame zen" id="f-zen">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main" id="zenMain">
+      <div class="hdr">
+        <span class="t">2.3 Ottimizzazione dei turni: il modello lineare</span>
+        <button class="ib" data-tip="Torna allo Studio" aria-label="Torna allo Studio"><svg><use href="#i-book"/></svg></button>
+        <button class="ib" id="sideBtn" data-tip="Impostazioni della lettura veloce" aria-label="Impostazioni della lettura veloce" aria-expanded="false"><svg><use href="#i-sliders"/></svg></button>
+        <button class="ib" data-tip="Contesto" aria-label="Contesto"><svg><use href="#i-ctx"/></svg></button>
+        <button class="unitbtn"><svg><use href="#i-list"/></svg>Unità 3 di 9<svg><use href="#i-down"/></svg></button>
+      </div>
+      <div class="body" style="display:flex;flex-direction:column">
+        <div class="rsvp" aria-live="off">
+          <div class="around" id="before"></div>
+          <div class="word" id="word"></div>
+          <div class="around" id="after"></div>
+          <div class="timer" id="timer"></div>
+          <div class="ctl">
+            <span class="lab"><button class="round" aria-label="Indietro di 5 parole"><svg><use href="#i-rewind"/></svg></button>−5</span>
+            <span class="lab"><button class="round play" aria-label="Avvia"><svg><use href="#i-play"/></svg></button>Play</span>
+            <span class="lab"><button class="round" aria-label="Ricomincia"><svg><use href="#i-restart"/></svg></button>Ricomincia</span>
+            <span class="lab"><button class="round badge-new" id="reviewBtn" data-tip="Ripassa l'unità · 7 domande" aria-label="Ripassa l'unità"><svg><use href="#i-quest"/></svg></button><span id="reviewLbl">Ripassa</span></span>
+          </div>
+          <div class="speed"><label for="wpm">Velocità</label><input id="wpm" type="range" min="100" max="900" step="25" value="300"><b id="wpmV" style="color:var(--fg);font-weight:600">300</b> parole/min</div>
+        </div>
+        <div class="scrim" id="genModal" hidden>
+          <div class="modal" style="width:min(440px,100%)">
+            <h3>Genera domande · 2.3 Ottimizzazione dei turni<span class="sp"></span><button class="ib" id="genClose" aria-label="Chiudi"><svg><use href="#i-x"/></svg></button></h3>
+            <div class="chips"><span class="chip on">Quiz</span><span class="chip">Mirata</span><span class="chip">Caso clinico</span><span class="chip">Esercizio</span></div>
+            <div style="font-size:13px;color:var(--mute)">Il popup è quello di oggi: qui si apre dalla lettura veloce quando l'unità non ha domande.</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn sm" id="genCancel">Annulla</button><button class="btn sm pri"><svg><use href="#i-sparkles"/></svg>Genera</button></div>
+          </div>
+        </div>
+      </div>
+      <aside class="side" id="side" aria-label="Impostazioni della lettura veloce">
+        <header><b>Impostazioni</b><button class="ib" id="sideClose" data-tip="Chiudi (salva)" aria-label="Chiudi"><svg><use href="#i-x"/></svg></button></header>
+        <div class="sc">
+          <h4>Lettura</h4>
+          <div class="r col"><span>Pausa dopo la frase · 800 ms</span><input id="s-pause" type="range" min="0" max="1200" step="50" value="800" aria-label="Pausa dopo la frase"></div>
+          <div class="r"><span>Virgola come pausa piena<small>, ; : come un punto</small></span><button class="tg" aria-pressed="false" aria-label="Virgola come pausa piena"></button></div>
+          <div class="r col"><span>Pausa sulle formule<span class="new">NUOVO</span><small id="fmHint">più lunga per le formule complesse, in proporzione</small></span>
+            <div class="segs" id="fmSegs"><button aria-pressed="true" data-m="ada">Adattiva</button><button aria-pressed="false" data-m="std">Standard</button><button aria-pressed="false" data-m="cus">Personalizzata</button></div>
+            <div id="fmCustom" hidden><span style="font-size:13px">Formule complesse · <b id="fmMsV">2,0</b> s</span><input id="fmMs" type="range" min="500" max="5000" step="250" value="2000" aria-label="Durata delle formule complesse"></div>
+          </div>
+          <div class="r col"><span>Lettera di fuoco<small>dove cade l'occhio nella parola</small></span><div class="segs"><button aria-pressed="false">Prima</button><button aria-pressed="true">Bilanciata</button><button aria-pressed="false">Dopo</button></div></div>
+          <div class="r col"><span>Passo indietro</span><div class="segs"><button aria-pressed="false">−1</button><button aria-pressed="false">−3</button><button aria-pressed="true">−5</button><button aria-pressed="false">−10</button></div></div>
+          <h4>Aspetto</h4>
+          <div class="r"><span>Dimensione del testo<small>60</small></span><span style="display:flex;gap:4px"><button class="btn sm">−</button><button class="btn sm">+</button></span></div>
+          <div class="r"><span>Font per dislessia<small>lettere più distinguibili</small></span><button class="tg" aria-pressed="false" aria-label="Font per dislessia"></button></div>
+          <div class="r"><span>Modalità Irlen<small>colora tutta la finestra</small></span><button class="tg" id="irlenTg" aria-pressed="false" aria-label="Modalità Irlen"></button></div>
+          <div class="r"><span>Mostra le evidenziazioni<span class="new">NUOVO</span><small>una fascia sola, adatta allo sfondo</small></span><button class="tg" aria-pressed="true" aria-label="Mostra le evidenziazioni"></button></div>
+          <div class="r"><span>Rallenta sulle evidenziate<span class="new">NUOVO</span><small>le parole evidenziate durano 1,3 volte</small></span><button class="tg" aria-pressed="false" aria-label="Rallenta sulle evidenziate"></button></div>
+          <h4>Suono</h4>
+          <div class="r"><span>Suono<small>un clic a ogni parola, più grave a fine frase</small></span><button class="tg" aria-pressed="true" aria-label="Suono"></button></div>
+          <div class="r col"><span>Tipo di clic<span class="new">NUOVO</span><small>il grave suona anche sulle formule lunghe</small></span><div class="segs"><button aria-pressed="true">Legno</button><button aria-pressed="false">Tick morbido</button><button aria-pressed="false">Classico</button></div></div>
+          <div class="r col"><span>Tono · 0,8×</span><input type="range" min="0.5" max="2" step="0.1" value="0.8" aria-label="Tono"></div>
+          <div class="r"><span>Rumore di fondo<small>copre i rumori intorno</small></span><button class="tg" aria-pressed="false" aria-label="Rumore di fondo"></button></div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================ STUDIO ============================ -->
+<section data-view="studio" hidden>
+  <div class="notes">
+    <h2>Studio: Ignorata, Apri la lezione, suggerimenti</h2>
+    <ul>
+      <li>Il suggerimento del pulsante di stato dice solo lo stato: <b>Da imparare</b>, <b>In apprendimento</b>, <b>Appresa</b>, <b>Ignorata</b>.</li>
+      <li><b>Ignorata</b> è l'ultima del ciclo (anche con <span class="kbd">S</span>): cerchio con la X, rossa, e barretta rossa. All'apertura lo Studio la salta come le apprese, ma resta raggiungibile dalla barretta e dall'indice. Proposta: esclusa anche dalla Mista e dalla generazione sulla lezione intera. Clicca il pulsante per provare il ciclo.</li>
+      <li><b>Apri la lezione</b>: icona nuova nell'intestazione (tratteggiata qui sotto). Porta alla pagina della lezione già sull'unità che stai leggendo. In lettura veloce non c'è.</li>
+      <li><b>Suggerimenti</b>: in questo riquadro funzionano come proposto. Il primo compare dopo 600 ms di hover; passando subito su un altro pulsante compare all'istante (finestra di 300 ms). Un clic lo chiude. Col focus si apre solo se navighi con <span class="kbd">Tab</span>. Sul telefono mai.</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame" id="f-studio">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="hdr">
+        <button class="ib" data-tip="Esci" aria-label="Esci"><svg><use href="#i-back"/></svg></button>
+        <span class="t">Ricerca operativa in sanità: modelli lineari per i turni</span>
+        <button class="ib" data-tip="Dettagli della lezione" aria-label="Dettagli della lezione"><svg><use href="#i-info"/></svg></button>
+        <button class="ib badge-new" data-tip="Apri la lezione" aria-label="Apri la lezione"><svg><use href="#i-lesson"/></svg></button>
+        <span class="seg"><button class="ib on" data-tip="Evidenzia" aria-label="Evidenzia"><svg><use href="#i-hl"/></svg></button><button class="ib" data-tip="Gomma" aria-label="Gomma"><svg><use href="#i-eraser"/></svg></button></span>
+        <button class="ib" data-tip="Togli tutte le evidenziazioni" aria-label="Togli tutte le evidenziazioni"><svg><use href="#i-trash"/></svg></button>
+        <span class="sep"></span>
+        <button class="ib st-btn st-learning" id="stateBtn" data-tip="In apprendimento" aria-label="Stato: in apprendimento"><svg><use href="#i-learning"/></svg></button>
+        <button class="ib" data-tip="Lettura veloce" aria-label="Lettura veloce"><svg><use href="#i-gauge"/></svg></button>
+        <button class="ib" data-tip="Audio dell'unità" aria-label="Audio dell'unità"><svg><use href="#i-play"/></svg></button>
+        <button class="unitbtn"><svg><use href="#i-list"/></svg>Unità 3 di 9<svg><use href="#i-down"/></svg></button>
+      </div>
+      <div class="body">
+        <div class="read">
+          <div class="dots" id="dots"></div>
+          <h3>2.3 Ottimizzazione dei turni: il modello lineare</h3>
+          <p>Per esprimere matematicamente tale obiettivo occorre considerare la somma dei medici assegnati a ciascuno dei sei turni previsti. Indicando con <i>x</i><sub>1</sub> il numero di medici assegnati al turno 1, con <i>x</i><sub>2</sub> quelli del turno 2, e così via, la funzione obiettivo è la loro somma.</p>
+          <p>I vincoli impongono che in ogni fascia oraria sia presente almeno il numero minimo di medici richiesto dal reparto.</p>
+        </div>
+      </div>
+      <div class="foot">
+        <button class="btn pri" style="width:420px">Mettimi alla prova · 7 domande</button>
+        <button class="btn"><svg><use href="#i-sparkles"/></svg>Genera altre</button>
+      </div>
+    </div>
+  </div></div>
+  <div class="sel-demo">
+    <b style="font-size:14px">Selezione del testo nel tema scuro</b>
+    <div><small>Oggi (Safari rende trasparente il verde chiaro e il testo verde scuro sparisce):</small><br>Per esprimere <span class="was">matematicamente tale obiettivo, occorre considerare</span> la somma dei medici</div>
+    <div><small>Proposta (verde già traslucido, testo nel colore normale; nel tema chiaro non cambia):</small><br>Per esprimere <span class="now">matematicamente tale obiettivo, occorre considerare</span> la somma dei medici</div>
+  </div>
+</section>
+
+<!-- ============================ RIPASSO ============================ -->
+<section data-view="ripasso" hidden>
+  <div class="notes">
+    <h2>Ripasso: "Prossima" diventa "Fine"</h2>
+    <ul>
+      <li>Oggi "Prossima" chiede sempre un'altra domanda: solo allora RT scopre che sono finite e mostra la schermata finale. Con la proposta il server dice quante domande restano, e dopo l'ultima risposta il pulsante si chiama <b>Fine</b>.</li>
+      <li>"Fine" apre subito la schermata "Hai finito le domande di questa unità" con <b>Riproponi le poste</b>, <b>Torna allo studio</b> e <b>Unità successiva</b>. Premi i pulsanti per vedere i due passi.</li>
+      <li>Vale anche per il ripasso dell'intera lezione, con il suo messaggio di fine.</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame" style="height:560px">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="body" style="padding:24px 40px">
+        <div class="chips"><span class="chip on">Mista</span><span class="chip">Quiz</span><span class="chip">Mirata</span><span class="chip">Casi</span><span class="chip">Esercizi</span></div>
+        <div id="qView">
+          <div class="qmeta">MIRATA · unità 1.1 · domanda <span id="qn">2</span> di 3</div>
+          <p class="q" id="qText">Quali sono i due principali fattori patologici che, in correlazione con la durata della malattia, si associano all'insorgenza della problematica renale?</p>
+          <div class="fb"><b>Giusto.</b><span>Correttezza: 100% · Completezza: 100%. Hai individuato sia il diabete sia l'ipertensione arteriosa.</span></div>
+          <div class="bar2">
+            <span class="pill" id="qLeft">resta 1 domanda</span>
+            <span style="display:flex;gap:10px"><button class="btn">Termina</button><button class="btn pri" id="nextBtn" style="min-width:120px">Prossima</button></span>
+          </div>
+        </div>
+        <div class="empty" id="endView" hidden>
+          <svg><use href="#i-brain"/></svg>
+          <b style="font-size:17px">Hai finito le domande di questa unità</b>
+          <span style="color:var(--mute);font-size:14px">Puoi tornare al testo dell'unità o andare avanti.</span>
+          <div class="acts"><button class="btn">Riproponi le poste (3)</button><button class="btn">Torna allo studio</button><button class="btn pri">Unità successiva</button></div>
+          <button class="btn sm" id="restartQ" style="margin-top:8px">↺ rivedi la demo</button>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================ LEZIONI ============================ -->
+<section data-view="lezioni" hidden>
+  <div class="notes">
+    <h2>Lezioni: le unità ignorate</h2>
+    <ul>
+      <li>L'anello mostra tutte le unità, con un <b>arco rosso</b> per le ignorate.</li>
+      <li>Il numero conta le apprese su quelle da studiare, cioè senza le ignorate: 18 unità, 2 ignorate, 7 apprese fa <b>7/16</b>. Il sottotitolo mostra solo le apprese, come oggi: le ignorate si vedono dall'arco rosso.</li>
+      <li>"Più avanti" e "Più indietro nello studio" usano lo stesso conto. Una lezione con tutte le unità non ignorate apprese ha l'anello verde pieno, più l'arco rosso.</li>
+    </ul>
+  </div>
+  <div class="stage"><div class="frame" style="height:420px">
+    <nav class="rail" aria-label="Navigazione"><i></i><i></i><i></i><i></i><span class="sp"></span><i></i></nav>
+    <div class="main">
+      <div class="lhdr"><h3>Lezioni</h3><div class="search"><svg><use href="#i-search"/></svg>Cerca</div></div>
+      <div class="body" id="lessonList"></div>
+    </div>
+  </div></div>
+</section>
+
+</main>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s)
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)]
+
+  // Tabs
+  $$('[data-tab]').forEach(b => b.addEventListener('click', () => {
+    $$('[data-tab]').forEach(x => x.setAttribute('aria-pressed', String(x === b)))
+    $$('[data-view]').forEach(v => { v.hidden = v.dataset.view !== b.dataset.tab })
+    hideTip(true)
+  }))
+
+  // Suggerimenti con delay group: 600 ms la prima volta, subito entro 300 ms dall'ultimo.
+  const tip = $('#tip')
+  let openTimer = 0, warmUntil = 0, current = null, clicked = null
+  const place = (el) => {
+    const r = el.getBoundingClientRect()
+    tip.textContent = el.dataset.tip
+    tip.hidden = false
+    const w = tip.offsetWidth
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2 + scrollX)) + 'px'
+    tip.style.top = (r.bottom + 8 + scrollY) + 'px'
+    tip.style.position = 'absolute'
+    current = el
+  }
+  function hideTip(cool) {
+    clearTimeout(openTimer)
+    if (current) warmUntil = cool ? Date.now() + 300 : 0
+    tip.hidden = true
+    current = null
+  }
+  const touch = matchMedia('(hover: none)').matches
+  document.addEventListener('pointerover', (e) => {
+    const el = e.target.closest('[data-tip]')
+    if (touch || !el || el === current || el === clicked) return
+    clearTimeout(openTimer)
+    if (current || Date.now() < warmUntil) place(el)
+    else openTimer = setTimeout(() => place(el), 600)
+  })
+  document.addEventListener('pointerout', (e) => {
+    const el = e.target.closest('[data-tip]')
+    if (!el || el.contains(e.relatedTarget)) return
+    if (el === clicked) clicked = null
+    if (el === current) hideTip(true)
+    else clearTimeout(openTimer)
+  })
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('[data-tip]')
+    if (el) { clicked = el; hideTip(false) }
+  })
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest('[data-tip]')
+    if (el && el.matches(':focus-visible')) place(el)
+  })
+  document.addEventListener('focusout', () => { if (current && !current.matches(':hover')) hideTip(false) })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(false) })
+
+  // ---------- Lettura veloce
+  const STEPS = [
+    { t: 'Per' }, { t: 'esprimere' },
+    { t: 'matematicamente', hl: true }, { t: 'tale', hl: true }, { t: 'obiettivo,', hl: true },
+    { t: 'indichiamo' }, { t: 'con' },
+    { m: '<span class="math">x<sub class="up" style="font-size:.55em">1</sub></span>', tex: 'x_1', atoms: 2, s: 0 },
+    { t: 'i' }, { t: 'medici' }, { t: 'del' }, { t: 'turno' }, { t: '1.' },
+    { t: 'La' }, { t: 'somma' }, { t: 'è' },
+    { m: '<span class="math"><span class="bigop">∑<small>i=1 … 6</small></span>x<sub class="up" style="font-size:.55em">i</sub></span>', tex: '\\sum_{i=1}^{6} x_i', atoms: 7, s: 1 },
+    { t: 'e' }, { t: 'lo' }, { t: 'z-score' }, { t: 'vale' },
+    { m: '<span class="math">z <span class="up">=</span> <span class="frac" style="display:inline-flex"><span>x − x<sub style="font-size:.6em">min</sub></span><span>x<sub style="font-size:.6em">max</sub> − x<sub style="font-size:.6em">min</sub></span></span></span>', tex: 'z = \\frac{x - x_{\\min}}{x_{\\max} - x_{\\min}}', atoms: 11, s: 1, end: true },
+    { t: 'Con' }, { t: 'il' }, { t: 'calcio' },
+    { m: '<span class="math">Ca<sup class="up" style="font-size:.5em">2+</sup></span>', tex: 'Ca^{2+}', atoms: 4, s: 0 },
+    { t: 'la' }, { t: 'pausa' }, { t: 'resta' }, { t: 'quella' }, { t: 'di' }, { t: 'una' }, { t: 'parola.' },
+  ]
+  let i = 2, mode = 'ada', wpm = 300
+  const fmt = (ms) => ms >= 1000 ? (ms / 1000).toFixed(2).replace('.', ',') + ' s' : Math.round(ms) + ' ms'
+  const orp = (w) => {
+    const core = w.replace(/[^\p{L}\p{N}]/gu, '')
+    const k = Math.max(0, Math.round((core.length - 1) * 0.35))
+    return w.slice(0, k) + '<span class="o">' + w[k] + '</span>' + w.slice(k + 1)
+  }
+  function render() {
+    const s = STEPS[i]
+    const base = 60000 / wpm
+    const w = $('#word')
+    let ms = base, why = ''
+    if (s.m) {
+      const simple = s.s === 0 && s.atoms <= 6
+      w.innerHTML = s.m
+      if (simple || mode === 'std') { why = simple ? 'formula semplice: come una parola' : 'Standard: come una parola' }
+      else if (mode === 'cus') { ms = Number($('#fmMs').value); why = 'Personalizzata' }
+      else { ms = base * (1 + 0.25 * s.atoms + 1.5 * s.s); why = `adattiva: ${s.atoms} simboli, ${s.s} struttura` }
+      if (s.end) { ms += 800; why += ' + 800 ms di fine frase' }
+      $('#timer').innerHTML = `<code style="font-family:var(--mono);font-size:11px">${s.tex}</code> · <b>${fmt(ms)}</b> · ${why}`
+    } else {
+      w.innerHTML = s.hl ? `<span class="band">${orp(s.t)}</span>` : orp(s.t)
+      if (/[.!?]$/.test(s.t)) ms += 800
+      $('#timer').innerHTML = `<b>${fmt(ms)}</b>${s.hl ? ' · evidenziata nello Studio' : ''}${/[.!?]$/.test(s.t) ? ' · fine frase' : ''}`
+    }
+    $('#before').textContent = ''
+    $('#after').textContent = ''
+  }
+  $('#stepBtn').addEventListener('click', () => { i = (i + 1) % STEPS.length; render() })
+  $('#wpm').addEventListener('input', (e) => { wpm = Number(e.target.value); $('#wpmV').textContent = wpm; render() })
+  $$('#fmSegs button').forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.m
+    $$('#fmSegs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)))
+    $('#fmCustom').hidden = mode !== 'cus'
+    $('#fmHint').textContent = { ada: 'più lunga per le formule complesse, in proporzione', std: 'tutte le formule durano come una parola', cus: 'le complesse durano quanto scegli; le semplici come una parola' }[mode]
+    const f = STEPS.findIndex((s, k) => k >= i && s.m && s.s)
+    if (f >= 0 && !STEPS[i].m) i = f
+    render()
+  }))
+  $('#fmMs').addEventListener('input', (e) => { $('#fmMsV').textContent = (e.target.value / 1000).toFixed(1).replace('.', ','); render() })
+  $$('.side .segs:not(#fmSegs) button').forEach(b => b.addEventListener('click', () => {
+    $$('button', b.parentElement).forEach(x => x.setAttribute('aria-pressed', String(x === b)))
+  }))
+  $$('.tg').forEach(t => t.addEventListener('click', () => {
+    t.setAttribute('aria-pressed', String(t.getAttribute('aria-pressed') !== 'true'))
+    if (t.id === 'irlenTg') setIrlen(t.getAttribute('aria-pressed') === 'true')
+  }))
+  function setIrlen(on) {
+    $('#f-zen').classList.toggle('irlen', on)
+    $('#f-zen').classList.toggle('irlen-on', on)
+    $('#irlenTg').setAttribute('aria-pressed', String(on))
+    $('#irlenToggle').setAttribute('aria-pressed', String(on))
+    $('#irlenToggle').textContent = 'Modalità Irlen: ' + (on ? 'sì' : 'no')
+  }
+  $('#irlenToggle').addEventListener('click', () => setIrlen(!$('#f-zen').classList.contains('irlen')))
+
+  const side = $('#side')
+  const setSide = (open) => {
+    side.classList.toggle('open', open)
+    $('#zenMain').classList.toggle('shift', open)
+    $('#sideBtn').setAttribute('aria-expanded', String(open))
+    $('#sideBtn').classList.toggle('on', open)
+  }
+  $('#sideBtn').addEventListener('click', () => setSide(!side.classList.contains('open')))
+  $('#sideClose').addEventListener('click', () => setSide(false))
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSide(false); $('#genModal').hidden = true } })
+
+  let hasQ = true
+  const setQ = () => {
+    $('#qToggle').textContent = hasQ ? 'Unità con 7 domande' : 'Unità senza domande'
+    $('#qToggle').setAttribute('aria-pressed', String(hasQ))
+    $('#reviewBtn use').setAttribute('href', hasQ ? '#i-quest' : '#i-sparkles')
+    $('#reviewBtn').dataset.tip = hasQ ? "Ripassa l'unità · 7 domande" : 'Genera domande su questa unità'
+    $('#reviewLbl').textContent = hasQ ? 'Ripassa' : 'Genera'
+  }
+  $('#qToggle').addEventListener('click', () => { hasQ = !hasQ; setQ() })
+  $('#reviewBtn').addEventListener('click', () => {
+    if (hasQ) $('[data-tab="ripasso"]').click()
+    else $('#genModal').hidden = false
+  })
+  $('#genClose').addEventListener('click', () => { $('#genModal').hidden = true })
+  $('#genCancel').addEventListener('click', () => { $('#genModal').hidden = true })
+
+  // ---------- Studio
+  const STATES = [
+    { k: 'todo', l: 'Da imparare' }, { k: 'learning', l: 'In apprendimento' },
+    { k: 'learned', l: 'Appresa' }, { k: 'ignored', l: 'Ignorata' },
+  ]
+  const dots = ['learned', 'ignored', 'learning', '', '', 'ignored', '', '', '']
+  let st = 1
+  function drawDots() {
+    $('#dots').innerHTML = dots.map((d, k) => `<i class="${d}${k === 2 ? ' cur' : ''}" title="Unità ${k + 1}"></i>`).join('')
+  }
+  $('#stateBtn').addEventListener('click', () => {
+    st = (st + 1) % STATES.length
+    const s = STATES[st]
+    const b = $('#stateBtn')
+    b.className = 'ib st-btn st-' + s.k
+    $('use', b).setAttribute('href', '#i-' + s.k)
+    b.dataset.tip = s.l
+    b.setAttribute('aria-label', 'Stato: ' + s.l.toLowerCase())
+    dots[2] = s.k === 'todo' ? '' : s.k
+    drawDots()
+  })
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 's' && !$('[data-view="studio"]').hidden && !e.target.closest('input')) $('#stateBtn').click()
+  })
+  drawDots()
+
+  // ---------- Ripasso
+  let left = 1
+  const nextBtn = $('#nextBtn')
+  const drawQ = () => {
+    $('#qn').textContent = 3 - left
+    $('#qLeft').textContent = left ? `resta ${left} domanda` : 'era l\'ultima'
+    nextBtn.textContent = left ? 'Prossima' : 'Fine'
+  }
+  nextBtn.addEventListener('click', () => {
+    if (left) {
+      left = 0
+      $('#qText').textContent = 'Quale esame di laboratorio si usa per monitorare la funzione renale nel paziente diabetico?'
+      drawQ()
+    } else { $('#qView').hidden = true; $('#endView').hidden = false }
+  })
+  $('#restartQ').addEventListener('click', () => {
+    left = 1; $('#qView').hidden = false; $('#endView').hidden = true
+    $('#qText').textContent = 'Quali sono i due principali fattori patologici che, in correlazione con la durata della malattia, si associano all\'insorgenza della problematica renale?'
+    drawQ()
+  })
+
+  // ---------- Lezioni
+  const LESSONS = [
+    { t: 'Ricerca operativa in sanità', s: 'Statistica · 9 unità', n: 9, ok: 3, ing: 1, ign: 2 },
+    { t: 'Nefropatia diabetica', s: 'Patologia · 18 unità', n: 18, ok: 7, ing: 3, ign: 2 },
+    { t: 'Diritto sanitario: il conflitto tra diritti', s: 'Diritto · 12 unità', n: 12, ok: 10, ing: 0, ign: 2 },
+    { t: 'Omeostasi cellulare', s: 'Patologia · 14 unità', n: 14, ok: 0, ing: 0, ign: 0 },
+  ]
+  const arc = (from, len, color) => `<circle cx="11" cy="11" r="9" pathLength="100" fill="none" stroke-width="3" stroke="${color}" stroke-dasharray="${len} ${100 - len}" stroke-dashoffset="${-from}"/>`
+  $('#lessonList').innerHTML = '<div class="group">' + LESSONS.map(l => {
+    const a = l.ok / l.n * 100, b = l.ing / l.n * 100, c = l.ign / l.n * 100
+    const studied = l.ok || l.ing || l.ign
+    const sub = l.s + (l.ok ? ` · <b>${l.ok} apprese</b>` : '')
+    const ring = studied ? `<span class="ring"><span>${l.ok}/${l.n - l.ign}</span><svg viewBox="0 0 22 22">${arc(0, 100, 'color-mix(in oklch,var(--todo) 55%,transparent)')}${arc(0, a, 'var(--ok)')}${arc(a, b, 'var(--warn)')}${arc(100 - c, c, 'var(--bad)')}</svg></span>` : '<span class="ring"></span>'
+    return `<div class="lrow"><span class="dot"></span><span class="tx"><span class="tt">${l.t}</span><span class="st">${sub}</span></span>${ring}</div>`
+  }).join('') + '</div>'
+
+  render(); setQ(); drawQ()
+})()
+</script>

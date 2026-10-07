@@ -274,6 +274,17 @@ class StudyHighlight(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class StudyUnit(Base):
+    """Stato e ultime letture di un'unità: le righe restano anche se la scaletta cambia."""
+    __tablename__ = "study_units"
+
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), primary_key=True)
+    unit_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="da-imparare")
+    status_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_read_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class TelegramCommand(Base):
     """Richiesta dell'app al bot Telegram (avvia o interrompi una sessione di recall): il
     daemon le esegue in ordine e ne scrive l'esito. state: pending | done | failed."""

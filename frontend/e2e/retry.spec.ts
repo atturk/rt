@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, authHeaders, loginViaLink, lessonJobs } from './support'
+import { test, apiGet, authHeaders, loginViaLink, lessonJobs } from './support'
 
 // RT4-FA1: un job fallito si riprova dalla web. Il job in mock fallisce apposta
 // (mock_fail_once: la review risponde fuori schema, come openrouter/free nel test reale); con

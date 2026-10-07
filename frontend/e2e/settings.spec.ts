@@ -1,5 +1,5 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
-import { apiGet, authHeaders, loginViaLink, scrollDocumentTo, serverState } from './support'
+import { expect, type Locator, type Page } from '@playwright/test'
+import { test, apiGet, authHeaders, loginViaLink, scrollDocumentTo, serverState } from './support'
 
 const CONNECTION = 'Server locale 422'
 const KEY = 'sk-e2e-chiave-422-0123456789abcdef'

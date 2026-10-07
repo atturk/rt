@@ -44,6 +44,7 @@ def _workspace(base: str, telegram: bool = False) -> str:
     # Telegram è spento di predefinito; gli e2e del bot finto lo accendono (e lo provano a spegnere)
     general["telegram"]["enabled"] = telegram
     # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
+    general.setdefault("jev", {}).update(relevance_model="typesafe/jev-1.13", relevance_mode="shadow")
     general["searxng_base_url"] = "http://127.0.0.1:9"
     # nessuna connessione nel config di esempio: senza questo ogni pagina porterebbe alla
     # configurazione guidata (la si prova in settings.spec.ts e nel job CI 'installer')
@@ -55,6 +56,7 @@ def _workspace(base: str, telegram: bool = False) -> str:
     os.environ["RT_TELEGRAM_FAKE"] = "1"
     os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [ROOT, os.environ.get("PYTHONPATH")]))
     os.environ.pop("RT_DATABASE_URL", None)
+    os.environ.pop("RT_DATA_DIR", None)  # anche nell'ambiente cloud i dati degli e2e restano isolati
     os.environ["RT_SECRETS_FILE"] = os.path.join(work, "config", "secrets.enc")
     os.chdir(work)
     return lessons
@@ -97,12 +99,23 @@ def _lessons(root: str) -> None:
     run_mock_pipeline(done, with_review=True, auto_accept=True)
     _plain_lesson(root, "2026-09-12", "FISIOLOGIA", "Il rene")
     for date, materia, argomenti in (("2026-09-19", "FARMACOLOGIA", "Recettori"),
-                                     ("2026-09-20", "PATOLOGIA", "Infiammazione")):
+                                     ("2026-09-20", "PATOLOGIA", "Infiammazione"),
+                                     ("2026-09-03", "REVISIONE", "Verifica di prova")):
         lesson = _plain_lesson(root, date, materia, argomenti)
         add_audio(lesson)
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sull'outline
         approve_outline(lesson, channel="api")
         run_mock_pipeline(lesson, with_review=True, auto_accept=False)  # si ferma sulle issue
+        if materia == "REVISIONE":
+            from rt.pipeline.review import load_science_issues, save_science_issues
+            from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+            from rt.services.phase_validation_service import validate_phase
+            issues = load_science_issues(lesson)
+            issues.append(ScienceIssue(id="sci_asr_test", type=ScienceType.ERR_ASR_ST,
+                                      severity=ScienceSeverity.MEDIUM, unit_id=issues[0].unit_id,
+                                      claim="Qualità dell’intera unità", reason="Issue ASR di prova"))
+            save_science_issues(issues, lesson)
+            validate_phase(lesson, "review", channel="api")
     anatomia = _plain_lesson(root, "2026-09-21", "ANATOMIA", "Cuore")
     run_mock_pipeline(anatomia, with_review=True, auto_accept=False)
     approve_outline(anatomia, channel="api")
@@ -111,11 +124,49 @@ def _lessons(root: str) -> None:
     chirurgia = _plain_lesson(root, "2026-09-01", "CHIRURGIA", "Suture")
     add_audio(chirurgia)
     run_mock_pipeline(chirurgia, with_review=True, auto_accept=True)
+    # Lezione con due unità reali per navigazione e stato di studio, senza mock delle API.
+    _study_lesson(root)
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)
     if report.errors:
         raise RuntimeError("; ".join(report.errors))
+
+
+def _study_lesson(root: str) -> None:
+    from rt.core.lesson_paths import lesson_path
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.outline import load_outline, save_outline
+    from rt.services.outline_service import approve_outline
+    from rt.services.phase_validation_service import validate_phase
+    from tests.api_support import run_mock_pipeline
+    path = _plain_lesson(root, "2026-09-02", "STUDIO", "Unità di prova")
+    run_mock_pipeline(path, with_review=False, auto_accept=False)
+    segments = load_segments_json(lesson_path(path, "segments.json")).segments
+    middle = len(segments) // 2
+    outline = load_outline(path)
+    first = outline.macro_sections[0].units[0]
+    outline.macro_sections = outline.macro_sections[:1]
+    outline.macro_sections[0].units = [
+        first.model_copy(update={"id": "1.1", "title": "Prima unità", "end_segment_id": segments[middle - 1].id}),
+        first.model_copy(update={"id": "1.2", "title": "Seconda unità", "start_segment_id": segments[middle].id}),
+    ]
+    save_outline(outline, path)
+    validate_phase(path, "outline", channel="api")
+    approve_outline(path, channel="api")
+    result = run_mock_pipeline(path, with_review=False, auto_accept=True)
+    if result.error:
+        raise RuntimeError(result.error)
+
+    from rt.pipeline.rewrite import load_draft, save_draft
+    draft = load_draft(path)
+    draft.units[0].content = "Formula $z$. un’impostazione un'impostazione. " + draft.units[0].content
+    draft.units[1].content += '\n\n' + r'$$\sum_{i=1}^{6} x_i$$'
+    save_draft(draft, path, manual=True)
+    validate_phase(path, "rewrite", channel="api")
+    result = run_mock_pipeline(path, with_review=False, auto_accept=True)
+    if result.error:
+        raise RuntimeError(result.error)
 
 
 def main() -> int:

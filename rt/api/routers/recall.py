@@ -60,6 +60,11 @@ def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir
             "selection": body.selection,
             "count": body.count,
         }, actor)
+    if body.qtype == "consigliato":
+        return enqueue_job("recall_generate", lesson_dir, {
+            "force_mock": body.mock, "regenerate": True, "qtypes": ["consigliato"],
+            "count": body.count, "instructions": body.instructions, "selection": body.selection,
+        }, actor)
     if body.qtype:
         return enqueue_job("recall_batch", lesson_dir, body.model_dump(), actor)
     return enqueue_job("recall_generate", lesson_dir, {
@@ -185,8 +190,10 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
     question = next_question_for(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id)
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
+    from rt.services.recall_service import pending_count
+    remaining = pending_count(lesson_dir, qtype, unit_id=unit_id)
     _refill_later(lesson_dir, question, mock, actor)
-    return question_view(question)
+    return {**question_view(question), "remaining": remaining}
 
 
 @router.post("/lessons/{lesson_id}/recall/answer", summary="Risponde: quiz subito, risposta scritta con un job di valutazione",

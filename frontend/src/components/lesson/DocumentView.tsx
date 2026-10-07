@@ -1,3 +1,4 @@
+import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router'
 
@@ -64,7 +65,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   const ref = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
-  const { hash } = useLocation()
+  const { hash, state: routerState } = useLocation()
 
   // Pulsante timecode dentro ogni intestazione di unità.
   useEffect(() => {
@@ -72,7 +73,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     if (!root) return
     void renderDelimitedMath(root)
     // L'effetto può ripartire sullo stesso HTML (StrictMode, audio pronto): niente doppioni.
-    root.querySelectorAll('.rt-unit-meta').forEach((el) => el.remove())
+    root.querySelectorAll('.rt-unit-meta').forEach((el) => { el.querySelectorAll('button').forEach(unmountDomTooltip); el.remove() })
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
       if (!heading) continue
@@ -85,7 +86,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
         button.dataset.seconds = String(section.start_seconds)
         button.textContent = section.start_formatted ?? ''
         button.disabled = !hasAudio
-        button.title = hasAudio ? `Ascolta da ${section.start_formatted}` : 'Audio non disponibile'
+        mountDomTooltip(button, hasAudio ? `Ascolta da ${section.start_formatted}` : 'Audio non disponibile')
         button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
         meta.append(button)
       }
@@ -97,6 +98,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
       }
       if (meta.childNodes.length) heading.append(meta)
     }
+    return () => root.querySelectorAll('.rt-unit-meta button').forEach(node => unmountDomTooltip(node as HTMLElement))
   }, [doc, hasAudio])
 
   // Evidenzia l'unità in ascolto (intestazione e blocchi fino alla prossima intestazione).
@@ -135,9 +137,9 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     if (!root || !unitId || highlightText) return
     const block = unitBlock(root, unitId)
     if (!block.length) return
-    block.forEach((el) => el.classList.add('rt-claim-unit'))
+    if (!routerState?.fromStudy) block.forEach((el) => el.classList.add('rt-claim-unit'))
     block[0].scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-  }, [hash, doc, highlightText])
+  }, [hash, routerState, doc, highlightText])
 
   return (
     <>

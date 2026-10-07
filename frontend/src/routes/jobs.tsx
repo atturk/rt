@@ -1,3 +1,4 @@
+import { useReturnAddress } from '@/lib/returnAddress'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { errorMessage } from '@/api/client'
@@ -23,6 +24,7 @@ function formatDateTime(iso?: string | null): string {
 }
 
 export function JobsPage() {
+  const returnAddress = useReturnAddress()
   const [params, setParams] = useSearchParams()
   const state = params.get('stato') ?? ''
   const lessonParam = params.get('lezione')
@@ -40,7 +42,7 @@ export function JobsPage() {
 
   return (
     <>
-    <PageHeader title="Job in corso" />
+    <PageHeader title="Job in corso" back={{ to: returnAddress, label: 'Indietro' }} />
     <PageBody>
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">

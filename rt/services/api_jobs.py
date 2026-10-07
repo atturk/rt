@@ -389,7 +389,8 @@ def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                      message=f"Esporto {current + 1} su {total}: {os.path.basename(lesson_dir)}")
 
     try:
-        path, included = export_many_to_tempfile(dirs, job.payload["format"], progress=progress)
+        path, included = export_many_to_tempfile(dirs, job.payload["format"], progress=progress,
+                                               study=job.payload.get("study", False))
     except ExportError as exc:
         raise NotFound("export_not_available", str(exc)) from exc
     filename = many_export_filename(job.payload.get("name", "lezioni"), job.payload["format"])

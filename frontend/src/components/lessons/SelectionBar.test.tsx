@@ -8,8 +8,8 @@ import { SelectionBar } from './LessonsView'
 import type { Lesson } from '@/lib/format'
 
 const lessons: Lesson[] = [
-  { id: 1, folder_name: 'a', path: '', titolo: 'Infiammazione', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, phases: { build: 'VALID', rewrite: 'VALID' } },
-  { id: 2, folder_name: 'b', path: '', titolo: 'Lipidi', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, phases: { build: 'STALE', rewrite: 'MISSING' } },
+  { id: 1, folder_name: 'a', path: '', titolo: 'Infiammazione', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phases: { build: 'VALID', rewrite: 'VALID' } },
+  { id: 2, folder_name: 'b', path: '', titolo: 'Lipidi', materia: '', data: '', docente: '', argomenti: '', ora: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phases: { build: 'STALE', rewrite: 'MISSING' } },
 ]
 const ok = (data: unknown, status = 200) => ({ data, error: undefined, response: new Response('{}', { status }) }) as never
 
@@ -24,6 +24,19 @@ function renderBar(chosen = lessons) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('export nella barra di selezione', () => {
+  it('apre i dettagli con una riga per lezione e la tabella ordinabile', () => {
+    renderBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Dettagli della selezione' }))
+    const dialog = screen.getByRole('dialog', { name: '2 lezioni selezionate' })
+    expect(dialog).toHaveTextContent('Materie')
+    expect(dialog).toHaveTextContent('Docenti')
+    expect(screen.getAllByRole('row')).toHaveLength(3)
+    expect(screen.getByRole('columnheader', { name: 'Costo' })).toHaveAttribute('aria-sort', 'descending')
+    fireEvent.click(screen.getByRole('button', { name: 'Costo' }))
+    expect(screen.getByRole('columnheader', { name: 'Costo' })).toHaveAttribute('aria-sort', 'ascending')
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+    expect(screen.queryByRole('table')).toBeNull()
+  })
   it.each(['markdown', 'zip'] as const)('accoda %s, mostra avanzamento e scarica una volta sola a job finito', async (format) => {
     const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ job_id: 'exp-1', state: 'queued' }, 202))
     let state = 'running'
@@ -34,9 +47,10 @@ describe('export nella barra di selezione', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     const client = renderBar()
     fireEvent.click(screen.getByRole('button', { name: format === 'markdown' ? 'Scarica Markdown' : 'Scarica zip' }))
+    if (format === 'zip') fireEvent.click(screen.getByRole('menuitem', { name: 'Scarica zip' }))
     await screen.findByRole('progressbar')
     expect(post).toHaveBeenCalledWith('/api/v1/lesson-exports', { body: {
-      ids: format === 'markdown' ? [1] : [1, 2], format, name: 'Lezioni selezionate',
+      ids: format === 'markdown' ? [1] : [1, 2], format, name: 'Lezioni selezionate', study: format === 'zip',
     } })
     expect(await screen.findByText(/Esporto 2 su 2: Lipidi/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Scarica zip' })).toHaveAttribute('aria-disabled', 'true')
@@ -68,6 +82,7 @@ describe('export nella barra di selezione', () => {
   it('con selezione vuota non accoda export', () => {
     const post = vi.spyOn(api, 'POST')
     renderBar([])
+    expect(screen.getByRole('button', { name: 'Dettagli della selezione' })).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'Scarica Markdown' }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarica zip' }))
     expect(post).not.toHaveBeenCalled()

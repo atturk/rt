@@ -1,12 +1,17 @@
-import { ChevronLeft, Moon, Pause, Play, Rewind, RotateCcw, SlidersHorizontal, Sun } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { MessageCircleQuestion, Pause, Play, Rewind, RotateCcw, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { Checkbox } from '@/components/settings/common'
+import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
+import { createSound } from './rsvpSound'
 import {
-  MAX_WPM, MIN_WPM, focusIndex, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
-  remainingSeconds, surrounding, wordDelay,
+  MAX_WPM, MIN_WPM, adaptWord, type DisplayWord, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
+  remainingSeconds, surroundingEntries, wordDelay,
 } from './rsvp'
 
 const RING = 2 * Math.PI * 50
@@ -15,19 +20,25 @@ const TINTS = [['pesca', 'Pesca'], ['menta', 'Menta'], ['pergamena', 'Pergamena'
 const ORPS = [['prima', 'Prima'], ['bilanciata', 'Bilanciata'], ['dopo', 'Dopo']] as const
 const STEPS = [1, 3, 5, 10]
 
-/**
- * Lettura veloce dell'unità aperta nello Studio (4.2.2, V1): una parola alla volta con la lettera
- * di fuoco sempre nello stesso punto, clic a ogni parola e uno più grave a fine frase.
- */
-export function SpeedReader({ source, title, onClose }: { source: Element; title: string; onClose: () => void }) {
+/** Lettura veloce integrata nello Studio: conserva suoni, tasti e preferenze. */
+export function SpeedReader({ source, active, context, settings, onSettingsChange, settingsButton, blocked, questions, onReview, onGenerate, onTintChange, onClose }: {
+  source: Element; active: boolean; context: boolean; settings: boolean; onSettingsChange: (open: boolean) => void
+  settingsButton: RefObject<HTMLElement | null>; blocked: boolean
+  questions: number; onReview: () => void; onGenerate: () => void
+  onTintChange: (tint: RsvpPreference['irlen']) => void; onClose: () => void
+}) {
   const [saved, save] = useRsvpPrefs()
   const [prefs, setPrefs] = useState<RsvpPreference>(saved)
-  const { words, paragraphs } = useMemo(() => readUnitWords(source), [source])
+  const [{ words, paragraphs }, setText] = useState(() => readUnitWords(source))
+  useEffect(() => {
+    const observer = new MutationObserver(() => setText(readUnitWords(source)))
+    observer.observe(source, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [source])
   const [index, setIndex] = useState(0)
+  const [pieceIndex, setPieceIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [day, setDay] = useState(() => !document.documentElement.classList.contains('dark'))
-  const [context, setContext] = useState(false)
-  const [settings, setSettings] = useState(false)
+  useEffect(() => onTintChange(prefs.irlen), [prefs.irlen, onTintChange])
   const phone = useIsPhone()
   const [sound] = useState(createSound)
   const prefsRef = useRef(prefs)
@@ -40,36 +51,79 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
     setPrefs((old) => {
       const next = { ...old, ...change }
       clearTimeout(persist.current)
-      persist.current = setTimeout(() => save(next), 400)
+      persist.current = setTimeout(() => { persist.current = undefined; save(next) }, 400)
       return next
     })
   }, [save])
-  useEffect(() => () => clearTimeout(persist.current), [])
+  const saveRef = useRef(save)
+  useLayoutEffect(() => { saveRef.current = save }, [save])
+  useEffect(() => () => {
+    if (persist.current) { clearTimeout(persist.current); saveRef.current(prefsRef.current) }
+  }, [])
 
-  const word = words[index]?.text ?? ''
-  const full = isFullStop(word, prefs.comma)
+  const previousSettings = useRef(settings)
+  useLayoutEffect(() => {
+    if (previousSettings.current && !settings && persist.current) {
+      clearTimeout(persist.current)
+      persist.current = undefined
+      saveRef.current(prefsRef.current)
+    }
+    previousSettings.current = settings
+  }, [settings])
+
+  const readingArea = useRef<HTMLDivElement>(null)
+  const probe = useRef<HTMLSpanElement>(null)
+  const fallback = useMemo(() => words.map((word, sourceIndex) => [{ ...word, sourceIndex, scale: 1, lastPiece: true }]), [words])
+  const [adapted, setAdapted] = useState<{ source: typeof words; pieces: DisplayWord[][] } | null>(null)
+  useLayoutEffect(() => {
+    const area = readingArea.current, element = probe.current
+    if (!area || !element) return
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    let alive = true
+    const fit = () => {
+      if (!alive || area.clientWidth <= 0) return
+      const font = getComputedStyle(element)
+      ctx.font = `${font.fontWeight} ${font.fontSize} ${font.fontFamily}`
+      setAdapted({ source: words, pieces: words.map((word, i) => adaptWord(word, i, area.clientWidth, text => ctx.measureText(text).width, prefs.orp)) })
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(area)
+    void document.fonts?.ready.then(fit)
+    document.fonts?.addEventListener('loadingdone', fit)
+    return () => { alive = false; observer.disconnect(); document.fonts?.removeEventListener('loadingdone', fit) }
+  }, [words, prefs.size, prefs.dyslexic, prefs.orp, phone])
+  const pieces = adapted?.source === words ? adapted.pieces : fallback
+  const currentPieces = pieces[index] ?? []
+  const currentPieceIndex = Math.min(pieceIndex, Math.max(0, currentPieces.length - 1))
+  const entry = currentPieces[currentPieceIndex]
+  const atLastPiece = currentPieceIndex === currentPieces.length - 1
+  const word = entry?.text ?? ''
+  const full = entry?.lastPiece !== false && isFullStop(word, prefs.comma)
 
   useEffect(() => {
-    if (!playing || !words[index]) return
-    const text = words[index].text
+    if (!active || !playing || !entry) return
     const current = prefsRef.current
-    const end = isFullStop(text, current.comma)
-    if (current.sound) sound.click(end, current.pitch)
-    const delay = wordDelay(text, current, ramp.current)
+    const end = graveWord(entry, current)
+    if (current.sound) sound.click(end, current.pitch, current.clickSound)
+    const delay = wordDelay(entry, current, ramp.current)
     if (ramp.current > 0) ramp.current--
     const timer = setTimeout(() => {
-      if (index < words.length - 1) setIndex(index + 1)
+      if (currentPieceIndex + 1 < currentPieces.length) setPieceIndex(currentPieceIndex + 1)
+      else if (index < words.length - 1) { setIndex(index + 1); setPieceIndex(0) }
       else setPlaying(false)
     }, delay)
     return () => clearTimeout(timer)
-  }, [playing, index, words, sound])
+  }, [active, playing, index, currentPieceIndex, words, pieces, sound]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Il rumore suona durante la lettura; in pausa solo l'anteprima di 2 s delle impostazioni.
   useEffect(() => {
-    if (!playing || !prefs.noise) return
+    if (!active || !playing || !prefs.noise) return
     sound.noise(prefs.noise, prefsRef.current.noiseVolume)
     return () => sound.stopNoise()
-  }, [playing, prefs.noise, sound])
+  }, [active, playing, prefs.noise, sound])
   useEffect(() => sound.volume(prefs.noiseVolume), [prefs.noiseVolume, sound])
   useEffect(() => () => sound.dispose(), [sound])
 
@@ -77,19 +131,21 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
     if (!words.length) return
     sound.unlock()
     ramp.current = 5
-    setIndex((i) => (i >= words.length - 1 ? 0 : i))
+    if (index >= words.length - 1 && atLastPiece) { setIndex(0); setPieceIndex(0) }
     setPlaying(true)
-  }, [words.length, sound])
+  }, [words.length, index, atLastPiece, sound])
   const toggle = useCallback(() => (playing ? setPlaying(false) : play()), [playing, play])
   const jump = useCallback((to: number) => {
     setIndex(Math.max(0, Math.min(words.length - 1, to)))
+    setPieceIndex(0)
     if (playing) ramp.current = 5
   }, [words.length, playing])
 
   useEffect(() => {
+    if (!active || blocked) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      const field = e.target instanceof Element && e.target.closest('input:not([type=range]), textarea, select')
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      const field = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable=true], header, [data-testid=speed-reader-settings]')
       if (field && e.key !== 'Escape') return
       const keys: Record<string, () => void> = {
         ' ': toggle,
@@ -97,8 +153,11 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
         ArrowRight: () => jump(nextSentence(words, index)),
         ArrowUp: () => update({ wpm: Math.min(MAX_WPM, prefsRef.current.wpm + 25) }),
         ArrowDown: () => update({ wpm: Math.max(MIN_WPM, prefsRef.current.wpm - 25) }),
-        Home: () => { setPlaying(false); setIndex(0) },
-        Escape: () => (settings ? setSettings(false) : onClose()),
+        Home: () => { setPlaying(false); setIndex(0); setPieceIndex(0) },
+        Escape: () => {
+          if (settings) { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
+          else onClose()
+        },
       }
       const action = keys[e.key]
       if (!action) return
@@ -107,11 +166,13 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
       e.stopPropagation()
       action()
     }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [toggle, jump, update, words, index, settings, onClose])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, blocked, toggle, jump, update, words, index, settings, settingsButton, onSettingsChange, onClose])
 
-  const around = surrounding(words, index)
+  const closeSettings = () => { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
+
+  const around = surroundingEntries(words, index)
   const k = word ? focusIndex(word, prefs.orp) : 0
   const remaining = remainingSeconds(words.length, index, prefs.wpm)
   const progress = words.length ? (index + 1) / words.length : 0
@@ -120,150 +181,133 @@ export function SpeedReader({ source, title, onClose }: { source: Element; title
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      role="region"
       aria-label="Lettura veloce"
+      aria-hidden={!active || undefined}
+      inert={!active || undefined}
       data-testid="speed-reader"
-      data-day={day && !prefs.irlen ? '' : undefined}
-      data-tint={prefs.irlen ?? undefined}
-      data-theme-mode={day ? 'giorno' : 'notte'}
-      className="rt-rsvp fixed inset-0 z-50 flex flex-col gap-2 px-[22px] pb-3.5 pt-[18px] max-md:px-3.5 max-md:pb-[calc(10px+env(safe-area-inset-bottom))] max-md:pt-3"
+      data-active={active || undefined}
+      data-settings={settings && !phone || undefined}
+      className="rt-rsvp absolute inset-0 flex flex-col gap-3 overflow-hidden bg-background px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-5 text-foreground max-md:px-3.5"
     >
-      <div className="flex items-center gap-2.5">
-        <Pill onClick={onClose} aria-label="Torna allo Studio"><ChevronLeft className="size-4" aria-hidden />Studio</Pill>
-        <div className="min-w-0 flex-1 truncate text-center text-meta text-(--o-dim) max-md:invisible">{title}</div>
-        <div role="group" aria-label="Tema della lettura veloce" className="inline-flex rounded-[9px] border border-(--o-line) bg-(--o-chip) p-0.5">
-          {([[true, 'Giorno', Sun], [false, 'Notte', Moon]] as const).map(([value, label, Icon]) => (
-            <button key={label} type="button" aria-pressed={day === value} onClick={() => { setDay(value); if (prefs.irlen) update({ irlen: null }) }}
-              className={cn('inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 font-mono text-meta text-(--o-dim)',
-                day === value && 'bg-[color-mix(in_oklch,var(--o-focus)_22%,var(--o-panel))] text-(--o-fg)')}>
-              <Icon className="size-3.5" aria-hidden /><span className="max-md:sr-only">{label}</span>
-            </button>
-          ))}
-        </div>
-        <Pill aria-pressed={context} onClick={() => setContext(!context)}>Contesto</Pill>
-      </div>
-
-      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
+      <div ref={readingArea} className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
+        <span ref={probe} aria-hidden className={cn('rt-rsvp-word rt-rsvp-measure', prefs.dyslexic && 'dyslexic')} style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * .6) : prefs.size}px` } as CSSProperties}>M</span>
         {context && (
-          <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-(--o-line) bg-(--o-panel) px-3.5 py-2.5 text-body leading-[1.7] text-(--o-dim)">
+          <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
-              <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-(--o-fg)',
-                piece.index === index && 'font-semibold text-(--o-focus)')} data-current={piece.index === index || undefined}>
-                {piece.text}{' '}
+              <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
+                piece.index === index && 'font-semibold text-(--rsvp-focus)', piece.hl && prefs.highlights && 'rt-rsvp-hl')} data-current={piece.index === index || undefined}>
+                {piece.math ? <span dangerouslySetInnerHTML={{ __html: piece.math.html }} /> : piece.text}{' '}
               </span>
             ))}
           </div>
         )}
-        <div className="min-h-[1.5em] max-w-[92%] text-center text-[22px] leading-normal tracking-[0.14em] text-(--o-dim) max-md:text-base" data-testid="speed-reader-before">
-          {playing ? '' : around.before}
+        <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-before">
+          {playing ? '' : around.before.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         <div
           key={animate ? `out-${index}` : 'still'}
           className={cn('rt-rsvp-word', prefs.dyslexic && 'dyslexic', animate && 'out')}
-          style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
+          style={{ '--rsvp-scale': entry?.scale ?? 1, '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
           data-testid="speed-reader-word"
+          data-source-index={index}
+          data-piece={currentPieceIndex}
+          data-scale={entry?.scale ?? 1}
+          data-hl={words[index]?.hl && prefs.highlights || undefined}
+          data-math={words[index]?.math ? true : undefined}
           data-kind={full ? 'fine' : 'normale'}
           aria-live="off"
         >
-          <span className="pre">{word.slice(0, k)}</span><span className="orp">{word.charAt(k)}</span><span className="post">{word.slice(k + 1)}</span>
+          {words[index]?.math ? <FormulaWord html={words[index].math!.html} /> : <><span className="pre"><span>{word.slice(0, k)}</span></span><span className="orp">{word.charAt(k)}</span><span className="post"><span>{word.slice(k + 1)}</span></span></>}
         </div>
-        <div className="min-h-[1.5em] max-w-[92%] text-center text-[22px] leading-normal tracking-[0.14em] text-(--o-dim) max-md:text-base" data-testid="speed-reader-after">
-          {playing ? '' : around.after}
+        <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-after">
+          {playing ? '' : around.after.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
-        {!words.length && <p className="text-body text-(--o-dim)">Questa unità non ha testo da leggere.</p>}
+        {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
 
-      <div className="grid grid-cols-[auto_auto] items-center justify-center gap-x-5 gap-y-1 font-mono text-meta text-(--o-dim)">
-        <span>Velocità <b className="font-normal text-(--o-fg)">{prefs.wpm}</b> parole/min</span>
-        <button type="button" aria-label="Impostazioni della lettura veloce" aria-expanded={settings} onClick={() => setSettings(!settings)}
-          className="inline-flex size-[30px] items-center justify-center rounded-lg bg-(--o-chip) text-(--o-fg)">
-          <SlidersHorizontal className="size-4" aria-hidden />
-        </button>
-        <input type="range" min={MIN_WPM} max={MAX_WPM} step={25} value={prefs.wpm} aria-label="Velocità" className="col-span-2 w-[190px] justify-self-center"
+      <div className="grid grid-cols-1 items-center justify-items-center gap-x-5 gap-y-1 text-meta text-muted-foreground">
+        <span>Velocità <b className="font-normal text-foreground">{prefs.wpm}</b> parole/min</span>
+        <input type="range" min={MIN_WPM} max={MAX_WPM} step={25} value={prefs.wpm} aria-label="Velocità" className="w-[220px] accent-accent-foreground justify-self-center"
           onChange={(e) => update({ wpm: Number(e.target.value) })} />
       </div>
 
-      <div className="mt-1.5 flex items-center justify-center gap-[26px]">
-        <RoundButton label={`Indietro di ${prefs.step} parole`} onClick={() => jump(index - prefs.step)} note={`−${prefs.step}`}>
-          <Rewind className="size-5" fill="currentColor" aria-hidden />
-        </RoundButton>
-        <button type="button" onClick={toggle} aria-label={playing ? 'Pausa' : 'Avvia'} data-testid="speed-reader-play" autoFocus
-          className="relative inline-flex size-[92px] items-center justify-center rounded-full border border-(--o-line) bg-(--o-bg) text-(--o-fg)">
-          <svg className="absolute -inset-1.5 size-[104px] -rotate-90" viewBox="0 0 104 104" aria-hidden>
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--o-line)" />
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--o-focus)" strokeLinecap="round"
+      <div className="mt-1.5 flex items-center justify-center gap-6 max-md:gap-4" data-testid="speed-reader-controls">
+        <RoundButton label={`Indietro di ${prefs.step} parole`} icon={Rewind} onClick={() => jump(index - prefs.step)} note={`−${prefs.step}`} />
+        <RoundButton label={playing ? 'Pausa' : 'Avvia'} icon={playing ? Pause : Play} onClick={toggle} note={playing ? 'Pausa' : 'Play'} primary testId="speed-reader-play" badge={
+          <svg className="pointer-events-none absolute -inset-1.5 -rotate-90" style={{ width: 'calc(100% + 12px)', height: 'calc(100% + 12px)' }} viewBox="0 0 104 104" aria-hidden>
+            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--border)" />
+            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--rsvp-focus)" strokeLinecap="round"
               strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
           </svg>
-          {playing ? <Pause className="size-[26px]" fill="currentColor" aria-hidden /> : <Play className="size-[26px]" fill="currentColor" aria-hidden />}
-        </button>
-        <RoundButton label="Ricomincia l'unità" onClick={() => { setPlaying(false); setIndex(0) }}>
-          <RotateCcw className="size-5" aria-hidden />
-        </RoundButton>
+        } />
+        <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
+        <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
+          icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
+          onClick={() => { setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
       </div>
-      <div className="mt-3 text-center font-mono text-[11px] text-(--o-dim)" data-testid="speed-reader-count">
+      <div className="mt-3 text-center text-meta text-muted-foreground" data-testid="speed-reader-count">
         {words.length ? `${index + 1} / ${words.length} parole · ${formatRemaining(remaining)}` : ''}
       </div>
-      {!phone && (
-        <div className="text-center text-meta text-(--o-dim)">
-          Spazio avvia e ferma · ← frase precedente · → frase successiva · ↑ ↓ velocità · Home ricomincia · Esc torna allo Studio
-        </div>
-      )}
-
       {settings && (
-        <SettingsPanel phone={phone} prefs={prefs} update={update} onDone={() => setSettings(false)}
-          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch)} />
+        <SettingsPanel anchor={settingsButton} phone={phone} prefs={prefs} update={update} onDone={closeSettings}
+          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch, prefs.clickSound)} />
       )}
     </div>
   )
 }
 
-function Pill({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button type="button" {...props}
-      className={cn('inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-(--o-line) bg-(--o-chip) px-3 text-meta text-(--o-fg) hover:border-(--o-dim) aria-pressed:border-(--o-dim)', className)}>
-      {children}
-    </button>
-  )
+/** Riduce solo le formule che eccedono lo spazio del lettore, anche con la barra aperta. */
+function FormulaWord({ html }: { html: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ scale: 1, height: 0 })
+  useLayoutEffect(() => {
+    const container = ref.current
+    const rendered = container?.firstElementChild as HTMLElement | null
+    if (!container || !rendered) return
+    const fit = () => {
+      const scale = Math.min(1, container.clientWidth / (rendered.scrollWidth || 1))
+      setSize({ scale, height: rendered.offsetHeight * scale })
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(container); observer.observe(rendered)
+    return () => observer.disconnect()
+  }, [html])
+  return <div ref={ref} className="rt-rsvp-formula" style={{ height: size.height || undefined }}>
+    <span className="rt-rsvp-math" style={{ transform: `scale(${size.scale})` }} dangerouslySetInnerHTML={{ __html: html }} />
+  </div>
 }
 
-function RoundButton({ label, onClick, note, children }: { label: string; onClick: () => void; note?: string; children: ReactNode }) {
-  return (
-    <button type="button" aria-label={label} onClick={onClick}
-      className="relative inline-flex size-[58px] items-center justify-center rounded-full border border-(--o-line) bg-(--o-chip) text-(--o-fg)">
-      {children}
-      {note && <small className="absolute -bottom-[18px] font-mono text-[10px] text-(--o-dim)">{note}</small>}
-    </button>
-  )
+function Pill(props: React.ComponentProps<typeof Button>) { return <Button variant="outline" size="sm" {...props} /> }
+
+function RoundButton({ label, icon, onClick, note, primary, badge, testId }: {
+  label: string; icon: LucideIcon; onClick: () => void; note: string; primary?: boolean; badge?: ReactNode; testId?: string
+}) {
+  return <div className="flex flex-col items-center gap-2">
+    <IconButton label={label} icon={icon} onClick={onClick} variant={primary ? 'solid' : 'ghost'} badge={badge} data-testid={testId}
+      className={cn('size-14 min-w-14 rounded-full border border-border max-md:size-12 max-md:min-w-12 [&_svg]:size-5', !primary && 'bg-muted')} />
+    <span className="text-meta text-muted-foreground">{note}</span>
+  </div>
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
-      className={cn('relative h-[22px] w-10 shrink-0 rounded-full transition-colors', checked ? 'bg-success' : 'bg-(--o-line)')}>
-      <span className={cn('absolute top-[3px] size-4 rounded-full bg-white transition-[left]', checked ? 'left-[21px]' : 'left-[3px]')} />
-    </button>
-  )
+  return <Checkbox id={`rsvp-${label}`} label={label} checked={checked} onChange={onChange} />
 }
 
 function Segments<T extends string | number>({ label, value, options, onChange }: {
   label: string; value: T; options: readonly (readonly [T, string])[]; onChange: (value: T) => void
 }) {
-  return (
-    <div role="group" aria-label={label} className="flex rounded-[9px] bg-(--o-chip) p-[3px]">
-      {options.map(([v, text]) => (
-        <button key={String(v)} type="button" aria-pressed={value === v} onClick={() => onChange(v)}
-          className={cn('flex-1 rounded-md px-2 py-1 text-meta text-(--o-fg)', value === v && 'bg-(--o-bg)')}>{text}</button>
-      ))}
-    </div>
-  )
+  return <SlideToggle label={label} value={String(value)} options={options.map(([v, text]) => ({ value: String(v), label: text }))}
+    onChange={next => { const choice = options.find(([v]) => String(v) === next); if (choice) onChange(choice[0]) }} />
 }
 
 function Row({ children }: { children: ReactNode }) {
-  return <div className="grid gap-[7px] border-b border-(--o-line) px-3.5 py-2.5 last:border-b-0">{children}</div>
+  return <div className="grid gap-[7px] border-b border-border px-3.5 py-2.5 last:border-b-0">{children}</div>
 }
 
-function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }: {
+function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, onPitch }: {
+  anchor: RefObject<HTMLElement | null>
   phone: boolean
   prefs: RsvpPreference
   update: (change: Partial<RsvpPreference>) => void
@@ -271,165 +315,72 @@ function SettingsPanel({ phone, prefs, update, onDone, onPreviewNoise, onPitch }
   onPreviewNoise: (kind: RsvpPreference['noise'], volume: number) => void
   onPitch: (pitch: number) => void
 }) {
-  const head = (text: string, hint: string, control: ReactNode) => (
-    <div className="flex items-center justify-between gap-2">
-      <span>{text}<small className="block text-meta text-(--o-dim)">{hint}</small></span>{control}
-    </div>
-  )
+  const ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!phone) return
+    const outside = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node) && !anchor.current?.contains(event.target as Node)) onDone()
+    }
+    window.addEventListener('mousedown', outside)
+    return () => window.removeEventListener('mousedown', outside)
+  }, [phone, anchor, onDone])
+  const section = (title: string) => <h3 className="px-3.5 pb-1 pt-4 text-meta font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
   return (
-    <section aria-label="Impostazioni della lettura veloce" data-testid="speed-reader-settings"
-      className={cn('z-[3] overflow-auto border border-(--o-line) bg-(--o-panel) py-1 text-body shadow-[0_16px_40px_rgb(0_0_0/0.35)]',
-        phone ? 'fixed inset-x-0 bottom-0 max-h-[75dvh] rounded-t-[14px] pb-[env(safe-area-inset-bottom)]' : 'absolute right-[22px] top-[62px] max-h-[calc(100%-80px)] w-[300px] rounded-[14px]')}>
-      <Row><div className="flex items-center justify-between"><b className="font-semibold">Impostazioni</b><Pill onClick={onDone}>Fatto</Pill></div></Row>
+    <section ref={ref} role="dialog" aria-label="Impostazioni della lettura veloce" data-testid="speed-reader-settings"
+      className={cn('rt-rsvp-settings z-30 overflow-auto border bg-card py-1 text-body shadow-panel [&_input]:accent-accent-foreground',
+        phone ? 'fixed inset-x-0 bottom-0 max-h-[75dvh] rounded-t-[14px] pb-[env(safe-area-inset-bottom)]' : 'absolute inset-y-0 right-0 w-[340px] border-y-0 border-r-0')}>
+      <Row><div className="flex items-center justify-between"><b className="font-semibold">Impostazioni</b><IconButton label="Chiudi le impostazioni" icon={X} onClick={onDone} /></div></Row>
+      {section('Lettura')}
       <Row>
-        {head('Suono', 'un clic a ogni parola, più grave a fine frase', <Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />)}
+        <span>Pausa dopo la frase <b className="font-normal">{prefs.pauseMs}</b> ms</span>
+        <input type="range" min={0} max={1200} step={50} value={prefs.pauseMs} aria-label="Pausa dopo la frase" onChange={(e) => update({ pauseMs: Number(e.target.value) })} />
+      </Row>
+      <Row><Toggle label="Virgola come pausa piena" checked={prefs.comma} onChange={(comma) => update({ comma })} /></Row>
+      <Row><span>Pausa sulle formule</span>
+        <Segments label="Pausa sulle formule" value={prefs.formulaPause} options={[
+          ['adattiva', 'Adattiva'], ['standard', 'Standard'], ['personalizzata', 'Personalizzata'],
+        ]} onChange={(formulaPause) => update({ formulaPause })} />
+        {prefs.formulaPause === 'personalizzata' && <>
+          <span>Formule complesse · {(prefs.formulaMs / 1000).toFixed(1).replace('.', ',')} s</span>
+          <input type="range" min={500} max={5000} step={250} value={prefs.formulaMs} aria-label="Formule complesse"
+            onChange={e => update({ formulaMs: Number(e.target.value) })} />
+        </>}
+      </Row>
+      <Row><span>Lettera di fuoco</span><Segments label="Lettera di fuoco" value={prefs.orp} options={ORPS} onChange={(orp) => update({ orp })} /></Row>
+      <Row><span>Passo indietro: <b className="font-normal">{prefs.step}</b> parole</span>
+        <Segments label="Passo indietro" value={prefs.step} options={STEPS.map((n) => [n, `−${n}`] as const)} onChange={(step) => update({ step })} />
+      </Row>
+      {section('Aspetto')}
+      <Row><div className="flex items-center justify-between">
+        <span>Dimensione del testo <b className="font-normal">{prefs.size}</b></span>
+        <div className="flex gap-1">
+          <Pill aria-label="Testo più piccolo" onClick={() => update({ size: Math.max(24, prefs.size - 4) })}>−</Pill>
+          <Pill aria-label="Testo più grande" onClick={() => update({ size: Math.min(96, prefs.size + 4) })}>+</Pill>
+        </div>
+      </div></Row>
+      <Row><Toggle label="Font per dislessia" checked={prefs.dyslexic} onChange={(dyslexic) => update({ dyslexic })} /></Row>
+      <Row><Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => update({ irlen: on ? 'pesca' : null })} />
+        {prefs.irlen && <Segments label="Sfondo" value={prefs.irlen} options={TINTS} onChange={(irlen) => update({ irlen })} />}
+      </Row>
+      <Row><Toggle label="Mostra le evidenziazioni" checked={prefs.highlights} onChange={highlights => update({ highlights })} /></Row>
+      <Row><Toggle label="Rallenta sulle evidenziate" checked={prefs.slowHighlights} onChange={slowHighlights => update({ slowHighlights })} /></Row>
+      {section('Suono')}
+      <Row><Toggle label="Suono" checked={prefs.sound} onChange={(sound) => update({ sound })} />
+        {prefs.sound && <><span>Tipo di clic</span><Segments label="Tipo di clic" value={prefs.clickSound} options={[
+          ['legno', 'Legno'], ['tick', 'Tick morbido'], ['classico', 'Classico'],
+        ]} onChange={clickSound => update({ clickSound })} /></>}
         <span>Tono <b className="font-normal">{prefs.pitch.toFixed(1)}</b>×</span>
         <input type="range" min={0.5} max={2} step={0.1} value={prefs.pitch} aria-label="Tono"
           onChange={(e) => { const pitch = Number(e.target.value); update({ pitch }); onPitch(pitch) }} />
       </Row>
-      <Row>{head('Font per dislessia', 'lettere più distinguibili', <Toggle label="Font per dislessia" checked={prefs.dyslexic} onChange={(dyslexic) => update({ dyslexic })} />)}</Row>
-      <Row>
-        {head('Modalità Irlen', 'sfondo colorato che affatica meno', <Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => update({ irlen: on ? 'pesca' : null })} />)}
-        {prefs.irlen && <Segments label="Sfondo" value={prefs.irlen} options={TINTS} onChange={(irlen) => update({ irlen })} />}
-      </Row>
-      <Row>
-        {head('Rumore di fondo', 'copre i rumori intorno', <Toggle label="Rumore di fondo" checked={prefs.noise !== null}
-          onChange={(on) => { update({ noise: on ? 'rosa' : null }); onPreviewNoise(on ? 'rosa' : null, prefs.noiseVolume) }} />)}
+      <Row><Toggle label="Rumore di fondo" checked={prefs.noise !== null}
+          onChange={(on) => { update({ noise: on ? 'rosa' : null }); onPreviewNoise(on ? 'rosa' : null, prefs.noiseVolume) }} />
         {prefs.noise && <>
           <Segments label="Tipo di rumore" value={prefs.noise} options={NOISE_KINDS} onChange={(noise) => { update({ noise }); onPreviewNoise(noise, prefs.noiseVolume) }} />
           <input type="range" min={0} max={0.6} step={0.02} value={prefs.noiseVolume} aria-label="Volume del rumore"
             onChange={(e) => update({ noiseVolume: Number(e.target.value) })} />
         </>}
       </Row>
-      <Row>
-        <span>Pausa dopo la frase <b className="font-normal">{prefs.pauseMs}</b> ms</span>
-        <input type="range" min={0} max={1200} step={50} value={prefs.pauseMs} aria-label="Pausa dopo la frase" onChange={(e) => update({ pauseMs: Number(e.target.value) })} />
-      </Row>
-      <Row>
-        <span>Lettera di fuoco<small className="block text-meta text-(--o-dim)">dove cade l'occhio nella parola</small></span>
-        <Segments label="Lettera di fuoco" value={prefs.orp} options={ORPS} onChange={(orp) => update({ orp })} />
-      </Row>
-      <Row>{head('Virgola come pausa piena', ', ; : come un punto', <Toggle label="Virgola come pausa piena" checked={prefs.comma} onChange={(comma) => update({ comma })} />)}</Row>
-      <Row>
-        <span>Passo indietro: <b className="font-normal">{prefs.step}</b> parole</span>
-        <Segments label="Passo indietro" value={prefs.step} options={STEPS.map((n) => [n, `−${n}`] as const)} onChange={(step) => update({ step })} />
-      </Row>
-      <Row>
-        <div className="flex items-center justify-between">
-          <span>Dimensione del testo <b className="font-normal">{prefs.size}</b></span>
-          <div className="flex gap-1">
-            <Pill aria-label="Testo più piccolo" onClick={() => update({ size: Math.max(24, prefs.size - 4) })}>−</Pill>
-            <Pill aria-label="Testo più grande" onClick={() => update({ size: Math.min(96, prefs.size + 4) })}>+</Pill>
-          </div>
-        </div>
-      </Row>
     </section>
   )
-}
-
-type NoiseKind = NonNullable<RsvpPreference['noise']>
-
-/** Suoni generati con Web Audio: nessun file. L'AudioContext nasce al primo gesto. */
-function createSound() {
-  let ac: AudioContext | null = null
-  let source: AudioBufferSourceNode | null = null
-  let gain: GainNode | null = null
-  let previewTimer: ReturnType<typeof setTimeout> | undefined
-  const buffers = new Map<NoiseKind, AudioBuffer>()
-  const context = () => {
-    if (!ac) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!Ctor) return null
-      try { ac = new Ctor() } catch { return null }
-    }
-    if (ac.state === 'suspended') void ac.resume()
-    return ac
-  }
-  const stopNoise = () => {
-    clearTimeout(previewTimer)
-    try { source?.stop() } catch { /* già fermo */ }
-    source = null
-    gain = null
-  }
-  const noise = (kind: NoiseKind, volume: number) => {
-    stopNoise()
-    const audio = context()
-    if (!audio) return
-    let buffer = buffers.get(kind)
-    if (!buffer) {
-      buffer = noiseBuffer(audio, kind)
-      buffers.set(kind, buffer)
-    }
-    source = audio.createBufferSource()
-    source.buffer = buffer
-    source.loop = true
-    gain = audio.createGain()
-    const t = audio.currentTime
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, volume), t + 0.3)
-    source.connect(gain).connect(audio.destination)
-    source.start()
-  }
-  return {
-    unlock: () => void context(),
-    click(end: boolean, pitch: number) {
-      const audio = context()
-      if (!audio) return
-      const t = audio.currentTime
-      const base = (end ? 520 : 880) * pitch
-      const duration = end ? 0.11 : 0.045
-      const osc = audio.createOscillator()
-      const env = audio.createGain()
-      osc.type = 'triangle'
-      osc.frequency.setValueAtTime(base, t)
-      if (end) osc.frequency.exponentialRampToValueAtTime(base * 0.82, t + duration)
-      env.gain.setValueAtTime(0.0001, t)
-      env.gain.exponentialRampToValueAtTime(end ? 0.22 : 0.13, t + 0.004)
-      env.gain.exponentialRampToValueAtTime(0.0001, t + duration)
-      osc.connect(env).connect(audio.destination)
-      osc.start(t)
-      osc.stop(t + duration + 0.02)
-    },
-    noise,
-    preview(kind: NoiseKind, volume: number) {
-      noise(kind, volume)
-      previewTimer = setTimeout(stopNoise, 2000)
-    },
-    volume(volume: number) {
-      if (gain && ac) gain.gain.setTargetAtTime(Math.max(0.001, volume), ac.currentTime, 0.05)
-    },
-    stopNoise,
-    dispose() {
-      stopNoise()
-      void ac?.close().catch(() => {})
-      ac = null
-    },
-  }
-}
-
-/** Due secondi di rumore bianco, rosa (filtro di Paul Kellet) o marrone, da ripetere in loop. */
-function noiseBuffer(audio: AudioContext, kind: NoiseKind): AudioBuffer {
-  const length = audio.sampleRate * 2
-  const buffer = audio.createBuffer(1, length, audio.sampleRate)
-  const data = buffer.getChannelData(0)
-  let last = 0
-  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
-  for (let i = 0; i < length; i++) {
-    const white = Math.random() * 2 - 1
-    if (kind === 'bianco') data[i] = white * 0.5
-    else if (kind === 'marrone') {
-      last = (last + 0.02 * white) / 1.02
-      data[i] = last * 3.2
-    } else {
-      b0 = 0.99886 * b0 + white * 0.0555179
-      b1 = 0.99332 * b1 + white * 0.0750759
-      b2 = 0.969 * b2 + white * 0.153852
-      b3 = 0.8665 * b3 + white * 0.3104856
-      b4 = 0.55 * b4 + white * 0.5329522
-      b5 = -0.7616 * b5 - white * 0.016898
-      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11
-      b6 = white * 0.115926
-    }
-  }
-  return buffer
 }

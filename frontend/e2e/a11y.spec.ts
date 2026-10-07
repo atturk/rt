@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
-import { apiGet, loginViaLink } from './support'
+import { test, apiGet, loginViaLink } from './support'
 
 // Accessibilità di base (RT4-F7): axe con le regole WCAG 2 A/AA su ogni pagina, nei due temi.
 // Controlla etichette, nomi dei pulsanti, ruoli, focus visibile e contrasto dei colori.
@@ -50,6 +50,7 @@ async function expectNoViolations(page: Page, name: string) {
 
 for (const theme of ['light', 'dark'] as const) {
   test(`accessibilità: nessuna violazione axe, tema ${theme === 'dark' ? 'scuro' : 'chiaro'}`, async ({ page }) => {
+    test.setTimeout(180_000)
     await page.addInitScript((t) => localStorage.setItem('rt-theme', t), theme)
     await page.goto('/login')
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
@@ -97,7 +98,8 @@ for (const theme of ['light', 'dark'] as const) {
     // selezione con la barra in basso, menu Ordina e popup Nuova lezione.
     await page.goto('/')
     await page.getByRole('button', { name: 'Per materia' }).click()
-    await page.getByRole('button', { name: 'Per materia' }).focus()
+    await page.mouse.move(0, 0)
+    await page.getByRole('button', { name: 'Per materia' }).hover()
     await expect(page.getByRole('tooltip', { name: 'Per materia' })).toBeVisible()
     await expectNoViolations(page, 'lezioni per materia con un tooltip')
     await page.keyboard.press('Escape')

@@ -135,3 +135,49 @@ def test_generate_from_the_editor_writes_and_saves_the_prompt(api_client, ready,
     assert "write" not in queue().get(again["job_id"]).payload
     _drain(worker)
     assert api_client.get(base).json()["elements"][0]["prompt"] == done["prompt"]
+
+
+@pytest.mark.parametrize('qtype', ['mista', 'quiz', 'mirata'])
+@pytest.mark.parametrize('explicit', [False, True])
+def test_next_returns_remaining_with_same_filters(api_client, ready, qtype, explicit, monkeypatch):
+    from rt.services import recall_service, study_progress_service
+    from rt.api.routers import recall as router
+    monkeypatch.setattr(router, '_refill_later', lambda *args: None)
+    path, lid, _worker = ready
+    recall_service.generate_pool(path, force_mock=True)
+    uid = api_client.get(f'/api/v1/lessons/{lid}/study').json()['units'][0]['id']
+    study_progress_service.set_status(lid, path, uid, 'ignorata' if explicit else 'da-imparare')
+    params = {'qtype': qtype, **({'unit_id': uid} if explicit else {})}
+    count = recall_service.pending_count(path, qtype, unit_id=uid if explicit else None)
+    assert count > 0
+    for remaining in range(count - 1, -1, -1):
+        response = api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params)
+        assert response.status_code == 200
+        assert response.json()['remaining'] == remaining
+        if explicit:
+            assert uid in response.json()['unit_ids']
+    assert api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params).status_code == 404
+
+
+def test_study_suggested_qtype_and_recommended_job(api_client, ready, monkeypatch):
+    from rt.core.config import RTConfig, JevConfig
+    from rt.services import question_types, section_labels
+    path, lid, worker = ready
+    cfg = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"))
+    monkeypatch.setattr(question_types, "load_config", lambda: cfg)
+    monkeypatch.setattr(section_labels, "load_config", lambda: cfg)
+    question_types.refresh(path, force_mock=True)
+    response = api_client.get(f"/api/v1/lessons/{lid}/study").json()
+    assert response["suggestions"] is True
+    assert response["units"][0]["suggested_qtype"] in ("quiz", "mirata")
+    for unit_ids in (None, [response["units"][0]["id"]]):
+        accepted = api_client.post(f"/api/v1/lessons/{lid}/recall/generate", json={
+            "qtype": "consigliato", "count": 2, "unit_ids": unit_ids, "mock": True,
+        })
+        assert accepted.status_code == 202
+        _drain(worker)
+        job = _job(api_client, accepted.json())
+        assert job["type"] == "recall_generate" and job["state"] == "succeeded"
+    monkeypatch.setattr(question_types, "load_config", RTConfig)
+    response = api_client.get(f"/api/v1/lessons/{lid}/study").json()
+    assert response["suggestions"] is False and response["units"][0]["suggested_qtype"] is None
