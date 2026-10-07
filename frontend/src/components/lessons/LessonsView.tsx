@@ -269,7 +269,7 @@ function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }:
 }
 
 /** Anello sommato sulle unità della scaletta attuale, allineato sul margine delle righe. */
-function StudyRing({ lesson }: { lesson: Lesson }) {
+export function StudyRing({ lesson }: { lesson: Lesson }) {
   const learned = lesson.study_learned ?? 0
   const learning = lesson.study_learning ?? 0
   const ignored = lesson.study_ignored ?? 0
@@ -283,10 +283,10 @@ function StudyRing({ lesson }: { lesson: Lesson }) {
     role="img" aria-label={`${learned} unità apprese su ${toStudy}, ${learning} in apprendimento, ${ignored} ignorate`} data-testid="lesson-study-ring">
     <span aria-hidden>{learned}/{toStudy}</span>
     <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[3]">
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-muted" />
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-success" strokeDasharray={`${learnedArc} ${100 - learnedArc}`} />
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-warning" strokeDasharray={`${learningArc} ${100 - learningArc}`} strokeDashoffset={-learnedArc} />
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-danger" strokeDasharray={`${ignoredArc} ${100 - ignoredArc}`} strokeDashoffset={-(100 - ignoredArc)} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-track" />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learned" strokeDasharray={`${Math.max(0, learnedArc - 3)} ${100 - Math.max(0, learnedArc - 3)}`} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learning" strokeDasharray={`${Math.max(0, learningArc - 3)} ${100 - Math.max(0, learningArc - 3)}`} strokeDashoffset={-learnedArc} />
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={`${Math.max(0, ignoredArc - 3)} ${100 - Math.max(0, ignoredArc - 3)}`} strokeDashoffset={-(100 - ignoredArc)} />
     </svg>
   </span>
 }

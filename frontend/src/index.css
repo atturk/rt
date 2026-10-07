@@ -38,6 +38,10 @@
   --primary-foreground: var(--acc);
   --accent: #dceee7;
   --accent-foreground: var(--acc);
+  --study-learned: #13896b;
+  --study-learning: #e8a317;
+  --study-ignored: #d4382a;
+  --study-track: #e6e6e6;
   --success: #147464;
   --success-soft: #e4f3ed;
   --warning: #98620c;
@@ -73,6 +77,10 @@
 
   --border: color-mix(in oklch, #d4d4d4 25%, #171717);
   --input: color-mix(in oklch, #d4d4d4 35%, #171717);
+  --study-learned: #5cc79f;
+  --study-learning: #f5c242;
+  --study-ignored: #ff6b5b;
+  --study-track: #333333;
   --success: #6fd3b3;
   --success-soft: #16312a;
   --warning: #f1c27a;
@@ -108,6 +116,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-link: var(--link);
   --color-overlay: var(--overlay);
+  --color-study-learned: var(--study-learned);
+  --color-study-learning: var(--study-learning);
+  --color-study-ignored: var(--study-ignored);
+  --color-study-track: var(--study-track);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
@@ -640,6 +652,8 @@
 @starting-style { .rt-rsvp[data-active] { opacity: 0; } }
 .rt-layout[data-tint] {
   color-scheme: light;
+  --study-learned: #13896b; --study-learning: #e8a317;
+  --study-ignored: #d4382a; --study-track: #e6e6e6;
   --bg: var(--irlen-bg); --surface: var(--irlen-bg); --fg: #2a241f;
   --background: var(--bg); --card: var(--surface); --foreground: var(--fg);
   --soft: color-mix(in oklch, var(--fg) 6%, var(--bg)); --muted: var(--soft);

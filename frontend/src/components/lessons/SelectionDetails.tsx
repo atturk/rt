@@ -32,15 +32,15 @@ export function SelectionDetails({ lessons, open, onClose }: { lessons: Lesson[]
         <div className="text-meta text-muted-foreground [overflow-wrap:anywhere]">{card.note}</div>
       </div>)}
     </div>
-    <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-muted" role="img"
+    <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-study-track" role="img"
       aria-label={`${totals.learned} unità apprese, ${totals.learning} in apprendimento, ${totals.ignored} ignorate su ${totals.units ?? 0}`}>
-      <span className="bg-success" style={{ width: `${totals.percentages.learned}%` }} />
-      <span className="bg-warning" style={{ width: `${totals.percentages.learning}%` }} />
+      <span className="bg-study-learned" style={{ width: `${totals.percentages.learned}%` }} />
+      <span className="bg-study-learning" style={{ width: `${totals.percentages.learning}%` }} />
       <span style={{ flex: 1 }} />
-      <span className="bg-danger" style={{ width: `${totals.percentages.ignored}%` }} />
+      <span className="bg-study-ignored" style={{ width: `${totals.percentages.ignored}%` }} />
     </div>
     <div className="mt-2 flex flex-wrap gap-3 text-meta text-muted-foreground">
-      {([['learned', 'apprese', 'bg-success'], ['learning', 'in apprendimento', 'bg-warning'], ['toLearn', 'da imparare', 'bg-muted'], ['ignored', 'ignorate', 'bg-danger']] as const).map(([key, label, color]) =>
+      {([['learned', 'apprese', 'bg-study-learned'], ['learning', 'in apprendimento', 'bg-study-learning'], ['toLearn', 'da imparare', 'bg-study-track'], ['ignored', 'ignorate', 'bg-study-ignored']] as const).map(([key, label, color]) =>
         <span key={key} className="inline-flex items-center gap-1.5"><i aria-hidden className={`size-2 rounded-sm ${color}`} />
           {totals.units ? `${Math.round(totals.percentages[key])}%` : '—'} {label}
         </span>)}

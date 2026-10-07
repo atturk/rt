@@ -602,7 +602,7 @@ function Dots({ units, current, onSelect }: { units: StudyUnit[]; current: numbe
           className="flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
-            u.status === 'appreso' ? 'bg-success' : u.status === 'in-apprendimento' ? 'bg-warning' : u.status === 'ignorata' ? 'bg-danger' : 'bg-muted')} />
+            u.status === 'appreso' ? 'bg-study-learned' : u.status === 'in-apprendimento' ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
         </button>}</Tooltip>
       })}
     </div>
