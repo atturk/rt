@@ -1,4 +1,4 @@
-import { advisedLabel } from '@/lib/questionTypes'
+import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
 import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
@@ -10,14 +10,13 @@ import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import {
   recallKeys, useGenerateForUnits, useStudyLesson,
-  type RecallType, type RecallGenerateType, type StudyUnit,
+  type RecallType, type StudyUnit,
 } from '@/api/recall'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
@@ -700,13 +699,6 @@ function UnitAudio({ clip }: { clip: { lessonId: number; start: number; end: num
 }
 
 /** I tipi di domanda che si attaccano a una singola unità (le vaste no). */
-const UNIT_TYPES: { id: RecallType; label: string }[] = [
-  { id: 'quiz', label: 'Quiz' },
-  { id: 'mirata', label: 'Mirata' },
-  { id: 'caso', label: 'Caso clinico' },
-  { id: 'esercizio', label: 'Esercizio' },
-]
-
 /** Domande su una parte che non ne ha ancora: si generano solo su quelle unità (quiz e mirate). */
 function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units: string[]; onReady: () => void }) {
   const generate = useGenerateForUnits(lessonId)
@@ -746,7 +738,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
   const client = useQueryClient()
   const [jobId, setJobId] = useState<string | null>(null)
   const job = useJobStatus(jobId)
-  const [qtype, setQtype] = useState<RecallGenerateType>(suggestions ? 'consigliato' : 'quiz')
+  const [qtype, setQtype] = useState<RecallType>(suggestions ? unit.suggested_qtype ?? 'quiz' : 'quiz')
   const [count, setCount] = useState('3')
   const [instructions, setInstructions] = useState('')
   const failed = job.data?.state === 'failed'
@@ -765,16 +757,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
       <div className="mt-3 flex flex-col gap-3">
         <div>
           <span className="mb-1.5 block text-meta text-muted-foreground">Tipo</span>
-          <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1.5">
-            {suggestions && <Chip size="sm" active={qtype === 'consigliato'} aria-pressed={qtype === 'consigliato'} disabled={running} onClick={() => setQtype('consigliato')}>
-              <Sparkles className="size-3.5" aria-hidden />{advisedLabel(unit.suggested_qtype)}
-            </Chip>}
-            {UNIT_TYPES.map(({ id, label }) => (
-              <Chip key={id} size="sm" active={qtype === id} aria-pressed={qtype === id} disabled={running} onClick={() => setQtype(id)}>
-                {label}
-              </Chip>
-            ))}
-          </div>
+          <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running} />
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Quante</label>

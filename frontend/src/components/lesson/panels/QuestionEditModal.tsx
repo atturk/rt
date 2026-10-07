@@ -1,3 +1,5 @@
+import type { RecallType } from '@/api/recall'
+import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
@@ -19,9 +21,7 @@ const COMMENT_LABEL: Record<string, string> = {
   esercizio: 'Schema di risoluzione',
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  quiz: 'Quiz', mirata: 'Domanda mirata', vasta: 'Domanda vasta', caso: 'Caso clinico', esercizio: 'Esercizio',
-}
+
 
 /**
  * Modifica a mano di una domanda del pannello (4.2.2b3): il testo sempre, le alternative e la
@@ -38,7 +38,7 @@ export function QuestionEditModal({ lessonId, question, open, onClose }: {
   const revealed = useRecallQuestions(lessonId, true)
   const full = revealed.data?.questions.find((q) => q.id === question.id)
   return (
-    <Modal open={open} onClose={onClose} title={`Modifica domanda · ${TYPE_LABEL[question.type] ?? question.type}`}
+    <Modal open={open} onClose={onClose} title={`Modifica domanda · ${QUESTION_TYPE_LABELS[question.type as RecallType] ?? question.type}`}
       className="w-[min(560px,calc(100vw-32px))]" testId="question-edit-modal">
       {revealed.isError ? (
         <Alert tone="danger" className="mt-3">{errorMessage(revealed.error)}</Alert>

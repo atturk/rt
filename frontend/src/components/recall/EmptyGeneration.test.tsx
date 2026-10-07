@@ -17,22 +17,23 @@ beforeEach(() => { state.suggestions = true; state.failed = false; vi.clearAllMo
 it('in modo unità mostra il consiglio, tre domande e nessuna vasta; invia consigliato con count', () => {
   mount(true)
   expect(screen.getByLabelText('Quante')).toHaveValue(3)
-  expect(screen.queryByRole('option', { name: 'Vasta' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Vasta' })).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Genera consigliato · Mirata' }))
-  expect(state.mutate).toHaveBeenCalledWith({ qtype: 'consigliato', count: 2, unit_ids: ['1.2'] }, expect.anything())
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
+  expect(state.mutate).toHaveBeenCalledWith({ qtype: 'mirata', count: 2, unit_ids: ['1.2'] }, expect.anything())
 })
 it('in modo lezione parte da dieci, include vasta e permette la scelta personalizzata', () => {
   mount()
   expect(screen.getByLabelText('Quante')).toHaveValue(10)
-  fireEvent.change(screen.getByLabelText('Tipo di domanda personalizzato'), { target: { value: 'vasta' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Genera personalizzato' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Vasta' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
   expect(state.mutate).toHaveBeenCalledWith({ qtype: 'vasta', count: 10 }, expect.anything())
 })
-it('senza Jev la riga non compare', () => {
+it('senza Jev parte da Quiz senza stellina', () => {
   state.suggestions = false
   mount()
-  expect(screen.queryByTestId('recall-empty-generation')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Quiz' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByTestId('question-type-advice')).not.toBeInTheDocument()
 })
 it('un errore della generazione compare in un Alert', () => {
   state.failed = true
@@ -46,7 +47,7 @@ it.each([false, true])('con unità=%s mantiene il job mentre arrivano le nuove d
   state.mutate.mockImplementation((_payload, options) => options.onSuccess({ job_id: 'nuove-domande' }))
   const tree = (available: boolean) => <QueryClientProvider client={client}><EmptyGeneration lessonId={1} unit={unit ? { id: '1.2' } : undefined} available={available} onGenerated={onGenerated} /></QueryClientProvider>
   const view = render(tree(true))
-  fireEvent.click(screen.getByRole('button', { name: 'Genera consigliato' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
   view.rerender(tree(false))
   fireEvent.click(screen.getByRole('button', { name: 'Completa il job' }))
   await vi.waitFor(() => expect(onGenerated).toHaveBeenCalledOnce())

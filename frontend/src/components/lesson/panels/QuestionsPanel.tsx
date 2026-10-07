@@ -18,7 +18,6 @@ import {
   useSelectRecallUnits,
   type RecallQuestionDetail,
   type RecallType,
-  type RecallGenerateType,
 } from '@/api/recall'
 import { QuestionEditModal } from './QuestionEditModal'
 import { Alert } from '@/components/ui/alert'
@@ -28,16 +27,17 @@ import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
-import { Select } from '@/components/ui/select'
+import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
+import { QUESTION_TYPE_LABELS, mostSuggested } from '@/lib/questionTypes'
 import { isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
 const TYPES: { id: RecallType; label: string; plural: string }[] = [
-  { id: 'quiz', label: 'Quiz', plural: 'quiz' },
-  { id: 'mirata', label: 'Mirata', plural: 'mirate' },
-  { id: 'vasta', label: 'Vasta', plural: 'vaste' },
-  { id: 'caso', label: 'Caso', plural: 'casi' },
-  { id: 'esercizio', label: 'Esercizio', plural: 'esercizi' },
+  { id: 'quiz', label: QUESTION_TYPE_LABELS.quiz, plural: 'quiz' },
+  { id: 'mirata', label: QUESTION_TYPE_LABELS.mirata, plural: 'mirate' },
+  { id: 'vasta', label: QUESTION_TYPE_LABELS.vasta, plural: 'vaste' },
+  { id: 'caso', label: QUESTION_TYPE_LABELS.caso, plural: 'casi' },
+  { id: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio, plural: 'esercizi' },
 ]
 
 const SELECTION_TYPES: RecallType[] = ['quiz', 'mirata', 'caso', 'esercizio']
@@ -189,7 +189,10 @@ export function QuestionsPanel({
   const restore = useRestoreQuestions(id)
   const jobs = useJobs({ lesson_id: id, limit: 10 })
   const relevance = useRelevance(id)
-  const suggestions = useStudyLesson(id).data?.suggestions ?? false
+  const study = useStudyLesson(id).data
+  const suggestions = study?.suggestions ?? false
+  const selectedIds = new Set((recallUnits.data?.units ?? []).filter(u => u.selected).map(u => u.unit_id))
+  const advice = mostSuggested((study?.units ?? []).filter(u => selectedIds.has(u.id)))
 
   const [unitModalOpen, setUnitModalOpen] = useState(false)
 
@@ -203,8 +206,8 @@ export function QuestionsPanel({
   const [editing, setEditing] = useState<RecallQuestionDetail | null>(null)
 
   // Form generazione globale
-  const [chosenGlobalType, setGlobalType] = useState<RecallGenerateType | null>(null)
-  const globalType = chosenGlobalType ?? (suggestions ? 'consigliato' : 'quiz')
+  const [chosenGlobalType, setGlobalType] = useState<RecallType | null>(null)
+  const globalType = chosenGlobalType ?? (suggestions ? advice.type : 'quiz')
   const [globalCount, setGlobalCount] = useState<string>('10')
   const [globalInstructions, setGlobalInstructions] = useState<string>('')
 
@@ -378,21 +381,8 @@ export function QuestionsPanel({
             <form onSubmit={handleGlobalGenerate} className="mt-3 flex flex-col gap-2.5">
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label htmlFor="q-type" className="mb-1 block text-meta text-muted-foreground">
-                    Tipo
-                  </label>
-                  <Select
-                    id="q-type"
-                    value={globalType}
-                    onChange={(e) => setGlobalType(e.target.value as RecallGenerateType)}
-                  >
-                    {suggestions && <option value="consigliato">Consigliato per ogni unità</option>}
-                    {TYPES.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </Select>
+                  <span className="mb-1 block text-meta text-muted-foreground">Tipo</span>
+                  <QuestionTypeChips value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} />
                 </div>
                 <div className="w-20">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">

@@ -306,7 +306,7 @@ describe('LightweightSession', () => {
     expect(types.querySelector('[aria-pressed=true]')).toHaveTextContent('Mista 3')
     expect(screen.getByRole('button', { name: 'Quiz 2' })).toBeEnabled()
     // I tipi senza domande da porre restano spenti.
-    expect(screen.getByRole('button', { name: 'Casi' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Caso clinico' })).toBeDisabled()
 
     // Prima della risposta si salta, "Prossima" non c'è ancora.
     expect(screen.getByRole('button', { name: 'Salta' })).toBeInTheDocument()
@@ -433,8 +433,8 @@ it('finite le domande dell’unità: Genera consigliato con Quante 2 riprende da
   const { updatePending } = renderUnitSession(undefined, undefined, {})
   expect(await screen.findByTestId('recall-empty-generation')).toBeVisible()
   fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Genera consigliato' }))
-  expect(mockGenerateMutate).toHaveBeenCalledWith({ qtype: 'consigliato', count: 2, unit_ids: ['1.2'] }, expect.anything())
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
+  expect(mockGenerateMutate).toHaveBeenCalledWith({ qtype: 'quiz', count: 2, unit_ids: ['1.2'] }, expect.anything())
   // Gli eventi live aggiornano le domande prima dell’effetto di completamento del job.
   updatePending({ quiz: 2 })
   fireEvent.click(screen.getByRole('button', { name: 'Genero le domande…' }))

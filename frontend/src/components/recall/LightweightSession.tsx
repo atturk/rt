@@ -1,3 +1,4 @@
+import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
 import { EmptyGeneration } from './EmptyGeneration'
 import {
   BookOpen,
@@ -50,11 +51,11 @@ type SessionType = RecallType | 'mista'
 
 const SESSION_TYPES: { id: SessionType; label: string }[] = [
   { id: 'mista', label: 'Mista' },
-  { id: 'quiz', label: 'Quiz' },
-  { id: 'mirata', label: 'Mirata' },
-  { id: 'vasta', label: 'Vasta' },
-  { id: 'caso', label: 'Casi' },
-  { id: 'esercizio', label: 'Esercizi' },
+  { id: 'quiz', label: QUESTION_TYPE_LABELS.quiz },
+  { id: 'mirata', label: QUESTION_TYPE_LABELS.mirata },
+  { id: 'vasta', label: QUESTION_TYPE_LABELS.vasta },
+  { id: 'caso', label: QUESTION_TYPE_LABELS.caso },
+  { id: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio },
 ]
 
 type DiscardReason = NonNullable<Schemas['RecallVote']['reasons']>[number]

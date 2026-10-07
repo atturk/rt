@@ -7,7 +7,7 @@ import { test, apiGet, authHeaders, loginViaLink } from './support'
 // della lezione; "Domande su questa parte" limita lo Studio alle unità scelte.
 
 type Lesson = { id: number; materia: string; data: string }
-type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null; last_read_at: string | null }[] }
+type Study = { id: number; units: { id: string; title: string; questions: number; start: number | null; last_read_at: string | null; suggested_qtype: string | null }[] }
 
 const RSVP_DEFAULT = { wpm: 300, orp: 'bilanciata', pauseMs: 400, comma: false, step: 5, size: 60, sound: false, pitch: 1, dyslexic: false, irlen: null, noise: null, noiseVolume: 0.25 }
 
@@ -665,7 +665,7 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
     await expect(page.getByTestId('recall-empty')).toBeVisible()
     await expect(page.getByTestId('recall-unit-done')).toHaveCount(0)
     const generation = page.getByTestId('recall-empty-generation')
-    await expect(generation.getByRole('button', { name: /^Genera consigliato ·/ })).toBeVisible()
+    await expect(generation.getByRole('button', { name: 'Genera', exact: true })).toBeVisible()
     for (const button of await generation.getByRole('button').all()) {
       const box = await button.boundingBox()
       expect(box!.x).toBeGreaterThanOrEqual(0)
@@ -674,8 +674,8 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
     }
     await page.getByLabel('Quante', { exact: true }).fill('2')
     const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
-    await page.getByRole('button', { name: /^Genera consigliato/ }).click()
-    expect((await request).postDataJSON()).toMatchObject({ qtype: 'consigliato', count: 2, unit_ids: [unit.id] })
+    await page.getByRole('button', { name: 'Genera', exact: true }).click()
+    expect((await request).postDataJSON()).toMatchObject({ qtype: unit.suggested_qtype, count: 2, unit_ids: [unit.id] })
     await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
     await expect(page.getByTestId('recall-empty')).toHaveCount(0)
   } finally {
