@@ -1,3 +1,4 @@
+import { mountDomTooltip } from '@/components/ui/dom-tooltip'
 import {
   codeFolding,
   foldGutter,
@@ -29,8 +30,8 @@ function createFoldMarker(open: boolean): HTMLElement {
   const marker = document.createElement('span')
   marker.className = `rt-fold-marker ${open ? 'rt-fold-open' : 'rt-fold-closed'}`
   marker.setAttribute('aria-hidden', 'true')
-  marker.setAttribute('title', open ? 'Riduci sezione' : 'Espandi sezione')
   marker.innerHTML = open ? CHEVRON_DOWN_SVG : CHEVRON_RIGHT_SVG
+  mountDomTooltip(marker, open ? 'Riduci sezione' : 'Espandi sezione')
   return marker
 }
 

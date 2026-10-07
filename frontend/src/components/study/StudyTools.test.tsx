@@ -196,3 +196,12 @@ describe('lettura veloce', () => {
     expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-kind', 'fine')
   })
 })
+
+it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
+  renderStudy()
+  fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo · E/ })).toBeVisible()
+  fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
+  fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
+  expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+})

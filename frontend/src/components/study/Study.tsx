@@ -19,6 +19,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
+import { Tooltip } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -276,20 +277,20 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const reading = phase === 'lettura' || rereading
 
   const titleButton = (
-    <button
-      ref={titleButtonRef}
+    <Tooltip content="Dettagli della lezione">{(trigger) => <button
+      {...trigger}
+      ref={(node) => { titleButtonRef.current = node; trigger.ref(node) }}
       type="button"
       onClick={() => setDetailsOpen((v) => !v)}
       aria-haspopup="dialog"
       aria-expanded={detailsOpen}
-      title="Dettagli della lezione"
       data-testid="study-title-button"
       className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring max-md:px-0"
     >
       <span className="truncate text-[15px] font-semibold text-foreground max-md:hidden">{title}</span>
       <Info className="size-4 shrink-0 text-muted-foreground max-md:size-[18px] max-md:text-foreground" aria-hidden />
       <span className="sr-only">Dettagli della lezione</span>
-    </button>
+    </button>}</Tooltip>
   )
 
   const headerActions = (
@@ -593,13 +594,13 @@ function Dots({ units, current, onSelect }: { units: StudyUnit[]; current: numbe
     <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
       {units.map((u, i) => {
         const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}`
-        return <button key={u.id} type="button" aria-label={`Unità ${i + 1}: ${label}`} title={label}
+        return <Tooltip key={u.id} content={label}>{(trigger) => <button {...trigger} type="button" aria-label={`Unità ${i + 1}: ${label}`}
           onClick={() => onSelect(i)} aria-current={i === current ? 'step' : undefined}
           className="flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
             u.status === 'appreso' ? 'bg-success' : u.status === 'in-apprendimento' ? 'bg-warning' : u.status === 'ignorata' ? 'bg-danger' : 'bg-muted')} />
-        </button>
+        </button>}</Tooltip>
       })}
     </div>
   )
@@ -989,11 +990,11 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
   return (
     <div className="relative flex items-center gap-1" ref={ref}>
       <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5" data-testid="highlight-tools">
-        <button
+        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo · E`}>{(trigger) => <button
+          {...trigger}
           type="button"
           aria-pressed={mode === 'evidenzia'}
           aria-label={mode === 'evidenzia' ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}: clic per cambiare colore` : 'Evidenziatore'}
-          title={mode === 'evidenzia' ? `Evidenziatore ${HIGHLIGHT_COLORS[color]} (clic: colore successivo)` : 'Evidenziatore'}
           data-color={color}
           data-testid="highlight-pen"
           className={segment}
@@ -1001,11 +1002,11 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
         >
           <HighlighterIcon className="size-4" aria-hidden />
           <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
-        </button>
-        <button type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma" title="Gomma: clic su un'evidenziazione per toglierla"
+        </button>}</Tooltip>
+        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · E">{(trigger) => <button {...trigger} type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma"
           data-testid="highlight-eraser" className={segment} onClick={() => onMode('gomma')}>
           <Eraser className="size-4" aria-hidden />
-        </button>
+        </button>}</Tooltip>
       </div>
       <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" />
       {confirm && (

@@ -1,6 +1,7 @@
 import { Check, type LucideIcon } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 
+import { Tooltip } from '@/components/ui/tooltip'
 import { IconButton } from '@/components/ui/icon-button'
 import { cn } from '@/lib/utils'
 
@@ -139,10 +140,10 @@ export function LinkMenuButton({ label, icon, items, className, side = 'bottom',
             side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5')}>
           {items.map((item) =>
             item.unavailable ? (
-              <span key={item.label} role="menuitem" aria-disabled="true" tabIndex={-1} title={item.unavailable} className={cn(itemClass, 'cursor-default opacity-50 hover:bg-transparent')}>
+              <Tooltip key={item.label} content={item.unavailable}>{(trigger) => <span {...trigger} role="menuitem" aria-disabled="true" tabIndex={-1} className={cn(itemClass, 'cursor-default opacity-50 hover:bg-transparent')}>
                 {item.label}
                 <span className="sr-only">: {item.unavailable}</span>
-              </span>
+              </span>}</Tooltip>
             ) : item.onSelect ? (
               <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
                 aria-checked={item.checked} tabIndex={-1} className={itemClass} onClick={() => {
@@ -153,9 +154,9 @@ export function LinkMenuButton({ label, icon, items, className, side = 'bottom',
                 {item.label}
               </button>
             ) : (
-              <a key={item.label} role="menuitem" tabIndex={-1} href={item.href} download={item.download} title={item.title} className={itemClass} onClick={() => close(false)}>
+              <Tooltip key={item.label} content={item.title} disabled={!item.title}>{(trigger) => <a {...trigger} role="menuitem" tabIndex={-1} href={item.href} download={item.download} className={itemClass} onClick={() => close(false)}>
                 {item.label}
-              </a>
+              </a>}</Tooltip>
             ),
           )}
         </div>

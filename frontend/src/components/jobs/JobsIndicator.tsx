@@ -26,7 +26,7 @@ export function JobsNavBadge() {
     .join(', ')
   const count = active + waiting
   return (
-    <span data-testid="jobs-indicator" data-active={active} data-waiting={waiting} title={label} className="inline-flex">
+    <span data-testid="jobs-indicator" data-active={active} data-waiting={waiting} className="inline-flex">
       <span className="sr-only">: {label}</span>
       {(count > 0 || noWorker) && (
         <span
