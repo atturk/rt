@@ -705,3 +705,34 @@ test('a 390 px un’impostazione si divide e resta dentro la finestra', async ({
   await expect(page.getByTestId('speed-reader-context')).toContainText('un’impostazione')
   await expect(page.getByTestId('speed-reader-context')).not.toContainText('imposta-')
 })
+
+test('il clic destro toglie un’evidenziazione salvata anche dopo il ricaricamento', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unitId = study.units[0].id
+  const previous = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-dots').locator('button').first().click()
+    const text = page.getByTestId('study-text')
+    await expect(text).toHaveText(/\S.{40,}/)
+    await text.evaluate(root => {
+      const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
+      const range = document.createRange()
+      const start = node.textContent!.search(/\S/)
+      range.setStart(node, start); range.setEnd(node, start + 10)
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(range)
+      root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await expect.poll(async () => (await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)).length).toBe(previous.length + 1)
+    await text.locator('.rt-hl').first().click({ button: 'right' })
+    await expect.poll(async () => (await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)).length).toBe(previous.length)
+    await page.reload()
+    await page.getByTestId('study-dots').locator('button').first().click()
+    await expect(text.locator('.rt-hl')).toHaveCount(previous.length)
+  } finally {
+    const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
+    for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) await page.request.delete(`/api/v1/lessons/${l.id}/highlights/${row.id}`, { headers: authHeaders() })
+  }
+})

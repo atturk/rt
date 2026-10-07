@@ -169,12 +169,16 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       if (e.defaultPrevented) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const isStatusKey = e.key.toLowerCase() === 's'
-      if (!isStatusKey && (!arrows || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight'))) return
+      const isHighlightKey = e.key.toLowerCase() === 'e'
+      if (!isStatusKey && !isHighlightKey && (!arrows || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight'))) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
         return
       }
-      if (isStatusKey) {
+      if (isHighlightKey) {
+        e.preventDefault()
+        setHlMode(current => current === 'evidenzia' ? 'gomma' : 'evidenzia')
+      } else if (isStatusKey) {
         e.preventDefault()
         changeStatus()
       } else {
