@@ -90,6 +90,7 @@ type Props = {
 export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
+  const [showToolbar] = usePreference('editor.toolbar', true)
   const [shortcuts] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [shortcutCompartment] = useState(() => new Compartment())
   const [editor, setEditor] = useState<{ view: EditorView; state: EditorState } | null>(null)
@@ -448,7 +449,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         onRestore={restore}
         onDownloadAndRestore={downloadAndRestore}
       />
-      <EditorToolbar view={editor?.view ?? null} state={editor?.state} shortcuts={shortcuts} readOnly={locked} />
+      {showToolbar && <EditorToolbar view={editor?.view ?? null} state={editor?.state} shortcuts={shortcuts} readOnly={locked} />}
       <DocumentMenu lessonId={lessonId} unitIds={unitIds} ready={ready} locate={locate}>
         <div
           ref={surface}
