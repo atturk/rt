@@ -171,6 +171,7 @@ class LessonDocument(BaseModel):
 
 
 class UnitRelevanceItem(BaseModel):
+    review_included: bool = Field(description="Unità inclusa nella verifica secondo la regola condivisa del classificatore")
     unit_id: str
     title: str
     content: str

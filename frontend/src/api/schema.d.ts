@@ -6002,6 +6002,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * Review Included
+             * @description Unità inclusa nella verifica secondo la regola condivisa del classificatore
+             */
+            review_included: boolean;
+            /**
              * Stale
              * @default false
              */

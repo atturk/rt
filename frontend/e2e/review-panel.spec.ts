@@ -1,5 +1,7 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { expect } from '@playwright/test'
-import { test, apiGet, loginViaLink } from './support'
+import { test, apiGet, loginViaLink, serverState } from './support'
 
 test('revisione decisa: ricostruisce con run_phase build', async ({ page }) => {
   test.setTimeout(150_000)
@@ -49,4 +51,27 @@ test('la correzione proposta si modifica nel box e si applica col clic fuori', a
   await panel.getByRole('button', { name: /^Decise / }).click()
   await page.goto(`/lezioni/${lesson.id}?panel=verifica&issue=${item.issue.id}`)
   await expect(panel.getByTestId('issue-detail')).toContainText('modificata')
+})
+
+test('le tacche di Verifica corrispondono all’API e l’icona apre il classificatore', async ({ page }) => {
+  const config = join(dirname(serverState().lessons_root), 'work/config/general.yaml')
+  const previous = readFileSync(config, 'utf8')
+  try {
+  writeFileSync(config, previous.replace(/relevance_mode: \w+/, 'relevance_mode: active'))
+  await loginViaLink(page)
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=REVISIONE')
+  const overview = await apiGet<{ mode: string; units: { review_included: boolean; prediction: string | null; stale: boolean }[] }>(page.request, `/lessons/${lesson.id}/relevance`)
+  expect(overview.mode).toBe('active')
+  await page.goto(`/lezioni/${lesson.id}?panel=verifica`)
+  const strip = page.getByTestId('unit-strip-revisore')
+  await expect(strip.getByTestId('unit-strip-count')).toHaveText(`${overview.units.filter(u => u.review_included).length}/${overview.units.length}`)
+  const ticks = strip.getByTestId('unit-strip-ticks').locator('[data-state]')
+  await expect(ticks).toHaveCount(overview.units.length)
+  for (let i = 0; i < overview.units.length; i++) {
+    const unit = overview.units[i]
+    await expect(ticks.nth(i)).toHaveAttribute('data-state', !unit.review_included ? 'excluded' : unit.stale || !unit.prediction ? 'unclassified' : 'included')
+  }
+  await strip.getByRole('button', { name: /Rivedi le etichette/ }).click()
+  await expect(page.locator('[data-testid=lesson-panel][data-view=classificatore]')).toBeVisible()
+  } finally { writeFileSync(config, previous) }
 })

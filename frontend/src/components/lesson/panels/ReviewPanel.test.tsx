@@ -9,6 +9,7 @@ vi.mock('@/api/hooks', () => ({
   useIssues: () => ({ data: { items: state.items } }), useDecisions: () => ({ data: state.items.flatMap((i) => i.decision ? [i.decision] : []) }),
   useDecideIssue: () => ({ mutateAsync: state.decide }), useUndoDecision: () => ({ mutateAsync: state.undo }), useRunJob: () => ({ mutateAsync: state.run }),
 }))
+vi.mock('@/api/relevance', () => ({ useRelevance: () => ({ data: { mode: 'active', summary: { missing: 0, stale: 0, errors: 0 }, units: [{ unit_id: '1.1', title: 'Acidosi', review_included: true, prediction: 'didactic', stale: false }] } }) }))
 vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJob: () => ({ mutate: state.cancel }) }))
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
 const issue: Schemas['IssueItem'] = { issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
@@ -173,4 +174,11 @@ it('il testo vuoto non si applica; Ctrl+Invio applica il testo scritto', async (
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Il pH è 7,4.' } })
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', ctrlKey: true })
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,4.' }))
+})
+
+it('in fondo a Verifica mostra le tacche, senza il vecchio footer di testo', () => {
+  mount()
+  expect(screen.getByTestId('unit-strip-revisore')).toHaveTextContent('1/1')
+  expect(screen.queryByText(/^Unità per il recaller:/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Rivedi le etichette · classificatore aggiornato' }))
 })

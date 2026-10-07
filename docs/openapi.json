@@ -7361,6 +7361,11 @@
             ],
             "title": "Recall Assessment"
           },
+          "review_included": {
+            "description": "Unità inclusa nella verifica secondo la regola condivisa del classificatore",
+            "title": "Review Included",
+            "type": "boolean"
+          },
           "stale": {
             "default": false,
             "title": "Stale",
@@ -7376,6 +7381,7 @@
           }
         },
         "required": [
+          "review_included",
           "unit_id",
           "title",
           "content",

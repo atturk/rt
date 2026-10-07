@@ -1,3 +1,5 @@
+import { useRelevance } from '@/api/relevance'
+import { UnitStrip } from './UnitStrip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { BuildConfirmDialog } from '../BuildConfirmDialog'
@@ -23,6 +25,7 @@ import { useLessonAudio } from '../audio'
 import { decisionLabels, issueLabels, issueOf, paragraphIssue, type IssueItem } from '../reviewIssues'
 
 export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, markdown }: { markdown?: string; lesson: Schemas['LessonDetail']; beforeAction?: () => Promise<void> }) {
+  const relevance = useRelevance(l.id)
   const issues = useIssues(l.id)
   const decisions = useDecisions(l.id)
   const jobs = useJobs({ lesson_id: l.id, limit: 20 })
@@ -115,6 +118,11 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       </ul>
     </>}
     <Button variant={done ? 'outline' : 'default'} size="sm" disabled={busy || l.phases.rewrite !== 'VALID'} onClick={() => verify(done)}><ShieldCheck />{done ? 'Verifica di nuovo tutta la lezione' : 'Verifica tutta la lezione'}</Button>
+    {relevance.data && <UnitStrip target="revisore"
+      units={relevance.data.units.map(unit => ({ unit_id: unit.unit_id, title: unit.title, included: unit.review_included, unclassified: relevance.data.mode !== 'disabled' && (unit.stale || !unit.prediction) }))}
+      rule={relevance.data.mode === 'disabled' ? 'Classificatore spento: al revisore vanno tutte le unità' : `Al revisore vanno le unità didattiche secondo il classificatore${relevance.data.units.some(u => u.stale || !u.prediction) ? ', più quelle non ancora classificate' : ''}`}
+      classifierEnabled={relevance.data.mode !== 'disabled'} classifierUpdated={!!relevance.data.summary && relevance.data.summary.missing + relevance.data.summary.stale + relevance.data.summary.errors === 0}
+      onSelect={() => { const next = new URLSearchParams(params); next.set('panel', 'classificatore'); next.delete('issue'); setParams(next) }} />}
     <BuildConfirmDialog open={confirmBuild} warnings={buildWarnings} onCancel={() => setConfirmBuild(false)} onConfirm={() => {
       setConfirmBuild(false)
       void action(() => run.mutateAsync({ type: 'run_phase', phase: 'build' }))

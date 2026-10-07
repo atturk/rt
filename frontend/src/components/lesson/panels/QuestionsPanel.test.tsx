@@ -105,6 +105,7 @@ vi.mock('@/api/recall', () => ({
   useRegenerateComment: vi.fn(() => ({ mutate: vi.fn(), isPending: false, isError: false })),
 }))
 
+vi.mock('@/api/relevance', () => ({ useRelevance: () => ({ data: { mode: 'active', summary: { missing: 0, stale: 0, errors: 0 }, units: [] } }) }))
 vi.mock('@/api/jobs', () => ({
   useJobs: vi.fn(() => ({
     data: [],
@@ -277,7 +278,7 @@ describe('QuestionsPanel', () => {
     const onSwitchToClassifier = vi.fn()
     renderPanel({ lessonId: 1, onSwitchToClassifier })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Scegli' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Al recaller vanno le unità rilevanti' }))
     expect(screen.getByRole('dialog', { name: 'Unità per il recaller' })).toBeInTheDocument()
 
     // Clic su una casella
@@ -293,7 +294,7 @@ describe('QuestionsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fine' }))
 
     // Rivedi le etichette chiama onSwitchToClassifier
-    fireEvent.click(screen.getByRole('button', { name: 'Rivedi le etichette' }))
+    fireEvent.click(screen.getByRole('button', { name: /Rivedi le etichette/ }))
     expect(onSwitchToClassifier).toHaveBeenCalledTimes(1)
   })
 })
@@ -308,4 +309,11 @@ it.each([true, false])('Genera altre domande: voce consigliata solo con Jev (%s)
   fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
   fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
   expect(mockGenerateMutate).toHaveBeenCalledWith(expect.objectContaining({ qtype: suggestions ? 'mirata' : 'quiz', count: 2 }), expect.anything())
+})
+
+it('il footer Domande usa la striscia al posto delle righe di testo', () => {
+  renderPanel()
+  expect(screen.getByTestId('unit-strip-recaller')).toHaveTextContent('2/3')
+  expect(screen.queryByText(/^Unità per il recaller:/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/^Classificatore:/)).not.toBeInTheDocument()
 })

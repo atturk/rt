@@ -1,3 +1,4 @@
+import { UnitStrip } from './UnitStrip'
 import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -314,13 +315,6 @@ export function QuestionsPanel({
   const wrongCount = restorable.data?.wrong ?? 0
 
   const summary = relevance.data?.summary
-  const classifierStatus = !summary
-    ? null
-    : summary.errors > 0
-      ? `${summary.errors} errori`
-      : summary.missing + summary.stale > 0
-        ? `${summary.missing + summary.stale} unità da classificare`
-        : 'aggiornato'
   const unitsData = recallUnits.data
   const totalUnits = unitsData?.units?.length ?? 0
   const selectedUnitsCount = unitsData?.selected ?? unitsData?.units?.filter((u) => u.selected).length ?? 0
@@ -631,36 +625,11 @@ export function QuestionsPanel({
         <QuestionEditModal lessonId={id} question={editing} open onClose={() => setEditing(null)} />
       )}
 
-      {/* Footer solo in vista normale */}
-      {!isSelectionMode && (
-        <div className="mt-auto flex flex-col gap-2 border-t pt-3 text-meta text-muted-foreground">
-          <div className="flex items-center justify-between">
-            <span>
-              Unità per il recaller: {selectedUnitsCount} di {totalUnits}
-              {unitsData?.custom ? ' (personalizzata)' : ' (solo rilevanti)'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setUnitModalOpen(true)}
-              className="font-medium text-link hover:underline"
-            >
-              Scegli
-            </button>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Classificatore{classifierStatus ? `: ${classifierStatus}` : ''}</span>
-            {onSwitchToClassifier && (
-              <button
-                type="button"
-                onClick={onSwitchToClassifier}
-                className="font-medium text-link hover:underline"
-              >
-                Rivedi le etichette
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {!isSelectionMode && <UnitStrip target="recaller"
+        units={(unitsData?.units ?? []).map(unit => { const classification = relevance.data?.units.find(u => u.unit_id === unit.unit_id); return { unit_id: unit.unit_id, title: unit.title, included: unit.selected, unclassified: relevance.data?.mode !== 'disabled' && !!classification && (classification.stale || !classification.prediction) } })}
+        rule={unitsData?.custom ? 'Scelta personalizzata' : 'Al recaller vanno le unità rilevanti'}
+        onSelect={() => setUnitModalOpen(true)} onClassifier={onSwitchToClassifier}
+        classifierEnabled={!!relevance.data && relevance.data.mode !== 'disabled'} classifierUpdated={!!summary && summary.missing + summary.stale + summary.errors === 0} />}
 
       {/* Modal selezione unità per il recaller */}
       <Modal

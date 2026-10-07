@@ -788,3 +788,8 @@
 
 /* Misura del font alla dimensione originale, indipendente dalla parola mostrata. */
 .rt-rsvp-measure { position: absolute; visibility: hidden; pointer-events: none; }
+
+/* Unità incluse senza classificazione aggiornata. */
+.rt-unit-strip-unclassified {
+  background: repeating-linear-gradient(135deg, var(--accent-foreground) 0 1px, transparent 1px 3px);
+}
