@@ -65,7 +65,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
 
   // Dalla riga si apre la lezione, Studio è nell'intestazione.
   await page.goto('/')
-  await page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`).getByRole('link').click()
+  await page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`).locator(`a[href="/lezioni/${l.id}"]`).click()
   await page.getByTestId('lesson-actions').getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 

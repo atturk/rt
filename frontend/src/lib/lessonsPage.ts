@@ -133,7 +133,7 @@ export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new
         : group === 'materia'
           ? [date, teacher]
           : [date, subject]
-  return [...fields, unitsText(lesson), lesson.study_learned > 0 ? `${lesson.study_learned} apprese` : null].filter(Boolean).join(' · ')
+  return [...fields, unitsText(lesson), lesson.recall_questions > 0 ? `${lesson.recall_questions} domande` : null].filter(Boolean).join(' · ')
 }
 
 /** Etichetta del gruppo: le materie come nel resto della pagina ("Fisiologia"). */

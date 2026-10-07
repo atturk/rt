@@ -70,7 +70,7 @@ test('dalla riga si apre la lezione', async ({ page }) => {
   await loginViaLink(page)
   const [first] = await apiGet<Lesson[]>(page.request, '/lessons?materia=BIOCHIMICA')
   const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${first.id}"]`)
-  await row.getByRole('link').click()
+  await row.locator(`a[href="/lezioni/${first.id}"]`).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${first.id}$`))
   await page.reload()
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()

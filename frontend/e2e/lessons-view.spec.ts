@@ -33,13 +33,13 @@ test('Avanzamento dello studio e ordinamento anche dal pulsante a ciclo su iPhon
   try {
     await page.reload()
     const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
-    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 2, 0 in apprendimento, 0 ignorate')
-    await expect(row.getByTestId('lesson-subtitle')).toContainText('2 unità · 1 apprese')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 appresa · 1 da apprendere · 0 ignorate')
+    await expect(row.getByTestId('lesson-subtitle')).not.toContainText('apprese')
     const second = study.units[1]
     await page.request.put(`/api/v1/lessons/${l.id}/study/units/${second.id}`, { headers: authHeaders(), data: { status: 'ignorata' } })
     await page.reload()
-    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 unità apprese su 1, 0 in apprendimento, 1 ignorate')
-    await expect(row.getByTestId('lesson-study-ring')).toHaveText('1/1')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveAttribute('aria-label', '1 appresa · 0 da apprendere · 1 ignorata')
+    await expect(row.getByTestId('lesson-study-ring')).toHaveText('')
     await expect(row.getByTestId('lesson-subtitle')).not.toContainText('ignorate')
     await page.getByRole('button', { name: 'Per docente' }).click()
     await page.getByRole('button', { name: 'Ordina', exact: true }).click()
@@ -111,7 +111,7 @@ test('clic sulla riga apre la lezione; nessuna icona di azione', async ({ page }
   const [lesson] = await apiGet<Lesson[]>(page.request, '/lessons?materia=BIOCHIMICA')
   const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${lesson.id}"]`)
   await expect(row).toBeVisible()
-  const link = row.getByRole('link')
+  const link = row.locator('a').filter({ hasText: lesson.titolo })
   await expect(link).toHaveAttribute('href', `/lezioni/${lesson.id}`)
   const names = await row.locator('[aria-label]').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
   expect(names.filter((n) => ['Info', 'Recall', 'Studio', 'Apri'].includes(n!))).toEqual([])
@@ -276,5 +276,42 @@ test('tema scuro: selezione leggibile, pulsante premuto e riga selezionata', asy
       ? await page.request.delete('/api/v1/preferences/theme', { headers: authHeaders() })
       : await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify(previous) })
     expect(response.ok()).toBeTruthy()
+  }
+})
+
+test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colonna', async ({ page }) => {
+  await loginViaLink(page)
+  const [l] = await apiGet<Lesson[]>(page.request, '/lessons?materia=STUDIO')
+  const study = await apiGet<{ units: { id: string; status: string }[] }>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[0]
+  await page.request.put(`/api/v1/lessons/${l.id}/study/units/${unit.id}`, { headers: authHeaders(), data: { status: 'appreso' } })
+  try {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      await page.goto('/')
+      const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
+      const ring = row.getByTestId('lesson-study-ring')
+      const shield = row.getByTestId('lesson-review-shield')
+      const ringBox = (await ring.boundingBox())!
+      const shieldBox = (await shield.boundingBox())!
+      const title = row.locator('a').filter({ hasText: l.titolo }).first()
+      const titleBox = (await title.boundingBox())!
+      expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(ringBox.x)
+      if (width === 390) {
+        expect(Math.abs(ringBox.x - shieldBox.x)).toBeLessThan(1)
+        expect(shieldBox.y).toBeGreaterThan(ringBox.y)
+      } else expect(Math.abs(ringBox.y - shieldBox.y)).toBeLessThan(1)
+      await ring.click()
+      await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
+      await page.goto('/')
+      await shield.click()
+      await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}\\?panel=verifica$`))
+      await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
+      await page.goto('/')
+      await title.click()
+      await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}$`))
+    }
+  } finally {
+    await page.request.put(`/api/v1/lessons/${l.id}/study/units/${unit.id}`, { headers: authHeaders(), data: { status: unit.status } })
   }
 })

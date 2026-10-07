@@ -56,25 +56,27 @@ describe('dettagli della selezione', () => {
 describe('lessonSubtitle', () => {
   const l = lesson(1)
   it('per data: materia, docente e unità (la data la dice il gruppo)', () => {
-    expect(lessonSubtitle(l, 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità')
+    expect(lessonSubtitle(l, 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità · 38 domande')
   })
   it('per mese: data, materia, docente e unità', () => {
-    expect(lessonSubtitle(l, 'mese', NOW)).toBe('2 ott · Fisiologia · Rossi · 9 unità')
+    expect(lessonSubtitle(l, 'mese', NOW)).toBe('2 ott · Fisiologia · Rossi · 9 unità · 38 domande')
   })
   it('per materia: data, docente e unità', () => {
-    expect(lessonSubtitle(l, 'materia', NOW)).toBe('2 ott · Rossi · 9 unità')
+    expect(lessonSubtitle(l, 'materia', NOW)).toBe('2 ott · Rossi · 9 unità · 38 domande')
   })
   it('per docente: data, materia e unità', () => {
-    expect(lessonSubtitle(l, 'docente', NOW)).toBe('2 ott · Fisiologia · 9 unità')
+    expect(lessonSubtitle(l, 'docente', NOW)).toBe('2 ott · Fisiologia · 9 unità · 38 domande')
   })
   it('i campi mancanti si saltano, senza separatori doppi', () => {
-    expect(lessonSubtitle(lesson(2, { docente: '', unit_count: null }), 'data', NOW)).toBe('Fisiologia')
-    expect(lessonSubtitle(lesson(3, { data: '', materia: '' }), 'docente', NOW)).toBe('9 unità')
+    expect(lessonSubtitle(lesson(2, { docente: '', unit_count: null }), 'data', NOW)).toBe('Fisiologia · 38 domande')
+    expect(lessonSubtitle(lesson(3, { data: '', materia: '' }), 'docente', NOW)).toBe('9 unità · 38 domande')
   })
-  it('aggiunge le unità apprese solo quando ce ne sono', () => {
-    expect(lessonSubtitle(lesson(1, { study_learned: 7 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità · 7 apprese')
+  it('aggiunge le domande e non le unità apprese', () => {
+    expect(lessonSubtitle(lesson(1, { study_learned: 7, recall_questions: 4 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità · 4 domande')
   })
 })
+
+it('senza domande non aggiunge il conteggio', () => { expect(lessonSubtitle(lesson(1, { recall_questions: 0, study_learned: 7 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità') })
 
 describe('formati', () => {
   it('data breve con l’anno solo se diverso', () => {
