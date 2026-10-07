@@ -65,7 +65,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   const ref = useRef<HTMLDivElement>(null)
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
-  const { hash } = useLocation()
+  const { hash, state: routerState } = useLocation()
 
   // Pulsante timecode dentro ogni intestazione di unità.
   useEffect(() => {
@@ -137,9 +137,9 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     if (!root || !unitId || highlightText) return
     const block = unitBlock(root, unitId)
     if (!block.length) return
-    block.forEach((el) => el.classList.add('rt-claim-unit'))
+    if (!routerState?.fromStudy) block.forEach((el) => el.classList.add('rt-claim-unit'))
     block[0].scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-  }, [hash, doc, highlightText])
+  }, [hash, routerState, doc, highlightText])
 
   return (
     <>

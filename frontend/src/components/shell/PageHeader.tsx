@@ -14,7 +14,7 @@ export function PageHeader({ title, back, actions, muted = false, titleAs: Title
   /** p quando l'h1 è il titolo del documento sotto (pagina della lezione). */
   titleAs?: 'h1' | 'p'
   /** Freccia indietro: una pagina (to) o un ritorno dentro la stessa schermata (onClick). */
-  back?: { to: string; label: string } | { onClick: () => void; label: string }
+  back?: { to: string; label: string; state?: unknown } | { onClick: () => void; label: string }
   actions?: ReactNode
   /** Titolo grigio (il percorso sopra il titolo del documento, schermata 03). */
   muted?: boolean
@@ -29,7 +29,7 @@ export function PageHeader({ title, back, actions, muted = false, titleAs: Title
       )}
     >
       {back && ('to' in back
-        ? <IconLink to={back.to} label={back.label} icon={ChevronLeft} className="-ml-2" />
+        ? <IconLink to={back.to} state={back.state} label={back.label} icon={ChevronLeft} className="-ml-2" />
         : <IconButton onClick={back.onClick} label={back.label} icon={ChevronLeft} className="-ml-2" />)}
       <Title
         className={cn(

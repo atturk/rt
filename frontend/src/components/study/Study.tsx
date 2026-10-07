@@ -80,7 +80,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
   const lessonUrl = lesson ? `/lezioni/${lesson.id}${unit ? `#unit-${encodeURIComponent(unit.id)}` : ''}` : back.to
-  const studyBack = { to: lessonUrl, label: back.label }
+  const studyBack = { to: lessonUrl, label: back.label, state: { fromStudy: true } }
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
   const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
   const status = useStudyStatus(lesson?.id ?? 0)

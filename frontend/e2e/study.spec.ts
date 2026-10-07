@@ -427,7 +427,7 @@ test('Zen desktop e iPhone: navigazione nascosta, indice, Irlen su tutta la fine
   }
 })
 
-test('Esci porta all’unità aperta e la segna, anche su iPhone', async ({ page }) => {
+test('Esci porta all’unità aperta senza segnarla, anche su iPhone', async ({ page }) => {
   await loginViaLink(page)
   const l = await lesson(page, 'STUDIO')
   const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
@@ -446,7 +446,7 @@ test('Esci porta all’unità aperta e la segna, anche su iPhone', async ({ page
     await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}#unit-${unit.id.replace('.', '\\.')}$`))
     const target = page.getByTestId('lesson-document').locator(`[data-unit-id="${unit.id}"]`)
     await expect(target).toBeInViewport()
-    await expect(target).toHaveClass(/rt-claim-unit/)
+    await expect(target).not.toHaveClass(/rt-claim-unit/)
   }
 })
 
@@ -735,4 +735,15 @@ test('il clic destro toglie un’evidenziazione salvata anche dopo il ricaricame
     const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=${unitId}`)
     for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) await page.request.delete(`/api/v1/lessons/${l.id}/highlights/${row.id}`, { headers: authHeaders() })
   }
+})
+
+test('Vai all’unità dalla lezione continua a segnare il testo', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO')
+  const study = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = study.units[1]
+  await page.goto(`/lezioni/${l.id}#unit-${unit.id}`)
+  const target = page.getByTestId('lesson-document').locator(`[data-unit-id="${unit.id}"]`)
+  await expect(target).toBeInViewport()
+  await expect(target).toHaveClass(/rt-claim-unit/)
 })
