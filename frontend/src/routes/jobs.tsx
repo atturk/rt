@@ -103,11 +103,10 @@ export function JobsPage() {
 }
 
 export function JobPage() {
-  const returnAddress = useReturnAddress()
   const jobId = useParams().jobId ?? ''
   return (
     <>
-      <PageHeader title="Dettaglio del job" back={{ to: returnAddress, label: 'Indietro' }} />
+      <PageHeader title="Dettaglio del job" back={{ to: '/job', label: 'Tutti i job' }} />
       <PageBody>
         <section className="flex flex-col gap-4">
           <WorkerWarning />

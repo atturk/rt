@@ -31,9 +31,7 @@ test('sette sezioni: desktop a due colonne, telefono con pagina e ritorno', asyn
     await expect(page).toHaveURL(new RegExp(`/impostazioni/${path}$`))
     await expect(page.getByRole('heading', { name: label, level: 1 })).toBeVisible()
     await expect(nav).toHaveCount(0)
-    await page.locator('main header').getByRole('link', { name: 'Indietro', exact: true }).click()
-    await expect(page).toHaveURL(/\/$/)
-    await page.goto('/impostazioni')
+    await page.locator('main header').getByRole('link', { name: 'Impostazioni', exact: true }).click()
     await expect(nav).toBeVisible()
   }
 })

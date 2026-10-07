@@ -112,8 +112,11 @@ test('Impostazioni e Job tornano all’indirizzo completo anche col secondo clic
       const nav = page.getByRole('navigation', { name: 'Navigazione' })
       await nav.getByRole('link', { name: 'Impostazioni', exact: true }).click()
       await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: /Editor e scorciatoie/ }).click()
-      if (method === 'freccia') await page.getByRole('link', { name: 'Indietro', exact: true }).click()
-      else await nav.getByRole('link', { name: 'Impostazioni', exact: true }).click()
+      if (method === 'freccia') {
+        // Sull'iPhone la sezione torna prima all'elenco delle Impostazioni, poi indietro.
+        if (width < 768) await page.locator('main header').getByRole('link', { name: 'Impostazioni', exact: true }).click()
+        await page.getByRole('link', { name: 'Indietro', exact: true }).click()
+      } else await nav.getByRole('link', { name: 'Impostazioni', exact: true }).click()
       await expect(page).toHaveURL(new URL(address, page.url()).href)
       await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
       await nav.getByRole('link', { name: 'Job in corso', exact: true }).click()

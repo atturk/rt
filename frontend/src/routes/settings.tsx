@@ -50,7 +50,7 @@ export function SettingsLayout() {
   if (index && targets[hash.slice(1)]) return <SettingsRedirect section={targets[hash.slice(1)]} />
   const current = SETTINGS_SECTIONS.find(s => pathname === `/impostazioni/${s.path}`) ?? SETTINGS_SECTIONS[0]
   return <>
-    <PageHeader title={phone && !index ? current.label : 'Impostazioni'} back={{ to: returnAddress, label: 'Indietro' }} />
+    <PageHeader title={phone && !index ? current.label : 'Impostazioni'} back={phone && !index ? { to: '/impostazioni', label: 'Impostazioni' } : { to: returnAddress, label: 'Indietro' }} />
     <PageBody className="md:px-5">
       <div className="flex min-w-0 gap-8">
         {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit w-60')}>
