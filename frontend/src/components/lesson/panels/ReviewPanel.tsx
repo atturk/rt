@@ -1,7 +1,9 @@
+import { IconButton } from '@/components/ui/icon-button'
+import { Tooltip } from '@/components/ui/tooltip'
 import { BuildConfirmDialog } from '../BuildConfirmDialog'
 import { EditorState } from '@codemirror/state'
-import { Check, Pencil, ShieldCheck, Undo2, X } from 'lucide-react'
-import { useState } from 'react'
+import { Check, RotateCcw, Pencil, ShieldCheck, Undo2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { errorMessage, type Schemas } from '@/api/client'
 import { useDecideIssue, useDecisions, useIssues, useRunJob, useUndoDecision } from '@/api/hooks'
@@ -128,12 +130,50 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
 }) {
   const issue = issueOf(item)
   const paragraph = paragraphIssue(issue)
-  const [text, setText] = useState(paragraph ? item.context?.unit_content ?? issue.claim : issue.suggested_fix ?? issue.claim)
+  const proposed = paragraph ? item.context?.unit_content ?? issue.claim : issue.suggested_fix ?? issue.claim
+  const [text, setText] = useState(proposed)
+  const box = useRef<HTMLDivElement>(null)
+  const controls = useRef<HTMLDivElement>(null)
+  const prepareInput = useCallback((node: HTMLTextAreaElement | null) => {
+    if (!node) return
+    node.style.height = 'auto'
+    node.style.height = `${node.scrollHeight}px`
+    node.setSelectionRange(node.value.length, node.value.length)
+  }, [])
+  const modified = text !== proposed
+  const cancelEdit = () => { setText(proposed); onEditing(false) }
+  const apply = () => {
+    if (!modified) { onEditing(false); return }
+    if (!text.trim() || busy) return
+    onEditing(false)
+    onDecide('edited', text)
+  }
+  useEffect(() => {
+    if (!editing || paragraph) return
+    const outside = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node) && !controls.current?.contains(event.target as Node)) apply()
+    }
+    document.addEventListener('mousedown', outside)
+    return () => document.removeEventListener('mousedown', outside)
+  }, [editing, paragraph, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
   return <Card className="flex flex-col gap-3 p-3" data-testid="issue-detail">
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
     <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
     {phone && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
-    {!paragraph && !changed && <div><h3 className="mb-1 text-meta font-semibold">Correzione proposta</h3><p className="rounded-lg bg-muted p-3">{issue.suggested_fix ?? issue.claim}</p></div>}
+    {!paragraph && !changed && <div ref={box}>
+      <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">Correzione proposta</h3>
+        {editing && <IconButton label="Ripristina la correzione proposta" icon={RotateCcw} disabled={!modified || busy} onClick={() => setText(proposed)} className="size-7 min-w-7" />}
+      </div>
+      {editing ? <Textarea id="review-edit" aria-label="Correzione proposta" autoFocus rows={1} value={text}
+        ref={prepareInput}
+        onChange={event => { setText(event.target.value); event.target.style.height = 'auto'; event.target.style.height = `${event.target.scrollHeight}px` }}
+        onKeyDown={event => {
+          if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelEdit() }
+          else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); apply() }
+        }} className="resize-none overflow-hidden border-accent-foreground bg-background" /> :
+        <Tooltip content="Doppio clic per modificare" disabled={phone || !!item.decision || busy}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
+          onDoubleClick={() => { if (!busy && !item.decision) onEditing(true) }} onClick={() => { if (phone && !busy && !item.decision) onEditing(true) }}>{proposed}</p>}</Tooltip>}
+    </div>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
     {changed && <>
@@ -141,14 +181,17 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
       <p className="text-meta text-muted-foreground line-through">{issue.claim}</p>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={onCloseIssue}>Chiudi l'issue</Button><Button size="sm" variant="outline" disabled={busy || !issue.unit_id} onClick={onRecheck}>Verifica di nuovo l'unità {issue.unit_id}</Button></div>
     </>}
-    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
+    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : paragraph && editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
       <label htmlFor="review-edit" className="text-meta">{paragraph ? 'Testo del paragrafo' : 'Testo corretto'}</label>
       <Textarea id="review-edit" autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !text.trim()}>Salva modifica</Button><Button size="sm" variant="ghost" onClick={() => onEditing(false)}>Annulla</Button></div>
-    </form> : <div className="flex flex-wrap gap-2 max-md:grid max-md:grid-cols-2 max-md:[&_button]:h-12">
+    </form> : paragraph ? <div className="flex flex-wrap gap-2 max-md:[&_button]:h-12">
       <Button size="sm" disabled={busy} onClick={() => onDecide('accepted')}><Check />Accetta</Button>
-      {!paragraph && <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('rejected')}><X />Mantieni</Button>}
       <Button size="sm" variant="outline" disabled={busy} onClick={() => onEditing(true)}><Pencil />Modifica</Button>
+    </div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
+      <IconButton label={editing && modified ? 'Applica la tua correzione' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />
+      <IconButton label="Mantieni il testo attuale" icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />
     </div>}
+
   </Card>
 }
