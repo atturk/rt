@@ -100,3 +100,26 @@ test('telefono: tre schede in basso, niente barra a sinistra', async ({ page }) 
   // Nessuno scorrimento orizzontale.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
+
+test('Impostazioni e Job tornano all’indirizzo completo anche col secondo clic', async ({ page }) => {
+  await loginViaLink(page)
+  const [lesson] = await apiGet<Lesson[]>(page.request, '/lessons')
+  const address = `/lezioni/${lesson.id}?panel=verifica#unit-1.1`
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    for (const method of ['freccia', 'icona']) {
+      await page.goto(address)
+      const nav = page.getByRole('navigation', { name: 'Navigazione' })
+      await nav.getByRole('link', { name: 'Impostazioni', exact: true }).click()
+      await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: /Editor e scorciatoie/ }).click()
+      if (method === 'freccia') await page.getByRole('link', { name: 'Indietro', exact: true }).click()
+      else await nav.getByRole('link', { name: 'Impostazioni', exact: true }).click()
+      await expect(page).toHaveURL(new URL(address, page.url()).href)
+      await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
+      await nav.getByRole('link', { name: 'Job in corso', exact: true }).click()
+      if (method === 'freccia') await page.getByRole('link', { name: 'Indietro', exact: true }).click()
+      else await nav.getByRole('link', { name: 'Job in corso', exact: true }).click()
+      await expect(page).toHaveURL(new URL(address, page.url()).href)
+    }
+  }
+})
