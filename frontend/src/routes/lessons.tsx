@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
+import { LessonPageNavigation } from '@/components/shared/LessonPageNavigation'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
 import { LessonPanel } from '@/components/lesson/LessonPanel'
@@ -250,17 +251,18 @@ export function LessonPage() {
         back={back}
         actions={<LessonHeaderActions lesson={l} panel={panel} onToggle={toggle} />}
       />
-      <div className={cn('flex-1 px-7 max-md:px-4', panel && 'xl:pr-[calc(24rem+28px)]')}>
-        <article className="mx-auto w-full max-w-(--reading-width) pb-28 pt-7 max-md:pt-3" data-testid="lesson-page">
+      <div className={cn('flex-1 px-7 max-md:px-4 md:[@media(hover:hover)]:px-[76px]', panel && 'xl:pr-[calc(24rem+28px)] xl:[@media(hover:hover)]:pr-[calc(24rem+76px)]')}>
+        <LessonPageNavigation id={id} panel={panel} title={<>
           <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
+        </>}>
           <LessonProgress lessonId={l.id} job={job} pendingOutline={pendingOutline} />
           {outline.isError && !(outline.error instanceof ApiError && outline.error.code === 'outline_not_found') && <Alert tone="danger" className="mt-5">{errorMessage(outline.error)}<Button size="sm" variant="outline" onClick={() => void outline.refetch()}>Riprova</Button></Alert>}
           {outline.data && pendingOutline
             ? <LessonOutline key={outline.data.expires_at ?? JSON.stringify(outline.data.macro_sections)} lessonId={id} outline={outline.data} busy={!!job && isActive(job.state)} mock={job?.payload.mock === true || (typeof job?.payload.options === 'object' && job.payload.options != null && 'mock' in job.payload.options && job.payload.options.mock === true)} refresh={outline.refetch} />
             : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />}
-        </article>
+        </LessonPageNavigation>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
       {panel && (
