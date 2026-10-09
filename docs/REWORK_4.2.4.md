@@ -380,7 +380,7 @@ fine.
 ## 4.2.4b2 — verifica
 
 Lavora **solo Codex**, con **una PR** sul branch `rt424b2/codex` (creato da `claude/rt-4.2.4-beta` dopo
-la v4.2.4b1). I task vanno fatti **in quest'ordine**, con un commit per task: il backend viene prima
+la v4.2.4b1). I task vanno fatti **in quest'ordine**, con un commit per task: prima il bug Z2, poi il backend,
 perché pannello, VC2 e VC1 poggiano su di lui.
 
 | Id | Cosa |
@@ -393,6 +393,7 @@ perché pannello, VC2 e VC1 poggiano su di lui.
 | V6 | Pannello Verifica nuovo |
 | VC2 | Verifica questa parte (menu contestuale) |
 | VC1 | Verifica e Chiedi nello Studio |
+| Z2 | Colori Irlen con il tema scuro (bug della b1, da fare per primo) |
 
 Se il lavoro diventa troppo grosso, **VC1 si ferma** e passa alla b3: V1-V6 e VC2 devono uscire
 completi, VC1 no. In quel caso la PR lo dice.
@@ -435,6 +436,21 @@ Analisi di partenza: audit della verifica del 9 ottobre (riassunto nei task) e a
 - VC1 come dal wireframe v3: pannello separato "Verifiche e domande", bottoni in Dettagli, voci mai
   rifatte da sole, Applica che registra una decisione della verifica. Nel prompt "tag" = materia,
   docente e argomenti.
+
+### Z2 — Colori Irlen con il tema scuro
+
+Bug della b1 segnalato da Attilio il 9 ottobre: con il tema scuro e un colore Irlen (pesca, menta,
+pergamena) lo sfondo diventa chiaro ma il testo resta bianco, quindi non si legge (zen e lettura
+veloce). Con il tema chiaro funziona.
+
+- `.rt-layout[data-tint]` (`frontend/src/index.css`, blocco "Lettura veloce") ridefinisce `--fg`,
+  `--foreground` e gli altri token, ma probabilmente non il `color` ereditato: `body` calcola il colore
+  con i token di `.dark` (bianco) e i figli lo ereditano già calcolato. Verificare la causa e
+  correggerla per tutto ciò che sta sotto `.rt-layout[data-tint]`: testo, titoli, icone, barra della zen,
+  popup e tooltip dentro il layout, link ed evidenziazioni (`--hl-*` di `.dark` sono scuri:
+  con la tinta servono quelli chiari).
+- Test: e2e con tema scuro e ogni tinta, in zen e in lettura veloce, che controlla il colore calcolato
+  del testo (scuro) e un contrasto sufficiente con lo sfondo.
 
 ### V1 — Ancore, testo risolto, decisioni che non si perdono
 
