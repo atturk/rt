@@ -57,14 +57,16 @@ def lesson_lock(lesson_dir: str) -> Iterator[None]:
         yield
 
 
-def issue_context(lesson_dir: str, issue: ScienceIssue) -> Dict[str, Any]:
+def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=None,
+                  loaded: bool = False) -> Dict[str, Any]:
     """Contesto di un'issue: unità, timecode e finestra audio (secondi e segmenti)."""
     from rt.core.segments import load_segments_json
     from rt.pipeline.rewrite import get_draft_path, load_draft
 
-    seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
-    draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    if not loaded:
+        segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+        draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    seg_by_id = {s.id: s for s in segments.segments} if segments else {}
     seg_to_unit, unit_by_id = {}, {}
     if draft:
         for u in draft.units:

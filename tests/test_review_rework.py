@@ -111,3 +111,23 @@ def test_auto_accept_does_not_record_overlapping_corrections(lesson):
     assert [i.id for i in accepted] == [a.id]
     assert [i.id for i in remaining] == [b.id]
     assert [d.issue_id for d in load_ledger(lesson).decisions] == [a.id]
+
+
+def test_issues_load_segments_and_draft_once(lesson, api_client, monkeypatch):
+    from rt.core import segments
+    from rt.pipeline import rewrite
+    issues = [issue(f'sci_{n:06d}', 'CO2', 'anidride carbonica') for n in range(1,31)]
+    save_science_issues(issues, lesson)
+    lesson_id = api_client.get('/api/v1/lessons').json()[0]['id']
+    counts = {'segments':0, 'draft':0}
+    load_segments, load_draft = segments.load_segments_json, rewrite.load_draft
+    def counted_segments(*args, **kw):
+        counts['segments'] += 1
+        return load_segments(*args, **kw)
+    def counted_draft(*args, **kw):
+        counts['draft'] += 1
+        return load_draft(*args, **kw)
+    monkeypatch.setattr(segments, 'load_segments_json', counted_segments)
+    monkeypatch.setattr(rewrite, 'load_draft', counted_draft)
+    assert len(api_client.get(f'/api/v1/lessons/{lesson_id}/issues').json()['items']) == 30
+    assert counts == {'segments':1, 'draft':1}
