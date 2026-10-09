@@ -195,6 +195,29 @@ def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     return removed_count
 
 
+def replace_claim(content: str, claim: str, resolved: str) -> str:
+    """Sostituisce il claim, allargando alla frase solo entro lo stesso paragrafo."""
+    start = content.find(claim)
+    if start < 0:
+        return content
+    end = start + len(claim)
+    paragraph_end = content.find("\n", start)
+    if paragraph_end < 0:
+        paragraph_end = len(content)
+    if end <= paragraph_end and resolved.strip().endswith((".", "!", "?")):
+        # La fine deve comprendere tutto il claim: un decimale o un'abbreviazione
+        # interna non possono troncarlo.
+        match = re.search(r"[.!?](?=\s|$)", content[max(start, end - 1):paragraph_end])
+        if match:
+            sentence_end = max(start, end - 1) + match.end()
+            sentence = content[start:sentence_end]
+            words = set(sentence.lower().split())
+            overlap = len(words & set(resolved.lower().split())) / max(1, len(words))
+            if overlap > 0.4:
+                end = sentence_end
+    return content[:start] + resolved + content[end:]
+
+
 def apply_decisions_to_draft(
     draft: Draft,
     ledger: DecisionLedger,
@@ -242,18 +265,7 @@ def apply_decisions_to_draft(
                             target = claim_raw
                             
                         if target:
-                            # Se la correzione è una frase completa e il claim era un frammento,
-                            # controlliamo se la sostituzione risolve l'intera frase per evitare duplicazioni sintattiche
-                            idx = content.find(target)
-                            end_sent = content.find(".", idx)
-                            if end_sent != -1 and resolved.strip().endswith("."):
-                                full_sent = content[idx : end_sent + 1].strip()
-                                w_clean = set(resolved.lower().split())
-                                w_sent = set(full_sent.lower().split())
-                                overlap = len(w_clean & w_sent) / max(1, len(w_sent))
-                                if overlap > 0.4:
-                                    target = full_sent
-                            content = content.replace(target, resolved, 1)
+                            content = replace_claim(content, target, resolved)
                             
         unit_copy = unit.model_copy(update={
             "title": fix_mojibake(unit.title),
