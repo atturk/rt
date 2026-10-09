@@ -420,7 +420,7 @@ export function DetailsPanel({
       </dl>
 
       <Button variant="outline" className="h-auto w-full justify-start gap-3 py-4" onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}>
-        <Tags size={18} aria-hidden /><span className="flex flex-col items-start"><span className="text-body">Classificatore</span><span className="text-meta text-muted-foreground">{classifier.data?.pending ?? 0} unità da rivedere</span></span>
+        <Tags size={18} aria-hidden /><span className="flex flex-col items-start"><span className="text-body">Classificatore</span><span className="text-meta text-muted-foreground">{classifier.data ? `${classifier.data.pending} unità da rivedere` : '\u00a0'}</span></span>
       </Button>
       {showCostDetail && <CostPanel lesson={l} />}
 

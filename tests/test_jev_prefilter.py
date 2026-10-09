@@ -114,6 +114,13 @@ def setup_mock_lesson(tmp_path, num_units: int = 2):
     return lesson_dir
 
 
+@pytest.fixture(autouse=True)
+def _isolated_prefilter_cache(tmp_path, monkeypatch):
+    """La cache dei verdetti (unit_prefilter.json) va in una cartella del test: con lesson_dir
+    finti come "/lesson" un verdetto salvato da un test tornerebbe nel successivo."""
+    monkeypatch.setattr("rt.services.unit_prefilter.lesson_path", lambda lesson_dir, name: str(tmp_path / name))
+
+
 def _jev_cfg(**overrides) -> RTConfig:
     return RTConfig(jev=JevConfig(enabled=True, **overrides))
 

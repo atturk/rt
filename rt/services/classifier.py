@@ -54,7 +54,15 @@ def classify_units(lesson_dir, ctx=None, *, force_mock=False):
             responses[unit.unit_id] = jev_client.JevResponse(model=rel_cfg.relevance_model, answers=answers)
     relevance = unit_relevance.refresh(lesson_dir, force_mock=mock, ctx=ctx, responses=responses) if rel_enabled else relevance
     from rt.services import section_labels
-    if classifier_job(cfg, "section_labels").mode == "pipeline":
-        section_labels.refresh(lesson_dir, force_mock=mock)
-    types = question_types.refresh(lesson_dir, force_mock=mock, ctx=ctx, responses=responses, refresh_sections=False) if qt_enabled else types
+    try:
+        if classifier_job(cfg, "section_labels").mode == "pipeline":
+            section_labels.refresh(lesson_dir, force_mock=mock)
+        types = question_types.refresh(lesson_dir, force_mock=mock, ctx=ctx, responses=responses, refresh_sections=False) if qt_enabled else types
+    except Exception:
+        # Come prima della 4.2.4: casi/esercizi e tipi consigliati non fermano la riscrittura.
+        import logging
+        logging.getLogger(__name__).warning("Tipi consigliati non disponibili", exc_info=True)
+        if ctx is not None:
+            from rt.services.events import Notice
+            ctx.emit(Notice(level="warning", message="Avviso: tipi di domanda consigliati non disponibili."))
     return {"relevance": relevance, "question_types": types}
