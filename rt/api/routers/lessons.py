@@ -97,9 +97,11 @@ def run_unit_relevance(lesson_id: int, body: schemas.UnitRelevanceRun, lesson_di
             summary="Corregge o ripristina la classificazione di un'unità")
 def put_unit_relevance(lesson_id: int, unit_id: str, body: schemas.UnitRelevanceOverride,
                        lesson_dir: LessonDir, actor: Actor):
-    from rt.services.unit_relevance import set_override
+    from rt.services.classifier_view import correct, units_view
+    from rt.services.unit_relevance import list_units
     try:
-        return set_override(lesson_dir, unit_id, body.category, actor=str(actor))
+        correct(lesson_dir,"relevance",unit_id,body.category,actor=str(actor))
+        return list_units(lesson_dir,view=units_view(lesson_dir)[1])
     except KeyError:
         raise ApiError(404, "unit_not_found", "Unità non trovata nella bozza.")
 
@@ -115,9 +117,11 @@ def get_section_labels(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             summary="Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità")
 def put_section_label(lesson_id: int, section_id: str, body: schemas.SectionLabelOverride,
                       lesson_dir: LessonDir, _actor: Actor):
-    from rt.services.section_labels import set_override
+    from rt.services.classifier_view import correct
+    from rt.services.section_labels import view
     try:
-        return set_override(lesson_dir, section_id, body.kind, body.value)
+        correct(lesson_dir,"exercises" if body.kind == "esercizio" else "cases",section_id,body.value)
+        return view(lesson_dir)
     except KeyError:
         raise ApiError(404, "section_not_found", "Unità non trovata nella scaletta.")
     except ValueError as exc:
@@ -342,3 +346,38 @@ def get_decisions(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 @router.get("/costs", response_model=schemas.CostSummary, summary="Riepilogo dei costi LLM di tutte le lezioni")
 def get_costs(_actor: Actor):
     return lesson_service.costs_summary()
+
+
+@router.get("/lessons/{lesson_id}/classifier", response_model=schemas.ClassifierOverview)
+def get_classifier(lesson_id: int, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.classifier_view import overview
+    return overview(lesson_dir)
+
+
+@router.put("/lessons/{lesson_id}/classifier/{job}/{cell_id}", response_model=schemas.ClassifierOverview)
+def correct_classifier(lesson_id: int, job: str, cell_id: str, body: schemas.ClassifierCorrection, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.classifier_view import correct
+    try:
+        return correct(lesson_dir, job, cell_id, body.value)
+    except KeyError as exc:
+        raise ApiError(404,"classifier_cell_missing","Cella non trovata") from exc
+    except ValueError as exc:
+        raise ApiError(422,"classifier_value_invalid",str(exc)) from exc
+
+
+@router.post("/lessons/{lesson_id}/classifier/run", response_model=schemas.JobAccepted, status_code=202)
+def run_classifier(lesson_id: int, body: schemas.ClassifierRun, lesson_dir: LessonDir, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    return enqueue_job("classifier",lesson_dir,body.model_dump(),actor)
+
+
+@router.post("/lessons/{lesson_id}/classifier/{job}/run", response_model=schemas.JobAccepted, status_code=202)
+def run_classifier_job(lesson_id: int, job: str, body: schemas.ClassifierRun, lesson_dir: LessonDir, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    from rt.services.classifier_view import JOBS
+    from rt.core.config import load_config, classifier_job
+    if job not in JOBS:
+        raise ApiError(422,"classifier_job_invalid","Job non valido")
+    if classifier_job(load_config(),JOBS[job]).mode == "off":
+        raise ApiError(409,"classifier_job_off","Job spento")
+    return enqueue_job("classifier",lesson_dir,{**body.model_dump(),"job":job},actor)

@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, errorMessage, unwrap } from '@/api/client'
-import { useSettings } from '@/api/settings'
 import { useLessons } from '@/api/hooks'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -178,25 +177,18 @@ function UnitPicker({ lessonId, unitId, onChange }: { lessonId: number | null; u
 type Drafts = Partial<Record<Phase, Decision>>
 
 export function DecisionModelSection() {
-  const settings = useSettings()
   const client = useQueryClient()
   const configured = useQuery({ queryKey: ['decision-model'], queryFn: () => unwrap(api.GET('/api/v1/settings/decision-model')) })
   const [phase, setPhase] = useState<Phase>('relevance')
   const [drafts, setDrafts] = useState<Drafts>({})
-  const [modelDraft, setModel] = useState<string | null>(null)
-  const [relevanceModelDraft, setRelevanceModel] = useState<string | null>(null)
-  const [credentialDraft, setCredential] = useState<string | null>(null)
-  const [shadowDraft, setShadow] = useState<boolean | null>(null)
-  const [enabledDraft, setEnabled] = useState<boolean | null>(null)
-  const [relevanceModeDraft, setRelevanceMode] = useState<'disabled' | 'shadow' | 'active' | null>(null)
   const [target, setTarget] = useState<{ lesson: number | null; unit: string | null }>({ lesson: null, unit: null })
   const data = configured.data
-  const model = modelDraft ?? data?.model ?? ''
-  const relevanceModel = relevanceModelDraft ?? data?.relevance_model ?? ''
-  const credential = credentialDraft ?? data?.credential ?? 'openrouter'
-  const shadow = shadowDraft ?? data?.shadow ?? true
-  const enabled = enabledDraft ?? data?.enabled ?? false
-  const relevanceMode = relevanceModeDraft ?? data?.relevance_mode ?? 'shadow'
+  const model = data?.model ?? ''
+  const relevanceModel = data?.relevance_model ?? ''
+  const credential = data?.credential ?? 'openrouter'
+  const shadow = data?.shadow ?? true
+  const enabled = data?.enabled ?? false
+  const relevanceMode = data?.relevance_mode ?? 'shadow'
   const decisionFor = (p: Phase) => drafts[p] ?? (p === 'relevance' ? data?.relevance_decision : data?.prefilter_decision)
   const decision = decisionFor(phase)
   const phaseModel = phase === 'relevance' ? relevanceModel : model
@@ -220,29 +212,13 @@ export function DecisionModelSection() {
   })
   const customized = phase === 'relevance' ? data?.relevance_customized : data?.prefilter_customized
 
-  return <Section id="classificatore" title="Classificatore"
-    description="Configura la domanda inviata al classificatore (ad esempio Jev) per ogni fase e come la risposta diventa un’etichetta di RT. Un errore o una risposta non valutabile lasciano sempre passare l’unità.">
+  return <Section id="playground-classificatore" title="Domande e mappature">
     {configured.isError && <Alert tone="danger">{errorMessage(configured.error)}</Alert>}
     <div className="grid gap-2 sm:grid-cols-2">
       <Field label="Fase" htmlFor="jev-phase"><Select id="jev-phase" value={phase} onChange={(e) => { setPhase(e.target.value as Phase); test.reset() }}>
         {Object.entries(PHASES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select></Field>
-      <Field label="Credenziale" htmlFor="decision-model-credential"><Select id="decision-model-credential" value={credential} onChange={(e) => setCredential(e.target.value)}><option value="">Scegli…</option>{settings.data?.credentials?.map(c => <option key={c.name} value={c.name}>{c.name}{c.set ? '' : ' (mancante)'}</option>)}</Select></Field>
     </div>
-    {phase === 'relevance'
-      ? <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Modello del classificatore di rilevanza" htmlFor="relevance-model-name"><Input id="relevance-model-name" value={relevanceModel} onChange={(e) => setRelevanceModel(e.target.value)} placeholder="Facoltativo: ID del modello classificatore" /></Field>
-          <Field label="Comportamento del classificatore" htmlFor="relevance-mode"><Select id="relevance-mode" value={relevanceMode} onChange={(e) => setRelevanceMode(e.target.value as typeof relevanceMode)}>
-            <option value="disabled">Disattivato · tutte le unità passano, nessuna chiamata</option>
-            <option value="shadow">Ombra · classifica, tutte le unità passano</option>
-            <option value="active">Filtro attivo · solo unità didattiche a review e Recall</option>
-          </Select></Field>
-        </div>
-      : <div className="flex flex-col gap-2">
-          <Field label="Modello del prefiltro errori" htmlFor="decision-model-name"><Input id="decision-model-name" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Facoltativo: ID del modello classificatore" /></Field>
-          <Checkbox id="jev-enabled" label="Abilita il prefiltro errori" checked={enabled} onChange={setEnabled} />
-          <Checkbox id="jev-shadow" label="Prefiltro in ombra (non salta la review)" checked={shadow} onChange={setShadow} />
-        </div>}
     {decision && data && <>
       <div className="flex flex-wrap items-center gap-2 text-meta">
         <Badge tone={customized || drafts[phase] ? 'warning' : 'neutral'}>{drafts[phase] ? 'Modifiche non salvate' : customized ? 'Domanda personalizzata' : 'Domanda predefinita'}</Badge>

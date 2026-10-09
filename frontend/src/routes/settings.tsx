@@ -12,6 +12,7 @@ import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { AppearanceSection, OutlineSettingsSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
+import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
@@ -99,7 +100,7 @@ export function ModelsSettingsPage() {
   return page(s => <><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />
     <details id="avanzate" className="py-4" open={undefined}><summary className="cursor-pointer text-body font-semibold">Avanzate</summary>
       <RoutesSection settings={s} />
-      <details id="modelli-decisionali" className="py-3"><summary className="cursor-pointer text-body">Modelli decisionali</summary><DecisionModelSection /><EnrichmentSettingsSection settings={s} decisions /></details>
+      <details id="modelli-decisionali" className="py-3"><summary className="cursor-pointer text-body">Modelli decisionali</summary><ClassifierSettingsSection /><DecisionModelSection /></details>
       <PromptEditorSection />
     </details></>)
 }

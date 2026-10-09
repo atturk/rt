@@ -211,8 +211,8 @@ def compute_source_fingerprint(
         seg_path = lesson_path(lesson_dir, "segments.json")
         draft_hash = compute_file_sha256(draft_path)
         seg_hash = compute_file_sha256(seg_path)
-        from rt.core.config import load_config
-        cfg = load_config().jev
+        from rt.core.config import load_config, classifier_jev
+        cfg = classifier_jev(load_config(), "relevance")
         relevance_path = lesson_path(lesson_dir, "unit_relevance.json")
         relevance_hash = (compute_file_sha256(relevance_path) if cfg.relevance_model and cfg.relevance_mode == "active"
                           and fs.isfile(relevance_path) else "")
@@ -501,7 +501,8 @@ def check_phase_status(
             # Bozza e segmenti hanno l'impronta registrata e stale_reason li nomina; se non sono
             # cambiati, con il filtro attivo resta la classificazione di rilevanza delle unità.
             from rt.core.config import load_config
-            jev = load_config().jev
+            from rt.core.config import classifier_jev
+            jev = classifier_jev(load_config(), "relevance")
             generic = ("Classificazione di rilevanza delle unità modificata dopo la revisione scientifica"
                        if jev.relevance_model and jev.relevance_mode == "active"
                        else "draft.json o segments.json modificati dopo la revisione scientifica")

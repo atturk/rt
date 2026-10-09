@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+from functools import lru_cache
 
 import yaml
 
@@ -39,9 +40,23 @@ def normalize_topics(value):
 
 
 def lesson_context(lesson_dir):
+    stamps = []
+    for name in ("info.yaml", "outline.json"):
+        try:
+            stamps.append(fs.getmtime(lesson_path(lesson_dir, name)))
+        except OSError:
+            stamps.append(None)
+    return dict(_lesson_context(str(lesson_dir), *stamps))
+
+
+@lru_cache(maxsize=256)
+def _lesson_context(lesson_dir, info_mtime, outline_mtime):
     info, outline = {}, {}
     for name, reader in [("info.yaml", yaml.safe_load), ("outline.json", json.loads)]:
-        path = lesson_path(lesson_dir, name)
+        try:
+            path = lesson_path(lesson_dir, name)
+        except OSError:
+            continue
         if fs.isfile(path):
             try:
                 with fs.open(path, "r", encoding="utf-8") as stream:

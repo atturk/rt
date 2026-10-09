@@ -30,6 +30,7 @@ _STATE_ENTRIES: Set[str] = {
     "enrichment.json",
     "unit_relevance.json",
     "unit_question_types.json",
+    "unit_prefilter.json",
     "unit_relevance_resolved.json",
     "section_labels.json",
     "outline.json",

@@ -196,6 +196,10 @@ class JevTaskBVerdict:
         self.is_high_confidence_drift = is_high_confidence_drift
 
 
+from rt.services.unit_prefilter import cached
+
+
+@cached("task_a")
 def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskAVerdict]:
     """
     Chiede a Jev la domanda configurata per il prefiltro errori (predefinita: gravità degli
@@ -238,6 +242,7 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
                            label=result.label, outcome=result.outcome, answer=result.answer)
 
 
+@cached("task_b")
 def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
     """
     Chiede a Jev se il testo rielaborato dell'unità introduce contenuto non supportato dai
@@ -330,9 +335,12 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
     # ma non saltano né creano nulla: il comportamento resta identico a Jev disattivato.
     skip_expensive_llm = False
-    if _cfg.jev.enabled:
-        verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
-        verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
+    from rt.core.config import classifier_job, classifier_jev
+    prefilter = classifier_job(_cfg, "prefilter")
+    drift = classifier_job(_cfg, "drift")
+    if prefilter.mode in ("observe", "pipeline") or drift.mode in ("observe", "pipeline"):
+        verdict_a = run_jev_task_a(unit, classifier_jev(_cfg, "prefilter"), lesson_dir) if prefilter.mode in ("observe", "pipeline") else None
+        verdict_b = run_jev_task_b(unit, source_context, classifier_jev(_cfg, "drift"), lesson_dir) if drift.mode in ("observe", "pipeline") else None
         if verdict_a is not None:
             # Risposta completa (tutte le probabilità) nei log e nel risultato del job.
             if jev_log is not None:
@@ -342,10 +350,10 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
                 ctx.emit(Notice(message=f"Classificatore prefiltro {unit.unit_id}: " + describe(DecisionResult(
                     label=verdict_a.label, outcome=verdict_a.outcome, rule=None, answer=verdict_a.answer))))
 
-        if not (shadow_jev or _cfg.jev.shadow):
-            if verdict_b is not None and verdict_b.is_high_confidence_drift:
+        if not shadow_jev:
+            if drift.mode == "pipeline" and verdict_b is not None and verdict_b.is_high_confidence_drift:
                 all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
-            if verdict_a is not None and verdict_a.should_skip_expensive_llm:
+            if prefilter.mode == "pipeline" and verdict_a is not None and verdict_a.should_skip_expensive_llm:
                 skip_expensive_llm = True
 
     if not skip_expensive_llm:
@@ -613,8 +621,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     _cfg = load_config()
-    from rt.services.unit_relevance import included
-    eligible_ids = {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
+    from rt.services.unit_relevance import included, included_ids
+    eligible_ids = included_ids(lesson_dir, draft.units)
     st_issues_all = detect_statistical_asr_risks(
         lesson_dir=lesson_dir,
         k=_cfg.review.asr_statistical_k,

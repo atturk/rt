@@ -406,6 +406,7 @@ def _generation_policy(qtype, few_shot_examples, force_mock=False):
     from rt.llm import prompts
     from rt.services.recall_context import POLICY_VERSION
     from rt.services.jev_mapping import effective_decision
+    from rt.core.config import classifier_jev, classifier_job
     cfg = load_config()
     routing = cfg.jobs.get("recall") or cfg.llm.get("recall") or cfg.jobs.get("default") or cfg.llm.get("default")
     return {"version": POLICY_VERSION, "style": qtype.value, "fewshot": few_shot_examples,
@@ -413,7 +414,7 @@ def _generation_policy(qtype, few_shot_examples, force_mock=False):
             "routing": routing.model_dump(mode="json") if routing else None,
             "guidance": prompts.RICHNESS_GUIDANCE, "neutral": prompts.NEUTRAL_GUIDANCE, "group": prompts.GROUP_GUIDANCE,
             "decision": effective_decision("relevance", cfg.jev).model_dump(mode="json"),
-            "mode": cfg.jev.relevance_mode, "classifier": cfg.jev.relevance_model,
+            "mode": classifier_jev(cfg, "relevance").relevance_mode, "classifier": classifier_jev(cfg, "relevance").relevance_model,
             "confidence_threshold": cfg.jev.relevance_threshold, "mock": force_mock or cfg.mock_llm}
 
 

@@ -166,7 +166,7 @@ def test_study_suggested_qtype_and_recommended_job(api_client, ready, monkeypatc
     cfg = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"))
     monkeypatch.setattr(question_types, "load_config", lambda: cfg)
     monkeypatch.setattr(section_labels, "load_config", lambda: cfg)
-    question_types.refresh(path, force_mock=True)
+    question_types.refresh(path, force_mock=True, view="resolved")
     response = api_client.get(f"/api/v1/lessons/{lid}/study").json()
     assert response["suggestions"] is True
     assert response["units"][0]["suggested_qtype"] in ("quiz", "mirata")

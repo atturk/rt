@@ -117,17 +117,8 @@ def run_rewrite(
     with phase_scope(ctx, "rewrite") as scope:
         result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx)
         if result.get("status") in ("draft_validated", "unit_regenerated"):
-            from rt.services.unit_relevance import refresh
-            refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-            try:
-                from rt.services import question_types
-                question_types.refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-            except Exception:
-                import logging
-                logging.getLogger(__name__).warning("Tipi consigliati non disponibili", exc_info=True)
-                if ctx is not None:
-                    from rt.services.events import Notice
-                    ctx.emit(Notice(level="warning", message="Avviso: tipi di domanda consigliati non disponibili."))
+            from rt.services.classifier import classify_units
+            classify_units(lesson_dir, ctx=ctx, force_mock=force_mock)
         return scope.complete(result)
 
 

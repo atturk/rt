@@ -23,7 +23,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from rt.core.config import load_config
+from rt.core.config import load_config, classifier_jev, classifier_job
 from rt.core.filelock import file_lock
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
@@ -147,7 +147,7 @@ def mode(force_mock: bool = False) -> str:
     cfg = load_config()
     if force_mock or cfg.mock_llm:
         return "mock"
-    return "active" if cfg.jev.relevance_model.strip() and cfg.jev.relevance_mode != "disabled" else "disabled"
+    return "active" if classifier_jev(cfg, "section_labels").relevance_model.strip() and classifier_jev(cfg, "section_labels").relevance_mode != "disabled" else "disabled"
 
 
 def _mock_labels(section: dict) -> dict:
@@ -169,8 +169,8 @@ def _classify(lesson_dir: str, section: dict, cfg) -> dict:
                    QUESTION_NAMES["caso"]: jev_client.JevChoiceQuestion(instructions=CASO_INSTRUCTIONS,
                                                                           criteria=CASO_CRITERIA)},
         job_name="section_labels", unit_id=section["id"], lesson_dir=lesson_dir,
-        model=cfg.jev.relevance_model, credential=cfg.jev.credential, base_url=cfg.jev.base_url,
-        timeout_seconds=cfg.jev.timeout_seconds)
+        model=classifier_jev(cfg, "section_labels").relevance_model, credential=classifier_jev(cfg, "section_labels").credential, base_url=classifier_jev(cfg, "section_labels").base_url,
+        timeout_seconds=classifier_jev(cfg, "section_labels").timeout_seconds)
     out = {}
     for kind, criteria in (("esercizio", ESERCIZIO_CRITERIA), ("caso", CASO_CRITERIA)):
         answer = response.answers.get(QUESTION_NAMES[kind])
@@ -181,19 +181,25 @@ def _classify(lesson_dir: str, section: dict, cfg) -> dict:
     return out
 
 
-def refresh(lesson_dir: str, *, force_mock: bool = False, force: bool = False, progress=None) -> dict:
+def refresh(lesson_dir: str, *, force_mock: bool = False, force: bool = False, progress=None, unit_ids=None, explicit=False) -> dict:
     """Classifica le sezioni cambiate (force: tutte). Un errore lascia la sezione senza etichette
     (nessun caso né esercizio) e si riprova alla generazione successiva."""
+    if classifier_job(load_config(), "section_labels").mode == "manual" and not explicit:
+        return _load(lesson_dir)
     current = mode(force_mock)
     if current == "disabled":
         return _load(lesson_dir)
     cfg = load_config()
-    configuration = "mock" if current == "mock" else _config_hash(cfg.jev)
+    configuration = "mock" if current == "mock" else _config_hash(classifier_jev(cfg, "section_labels"))
     previous = _load(lesson_dir)
     result = {}
     for section in sections(lesson_dir):
         digest = _section_hash(lesson_dir, section)
         old = previous.get(section["id"], {})
+        if unit_ids is not None and section["id"] not in unit_ids and not any(u.unit_id in unit_ids for u in section["units"]):
+            if old:
+                result[section["id"]] = old
+            continue
         overrides = {k: old.get(k) for k in ("override_esercizio", "override_caso")} if old.get("text_hash") == digest else {}
         if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration and not old.get("error"):
             result[section["id"]] = old
@@ -232,12 +238,12 @@ def effective(row: dict, kind: str) -> Optional[str]:
     return row.get(kind)
 
 
-def labels(lesson_dir: str) -> Dict[str, dict]:
+def labels(lesson_dir: str, sections=None) -> Dict[str, dict]:
     """Etichette in vigore per le sezioni attuali (correzioni comprese); le sezioni il cui testo
     è cambiato dopo la classificazione restano senza etichette fino al prossimo refresh."""
     records = _load(lesson_dir)
     out = {}
-    for section in sections(lesson_dir):
+    for section in (globals()["sections"](lesson_dir) if sections is None else sections):
         row = records.get(section["id"], {})
         if row.get("text_hash") != _section_hash(lesson_dir, section):
             continue
@@ -245,11 +251,11 @@ def labels(lesson_dir: str) -> Dict[str, dict]:
     return out
 
 
-def view(lesson_dir: str) -> dict:
+def view(lesson_dir: str, sections=None) -> dict:
     """Per la pagina Classificatore: sezioni con etichette previste, correzioni ed errori."""
     records = _load(lesson_dir)
     rows = []
-    for section in sections(lesson_dir):
+    for section in (globals()["sections"](lesson_dir) if sections is None else sections):
         row = records.get(section["id"], {})
         fresh = row.get("text_hash") == _section_hash(lesson_dir, section)
         rows.append({"section_id": section["id"], "title": section["title"],

@@ -380,7 +380,111 @@ class EnrichmentConfig(BaseModel):
         return values
 
 
+CLASSIFIER_MODES = {
+    "relevance": ("off", "manual", "observe", "pipeline"),
+    "question_types": ("off", "manual", "pipeline"),
+    "section_labels": ("off", "manual", "pipeline"),
+    "prefilter": ("off", "manual", "observe", "pipeline"),
+    "drift": ("off", "manual", "observe", "pipeline"),
+    "enrichment": ("off", "manual", "pipeline"),
+    "images": ("off", "manual"),
+}
+
+
+class ClassifierJobConfig(BaseModel):
+    @field_validator("mode", mode="before")
+    @classmethod
+    def yaml_off(cls, value):
+        # YAML 1.1 legge la parola off come False.
+        return "off" if value is False else value
+
+    mode: Literal["off", "manual", "observe", "pipeline"] = "off"
+    model: Optional[str] = None
+    credential: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+class ClassifierJob(BaseModel):
+    mode: Literal["off", "manual", "observe", "pipeline"]
+    model: str
+    credential: str
+    base_url: Optional[str] = None
+    timeout_seconds: float
+
+
+class ClassifierConfig(BaseModel):
+    model: str = "typesafe/jev-1.13"
+    credential: str = "openrouter"
+    base_url: Optional[str] = None
+    timeout_seconds: float = Field(default=30, ge=1, le=300)
+    jobs: Dict[str, ClassifierJobConfig] = Field(default_factory=lambda: {
+        name: ClassifierJobConfig(mode=mode) for name, mode in {
+            "relevance": "observe", "question_types": "pipeline", "section_labels": "pipeline",
+            "prefilter": "off", "drift": "off", "enrichment": "manual", "images": "manual"}.items()})
+
+    @model_validator(mode="after")
+    def valid_jobs(self):
+        for name, job in self.jobs.items():
+            if name not in CLASSIFIER_MODES or job.mode not in CLASSIFIER_MODES[name]:
+                raise ValueError(f"Modalità non valida per il job {name}")
+            if job.mode != "off" and not (job.model or self.model).strip():
+                raise ValueError(f"Indica un modello per il job {name}")
+        return self
+
+
+def migrate_classifier(jev, enrichment):
+    jev = JevConfig.model_validate(jev) if isinstance(jev, dict) else jev or JevConfig()
+    enrichment = EnrichmentConfig.model_validate(enrichment) if isinstance(enrichment, dict) else enrichment or EnrichmentConfig()
+    shared = jev.relevance_model.strip() or jev.model
+    relevance = {"disabled": "off", "shadow": "observe", "active": "pipeline"}[jev.relevance_mode] if jev.relevance_model.strip() else "off"
+    prefilter = "off" if not jev.enabled else "observe" if jev.shadow else "pipeline"
+    modes = {"relevance": relevance, "question_types": "off" if relevance == "off" else "pipeline",
+             "section_labels": "off" if relevance == "off" else "pipeline", "prefilter": prefilter,
+             "drift": prefilter, "enrichment": {"disabled": "off", "manual": "manual", "automatic": "pipeline"}[enrichment.mode],
+             "images": "off" if enrichment.mode == "disabled" else "manual"}
+    jobs = {name: ClassifierJobConfig(mode=mode) for name, mode in modes.items()}
+    if jev.model != shared:
+        for name in ("prefilter", "drift"):
+            jobs[name].model = jev.model
+    if (enrichment.decision_model, enrichment.decision_credential, enrichment.decision_base_url) != (shared, jev.credential, jev.base_url):
+        for name in ("enrichment", "images"):
+            jobs[name] = ClassifierJobConfig(mode=modes[name], model=enrichment.decision_model,
+                credential=enrichment.decision_credential, base_url=enrichment.decision_base_url)
+    return ClassifierConfig(model=shared, credential=jev.credential, base_url=jev.base_url,
+                            timeout_seconds=jev.timeout_seconds, jobs=jobs)
+
+
+def classifier_job(cfg, name) -> ClassifierJob:
+    if name not in CLASSIFIER_MODES:
+        raise ValueError("Job del classificatore non valido")
+    classifier = cfg.classifier
+    job = classifier.jobs.get(name, ClassifierJobConfig())
+    return ClassifierJob(mode=job.mode, model=job.model or classifier.model,
+        credential=job.credential or classifier.credential,
+        base_url=job.base_url or classifier.base_url,
+        timeout_seconds=classifier.timeout_seconds)
+
+
+def classifier_jev(cfg, name):
+    """Adatta le sole connessioni; prompt, mappature e impronte storiche restano separati."""
+    job = classifier_job(cfg, name)
+    return cfg.jev.model_copy(update={"model": job.model, "relevance_model": job.model,
+        "credential": job.credential, "base_url": job.base_url, "timeout_seconds": job.timeout_seconds,
+        "enabled": job.mode in ("observe", "pipeline"), "shadow": job.mode == "observe",
+        "relevance_mode": "disabled" if job.mode == "off" else "active" if job.mode == "pipeline" else "shadow"})
+
+
 class RTConfig(BaseModel):
+    classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_classifier_config(cls, data):
+        if isinstance(data, dict) and "classifier" not in data:
+            data = dict(data)
+            data["classifier"] = migrate_classifier(data.get("jev"), data.get("enrichment"))
+        return data
+
     enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")

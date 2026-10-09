@@ -169,6 +169,9 @@ register_handler(TRANSCRIBE_VOICE, transcribe_voice_job)
 
 def enrichment_analyze_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.enrichment_service import analyze
+    from rt.core.config import classifier_job, load_config
+    if classifier_job(load_config(), "enrichment").mode == "off":
+        raise ValueError("Arricchimento spento")
     with ctx.activate():
         result = analyze(_lesson_dir(job), mock=bool(job.payload.get("mock")), ctx=ctx)
     return JobOutcome(state=JobState.SUCCEEDED, result=result)

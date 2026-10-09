@@ -1,7 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { expect } from '@playwright/test'
-import { test, apiGet, authHeaders, loginViaLink, serverState } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 test('revisione decisa: ricostruisce con run_phase build', async ({ page }) => {
   test.setTimeout(150_000)
@@ -54,10 +52,11 @@ test('la correzione proposta si modifica nel box e si applica col clic fuori', a
 })
 
 test('le tacche di Verifica corrispondono all’API e l’icona apre il classificatore', async ({ page }) => {
-  const config = join(dirname(serverState().lessons_root), 'work/config/general.yaml')
-  const previous = readFileSync(config, 'utf8')
+  const previous = await apiGet<Record<string, unknown>>(page.request, '/settings/classifier')
+  const jobs = previous.jobs as Record<string, Record<string, unknown>>
   try {
-  writeFileSync(config, previous.replace(/relevance_mode: \w+/, 'relevance_mode: active'))
+  const changed = await page.request.put('/api/v1/settings/classifier', { headers: authHeaders(), data: { ...previous, jobs: { ...jobs, relevance: { ...jobs.relevance, mode: 'pipeline' } } } })
+  expect(changed.ok()).toBeTruthy()
   await loginViaLink(page)
   const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=REVISIONE')
   const overview = await apiGet<{ mode: string; units: { review_included: boolean; prediction: string | null; stale: boolean }[] }>(page.request, `/lessons/${lesson.id}/relevance`)
@@ -73,7 +72,11 @@ test('le tacche di Verifica corrispondono all’API e l’icona apre il classifi
   }
   await strip.getByRole('button', { name: /Rivedi le etichette/ }).click()
   await expect(page.locator('[data-testid=lesson-panel][data-view=classificatore]')).toBeVisible()
-  } finally { writeFileSync(config, previous) }
+  } finally {
+    await page.goto('about:blank')
+    const restored = await page.request.put('/api/v1/settings/classifier', { headers: authHeaders(), data: previous })
+    expect(restored.ok()).toBeTruthy()
+  }
 })
 
 test('tutto verificato: nessuna unità mancante e la ri-verifica globale chiede conferma', async ({ page }) => {

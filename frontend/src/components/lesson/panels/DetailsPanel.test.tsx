@@ -1,3 +1,4 @@
+vi.mock('@/api/classifier', () => ({ useClassifier: () => ({ data: { pending: 2 } }) }))
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { MemoryRouter } from 'react-router'

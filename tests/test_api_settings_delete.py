@@ -79,7 +79,7 @@ def test_delete_connection_in_use_is_409_with_the_settings_that_use_it(api_clien
     assert "Studio" in [c["name"] for c in api_client.get("/api/v1/settings").json()["connections"]]
 
 
-def test_delete_connection_used_by_jev_is_409(api_client, ws):
+def test_delete_connection_used_by_classifier_is_409(api_client, ws):
     from rt.services import config_service
     from rt.services.config_service import general_config_path
     data = _general()
@@ -91,7 +91,11 @@ def test_delete_connection_used_by_jev_is_409(api_client, ws):
     res = api_client.delete("/api/v1/settings/connections/openrouter")
     assert res.status_code == 409
     assert res.json()["error"]["details"]["usages"] == ["Classificatore"]
-    data["jev"]["relevance_mode"] = "disabled"
+    from rt.core.config import RTConfig
+    classifier = RTConfig.model_validate(data).classifier
+    for job in classifier.jobs.values():
+        job.mode = "off"
+    data["classifier"] = classifier.model_dump()
     config_service.write_yaml_atomic(general_config_path(), data)
     assert api_client.delete("/api/v1/settings/connections/openrouter").status_code == 200
     assert not _general().get("credentials")

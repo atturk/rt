@@ -1,6 +1,7 @@
 import { BuildConfirmDialog } from '../BuildConfirmDialog'
-import { ChevronDown, ChevronUp, Download, MoreHorizontal, Play, RotateCcw, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, MoreHorizontal, Play, RotateCcw, Trash2, Tags, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useClassifier } from '@/api/classifier'
 import { useNavigate } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -174,6 +175,7 @@ export function DetailsPanel({
   const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? draftUnits
   const unitsFor = (phase: string) => (phase === 'review' ? draftUnits : outlineUnits)
 
+  const classifier = useClassifier(l.id)
   const jobs = useLessonJobs(l.id)
   const run = useRunJob(l.id)
   const validate = useValidatePhase(l.id)
@@ -417,6 +419,9 @@ export function DetailsPanel({
         </dd>
       </dl>
 
+      <Button variant="outline" className="h-auto w-full justify-start gap-3 py-4" onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}>
+        <Tags size={18} aria-hidden /><span className="flex flex-col items-start"><span className="text-body">Classificatore</span><span className="text-meta text-muted-foreground">{classifier.data?.pending ?? 0} unità da rivedere</span></span>
+      </Button>
       {showCostDetail && <CostPanel lesson={l} />}
 
       <hr className="border-border" />

@@ -330,7 +330,7 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.pipeline.review import _unit_hashes, load_science_issues
     from rt.pipeline.rewrite import load_draft
     from rt.core.idempotency import get_phase_checkpoint
-    from rt.services.unit_relevance import included
+    from rt.services.unit_relevance import included_ids
     draft = load_draft(lesson_dir)
     current = _unit_hashes(draft.units)
     registry = load_review_units(lesson_dir)
@@ -340,6 +340,7 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     completed = set(checkpoint.get("completed_items") or [])
     decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
     issues = load_science_issues(lesson_dir)
+    allowed = included_ids(lesson_dir, draft.units)
     rows = []
     for unit in draft.units:
         entry = registry.get(unit.unit_id) or {}
@@ -347,7 +348,7 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
                        (not i.unit_id and i.segment_id in unit.source_segment_ids)]
         digest = entry.get("text_hash") or hashes.get(unit.unit_id)
         known = bool(entry) or unit.unit_id in completed
-        if not included(lesson_dir, unit):
+        if unit.unit_id not in allowed:
             state = "excluded"
         elif known and digest and digest != current[unit.unit_id]:
             state = "changed"

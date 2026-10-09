@@ -39,7 +39,7 @@ def groups(lesson_dir: str, qtype: RecallQuestionType, sections=None, labels=Non
     """Gruppi di sezioni da mandare al recaller per il tipo speciale, nell'ordine della lezione."""
     from rt.services import section_labels
     sections = section_labels.sections(lesson_dir) if sections is None else sections
-    labels = section_labels.labels(lesson_dir) if labels is None else labels
+    labels = section_labels.labels(lesson_dir, sections=sections) if labels is None else labels
     kind = qtype.value
     out: List[list] = []
     previous_positive = False
@@ -96,13 +96,14 @@ def available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = 
     if section_labels.mode(force_mock) == "disabled":
         return False
     policy = _policy(qtype, _mock(force_mock))
-    for group in groups(lesson_dir, qtype):
+    sections = section_labels.sections(lesson_dir)
+    current = section_labels.labels(lesson_dir, sections=sections)
+    for group in groups(lesson_dir, qtype, sections=sections, labels=current):
         row = bank.generation_attempts.get(group_key(qtype, group), {})
         if not row.get("exhausted") or row.get("fingerprint") != _digest(lesson_dir, group, policy):
             return True
     # Sezioni non ancora classificate: la prossima generazione le valuta.
-    current = section_labels.labels(lesson_dir)
-    return any(s["id"] not in current for s in section_labels.sections(lesson_dir))
+    return any(s["id"] not in current for s in sections)
 
 
 def _mock_items(qtype: RecallQuestionType, group: list, existing: int) -> dict:

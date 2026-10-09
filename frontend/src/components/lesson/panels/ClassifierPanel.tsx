@@ -1,229 +1,60 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useParams } from 'react-router'
-
-import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
-import { useRelevance, useRunClassifier } from '@/api/relevance'
-import { RUN_ALL, RUN_NEW } from '@/lib/classification'
-import { JobProgress } from '@/components/JobProgress'
-import { SectionLabelsCard } from '@/components/recall/SectionLabels'
+import { useParams, Link } from 'react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronLeft, ChevronRight, RefreshCw, RotateCcw } from 'lucide-react'
+import { api, unwrap, errorMessage, type Schemas } from '@/api/client'
+import { useClassifier } from '@/api/classifier'
 import { Alert } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Chip } from '@/components/ui/chip'
-import { Select } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { buttonVariants } from '@/components/ui/button-variants'
+import { IconButton } from '@/components/ui/icon-button'
+import { Tooltip } from '@/components/ui/tooltip'
+import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/dialog'
 
-type Category = NonNullable<Schemas['UnitRelevanceOverride']['category']>
-type Unit = Schemas['UnitRelevanceItem']
-
-const labels: Record<Category, string> = {
-  didactic: 'Contenuto didattico',
-  organizational: 'Informazioni organizzative',
-  no_content: 'Assenza di contenuto didattico',
-}
-const CATEGORIES = Object.keys(labels) as Category[]
-
-function scoreOf(unit: Unit): number | null {
-  const score = (unit.answer as { score?: unknown } | null | undefined)?.score
-  return typeof score === 'number' && Number.isFinite(score) ? score : null
-}
-
-function scoreTone(score: number | null): 'neutral' | 'success' | 'warning' | 'danger' {
-  if (score == null) return 'neutral'
-  return score < 0.5 ? 'danger' : score < 1.5 ? 'warning' : 'success'
-}
-
-const formatScore = (score: number) =>
-  score.toLocaleString('it-IT', { maximumFractionDigits: 1, minimumFractionDigits: 1 })
-
-type Filter = 'all' | 'excluded' | 'check'
-
-const FILTERS: Record<Filter, { label: string; match: (u: Unit) => boolean }> = {
-  all: { label: 'Tutte', match: () => true },
-  excluded: { label: 'Non didattiche', match: (u) => u.effective !== 'didactic' },
-  check: {
-    label: 'Da controllare',
-    match: (u) => !u.override && (!!u.error || u.stale || !u.prediction || !!u.prior_override),
-  },
-}
-
-export function ClassifierPanel({ lessonId }: { lessonId?: number }) {
-  const params = useParams()
-  const id = lessonId ?? Number(params.lessonId)
-  const client = useQueryClient()
-
-  const data = useRelevance(id, Number.isFinite(id))
-
-  const run = useRunClassifier(id)
-  const [filter, setFilter] = useState<Filter>('all')
-
-  const update = useMutation({
-    mutationFn: ({ unitId, category }: { unitId: string; category: Category | null }) =>
-      unwrap(
-        api.PUT('/api/v1/lessons/{lesson_id}/relevance/{unit_id}', {
-          params: { path: { lesson_id: id, unit_id: unitId } },
-          body: { category },
-        }),
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['relevance', id] })
-      void client.invalidateQueries({ queryKey: ['lesson', id] })
-    },
-  })
-
-  if (!Number.isFinite(id)) return null
-  if (data.isPending) return <p className="text-meta text-muted-foreground">Carico le classificazioni…</p>
-  if (data.isError) return <Alert tone="danger">{errorMessage(data.error)}</Alert>
-  if (!data.data) return null
-
-  const overview = data.data
-  const disabled = overview.mode === 'disabled'
-  const s = overview.summary
-  const all = overview.units
-  const total = s?.total ?? all.length
-  const ran = !!s && (s.classified > 0 || s.errors > 0)
-  const units = all.filter(FILTERS[filter].match)
-
-  const choose = (unit: Unit, category: Category) => {
-    update.mutate({ unitId: unit.unit_id, category: category === unit.prediction ? null : category })
-  }
-
-  return (
-    <div className="flex flex-col gap-3.5 text-body" data-testid="classifier-panel">
-      {/* Scheda stato e avvio classificazione */}
-      <Card className="flex flex-col gap-2.5 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-body font-semibold">
-            {s ? `${s.classified} di ${total} unità classificate` : `${total} unità`}
-          </span>
-          <Badge tone={overview.mode === 'active' ? 'neutral' : 'warning'}>
-            {overview.mode === 'active' ? 'attivo' : overview.mode}
-          </Badge>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            disabled={disabled || run.busy}
-            title={RUN_NEW.title}
-            onClick={() => run.start.mutate(false)}
-          >
-            {ran ? 'Classifica le nuove' : 'Classifica la lezione'}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={disabled || run.busy}
-            title={RUN_ALL.title}
-            onClick={() => run.start.mutate(true)}
-          >
-            Riclassifica tutte
-          </Button>
-        </div>
-
-        {disabled && (
-          <p className="text-meta text-muted-foreground">
-            Il classificatore di rilevanza è disattivato nelle impostazioni.
-          </p>
-        )}
-        {run.start.isError && <Alert tone="danger">{errorMessage(run.start.error)}</Alert>}
-        {run.jobId && <JobProgress jobId={run.jobId} label="Etichette del classificatore" onFinished={run.finished} />}
-      </Card>
-
-      {/* Filtri */}
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtra le unità">
-        {(Object.keys(FILTERS) as Filter[]).map((key) => {
-          const count = all.filter(FILTERS[key].match).length
-          const isActive = filter === key
-          return (
-            <Chip
-              key={key}
-              size="sm"
-              active={isActive}
-              aria-pressed={isActive}
-              onClick={() => setFilter(key)}
-            >
-              {FILTERS[key].label} {count}
-            </Chip>
-          )
-        })}
-      </div>
-
-      {/* Elenco unità */}
-      <ul className="flex flex-col gap-1.5" aria-label="Unità della lezione">
-        {units.map((unit) => {
-          const score = scoreOf(unit)
-          const isNonDidactic = unit.effective !== 'didactic'
-          return (
-            <li
-              key={unit.unit_id}
-              className={cn(
-                'flex flex-col gap-1.5 rounded-lg border p-2.5 transition-colors',
-                isNonDidactic ? 'bg-muted/70' : 'bg-card',
-              )}
-              data-testid="relevance-unit"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate text-body font-medium">
-                  <span className="mr-1.5 font-mono text-meta text-muted-foreground">{unit.unit_id}</span>
-                  {unit.title}
-                </span>
-                <Badge tone={scoreTone(score)} title={score != null ? `Score ${formatScore(score)} su 2` : 'Score'}>
-                  {score != null ? formatScore(score) : '—'}
-                </Badge>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  className="h-7 w-auto py-0 text-meta"
-                  aria-label={`Etichetta di ${unit.unit_id}`}
-                  value={unit.effective}
-                  disabled={update.isPending}
-                  onChange={(e) => choose(unit, e.target.value as Category)}
-                >
-                  {CATEGORIES.map((val) => (
-                    <option key={val} value={val}>
-                      {labels[val]}
-                    </option>
-                  ))}
-                </Select>
-
-                {unit.override ? (
-                  <span className="text-meta text-muted-foreground">
-                    corretta da te ·{' '}
-                    <button
-                      type="button"
-                      className="text-meta text-link hover:underline"
-                      disabled={update.isPending}
-                      onClick={() => update.mutate({ unitId: unit.unit_id, category: null })}
-                    >
-                      ripristina
-                    </button>
-                  </span>
-                ) : unit.stale ? (
-                  <span className="text-meta text-warning">da rivalutare</span>
-                ) : unit.error ? (
-                  <span className="text-meta text-danger">errore</span>
-                ) : !unit.prediction ? (
-                  <span className="text-meta text-warning">da classificare</span>
-                ) : null}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-
-      {units.length === 0 && <p className="text-meta text-muted-foreground">Nessuna unità in questa vista.</p>}
-
-      {update.isError && <Alert tone="danger">{errorMessage(update.error)}</Alert>}
-
-      <hr className="border-border" />
-
-      {/* Sezioni da cui nascono casi ed esercizi */}
-      <SectionLabelsCard lessonId={id} />
+type Cell = Schemas['ClassifierCell']
+const names: Record<string,string> = {relevance:'Rilevanza',question_types:'Tipo di domanda',exercises:'Esercizi',cases:'Casi clinici',prefilter:'Prefiltro errori',drift:'Deriva dal trascritto',enrichment:'Arricchimento'}
+const values: Record<string,string> = {didactic:'Didattica',organizational:'Organizzativa',no_content:'Senza contenuto',quiz:'Quiz',mirata:'Mirata',caso:'Caso clinico',esercizio:'Esercizio',nessuno:'Nessuno',svolto:'Svolto',continua:'Continua il precedente',esplicito:'Esplicito',adattabile:'Si presta',skip_review:'Corretta, salta la revisione',review:'Da rivedere',drift:'Possibile invenzione',coherent:'Coerente',none:'Nessuno',infographic:'Infografica',visualization:'Visualizzazione'}
+const states: Record<string,string> = {done:'Fatto',partial:'Parziale',stale:'Da rifare',never:'Mai',off:'Spento',fresh:'Fatto',missing:'Da classificare',error:'Errore',skipped:'Saltata'}
+export function ClassifierPanel({ lessonId }: {lessonId?:number}) {
+ const params=useParams()
+ const id=lessonId??Number(params.lessonId)
+ const query=useClassifier(id)
+ const client=useQueryClient()
+ const [hover,setHover]=useState<string|null>(null)
+ const [selection,setSelection]=useState<{job:string;index:number}|null>(null)
+ const [confirm,setConfirm]=useState<{job?:string}|null>(null)
+ const invalidate=()=> {void client.invalidateQueries({queryKey:['classifier',id]});void client.invalidateQueries({queryKey:['relevance',id]});void client.invalidateQueries({queryKey:['lesson',id]});void client.invalidateQueries({queryKey:['recall-units',id]})}
+ const run=useMutation({mutationFn:({job,force=false,unit_ids}:{job?:string;force?:boolean;unit_ids?:string[]})=>job?unwrap(api.POST('/api/v1/lessons/{lesson_id}/classifier/{job}/run',{params:{path:{lesson_id:id,job}},body:{force,unit_ids}})):unwrap(api.POST('/api/v1/lessons/{lesson_id}/classifier/run',{params:{path:{lesson_id:id}},body:{force,unit_ids}})),onSuccess:invalidate})
+ const update=useMutation({mutationFn:({job,cell,value}:{job:string;cell:Cell;value:string|null})=>unwrap(api.PUT('/api/v1/lessons/{lesson_id}/classifier/{job}/{cell_id}',{params:{path:{lesson_id:id,job,cell_id:cell.unit_id??cell.section_id??''}},body:{value}})),onSuccess:saved=>{client.setQueryData(['classifier',id],saved);invalidate()}})
+ if(query.isPending)return <p className="text-meta text-muted-foreground">Carico le classificazioni…</p>
+ if(query.isError)return <Alert tone="danger">{errorMessage(query.error)}</Alert>
+ const data=query.data
+ if(!data)return null
+ const selected=selection?data.jobs[selection.job]?.cells[selection.index]:null
+ const ids=(cell:Cell)=>cell.unit_id?[cell.unit_id]:data.units.filter(u=>u.section_id===cell.section_id).map(u=>u.id)
+ const title=(cell:Cell)=>{const unit=data.units.find(u=>u.id===ids(cell)[0]);return `${cell.unit_id??cell.section_id} · ${unit?.title??''}`}
+ const value=(cell:Cell)=>cell.value?values[cell.value]??cell.value:states[cell.state]
+ const actions=(job?:string)=><div className="flex"><IconButton icon={RefreshCw} label={job?`Classifica le cambiate: ${names[job]}`:'Classifica le cambiate'} unavailable={run.isPending?'Job in coda':null} onClick={()=>run.mutate({job})}/><IconButton icon={RotateCcw} label={job?`Riclassifica tutte: ${names[job]}`:'Riclassifica tutte'} unavailable={run.isPending?'Job in coda':null} onClick={()=>setConfirm({job})}/></div>
+ return <div className="flex flex-col gap-4" data-testid="classifier-panel">
+   <div className="flex items-center justify-between gap-2"><p className="text-meta">{data.pending} unità da rivedere</p>{actions()}</div>
+   {(run.isError||update.isError)&&<Alert tone="danger">{errorMessage(run.error??update.error)}</Alert>}
+   {run.isSuccess&&<p role="status" className="text-meta">Classificazione in coda.</p>}
+   <div className="rt-cls-grid-scroll">
+   {Object.entries(names).map(([job,name])=>{const block=data.jobs[job];if(!block||block.mode==='off')return null;return <section key={job} className="mb-4" data-testid={`classifier-job-${job}`}>
+    <div className="flex items-center gap-2"><h3 className="min-w-0 flex-1 text-body font-semibold">{name}</h3><span className="text-meta text-muted-foreground">{states[block.state]}{block.mode==='observe'?' · In osservazione':block.mode==='manual'?' · Manuale':''}</span>{actions(job)}</div>
+    <div className="rt-cls-grid" style={{gridTemplateColumns:`repeat(${Math.max(1,data.units.length)}, minmax(18px, 1fr))`}}>
+     {block.cells.map((cell,index)=>{const cellIds=ids(cell);const column=data.units.findIndex(u=>u.id===cellIds[0])+1;const label=`${name} · ${title(cell)} · ${value(cell)}`;return <Tooltip key={cell.unit_id??cell.section_id} content={label}>{trigger=><button {...trigger} aria-label={label} data-testid={`classifier-cell-${job}-${cell.unit_id??cell.section_id}`} data-state={cell.state} data-manual={cell.source==='manual'} data-value={cell.value??''} className={`rt-cls-cell ${hover&&cellIds.includes(hover)?'rt-cls-hover':''}`} style={{gridColumn:`${column} / span ${Math.max(1,cellIds.length)}`}} onMouseEnter={()=>{trigger.onMouseEnter();setHover(cellIds[0]??null)}} onMouseLeave={()=>{trigger.onMouseLeave();setHover(null)}} onFocus={()=>{trigger.onFocus();setHover(cellIds[0]??null)}} onBlur={()=>{trigger.onBlur();setHover(null)}} onClick={()=>setSelection({job,index})}>{cell.source==='manual'&&<span className="rt-cls-manual" aria-label="Corretta a mano"/>}<span className="sr-only">{value(cell)}</span></button>}</Tooltip>})}
     </div>
-  )
+   </section>})}
+   </div>
+   <Modal open={!!selected} onClose={()=>setSelection(null)} title={selected&&selection?`${names[selection.job]} · ${title(selected)}`:''} className="rt-cls-sheet" testId="classifier-sheet">
+    {selected&&selection&&<div className="flex flex-col gap-3 pt-3"><p className="text-meta">{value(selected)} · {states[selected.state]}</p><div className="flex flex-wrap gap-2">{(selected.options ?? []).map(option=><Button key={option} variant={selected.value===option?'default':'outline'} disabled={update.isPending} onClick={()=>update.mutate({job:selection.job,cell:selected,value:option})}>{values[option]??option}</Button>)}</div>
+    {!!selected.options?.length&&<Button variant="ghost" disabled={update.isPending} onClick={()=>update.mutate({job:selection.job,cell:selected,value:null})}>Torna al classificatore</Button>}
+    <Button variant="outline" onClick={()=>run.mutate({job:selection.job,force:true,unit_ids:ids(selected)})}>Riclassifica questa</Button>
+    <Link className={buttonVariants({ variant: "outline" })} to={`/lezioni/${id}#unit-${ids(selected)[0]}`} onClick={()=>setSelection(null)}>Vai all’unità</Link>
+    <div className="flex justify-between"><IconButton icon={ChevronLeft} label="Subunità precedente" unavailable={selection.index===0?'Prima subunità':null} onClick={()=>setSelection({...selection,index:selection.index-1})}/><IconButton icon={ChevronRight} label="Subunità successiva" unavailable={selection.index===data.jobs[selection.job].cells.length-1?'Ultima subunità':null} onClick={()=>setSelection({...selection,index:selection.index+1})}/></div></div>}
+   </Modal>
+   <ConfirmDialog open={confirm!==null} title="Riclassifica tutte" confirmLabel="Riclassifica" onCancel={()=>setConfirm(null)} onConfirm={()=>{run.mutate({job:confirm?.job,force:true});setConfirm(null)}}>Riclassificare tutte le unità{confirm?.job?` per ${names[confirm.job]}`:''}?</ConfirmDialog>
+ </div>
 }

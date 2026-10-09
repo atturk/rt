@@ -7,11 +7,12 @@ import hashlib
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from rt.core.config import EnrichmentConfig, load_config
+from rt.core.config import EnrichmentConfig, load_config, classifier_job
 from rt.core.lesson_paths import lesson_path
 from rt.llm.cancel import raise_if_cancelled
 from rt.storage import fs
@@ -61,6 +62,7 @@ class EnrichmentState(BaseModel):
     schema_version: int = 1
     cap: Cap = Field(default_factory=Cap)
     assessments: dict = Field(default_factory=dict)
+    assessment_metadata: dict = Field(default_factory=dict)
     elements: list[Element] = Field(default_factory=list)
 
 
@@ -149,11 +151,13 @@ def set_cap(lesson_dir, cap):
 
 def decision(state, questions, *, lesson_dir, job_name, unit_id=None):
     from rt.llm.jev_client import call_jev
-    cfg = load_config().enrichment
+    cfg = classifier_job(load_config(), "images" if job_name == "image_unit_judge" else "enrichment")
+    if cfg.mode == "off":
+        raise ValueError("Job del classificatore spento")
     # No silent trimming: the Decision API is responsible for the model's context limit.
     raise_if_cancelled()
-    response = call_jev(state, questions, model=cfg.decision_model, credential=cfg.decision_credential,
-                    base_url=cfg.decision_base_url, timeout_seconds=cfg.decision_timeout,
+    response = call_jev(state, questions, model=cfg.model, credential=cfg.credential,
+                    base_url=cfg.base_url, timeout_seconds=cfg.timeout_seconds,
                     lesson_dir=lesson_dir, job_name=job_name, unit_id=unit_id)
     raise_if_cancelled()
     return response
@@ -173,64 +177,84 @@ Usa grafici per numeri, matrici per algebra, diagrammi per processi, anatomia/sc
 """
 
 
-def analyze(lesson_dir, *, mock=False, ctx=None):
+def analysis_policy(cfg, mock=False):
+    return digest([classifier_job(cfg, "enrichment").model_dump(), UTILITY, WRITER_SYSTEM,
+                   cfg.jobs["enrichment_writer"].model_dump() if "enrichment_writer" in cfg.jobs else {},
+                   cfg.enrichment.utility_threshold, mock])
+
+
+def analyze(lesson_dir, *, mock=False, ctx=None, force=False, unit_ids=None):
     from rt.llm.jev_client import JevNoulQuestion, JevNoulAnswer
     from rt.llm.client import LLMClient
     cfg = load_config().enrichment
     rows = units(lesson_dir)
-    policy = digest([cfg.decision_model, UTILITY, WRITER_SYSTEM,
-                     (load_config().jobs["enrichment_writer"].model_dump() if "enrichment_writer" in load_config().jobs else {}), cfg.utility_threshold, mock])
+    from types import SimpleNamespace
+    from rt.services.unit_relevance import included_ids, _path
+    relevance_view = "resolved" if fs.isfile(_path(lesson_dir, "resolved")) else "draft"
+    allowed = included_ids(lesson_dir, [SimpleNamespace(unit_id=u["id"], title=u["title"], content=u["content"]) for u in rows], view=relevance_view)
+    rows = [u for u in rows if u["id"] in allowed]
+    policy = analysis_policy(load_config(), mock)
     for index, unit in enumerate(rows):
         raise_if_cancelled()
+        if unit_ids is not None and unit["id"] not in unit_ids:
+            continue
         if ctx:
             ctx.progress("enrichment", index, len(rows), f"Analisi {unit['id']}")
         key = digest([source_hash(unit), policy])
-        if load(lesson_dir).assessments.get(unit["id"]) == key:
+        if not force and load(lesson_dir).assessments.get(unit["id"]) == key:
             continue
-        text = f"Subunità {unit['id']}: {unit['title']}\n\n{unit['content']}"
-        if mock:
-            utilities = {"visualization": 0.92, "infographic": 0.1}
-        else:
-            reply = decision(text, {kind: JevNoulQuestion(instructions=instruction +
-                " Valuta solo il beneficio didattico concreto. Rispondi no per prosa organizzativa, ripetizioni, dati mancanti o beneficio marginale. Entrambi i tipi possono essere utili, o nessuno.")
-                for kind, instruction in UTILITY.items()}, lesson_dir=lesson_dir,
-                job_name="enrichment_decision", unit_id=unit["id"])
-            if any(not isinstance(reply.answers.get(k), JevNoulAnswer) for k in UTILITY):
-                raise ValueError("Risposta di utilità incompleta")
-            utilities = {k: reply.answers[k].noul for k in UTILITY}
-        ideas = []
-        old = load(lesson_dir)
-        for kind, score in utilities.items():
-            previous = next((e for e in old.elements if e.unit_id == unit["id"] and e.kind == kind and not e.manual), None)
-            if score < cfg.utility_threshold or previous and (previous.edited or previous.status in
-                    ("dismissed", "ready", "queued", "generating", "error", "deleted")):
-                continue
-            prepared = (IdeaText(title=f"Esplora {unit['title']}"[:120], description="Rappresentazione dei concetti dell'unità.",
-                                prompt=f"Rappresenta fedelmente i concetti di {unit['title']}.", mode="interactive")
-                        if mock else LLMClient().call_structured(prompt=f"Tipo: {kind}\n{text}",
-                                system_prompt=WRITER_SYSTEM, response_model=IdeaText,
-                                job_name="enrichment_writer", unit_id=unit["id"], lesson_dir=lesson_dir))
-            if kind == "infographic":
-                prepared.mode = "static"
-            ideas.append(Element(**prepared.model_dump(), id=previous.id if previous else uuid.uuid4().hex,
-                                 unit_id=unit["id"], kind=kind, source_hash=source_hash(unit), utility=score))
-        with lesson_lock(lesson_dir):
-            state = load(lesson_dir)
-            # Re-read to preserve dismissals/edits performed while the model was working.
-            for candidate in ideas:
-                previous = next((e for e in state.elements if e.id == candidate.id), None)
-                if previous and (previous.edited or previous.status not in ("suggestion", "suppressed")):
+        try:
+            text = f"Subunità {unit['id']}: {unit['title']}\n\n{unit['content']}"
+            if mock:
+                utilities = {"visualization": 0.92, "infographic": 0.1}
+            else:
+                reply = decision(text, {kind: JevNoulQuestion(instructions=instruction +
+                    " Valuta solo il beneficio didattico concreto. Rispondi no per prosa organizzativa, ripetizioni, dati mancanti o beneficio marginale. Entrambi i tipi possono essere utili, o nessuno.")
+                    for kind, instruction in UTILITY.items()}, lesson_dir=lesson_dir,
+                    job_name="enrichment_decision", unit_id=unit["id"])
+                if any(not isinstance(reply.answers.get(k), JevNoulAnswer) for k in UTILITY):
+                    raise ValueError("Risposta di utilità incompleta")
+                utilities = {k: reply.answers[k].noul for k in UTILITY}
+            ideas = []
+            old = load(lesson_dir)
+            for kind, score in utilities.items():
+                previous = next((e for e in old.elements if e.unit_id == unit["id"] and e.kind == kind and not e.manual), None)
+                if score < cfg.utility_threshold or previous and (previous.edited or previous.status in
+                        ("dismissed", "ready", "queued", "generating", "error", "deleted")):
                     continue
-                state.elements = [e for e in state.elements if e.id != candidate.id]
-                state.elements.append(candidate)
-            for e in state.elements:
-                if e.unit_id == unit["id"]:
-                    e.stale = e.source_hash != source_hash(unit)
-                    if e.kind in utilities and not e.edited and not e.manual:
-                        e.utility = utilities[e.kind]
-            state.assessments[unit["id"]] = key
-            _rank(state, cfg, len(rows))
-            save(lesson_dir, state)
+                prepared = (IdeaText(title=f"Esplora {unit['title']}"[:120], description="Rappresentazione dei concetti dell'unità.",
+                                    prompt=f"Rappresenta fedelmente i concetti di {unit['title']}.", mode="interactive")
+                            if mock else LLMClient().call_structured(prompt=f"Tipo: {kind}\n{text}",
+                                    system_prompt=WRITER_SYSTEM, response_model=IdeaText,
+                                    job_name="enrichment_writer", unit_id=unit["id"], lesson_dir=lesson_dir))
+                if kind == "infographic":
+                    prepared.mode = "static"
+                ideas.append(Element(**prepared.model_dump(), id=previous.id if previous else uuid.uuid4().hex,
+                                     unit_id=unit["id"], kind=kind, source_hash=source_hash(unit), utility=score))
+            with lesson_lock(lesson_dir):
+                state = load(lesson_dir)
+                # Re-read to preserve dismissals/edits performed while the model was working.
+                for candidate in ideas:
+                    previous = next((e for e in state.elements if e.id == candidate.id), None)
+                    if previous and (previous.edited or previous.status not in ("suggestion", "suppressed")):
+                        continue
+                    state.elements = [e for e in state.elements if e.id != candidate.id]
+                    state.elements.append(candidate)
+                for e in state.elements:
+                    if e.unit_id == unit["id"]:
+                        e.stale = e.source_hash != source_hash(unit)
+                        if e.kind in utilities and not e.edited and not e.manual:
+                            e.utility = utilities[e.kind]
+                state.assessment_metadata[unit["id"]] = {"at": datetime.now(timezone.utc).isoformat(), "error": None, "key": key, "utilities": utilities}
+                state.assessments[unit["id"]] = key
+                _rank(state, cfg, len(rows))
+                save(lesson_dir, state)
+        except Exception as exc:
+            with lesson_lock(lesson_dir):
+                state = load(lesson_dir)
+                state.assessment_metadata[unit["id"]] = {"at": datetime.now(timezone.utc).isoformat(), "error": str(exc), "key": key}
+                save(lesson_dir, state)
+            raise
     if ctx:
         ctx.progress("enrichment", len(rows), len(rows), "Suggerimenti pronti")
     return {"suggestions": sum(e.status == "suggestion" for e in view(lesson_dir)["elements"])}

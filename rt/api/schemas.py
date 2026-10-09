@@ -772,3 +772,42 @@ class ReviewUnit(BaseModel):
     model: Optional[str] = None
     issues_total: int = 0
     issues_pending: int = 0
+
+
+class ClassifierUnit(BaseModel):
+    id: str
+    title: str
+    section_id: str
+
+
+class ClassifierCell(BaseModel):
+    unit_id: Optional[str] = None
+    section_id: Optional[str] = None
+    value: Optional[str] = None
+    source: Literal["classifier", "manual"] = "classifier"
+    state: Literal["fresh", "stale", "missing", "error", "skipped"]
+    confidence: Optional[float] = None
+    options: List[str] = Field(default_factory=list)
+
+
+class ClassifierJobView(BaseModel):
+    mode: Literal["off", "manual", "observe", "pipeline"]
+    state: Literal["done", "partial", "stale", "never", "off"]
+    last_run_at: Optional[str] = None
+    errors: int = 0
+    cells: List[ClassifierCell]
+
+
+class ClassifierOverview(BaseModel):
+    units: List[ClassifierUnit]
+    jobs: Dict[str, ClassifierJobView]
+    pending: int = 0
+
+
+class ClassifierCorrection(BaseModel):
+    value: Optional[str] = None
+
+
+class ClassifierRun(BaseModel):
+    force: bool = False
+    unit_ids: Optional[List[str]] = None
