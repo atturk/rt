@@ -4841,7 +4841,7 @@ export interface components {
         PhaseWarning: {
             /**
              * Code
-             * @description review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | check_failed
+             * @description review_missing | review_stale | review_partial | review_invalid | pending_issues | orphan_issues | decision_not_applied | check_failed
              */
             code: string;
             /**

@@ -76,7 +76,7 @@ class LessonSummary(BaseModel):
 
 class PhaseWarning(BaseModel):
     code: str = Field(description="review_missing | review_stale | review_partial | review_invalid | "
-                                  "pending_issues | orphan_issues | check_failed")
+                                  "pending_issues | orphan_issues | decision_not_applied | check_failed")
     message: str = Field(description="Testo per l'utente (italiano)")
     count: Optional[int] = Field(None, description="Numero di issue, se l'avviso le conta")
 

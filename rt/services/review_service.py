@@ -295,6 +295,23 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
         warnings.append({"code": "review_invalid", "count": None,
                          "message": f"Issue della revisione non leggibili: {exc}."})
         return warnings
+    resolved = load_resolved_draft(lesson_dir)
+    latest = {d.issue_id: d for d in load_ledger(lesson_dir).decisions}
+    not_applied = []
+    for issue in load_science_issues(lesson_dir):
+        decision = latest.get(issue.id)
+        if not decision or decision.decision not in {"accepted", "edited"}:
+            continue
+        text = sanitize_suggested_fix(decision.resolved_text) if decision.decision == "accepted" else decision.resolved_text
+        content = resolved_unit_content(lesson_dir, issue, resolved)
+        if not text or content is None or text not in content:
+            # Accettare un avviso di paragrafo conferma il testo corrente.
+            if _is_no_diff_issue_type(issue) and decision.decision == "accepted" and content is not None:
+                continue
+            not_applied.append(issue.id)
+    if not_applied:
+        warnings.append({"code": "decision_not_applied", "count": len(not_applied),
+                         "message": f"{len(not_applied)} decisioni non applicate al testo del documento."})
     if pending:
         n = len(pending)
         warnings.append({"code": "pending_issues", "count": n,

@@ -100,3 +100,26 @@ def test_manual_change_is_skipped_but_later_pipeline_rewrite_is_reviewed(reviewe
     calls.clear()
     review.run_review(lesson, force_mock=True)
     assert calls == ['1.1']
+
+
+@pytest.mark.parametrize('manual', [False, True])
+def test_skipped_review_state_comes_from_ledger(reviewed, manual):
+    from tests.test_document_edit import _preview
+    from rt.services.document_edit_service import save_document_edit
+    from rt.core.state import WorkflowState
+    lesson, _ = reviewed
+    decide_all(lesson)
+    if manual:
+        save_document_edit(lesson, _preview(lesson).replace("Testo dell'unità 1.1.", 'Testo corretto a mano.'))
+    result = review.run_review(lesson, force_mock=True)
+    assert result['action'] == 'SKIP'
+    assert result['next_state'] == WorkflowState.READY_TO_BUILD.value
+
+
+def test_legacy_decision_not_applied_has_a_build_warning(reviewed):
+    from rt.services.review_service import build_warnings
+    lesson, _ = reviewed
+    first = review.load_science_issues(lesson)[0]
+    record_decision(lesson, first.id, 'accepted', 'Precisare che il contenuto va corretto')
+    warnings = build_warnings(lesson)
+    assert any(w['code'] == 'decision_not_applied' and w['count'] == 1 for w in warnings)

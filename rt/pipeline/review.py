@@ -588,7 +588,9 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     registry = load_review_units(lesson_dir)
     if phase_status == PhaseStatus.VALID and not force and not any(e.get("result") == "failed" for e in registry.values()):
         all_science_issues = load_science_issues(lesson_dir)
-        pending_sci = [s for s in all_science_issues if s.status == "pending"]
+        from rt.pipeline.ledger import load_ledger
+        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
+        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
         next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci else WorkflowState.READY_TO_BUILD.value
         return {
             "status": "review_completed",
@@ -637,7 +639,9 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if ctx is not None:
             ctx.emit(Notice(level="info", message="Revisione già fatta: il testo è cambiato solo nelle unità "
                                                   "corrette a mano, issue e decisioni restano."))
-        pending_sci = [s for s in all_science_issues if s.status == "pending"]
+        from rt.pipeline.ledger import load_ledger
+        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
+        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
         return {
             "status": "review_completed", "action": "SKIP", "skipped": True,
             "reason": "testo modificato solo a mano dopo la revisione",
@@ -769,7 +773,9 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if (force or phase_status == PhaseStatus.STALE) and (old_sci_hash is None or old_sci_hash != sci_hash):
             mark_downstream_stale(lesson_dir, "review")
 
-        pending_sci = [s for s in all_science_issues if s.status == "pending"]
+        from rt.pipeline.ledger import load_ledger
+        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
+        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
         
         allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL))
         if pending_sci:
