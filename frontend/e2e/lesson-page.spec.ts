@@ -197,4 +197,15 @@ test('4.2.3.1: il pannello laterale sta sopra la barra dell’editor', async ({ 
   expect(bar.x + bar.width).toBeGreaterThan(panel.x + 10)
   const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-testid=lesson-panel]'), [panel.x + 10, bar.y + bar.height / 2])
   expect(onTop).toBe(true)
+  // Col testo scorso sotto la barra, la barra resta sopra il testo (gutter compresa).
+  await page.getByTestId('lesson-document').evaluate((doc: HTMLElement) => { doc.style.paddingBottom = '2000px' })
+  await page.evaluate(() => window.scrollTo(0, 400))
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  const now = (await toolbar.boundingBox())!
+  const covered = await page.evaluate(([x0, x1, y]) => {
+    const out: string[] = []
+    for (let x = x0 + 2; x < x1; x += 20) if (!document.elementFromPoint(x, y)?.closest('[role=toolbar], [data-testid=lesson-panel]')) out.push(String(x))
+    return out
+  }, [now.x, now.x + now.width, now.y + now.height / 2])
+  expect(covered).toEqual([])
 })
