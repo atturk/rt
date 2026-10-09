@@ -612,6 +612,15 @@ def test_parse_version_orders_hotfix_fourth_digit():
     assert parse_version("4.2.3.1.1") is None
 
 
+def test_parse_version_orders_hotfix_betas():
+    """Beta di un fix urgente: 4.2.3.2b1 viene dopo 4.2.3.1 e prima di 4.2.3.2 e della 4.2.4b1."""
+    order = ["4.2.3", "4.2.3.1", "4.2.3.2a1", "4.2.3.2b1", "4.2.3.2b2", "4.2.3.2rc1", "4.2.3.2",
+             "4.2.4b1", "4.2.4"]
+    assert sorted(reversed(order), key=parse_version) == order
+    assert parse_version("v4.2.3.2b1") == parse_version("4.2.3.2-beta.1")
+    assert is_prerelease("4.2.3.2b1") and not is_prerelease("4.2.3.2")
+
+
 def test_beta_channel_sees_hotfix_releases():
     releases = [{"tag_name": "v4.2.3b1", "prerelease": True, "draft": False},
                 {"tag_name": "v4.2.3b1.1", "prerelease": True, "draft": False},

@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
+import { placeTooltip, type TooltipSide } from '@/lib/tooltipPlacement'
 import { cn } from '@/lib/utils'
 
 // Un solo suggerimento aperto; il gruppo resta caldo per 300 ms dopo la chiusura.
@@ -9,7 +10,7 @@ let lastClosed: number | null = null
 
 const canHover = () => !window.matchMedia?.('(hover: none)').matches
 
-type Side = 'top' | 'right' | 'bottom'
+type Side = TooltipSide
 
 export type TooltipTriggerProps = {
   ref: React.RefCallback<HTMLElement>
@@ -43,7 +44,9 @@ export function Tooltip({
 }) {
   const id = React.useId()
   const [open, setOpen] = React.useState(false)
+  const [anchor, setAnchor] = React.useState<DOMRect | null>(null)
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null)
+  const bubble = React.useRef<HTMLDivElement>(null)
   const [trigger, setTrigger] = React.useState<HTMLElement | null>(null)
 
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -63,13 +66,10 @@ export function Tooltip({
     if (!trigger || disabled || suppressed.current || !canHover()) return
     if (activeTooltip !== hide) activeTooltip?.()
     activeTooltip = hide
-    const r = trigger.getBoundingClientRect()
-    const gap = 8
-    if (side === 'right') setPos({ top: r.top + r.height / 2, left: r.right + gap })
-    else if (side === 'bottom') setPos({ top: r.bottom + gap, left: r.left + r.width / 2 })
-    else setPos({ top: r.top - gap, left: r.left + r.width / 2 })
+    setAnchor(trigger.getBoundingClientRect())
+    setPos(null)
     setOpen(true)
-  }, [side, trigger, disabled, hide])
+  }, [trigger, disabled, hide])
   const hover = React.useCallback(() => {
     suppressed.current = false
     if (!canHover() || disabled) return
@@ -80,7 +80,14 @@ export function Tooltip({
 
   const focus = React.useCallback(() => { if (trigger?.matches(':focus-visible')) show() }, [trigger, show])
   const pointerDown = React.useCallback(() => { suppressed.current = true; hide() }, [hide])
-  const visible = open && !disabled && pos !== null
+  // Misura la bolla prima di disegnarla: se dal lato scelto esce dalla finestra passa al lato
+  // opposto, e resta comunque dentro la finestra (4.2.3.1: gomma ed evidenziatore in cima).
+  React.useLayoutEffect(() => {
+    if (!open || !anchor || !bubble.current) return
+    const { offsetWidth: w, offsetHeight: h } = bubble.current
+    setPos(placeTooltip(anchor, { width: w, height: h }, side, { width: window.innerWidth, height: window.innerHeight }))
+  }, [open, anchor, side, content])
+  const visible = open && !disabled && anchor !== null
   const props: TooltipTriggerProps = {
     ref: setTrigger,
     'aria-describedby': describe && !disabled ? id : undefined,
@@ -97,8 +104,6 @@ export function Tooltip({
       }
     },
   }
-  const transform =
-    side === 'right' ? 'translateY(-50%)' : side === 'bottom' ? 'translateX(-50%)' : 'translate(-50%, -100%)'
   return (
     <>
       {/* oxlint-disable-next-line react/refs -- Il render-prop passa i gestori al trigger; i ref si leggono solo negli eventi. */}
@@ -106,10 +111,11 @@ export function Tooltip({
       {/* Sempre nel DOM per aria-describedby; visibile solo quando aperto. */}
       {createPortal(
         <div
+          ref={bubble}
           id={id}
           role="tooltip"
           hidden={!visible}
-          style={pos ? { top: pos.top, left: pos.left, transform } : undefined}
+          style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: 'hidden' }}
           className={cn(
             'pointer-events-none fixed z-[60] max-w-72 rounded-md bg-foreground px-2 py-1 text-xs leading-snug text-background shadow-lg',
           )}
@@ -122,3 +128,4 @@ export function Tooltip({
     </>
   )
 }
+

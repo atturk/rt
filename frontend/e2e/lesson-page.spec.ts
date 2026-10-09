@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, openLessonDetails } from './support'
 
 // Pagina della lezione del design 4.2 (schermate 02 e 02b): barra audio con la velocità a valori
 // fissi e menu contestuale del documento (Copia, Leggi da qui, Genera, Domande, Verifica).
@@ -183,4 +183,29 @@ test('formule: il LaTeX si vede reso nell’editor e torna in chiaro con il curs
   // Il clic sulla formula porta il cursore dentro: tornano i delimitatori, come in Obsidian.
   await formulas.first().click()
   await expect(editor).toContainText('$E = mc^2$')
+})
+
+test('4.2.3.1: il pannello laterale sta sopra la barra dell’editor', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 700 })
+  await loginViaLink(page)
+  await page.goto(`/lezioni/${await lessonId(page, 'BIOCHIMICA')}`)
+  const toolbar = page.getByRole('toolbar', { name: 'Strumenti dell’editor' })
+  await expect(toolbar).toBeVisible()
+  await openLessonDetails(page)
+  const panel = (await page.getByTestId('lesson-panel').boundingBox())!
+  const bar = (await toolbar.boundingBox())!
+  expect(bar.x + bar.width).toBeGreaterThan(panel.x + 10)
+  const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-testid=lesson-panel]'), [panel.x + 10, bar.y + bar.height / 2])
+  expect(onTop).toBe(true)
+  // Col testo scorso sotto la barra, la barra resta sopra il testo (gutter compresa).
+  await page.getByTestId('lesson-document').evaluate((doc: HTMLElement) => { doc.style.paddingBottom = '2000px' })
+  await page.evaluate(() => window.scrollTo(0, 400))
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  const now = (await toolbar.boundingBox())!
+  const covered = await page.evaluate(([x0, x1, y]) => {
+    const out: string[] = []
+    for (let x = x0 + 2; x < x1; x += 20) if (!document.elementFromPoint(x, y)?.closest('[role=toolbar], [data-testid=lesson-panel]')) out.push(String(x))
+    return out
+  }, [now.x, now.x + now.width, now.y + now.height / 2])
+  expect(covered).toEqual([])
 })
