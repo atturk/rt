@@ -24,7 +24,8 @@ def test_review_restarted_from_scratch_drops_old_decisions(tmp_path):
     record_decision(lesson_dir, "custom_000001", "accepted", resolved_text="x")
 
     draft = load_draft(lesson_dir)
-    draft.units[0].content += "\n\nFrase aggiunta dopo la revisione."
+    # Tutti i claim sono cambiati: nessuna decisione deve passare a issue diverse.
+    draft.units[0].content = "Nuova versione: proteine fibrose resistenti."
     save_draft(draft, lesson_dir)
     assert check_phase_status(lesson_dir, "review")[0].name in ("STALE", "INVALID")
 

@@ -60,3 +60,5 @@ def test_rereviewing_a_unit_keeps_decisions_on_issues_found_again(tmp_path):
     assert found_again.id in {decision.issue_id for decision in load_ledger(lesson).decisions}
     assert result["orphaned_decisions"] == [vanished.id]
 
+
+    assert vanished.id not in {decision.issue_id for decision in load_ledger(lesson).decisions}

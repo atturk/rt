@@ -406,6 +406,40 @@ def _issue_key(issue) -> tuple:
     return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
 
 
+def reconcile_unit_issues(lesson_dir: str, prior: List[ScienceIssue], generated: List[ScienceIssue],
+                          units, replaced_units: set) -> tuple:
+    """Ritrova le issue per identità, assegna id nuovi e rimuove solo le decisioni sparite."""
+    from rt.pipeline.ledger import load_ledger, revert_last_decision
+    ledger = load_ledger(lesson_dir)
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    sequence = max([int(value[4:]) for value in
+                    [i.id for i in prior] + [d.issue_id for d in ledger.decisions]
+                    if value.startswith("sci_") and value[4:].isdigit()] +
+                   [int((checkpoint or {}).get("issue_sequence", 0))])
+    previous = {}
+    for old in prior:
+        if old.unit_id in replaced_units:
+            previous.setdefault((old.unit_id, *_issue_key(old)), []).append(old.id)
+    kept = [i for i in prior if i.unit_id not in replaced_units]
+    used = {i.id for i in kept}
+    for fresh in generated:
+        candidates = previous.get((fresh.unit_id, *_issue_key(fresh))) or []
+        if candidates:
+            fresh.id = candidates.pop(0)
+        else:
+            sequence += 1
+            fresh.id = f"sci_{sequence:06d}"
+        used.add(fresh.id)
+    removed = {i.id for i in prior if i.unit_id in replaced_units} - used
+    orphaned = sorted(removed & {d.issue_id for d in ledger.decisions})
+    for decision in ledger.decisions:
+        if decision.issue_id in removed:
+            revert_last_decision(lesson_dir, decision.issue_id)
+    rank = {u.unit_id: index for index, u in enumerate(units)}
+    combined = sorted(kept + generated, key=lambda i: rank.get(i.unit_id, len(rank)))
+    return combined, orphaned, sequence
+
+
 def _drop_moved_decisions(lesson_dir: str, before: Dict[str, tuple], issues: List[ScienceIssue]) -> None:
     """Le issue si rinumerano per posizione (sci_000001...): se un id ora indica un'issue diversa
     da quella decisa, la decisione va tolta. Altrimenti il build la applicherebbe all'issue nuova,
@@ -475,41 +509,14 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
         k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
     prior = load_science_issues(lesson_dir)
-    kept = [issue for issue in prior if issue.unit_id != unit_id]
     generated = []
     _review_unit(LLMClient(force_mock=force_mock), unit, 1, 1, seg_by_id,
                  {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
                  generated, cfg, lesson_dir, False, cfg.jev.shadow,
                  parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
-    used = {issue.id for issue in kept}
-    # Una issue ritrovata (stesso tipo, segmento e affermazione) riprende il suo id, così la
-    # decisione già presa resta agganciata; le decisioni su issue sparite vengono segnalate.
-    from rt.pipeline.ledger import load_ledger
-    previous: Dict[tuple, List[str]] = {}
-    for issue in prior:
-        if issue.unit_id == unit_id:
-            previous.setdefault(_issue_key(issue), []).append(issue.id)
-    fresh = []
-    for issue in generated:
-        candidates = previous.get(_issue_key(issue)) or []
-        reused = candidates.pop(0) if candidates else None
-        if reused and reused not in used:
-            issue.id = reused
-            used.add(reused)
-        else:
-            fresh.append(issue)
-    decided = {decision.issue_id for decision in load_ledger(lesson_dir).decisions}
-    orphaned = sorted({issue_id for ids in previous.values() for issue_id in ids} & decided)
-    sequence = max([int(issue.id.removeprefix("sci_")) for issue in prior
-                    if issue.id.startswith("sci_") and issue.id[4:].isdigit()] or [0])
-    for issue in fresh:
-        sequence += 1
-        issue.id = f"sci_{sequence:06d}"
-        while issue.id in used:
-            sequence += 1
-            issue.id = f"sci_{sequence:06d}"
-    save_science_issues(kept + generated, lesson_dir)
+    combined, orphaned, sequence = reconcile_unit_issues(lesson_dir, prior, generated, draft.units, {unit_id})
+    save_science_issues(combined, lesson_dir)
     checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
     current = _unit_hashes(draft.units)
     reviewed = (checkpoint or {}).get("unit_hashes")
@@ -527,8 +534,13 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
         source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
         artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
         completed_items=completed,
-        metadata={"unit_hashes": {item: current[item] for item in completed if item in current}})
-    return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(kept),
+        metadata={"unit_hashes": {item: current[item] for item in completed if item in current},
+                  "issue_sequence": sequence})
+    if set(completed) >= set(current):
+        record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
+            {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+            metadata={"unit_hashes": current})
+    return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(prior) - sum(i.unit_id == unit_id for i in prior),
             "orphaned_decisions": orphaned}
 
 
@@ -612,39 +624,13 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             "issues_path": get_science_issues_path(lesson_dir),
         }
 
-    # Issue decidibili prima di questa run, per id: dopo ogni rinumerazione le decisioni restano
-    # solo sulle issue identiche (vedi _drop_moved_decisions).
-    decided_before = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in load_science_issues(lesson_dir)}
-
-    # Riconciliazione all'avvio:
+    all_science_issues = load_science_issues(lesson_dir)
+    if not fs.isfile(get_science_issues_path(lesson_dir)):
+        save_science_issues(all_science_issues, lesson_dir)
+    ckpt, ckpt_status, _ = get_phase_checkpoint(lesson_dir, "review")
+    reviewed_unit_ids = list((ckpt or {}).get("completed_items") or [])
     if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
         reviewed_unit_ids = []
-        all_science_issues: List[ScienceIssue] = []
-        save_science_issues(all_science_issues, lesson_dir)
-        # La review riparte da zero: le issue nuove riprendono i numeri dalla prima, quindi le
-        # decisioni sulle vecchie si attaccherebbero a issue diverse (4.2.3b3.1).
-        from rt.pipeline.ledger import purge_decisions_by_prefix
-        purge_decisions_by_prefix(lesson_dir, prefix="sci_")
-        decided_before = {}
-    else:
-        ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "review")
-        existing_issues = load_science_issues(lesson_dir)
-        if ckpt and ckpt.get("completed_items"):
-            reviewed_unit_ids = list(ckpt["completed_items"])
-            reviewed_set = set(reviewed_unit_ids)
-            # Riconciliazione: conserva solo le issue di unità committate nel manifest
-            cleaned_issues = [iss for iss in existing_issues if iss.unit_id in reviewed_set]
-            all_science_issues = cleaned_issues
-            if len(cleaned_issues) != len(existing_issues):
-                save_science_issues(all_science_issues, lesson_dir)
-                _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
-            if reviewed_unit_ids:
-                print(f"🔄 [CHECKPOINT RESUME] {len(reviewed_unit_ids)}/{len(draft.units)} unità didattiche già revisionate per science critic.")
-        else:
-            reviewed_unit_ids = []
-            all_science_issues = []
-            save_science_issues(all_science_issues, lesson_dir)
-    
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
     unit_hashes = _unit_hashes(draft.units)
@@ -661,10 +647,10 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             ctx.check_cancelled()
             ctx.progress("review", current=idx, total=total_units, message=f"{unit.unit_id} {unit_title}".strip(),
                          unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
-        issues_before = len(all_science_issues)
+        generated = []
         try:
             if unit.unit_id in eligible_ids:
-                _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, all_science_issues,
+                _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
                              _cfg, lesson_dir, asr_llm, shadow_jev, ctx=ctx, jev_log=jev_prefilter)
             elif ctx is not None:
                 ctx.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
@@ -673,7 +659,6 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
                 raise
             # L'unità resta fuori dal checkpoint (e le sue issue parziali fuori dal file):
             # una nuova run la rifà, le altre proseguono.
-            del all_science_issues[issues_before:]
             failure = failures.failed(unit.unit_id, f"{idx}/{total_units} ({unit.unit_id}{': ' + unit_title if unit_title else ''})", exc)
             LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
             if ctx is not None:
@@ -684,13 +669,11 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             continue
         failures.succeeded()
 
-        # Numerazione deterministica progressiva
-        for s_idx, iss in enumerate(all_science_issues, start=1):
-            iss.id = f"sci_{s_idx:06d}"
-            
-        # Salvataggio atomico dell'artefatto su disco
+        if not asr_llm:
+            generated.extend(st_issues_by_unit.get(unit.unit_id, []))
+        all_science_issues, _, sequence = reconcile_unit_issues(
+            lesson_dir, all_science_issues, generated, draft.units, {unit.unit_id})
         save_science_issues(all_science_issues, lesson_dir)
-        _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
 
         # Commit atomico nel checkpoint
         if unit.unit_id not in reviewed_set:
@@ -705,7 +688,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             source_fingerprint=source_fp,
             artifact_fingerprints={"science_issues.json": sci_hash},
             completed_items=reviewed_unit_ids,
-            metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes}},
+            metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes},
+                      "issue_sequence": sequence},
         )
 
     # Finalizzazione se tutte le unità del draft sono state esaminate
@@ -725,15 +709,6 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         )
 
     if is_fully_reviewed:
-        all_science_issues = [iss for iss in all_science_issues if iss.type != ScienceType.ERR_ASR_ST]
-        if not asr_llm:
-            all_science_issues.extend(st_issues_all)
-
-        for s_idx, iss in enumerate(all_science_issues, start=1):
-            iss.id = f"sci_{s_idx:06d}"
-        save_science_issues(all_science_issues, lesson_dir)
-        _drop_moved_decisions(lesson_dir, decided_before, all_science_issues)
-
         source_fp = compute_source_fingerprint(lesson_dir, "review")
         sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
 

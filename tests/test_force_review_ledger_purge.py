@@ -104,7 +104,7 @@ def test_purge_decisions_by_prefix_unit(tmp_path):
     assert purge_decisions_by_prefix(lesson_dir, "nonexistent_") == 0
 
 
-def test_force_review_purges_and_resets_pending_issues(tmp_path):
+def test_force_review_keeps_found_issues_and_decisions(tmp_path):
     lesson_dir = str(tmp_path)
     _setup_test_lesson(lesson_dir)
 
@@ -132,12 +132,13 @@ def test_force_review_purges_and_resets_pending_issues(tmp_path):
     _, pending_sci_skip = get_pending_issues(lesson_dir)
     assert len(pending_sci_skip) == 0
 
-    # 4. Riesegui con force=True -> rigenera e purga le vecchie decisioni Science
+    # V5: la forzatura conserva le decisioni sulle issue ritrovate.
     res_force = run_review(lesson_dir, force=True, force_mock=True)
     assert res_force["action"] == "FORCE"
 
     _, pending_sci_forced = get_pending_issues(lesson_dir)
-    assert len(pending_sci_forced) > 0
+    assert pending_sci_forced == []
+    assert {d.issue_id for d in load_ledger(lesson_dir).decisions if d.issue_id.startswith("sci_")} == {i.id for i in pending_sci}
 
     # La decisione custom NON deve essere stata cancellata
     ledger = load_ledger(lesson_dir)
