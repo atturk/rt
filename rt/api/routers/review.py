@@ -57,7 +57,7 @@ def decide_issue(lesson_id: int, issue_id: str, body: schemas.DecisionRequest, l
             resolved_by="api", notes=body.notes, validate=True,
         )
     except ReviewDecisionError as exc:
-        raise ApiError(409, "decision_rejected", str(exc))
+        raise ApiError(409, exc.reason if exc.reason == "claim_changed" else "decision_rejected", str(exc))
     if is_review_complete(lesson_dir):
         mark_ready_to_build(lesson_dir)  # come a fine review da terminale o da Telegram
     return decision.model_dump(mode="json")

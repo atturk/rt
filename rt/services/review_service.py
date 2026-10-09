@@ -25,6 +25,7 @@ from rt.pipeline.ledger import (
     resolve_science_reject_text,
     revert_last_decision,
     sanitize_suggested_fix,
+    load_resolved_draft, resolved_unit_content,
 )
 from rt.storage import fs
 
@@ -63,7 +64,7 @@ def issue_context(lesson_dir: str, issue: ScienceIssue) -> Dict[str, Any]:
 
     seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
-    draft = load_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
     seg_to_unit, unit_by_id = {}, {}
     if draft:
         for u in draft.units:
@@ -93,7 +94,7 @@ def issue_context(lesson_dir: str, issue: ScienceIssue) -> Dict[str, Any]:
     return {
         "timecode": seg.start_formatted if seg else "N/D",
         "unit_info": f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else issue.unit_id,
-        "unit_content": sci_unit.content if sci_unit else None,
+        "unit_content": resolved_unit_content(lesson_dir, issue, draft) if draft else None,
         "start_segment_id": start_segment_id,
         "end_segment_id": end_segment_id,
         "start_s": start_s,
@@ -129,13 +130,7 @@ def mark_ready_to_build(lesson_dir: str) -> None:
 
 
 def _unit_content(lesson_dir: str, issue: ScienceIssue) -> Optional[str]:
-    from rt.pipeline.rewrite import load_draft
-
-    draft = load_draft(lesson_dir)
-    unit = next((u for u in draft.units if u.unit_id == issue.unit_id), None)
-    if unit is None and issue.segment_id:
-        unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
-    return unit.content if unit else None
+    return resolved_unit_content(lesson_dir, issue)
 
 
 def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: Optional[str]) -> Optional[str]:
@@ -145,7 +140,7 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
     if not is_asr and decision in {"accepted", "edited"}:
         unit_content = _unit_content(lesson_dir, issue)
         if not unit_content or not issue.claim.strip() or issue.claim.strip() not in unit_content:
-            raise ReviewDecisionError("Il claim non è presente nel draft: impossibile applicare la correzione. Apri il file delle issue per verificarla.")
+            raise ReviewDecisionError("Il testo è già cambiato: modificalo a mano o chiudi l'issue", reason="claim_changed")
     if decision == "rejected" and is_asr:
         raise ReviewDecisionError("Per una verifica ASR puoi accettare il testo o modificarlo.")
     if decision == "accepted":
@@ -243,23 +238,20 @@ def orphan_issue_ids(lesson_dir: str) -> List[str]:
     from rt.pipeline.rewrite import get_draft_path, load_draft
     if not fs.isfile(get_draft_path(lesson_dir)):
         return []
-    draft = load_draft(lesson_dir)
-    unit_by_id = {u.unit_id: u for u in draft.units}
+    draft = load_resolved_draft(lesson_dir)
     ledger = {d.issue_id: d for d in load_ledger(lesson_dir).decisions}
     out = []
     for issue in load_science_issues(lesson_dir):
         decision = ledger.get(issue.id)
         if _is_no_diff_issue_type(issue) or (decision and decision.decision == "rejected"):
             continue
-        unit = unit_by_id.get(issue.unit_id) if issue.unit_id else None
-        if unit is None and issue.segment_id:
-            unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
+        content = resolved_unit_content(lesson_dir, issue, draft)
         claim = (issue.claim or "").strip()
-        if unit is not None and claim and claim in unit.content:
+        if content is not None and claim and claim in content:
             continue
-        # testo riscritto a mano nell'anteprima con la correzione già dentro (RT4-FA3)
         fixed = (decision.resolved_text or "").strip() if decision and decision.decision in ("accepted", "edited") else ""
-        if unit is not None and fixed and sanitize_suggested_fix(fixed).strip() in unit.content:
+        literal = sanitize_suggested_fix(fixed) if fixed else None
+        if content is not None and literal and literal in content:
             continue
         out.append(issue.id)
     return out
