@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.2.4b2 — 2026-10-09
+
+### Correzioni
+
+- Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.
+
 ## 4.2.4b1 — 2026-10-09
 
 ### Novità

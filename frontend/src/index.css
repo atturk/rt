@@ -653,6 +653,12 @@
 @starting-style { .rt-rsvp[data-active] { opacity: 0; } }
 .rt-layout[data-tint] {
   color-scheme: light;
+  /* Il colore ereditato dal body è già calcolato: i token da soli non lo cambiano. */
+  color: var(--foreground);
+  --hl-1: #fde68a; --hl-2: #bbf7d0; --hl-3: #bae6fd; --hl-4: #fbcfe8; --hl-5: #fed7aa;
+  --success: #147464; --success-soft: #e4f3ed;
+  --warning: #98620c; --warning-soft: #fff3df;
+  --danger: #a04232; --danger-soft: #ffe9e3;
   --study-learned: #13896b; --study-learning: #e8a317;
   --study-ignored: #d4382a; --study-track: #e6e6e6;
   --bg: var(--irlen-bg); --surface: var(--irlen-bg); --fg: #2a241f;

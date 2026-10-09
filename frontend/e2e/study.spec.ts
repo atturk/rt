@@ -860,3 +860,38 @@ test('linguetta Studio: avanti dalla prima unità, indietro dall’ultima', asyn
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${source.id}$`))
   await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', units.at(-1)!.id)
 })
+
+test('Irlen in tema scuro: contrasto in zen e lettura veloce con ogni tinta', async ({ page }) => {
+  const preferences = await apiGet<Record<string, unknown>>(page.request, '/preferences')
+  try {
+    expect((await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify('scuro') })).ok()).toBeTruthy()
+    await loginViaLink(page)
+    const l = await lesson(page, 'STUDIO')
+    for (const irlen of ['pesca', 'menta', 'pergamena']) {
+      expect((await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: { ...RSVP_DEFAULT, irlen } })).ok()).toBeTruthy()
+      await page.goto(`/studio/lezione/${l.id}`)
+      await expect(page.getByTestId('study-text')).toBeVisible()
+      await page.keyboard.press('z')
+      await expect(page.locator('.rt-layout')).toHaveAttribute('data-tint', irlen)
+      await expect(page.getByTestId('study-text')).toHaveCSS('color', 'rgb(42, 36, 31)')
+      await page.keyboard.press('Escape')
+      await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+      await expect(page.locator('.rt-layout')).toHaveAttribute('data-tint', irlen)
+      await expect(page.getByTestId('speed-reader-word')).toHaveCSS('color', 'rgb(42, 36, 31)')
+      const contrast = await page.locator('.rt-layout').evaluate(el => {
+        const rgb = (s: string) => s.match(/[\d.]+/g)!.slice(0, 3).map(Number)
+        const luminance = (c: number[]) => c.map(v => { const n = v / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4 }).reduce((n, v, i) => n + v * [0.2126, 0.7152, 0.0722][i], 0)
+        const style = getComputedStyle(el)
+        const fg = luminance(rgb(style.color)), bg = luminance(rgb(style.backgroundColor))
+        return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05)
+      })
+      expect(contrast).toBeGreaterThanOrEqual(4.5)
+      await page.keyboard.press('Escape')
+    }
+  } finally {
+    const response = preferences.theme === undefined
+      ? await page.request.delete('/api/v1/preferences/theme', { headers: authHeaders() })
+      : await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify(preferences.theme) })
+    expect(response.ok()).toBeTruthy()
+  }
+})
