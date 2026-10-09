@@ -423,6 +423,53 @@
         "title": "Cap",
         "type": "object"
       },
+      "ChangelogGroup": {
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "items"
+        ],
+        "title": "ChangelogGroup",
+        "type": "object"
+      },
+      "ChangelogSection": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ChangelogGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "date",
+          "groups"
+        ],
+        "title": "ChangelogSection",
+        "type": "object"
+      },
       "ChooseFolderIn": {
         "properties": {
           "start": {
@@ -22745,6 +22792,36 @@
           }
         ],
         "summary": "Spazio occupato dalla cache audio e dalle forme d’onda",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/changelog": {
+      "get": {
+        "operationId": "system_changelog_api_v1_system_changelog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChangelogSection"
+                  },
+                  "title": "Response System Changelog Api V1 System Changelog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Novità delle versioni installate",
         "tags": [
           "sistema"
         ]
