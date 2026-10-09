@@ -797,3 +797,18 @@
 
 /* Verifica: unità modificata dopo l'ultimo controllo. */
 .review-unit-changed { background: repeating-linear-gradient(135deg, var(--color-muted) 0 2px, transparent 2px 4px); border-radius: 50%; }
+
+/* Classificatore: griglie allineate e scheda dal basso. */
+.rt-cls-grid-scroll { overflow-x: auto; }
+.rt-cls-grid { display: grid; gap: 3px; padding: 4px 0; min-width: 260px; }
+.rt-cls-cell { position: relative; height: 32px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; }
+.rt-cls-cell[data-value="didactic"], .rt-cls-cell[data-value="skip_review"], .rt-cls-cell[data-value="coherent"] { background: var(--success-soft); }
+.rt-cls-cell[data-value="organizational"], .rt-cls-cell[data-value="mirata"], .rt-cls-cell[data-value="adattabile"] { background: var(--warning-soft); }
+.rt-cls-cell[data-value="quiz"], .rt-cls-cell[data-value="svolto"], .rt-cls-cell[data-value="visualization"] { background: var(--accent); }
+.rt-cls-cell[data-value="drift"], .rt-cls-cell[data-value="no_content"] { background: var(--danger-soft); }
+.rt-cls-cell[data-state="missing"], .rt-cls-cell[data-state="stale"], .rt-cls-cell[data-state="skipped"] { border-style: dashed; }
+.rt-cls-cell[data-state="skipped"] { background: transparent; }
+.rt-cls-cell[data-state="error"] { border-color: var(--danger); }
+.rt-cls-hover, .rt-cls-cell:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.rt-cls-manual { position: absolute; width: 5px; height: 5px; right: 3px; top: 3px; border-radius: 50%; background: var(--foreground); }
+.rt-cls-sheet { margin: auto auto 0; width: min(640px, 100%); max-height: 80dvh; border-radius: 12px 12px 0 0; padding-bottom: env(safe-area-inset-bottom); }

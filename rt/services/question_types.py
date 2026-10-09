@@ -74,21 +74,25 @@ def _mock(unit):
             "probabilities": {k: .85 if k == kind else .05 for k in CRITERIA}}
 
 
-def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=None):
+def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=None, force=False, view="draft", refresh_sections=True):
     from rt.pipeline.rewrite import load_draft
     from rt.services import section_labels
     from rt.services.events import Notice
-    from rt.services.recall_context import context_block, lesson_context
+    from rt.services.recall_context import lesson_context
+    from rt.services import jev_mapping
     from rt.llm import jev_client
     cfg = load_config()
     if not enabled():
         return {}
-    units = load_draft(lesson_dir).units
+    from rt.pipeline.ledger import load_resolved_draft
+    units = (load_resolved_draft(lesson_dir) if view == "resolved" else load_draft(lesson_dir)).units
     mock = force_mock or cfg.mock_llm
-    section_labels.refresh(lesson_dir, force_mock=mock)
+    if refresh_sections:
+        section_labels.refresh(lesson_dir, force_mock=mock)
     owner, labels = _sections(lesson_dir, units)
     from rt.services.unit_relevance import included_ids
-    allowed = included_ids(lesson_dir, units)
+    from rt.pipeline.ledger import load_resolved_draft
+    allowed = included_ids(lesson_dir, load_resolved_draft(lesson_dir).units if view == "resolved" else units, view=view)
     wanted = set(unit_ids) if unit_ids is not None else {u.unit_id for u in units}
     previous = _load(lesson_dir)
     result = {}
@@ -97,12 +101,14 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
         old = previous.get(unit.unit_id, {})
         digest = _text_hash(unit, lesson_dir)
         if unit.unit_id not in allowed:
+            if old:
+                result[unit.unit_id] = old
             continue
         if unit.unit_id not in wanted:
             if old:
                 result[unit.unit_id] = old
             continue
-        if old.get("text_hash") == digest and old.get("config_hash") == configuration and old.get("mock") == mock and old.get("candidate") in CRITERIA:
+        if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration and old.get("mock") == mock and old.get("candidate") in CRITERIA:
             row = dict(old)
         else:
             row = {"text_hash": digest, "config_hash": configuration, "at": datetime.now(timezone.utc).isoformat(),
@@ -112,7 +118,7 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
                     row.update(_mock(unit))
                 else:
                     response = (responses[unit.unit_id] if responses is not None and unit.unit_id in responses else jev_client.call_jev(
-                        state=context_block(lesson_context(lesson_dir)) + f"\n\n[{unit.unit_id}] {unit.title}\n{unit.content}",
+                        state=jev_mapping.state_for("relevance", unit.title, unit.content, lesson_context(lesson_dir)),
                         questions={"tipo_consigliato": jev_client.JevChoiceQuestion(instructions=INSTRUCTIONS, criteria=CRITERIA)},
                         job_name="question_types", unit_id=unit.unit_id, lesson_dir=lesson_dir,
                         model=classifier_jev(cfg, "question_types").relevance_model, credential=classifier_jev(cfg, "question_types").credential, base_url=classifier_jev(cfg, "question_types").base_url,
@@ -125,6 +131,8 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
                 LOG.warning("Tipo consigliato %s: %s", unit.unit_id, exc)
                 if ctx is not None:
                     ctx.emit(Notice(level="warning", message=f"Avviso: tipo consigliato non disponibile per l’unità {unit.unit_id}."))
+        if old.get("text_hash") == digest and "override" in old:
+            row.update({k: old.get(k) for k in ("override", "corrected_at")})
         row["type"] = _compatible(row, owner.get(unit.unit_id), labels)
         result[unit.unit_id] = row
     try:
@@ -134,6 +142,10 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
             for uid in set(result) - wanted:
                 if uid in latest:
                     result[uid] = latest[uid]
+            for uid, row in result.items():
+                current = latest.get(uid, {})
+                if current.get("text_hash") == row.get("text_hash") and (current.get("corrected_at") or "") > (row.get("corrected_at") or ""):
+                    row.update(override=current.get("override"), corrected_at=current.get("corrected_at"))
             if result != latest:
                 temp = _path(lesson_dir) + ".tmp"
                 with fs.open(temp, "w", encoding="utf-8") as stream:
@@ -148,16 +160,37 @@ def suggestions(lesson_dir):
     """Solo consigli attuali, coerenti anche con correzioni alle etichette delle sezioni."""
     if not enabled():
         return {}
-    from rt.pipeline.rewrite import load_draft
+    from rt.pipeline.ledger import load_resolved_draft
     try:
-        units = load_draft(lesson_dir).units
+        units = load_resolved_draft(lesson_dir).units
     except (OSError, ValueError):
         return {}
     owner, labels = _sections(lesson_dir, units)
     records, cfg_hash = _load(lesson_dir), _config_hash(classifier_jev(load_config(), "question_types"))
-    return {u.unit_id: _compatible(records[u.unit_id], owner.get(u.unit_id), labels) for u in units
-            if u.unit_id in records and records[u.unit_id].get("text_hash") == _text_hash(u, lesson_dir)
-            and records[u.unit_id].get("config_hash") == cfg_hash}
+    return {u.unit_id: records[u.unit_id].get("override") or _compatible(records[u.unit_id], owner.get(u.unit_id), labels)
+            for u in units if u.unit_id in records and records[u.unit_id].get("text_hash") == _text_hash(u, lesson_dir)
+            and (records[u.unit_id].get("override") in CRITERIA or records[u.unit_id].get("config_hash") == cfg_hash)}
+
+
+def set_override(lesson_dir, unit_id, value):
+    if value is not None and value not in CRITERIA:
+        raise ValueError("Tipo di domanda non valido")
+    from rt.pipeline.ledger import load_resolved_draft
+    unit = next((u for u in load_resolved_draft(lesson_dir).units if u.unit_id == unit_id), None)
+    if unit is None:
+        raise KeyError(unit_id)
+    with file_lock(fs.lock_path(_path(lesson_dir) + ".lock"), retries=100, backoff=.05):
+        records = _load(lesson_dir)
+        row = records.get(unit_id, {})
+        text_hash = _text_hash(unit, lesson_dir)
+        if row.get("text_hash") != text_hash:
+            row = {"text_hash": text_hash, "candidate": None, "type": None}
+        row.update(override=value, corrected_at=datetime.now(timezone.utc).isoformat(),
+                   config_hash=_config_hash(classifier_jev(load_config(), "question_types")))
+        records[unit_id] = row
+        with fs.open(_path(lesson_dir) + ".tmp", "w", encoding="utf-8") as stream:
+            json.dump(records, stream, ensure_ascii=False, indent=2)
+        fs.replace(_path(lesson_dir) + ".tmp", _path(lesson_dir))
 
 
 def allocate(groups, count):

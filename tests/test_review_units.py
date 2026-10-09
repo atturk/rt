@@ -46,7 +46,7 @@ def test_review_units_states_and_legacy_checkpoint(reviewed, monkeypatch):
     rows = review_units(lesson)
     assert rows[0]['state'] == 'changed' and rows[1]['state'] == 'issues'
     assert rows[1]['reviewed_at'] is None and rows[1]['model'] is None
-    monkeypatch.setattr('rt.services.unit_relevance.included', lambda *a: False)
+    monkeypatch.setattr('rt.services.unit_relevance.included_ids', lambda *a, **kw: set())
     assert all(u['state'] == 'excluded' for u in review_units(lesson))
 
 

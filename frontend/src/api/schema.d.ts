@@ -407,6 +407,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/classifier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Classifier */
+        get: operations["get_classifier_api_v1_lessons__lesson_id__classifier_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/classifier/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Classifier */
+        post: operations["run_classifier_api_v1_lessons__lesson_id__classifier_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/classifier/{job}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Classifier Job */
+        post: operations["run_classifier_job_api_v1_lessons__lesson_id__classifier__job__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/classifier/{job}/{cell_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Correct Classifier */
+        put: operations["correct_classifier_api_v1_lessons__lesson_id__classifier__job___cell_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/decisions": {
         parameters: {
             query?: never;
@@ -2985,6 +3053,30 @@ export interface components {
              */
             total: number;
         };
+        /** ClassifierCell */
+        ClassifierCell: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Options */
+            options?: string[];
+            /** Section Id */
+            section_id?: string | null;
+            /**
+             * Source
+             * @default classifier
+             * @enum {string}
+             */
+            source: "classifier" | "manual";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "fresh" | "stale" | "missing" | "error" | "skipped";
+            /** Unit Id */
+            unit_id?: string | null;
+            /** Value */
+            value?: string | null;
+        };
         /** ClassifierConfig */
         ClassifierConfig: {
             /** Base Url */
@@ -3009,6 +3101,11 @@ export interface components {
              */
             timeout_seconds: number;
         };
+        /** ClassifierCorrection */
+        ClassifierCorrection: {
+            /** Value */
+            value?: string | null;
+        };
         /** ClassifierJobConfig */
         ClassifierJobConfig: {
             /** Base Url */
@@ -3023,6 +3120,42 @@ export interface components {
             mode: "off" | "manual" | "observe" | "pipeline";
             /** Model */
             model?: string | null;
+        };
+        /** ClassifierJobView */
+        ClassifierJobView: {
+            /** Cells */
+            cells: components["schemas"]["ClassifierCell"][];
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "manual" | "observe" | "pipeline";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "done" | "partial" | "stale" | "never" | "off";
+        };
+        /** ClassifierOverview */
+        ClassifierOverview: {
+            /** Jobs */
+            jobs: {
+                [key: string]: components["schemas"]["ClassifierJobView"];
+            };
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /** Units */
+            units: components["schemas"]["ClassifierUnit"][];
         };
         /** ClassifierProbeIn */
         ClassifierProbeIn: {
@@ -3046,6 +3179,25 @@ export interface components {
             request_type: "choice" | "noul" | "score";
             /** Timeout Seconds */
             timeout_seconds: number;
+        };
+        /** ClassifierRun */
+        ClassifierRun: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /** Unit Ids */
+            unit_ids?: string[] | null;
+        };
+        /** ClassifierUnit */
+        ClassifierUnit: {
+            /** Id */
+            id: string;
+            /** Section Id */
+            section_id: string;
+            /** Title */
+            title: string;
         };
         /** Connection */
         Connection: {
@@ -7994,6 +8146,293 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Waveform"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_classifier_api_v1_lessons__lesson_id__classifier_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassifierOverview"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_classifier_api_v1_lessons__lesson_id__classifier_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassifierRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    run_classifier_job_api_v1_lessons__lesson_id__classifier__job__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                job: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassifierRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    correct_classifier_api_v1_lessons__lesson_id__classifier__job___cell_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                job: string;
+                cell_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassifierCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassifierOverview"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

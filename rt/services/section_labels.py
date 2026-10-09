@@ -181,9 +181,11 @@ def _classify(lesson_dir: str, section: dict, cfg) -> dict:
     return out
 
 
-def refresh(lesson_dir: str, *, force_mock: bool = False, force: bool = False, progress=None) -> dict:
+def refresh(lesson_dir: str, *, force_mock: bool = False, force: bool = False, progress=None, unit_ids=None, explicit=False) -> dict:
     """Classifica le sezioni cambiate (force: tutte). Un errore lascia la sezione senza etichette
     (nessun caso né esercizio) e si riprova alla generazione successiva."""
+    if classifier_job(load_config(), "section_labels").mode == "manual" and not explicit:
+        return _load(lesson_dir)
     current = mode(force_mock)
     if current == "disabled":
         return _load(lesson_dir)
@@ -194,6 +196,10 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, force: bool = False, p
     for section in sections(lesson_dir):
         digest = _section_hash(lesson_dir, section)
         old = previous.get(section["id"], {})
+        if unit_ids is not None and section["id"] not in unit_ids and not any(u.unit_id in unit_ids for u in section["units"]):
+            if old:
+                result[section["id"]] = old
+            continue
         overrides = {k: old.get(k) for k in ("override_esercizio", "override_caso")} if old.get("text_hash") == digest else {}
         if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration and not old.get("error"):
             result[section["id"]] = old

@@ -12,7 +12,8 @@ from rt.storage import fs
 def load(lesson_dir):
     try:
         with fs.open(lesson_path(lesson_dir, "unit_prefilter.json"), encoding="utf-8") as stream:
-            return json.load(stream)
+            data = json.load(stream)
+            return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
@@ -70,7 +71,12 @@ def refresh_prefilter(lesson_dir, unit_ids=None, force=False, jobs=("prefilter",
     from rt.pipeline.review import run_jev_task_a, run_jev_task_b
     cfg = load_config()
     segments = {s.id: s for s in load_segments_json(lesson_path(lesson_dir, "segments.json")).segments}
-    for unit in load_draft(lesson_dir).units:
+    units = load_draft(lesson_dir).units
+    from rt.services.unit_relevance import included_ids
+    allowed = included_ids(lesson_dir, units)
+    for unit in units:
+        if unit.unit_id not in allowed:
+            continue
         if unit_ids is not None and unit.unit_id not in unit_ids:
             continue
         source = "\n".join(f"[{sid}] {segments[sid].text_raw}" for sid in unit.source_segment_ids if sid in segments)

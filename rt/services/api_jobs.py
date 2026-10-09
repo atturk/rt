@@ -460,3 +460,14 @@ import rt.services.job_handlers  # noqa: E402,F401 - i tipi standard prima di av
 for _type in UPLOAD_JOB_TYPES:
     if _type in _HANDLERS and not getattr(_HANDLERS[_type], "upload_cleanup", False):
         _HANDLERS[_type] = with_upload_cleanup(_HANDLERS[_type])
+
+
+def classifier_job_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.classifier_view import run
+    with ctx.activate():
+        result = run(job.lesson_path,job.payload.get("job"),force=bool(job.payload.get("force")),
+                     unit_ids=job.payload.get("unit_ids"),ctx=ctx)
+    return _done(result,lesson_path=job.lesson_path)
+
+
+register_handler("classifier",classifier_job_handler)
