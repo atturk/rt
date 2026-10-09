@@ -1302,6 +1302,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/review/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stato della verifica scientifica per ogni unità */
+        get: operations["get_review_units_api_v1_lessons__lesson_id__review_units_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/sections": {
         parameters: {
             query?: never;
@@ -5350,6 +5367,32 @@ export interface components {
             reviewed: number;
             /** Total */
             total: number;
+        };
+        /** ReviewUnit */
+        ReviewUnit: {
+            /**
+             * Issues Pending
+             * @default 0
+             */
+            issues_pending: number;
+            /**
+             * Issues Total
+             * @default 0
+             */
+            issues_total: number;
+            /** Model */
+            model?: string | null;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "issues" | "changed" | "never" | "excluded" | "failed";
+            /** Title */
+            title: string;
+            /** Unit Id */
+            unit_id: string;
         };
         /** RouteIn */
         RouteIn: {
@@ -11902,6 +11945,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnitRelevanceOverview"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_review_units_api_v1_lessons__lesson_id__review_units_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewUnit"][];
                 };
             };
             /** @description Autenticazione mancante o non valida */

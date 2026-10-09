@@ -303,3 +303,42 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
                 else f"{n} issue orfane: il loro testo non è più nella bozza")
         warnings.append({"code": "orphan_issues", "count": n, "message": text + "."})
     return warnings
+
+
+def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
+    """Stati della verifica in ordine di bozza, con compatibilità per i checkpoint storici."""
+    from rt.pipeline.review_units import load_review_units
+    from rt.pipeline.review import _unit_hashes, load_science_issues
+    from rt.pipeline.rewrite import load_draft
+    from rt.core.idempotency import get_phase_checkpoint
+    from rt.services.unit_relevance import included
+    draft = load_draft(lesson_dir)
+    current = _unit_hashes(draft.units)
+    registry = load_review_units(lesson_dir)
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    checkpoint = checkpoint or {}
+    hashes = checkpoint.get("unit_hashes") or {}
+    completed = set(checkpoint.get("completed_items") or [])
+    decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
+    issues = load_science_issues(lesson_dir)
+    rows = []
+    for unit in draft.units:
+        entry = registry.get(unit.unit_id) or {}
+        unit_issues = [i for i in issues if i.unit_id == unit.unit_id or
+                       (not i.unit_id and i.segment_id in unit.source_segment_ids)]
+        digest = entry.get("text_hash") or hashes.get(unit.unit_id)
+        known = bool(entry) or unit.unit_id in completed
+        if not included(lesson_dir, unit):
+            state = "excluded"
+        elif known and digest and digest != current[unit.unit_id]:
+            state = "changed"
+        elif entry.get("result") == "failed":
+            state = "failed"
+        elif known and digest == current[unit.unit_id]:
+            state = "issues" if unit_issues else "ok"
+        else:
+            state = "never"
+        rows.append({"unit_id": unit.unit_id, "title": unit.title, "state": state,
+                     "reviewed_at": entry.get("reviewed_at"), "model": entry.get("model"),
+                     "issues_total": len(unit_issues), "issues_pending": sum(i.id not in decided for i in unit_issues)})
+    return rows

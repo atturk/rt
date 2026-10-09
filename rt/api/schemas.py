@@ -762,3 +762,13 @@ class SectionLabels(BaseModel):
 class SectionLabelOverride(BaseModel):
     kind: Literal["esercizio", "caso"]
     value: Optional[str] = Field(None, description="Nuovo valore; null torna a quello del classificatore")
+
+
+class ReviewUnit(BaseModel):
+    unit_id: str
+    title: str
+    state: Literal["ok", "issues", "changed", "never", "excluded", "failed"]
+    reviewed_at: Optional[str] = None
+    model: Optional[str] = None
+    issues_total: int = 0
+    issues_pending: int = 0

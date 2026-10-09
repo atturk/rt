@@ -72,3 +72,11 @@ def undo_decision(lesson_id: int, body: schemas.UndoRequest, lesson_dir: LessonD
         return undo_last_decision(lesson_dir, body.issue_id).model_dump(mode="json")
     except ReviewDecisionError as exc:
         raise ApiError(409 if exc.reason != "missing" else 404, "undo_rejected", str(exc))
+
+
+@router.get("/lessons/{lesson_id}/review/units", response_model=list[schemas.ReviewUnit],
+            summary="Stato della verifica scientifica per ogni unità")
+def get_review_units(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.review_service import review_units
+    from rt.pipeline.rewrite import get_draft_path
+    return review_units(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else []

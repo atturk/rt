@@ -45,6 +45,7 @@ from rt.services.context import RunContext, phase_scope
 from rt.services.events import Notice
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
+from rt.pipeline.review_units import record_review_unit
 
 LOG = logging.getLogger(__name__)
 
@@ -316,7 +317,7 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
 def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int, seg_by_id: dict,
                  st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
                  _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool, ctx: "Optional[RunContext]" = None,
-                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None) -> None:
+                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None) -> str:
     """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
     source_texts = []
     for s_id in unit.source_segment_ids:
@@ -385,6 +386,8 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
             if not iss.segment_id:
                 iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
             all_science_issues.append(iss)
+
+    return "skipped_by_prefilter" if skip_expensive_llm else "ok"
 
 
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
@@ -510,13 +513,19 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
         k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
     prior = load_science_issues(lesson_dir)
     generated = []
-    _review_unit(LLMClient(force_mock=force_mock), unit, 1, 1, seg_by_id,
-                 {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
-                 generated, cfg, lesson_dir, False, cfg.jev.shadow,
-                 parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
+    client = LLMClient(force_mock=force_mock)
+    try:
+        result = _review_unit(client, unit, 1, 1, seg_by_id,
+                     {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
+                     generated, cfg, lesson_dir, False, cfg.jev.shadow,
+                     parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
+    except Exception as exc:
+        record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc))
+        raise
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
     combined, orphaned, sequence = reconcile_unit_issues(lesson_dir, prior, generated, draft.units, {unit_id})
     save_science_issues(combined, lesson_dir)
+    record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result)
     checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
     current = _unit_hashes(draft.units)
     reviewed = (checkpoint or {}).get("unit_hashes")
@@ -648,9 +657,10 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             ctx.progress("review", current=idx, total=total_units, message=f"{unit.unit_id} {unit_title}".strip(),
                          unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
         generated = []
+        unit_result = "excluded"
         try:
             if unit.unit_id in eligible_ids:
-                _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
+                unit_result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
                              _cfg, lesson_dir, asr_llm, shadow_jev, ctx=ctx, jev_log=jev_prefilter)
             elif ctx is not None:
                 ctx.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
@@ -660,6 +670,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             # L'unità resta fuori dal checkpoint (e le sue issue parziali fuori dal file):
             # una nuova run la rifà, le altre proseguono.
             failure = failures.failed(unit.unit_id, f"{idx}/{total_units} ({unit.unit_id}{': ' + unit_title if unit_title else ''})", exc)
+            record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", failure.message)
             LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
             if ctx is not None:
                 ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
@@ -674,6 +685,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         all_science_issues, _, sequence = reconcile_unit_issues(
             lesson_dir, all_science_issues, generated, draft.units, {unit.unit_id})
         save_science_issues(all_science_issues, lesson_dir)
+        record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result)
 
         # Commit atomico nel checkpoint
         if unit.unit_id not in reviewed_set:
