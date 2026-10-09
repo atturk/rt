@@ -832,3 +832,31 @@ test('zen su iPhone: il bordo alto apre la barra e il testo la richiude', async 
     await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
   } finally { await context.close() }
 })
+
+test('linguetta Studio: avanti dalla prima unità, indietro dall’ultima', async ({ page }) => {
+  await loginViaLink(page)
+  const source = await lesson(page, 'STUDIO')
+  const target = await lesson(page, 'STUDIO_NAV')
+  // I test della configurazione cambiano i modelli: rivalida le fixture con gli input attuali.
+  for (const fixture of [source, target]) {
+    for (const phase of ['prepare', 'outline', 'rewrite']) {
+      const response = await page.request.post(`/api/v1/lessons/${fixture.id}/phases/${phase}/validate`, { headers: authHeaders() })
+      expect(response.ok(), await response.text()).toBeTruthy()
+    }
+  }
+  await page.goto(`/studio/lezione/${source.id}`)
+  const units = (await apiGet<Study>(page.request, `/lessons/${source.id}/study`)).units
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await page.getByTestId('unit-index-toggle').click()
+  await page.getByRole('menuitem').last().click()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('lesson-jump-tab-right')).toBeVisible()
+  await page.getByTestId('lesson-jump-right-sameDay').click()
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${target.id}$`))
+  const targetUnits = (await apiGet<Study>(page.request, `/lessons/${target.id}/study`)).units
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', targetUnits[0].id)
+  await page.keyboard.press('ArrowLeft')
+  await page.getByTestId('lesson-jump-left-sameDay').click()
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${source.id}$`))
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', units.at(-1)!.id)
+})

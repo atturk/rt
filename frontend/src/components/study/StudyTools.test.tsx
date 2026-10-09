@@ -280,6 +280,27 @@ it.each(['evidenzia', 'gomma'])('il clic destro toglie un’evidenziazione in mo
   expect(fireEvent.contextMenu(screen.getByTestId('study-text'))).toBe(true)
 })
 
+it('al bordo la linguetta dura 5 s, si rinnova, si ferma col mouse e la freccia opposta la chiude', () => {
+  vi.useFakeTimers()
+  renderStudy()
+  fireEvent.keyDown(window, { key: 'ArrowRight' })
+  fireEvent.keyDown(window, { key: 'ArrowRight' })
+  expect(screen.getByTestId('lesson-jump-tab-right')).toBeVisible()
+  act(() => { vi.advanceTimersByTime(4000) })
+  fireEvent.keyDown(window, { key: 'ArrowRight' })
+  act(() => { vi.advanceTimersByTime(4000) })
+  expect(screen.getByTestId('lesson-jump-tab-right')).toBeVisible()
+  fireEvent.mouseEnter(screen.getByTestId('lesson-jump-tab-right'))
+  act(() => { vi.advanceTimersByTime(6000) })
+  expect(screen.getByTestId('lesson-jump-tab-right')).toBeVisible()
+  fireEvent.mouseLeave(screen.getByTestId('lesson-jump-tab-right'))
+  act(() => { vi.advanceTimersByTime(5000) })
+  expect(screen.queryByTestId('lesson-jump-tab-right')).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'ArrowRight' })
+  fireEvent.keyDown(window, { key: 'ArrowLeft' })
+  expect(screen.queryByTestId('lesson-jump-tab-right')).not.toBeInTheDocument()
+})
+
 it('la zen condivisa resta accesa quando la route rimonta il flusso', async () => {
   const { StudyZenContext } = await import('@/lib/zen')
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })

@@ -1,7 +1,11 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
 import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
+import { useLessons } from '@/api/hooks'
+import { lessonNeighbors } from '@/lib/lessonNeighbors'
+import { LessonJumpTab } from '@/components/shared/LessonJump'
+import { useLessonJump } from '@/lib/useLessonJump'
 
 import { studyNavigation } from './studyNavigation'
 import { detectSwipe, isElementScrollableX } from './swipe'
@@ -51,7 +55,13 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [zenMinHeight, setZenMinHeight] = useState(0)
   const readingScroll = useRef(0)
   const anchor = useRef<{ node: Element; top: number } | null>(null)
-  const enterLast = useRef(false)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const entry = location.state as { enter?: 'first' | 'last'; zen?: boolean } | null
+  const enterLast = useRef(entry?.enter === 'last')
+  const enterFirst = useRef(entry?.enter === 'first')
+  const allLessons = useLessons()
+  const lessonJump = useLessonJump()
   const [edge, setEdge] = useState<{ side: 'left' | 'right'; sequence: number } | null>(null)
   const edgeSequence = useRef(0)
   useEffect(() => {
@@ -77,8 +87,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     if (loaded && units === null) {
       // oxlint-disable-next-line react/set-state-in-effect
       setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
-      setUnitIndex(enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits ? 0 : initialStudyUnit(loaded.units))
+      setUnitIndex(enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units))
       enterLast.current = false
+      enterFirst.current = false
     }
   }, [loaded, units, onlyUnits])
   const unit = units?.[unitIndex] ?? null
@@ -103,16 +114,18 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     anchor.current = null
     readingScroll.current = 0
     setZenMinHeight(0)
+    lessonJump.close()
     setUnitIndex(idx)
     setPhase('lettura')
     setRereading(false)
     window.scrollTo?.({ top: 0 })
   }
 
-  const advance = useCallback(() => {
+  const advance = () => {
     anchor.current = null
     readingScroll.current = 0
     setZenMinHeight(0)
+    lessonJump.close()
     setRereading(false)
     if (units && unitIndex + 1 < units.length) {
       setUnitIndex(unitIndex + 1)
@@ -124,12 +137,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       setPhase('lettura')
     } else setFinished(true)
     window.scrollTo?.({ top: 0 })
-  }, [units, unitIndex, lessonIndex, lessons.length, onlyUnits])
+  }
 
   const navigateReading = (direction: -1 | 1) => {
     if (!units || !unit) return
     const target = studyNavigation(direction, unitIndex, units.length, lessonIndex, lessons.length)
+    if (lessonJump.jump && lessonJump.jump.side !== (direction === -1 ? 'left' : 'right')) lessonJump.close()
     if (target === 'left-edge' || target === 'right-edge') {
+      if (!zenMode && !speedReading) lessonJump.show(direction === -1 ? 'left' : 'right')
       setEdge({ side: target === 'left-edge' ? 'left' : 'right', sequence: ++edgeSequence.current })
     } else if (target === 'previous-unit' || target === 'next-unit') {
       goToUnit(unitIndex + direction)
@@ -159,7 +174,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const settingsButton = useRef<HTMLDivElement>(null)
   const setRsvpLayout = useRsvpLayout()
   const setZenLayout = useZenLayout()
-  const [zenMode, setZenMode] = useStudyZen()
+  const [zenMode, setZenMode] = useStudyZen(entry?.zen ?? false)
   const [zenSettings, setZenSettings] = useState(false)
   const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
   const savePosition = () => {
@@ -171,6 +186,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     savePosition()
     if (!zenMode) setZenMinHeight(document.documentElement.scrollHeight)
     textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+    lessonJump.close()
     setZenMode(current => !current)
     setZenSettings(false)
     setIndexOpen(false)
@@ -198,7 +214,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const timer = setTimeout(() => setNotice(null), 1200)
     return () => clearTimeout(timer)
   }, [notice])
-  const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [])
+  const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
   useEffect(() => {
     setRsvpLayout({ active: speedReading, tint })
     return () => setRsvpLayout({ active: false, tint: null })
@@ -422,6 +438,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   return (
     <>
+      {reading && !zenMode && !speedReading && lessonJump.jump && <LessonJumpTab neighbors={lessonNeighbors((allLessons.data ?? lessons) as Lesson[], lesson!.id, { readyOnly: true })}
+        side={lessonJump.jump.side} sequence={lessonJump.jump.sequence} paused={lessonJump.paused} onPause={lessonJump.pause} onResume={lessonJump.resume}
+        onJump={(target, side) => navigate(`/studio/lezione/${target.id}`, { state: { enter: side === 'left' ? 'last' : 'first', zen: zenMode } })} />}
       <div hidden={!reading}>
         <StudyShell
           title={speedReading ? `${unit.id} ${unit.title}` : titleButton}

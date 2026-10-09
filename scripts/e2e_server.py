@@ -126,6 +126,8 @@ def _lessons(root: str) -> None:
     run_mock_pipeline(chirurgia, with_review=True, auto_accept=True)
     # Lezione con due unità reali per navigazione e stato di studio, senza mock delle API.
     _study_lesson(root)
+    # Vicina pronta e indipendente dalle prove che modificano CHIRURGIA.
+    _study_lesson(root, materia="STUDIO_NAV", argomenti="Navigazione di prova")
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)
@@ -133,14 +135,14 @@ def _lessons(root: str) -> None:
         raise RuntimeError("; ".join(report.errors))
 
 
-def _study_lesson(root: str) -> None:
+def _study_lesson(root: str, *, materia: str = "STUDIO", argomenti: str = "Unità di prova") -> None:
     from rt.core.lesson_paths import lesson_path
     from rt.core.segments import load_segments_json
     from rt.pipeline.outline import load_outline, save_outline
     from rt.services.outline_service import approve_outline
     from rt.services.phase_validation_service import validate_phase
     from tests.api_support import run_mock_pipeline
-    path = _plain_lesson(root, "2026-09-02", "STUDIO", "Unità di prova")
+    path = _plain_lesson(root, "2026-09-02", materia, argomenti)
     run_mock_pipeline(path, with_review=False, auto_accept=False)
     segments = load_segments_json(lesson_path(path, "segments.json")).segments
     middle = len(segments) // 2
