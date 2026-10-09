@@ -66,8 +66,8 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   await heading.click({ button: 'right' })
   const menu = page.getByRole('menu', { name: 'Azioni sul testo' })
   await expect(menu).toBeVisible()
-  await expect(menu.getByRole('menuitem')).toHaveText(['Copia', 'Leggi da qui', 'Genera', 'Domande su questa parte', 'Verifica questa parte'])
-  await expect(page.getByTestId('document-menu-part')).toHaveText(`Questa parte: ${unit}`)
+  await expect(menu.getByRole('menuitem')).toHaveText(['Copia', 'Leggi da quiIn arrivo', 'Genera', `Domande sull'unità ${unit}`, 'Verifica questa parteIn arrivo'])
+  await expect(page.getByTestId('document-menu-part')).toHaveCount(0)
   await expect(menu.getByRole('menuitem', { name: 'Copia' })).toBeFocused()
   const later = menu.getByRole('menuitem', { name: 'Leggi da qui' })
   await expect(later).toHaveAttribute('aria-disabled', 'true')
@@ -93,7 +93,7 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   })
   await selected.click({ button: 'right' })
   await expect(menu).toBeVisible()
-  await expect(page.getByTestId('document-menu-part')).toHaveText(`Questa parte: ${unit}`)
+  await expect(page.getByTestId('document-menu-part')).toHaveCount(0)
   await menu.getByRole('menuitem', { name: 'Copia' }).click()
   await expect(menu).toHaveCount(0)
   // Si copia il Markdown (come in Obsidian): senza i segni è il testo che si vede.
@@ -130,20 +130,14 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   expect(element?.kind).toBe('infographic')
   expect(element?.context_unit_ids).toEqual([unit])
 
-  // Verifica questa parte: review_unit con il contesto dell'unità madre, avanzamento dal vivo.
-  // L'elemento generato arriva mentre si clicca e sposta il documento: si riapre il menu finché non c'è.
-  const verifica = menu.getByRole('menuitem', { name: 'Verifica questa parte' })
-  await expect(async () => {
-    await heading.click({ button: 'right' })
-    await expect(verifica).toBeVisible({ timeout: 2000 })
-  }).toPass({ timeout: 30_000 })
-  const review = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${id}/jobs`))
-  await verifica.click()
-  expect((await review).postDataJSON()).toMatchObject({ type: 'run_phase', phase: 'review', units: [unit], parent_context: true })
-  const status = page.getByTestId('part-review')
-  await expect(status).toBeVisible()
-  await expect(status).toHaveAttribute('data-state', 'succeeded', { timeout: 45_000 })
-  await expect(status.getByRole('link', { name: 'Apri la verifica' })).toHaveAttribute('href', `/lezioni/${id}?panel=verifica`)
+  // La verifica del solo testo selezionato è visibile, ma non accoda job.
+  await heading.click({ button: 'right' })
+  const verifica = menu.getByRole('menuitem', { name: /Verifica questa parte/ })
+  await expect(verifica).toHaveAttribute('aria-disabled', 'true')
+  await expect(verifica).toContainText('In arrivo')
+  await verifica.click({ force: true })
+  await expect(page.getByTestId('part-review')).toHaveCount(0)
+
 })
 
 test('menu contestuale: Domande su questa parte apre il pannello Domande sulle unità della selezione', async ({ page }) => {
@@ -153,7 +147,7 @@ test('menu contestuale: Domande su questa parte apre il pannello Domande sulle u
   const heading = page.getByTestId('lesson-document').locator('[data-unit-id]').first()
   const unit = (await heading.getAttribute('data-unit-id'))!
   await heading.click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Domande su questa parte' }).click()
+  await page.getByRole('menuitem', { name: `Domande sull'unità ${unit}` }).click()
   const panel = page.locator('[data-testid=lesson-panel][data-view=domande]')
   await expect(panel).toBeVisible()
   await expect(panel).toHaveAttribute('aria-label', `Domande unità ${unit}`)

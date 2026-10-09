@@ -240,7 +240,7 @@ test('barra editor: comandi sul testo e una riga scorrevole sul telefono', async
   const editor = page.getByTestId('lesson-document')
   const paragraph = editor.locator('.cm-line:not([data-unit-id]):not(.cm-atomic-h1):not(.cm-atomic-h2):not(.cm-atomic-h3)', { hasText: /\w+ \w+ \w+/ }).first()
   await paragraph.click()
-  await page.keyboard.press('End')
+  await page.keyboard.press('Control+End')
   await page.keyboard.press('Control+Shift+ArrowLeft')
   await page.keyboard.press('Control+Shift+ArrowLeft')
   const selected = await page.evaluate(() => window.getSelection()?.toString())
@@ -276,11 +276,17 @@ test('allineamenti editor: frecce sulla prima riga e testo allineato al titolo a
     await page.goto(`/lezioni/${lesson.id}`)
     const editor = page.getByTestId('lesson-document')
     await expect(editor.locator('.cm-foldGutter .rt-fold-marker').first()).toBeAttached()
-    const headings = editor.locator('.cm-line.cm-atomic-h2, .cm-line.cm-atomic-h3')
-    await expect(headings).toHaveCount(4)
-    for (let index = 0; index < 4; index++) {
-      const heading = headings.nth(index)
+    // CodeMirror virtualizza le righe: ogni titolo si raggiunge per identità,
+    // anche quando il testo lungo fa uscire gli altri dalla vista.
+    const headings = [
+      editor.locator('.cm-line.cm-atomic-h2').filter({ hasNotText: 'Approfondimento' }),
+      editor.locator('.cm-line.cm-atomic-h3[data-unit-id]'),
+      editor.locator('.cm-line.cm-atomic-h2').filter({ hasText: `Approfondimento ${title}` }),
+      editor.locator('.cm-line.cm-atomic-h3').filter({ hasText: `Dettagli ${title}` }),
+    ]
+    for (const heading of headings) {
       await scrollDocumentTo(page, heading)
+      await expect(heading).toHaveCount(1)
       await expect.poll(async () => heading.evaluate(line => {
         const box = line.getBoundingClientRect()
         const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=lesson-document] .cm-foldGutter .cm-gutterElement')).filter(row => row.querySelector('.rt-fold-marker'))

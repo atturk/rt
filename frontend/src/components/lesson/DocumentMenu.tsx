@@ -5,8 +5,6 @@ import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useEnrichmentActions } from '@/api/enrichment'
-import { useRunJob } from '@/api/hooks'
-import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { blockIndex, documentBlocks, partLabel, partOfRange } from '@/lib/documentParts'
@@ -38,9 +36,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
 }) {
   const [menu, setMenu] = useState<Part | null>(null)
   const [generate, setGenerate] = useState<Part | null>(null)
-  const [review, setReview] = useState<{ jobId: string; units: string[] } | null>(null)
   const [queued, setQueued] = useState<string[] | null>(null)
-  const run = useRunJob(lessonId)
   // Il documento (l'<article> del DocumentView) sta dentro questo contenitore.
   const root = useRef<HTMLDivElement>(null)
 
@@ -80,7 +76,6 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
 
   return (
     <div ref={root} onContextMenu={open} data-testid="document-surface">
-      {review && <PartReviewStatus lessonId={lessonId} jobId={review.jobId} units={review.units} onDismiss={() => setReview(null)} />}
       {queued && (
         <div role="status" className="mb-4 flex items-center gap-2 rounded-md border px-3 py-2 text-meta" data-testid="generate-queued">
           <Sparkles className="size-4 shrink-0" aria-hidden />
@@ -91,7 +86,6 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
           <IconButton label="Chiudi" icon={X} onClick={() => setQueued(null)} className="-my-1.5 -mr-2" />
         </div>
       )}
-      {run.isError && <p role="alert" className="mb-4 text-meta text-danger">{errorMessage(run.error)}</p>}
       {children}
       {menu && (
         <ContextMenu
@@ -102,7 +96,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
             { label: 'Leggi da qui', icon: Play, unavailable: 'In arrivo' },
             { label: 'Genera', icon: Sparkles, unavailable: unavailable(menu), onSelect: () => setGenerate(menu) },
             {
-              label: 'Domande su questa parte',
+              label: menu.units.length > 1 ? `Domande sulle unità ${menu.units[0]}–${menu.units.at(-1)}` : `Domande sull'unità ${menu.units[0] ?? ''}`,
               icon: Brain,
               unavailable: unavailable(menu),
               onSelect: () => window.dispatchEvent(new CustomEvent(OPEN_QUESTIONS_EVENT, { detail: { units: menu.units, text: menu.text } })),
@@ -110,15 +104,9 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
             {
               label: 'Verifica questa parte',
               icon: ShieldCheck,
-              unavailable: unavailable(menu),
-              onSelect: () =>
-                run.mutate(
-                  { type: 'run_phase', phase: 'review', units: menu.units, parent_context: true },
-                  { onSuccess: (accepted) => setReview({ jobId: accepted.job_id, units: menu.units }) },
-                ),
+              unavailable: 'In arrivo',
             },
           ]}
-          hint={menu.units.length ? `Questa parte: ${partLabel(menu.units)}` : null}
         />
       )}
       {generate && <GeneratePopover lessonId={lessonId} part={generate} onClose={() => setGenerate(null)} onQueued={() => setQueued(generate.units)} />}
@@ -138,7 +126,7 @@ async function copy(text: string) {
 type MenuItem = { label: string; icon: LucideIcon; onSelect?: () => void; unavailable?: string | null }
 
 /** Menu posato dove si è fatto clic destro (schermata 02, .slash): frecce, Esc e clic fuori. */
-function ContextMenu({ at, items, hint, onClose }: { at: Point; items: MenuItem[]; hint: string | null; onClose: () => void }) {
+function ContextMenu({ at, items, onClose }: { at: Point; items: MenuItem[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState(at)
   const returnFocus = useRef<Element | null>(null)
@@ -216,11 +204,11 @@ function ContextMenu({ at, items, hint, onClose }: { at: Point; items: MenuItem[
             >
               <Icon aria-hidden />
               {label}
+              {unavailable === 'In arrivo' && <span className="ml-auto rounded-full border px-2 text-meta">In arrivo</span>}
             </button>
           )}
         </Tooltip>
       ))}
-      {hint && <p className="border-t px-2.5 pb-1 pt-2 text-meta text-muted-foreground" data-testid="document-menu-part">{hint}</p>}
     </div>,
     document.body,
   )
@@ -333,25 +321,5 @@ function GeneratePopover({ lessonId, part, onClose, onQueued }: { lessonId: numb
       </div>
     </div>,
     document.body,
-  )
-}
-
-/** Verifica di una parte: avanzamento dal canale live, poi il link alla revisione. */
-function PartReviewStatus({ lessonId, jobId, units, onDismiss }: { lessonId: number; jobId: string; units: string[]; onDismiss: () => void }) {
-  const job = useJobStatus(jobId)
-  const finished = jobFinished(job.data)
-  const state = job.data?.state
-  return (
-    <div role="status" className="mb-4 flex items-center gap-2 rounded-md border px-3 py-2 text-meta" data-testid="part-review" data-state={state ?? 'queued'}>
-      <ShieldCheck className="size-4 shrink-0" aria-hidden />
-      <span className="flex-1">
-        {!finished
-          ? `Verifico ${partLabel(units)}…`
-          : state === 'succeeded'
-            ? <>Verifica di {partLabel(units)} completata. <Link to={`/lezioni/${lessonId}?panel=verifica`} className="font-semibold text-link underline-offset-2 hover:underline">Apri la verifica</Link></>
-            : `Verifica di ${partLabel(units)} non riuscita${job.data?.error ? `: ${job.data.error}` : '.'}`}
-      </span>
-      {finished && <IconButton label="Chiudi" icon={X} onClick={onDismiss} className="-my-1.5 -mr-2" />}
-    </div>
   )
 }
