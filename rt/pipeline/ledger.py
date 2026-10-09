@@ -97,7 +97,7 @@ def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
     data = sanitize_object_encoding(ledger.model_dump(mode="json"))
     # channel/actor si scrivono solo quando noti: le decisioni senza restano nel formato storico.
     for dec in data.get("decisions", []):
-        for key in ("channel", "actor"):
+        for key in ("channel", "actor", "anchor"):
             if dec.get(key) is None:
                 dec.pop(key, None)
     tmp_path = path + ".tmp"
@@ -138,7 +138,9 @@ def record_decision(
         if sanitized is not None:
             clean_resolved = sanitized
     
+    issue = find_science_issue_by_id(lesson_dir, issue_id)
     dec_obj = ReviewDecision(
+        anchor=issue.anchor.model_copy(deep=True) if issue and issue.anchor else None,
         issue_id=issue_id,
         decision=decision.lower().strip(),
         resolved_text=clean_resolved,

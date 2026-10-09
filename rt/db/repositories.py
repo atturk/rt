@@ -93,7 +93,7 @@ class IssueRepository:
 
 
 DECISION_FIELDS = ("issue_id", "decision", "resolved_text", "resolved_by", "timestamp",
-                   "notes", "original_context", "channel", "actor")
+                   "notes", "original_context", "channel", "actor", "anchor")
 
 
 class DecisionRepository:

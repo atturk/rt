@@ -112,6 +112,7 @@ class ReviewDecision(Base):
     timestamp: Mapped[str] = mapped_column(String(64))
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     original_context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    anchor: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     channel: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     actor: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -145,6 +145,8 @@ class Anchor(BaseModel):
 
 
 class ScienceIssue(BaseModel):
+    anchor: Optional[Anchor] = None
+    origin: Literal["verifica", "parte", "studio"] = "verifica"
     id: str = Field(..., description="ID univoco (es. sci_000001)")
     type: ScienceType = Field(..., description="Tipo di problematica scientifica")
     severity: ScienceSeverity = Field(..., description="Gravità dell'incongruenza")
@@ -163,6 +165,7 @@ class ScienceIssue(BaseModel):
 # ---------------------------------------------------------
 
 class ReviewDecision(BaseModel):
+    anchor: Optional[Anchor] = None
     issue_id: str = Field(..., description="ID dell'ASRIssue o ScienceIssue")
     decision: str = Field(..., description="accepted | rejected | edited")
     resolved_text: Optional[str] = Field(None, description="Testo finale convalidato")

@@ -4,6 +4,7 @@
 
 ### Novità
 
+- Issue e decisioni conservano l’ancora e la provenienza; registro DB aggiornato senza perdere i campi storici.
 - Ancore testuali per ritrovare citazioni ripetute, spostate o parzialmente riscritte senza allargare il passaggio.
 
 ### Correzioni

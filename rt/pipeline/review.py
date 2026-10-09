@@ -87,6 +87,11 @@ def save_science_issues(issues: List[ScienceIssue], lesson_dir: str) -> None:
     path = get_science_issues_path(lesson_dir)
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding([iss.model_dump(mode="json") for iss in issues])
+    for item in data:
+        if item.get("anchor") is None:
+            item.pop("anchor", None)
+        if item.get("origin") == "verifica":
+            item.pop("origin", None)
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)
