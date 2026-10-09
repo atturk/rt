@@ -123,3 +123,18 @@ def test_legacy_decision_not_applied_has_a_build_warning(reviewed):
     record_decision(lesson, first.id, 'accepted', 'Precisare che il contenuto va corretto')
     warnings = build_warnings(lesson)
     assert any(w['code'] == 'decision_not_applied' and w['count'] == 1 for w in warnings)
+
+
+def test_issues_of_units_gone_from_the_draft_are_dropped(reviewed):
+    """Scaletta rifatta: le issue (e le decisioni) di un'unità che non c'è più non restano nel file."""
+    from rt.pipeline.rewrite import load_draft, save_draft
+    lesson, calls = reviewed
+    ids = decide_all(lesson)
+    draft = load_draft(lesson)
+    draft.units = [u for u in draft.units if u.unit_id != '2.1']
+    save_draft(draft, lesson)
+    calls.clear()
+    review.run_review(lesson, force_mock=True)
+    assert calls == []
+    assert {i.unit_id for i in review.load_science_issues(lesson)} == {'1.1', '1.2'}
+    assert {d.issue_id for d in load_ledger(lesson).decisions} == {ids['1.1'], ids['1.2']}

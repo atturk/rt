@@ -656,6 +656,16 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         }
 
     all_science_issues = load_science_issues(lesson_dir)
+    # Unità sparite dalla bozza (scaletta rifatta): le loro issue e decisioni non valgono più.
+    draft_ids = {u.unit_id for u in draft.units}
+    gone = {i.id for i in all_science_issues if i.unit_id and i.unit_id not in draft_ids}
+    if gone:
+        from rt.pipeline.ledger import load_ledger, revert_last_decision
+        all_science_issues = [i for i in all_science_issues if i.id not in gone]
+        save_science_issues(all_science_issues, lesson_dir)
+        for decision in load_ledger(lesson_dir).decisions:
+            if decision.issue_id in gone:
+                revert_last_decision(lesson_dir, decision.issue_id)
     if not fs.isfile(get_science_issues_path(lesson_dir)):
         save_science_issues(all_science_issues, lesson_dir)
     ckpt, ckpt_status, _ = get_phase_checkpoint(lesson_dir, "review")

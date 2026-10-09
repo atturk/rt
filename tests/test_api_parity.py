@@ -285,6 +285,20 @@ def test_row_review_single_unit(api, cli, pair):
     assert_same_lesson(cli_dir, api_dir)
 
 
+def test_review_single_unit_force_from_api(api, pair):
+    """"Verifica di nuovo" dal pannello: force arriva nelle options del job e la rifà davvero."""
+    from tests.api_support import run_mock_pipeline
+    _, api_dir = pair
+    run_mock_pipeline(api_dir)
+    lesson_id = api.lesson_id()
+    unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
+    body = {"type": "run_phase", "phase": "review", "unit": unit, "mock": True}
+    skipped = api.run(f"/lessons/{lesson_id}/jobs", json=body)
+    assert skipped["result"]["units"][0]["status"] == "skipped", skipped
+    forced = api.run(f"/lessons/{lesson_id}/jobs", json={**body, "force": True})
+    assert forced["state"] == "succeeded" and forced["result"]["units"][0].get("status") != "skipped", forced
+
+
 def test_row_validate_outline_and_draft(api, cli, pair):
     """rt validate-outline / validate-draft ⇔ GET /lessons/{id}/phases."""
     from tests.api_support import run_mock_pipeline
